@@ -44,7 +44,7 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
     if (statusList.length > 0 && !form.status && !data) {
       const openStatus = statusList.find(
         (o) =>
-          o.label.toLowerCase() === "open" || o.value.toLowerCase() === "open"
+          o.label.toLowerCase() === "open" || o.value.toLowerCase() === "open",
       );
       if (openStatus) {
         setForm((prev: typeof form) => ({ ...prev, status: openStatus.value }));

@@ -1,0 +1,154 @@
+import { formatLegacyDateOnly } from "../format-date";
+import type {
+  LienResponseDto,
+  LienOfferResponseDto,
+  LienListItem,
+  LienDetail,
+  LienOfferItem,
+  PaginatedResultDto,
+  PaginationMeta,
+  UpdateLienRequestDto,
+} from "./liens.types";
+
+const LIEN_TYPE_LABELS: Record<string, string> = {
+  MedicalLien: "Medical Lien",
+  AttorneyLien: "Attorney Lien",
+  SettlementAdvance: "Settlement Advance",
+  WorkersCompLien: "Workers' Comp Lien",
+  PropertyLien: "Property Lien",
+  Other: "Other",
+};
+
+function safeString(val: string | null | undefined): string {
+  return val ?? "";
+}
+
+function formatDateField(val: string | null | undefined): string {
+  if (!val) return "";
+  try {
+    return formatLegacyDateOnly(val);
+  } catch {
+    return val;
+  }
+}
+
+function buildSubjectName(dto: LienResponseDto): string {
+  if (dto.isConfidential) return "Confidential";
+  if (dto.subjectDisplayName) return dto.subjectDisplayName;
+  const parts = [dto.subjectFirstName, dto.subjectLastName].filter(Boolean);
+  return parts.length ? parts.join(" ") : "";
+}
+
+export function mapLienToListItem(dto: LienResponseDto): LienListItem {
+  return {
+    id: dto.id,
+    lienNumber: dto.lienNumber,
+    lienType: dto.lienType,
+    lienTypeLabel: LIEN_TYPE_LABELS[dto.lienType] ?? dto.lienType,
+    facility: dto.facilityId ?? null,
+    facilityId: dto.facilityId ?? null,
+    facilityName: dto.medicalFacility ?? dto.facilityName ?? dto.facility ?? null,
+    plaintiff: dto.plaintiff ?? null,
+    lawFirm: dto.lawFirm ?? null,
+    caseManager: dto.caseManager ?? null,
+    initialServiceDate: dto.initialServiceDate,
+    purchaseDate: formatDateField(dto.purchaseDate),
+    // A medical lien can bundle multiple billing line items; ListLiens sums
+    // them server-side into totalPurchase/totalBilling. The DTO's own
+    // purchaseAmount is never set by that endpoint, so totalPurchase (the
+    // real aggregate) is what we surface here under that name. The DTO also
+    // carries originalAmount/currentBalance/offerPrice/purchasePrice (used by
+    // mapLienToDetail for the single-lien view) — the list view only ever
+    // needs the aggregate, so they're intentionally not carried over here.
+    purchaseAmount: dto.totalPurchase ?? null,
+    status: dto.status,
+    caseId: safeString(dto.caseId),
+    totalBilling: dto.totalBilling ?? null,
+    closedAtUtc: dto.closedAtUtc ?? null,
+    isServicing: dto.isServicing === true || dto.isServicing === "Y",
+    jurisdiction: safeString(dto.jurisdiction),
+    isConfidential: dto.isConfidential,
+    subjectName: buildSubjectName(dto),
+    createdAt: formatDateField(dto.createdAtUtc),
+    updatedAt: formatDateField(dto.updatedAtUtc),
+  };
+}
+
+export function mapLienToDetail(dto: LienResponseDto): LienDetail {
+  return {
+    id: dto.id,
+    lienNumber: dto.lienNumber,
+    externalReference: safeString(dto.externalReference),
+    lienType: dto.lienType,
+    lienTypeLabel: LIEN_TYPE_LABELS[dto.lienType] ?? dto.lienType,
+    status: dto.status,
+    caseId: safeString(dto.caseId),
+    originalAmount: dto.originalAmount,
+    currentBalance: dto.currentBalance ?? null,
+    offerPrice: dto.offerPrice ?? null,
+    purchasePrice: dto.purchasePrice ?? null,
+    payoffAmount: dto.payoffAmount ?? null,
+    jurisdiction: safeString(dto.jurisdiction),
+    isConfidential: dto.isConfidential,
+    subjectName: buildSubjectName(dto),
+    subjectFirstName: safeString(dto.subjectFirstName),
+    subjectLastName: safeString(dto.subjectLastName),
+    orgId: dto.orgId,
+    sellingOrgId: safeString(dto.sellingOrgId),
+    buyingOrgId: safeString(dto.buyingOrgId),
+    holdingOrgId: safeString(dto.holdingOrgId),
+    incidentDate: formatDateField(dto.incidentDate),
+    description: safeString(dto.description),
+    openedAt: formatDateField(dto.openedAtUtc),
+    closedAt: formatDateField(dto.closedAtUtc),
+    createdAt: formatDateField(dto.createdAtUtc),
+    updatedAt: formatDateField(dto.updatedAtUtc),
+  };
+}
+
+export function mapOfferToItem(dto: LienOfferResponseDto): LienOfferItem {
+  return {
+    id: dto.id,
+    lienId: dto.lienId,
+    offerAmount: dto.offerAmount,
+    status: dto.status,
+    buyerOrgId: dto.buyerOrgId,
+    sellerOrgId: dto.sellerOrgId,
+    notes: safeString(dto.notes),
+    responseNotes: safeString(dto.responseNotes),
+    offeredAt: formatDateField(dto.offeredAtUtc),
+    expiresAt: formatDateField(dto.expiresAtUtc),
+    respondedAt: formatDateField(dto.respondedAtUtc),
+    isExpired: dto.isExpired,
+    createdAt: formatDateField(dto.createdAtUtc),
+  };
+}
+
+export function mapDtoToUpdateRequest(
+  dto: LienResponseDto,
+): UpdateLienRequestDto {
+  return {
+    externalReference: dto.externalReference ?? undefined,
+    lienType: dto.lienType,
+    caseId: dto.caseId ?? undefined,
+    facilityId: dto.facilityId ?? undefined,
+    originalAmount: dto.originalAmount,
+    jurisdiction: dto.jurisdiction ?? undefined,
+    isConfidential: dto.isConfidential,
+    subjectFirstName: dto.subjectFirstName ?? undefined,
+    subjectLastName: dto.subjectLastName ?? undefined,
+    incidentDate: dto.incidentDate ?? undefined,
+    description: dto.description ?? undefined,
+  };
+}
+
+export function mapPagination<T>(
+  result: PaginatedResultDto<T>,
+): PaginationMeta {
+  return {
+    page: result.page,
+    pageSize: result.pageSize,
+    totalCount: result.totalCount,
+    totalPages: Math.ceil(result.totalCount / Math.max(result.pageSize, 1)),
+  };
+}

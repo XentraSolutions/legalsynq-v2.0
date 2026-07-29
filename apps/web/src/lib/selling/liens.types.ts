@@ -144,29 +144,14 @@ export interface LiensQuery {
   status?: string;
   lienType?: string;
   caseId?: string;
-  facilityId?: string;
-  lawFirmIds?: string[];
-  medicalFacilityIds?: string[];
-  caseManagerIds?: string[];
+  fundingCompanyIds?: string[];
   lienStatusIds?: string[];
-  purchaseDateFrom?: string;
-  purchaseDateTo?: string;
-  closedDateFrom?: string;
-  closedDateTo?: string;
+  initialServiceDate?: string;
   page?: number;
   pageSize?: number;
-  // TODO: ListLiens (Liens.Api/Endpoints/LienEndpoints.cs) currently only
-  // accepts search/status/lienType/caseId/facilityId/page/pageSize — the
-  // fields below match the filter shape ReportTemplate already uses for
-  // DIY Reports (lien-report.types.ts) and are sent assuming the backend
-  // will be extended to accept them on this endpoint too. Until then they
-  // are silently ignored server-side. Revisit once that lands.
+  tab?: string;
   initialServiceDateFrom?: string;
   initialServiceDateTo?: string;
-  // Same situation as the filter fields above — not yet in ListLiens'
-  // documented parameter list, sent on the assumption the backend will
-  // recognize them once wired up. sortBy is expected to be a LienResponse
-  // field name (see the SORT_BY_MAP comment in liens/page.tsx).
   sortBy?: string;
   sortDirection?: "asc" | "desc";
 }
@@ -182,28 +167,23 @@ export interface LiensQuery {
 // only once something actually reads it; don't mirror the DTO 1:1.
 export interface LienListItem {
   id: string;
+  lienId: string;
   lienNumber: string;
-  lienType: string;
-  lienTypeLabel: string;
-  status: string;
-  facility: string | null;
-  facilityId: string | null;
-  facilityName: string | null;
-  plaintiff: string | null;
-  lawFirm: string | null;
-  caseManager: string | null;
-  caseId: string;
+  fundingCompany: string;
   initialServiceDate: string;
-  purchaseDate: string;
-  purchaseAmount: number | null;
-  totalBilling: number | null;
-  closedAtUtc: string | null;
-  isServicing: boolean;
-  jurisdiction: string;
-  isConfidential: boolean;
-  subjectName: string;
-  createdAt: string;
-  updatedAt: string;
+  billingAmount: string;
+  askAmount: string;
+  highestBid: string;
+  status: string;
+}
+
+export interface AgingListItem {
+  id: string;
+  lienSeller: string;
+  status: string;
+  total: string;
+  pastDue: string;
+  [key: string]: string;
 }
 
 export interface LienDetail {
@@ -257,50 +237,4 @@ export interface PaginationMeta {
   pageSize: number;
   totalCount: number;
   totalPages: number;
-}
-
-export interface DraftLienParams {
-  sellerStatus: string;
-  source: string;
-}
-export interface LienInfoParams {
-  sellerStatus: string;
-  initialServiceDate: string;
-  endServiceDate: string | null;
-  listingVisibility: string;
-  notes: string;
-}
-
-export interface LienFundingCompanyParams {
-  fundingCompanyId: string;
-  fundingCompanyContactId: string;
-  handlingLawFirmId: string;
-  caseManagerId: string;
-  caseId: string;
-  createCaseIfMissing: boolean;
-}
-
-export interface LienMedicalCodesParams {
-  askAmount: number;
-  billingAmount: number;
-  rows: [
-    {
-      medicalCode: string;
-      description: string;
-      serviceDate: string;
-      billingAmount: number;
-      medicareCost: number;
-      targetSaleAmount: number;
-    },
-  ];
-}
-
-export interface LienUploadDocumentsParams {
-  documents: [
-    {
-      documentId: string;
-      documentType: string;
-      displayName: string;
-    },
-  ];
 }
