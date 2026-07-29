@@ -141,4 +141,4 @@ The `/api/lien/[...path]` BFF forwards the browser `Host` and protocol to Liens 
 `x-legal-synq-public-host` and `x-legal-synq-public-proto`, so public reply links in SynqLien message emails point back
 to the portal host the user is actually using instead of the internal gateway host.
 
-The dashboard endpoint can still be deployed independently; the funding portal converts only `404`, `501`, and `204` responses into semantic empty states. `401`, `403`, and `5xx` remain auth/error states.
+If the dashboard endpoint is unavailable during rollout, the funding portal converts only `404`, `501`, and `204` responses into semantic empty states. `401`, `403`, and `5xx` remain auth/error states.

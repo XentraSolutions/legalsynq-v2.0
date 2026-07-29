@@ -26,7 +26,7 @@ describe('SynqLien funding portal server API', () => {
     serverGet.mockReset();
   });
 
-  test('returns an empty dashboard for missing future endpoint', async () => {
+  test('returns an empty dashboard when the dashboard endpoint is unavailable', async () => {
     serverGet.mockRejectedValueOnce(new ServerApiError(404, 'HTTP 404'));
 
     await expect(getFundingDashboard()).resolves.toEqual(EMPTY_FUNDING_DASHBOARD);

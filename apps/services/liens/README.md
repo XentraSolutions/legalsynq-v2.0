@@ -74,14 +74,16 @@ such as `localhost` and `127.0.0.1` are rejected because outbound email recipien
 `.localhost` aliases such as `synqlien-demo.localhost` are allowed for local demo runs. If it contains `{token}` the
 token is substituted, otherwise the token is appended as the final path segment.
 
-The authenticated funding-company portal reads offered liens from
-`GET /api/liens/selling/buyer/liens`. That endpoint projects buyer response access links into table rows scoped to the
-current buyer organization, with an email-based source buyer organization fallback for accounts created from public
-activation. It supports `status=Pending|Accepted|Declined`, free-text `search`, `page`, `pageSize`, `sort`, and
-`direction` query parameters for the `/funding/offered-liens` page. Pending rows return `view`, `accept`, and `decline`
-actions only while the underlying lien remains actionable by the public buyer-response rules; accepted, declined, or
-otherwise non-actionable rows return `view` only. Row `detailHref` values point to the authenticated tenant portal route
-`/funding/offered-liens/{accessLinkId}`. The portal backs that route with
+The authenticated funding-company portal reads KPI, pending-offer, acquisition pipeline, and provider performance data
+from `GET /api/liens/selling/buyer/dashboard`. Summary cards are current buyer-scoped totals: pending access links with
+no buyer response, pending offered amount, accepted buyer responses as purchased liens, and accepted response amount as
+capital deployed. The same buyer scoping also drives `GET /api/liens/selling/buyer/liens`. That endpoint projects buyer
+response access links into table rows scoped to the current buyer organization, with an email-based source buyer
+organization fallback for accounts created from public activation. It supports `status=Pending|Accepted|Declined`,
+free-text `search`, `page`, `pageSize`, `sort`, and `direction` query parameters for the `/funding/offered-liens` page.
+Pending rows return `view`, `accept`, and `decline` actions only while the underlying lien remains actionable by the
+public buyer-response rules; accepted, declined, or otherwise non-actionable rows return `view` only. Row `detailHref`
+values point to the authenticated tenant portal route `/funding/offered-liens/{accessLinkId}`. The portal backs that route with
 `GET /api/liens/selling/buyer/liens/{accessLinkId}`, which returns persisted seller/lien fields plus real servicing
 documents, portal messages, and response activity for the funding company. Missing documents, messages, or activity are
 returned as empty arrays for the frontend empty states. The authenticated detail page posts messages through

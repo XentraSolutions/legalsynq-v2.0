@@ -1,7 +1,9 @@
-import type { OfferedLiensResult } from './types';
+import type { OfferedLiensQuery, OfferedLiensResult } from './types';
 
 export const OFFERED_LIENS_DEFAULT_PAGE_SIZE = 10;
 export const OFFERED_LIENS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+const OFFERED_LIENS_PATH = '/funding/offered-liens';
+const OFFERED_LIENS_DEFAULT_SORT_DIRECTION = 'asc';
 
 export function getOfferedLiensPageSizeOptions(pageSize: number): number[] {
   const options: number[] = [...OFFERED_LIENS_PAGE_SIZE_OPTIONS];
@@ -49,4 +51,21 @@ export function buildOfferedLiensPageSizeHref({
 
   const encoded = params.toString();
   return encoded ? `${pathname}?${encoded}` : pathname;
+}
+
+export function buildOfferedLiensHref(query: OfferedLiensQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.status) params.set('status', query.status);
+  if (query.search) params.set('search', query.search);
+  if (query.page && query.page > 1) params.set('page', String(query.page));
+  if (query.pageSize && query.pageSize !== OFFERED_LIENS_DEFAULT_PAGE_SIZE) {
+    params.set('pageSize', String(query.pageSize));
+  }
+  if (query.sort) {
+    params.set('sort', query.sort);
+    params.set('direction', query.direction ?? OFFERED_LIENS_DEFAULT_SORT_DIRECTION);
+  }
+
+  const encoded = params.toString();
+  return encoded ? `${OFFERED_LIENS_PATH}?${encoded}` : OFFERED_LIENS_PATH;
 }

@@ -1268,6 +1268,89 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task BuyerDashboard_returns_summary_pipeline_pending_offers_and_provider_performance()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        await CreatePublicLienOfferAsync(
+            "buyer-dashboard-alpha",
+            lienNumber: "DASH-ALPHA-100",
+            initialServiceDate: new DateOnly(2026, 5, 1),
+            originalAmount: 9000m,
+            buyerOrgId: buyerOrgId);
+        var (_, betaToken) = await CreatePublicLienOfferAsync(
+            "buyer-dashboard-beta",
+            lienNumber: "DASH-BETA-200",
+            initialServiceDate: new DateOnly(2026, 5, 2),
+            originalAmount: 5000m,
+            buyerOrgId: buyerOrgId);
+        var (_, gammaToken) = await CreatePublicLienOfferAsync(
+            "buyer-dashboard-gamma",
+            lienNumber: "DASH-GAMMA-300",
+            initialServiceDate: new DateOnly(2026, 5, 3),
+            originalAmount: 7000m,
+            buyerOrgId: buyerOrgId);
+        await SeedOtherBuyerOfferedLienAsync("DASH-OTHER-999");
+
+        var acceptResponse = await PostPublicBuyerResponseAsync(
+            betaToken,
+            "accept",
+            new { notes = "Accepted by dashboard regression" },
+            "buyer-dashboard-accept-response");
+        acceptResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await acceptResponse.Content.ReadAsStringAsync()}");
+
+        var declineResponse = await PostPublicBuyerResponseAsync(
+            gammaToken,
+            "decline",
+            new { reason = "Declined by dashboard regression" },
+            "buyer-dashboard-decline-response");
+        declineResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await declineResponse.Content.ReadAsStringAsync()}");
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var response = await buyerClient.GetAsync("/api/liens/selling/buyer/dashboard?range=last30Days");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        var summary = json.GetProperty("summary");
+        summary.GetProperty("totalLienPendingCount").GetInt32().Should().Be(1);
+        summary.GetProperty("totalLienPendingAmount").GetDecimal().Should().Be(9000m);
+        summary.GetProperty("totalPendingOfferCount").GetInt32().Should().Be(1);
+        summary.GetProperty("totalPendingOfferedAmount").GetDecimal().Should().Be(2500m);
+        summary.GetProperty("purchasedLienCount").GetInt32().Should().Be(1);
+        summary.GetProperty("capitalDeployedAmount").GetDecimal().Should().Be(2500m);
+
+        var pendingOffer = json.GetProperty("pendingOffers").EnumerateArray().Single();
+        pendingOffer.GetProperty("lienNumber").GetString().Should().Be("DASH-ALPHA-100");
+        pendingOffer.GetProperty("status").GetString().Should().Be("Pending");
+        pendingOffer.GetProperty("offeredAmount").GetDecimal().Should().Be(2500m);
+        pendingOffer.GetProperty("detailHref").GetString()
+            .Should().Be($"/funding/offered-liens/{pendingOffer.GetProperty("id").GetGuid()}");
+
+        var stages = json.GetProperty("pipelineStages")
+            .EnumerateArray()
+            .ToDictionary(stage => stage.GetProperty("key").GetString()!);
+        stages.Keys.Should().BeEquivalentTo("pending", "accepted", "declined");
+        stages["pending"].GetProperty("count").GetInt32().Should().Be(1);
+        stages["accepted"].GetProperty("count").GetInt32().Should().Be(1);
+        stages["accepted"].GetProperty("totalAmount").GetDecimal().Should().Be(2500m);
+        stages["declined"].GetProperty("count").GetInt32().Should().Be(1);
+
+        var provider = json.GetProperty("providerPerformance").EnumerateArray().Single();
+        provider.GetProperty("providerName").GetString().Should().Be("Provider unavailable");
+        provider.GetProperty("lienCount").GetInt32().Should().Be(3);
+        provider.GetProperty("offeredAmount").GetDecimal().Should().Be(7500m);
+        provider.GetProperty("acceptedAmount").GetDecimal().Should().Be(2500m);
+
+        var offerInbox = json.GetProperty("offerInbox");
+        offerInbox.GetProperty("pendingCount").GetInt32().Should().Be(1);
+        offerInbox.GetProperty("unreadCount").GetInt32().Should().Be(0);
+        offerInbox.GetProperty("latestReceivedAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
     public async Task BuyerOfferedLien_returns_detail_documents_messages_and_activity_for_authenticated_buyer()
     {
         var buyerOrgId = Guid.CreateVersion7();

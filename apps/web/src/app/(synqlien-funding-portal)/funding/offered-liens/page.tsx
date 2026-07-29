@@ -3,6 +3,7 @@ import { OfferedLiensPageSizeSelect } from "@/components/synqlien-funding-portal
 import { OfferedLienRowActions } from "@/components/synqlien-funding-portal/offered-lien-row-actions";
 import {
   OFFERED_LIENS_DEFAULT_PAGE_SIZE,
+  buildOfferedLiensHref,
   formatFundingCurrency,
   formatFundingDate,
   formatFundingNumber,
@@ -99,7 +100,7 @@ function StatusTabs({ query }: { query: OfferedLiensQuery }) {
     <div className="grid h-9 grid-cols-4 overflow-hidden rounded-[8px] bg-[#f5f5f5] p-px">
       {STATUS_FILTERS.map(status => {
         const active = (query.status ?? "") === status;
-        const href = buildHref({
+        const href = buildOfferedLiensHref({
           ...query,
           status: status || undefined,
           page: 1,
@@ -183,7 +184,7 @@ function SortableHeaderCell({
       ? "ri-arrow-down-s-line"
       : "ri-arrow-up-s-line"
     : "ri-arrow-up-down-line";
-  const href = buildHref({
+  const href = buildOfferedLiensHref({
     ...query,
     sort: sortKey,
     direction: nextDirection,
@@ -276,13 +277,13 @@ function Pagination({
 
       <div className="flex items-center gap-2">
         <PaginationIcon
-          href={buildHref({ ...query, page: 1 })}
+          href={buildOfferedLiensHref({ ...query, page: 1 })}
           disabled={currentPage <= 1}
           icon="ri-skip-left-line"
           label="First page"
         />
         <PaginationIcon
-          href={buildHref({ ...query, page: Math.max(1, currentPage - 1) })}
+          href={buildOfferedLiensHref({ ...query, page: Math.max(1, currentPage - 1) })}
           disabled={currentPage <= 1}
           icon="ri-arrow-left-s-line"
           label="Previous page"
@@ -290,19 +291,19 @@ function Pagination({
         {pageNumbers.map(page => (
           <PaginationNumber
             key={page}
-            href={buildHref({ ...query, page })}
+            href={buildOfferedLiensHref({ ...query, page })}
             active={page === currentPage}
             page={page}
           />
         ))}
         <PaginationIcon
-          href={buildHref({ ...query, page: Math.min(totalPages, currentPage + 1) })}
+          href={buildOfferedLiensHref({ ...query, page: Math.min(totalPages, currentPage + 1) })}
           disabled={currentPage >= totalPages}
           icon="ri-arrow-right-s-line"
           label="Next page"
         />
         <PaginationIcon
-          href={buildHref({ ...query, page: totalPages })}
+          href={buildOfferedLiensHref({ ...query, page: totalPages })}
           disabled={currentPage >= totalPages}
           icon="ri-skip-right-line"
           label="Last page"
@@ -383,21 +384,6 @@ function EmptyState({
       <p className="mt-1 max-w-md text-[14px] font-normal leading-[1.6] text-[#737373]">{description}</p>
     </div>
   );
-}
-
-function buildHref(query: OfferedLiensQuery): string {
-  const params = new URLSearchParams();
-  if (query.status) params.set("status", query.status);
-  if (query.search) params.set("search", query.search);
-  if (query.page && query.page > 1) params.set("page", String(query.page));
-  if (query.pageSize && query.pageSize !== OFFERED_LIENS_DEFAULT_PAGE_SIZE) params.set("pageSize", String(query.pageSize));
-  if (query.sort) {
-    params.set("sort", query.sort);
-    params.set("direction", query.direction ?? DEFAULT_SORT_DIRECTION);
-  }
-
-  const encoded = params.toString();
-  return encoded ? `/funding/offered-liens?${encoded}` : "/funding/offered-liens";
 }
 
 function buildPageNumbers(currentPage: number, totalPages: number): number[] {

@@ -388,6 +388,81 @@ email is submitted or already submitted; in that case `sellerNotification.notifi
 email submission itself fails, `sellerNotification.submitted=false` reports the failure without rolling back the lien
 transition or buyer notification.
 
+### GET `/api/liens/selling/buyer/dashboard`
+
+Returns the authenticated funding-company dashboard used by `/funding/dashboard`. The endpoint scopes data to the
+current buyer organization, including the email-based source buyer organization fallback used by the offered-liens list.
+
+Summary metrics are current buyer-scoped totals across all visible offers:
+
+| Field | Definition |
+|---|---|
+| `totalLienPendingCount` | Count of buyer access links with no buyer response |
+| `totalLienPendingAmount` | Sum of original lien amounts for pending rows |
+| `totalPendingOfferCount` | Count of pending buyer offers |
+| `totalPendingOfferedAmount` | Sum of pending ask/response offer amounts |
+| `purchasedLienCount` | Count of accepted buyer responses |
+| `capitalDeployedAmount` | Sum of accepted response amounts, falling back to ask amount |
+
+`range=last7Days|last30Days|custom`, `from=yyyy-MM-dd`, and `to=yyyy-MM-dd` filter the acquisition pipeline activity
+stages only. Pending activity uses the received-offer timestamp; accepted and declined activity uses the response
+timestamp. Missing custom dates are treated as open-ended.
+
+**Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
+
+**Response:** `200 OK`
+
+```json
+{
+  "summary": {
+    "totalLienPendingCount": 1,
+    "totalLienPendingAmount": 9000.00,
+    "totalPendingOfferCount": 1,
+    "totalPendingOfferedAmount": 2500.00,
+    "purchasedLienCount": 1,
+    "capitalDeployedAmount": 2500.00,
+    "trends": {}
+  },
+  "pendingOffers": [
+    {
+      "id": "access-link-guid",
+      "lienNumber": "LIEN-001",
+      "providerName": "Sunrise Clinic",
+      "sellerName": "Smith & Associates LLP",
+      "offeredAmount": 2500.00,
+      "receivedAtUtc": "2026-07-28T12:00:00Z",
+      "responseDueAtUtc": "2026-08-27T12:00:00Z",
+      "status": "Pending",
+      "detailHref": "/funding/offered-liens/<access-link-guid>"
+    }
+  ],
+  "pipelineStages": [
+    {
+      "key": "pending",
+      "label": "Pending",
+      "count": 1,
+      "totalAmount": 2500.00,
+      "conversionRatePercent": null
+    }
+  ],
+  "providerPerformance": [
+    {
+      "providerId": "facility-guid",
+      "providerName": "Sunrise Clinic",
+      "lienCount": 2,
+      "offeredAmount": 5000.00,
+      "acceptedAmount": 2500.00,
+      "averageResponseHours": 4.5
+    }
+  ],
+  "offerInbox": {
+    "pendingCount": 1,
+    "unreadCount": 0,
+    "latestReceivedAtUtc": "2026-07-28T12:00:00Z"
+  }
+}
+```
+
 ### GET `/api/liens/selling/buyer/liens`
 
 Returns offered-liens rows for the authenticated SynqLien buyer/funding company. The endpoint reads confirmed buyer

@@ -60,7 +60,7 @@ export default async function SynqLienFundingDashboardPage({
           className="hidden h-[38px] shrink-0 items-center justify-center rounded-[10px] bg-[#ee7132] px-4 text-[14px] font-medium leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#d86228] sm:inline-flex"
           aria-label="Open Offer Inbox"
         >
-          OfferInbox
+          Offer Inbox
         </Link>
       </div>
 
