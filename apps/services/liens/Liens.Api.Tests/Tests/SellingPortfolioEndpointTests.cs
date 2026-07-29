@@ -1365,6 +1365,28 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task BuyerDashboard_returns_top_five_provider_performance_rows_by_lien_count()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        await SeedBuyerDashboardProviderPerformanceAsync(buyerOrgId);
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var response = await buyerClient.GetAsync("/api/liens/selling/buyer/dashboard");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var rows = json.GetProperty("providerPerformance").EnumerateArray().ToList();
+
+        rows.Should().HaveCount(5);
+        rows.Select(row => row.GetProperty("providerName").GetString())
+            .Should().Equal("Provider 6", "Provider 5", "Provider 4", "Provider 3", "Provider 2");
+        rows.Select(row => row.GetProperty("lienCount").GetInt32())
+            .Should().Equal(6, 5, 4, 3, 2);
+        rows.Should().NotContain(row => row.GetProperty("providerName").GetString() == "Provider 1");
+    }
+
+    [Fact]
     public async Task BuyerOfferedLien_returns_detail_documents_messages_and_activity_for_authenticated_buyer()
     {
         var buyerOrgId = Guid.CreateVersion7();
@@ -2556,38 +2578,47 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task ConfirmSale_without_notification_transitions_lien_without_sending_email()
+    public async Task ConfirmSale_ignores_sendBuyerNotification_false_and_sends_notifications()
     {
+        var buyerContactId = Guid.CreateVersion7();
         var (_, lienId) = await SeedExternalCaseAndLienAsync(
             caseExternalId: $"case-{Guid.NewGuid():N}",
             lienExternalId: $"lien-{Guid.NewGuid():N}",
             lienNumber: $"LIEN-{Guid.NewGuid():N}",
-            originalAmount: 4000m);
+            originalAmount: 4000m,
+            initialServiceDate: new DateOnly(2026, 6, 1));
 
         await PrepareConfirmSaleDataAsync(
             lienId,
-            Guid.CreateVersion7(),
-            sellerEmail: null,
-            buyerEmail: "unused.buyer@capital.test");
+            buyerContactId,
+            sellerEmail: "seller.operations@smithlaw.test",
+            buyerEmail: "buyer.reviewer@capital.test");
 
-        var response = await _client.PostAsJsonAsync(
-            $"/api/liens/selling/liens/{lienId}/confirm-sale",
-            new ConfirmSellingLienSaleRequest
-            {
-                ConfirmationAccepted = true,
-                SendBuyerNotification = false,
-            });
+        var message = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/liens/selling/liens/{lienId}/confirm-sale");
+        message.Headers.Add("Idempotency-Key", "confirm-sale-notification-required");
+        message.Content = JsonContent.Create(new
+        {
+            confirmationAccepted = true,
+            sendBuyerNotification = false,
+        });
+
+        var response = await _client.SendAsync(message);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await response.Content.ReadAsStringAsync()}");
         var body = await response.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
         body!.Status.Should().Be(LienStatus.Offered);
         body.SellerStatus.Should().Be(SellingLienStatus.SubmittedForSale);
-        body.Notification.Should().BeNull();
+        body.Notification.Should().NotBeNull();
+        body.Notification!.Submitted.Should().BeTrue();
+        body.SellerNotification.Should().NotBeNull();
+        body.SellerNotification!.Submitted.Should().BeTrue();
 
         using var verifyScope = _factory.Services.CreateScope();
         verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()
-            .Emails.Should().BeEmpty();
+            .Emails.Should().HaveCount(2);
     }
 
     [Fact]
@@ -2707,8 +2738,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         body.Notification.NotificationStatus.Should().Be("failed");
         body.SellerNotification.Should().NotBeNull();
         body.SellerNotification!.Submitted.Should().BeFalse();
-        body.SellerNotification.NotificationStatus.Should().Be("skipped");
-        body.SellerNotification.FailureMessage.Should().Contain("buyer notification was not submitted");
+        body.SellerNotification.NotificationStatus.Should().Be("failed");
+        body.SellerNotification.FailureMessage.Should().NotBeNullOrWhiteSpace();
 
         using var verifyScope = _factory.Services.CreateScope();
         var db = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -2745,7 +2776,6 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         message.Content = JsonContent.Create(new ConfirmSellingLienSaleRequest
         {
             ConfirmationAccepted = true,
-            SendBuyerNotification = true,
         });
 
         return _client.SendAsync(message);
@@ -2908,6 +2938,61 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             $"other-buyer-{Guid.NewGuid():N}",
             DateTime.UtcNow.AddDays(7),
             SeedHelper.UserId));
+
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SeedBuyerDashboardProviderPerformanceAsync(Guid buyerOrgId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+        for (var providerIndex = 1; providerIndex <= 6; providerIndex++)
+        {
+            var facility = Facility.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"Provider {providerIndex}",
+                SeedHelper.UserId,
+                code: $"DASH-PERF-{providerIndex}");
+            db.Facilities.Add(facility);
+
+            for (var offerIndex = 1; offerIndex <= providerIndex; offerIndex++)
+            {
+                var askAmount = providerIndex * 1000m + offerIndex;
+                var lien = Lien.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    $"DP-{providerIndex}-{offerIndex}-{Guid.NewGuid():N}",
+                    LienType.MedicalLien,
+                    askAmount,
+                    SeedHelper.UserId,
+                    facilityId: facility.Id,
+                    initialServiceDate: new DateOnly(2026, 7, providerIndex));
+
+                lien.ListForSale(askAmount, SeedHelper.UserId);
+                lien.UpdateSellingAnalyticsFields(
+                    SeedHelper.UserId,
+                    fundingCompanyId: buyerOrgId,
+                    fundingCompanyContactId: Guid.CreateVersion7(),
+                    askAmount: askAmount);
+                db.Liens.Add(lien);
+
+                var accessLink = SellingBuyerAccessLink.Create(
+                    SeedHelper.TenantId,
+                    lien.Id,
+                    SeedHelper.OrgId,
+                    buyerOrgId,
+                    Guid.CreateVersion7(),
+                    $"dashboard-provider-{providerIndex}-{offerIndex}-{Guid.NewGuid():N}",
+                    SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
+                    $"dashboard-provider-{providerIndex}-{offerIndex}-{Guid.NewGuid():N}",
+                    DateTime.UtcNow.AddDays(7),
+                    SeedHelper.UserId);
+                accessLink.MarkNotificationSubmitted(Guid.CreateVersion7(), "sent");
+                db.SellingBuyerAccessLinks.Add(accessLink);
+            }
+        }
 
         await db.SaveChangesAsync();
     }

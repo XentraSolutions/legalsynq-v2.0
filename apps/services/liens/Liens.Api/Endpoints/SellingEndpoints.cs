@@ -1240,6 +1240,7 @@ public static class SellingEndpoints
             })
             .OrderByDescending(row => row.LienCount)
             .ThenBy(row => row.ProviderName, StringComparer.OrdinalIgnoreCase)
+            .Take(5)
             .ToList();
 
     private static string ResolveBuyerFundingProviderId(BuyerOfferedLienSource source, string providerName)

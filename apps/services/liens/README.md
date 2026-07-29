@@ -53,13 +53,14 @@ confirm-sale route is:
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and optionally sends buyer and seller `New Lien Offer` emails |
+| `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and sends buyer and seller `New Lien Offer` emails |
 
-Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. When
-`sendBuyerNotification=true`, the service validates real buyer/seller contact data, creates a 30-day buyer response
-link and a separate 30-day seller-view link, then sends the buyer email through Notifications with an idempotency
-key. After the buyer email is submitted, the seller receives a matching branded email with buyer/funding-company
-information and a `View Lien Details` link. Supporting document names are pulled from existing legacy
+Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. The request only confirms
+seller acceptance; notification delivery is mandatory and cannot be opted out through request payload. On every
+confirmation, the service validates real buyer/seller contact data, creates a 30-day buyer response link and a separate
+30-day seller-view link, then requests both buyer and seller emails through Notifications with idempotency keys. The
+seller email uses matching branded copy with buyer/funding-company information and a `View Lien Details` link.
+Supporting document names are pulled from existing legacy
 lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
 email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark
 text, and the section icons are also delivered as inline CID image attachments. No remote placeholder assets are
@@ -78,7 +79,8 @@ The authenticated funding-company portal reads KPI, pending-offer, acquisition p
 from `GET /api/liens/selling/buyer/dashboard`. Summary cards are current buyer-scoped totals: pending access links with
 no buyer response, pending offered amount, accepted buyer responses as purchased liens, and accepted response amount as
 capital deployed. Dashboard KPI trends compare current calendar month activity with the previous full calendar month and
-return the previous-month range for the portal detail line. The same buyer scoping also drives
+return the previous-month range for the portal detail line. Dashboard preview lists are capped to five rows; provider
+performance is ordered by highest offered-lien count. The same buyer scoping also drives
 `GET /api/liens/selling/buyer/liens`. That endpoint projects buyer response access links into table rows scoped to the
 current buyer organization, with an email-based source buyer organization fallback for accounts created from public
 activation. It supports `status=Pending|Accepted|Declined`, free-text `search`, `page`, `pageSize`, `sort`, and

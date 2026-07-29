@@ -302,20 +302,20 @@ Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared li
 
 | Header | Required | Description |
 |---|---|---|
-| `Idempotency-Key` | No | Used with tenant/lien/buyer contact to suppress duplicate buyer email sends on replay |
+| `Idempotency-Key` | No | Used with tenant/lien/buyer/seller contacts to suppress duplicate notification sends on replay |
 
 **Request:**
 
 ```json
 {
-  "confirmationAccepted": true,
-  "sendBuyerNotification": true
+  "confirmationAccepted": true
 }
 ```
 
-When `sendBuyerNotification=true`, the lien must have real `FundingCompanyId`, `FundingCompanyContactId`,
-`InitialServiceDate`, `AskAmount`, buyer email, seller name/company/email, and handling law firm data. The API creates a
-30-day buyer response access link and a separate 30-day seller-view access link from
+Notification delivery is mandatory and cannot be opted out through request payload. The lien must have real
+`FundingCompanyId`, `FundingCompanyContactId`, `InitialServiceDate`, `AskAmount`, buyer email, seller
+name/company/email, and handling law firm data. The API creates a 30-day buyer response access link and a separate
+30-day seller-view access link from
 `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide CTA URLs. If the explicit base URL is absent, the API
 derives it from `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
 `http://synqlien-demo.localhost:5000/selling/public` for the full `scripts/run-dev.sh` proxy. The configured buyer
@@ -323,8 +323,8 @@ portal base URL must be absolute and must match the active tenant-web browser or
 `http://synqlien-demo.localhost:3000/selling/public` when running only `pnpm --dir apps/web dev`. Literal loopback hosts
 such as `localhost` or `127.0.0.1` are rejected because the email CTA must work from the recipient's inbox, while named
 `.localhost` aliases such as `synqlien-demo.localhost` are allowed for local demo runs. The buyer email uses the
-`New Lien Offer` copy with a response CTA. After the buyer email is submitted, the seller receives the same branded
-format with buyer/funding-company information and a `View Lien Details` CTA. Neither email inserts sample
+`New Lien Offer` copy with a response CTA. The seller receives the same branded format with buyer/funding-company
+information and a `View Lien Details` CTA. Neither email inserts sample
 document data; both include only real supporting document names found in lien/case document metadata. The LegalSynq mark
 and section icons are sent as inline CID image attachments; no remote placeholder assets are required.
 For a CTA hosted by the tenant portal, use
@@ -412,6 +412,9 @@ shown by the portal.
 `range=last7Days|last30Days|custom`, `from=yyyy-MM-dd`, and `to=yyyy-MM-dd` filter the acquisition pipeline activity
 stages only. Pending activity uses the received-offer timestamp; accepted and declined activity uses the response
 timestamp. Missing custom dates are treated as open-ended.
+
+`pendingOffers` returns at most five pending offers for the dashboard preview. `providerPerformance` returns at most five
+provider groups, ordered by highest `lienCount` first and then by `providerName`.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 
