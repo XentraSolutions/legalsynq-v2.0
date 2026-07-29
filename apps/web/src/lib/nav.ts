@@ -53,6 +53,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         { href: '/lien/bill-of-sales', label: 'Bill of Sales', icon: 'ri-file-list-3-line', sellModeOnly: true, disabledMessage: 'Bill of Sales is coming soon' },
         { href: '/lien/servicing',     label: 'Servicing',     icon: 'ri-file-settings-line' },
         { href: '/lien/contacts',      label: 'Contacts',      icon: 'ri-contacts-book-line' },
+        { href: '/lien/portfolio',   label: 'Portfolio',   icon: 'ri-briefcase-line',            requiredRoles: [ProductRole.SynqLienBuyer, ProductRole.SynqLienHolder] },
       ],
     },
     {
@@ -95,6 +96,52 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     },
   ],
 
+    selling: [
+      {
+        heading: '',
+        items: [
+          { href: '/selling/dashboard',     label: 'Dashboard',     icon: 'ri-dashboard-line' }
+        ]
+      },
+    {
+      heading: 'Lien Portfolio',
+      items: [
+        { href: '/selling/portfolio',     label: 'Portfolio',     icon: 'ri-dashboard-line' },
+        // { href: '/selling/cases',         label: 'Cases',         icon: 'ri-survey-line' },
+        // { href: '/selling/liens',         label: 'Liens',         icon: 'ri-file-transfer-line' },
+        // { href: '/selling/contacts',      label: 'Contacts',      icon: 'ri-contacts-book-line' },
+      ],
+    },
+    {
+      // LSV3-628: Marketplace is not part of the Phase 1 migration scope — hidden
+      // pending Phase 1 completion, kept in the definition for easy re-enable.
+      heading: 'MARKETPLACE',
+      sellModeOnly: true,
+      notInPhase1: true,
+      items: [
+        { href: '/selling/my-liens',    label: 'My Liens',    icon: 'ri-price-tag-3-line',         requiredRoles: [ProductRole.SynqLienSeller] },
+        { href: '/selling/sales',       label: 'Lien Sales',  icon: 'ri-exchange-dollar-line',      requiredRoles: [ProductRole.SynqLienSeller] },
+        { href: '/selling/marketplace', label: 'Marketplace', icon: 'ri-store-2-line',              requiredRoles: [ProductRole.SynqLienBuyer] },
+        { href: '/selling/portfolio',   label: 'Portfolio',   icon: 'ri-briefcase-line',            requiredRoles: [ProductRole.SynqLienBuyer, ProductRole.SynqLienHolder] },
+      ],
+    },
+    {
+      // LSV3-628: product-level Settings is not part of the Phase 1 migration
+      // scope — hidden pending Phase 1 completion, kept in the definition for
+      // easy re-enable. (Not to be confused with the global ACCOUNT > User
+      // Management item in GLOBAL_BOTTOM_NAV, which stays visible.)
+      heading: 'SETTINGS',
+      notInPhase1: true,
+      items: [
+        { href: '/selling/settings/workflow',              label: 'Workflow Settings', icon: 'ri-git-branch-line'    },
+        { href: '/selling/settings/task-templates',        label: 'Task Templates',    icon: 'ri-file-list-3-line'   },
+        { href: '/selling/settings/task-automation',       label: 'Task Automation',   icon: 'ri-robot-line'         },
+        { href: '/selling/settings/task-governance',       label: 'Task Governance',   icon: 'ri-shield-check-line'  },
+        { href: '/selling/settings/email-sources',         label: 'Email Sources',     icon: 'ri-mail-settings-line', adminOnly: true },
+        { href: '/selling/settings/email-inbox',           label: 'Email Inbox',       icon: 'ri-inbox-line',         adminOnly: true },
+      ],
+    },
+  ],
   xenia: [
     { items: [{ href: '/xenia', label: 'Assistant', icon: 'ri-robot-line' }] },
   ],
@@ -116,7 +163,8 @@ export const PRODUCT_META: Record<string, { label: string; icon: string; color: 
   careconnect: { label: 'Synq CareConnect', icon: 'ri-shield-cross-line',  color: '#2563eb', iconSrc: '/product-icons/synqconnect.png' },
   fund:        { label: 'Synq Funds',        icon: 'ri-bank-line',           color: '#16a34a', iconSrc: '/product-icons/synqfund.png'    },
   lien:        { label: 'Synq Liens',        icon: 'ri-stack-line',          color: '#7c3aed', iconSrc: '/product-icons/synqlien.png'    },
-  xenia:      { label: 'Xenia',              icon: 'ri-robot-line',          color: '#d97706', iconSrc: '/product-icons/synqai.png'      },
+  xenia:       { label: 'Xenia',              icon: 'ri-robot-line',          color: '#d97706', iconSrc: '/product-icons/synqai.png'      },
+  selling:     { label: 'Synq Lien Selling',  icon: 'ri-stack-line',          color: '#7c3aed', iconSrc: '/product-icons/synqlien.png'    },
   insights:    { label: 'Synq Insights',     icon: 'ri-bar-chart-2-line',    color: '#0891b2', iconSrc: '/product-icons/synqinsight.png' },
 };
 
@@ -130,6 +178,7 @@ export const PRODUCT_CODE_TO_NAV_KEY: Record<string, string> = {
   CareConnect:  'careconnect',
   SynqFund:     'fund',
   SynqLien:     'lien',
+  SYNQ_SELLING:   'selling',
   Xenia:        'xenia',
   XENIA:        'xenia',
   SynqAI:       'xenia',
@@ -213,6 +262,7 @@ export function inferProductFromPath(pathname: string): string | null {
   if (pathname.startsWith('/careconnect')) return 'careconnect';
   if (pathname.startsWith('/fund'))        return 'fund';
   if (pathname.startsWith('/lien'))        return 'lien';
+  if (pathname.startsWith('/selling'))        return 'selling';
   if (pathname.startsWith('/xenia'))       return 'xenia';
   if (pathname.startsWith('/ai'))          return 'xenia';
   if (pathname.startsWith('/insights'))    return 'insights';

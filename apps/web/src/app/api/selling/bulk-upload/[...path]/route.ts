@@ -2,14 +2,20 @@ import { type NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 /**
- * Catch-all BFF proxy for all SynqLien client-side API calls.
+ * Catch-all BFF proxy for SynqLien's Bulk-service client-side API calls.
  *
- * Client Components call  /api/lien/api/liens/...
- * This handler forwards    → GATEWAY_URL/liens/api/liens/...
+ * Client Components call  /api/lien/bulk-upload/bulk-upload/{id}
+ * This handler forwards    → GATEWAY_URL/bulk-upload/bulk-upload/{id}
  * with the session cookie forwarded as Authorization: Bearer.
  *
- * The gateway YARP route matches `/liens/{**catch-all}` (plural) and strips
- * the `/liens` prefix before forwarding to the Liens service on :5009.
+ * Namespaced under /api/lien/ (rather than a top-level /api/bulk-upload/
+ * catch-all) so it can't collide with CareConnect's own document/attachment
+ * routing at the top level — a top-level /api/bulk-upload/[...path] proxy
+ * previously shadowed CareConnect's document access paths.
+ *
+ * The gateway validates JWT from the Authorization header only — the
+ * portal_session/platform_session token lives in an HttpOnly cookie that
+ * client-side JS can't read, so this handler bridges the gap.
  *
  * Cookie reading: uses cookies() from next/headers (server-side store) rather
  * than request.cookies — more reliable inside App Router Route Handlers.
@@ -23,8 +29,7 @@ async function proxy(
   const path = segments.join("/");
   const search = req.nextUrl.search;
   const url = `${GATEWAY_URL}/liens/${path}${search}`;
-  console.log("PROXY!", url);
-
+  console.log("bulk-ups", url);
   const cookieStore = await cookies();
   // Support both portal users (portal_session) and platform/admin users (platform_session).
   const token =
@@ -36,13 +41,11 @@ async function proxy(
   const headers: Record<string, string> = {};
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+    headers["Idempotency-Key"] = createIdempotencyKey();
   }
-
-  const idempotencyKey = req.headers.get("Idempotency-Key");
-  if (idempotencyKey) {
-    headers["Idempotency-Key"] = idempotencyKey;
+  function createIdempotencyKey(): string {
+    return `${crypto.randomUUID()}`;
   }
-
   let body: ArrayBuffer | string | undefined;
   if (req.method !== "GET" && req.method !== "HEAD") {
     if (isMultipart) {

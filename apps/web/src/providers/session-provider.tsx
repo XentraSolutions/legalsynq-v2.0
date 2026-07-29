@@ -392,13 +392,14 @@ export function SessionProvider({
   return (
     <SessionContext.Provider value={ctxValue}>
       {children}
-      {showWarning && (
+      {/* commented temporarily per QA suggestion to remove prompt but still implement auto logout */}
+      {/* {showWarning && (
         <IdleWarningDialog
           countdown={countdown}
           onStay={stayActive}
           onLogout={doLogout}
         />
-      )}
+      )} */}
     </SessionContext.Provider>
   );
 }
