@@ -1,0 +1,55 @@
+{
+  "cli": {
+    "version": ">= 20.3.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "development",
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
+        "SENTRY_ALLOW_FAILURE": "true"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "qa",
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
+        "SENTRY_ALLOW_FAILURE": "true"
+      }
+    },
+    "qa": {
+      "autoIncrement": true,
+      "channel": "qa",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "qa",
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
+        "SENTRY_ALLOW_FAILURE": "true"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
+        "SENTRY_ALLOW_FAILURE": "true"
+      }
+    }
+  },
+  "submit": {
+    "qa": {
+      "ios": {
+        "ascAppId": "6783912563"
+      }
+    },
+    "production": {
+      "ios": {
+        "ascAppId": "6783912563"
+      }
+    }
+  }
+}

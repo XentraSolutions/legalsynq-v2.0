@@ -1,0 +1,11 @@
+allowBuilds:
+  '@sentry/cli': set this to true or false
+  esbuild: true
+
+overrides:
+  valibot: 1.4.1
+  "@babel/types": "^7.29.0"
+
+peerDependencyRules:
+  allowedVersions:
+    react-native-reanimated: 4.1.7
