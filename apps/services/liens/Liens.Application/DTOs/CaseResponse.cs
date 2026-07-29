@@ -12,6 +12,10 @@ public sealed class CaseResponse
     public string Status { get; init; } = string.Empty;
     public DateOnly? DateOfIncident { get; init; }
     public DateOnly? ClientDob { get; init; }
+    public string? AccidentType { get; init; }
+    public string? StateOfIncident { get; init; }
+    public string? LawFirm { get; init; }
+    public string? CaseManager { get; init; }
     public string? ClientPhone { get; init; }
     public string? ClientEmail { get; init; }
     public string? ClientAddress { get; init; }

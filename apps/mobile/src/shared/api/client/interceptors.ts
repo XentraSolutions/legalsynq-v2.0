@@ -1,13 +1,18 @@
 import type { AxiosError, AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
+import { getDefaultStore } from 'jotai';
 
 import { STORAGE_KEYS } from '@/shared/constants/storageKeys';
+import { ConfigService } from '@/shared/services/Config';
 import { ErrorTrackingService } from '@/shared/services/ErrorTracking';
 import { SecureStorageService } from '@/shared/services/SecureStorage';
+import { apiModeAtom } from '@/shared/state/atoms/apiModeAtom';
 import { ApiError } from '@/shared/types/api';
 
 type UnauthorizedHandler = () => void | Promise<void>;
 
 let unauthorizedHandler: UnauthorizedHandler | undefined;
+
+const store = getDefaultStore();
 
 function setHeader(config: InternalAxiosRequestConfig, key: string, value: string): void {
   const headers = config.headers as unknown as Record<string, string>;
@@ -86,9 +91,23 @@ export function registerUnauthorizedHandler(handler: UnauthorizedHandler): void 
 
 export function attachInterceptors(apiClient: AxiosInstance): void {
   apiClient.interceptors.request.use(async (config) => {
-    const token = await SecureStorageService.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    const mode = store.get(apiModeAtom);
+
+    if (mode === 'legacy') {
+      config.baseURL = ConfigService.getLegacyApiBaseUrl();
+      setHeader(config, 'apiKey', ConfigService.getLegacyApiKey());
+    }
+
+    const tokenKey =
+      mode === 'legacy' ? STORAGE_KEYS.LEGACY_ACCESS_TOKEN : STORAGE_KEYS.ACCESS_TOKEN;
+    const token = await SecureStorageService.getItem(tokenKey);
     if (token) {
-      setHeader(config, 'Authorization', `Bearer ${token}`);
+      if (mode === 'legacy') {
+        // The legacy backend authenticates via a `sessionId` header, not a bearer token.
+        setHeader(config, 'sessionId', token);
+      } else {
+        setHeader(config, 'Authorization', `Bearer ${token}`);
+      }
     }
 
     setHeader(config, 'X-Correlation-Id', generateUUID());

@@ -13,6 +13,9 @@ import { AuthenticationService } from '@/shared/services/Authentication';
 import { accountModeAtom, type AccountMode } from '@/shared/state/atoms';
 import { cx, FIGMA_COLORS, FIGMA_TEXT } from '@/shared/styles';
 import { useAuth } from '@/shared/hooks';
+import { useApiMode } from '@/shared/hooks/useApiMode';
+import { useMenuSettings } from '@/shared/hooks/useMenuSettings';
+import type { MenuVisibilityKey, MenuVisibilitySettings } from '@/shared/constants/menuSettings';
 
 export interface AppMenuProps {
   visible: boolean;
@@ -21,7 +24,7 @@ export interface AppMenuProps {
 
 type DirectRoute = keyof Pick<
   MainStackParamList,
-  'Dashboard' | 'Cases' | 'Marketplace' | 'MyLiens' | 'Offers' | 'Settings'
+  'Dashboard' | 'Cases' | 'Marketplace' | 'MyLiens' | 'Offers' | 'Settings' | 'XeniaAI'
 >;
 type MenuSectionId = 'management' | 'tools';
 
@@ -29,6 +32,7 @@ type MenuChild = {
   label: string;
   route?: DirectRoute;
   subtitle?: string;
+  visibilityKey: MenuVisibilityKey;
 };
 
 type MenuSection = {
@@ -45,15 +49,28 @@ const MENU_SECTIONS: Record<AccountMode, MenuSection[]> = {
       icon: 'file-tray-full-outline',
       label: 'Management',
       children: [
-        { label: 'Task Manager', subtitle: 'Task workflows will be added in a future pass.' },
-        { label: 'Cases', route: 'Cases' },
-        { label: 'Liens', route: 'MyLiens' },
+        {
+          label: 'Task Manager',
+          subtitle: 'Task workflows will be added in a future pass.',
+          visibilityKey: 'taskManager',
+        },
+        { label: 'Cases', route: 'Cases', visibilityKey: 'cases' },
+        { label: 'Liens', route: 'MyLiens', visibilityKey: 'liens' },
         {
           label: 'Bill of Sales',
           subtitle: 'Bill of sale management will be added in a future pass.',
+          visibilityKey: 'billOfSales',
         },
-        { label: 'Servicing', subtitle: 'Servicing tools will be added in a future pass.' },
-        { label: 'Contacts', subtitle: 'Contact management will be added in a future pass.' },
+        {
+          label: 'Servicing',
+          subtitle: 'Servicing tools will be added in a future pass.',
+          visibilityKey: 'servicing',
+        },
+        {
+          label: 'Contacts',
+          subtitle: 'Contact management will be added in a future pass.',
+          visibilityKey: 'contacts',
+        },
       ],
     },
     {
@@ -61,16 +78,26 @@ const MENU_SECTIONS: Record<AccountMode, MenuSection[]> = {
       icon: 'construct-outline',
       label: 'Tools & Utilities',
       children: [
-        { label: 'Reports', subtitle: 'Reporting tools will be added in a future pass.' },
+        {
+          label: 'Reports',
+          subtitle: 'Reporting tools will be added in a future pass.',
+          visibilityKey: 'reports',
+        },
         {
           label: 'Batch Upload',
           subtitle: 'Batch upload workflows will be added in a future pass.',
+          visibilityKey: 'batchUpload',
         },
         {
           label: 'Document Handling',
           subtitle: 'Document handling will be added in a future pass.',
+          visibilityKey: 'documentHandling',
         },
-        { label: 'User Management', subtitle: 'User management will be added in a future pass.' },
+        {
+          label: 'User Management',
+          subtitle: 'User management will be added in a future pass.',
+          visibilityKey: 'userManagement',
+        },
       ],
     },
   ],
@@ -80,15 +107,28 @@ const MENU_SECTIONS: Record<AccountMode, MenuSection[]> = {
       icon: 'file-tray-full-outline',
       label: 'Management',
       children: [
-        { label: 'Task Manager', subtitle: 'Task workflows will be added in a future pass.' },
-        { label: 'Cases', route: 'Cases' },
-        { label: 'Liens', route: 'Marketplace' },
+        {
+          label: 'Task Manager',
+          subtitle: 'Task workflows will be added in a future pass.',
+          visibilityKey: 'taskManager',
+        },
+        { label: 'Cases', route: 'Cases', visibilityKey: 'cases' },
+        { label: 'Liens', route: 'Marketplace', visibilityKey: 'liens' },
         {
           label: 'Bill of Sales',
           subtitle: 'Bill of sale management will be added in a future pass.',
+          visibilityKey: 'billOfSales',
         },
-        { label: 'Servicing', subtitle: 'Servicing tools will be added in a future pass.' },
-        { label: 'Contacts', subtitle: 'Contact management will be added in a future pass.' },
+        {
+          label: 'Servicing',
+          subtitle: 'Servicing tools will be added in a future pass.',
+          visibilityKey: 'servicing',
+        },
+        {
+          label: 'Contacts',
+          subtitle: 'Contact management will be added in a future pass.',
+          visibilityKey: 'contacts',
+        },
       ],
     },
     {
@@ -96,22 +136,49 @@ const MENU_SECTIONS: Record<AccountMode, MenuSection[]> = {
       icon: 'construct-outline',
       label: 'Tools & Utilities',
       children: [
-        { label: 'Reports', subtitle: 'Reporting tools will be added in a future pass.' },
+        {
+          label: 'Reports',
+          subtitle: 'Reporting tools will be added in a future pass.',
+          visibilityKey: 'reports',
+        },
         {
           label: 'Batch Upload',
           subtitle: 'Batch upload workflows will be added in a future pass.',
+          visibilityKey: 'batchUpload',
         },
         {
           label: 'Document Handling',
           subtitle: 'Document handling will be added in a future pass.',
+          visibilityKey: 'documentHandling',
         },
-        { label: 'User Management', subtitle: 'User management will be added in a future pass.' },
+        {
+          label: 'User Management',
+          subtitle: 'User management will be added in a future pass.',
+          visibilityKey: 'userManagement',
+        },
       ],
     },
   ],
 };
 
 const CHILD_ROW_HEIGHT = 44;
+const ACCOUNT_MODES: AccountMode[] = ['selling', 'buying'];
+
+export function getVisibleAccountModes(menuVisibility: MenuVisibilitySettings): AccountMode[] {
+  return ACCOUNT_MODES.filter((mode) => menuVisibility[mode]);
+}
+
+export function getVisibleMenuSections(
+  accountMode: AccountMode,
+  menuVisibility: MenuVisibilitySettings
+): MenuSection[] {
+  return MENU_SECTIONS[accountMode]
+    .map((section) => ({
+      ...section,
+      children: section.children.filter((child) => menuVisibility[child.visibilityKey]),
+    }))
+    .filter((section) => section.children.length > 0);
+}
 
 export function AppMenu({ visible, onClose }: AppMenuProps) {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
@@ -120,13 +187,22 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
   const { colorScheme } = useNativeWindColorScheme();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { settings: menuVisibility } = useMenuSettings();
+  const { mode: apiMode } = useApiMode();
   const isDark = colorScheme === 'dark';
   const stripWidth = Math.min(72, Dimensions.get('window').width * 0.17);
   const iconColor = isDark ? '#a8a9b0' : '#737681';
-  const sections = MENU_SECTIONS[accountMode];
+  const visibleAccountModes = getVisibleAccountModes(menuVisibility);
+  const sections = getVisibleMenuSections(accountMode, menuVisibility);
   const fullName = user ? `${user.firstName} ${user.lastName}`.trim() : '';
   const initials = user ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase() : '';
   const role = user?.roles[0] ?? '';
+
+  useEffect(() => {
+    if (menuVisibility[accountMode]) return;
+    const fallbackMode = visibleAccountModes[0];
+    if (fallbackMode) setAccountMode(fallbackMode);
+  }, [accountMode, menuVisibility, setAccountMode, visibleAccountModes]);
 
   const navigateToRoute = (route: DirectRoute) => {
     onClose();
@@ -149,6 +225,9 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
         break;
       case 'Settings':
         navigation.navigate('Settings');
+        break;
+      case 'XeniaAI':
+        navigation.navigate('XeniaAI');
         break;
     }
   };
@@ -196,44 +275,51 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
               </Pressable>
             </View>
 
-            <View className="mt-11">
-              <View className="min-h-[52px] flex-row items-center px-4">
-                <Ionicons color={iconColor} name="people-outline" size={24} />
-                <Text
-                  className={cx(FIGMA_TEXT.drawerHeading, 'ml-5 text-[#202228] dark:text-white')}
-                >
-                  Account Type
-                </Text>
-              </View>
+            {visibleAccountModes.length > 0 ? (
+              <View className="mt-11">
+                <View className="min-h-[52px] flex-row items-center px-4">
+                  <Ionicons color={iconColor} name="people-outline" size={24} />
+                  <Text
+                    className={cx(FIGMA_TEXT.drawerHeading, 'ml-5 text-[#202228] dark:text-white')}
+                  >
+                    Account Type
+                  </Text>
+                </View>
 
-              <View className="ml-[27px] mt-2 border-l border-[#dedfe3] dark:border-[#2e3036]">
-                <ModeChoice
-                  label="Selling"
-                  selected={accountMode === 'selling'}
-                  onPress={() => {
-                    setAccountMode('selling');
-                    setExpandedSection(null);
-                  }}
-                />
-                <ModeChoice
-                  label="Buying"
-                  selected={accountMode === 'buying'}
-                  onPress={() => {
-                    setAccountMode('buying');
-                    setExpandedSection(null);
-                  }}
-                />
+                <View className="ml-[27px] mt-2 border-l border-[#dedfe3] dark:border-[#2e3036]">
+                  {visibleAccountModes.map((mode) => (
+                    <ModeChoice
+                      key={mode}
+                      label={mode === 'selling' ? 'Selling' : 'Buying'}
+                      selected={accountMode === mode}
+                      onPress={() => {
+                        setAccountMode(mode);
+                        setExpandedSection(null);
+                      }}
+                    />
+                  ))}
+                </View>
               </View>
-            </View>
+            ) : null}
 
             <View className="mt-8 gap-3">
-              <DirectMenuRow
-                active
-                icon="grid-outline"
-                iconColor={iconColor}
-                label="Dashboard"
-                onPress={() => navigateToRoute('Dashboard')}
-              />
+              {menuVisibility.dashboard ? (
+                <DirectMenuRow
+                  active
+                  icon="grid-outline"
+                  iconColor={iconColor}
+                  label="Dashboard"
+                  onPress={() => navigateToRoute('Dashboard')}
+                />
+              ) : null}
+              {apiMode === 'current' && menuVisibility.xeniaAi ? (
+                <DirectMenuRow
+                  icon="sparkles-outline"
+                  iconColor={iconColor}
+                  label="Xenia AI"
+                  onPress={() => navigateToRoute('XeniaAI')}
+                />
+              ) : null}
               {sections.map((section) => (
                 <ExpandableMenuSection
                   expanded={expandedSection === section.id}
@@ -251,12 +337,14 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
             <View className="mt-auto pb-4">
               <View className="mb-6 h-px bg-[#dedfe3] dark:bg-[#2e3036]" />
 
-              <DirectMenuRow
-                icon="settings-outline"
-                iconColor={iconColor}
-                label="Settings"
-                onPress={() => navigateToRoute('Settings')}
-              />
+              {menuVisibility.settings ? (
+                <DirectMenuRow
+                  icon="settings-outline"
+                  iconColor={iconColor}
+                  label="Settings"
+                  onPress={() => navigateToRoute('Settings')}
+                />
+              ) : null}
 
               <Pressable
                 accessibilityRole="button"

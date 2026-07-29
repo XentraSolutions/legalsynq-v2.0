@@ -1,7 +1,9 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useAtomValue } from 'jotai';
 
-import { CasesApi } from '@/shared/api/endpoints/Cases';
+import { CasesApi, LegacyCasesAdapter, LegacyCasesApi } from '@/shared/api/endpoints/Cases';
 import type { ReportFilterRequest } from '@/shared/api/endpoints/Cases';
+import { apiModeAtom } from '@/shared/state/atoms/apiModeAtom';
 
 export const dashboardTotalCaseReportKeys = {
   all: ['dashboard', 'total-case-report'] as const,
@@ -9,9 +11,16 @@ export const dashboardTotalCaseReportKeys = {
 };
 
 export function useDashboardTotalCaseReport(filter: ReportFilterRequest, enabled = true) {
+  const mode = useAtomValue(apiModeAtom);
+
   return useQuery({
     queryKey: dashboardTotalCaseReportKeys.filtered(filter),
-    queryFn: () => CasesApi.getDashboardTotalCaseReportV3(filter),
+    queryFn: () =>
+      mode === 'legacy'
+        ? LegacyCasesApi.getDashboardTotalCaseReportV3(filter).then(
+            LegacyCasesAdapter.toTotalCaseReportPage
+          )
+        : CasesApi.getDashboardTotalCaseReportV3(filter),
     placeholderData: keepPreviousData,
     enabled,
   });

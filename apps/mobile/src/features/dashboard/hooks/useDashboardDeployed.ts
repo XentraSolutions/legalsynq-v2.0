@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
+import { useAtomValue } from 'jotai';
 
-import { CasesApi } from '@/shared/api/endpoints/Cases';
+import { CasesApi, LegacyCasesAdapter, LegacyCasesApi } from '@/shared/api/endpoints/Cases';
 import type { DashboardStatRequest } from '@/shared/api/endpoints/Cases';
+import { apiModeAtom } from '@/shared/state/atoms/apiModeAtom';
 
 export const dashboardDeployedKeys = {
   all: ['dashboard', 'deployed'] as const,
@@ -9,9 +11,14 @@ export const dashboardDeployedKeys = {
 };
 
 export function useDashboardDeployed(req: DashboardStatRequest, enabled = true) {
+  const mode = useAtomValue(apiModeAtom);
+
   return useQuery({
     queryKey: dashboardDeployedKeys.filtered(req),
-    queryFn: () => CasesApi.getDashboardDeployed(req),
+    queryFn: () =>
+      mode === 'legacy'
+        ? LegacyCasesApi.getDashboardDeployed(req).then(LegacyCasesAdapter.toDashboardStatResponse)
+        : CasesApi.getDashboardDeployed(req),
     enabled,
   });
 }

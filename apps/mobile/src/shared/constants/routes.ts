@@ -15,5 +15,6 @@ export const ROUTES = {
     CASE_DETAIL: 'CaseDetail',
     PROFILE: 'Profile',
     SETTINGS: 'Settings',
+    XENIA_AI: 'XeniaAI',
   },
 } as const;

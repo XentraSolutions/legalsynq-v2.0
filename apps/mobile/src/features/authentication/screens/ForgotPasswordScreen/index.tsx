@@ -6,12 +6,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { AuthenticationApi } from '@/shared/api/endpoints/Authentication';
 import { Button } from '@/shared/components/Button';
 import { EmptyState } from '@/shared/components/EmptyState';
 import { Header } from '@/shared/components/Header';
 import { Input } from '@/shared/components/Input';
 import type { AuthStackParamList } from '@/navigation/types/navigation';
+import { AuthenticationService } from '@/shared/services/Authentication';
 import { cx, FIGMA_TEXT } from '@/shared/styles';
 import { forgotPasswordSchema, type ForgotPasswordFormValues } from '@/shared/validation/authSchemas';
 
@@ -31,7 +31,7 @@ export function ForgotPasswordScreen() {
   async function submit(values: ForgotPasswordFormValues) {
     setLoading(true);
     try {
-      await AuthenticationApi.forgotPassword(values);
+      await AuthenticationService.forgotPassword(values);
     } catch {
       // Development prototypes still show the success path when the gateway is offline.
     } finally {

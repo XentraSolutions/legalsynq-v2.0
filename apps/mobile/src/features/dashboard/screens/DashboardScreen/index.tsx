@@ -1,12 +1,17 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, type NavigationProp } from '@react-navigation/native';
 import Svg, { Circle, Defs, LinearGradient, Path, Polyline, Stop } from 'react-native-svg';
 import { useAtom } from 'jotai';
 import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
+import { useQueryClient } from '@tanstack/react-query';
 
+import {
+  DashboardReportSkeleton,
+  DashboardStatCardSkeleton,
+} from '@/features/dashboard/components';
 import {
   useDashboardCashReceived,
   useDashboardDeployed,
@@ -20,6 +25,8 @@ import type { MainStackParamList } from '@/navigation/types/navigation';
 import { AppMenu } from '@/shared/components/AppMenu';
 import { DateRangePicker } from '@/shared/components/DateRangePicker';
 import { useDashboardSettings } from '@/shared/hooks/useDashboardSettings';
+import { useApiMode } from '@/shared/hooks/useApiMode';
+import { useMenuSettings } from '@/shared/hooks/useMenuSettings';
 import { accountModeAtom, type AccountMode } from '@/shared/state/atoms';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
 import type {
@@ -223,7 +230,7 @@ function createSingleDayRange(date: Date): DashboardDateRange {
 function buildDashboardReportFilter(dateRange: DashboardDateRange): ReportFilterRequest {
   return {
     page: 1,
-    limit: 500,
+    limit: 1000000,
     startDate: dateRange.startDate,
     endDate: dateRange.endDate,
   };
@@ -231,32 +238,66 @@ function buildDashboardReportFilter(dateRange: DashboardDateRange): ReportFilter
 
 export function DashboardScreen() {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
+  const queryClient = useQueryClient();
   const { colorScheme } = useNativeWindColorScheme();
   const [accountMode] = useAtom(accountModeAtom);
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshInFlightRef = useRef(false);
   const [dateRange, setDateRange] = useState<DashboardDateRange>(() =>
     createSingleDayRange(DEFAULT_DASHBOARD_DATE)
   );
   const isDark = colorScheme === 'dark';
   const { hydrated: dashboardSettingsHydrated, settings: dashboardSettings } =
     useDashboardSettings();
+  const { settings: menuVisibility } = useMenuSettings();
+  const { mode: apiMode } = useApiMode();
   const useDashboardDummyData = dashboardSettings.useDummyData;
   const reportFilter = useMemo(() => buildDashboardReportFilter(dateRange), [dateRange]);
   const handleViewReport = (reportType: DashboardReportType) => {
     navigation.navigate('DashboardReportDetail', { reportType, dateRange });
   };
+  const handleRefresh = useCallback(async () => {
+    if (refreshInFlightRef.current || !dashboardSettingsHydrated || useDashboardDummyData) {
+      return;
+    }
+
+    refreshInFlightRef.current = true;
+    setIsRefreshing(true);
+
+    try {
+      await queryClient.refetchQueries({ queryKey: ['dashboard'], type: 'active' });
+    } finally {
+      refreshInFlightRef.current = false;
+      setIsRefreshing(false);
+    }
+  }, [dashboardSettingsHydrated, queryClient, useDashboardDummyData]);
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-[#f7f7f8] dark:bg-[#050506]">
       <ScrollView
         className="flex-1 px-4"
         contentContainerStyle={{ paddingBottom: 26 }}
+        refreshControl={
+          <RefreshControl
+            colors={[ORANGE]}
+            enabled={dashboardSettingsHydrated && !useDashboardDummyData}
+            progressBackgroundColor={isDark ? '#191a1f' : '#ffffff'}
+            refreshing={isRefreshing}
+            tintColor={ORANGE}
+            onRefresh={() => {
+              void handleRefresh();
+            }}
+          />
+        }
         showsVerticalScrollIndicator={false}
       >
         <DashboardHeader
           accountMode={accountMode}
           isDark={isDark}
           onOpenMenu={() => setDrawerVisible(true)}
+          showXenia={apiMode === 'current' && menuVisibility.xeniaAi}
+          onOpenXenia={() => navigation.navigate('XeniaAI')}
         />
         <DateRangePicker
           containerClassName="mt-4"
@@ -286,10 +327,14 @@ function DashboardHeader({
   accountMode,
   isDark,
   onOpenMenu,
+  onOpenXenia,
+  showXenia,
 }: {
   accountMode: AccountMode;
   isDark: boolean;
   onOpenMenu: () => void;
+  onOpenXenia: () => void;
+  showXenia: boolean;
 }) {
   const { user } = useAuth();
   const userName = user ? `${user.firstName}`.trim() : '';
@@ -313,6 +358,16 @@ function DashboardHeader({
         </Text>
       </View>
       <View className="flex-row gap-2">
+        {showXenia ? (
+          <CircleButton
+            accessibilityLabel="Open Xenia AI"
+            accent
+            icon="sparkles"
+            iconColor="white"
+            isDark={isDark}
+            onPress={onOpenXenia}
+          />
+        ) : null}
         <CircleButton icon="search-outline" iconColor={iconColor} isDark={isDark} />
         <CircleButton dot icon="notifications-outline" iconColor={iconColor} isDark={isDark} />
       </View>
@@ -321,12 +376,16 @@ function DashboardHeader({
 }
 
 function CircleButton({
+  accessibilityLabel,
+  accent,
   dot,
   icon,
   iconColor,
   isDark,
   onPress,
 }: {
+  accessibilityLabel?: string;
+  accent?: boolean;
   dot?: boolean;
   icon: keyof typeof Ionicons.glyphMap;
   iconColor: string;
@@ -335,8 +394,12 @@ function CircleButton({
 }) {
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
-      className="h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-[#191a1f]"
+      className={cx(
+        'h-10 w-10 items-center justify-center rounded-full',
+        accent ? 'bg-[#ee7132]' : 'bg-white dark:bg-[#191a1f]'
+      )}
       style={{
         shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
         shadowOpacity: isDark ? 0.18 : 0.5,
@@ -747,10 +810,10 @@ function BuyingDashboard({
     fromDate: reportFilter.startDate ?? '',
     toDate: reportFilter.endDate ?? '',
   };
-  const { data: deployedData } = useDashboardDeployed(statRequest, reportsEnabled);
-  const { data: cashReceivedData } = useDashboardCashReceived(statRequest, reportsEnabled);
-  const cashDeployed = readStatAmount(deployedData);
-  const cashReceived = readStatAmount(cashReceivedData);
+  const deployedQuery = useDashboardDeployed(statRequest, reportsEnabled);
+  const cashReceivedQuery = useDashboardCashReceived(statRequest, reportsEnabled);
+  const cashDeployed = readStatAmount(deployedQuery.data);
+  const cashReceived = readStatAmount(cashReceivedQuery.data);
   const buyingStats: StatCardData[] = useDummyData
     ? BUYING_STATS
     : [
@@ -767,15 +830,12 @@ function BuyingDashboard({
           trendTone: 'positive',
         },
       ];
-  const { data: totalLienReport } = useDashboardTotalLienReport(reportFilter, reportsEnabled);
-  const { data: totalCaseReport } = useDashboardTotalCaseReport(reportFilter, reportsEnabled);
-  const { data: lawFirmReport } = useDashboardLawFirmCaseReport(reportFilter, reportsEnabled);
-  const { data: medicalProviderReport } = useDashboardMedicalProviderReport(
-    reportFilter,
-    reportsEnabled
-  );
-  const totalLienModel = mapTotalLienReportToDashboard(totalLienReport?.items ?? []);
-  const totalCaseModel = mapTotalCaseReportToDashboard(totalCaseReport?.items ?? []);
+  const totalLienQuery = useDashboardTotalLienReport(reportFilter, reportsEnabled);
+  const totalCaseQuery = useDashboardTotalCaseReport(reportFilter, reportsEnabled);
+  const lawFirmQuery = useDashboardLawFirmCaseReport(reportFilter, reportsEnabled);
+  const medicalProviderQuery = useDashboardMedicalProviderReport(reportFilter, reportsEnabled);
+  const totalLienModel = mapTotalLienReportToDashboard(totalLienQuery.data?.items ?? []);
+  const totalCaseModel = mapTotalCaseReportToDashboard(totalCaseQuery.data?.items ?? []);
   const lienSlices = useDummyData ? BUYING_TOTAL_LIENS : (totalLienModel?.slices ?? []);
   const totalLiens = useDummyData ? '239' : (totalLienModel?.totalLiens.toLocaleString() ?? '0');
   const totalPurchaseValue = useDummyData
@@ -784,12 +844,14 @@ function BuyingDashboard({
   const totalLienValue = useDummyData
     ? '$2,287,386.12'
     : formatCurrency(totalLienModel?.totalBilling ?? 0);
-  const lawFirmReportSlices = mapLawFirmReportGrouped(lawFirmReport?.items ?? []);
+  const lawFirmReportSlices = mapLawFirmReportGrouped(lawFirmQuery.data?.items ?? []);
   const lawFirmAllocationSlices = useDummyData ? LAW_FIRM_ALLOCATION : lawFirmReportSlices;
   const lawFirmTotalCases = useDummyData
     ? '175'
     : lawFirmReportSlices.reduce((sum, slice) => sum + slice.value, 0).toLocaleString();
-  const facilityReportSlices = mapMedicalFacilityReportGrouped(medicalProviderReport?.items ?? []);
+  const facilityReportSlices = mapMedicalFacilityReportGrouped(
+    medicalProviderQuery.data?.items ?? []
+  );
   const facilityAllocationSlices = useDummyData ? FACILITY_ALLOCATION : facilityReportSlices;
   const facilityTotalCases = useDummyData
     ? '239'
@@ -797,93 +859,237 @@ function BuyingDashboard({
 
   return (
     <>
-      <StatGrid isDark={isDark} stats={buyingStats} />
-      <DonutCard
-        centerCaption="Total Liens"
-        centerValue={totalLiens}
-        icon="time-outline"
+      {useDummyData ? (
+        <StatGrid isDark={isDark} stats={buyingStats} />
+      ) : (
+        <View className="mt-4 flex-row flex-wrap justify-between gap-y-3">
+          <DashboardStatState
+            isDark={isDark}
+            isError={deployedQuery.isError}
+            isLoading={!dashboardSettingsHydrated || deployedQuery.isFetching}
+            label={buyingStats[0].label}
+            stat={buyingStats[0]}
+            onRetry={() => {
+              void deployedQuery.refetch();
+            }}
+          />
+          <DashboardStatState
+            isDark={isDark}
+            isError={cashReceivedQuery.isError}
+            isLoading={!dashboardSettingsHydrated || cashReceivedQuery.isFetching}
+            label={buyingStats[1].label}
+            stat={buyingStats[1]}
+            onRetry={() => {
+              void cashReceivedQuery.refetch();
+            }}
+          />
+        </View>
+      )}
+      <DashboardReportState
+        hasSummaryRows
         isDark={isDark}
-        slices={lienSlices}
-        subtitle="Breakdown of open and closed claims with total purchase and billing values."
-        summaryRows={[
-          { label: 'Total Purchase Amount', value: totalPurchaseValue },
-          { label: 'Total Billing Amount', value: totalLienValue },
-        ]}
+        isError={!useDummyData && totalLienQuery.isError}
+        isLoading={!useDummyData && (!dashboardSettingsHydrated || totalLienQuery.isFetching)}
+        legendDetailRows={2}
+        legendRows={2}
         title="Total Liens"
-        onViewDetails={() => onViewReport('total-liens')}
-      />
-      <DonutCard
-        centerCaption="Total Cases"
-        centerValue={useDummyData ? '4,773' : (totalCaseModel?.totalCases.toLocaleString() ?? '0')}
-        icon="time-outline"
+        onRetry={() => {
+          void totalLienQuery.refetch();
+        }}
+      >
+        <DonutCard
+          centerCaption="Total Liens"
+          centerValue={totalLiens}
+          icon="time-outline"
+          isDark={isDark}
+          slices={lienSlices}
+          subtitle="Breakdown of open and closed claims with total purchase and billing values."
+          summaryRows={[
+            { label: 'Total Purchase Amount', value: totalPurchaseValue },
+            { label: 'Total Billing Amount', value: totalLienValue },
+          ]}
+          title="Total Liens"
+          onViewDetails={() => onViewReport('total-liens')}
+        />
+      </DashboardReportState>
+      <DashboardReportState
         isDark={isDark}
-        slices={useDummyData ? BUYING_TOTAL_CASES : (totalCaseModel?.slices ?? [])}
-        subtitle="Track the overall number of cases and view their current status distribution at a glance."
+        isError={!useDummyData && totalCaseQuery.isError}
+        isLoading={!useDummyData && (!dashboardSettingsHydrated || totalCaseQuery.isFetching)}
+        legendRows={4}
         title="Total Cases"
-        onViewDetails={() => onViewReport('total-cases')}
-      />
-      <DonutCard
-        centerCaption="Total Cases"
-        centerValue={lawFirmTotalCases}
-        icon="time-outline"
+        onRetry={() => {
+          void totalCaseQuery.refetch();
+        }}
+      >
+        <DonutCard
+          centerCaption="Total Cases"
+          centerValue={
+            useDummyData ? '4,773' : (totalCaseModel?.totalCases.toLocaleString() ?? '0')
+          }
+          icon="time-outline"
+          isDark={isDark}
+          slices={useDummyData ? BUYING_TOTAL_CASES : (totalCaseModel?.slices ?? [])}
+          subtitle="Track the overall number of cases and view their current status distribution at a glance."
+          title="Total Cases"
+          onViewDetails={() => onViewReport('total-cases')}
+        />
+      </DashboardReportState>
+      <DashboardReportState
         isDark={isDark}
-        slices={lawFirmAllocationSlices}
-        subtitle="Distribution of total case volume across assigned legal firms."
+        isError={!useDummyData && lawFirmQuery.isError}
+        isLoading={!useDummyData && (!dashboardSettingsHydrated || lawFirmQuery.isFetching)}
+        legendRows={4}
         title="Law Firm Case Allocation"
-        onViewDetails={() => onViewReport('law-firm-allocation')}
-      />
-      <DonutCard
-        centerCaption="Total Cases"
-        centerValue={facilityTotalCases}
-        icon="time-outline"
+        onRetry={() => {
+          void lawFirmQuery.refetch();
+        }}
+      >
+        <DonutCard
+          centerCaption="Total Cases"
+          centerValue={lawFirmTotalCases}
+          icon="time-outline"
+          isDark={isDark}
+          slices={lawFirmAllocationSlices}
+          subtitle="Distribution of total case volume across assigned legal firms."
+          title="Law Firm Case Allocation"
+          onViewDetails={() => onViewReport('law-firm-allocation')}
+        />
+      </DashboardReportState>
+      <DashboardReportState
         isDark={isDark}
-        slices={facilityAllocationSlices}
-        subtitle="Distribution of total case volume across assigned healthcare facilities."
+        isError={!useDummyData && medicalProviderQuery.isError}
+        isLoading={!useDummyData && (!dashboardSettingsHydrated || medicalProviderQuery.isFetching)}
+        legendRows={4}
         title="Medical Facility Case Allocation"
-        onViewDetails={() => onViewReport('medical-facility-allocation')}
-      />
+        onRetry={() => {
+          void medicalProviderQuery.refetch();
+        }}
+      >
+        <DonutCard
+          centerCaption="Total Cases"
+          centerValue={facilityTotalCases}
+          icon="time-outline"
+          isDark={isDark}
+          slices={facilityAllocationSlices}
+          subtitle="Distribution of total case volume across assigned healthcare facilities."
+          title="Medical Facility Case Allocation"
+          onViewDetails={() => onViewReport('medical-facility-allocation')}
+        />
+      </DashboardReportState>
     </>
   );
+}
+
+function DashboardReportState({
+  children,
+  hasSummaryRows,
+  isDark,
+  isError,
+  isLoading,
+  legendDetailRows,
+  legendRows,
+  onRetry,
+  title,
+}: {
+  children: ReactNode;
+  hasSummaryRows?: boolean;
+  isDark: boolean;
+  isError: boolean;
+  isLoading: boolean;
+  legendDetailRows?: number;
+  legendRows: number;
+  onRetry: () => void;
+  title: string;
+}) {
+  if (isLoading) {
+    return (
+      <DashboardReportSkeleton
+        hasSummaryRows={hasSummaryRows}
+        isDark={isDark}
+        legendDetailRows={legendDetailRows}
+        legendRows={legendRows}
+      />
+    );
+  }
+
+  if (isError) {
+    return <DashboardReportErrorCard isDark={isDark} title={title} onRetry={onRetry} />;
+  }
+
+  return children;
+}
+
+function DashboardStatState({
+  isDark,
+  isError,
+  isLoading,
+  label,
+  onRetry,
+  stat,
+}: {
+  isDark: boolean;
+  isError: boolean;
+  isLoading: boolean;
+  label: string;
+  onRetry: () => void;
+  stat: StatCardData;
+}) {
+  if (isLoading) {
+    return <DashboardStatCardSkeleton isDark={isDark} />;
+  }
+
+  if (isError) {
+    return (
+      <View
+        className="w-[48%] rounded-[14px] bg-white p-4 dark:bg-[#191a1f]"
+        style={{
+          shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
+          shadowOpacity: isDark ? 0.16 : 0.45,
+          shadowRadius: 9,
+          shadowOffset: { height: 4, width: 0 },
+          elevation: 2,
+        }}
+      >
+        <Text className={cx(TYPE.statLabel, 'text-[#8d9098] dark:text-[#8f929b]')}>{label}</Text>
+        <Pressable accessibilityRole="button" className="mt-3 self-start" onPress={onRetry}>
+          <Text className={cx(TYPE.microStrong, 'text-[#d94f16] dark:text-[#fb8b5c]')}>
+            Unable to load · Retry
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return <StatCard isDark={isDark} stat={stat} />;
 }
 
 function StatGrid({ isDark, stats }: { isDark: boolean; stats: StatCardData[] }) {
   return (
     <View className="mt-4 flex-row flex-wrap justify-between gap-y-3">
       {stats.map((stat) => (
-        <View
-          key={stat.label}
-          className="w-[48%] rounded-[14px] bg-white p-4 dark:bg-[#191a1f]"
-          style={{
-            shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
-            shadowOpacity: isDark ? 0.16 : 0.45,
-            shadowRadius: 9,
-            shadowOffset: { height: 4, width: 0 },
-            elevation: 2,
-          }}
-        >
-          <Text className={cx(TYPE.statLabel, 'text-[#8d9098] dark:text-[#8f929b]')}>
-            {stat.label}
-          </Text>
-          <Text className={cx(TYPE.statValue, 'mt-4 text-[#22252b] dark:text-[#f4f4f5]')}>
-            {stat.value}
-          </Text>
-          {/* <View
-            className={`mt-2 self-start rounded-full px-2 py-1 ${
-              stat.trendTone === 'positive'
-                ? 'bg-[#e8f8ef] dark:bg-[#133225]'
-                : 'bg-[#fde9ea] dark:bg-[#3a1f24]'
-            }`}
-          >
-            <Text
-              className={`${TYPE.microStrong} ${
-                stat.trendTone === 'positive' ? 'text-[#19a45b]' : 'text-[#ef5d62]'
-              }`}
-            >
-              {stat.trendTone === 'positive' ? '↑' : '↓'} {stat.trend}
-            </Text>
-          </View> */}
-        </View>
+        <StatCard isDark={isDark} key={stat.label} stat={stat} />
       ))}
+    </View>
+  );
+}
+
+function StatCard({ isDark, stat }: { isDark: boolean; stat: StatCardData }) {
+  return (
+    <View
+      className="w-[48%] rounded-[14px] bg-white p-4 dark:bg-[#191a1f]"
+      style={{
+        shadowColor: isDark ? FIGMA_COLORS.shadowDark : FIGMA_COLORS.shadowLight,
+        shadowOpacity: isDark ? 0.16 : 0.45,
+        shadowRadius: 9,
+        shadowOffset: { height: 4, width: 0 },
+        elevation: 2,
+      }}
+    >
+      <Text className={cx(TYPE.statLabel, 'text-[#8d9098] dark:text-[#8f929b]')}>{stat.label}</Text>
+      <Text className={cx(TYPE.statValue, 'mt-4 text-[#22252b] dark:text-[#f4f4f5]')}>
+        {stat.value}
+      </Text>
     </View>
   );
 }
@@ -912,6 +1118,45 @@ function CardShell({
     >
       {children}
     </View>
+  );
+}
+
+function DashboardReportErrorCard({
+  isDark,
+  onRetry,
+  title,
+}: {
+  isDark: boolean;
+  onRetry: () => void;
+  title: string;
+}) {
+  return (
+    <CardShell isDark={isDark}>
+      <View className="items-center py-6">
+        <View className="h-12 w-12 items-center justify-center rounded-full bg-[#fff0e9] dark:bg-[#3a241b]">
+          <Ionicons color={ORANGE} name="warning-outline" size={22} />
+        </View>
+        <Text className={cx(TYPE.cardTitle, 'mt-4 text-center text-[#24272d] dark:text-white')}>
+          {title} could not be loaded
+        </Text>
+        <Text
+          className={cx(
+            TYPE.cardDescription,
+            'mt-2 text-center text-[#8d9098] dark:text-[#8f929b]'
+          )}
+        >
+          Pull down to refresh the dashboard or try this report again.
+        </Text>
+        <Pressable
+          accessibilityLabel={`Retry ${title}`}
+          accessibilityRole="button"
+          className="mt-5 h-9 items-center justify-center rounded-full bg-[#fff0e9] px-6 dark:bg-[#3a241b]"
+          onPress={onRetry}
+        >
+          <Text className={cx(TYPE.cta, 'text-[#d94f16] dark:text-[#fb8b5c]')}>Retry</Text>
+        </Pressable>
+      </View>
+    </CardShell>
   );
 }
 
@@ -968,6 +1213,8 @@ function SectionTitle({
   );
 }
 
+const LEGEND_PAGE_SIZE = 5;
+
 function DonutCard({
   centerCaption,
   centerValue,
@@ -989,16 +1236,38 @@ function DonutCard({
   onViewDetails?: () => void;
   title: string;
 }) {
+  const [legendPage, setLegendPage] = useState(1);
+  const totalLegendPages = Math.max(1, Math.ceil(slices.length / LEGEND_PAGE_SIZE));
+  const currentLegendPage = Math.min(legendPage, totalLegendPages);
+  const pagedSlices = slices.slice(
+    (currentLegendPage - 1) * LEGEND_PAGE_SIZE,
+    currentLegendPage * LEGEND_PAGE_SIZE
+  );
+
   return (
     <CardShell isDark={isDark}>
       <SectionTitle icon={icon} subtitle={subtitle} title={title} />
       <DonutChart centerCaption={centerCaption} centerValue={centerValue} slices={slices} />
       {slices.length > 0 ? (
-        <View className="mt-4">
-          {slices.map((slice, index) => (
-            <LegendRow key={slice.label} isLast={index === slices.length - 1} slice={slice} />
-          ))}
-        </View>
+        <>
+          <View className="mt-4">
+            {pagedSlices.map((slice, index) => (
+              <LegendRow
+                key={slice.label}
+                isLast={index === pagedSlices.length - 1}
+                slice={slice}
+              />
+            ))}
+          </View>
+          {slices.length > LEGEND_PAGE_SIZE ? (
+            <LegendPagination
+              page={currentLegendPage}
+              totalPages={totalLegendPages}
+              onNext={() => setLegendPage((page) => Math.min(totalLegendPages, page + 1))}
+              onPrevious={() => setLegendPage((page) => Math.max(1, page - 1))}
+            />
+          ) : null}
+        </>
       ) : (
         <Text className={cx(TYPE.rowMuted, 'mt-5 text-center text-[#8d9098] dark:text-[#8f929b]')}>
           No report data available for the selected date range.
@@ -1120,6 +1389,61 @@ function LegendRow({ isLast, slice }: { isLast: boolean; slice: DonutSlice }) {
           </Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+function LegendPagination({
+  page,
+  totalPages,
+  onNext,
+  onPrevious,
+}: {
+  page: number;
+  totalPages: number;
+  onNext: () => void;
+  onPrevious: () => void;
+}) {
+  const canGoPrevious = page > 1;
+  const canGoNext = page < totalPages;
+
+  return (
+    <View className="mt-3 flex-row items-center justify-between border-t border-[#ececf0] pt-3 dark:border-[#292a2f]">
+      <Pressable
+        accessibilityRole="button"
+        className={cx(
+          'h-8 flex-row items-center gap-1 rounded-full border border-[#dedee0] px-3 dark:border-[#33343a]',
+          !canGoPrevious && 'opacity-50'
+        )}
+        disabled={!canGoPrevious}
+        onPress={onPrevious}
+      >
+        <Ionicons
+          color={canGoPrevious ? '#71717a' : '#a1a1aa'}
+          name="chevron-back-outline"
+          size={14}
+        />
+        <Text className={cx(TYPE.rowValue, 'text-[#22252b] dark:text-white')}>Previous</Text>
+      </Pressable>
+      <Text className={cx(TYPE.rowMuted, 'text-[#8d9098] dark:text-[#8f929b]')}>
+        Page {page} of {totalPages}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        className={cx(
+          'h-8 flex-row items-center gap-1 rounded-full border border-[#dedee0] px-3 dark:border-[#33343a]',
+          !canGoNext && 'opacity-50'
+        )}
+        disabled={!canGoNext}
+        onPress={onNext}
+      >
+        <Text className={cx(TYPE.rowValue, 'text-[#22252b] dark:text-white')}>Next</Text>
+        <Ionicons
+          color={canGoNext ? '#22252b' : '#a1a1aa'}
+          name="chevron-forward-outline"
+          size={14}
+        />
+      </Pressable>
     </View>
   );
 }

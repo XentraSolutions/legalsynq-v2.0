@@ -1,5 +1,6 @@
 export const STORAGE_KEYS = {
   ACCESS_TOKEN: 'legalsynq.access_token',
+  LEGACY_ACCESS_TOKEN: 'legalsynq.legacy_access_token',
   USER_SESSION: 'legalsynq.user_session',
   REMEMBERED_TENANTS: 'legalsynq.remembered_tenants',
   ACTIVE_TENANT_ID: 'legalsynq.active_tenant_id',

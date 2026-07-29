@@ -71,7 +71,7 @@ type BreakdownFilterOption = {
 };
 
 const DETAIL_PAGE_SIZE = 5;
-const DETAIL_FILTER_LIMIT = 10000;
+const DETAIL_FILTER_LIMIT = 1000000;
 const ALL_FILTER_ID = 'all';
 
 const LIEN_BREAKDOWN: BreakdownItem[] = [
@@ -1312,7 +1312,7 @@ function lienRowsToBreakdownItems(rows: DashboardTotalLienReportRow[]): Breakdow
       {
         icon: 'person-outline',
         label: 'Plaintiff Name',
-        value: readReportText(record, ['clientName']) ?? 'N/A',
+        value: readReportText(record, ['clientName', 'plaintiffName']) ?? 'N/A',
       },
     ];
 

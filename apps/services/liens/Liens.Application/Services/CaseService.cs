@@ -334,6 +334,8 @@ public sealed class CaseService : ICaseService
 
     private static CaseResponse MapToResponse(Case entity)
     {
+        var metadata = ParseCaseMetadata(entity.Notes);
+
         return new CaseResponse
         {
             Id = entity.Id,
@@ -346,6 +348,10 @@ public sealed class CaseService : ICaseService
             Status = entity.Status,
             DateOfIncident = entity.DateOfIncident,
             ClientDob = entity.ClientDob,
+            AccidentType = GetMetadataValue(metadata, "accidentType"),
+            StateOfIncident = GetMetadataValue(metadata, "stateOfIncident", "accidentState", "state"),
+            LawFirm = GetMetadataValue(metadata, "lawFirm", "lawFirmName"),
+            CaseManager = GetMetadataValue(metadata, "caseManager", "caseManagerName"),
             ClientPhone = entity.ClientPhone,
             ClientEmail = entity.ClientEmail,
             ClientAddress = entity.ClientAddress,
@@ -361,5 +367,39 @@ public sealed class CaseService : ICaseService
             CreatedAtUtc = entity.CreatedAtUtc,
             UpdatedAtUtc = entity.UpdatedAtUtc,
         };
+    }
+
+    private static Dictionary<string, string> ParseCaseMetadata(string? notes)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(notes))
+            return metadata;
+
+        foreach (var segment in notes.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separatorIndex = segment.IndexOf('=');
+            if (separatorIndex <= 0)
+                continue;
+
+            var key = segment[..separatorIndex].Trim();
+            var value = segment[(separatorIndex + 1)..].Trim();
+            if (key.Length > 0 && value.Length > 0)
+                metadata[key] = value;
+        }
+
+        return metadata;
+    }
+
+    private static string? GetMetadataValue(
+        IReadOnlyDictionary<string, string> metadata,
+        params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (metadata.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
     }
 }
