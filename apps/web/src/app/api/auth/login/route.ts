@@ -79,7 +79,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Invalid request body' }, { status: 400 });
   }
 
-  const { email, password, tenantCode: explicitTenantCode } = body;
+  const {
+    email,
+    password,
+    tenantCode: explicitTenantCode,
+    tenantId: explicitTenantId,
+  } = body;
 
   if (!email || !password) {
     return NextResponse.json({ message: 'Email and password are required' }, { status: 400 });
@@ -127,7 +132,7 @@ export async function POST(request: NextRequest) {
   // - If the subdomain maps to a known tenant, pass tenantId + code (AUTH-B01 fallback path).
   // - If the Tenant service returns 404, this is the common portal (multi-tenant); tell
   //   Identity to resolve the tenant from the user's email instead (AUTH-CC01).
-  let resolvedTenantId: string | null = null;
+  let resolvedTenantId: string | null = normalizeGuid(explicitTenantId);
   let resolvedTenantCode: string = tenantCode;
   let resolveByEmail = isCommonPortalHost;
 
@@ -335,6 +340,15 @@ function extractRawSubdomain(rawHost: string): string | null {
   if (parts.length === 2 && parts[1] === 'localhost') return parts[0];
 
   return null;
+}
+
+function normalizeGuid(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)
+    ? trimmed
+    : null;
 }
 
 function isSynqLienFundingPortalLoginEligible(

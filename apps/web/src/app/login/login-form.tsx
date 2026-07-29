@@ -90,7 +90,14 @@ export function LoginForm({
     setLoading(true);
     try {
       const body: Record<string, string> = { email, password };
-      if (showTenantField && tenantCode) body.tenantCode = tenantCode;
+      const queryTenantId = sanitizeLoginQueryParam(searchParams?.get('tenantId'));
+      const queryTenantCode = sanitizeLoginQueryParam(searchParams?.get('tenantCode'));
+      if (queryTenantId) body.tenantId = queryTenantId;
+      if (queryTenantCode) {
+        body.tenantCode = queryTenantCode;
+      } else if (showTenantField && tenantCode) {
+        body.tenantCode = tenantCode;
+      }
 
       const res = await fetch('/api/auth/login', {
         method:  'POST',
@@ -222,6 +229,10 @@ export function LoginForm({
       </button>
     </form>
   );
+}
+
+function sanitizeLoginQueryParam(value: string | null | undefined): string {
+  return value?.trim() ?? '';
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

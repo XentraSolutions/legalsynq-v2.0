@@ -4,6 +4,7 @@ import {
   EMPTY_FUNDING_DASHBOARD,
   emptyOfferedLiensResult,
   getFundingDashboard,
+  getOfferedLienDetail,
   getOfferedLiens,
 } from './server-api';
 import { getOfferedLiensEmptyStateCopy } from './empty-state';
@@ -138,6 +139,57 @@ describe('SynqLien funding portal server API', () => {
     expect(serverGet).toHaveBeenCalledWith(
       '/liens/api/liens/selling/buyer/liens?status=Accepted&search=Xentra&page=3&pageSize=25&sort=sellerName&direction=desc',
     );
+  });
+
+  test('fetches offered lien detail by authenticated access-link id', async () => {
+    const detail = {
+      id: 'access-link-1',
+      lienId: 'lien-1',
+      lienNumber: 'LIEN-1',
+      title: 'Seller Operator',
+      seller: { name: 'Seller Operator', company: 'Smith & Associates LLP' },
+      status: 'Pending',
+      submittedAtUtc: '2026-07-28T12:00:00Z',
+      billingAmount: 6300,
+      documents: [{ id: 'doc-1', fileName: 'signed-lien.pdf', createdAtUtc: '2026-07-28T12:00:00Z' }],
+      messages: [],
+      activity: [],
+    };
+    serverGet.mockResolvedValueOnce({ data: detail });
+
+    await expect(getOfferedLienDetail('access-link-1')).resolves.toEqual({
+      ...detail,
+      buyer: null,
+      allowedActions: [],
+    });
+    expect(serverGet).toHaveBeenCalledWith('/liens/api/liens/selling/buyer/liens/access-link-1');
+  });
+
+  test('returns null offered lien detail for missing access-link detail', async () => {
+    serverGet.mockRejectedValueOnce(new ServerApiError(404, 'HTTP 404'));
+
+    await expect(getOfferedLienDetail('missing-link')).resolves.toBeNull();
+  });
+
+  test('normalizes partial offered lien detail arrays without adding fake rows', async () => {
+    serverGet.mockResolvedValueOnce({
+      id: 'access-link-2',
+      lienId: 'lien-2',
+      lienNumber: 'LIEN-2',
+      title: 'Seller',
+      status: 'Pending',
+      submittedAtUtc: '2026-07-28T12:00:00Z',
+      billingAmount: 100,
+    });
+
+    await expect(getOfferedLienDetail('access-link-2')).resolves.toMatchObject({
+      seller: {},
+      buyer: null,
+      documents: [],
+      messages: [],
+      activity: [],
+      allowedActions: [],
+    });
   });
 
   test('keeps filtered no-results copy distinct from no-data copy', () => {

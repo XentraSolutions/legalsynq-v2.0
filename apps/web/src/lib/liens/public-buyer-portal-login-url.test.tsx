@@ -24,5 +24,12 @@ describe("SynqLien buyer portal login URL", () => {
     ).toBe(
       "https://synqlien-demo.legalsynq.com/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation",
     );
+    expect(
+      normalizeSynqLienBuyerLoginUrl(
+        "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation&tenantId=019ea7f6-21e9-7421-ab54-7846cdc6bc76",
+      ),
+    ).toBe(
+      "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation&tenantId=019ea7f6-21e9-7421-ab54-7846cdc6bc76",
+    );
   });
 });

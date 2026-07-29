@@ -79,7 +79,17 @@ The authenticated funding-company portal reads offered liens from
 current buyer organization, with an email-based source buyer organization fallback for accounts created from public
 activation. It supports `status=Pending|Accepted|Declined`, free-text `search`, `page`, `pageSize`, `sort`, and
 `direction` query parameters for the `/funding/offered-liens` page. Pending rows return `view`, `accept`, and `decline`
-actions; accepted or declined rows return `view` only.
+actions only while the underlying lien remains actionable by the public buyer-response rules; accepted, declined, or
+otherwise non-actionable rows return `view` only. Row `detailHref` values point to the authenticated tenant portal route
+`/funding/offered-liens/{accessLinkId}`. The portal backs that route with
+`GET /api/liens/selling/buyer/liens/{accessLinkId}`, which returns persisted seller/lien fields plus real servicing
+documents, portal messages, and response activity for the funding company. Missing documents, messages, or activity are
+returned as empty arrays for the frontend empty states. The authenticated detail page posts messages through
+`POST /api/liens/selling/buyer/liens/{accessLinkId}/messages` and records responses through
+`POST /api/liens/selling/buyer/liens/{accessLinkId}/accept` or
+`POST /api/liens/selling/buyer/liens/{accessLinkId}/decline`; these endpoints enforce the same buyer scoping and then
+reuse the public-link workflows so the email link and logged-in funding portal share one message thread, response
+status, activity, and notification behavior.
 
 The temporary public portal endpoints are anonymous and token-scoped. `GET /api/liens/selling/public/{token}` returns
 JSON from persisted lien, case, contact, access-link, response, and servicing document metadata only, including
@@ -112,7 +122,9 @@ uses the token-scoped buyer organization/contact data to ask Identity to create 
 error so the buyer can log in with the existing account instead. It does not accept or decline the lien and does
 not finalize sale. The public `GET /api/liens/selling/public/{token}` response also includes an `account` block for
 buyer-purpose links; when Identity reports `hasExistingAccount=true`, the tenant portal replaces `Activate Free Account`
-with `Log In` and sends the buyer to `/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation`.
+with `Log In` and sends the buyer to `/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation&tenantId=<offer-tenant-id>`.
+The `tenantId` query parameter keeps common-portal sign-in scoped to the tenant that issued the offer when the buyer email
+belongs to multiple funding organizations.
 When sending links through the tenant portal host, configure
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
 `https://<portal-host>/selling/public` behind a real portal domain, so the public web route can render without a

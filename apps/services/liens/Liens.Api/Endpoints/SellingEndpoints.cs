@@ -2,6 +2,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using BuildingBlocks.Exceptions;
+using BuildingBlocks.Notifications;
 using HtmlAgilityPack;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
@@ -10,6 +11,8 @@ using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using NPOI.HSSF.UserModel;
 using NPOI.SS.UserModel;
 using NPOI.XSSF.UserModel;
@@ -29,6 +32,12 @@ public static class SellingEndpoints
         ".xls",
         ".xlsx",
     };
+    private static readonly string[] SellingDocumentTaskTypes =
+    [
+        "LegacyCaseDocument",
+        "LegacyLienDocument",
+        "LegacyMedicalDocument",
+    ];
 
     public static void MapSellingEndpoints(this WebApplication app)
     {
@@ -49,6 +58,18 @@ public static class SellingEndpoints
             .RequireProductAccess(LiensPermissions.ProductCode);
 
         buyerGroup.MapGet("/liens", GetBuyerOfferedLiens)
+            .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
+
+        buyerGroup.MapGet("/liens/{accessLinkId:guid}", GetBuyerOfferedLien)
+            .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
+
+        buyerGroup.MapPost("/liens/{accessLinkId:guid}/messages", PostBuyerOfferedLienMessage)
+            .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
+
+        buyerGroup.MapPost("/liens/{accessLinkId:guid}/accept", AcceptBuyerOfferedLien)
+            .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
+
+        buyerGroup.MapPost("/liens/{accessLinkId:guid}/decline", DeclineBuyerOfferedLien)
             .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
 
         var portfolios = group.MapGroup("/portfolios");
@@ -293,6 +314,8 @@ public static class SellingEndpoints
                     lien.FacilityId,
                     link.Token,
                     lien.LienNumber,
+                    lien.Status,
+                    lien.SellerStatus,
                     lien.ExternalReference,
                     lien.SubjectFirstName,
                     lien.SubjectLastName,
@@ -336,6 +359,167 @@ public static class SellingEndpoints
             .ToList();
 
         return Results.Ok(new BuyerOfferedLiensResult(pagedRows, page, pageSize, total));
+    }
+
+    private static async Task<IResult> GetBuyerOfferedLien(
+        Guid accessLinkId,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var (accessLink, error) = await ResolveBuyerOfferedLienAccessLinkAsync(accessLinkId, db, ctx, ct);
+        if (error is not null)
+            return error;
+
+        var tenantId = accessLink!.TenantId;
+
+        var lien = await db.Liens
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == accessLink.LienId, ct);
+
+        if (lien is null)
+            return Results.NotFound(new { error = new { code = "not_found", message = $"Offered lien '{accessLinkId}' not found." } });
+
+        var caseEntity = lien.CaseId.HasValue
+            ? await db.Cases
+                .AsNoTracking()
+                .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == lien.CaseId.Value, ct)
+            : null;
+
+        var buyerContact = await db.Contacts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(contact =>
+                contact.TenantId == tenantId &&
+                contact.Id == accessLink.BuyerContactId &&
+                contact.OrgId == accessLink.BuyerOrgId,
+                ct);
+
+        var sellerContacts = await db.Contacts
+            .AsNoTracking()
+            .Where(contact => contact.TenantId == tenantId && contact.OrgId == accessLink.SellerOrgId && contact.IsActive)
+            .ToListAsync(ct);
+
+        var sellerContact = SelectSellerContact(sellerContacts);
+        var providerName = await ResolveProviderNameAsync(db, tenantId, lien.FacilityId, ct);
+        var documents = await ResolveBuyerOfferedLienDocumentsAsync(db, tenantId, lien, caseEntity, ct);
+        var messages = await ResolveBuyerOfferedLienMessagesAsync(db, accessLink, ct);
+
+        return Results.Ok(MapBuyerOfferedLienDetail(
+            accessLink,
+            lien,
+            sellerContact,
+            buyerContact,
+            providerName,
+            documents,
+            messages));
+    }
+
+    private static async Task<IResult> PostBuyerOfferedLienMessage(
+        Guid accessLinkId,
+        SellingPublicEndpoints.PublicPortalMessageRequest? request,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        IConfiguration configuration,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var (accessLink, error) = await ResolveBuyerOfferedLienAccessLinkAsync(accessLinkId, db, ctx, ct);
+        if (error is not null)
+            return error;
+
+        return await SellingPublicEndpoints.PostTemporaryBuyerPortalMessage(
+            accessLink!.Token,
+            request,
+            httpContext,
+            notifications,
+            loggerFactory,
+            configuration,
+            db,
+            ct);
+    }
+
+    private static async Task<IResult> AcceptBuyerOfferedLien(
+        Guid accessLinkId,
+        SellingPublicEndpoints.PublicBuyerAcceptLienRequest? request,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var (accessLink, error) = await ResolveBuyerOfferedLienAccessLinkAsync(accessLinkId, db, ctx, ct);
+        if (error is not null)
+            return error;
+
+        return await SellingPublicEndpoints.AcceptTemporaryBuyerPortal(
+            accessLink!.Token,
+            request,
+            httpContext,
+            notifications,
+            loggerFactory,
+            db,
+            ct);
+    }
+
+    private static async Task<IResult> DeclineBuyerOfferedLien(
+        Guid accessLinkId,
+        SellingPublicEndpoints.PublicBuyerDeclineLienRequest? request,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var (accessLink, error) = await ResolveBuyerOfferedLienAccessLinkAsync(accessLinkId, db, ctx, ct);
+        if (error is not null)
+            return error;
+
+        return await SellingPublicEndpoints.DeclineTemporaryBuyerPortal(
+            accessLink!.Token,
+            request,
+            httpContext,
+            notifications,
+            loggerFactory,
+            db,
+            ct);
+    }
+
+    private static async Task<(SellingBuyerAccessLink? AccessLink, IResult? Error)> ResolveBuyerOfferedLienAccessLinkAsync(
+        Guid accessLinkId,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var authenticatedOrgId = RequireOrgId(ctx);
+        var buyerOrgIds = await ResolveBuyerOrgIdsAsync(db, tenantId, authenticatedOrgId, ctx.Email, ct);
+
+        var accessLink = await db.SellingBuyerAccessLinks
+            .AsNoTracking()
+            .FirstOrDefaultAsync(link =>
+                link.TenantId == tenantId &&
+                link.Id == accessLinkId &&
+                link.Purpose == SellingAccessLinkPurposes.ConfirmSaleBuyerResponse &&
+                link.RevokedAtUtc == null,
+                ct);
+
+        if (accessLink is null || !buyerOrgIds.Contains(accessLink.BuyerOrgId))
+        {
+            return (null, Results.NotFound(new
+            {
+                error = new
+                {
+                    code = "not_found",
+                    message = $"Offered lien '{accessLinkId}' not found.",
+                },
+            }));
+        }
+
+        return (accessLink, null);
     }
 
     private static async Task<List<SellingBuyerAccessLink>> LoadBuyerAccessLinksAsync(
@@ -480,6 +664,191 @@ public static class SellingEndpoints
         return names;
     }
 
+    private static async Task<string?> ResolveProviderNameAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid? facilityId,
+        CancellationToken ct)
+    {
+        if (!facilityId.HasValue)
+            return null;
+
+        var facility = await db.Facilities
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.Id == facilityId.Value)
+            .Select(item => new { item.Name })
+            .FirstOrDefaultAsync(ct);
+
+        return FirstNonEmpty(new[] { facility?.Name });
+    }
+
+    private static async Task<IReadOnlyList<BuyerOfferedLienDocument>> ResolveBuyerOfferedLienDocumentsAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Lien lien,
+        Case? caseEntity,
+        CancellationToken ct)
+    {
+        var caseId = caseEntity?.Id;
+        var query = db.ServicingItems
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId);
+
+        query = caseId.HasValue
+            ? query.Where(item => item.LienId == lien.Id || item.CaseId == caseId.Value)
+            : query.Where(item => item.LienId == lien.Id);
+
+        var items = await query
+            .OrderBy(item => item.CreatedAtUtc)
+            .ThenBy(item => item.Id)
+            .ToListAsync(ct);
+
+        return items
+            .Where(item => SellingDocumentTaskTypes.Contains(item.TaskType, StringComparer.Ordinal))
+            .Select(MapBuyerOfferedLienDocument)
+            .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
+            .DistinctBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static BuyerOfferedLienDocument MapBuyerOfferedLienDocument(ServicingItem item)
+    {
+        var fields = ParseLegacyNoteFields(item.Notes);
+        var fileName = FirstNonEmpty(new[]
+        {
+            fields.GetValueOrDefault("originalFileName"),
+            fields.GetValueOrDefault("filename"),
+            item.Description,
+        }) ?? string.Empty;
+
+        var category = FirstNonEmpty(new[]
+        {
+            fields.GetValueOrDefault("documentCategory"),
+            fields.GetValueOrDefault("category"),
+            HumanizeDocumentTaskType(item.TaskType),
+        });
+
+        var sizeOrType = FirstNonEmpty(new[]
+        {
+            fields.GetValueOrDefault("size"),
+            fields.GetValueOrDefault("fileSize"),
+            fields.GetValueOrDefault("contentLength"),
+            ResolveFileExtension(fileName),
+        });
+
+        return new BuyerOfferedLienDocument(
+            item.Id,
+            fileName.Trim(),
+            category,
+            FormatDocumentSize(sizeOrType),
+            fields.GetValueOrDefault("url"),
+            item.CreatedAtUtc);
+    }
+
+    private static async Task<IReadOnlyList<SellingPortalMessage>> ResolveBuyerOfferedLienMessagesAsync(
+        LiensDbContext db,
+        SellingBuyerAccessLink accessLink,
+        CancellationToken ct)
+        => await db.SellingPortalMessages
+            .AsNoTracking()
+            .Where(message =>
+                message.TenantId == accessLink.TenantId &&
+                message.LienId == accessLink.LienId &&
+                message.SellerOrgId == accessLink.SellerOrgId &&
+                message.BuyerOrgId == accessLink.BuyerOrgId &&
+                message.BuyerContactId == accessLink.BuyerContactId)
+            .OrderBy(message => message.CreatedAtUtc)
+            .ThenBy(message => message.Id)
+            .ToListAsync(ct);
+
+    private static BuyerOfferedLienDetailResponse MapBuyerOfferedLienDetail(
+        SellingBuyerAccessLink accessLink,
+        Lien lien,
+        Contact? sellerContact,
+        Contact? buyerContact,
+        string? providerName,
+        IReadOnlyList<BuyerOfferedLienDocument> documents,
+        IReadOnlyList<SellingPortalMessage> messages)
+    {
+        var status = GetBuyerOfferedLienStatus(accessLink.ResponseStatus);
+        var askAmount = lien.AskAmount ?? lien.OfferPrice;
+        var submittedAtUtc = accessLink.NotificationSubmittedAtUtc ?? lien.SubmittedForSaleAtUtc ?? accessLink.CreatedAtUtc;
+        var sellerName = FirstNonEmpty(new[] { sellerContact?.DisplayName, "Seller unavailable" }) ?? "Seller unavailable";
+        var sellerCompany = FirstNonEmpty(new[] { sellerContact?.Organization, sellerContact?.DisplayName });
+        var title = FirstNonEmpty(new[] { sellerContact?.DisplayName, ResolveLienSubjectName(lien), lien.LienNumber }) ?? lien.Id.ToString();
+        var subtitle = FirstNonEmpty(new[] { sellerCompany, providerName, lien.LienNumber });
+        var canRespond = status == BuyerOfferedLienStatuses.Pending &&
+            IsBuyerResponseActionableOffer(lien.Status, lien.SellerStatus);
+        var allowedActions = canRespond
+            ? new[] { "view", "accept", "decline" }
+            : new[] { "view" };
+
+        return new BuyerOfferedLienDetailResponse(
+            accessLink.Id,
+            lien.Id,
+            lien.LienNumber,
+            title,
+            subtitle,
+            new BuyerOfferedLienSellerDetail(
+                sellerName,
+                sellerCompany,
+                sellerContact?.Email),
+            new BuyerOfferedLienBuyerDetail(
+                FirstNonEmpty(new[] { buyerContact?.DisplayName }),
+                FirstNonEmpty(new[] { buyerContact?.Organization }),
+                buyerContact?.Email,
+                buyerContact?.Phone),
+            FirstNonEmpty(new[] { providerName }),
+            status,
+            submittedAtUtc,
+            lien.InitialServiceDate,
+            lien.EndServiceDate,
+            lien.OriginalAmount,
+            askAmount,
+            lien.HighestBidAmount,
+            accessLink.ResponseAmount,
+            FirstNonEmpty(new[] { lien.Description, lien.Notes }),
+            accessLink.ExpiresAtUtc,
+            accessLink.ResponseStatus,
+            accessLink.ResponseNotes,
+            accessLink.RespondedAtUtc,
+            allowedActions,
+            documents,
+            messages.Select(MapBuyerOfferedLienMessage).ToList(),
+            BuildBuyerOfferedLienActivity(accessLink));
+    }
+
+    private static BuyerOfferedLienMessage MapBuyerOfferedLienMessage(SellingPortalMessage message)
+        => new(
+            message.Id,
+            message.SenderType,
+            message.SenderName,
+            BuildInitials(message.SenderName),
+            message.SenderEmail,
+            message.Message,
+            message.CreatedAtUtc,
+            string.Equals(message.SenderType, SellingPortalMessageSenderType.Buyer, StringComparison.Ordinal));
+
+    private static IReadOnlyList<BuyerOfferedLienActivityItem> BuildBuyerOfferedLienActivity(
+        SellingBuyerAccessLink accessLink)
+    {
+        if (string.IsNullOrWhiteSpace(accessLink.ResponseStatus) || !accessLink.RespondedAtUtc.HasValue)
+            return [];
+
+        var label = string.Equals(accessLink.ResponseStatus, SellingBuyerResponseStatus.Accepted, StringComparison.Ordinal)
+            ? "Pending -> Accepted"
+            : "Pending -> Declined";
+
+        return
+        [
+            new BuyerOfferedLienActivityItem(
+                $"{accessLink.Id:N}-response",
+                label,
+                accessLink.RespondedAtUtc.Value,
+                accessLink.ResponseNotes)
+        ];
+    }
+
     private static BuyerOfferedLienRow MapBuyerOfferedLienRow(
         BuyerOfferedLienSource source,
         IReadOnlyDictionary<Guid, string> sellerNames,
@@ -489,7 +858,9 @@ public static class SellingEndpoints
         var askAmount = source.AskAmount ?? source.OfferPrice;
         var offeredAmount = source.ResponseAmount ?? askAmount ?? 0m;
         var receivedAtUtc = source.NotificationSubmittedAtUtc ?? source.SubmittedForSaleAtUtc ?? source.CreatedAtUtc;
-        IReadOnlyList<string> allowedActions = status == BuyerOfferedLienStatuses.Pending
+        var canRespond = status == BuyerOfferedLienStatuses.Pending &&
+            IsBuyerResponseActionableOffer(source.LienStatus, source.SellerStatus);
+        IReadOnlyList<string> allowedActions = canRespond
             ? ["view", "accept", "decline"]
             : new[] { "view" };
 
@@ -514,7 +885,7 @@ public static class SellingEndpoints
             status,
             source.ExpiresAtUtc,
             allowedActions,
-            $"/selling/public/{Uri.EscapeDataString(source.Token)}",
+            $"/funding/offered-liens/{source.AccessLinkId}",
             BuildSearchText(source));
     }
 
@@ -623,12 +994,102 @@ public static class SellingEndpoints
             _ => BuyerOfferedLienStatuses.Pending,
         };
 
+    private static bool IsBuyerResponseActionableOffer(string? lienStatus, string? sellerStatus)
+        => string.Equals(sellerStatus, SellingLienStatus.SubmittedForSale, StringComparison.Ordinal) ||
+           (string.IsNullOrWhiteSpace(sellerStatus) && IsBuyerResponseActionableLienStatus(lienStatus));
+
+    private static bool IsBuyerResponseActionableLienStatus(string? status)
+        => string.Equals(status, LienStatus.Offered, StringComparison.Ordinal) ||
+           string.Equals(status, LienStatus.UnderReview, StringComparison.Ordinal);
+
     private static bool IsFundingCompanyContactType(string contactType)
         => string.Equals(contactType, ContactType.LienHolder, StringComparison.Ordinal) ||
            string.Equals(contactType, ContactType.FundingCompany, StringComparison.Ordinal);
 
     private static string? FirstNonEmpty(IEnumerable<string?> values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
+    private static Contact? SelectSellerContact(IReadOnlyList<Contact> contacts)
+        => contacts.FirstOrDefault(contact =>
+               string.Equals(contact.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
+               string.IsNullOrWhiteSpace(contact.ContactSubtype) &&
+               !string.IsNullOrWhiteSpace(contact.Email))
+           ?? contacts.FirstOrDefault(contact => !string.IsNullOrWhiteSpace(contact.Email))
+           ?? contacts.FirstOrDefault();
+
+    private static string? ResolveLienSubjectName(Lien lien)
+        => FirstNonEmpty(new[]
+        {
+            string.Join(' ', new[] { lien.SubjectFirstName, lien.SubjectLastName }
+                .Where(value => !string.IsNullOrWhiteSpace(value))),
+        });
+
+    private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(notes))
+            return result;
+
+        foreach (var segment in notes.Split("; ", StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = segment.IndexOf('=');
+            if (eq <= 0)
+                continue;
+
+            var key = segment[..eq].Trim();
+            var value = segment[(eq + 1)..].Trim();
+            if (!string.IsNullOrWhiteSpace(key))
+                result[key] = value;
+        }
+
+        return result;
+    }
+
+    private static string FormatDocumentSize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var trimmed = value.Trim();
+        if (!long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var bytes))
+            return trimmed;
+
+        if (bytes >= 1024L * 1024L)
+            return $"{bytes / (1024m * 1024m):0.#} MB";
+        if (bytes >= 1024L)
+            return $"{bytes / 1024m:0.#} KB";
+
+        return $"{bytes} B";
+    }
+
+    private static string? ResolveFileExtension(string fileName)
+    {
+        var extension = Path.GetExtension(fileName);
+        return string.IsNullOrWhiteSpace(extension)
+            ? null
+            : extension.TrimStart('.').ToUpperInvariant();
+    }
+
+    private static string HumanizeDocumentTaskType(string taskType)
+        => taskType switch
+        {
+            "LegacyCaseDocument" => "Case Document",
+            "LegacyLienDocument" => "Lien Document",
+            "LegacyMedicalDocument" => "Medical Document",
+            _ => "Document",
+        };
+
+    private static string BuildInitials(string value)
+    {
+        var parts = value
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length >= 2)
+            return $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant();
+
+        return value.Length >= 2
+            ? value[..2].ToUpperInvariant()
+            : value.ToUpperInvariant();
+    }
 
     private static string BuildSearchText(BuyerOfferedLienSource source)
         => string.Join(' ', new[]
@@ -1010,6 +1471,8 @@ public static class SellingEndpoints
         Guid? FacilityId,
         string Token,
         string LienNumber,
+        string LienStatus,
+        string? SellerStatus,
         string? ExternalReference,
         string? SubjectFirstName,
         string? SubjectLastName,
@@ -1050,6 +1513,68 @@ public static class SellingEndpoints
         IReadOnlyList<string> AllowedActions,
         string DetailHref,
         [property: JsonIgnore] string SearchText);
+
+    private sealed record BuyerOfferedLienDetailResponse(
+        Guid Id,
+        Guid LienId,
+        string LienNumber,
+        string Title,
+        string? Subtitle,
+        BuyerOfferedLienSellerDetail Seller,
+        BuyerOfferedLienBuyerDetail Buyer,
+        string? ProviderName,
+        string Status,
+        DateTime SubmittedAtUtc,
+        DateOnly? InitialServiceDate,
+        DateOnly? EndServiceDate,
+        decimal BillingAmount,
+        decimal? AskAmount,
+        decimal? HighestBidAmount,
+        decimal? ResponseAmount,
+        string? Notes,
+        DateTime ResponseDueAtUtc,
+        string? ResponseStatus,
+        string? ResponseNotes,
+        DateTime? RespondedAtUtc,
+        IReadOnlyList<string> AllowedActions,
+        IReadOnlyList<BuyerOfferedLienDocument> Documents,
+        IReadOnlyList<BuyerOfferedLienMessage> Messages,
+        IReadOnlyList<BuyerOfferedLienActivityItem> Activity);
+
+    private sealed record BuyerOfferedLienSellerDetail(
+        string Name,
+        string? Company,
+        string? Email);
+
+    private sealed record BuyerOfferedLienBuyerDetail(
+        string? ContactName,
+        string? Company,
+        string? Email,
+        string? Phone);
+
+    private sealed record BuyerOfferedLienDocument(
+        Guid Id,
+        string FileName,
+        string? Category,
+        string SizeOrType,
+        string? Url,
+        DateTime CreatedAtUtc);
+
+    private sealed record BuyerOfferedLienMessage(
+        Guid Id,
+        string SenderType,
+        string SenderName,
+        string SenderInitials,
+        string? SenderEmail,
+        string Message,
+        DateTime CreatedAtUtc,
+        bool IsCurrentUser);
+
+    private sealed record BuyerOfferedLienActivityItem(
+        string Id,
+        string Label,
+        DateTime OccurredAtUtc,
+        string? Notes);
 
     private sealed record SellingPatientDetailsImport(
         List<string> Columns,

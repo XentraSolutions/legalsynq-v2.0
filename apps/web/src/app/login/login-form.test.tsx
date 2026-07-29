@@ -73,4 +73,39 @@ describe('LoginForm', () => {
       expect(push).toHaveBeenCalledWith('/funding/dashboard');
     });
   });
+
+  test('forwards tenantId from the login URL to the BFF', async () => {
+    getSearchParam.mockImplementation((key: string) => {
+      if (key === 'tenantId') return '019ea7f6-21e9-7421-ab54-7846cdc6bc76';
+      if (key === 'returnTo') return '/funding/dashboard';
+      return null;
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<LoginForm defaultReturnTo="/funding/dashboard" />);
+
+    const inputs = screen.getAllByRole('textbox');
+    fireEvent.change(inputs[0], {
+      target: { value: 'buyer@example.com' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('••••••••'), {
+      target: { value: 'Password123!' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      email: 'buyer@example.com',
+      tenantId: '019ea7f6-21e9-7421-ab54-7846cdc6bc76',
+    });
+  });
 });

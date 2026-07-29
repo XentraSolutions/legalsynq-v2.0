@@ -1131,7 +1131,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         json.GetProperty("accessLink").GetProperty("expiresAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
         json.GetProperty("account").GetProperty("hasExistingAccount").GetBoolean().Should().BeFalse();
         json.GetProperty("account").GetProperty("loginUrl").GetString()
-            .Should().Be("/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation");
+            .Should().Be($"/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation&tenantId={SeedHelper.TenantId:D}");
 
         var documents = json.GetProperty("documents").EnumerateArray().ToList();
         documents.Should().ContainSingle();
@@ -1208,7 +1208,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         pageOneRows[0].GetProperty("initialServiceDate").GetString().Should().Be("2026-05-01");
         pageOneRows[0].GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
             .Should().Equal("view", "accept", "decline");
-        pageOneRows[0].GetProperty("detailHref").GetString().Should().Be($"/selling/public/{alphaToken}");
+        var alphaAccessLinkId = pageOneRows[0].GetProperty("id").GetGuid();
+        pageOneRows[0].GetProperty("detailHref").GetString()
+            .Should().Be($"/funding/offered-liens/{alphaAccessLinkId}");
         pageOneRows.Select(row => row.GetProperty("lienNumber").GetString())
             .Should().NotContain("ZZZ-OTHER-999");
 
@@ -1222,7 +1224,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         acceptedRow.GetProperty("status").GetString().Should().Be("Accepted");
         acceptedRow.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
             .Should().Equal("view");
-        acceptedRow.GetProperty("detailHref").GetString().Should().Be($"/selling/public/{betaToken}");
+        var betaAccessLinkId = acceptedRow.GetProperty("id").GetGuid();
+        acceptedRow.GetProperty("detailHref").GetString()
+            .Should().Be($"/funding/offered-liens/{betaAccessLinkId}");
 
         var search = await buyerClient.GetAsync("/api/liens/selling/buyer/liens?search=gamma");
         search.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -1258,8 +1262,437 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             $"Body: {await emailScoped.Content.ReadAsStringAsync()}");
         var emailScopedJson = await emailScoped.Content.ReadFromJsonAsync<JsonElement>();
         emailScopedJson.GetProperty("total").GetInt32().Should().Be(1);
-        emailScopedJson.GetProperty("rows").EnumerateArray().Single()
-            .GetProperty("detailHref").GetString().Should().Be($"/selling/public/{gammaToken}");
+        var gammaRow = emailScopedJson.GetProperty("rows").EnumerateArray().Single();
+        gammaRow.GetProperty("detailHref").GetString()
+            .Should().Be($"/funding/offered-liens/{gammaRow.GetProperty("id").GetGuid()}");
+    }
+
+    [Fact]
+    public async Task BuyerOfferedLien_returns_detail_documents_messages_and_activity_for_authenticated_buyer()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var (_, token) = await CreatePublicLienOfferAsync(
+            "buyer-detail",
+            lienNumber: "DETAIL-100",
+            initialServiceDate: new DateOnly(2026, 7, 1),
+            originalAmount: 6300m,
+            buyerOrgId: buyerOrgId,
+            documentFileName: "signed-lien-detail.pdf");
+
+        using var anonClient = _factory.CreateClient();
+        var messageResponse = await anonClient.PostAsJsonAsync(
+            $"/api/liens/selling/public/{token}/messages",
+            new { message = "Please review the attached signed lien package." });
+        messageResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await messageResponse.Content.ReadAsStringAsync()}");
+
+        var acceptResponse = await PostPublicBuyerResponseAsync(
+            token,
+            "accept",
+            new { notes = "Accepted after reviewing the detail package" },
+            "buyer-detail-accept-response");
+        acceptResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await acceptResponse.Content.ReadAsStringAsync()}");
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var listResponse = await buyerClient.GetAsync("/api/liens/selling/buyer/liens?search=DETAIL-100");
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await listResponse.Content.ReadAsStringAsync()}");
+        var listJson = await listResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var row = listJson.GetProperty("rows").EnumerateArray().Single();
+        var accessLinkId = row.GetProperty("id").GetGuid();
+        row.GetProperty("detailHref").GetString().Should().Be($"/funding/offered-liens/{accessLinkId}");
+
+        var detailResponse = await buyerClient.GetAsync($"/api/liens/selling/buyer/liens/{accessLinkId}");
+        detailResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detailResponse.Content.ReadAsStringAsync()}");
+        var detail = await detailResponse.Content.ReadFromJsonAsync<JsonElement>();
+
+        detail.GetProperty("id").GetGuid().Should().Be(accessLinkId);
+        detail.GetProperty("lienNumber").GetString().Should().Be("DETAIL-100");
+        detail.GetProperty("title").GetString().Should().Be("Seller Operator");
+        detail.GetProperty("seller").GetProperty("company").GetString().Should().Be("Smith & Associates LLP");
+        detail.GetProperty("buyer").GetProperty("company").GetString().Should().Be("Capital Fund LLC");
+        detail.GetProperty("status").GetString().Should().Be("Accepted");
+        detail.GetProperty("billingAmount").GetDecimal().Should().Be(6300m);
+        detail.GetProperty("askAmount").GetDecimal().Should().Be(2500m);
+        detail.GetProperty("initialServiceDate").GetString().Should().Be("2026-07-01");
+        detail.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
+            .Should().Equal("view");
+
+        var documents = detail.GetProperty("documents").EnumerateArray().ToList();
+        documents.Should().ContainSingle();
+        documents[0].GetProperty("fileName").GetString().Should().Be("signed-lien-detail.pdf");
+        documents[0].GetProperty("category").GetString().Should().Be("Lien Document");
+        documents[0].GetProperty("sizeOrType").GetString().Should().Be("PDF");
+        documents[0].GetProperty("url").GetString().Should().StartWith("/documents/");
+
+        var messages = detail.GetProperty("messages").EnumerateArray().ToList();
+        messages.Should().ContainSingle();
+        messages[0].GetProperty("senderType").GetString().Should().Be("buyer");
+        messages[0].GetProperty("senderName").GetString().Should().Be("Buyer Reviewer");
+        messages[0].GetProperty("message").GetString()
+            .Should().Be("Please review the attached signed lien package.");
+        messages[0].GetProperty("isCurrentUser").GetBoolean().Should().BeTrue();
+
+        var activity = detail.GetProperty("activity").EnumerateArray().ToList();
+        activity.Should().ContainSingle();
+        activity[0].GetProperty("label").GetString().Should().Be("Pending -> Accepted");
+        activity[0].GetProperty("notes").GetString().Should().Be("Accepted after reviewing the detail package");
+
+        using var otherBuyerClient = CreateBuyerClient(Guid.CreateVersion7());
+        var forbiddenScope = await otherBuyerClient.GetAsync($"/api/liens/selling/buyer/liens/{accessLinkId}");
+        forbiddenScope.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task BuyerOfferedLien_hides_response_actions_when_lien_is_no_longer_actionable()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var (lienId, _) = await CreatePublicLienOfferAsync(
+            "buyer-non-actionable",
+            lienNumber: "NON-ACTION-100",
+            buyerOrgId: buyerOrgId);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = db.Liens.Single(item => item.Id == lienId);
+            lien.TransitionStatus(LienStatus.Accepted, SeedHelper.UserId);
+            lien.UpdateSellingAnalyticsFields(SeedHelper.UserId, sellerStatus: SellingLienStatus.Accepted);
+            await db.SaveChangesAsync();
+        }
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var listResponse = await buyerClient.GetAsync("/api/liens/selling/buyer/liens?search=NON-ACTION-100");
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await listResponse.Content.ReadAsStringAsync()}");
+        var listJson = await listResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var row = listJson.GetProperty("rows").EnumerateArray().Single();
+        row.GetProperty("status").GetString().Should().Be("Pending");
+        row.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
+            .Should().Equal("view");
+
+        var accessLinkId = row.GetProperty("id").GetGuid();
+        var detailResponse = await buyerClient.GetAsync($"/api/liens/selling/buyer/liens/{accessLinkId}");
+        detailResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detailResponse.Content.ReadAsStringAsync()}");
+        var detail = await detailResponse.Content.ReadFromJsonAsync<JsonElement>();
+        detail.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
+            .Should().Equal("view");
+    }
+
+    [Fact]
+    public async Task BuyerOfferedLien_allows_response_actions_when_lien_is_under_review()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var (lienId, _) = await CreatePublicLienOfferAsync(
+            "buyer-under-review",
+            lienNumber: "UNDER-REVIEW-100",
+            buyerOrgId: buyerOrgId);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var setupDb = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = setupDb.Liens.Single(item => item.Id == lienId);
+            lien.TransitionStatus(LienStatus.UnderReview, SeedHelper.UserId);
+            await setupDb.SaveChangesAsync();
+        }
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var listResponse = await buyerClient.GetAsync("/api/liens/selling/buyer/liens?search=UNDER-REVIEW-100");
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await listResponse.Content.ReadAsStringAsync()}");
+        var listJson = await listResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var row = listJson.GetProperty("rows").EnumerateArray().Single();
+        row.GetProperty("status").GetString().Should().Be("Pending");
+        row.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
+            .Should().Equal("view", "accept", "decline");
+
+        var accessLinkId = row.GetProperty("id").GetGuid();
+        var detailResponse = await buyerClient.GetAsync($"/api/liens/selling/buyer/liens/{accessLinkId}");
+        detailResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detailResponse.Content.ReadAsStringAsync()}");
+        var detail = await detailResponse.Content.ReadFromJsonAsync<JsonElement>();
+        detail.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
+            .Should().Equal("view", "accept", "decline");
+
+        ClearCapturedEmails();
+        var acceptResponse = await PostBuyerOfferedLienResponseAsync(
+            buyerClient,
+            accessLinkId,
+            "accept",
+            new { notes = "Accepted while under review." },
+            "auth-buyer-under-review-accept");
+
+        acceptResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await acceptResponse.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        verifyDb.Liens.Single(item => item.Id == lienId).Status.Should().Be(LienStatus.Accepted);
+        var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().HaveCount(2);
+        publisher.Emails.Single(email => email.Metadata["recipientRole"] == "seller")
+            .RecipientEmail.Should().Be("seller.buyer-under-review@smithlaw.test");
+    }
+
+    [Fact]
+    public async Task BuyerOfferedLien_allows_response_actions_for_submitted_selling_offer_with_legacy_lifecycle_status()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var (lienId, _) = await CreatePublicLienOfferAsync(
+            "buyer-legacy-active",
+            lienNumber: "LEGACY-ACTIVE-100",
+            buyerOrgId: buyerOrgId);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var setupDb = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = setupDb.Liens.Single(item => item.Id == lienId);
+            lien.SetLegacyMedicalStatus(LienStatus.Active, SeedHelper.UserId);
+            lien.UpdateSellingAnalyticsFields(SeedHelper.UserId, sellerStatus: SellingLienStatus.SubmittedForSale);
+            await setupDb.SaveChangesAsync();
+        }
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var listResponse = await buyerClient.GetAsync("/api/liens/selling/buyer/liens?search=LEGACY-ACTIVE-100");
+        listResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await listResponse.Content.ReadAsStringAsync()}");
+        var listJson = await listResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var row = listJson.GetProperty("rows").EnumerateArray().Single();
+        row.GetProperty("status").GetString().Should().Be("Pending");
+        row.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
+            .Should().Equal("view", "accept", "decline");
+
+        var accessLinkId = row.GetProperty("id").GetGuid();
+        var detailResponse = await buyerClient.GetAsync($"/api/liens/selling/buyer/liens/{accessLinkId}");
+        detailResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detailResponse.Content.ReadAsStringAsync()}");
+        var detail = await detailResponse.Content.ReadFromJsonAsync<JsonElement>();
+        detail.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
+            .Should().Equal("view", "accept", "decline");
+
+        ClearCapturedEmails();
+        var acceptResponse = await PostBuyerOfferedLienResponseAsync(
+            buyerClient,
+            accessLinkId,
+            "accept",
+            new { notes = "Accepted from legacy lifecycle offer." },
+            "auth-buyer-legacy-active-accept");
+
+        acceptResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await acceptResponse.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedLien = verifyDb.Liens.Single(item => item.Id == lienId);
+        persistedLien.Status.Should().Be(LienStatus.Active);
+        persistedLien.SellerStatus.Should().Be(SellingLienStatus.Accepted);
+        var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().HaveCount(2);
+        publisher.Emails.Single(email => email.Metadata["recipientRole"] == "seller")
+            .RecipientEmail.Should().Be("seller.buyer-legacy-active@smithlaw.test");
+    }
+
+    [Fact]
+    public async Task BuyerOfferedLien_message_post_uses_shared_public_message_thread_for_authenticated_buyer()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var (lienId, token) = await CreatePublicLienOfferAsync(
+            "buyer-auth-message",
+            lienNumber: "AUTH-MSG-100",
+            buyerOrgId: buyerOrgId);
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var accessLinkId = await GetBuyerOfferedLienAccessLinkIdAsync(buyerClient, "AUTH-MSG-100");
+        ClearCapturedEmails();
+
+        var response = await buyerClient.PostAsJsonAsync(
+            $"/api/liens/selling/buyer/liens/{accessLinkId}/messages",
+            new { message = "Shared portal message from funding detail." });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var message = await response.Content.ReadFromJsonAsync<JsonElement>();
+        message.GetProperty("senderType").GetString().Should().Be("buyer");
+        message.GetProperty("senderName").GetString().Should().Be("Buyer Reviewer");
+        message.GetProperty("message").GetString().Should().Be("Shared portal message from funding detail.");
+
+        using var anonClient = _factory.CreateClient();
+        var publicView = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+        publicView.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await publicView.Content.ReadAsStringAsync()}");
+        var publicJson = await publicView.Content.ReadFromJsonAsync<JsonElement>();
+        var publicMessages = publicJson.GetProperty("messages").EnumerateArray().ToList();
+        publicMessages.Should().ContainSingle();
+        publicMessages[0].GetProperty("message").GetString().Should().Be("Shared portal message from funding detail.");
+
+        var detail = await buyerClient.GetAsync($"/api/liens/selling/buyer/liens/{accessLinkId}");
+        detail.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detail.Content.ReadAsStringAsync()}");
+        var detailJson = await detail.Content.ReadFromJsonAsync<JsonElement>();
+        var detailMessages = detailJson.GetProperty("messages").EnumerateArray().ToList();
+        detailMessages.Should().ContainSingle();
+        detailMessages[0].GetProperty("message").GetString().Should().Be("Shared portal message from funding detail.");
+        detailMessages[0].GetProperty("isCurrentUser").GetBoolean().Should().BeTrue();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+            publisher.Emails.Should().ContainSingle();
+            var sellerEmail = publisher.Emails.Single();
+            sellerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferMessageCreated);
+            sellerEmail.RecipientEmail.Should().Be("seller.buyer-auth-message@smithlaw.test");
+            sellerEmail.Body.Should().Contain("Buyer Reviewer sent a message");
+            sellerEmail.Body.Should().Contain("Shared portal message from funding detail.");
+        }
+
+        string sellerToken;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            sellerToken = db.SellingBuyerAccessLinks
+                .Single(link =>
+                    link.LienId == lienId &&
+                    link.Purpose == SellingAccessLinkPurposes.ConfirmSaleSellerView)
+                .Token;
+        }
+
+        ClearCapturedEmails();
+        var sellerPost = await anonClient.PostAsJsonAsync(
+            $"/api/liens/selling/public/{sellerToken}/messages",
+            new { message = "Seller reply from the public email link." });
+        sellerPost.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await sellerPost.Content.ReadAsStringAsync()}");
+
+        var updatedDetail = await buyerClient.GetAsync($"/api/liens/selling/buyer/liens/{accessLinkId}");
+        updatedDetail.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatedDetail.Content.ReadAsStringAsync()}");
+        var updatedDetailJson = await updatedDetail.Content.ReadFromJsonAsync<JsonElement>();
+        var updatedDetailMessages = updatedDetailJson.GetProperty("messages").EnumerateArray().ToList();
+        updatedDetailMessages.Should().HaveCount(2);
+        updatedDetailMessages[1].GetProperty("senderType").GetString().Should().Be("seller");
+        updatedDetailMessages[1].GetProperty("message").GetString()
+            .Should().Be("Seller reply from the public email link.");
+        updatedDetailMessages[1].GetProperty("isCurrentUser").GetBoolean().Should().BeFalse();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+            publisher.Emails.Should().ContainSingle();
+            var buyerEmail = publisher.Emails.Single();
+            buyerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferMessageCreated);
+            buyerEmail.RecipientEmail.Should().Be("buyer.buyer-auth-message@capital.test");
+            buyerEmail.Body.Should().Contain("Seller Operator sent a message");
+            buyerEmail.Body.Should().Contain("Seller reply from the public email link.");
+        }
+
+        using var otherBuyerClient = CreateBuyerClient(Guid.CreateVersion7());
+        var forbiddenScope = await otherBuyerClient.PostAsJsonAsync(
+            $"/api/liens/selling/buyer/liens/{accessLinkId}/messages",
+            new { message = "Other buyer should not post." });
+        forbiddenScope.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task BuyerOfferedLien_accept_records_shared_public_response_for_authenticated_buyer()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var (lienId, token) = await CreatePublicLienOfferAsync(
+            "buyer-auth-accept",
+            lienNumber: "AUTH-ACCEPT-100",
+            buyerOrgId: buyerOrgId);
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var accessLinkId = await GetBuyerOfferedLienAccessLinkIdAsync(buyerClient, "AUTH-ACCEPT-100");
+        ClearCapturedEmails();
+
+        var response = await PostBuyerOfferedLienResponseAsync(
+            buyerClient,
+            accessLinkId,
+            "accept",
+            new { notes = "Accepted from authenticated funding portal." },
+            "auth-buyer-accept-response");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("accessLink").GetProperty("responseStatus").GetString()
+            .Should().Be(SellingBuyerResponseStatus.Accepted);
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Accepted);
+
+        using var anonClient = _factory.CreateClient();
+        var publicView = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+        publicView.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await publicView.Content.ReadAsStringAsync()}");
+        var publicJson = await publicView.Content.ReadFromJsonAsync<JsonElement>();
+        publicJson.GetProperty("accessLink").GetProperty("responseStatus").GetString()
+            .Should().Be(SellingBuyerResponseStatus.Accepted);
+        publicJson.GetProperty("accessLink").GetProperty("responseNotes").GetString()
+            .Should().Be("Accepted from authenticated funding portal.");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Id == accessLinkId);
+        persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Accepted);
+        persistedLink.ResponseIdempotencyKey.Should().Be("auth-buyer-accept-response");
+        db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Accepted);
+
+        var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().HaveCount(2);
+        publisher.Emails.Single(email => email.Metadata["recipientRole"] == "seller")
+            .RecipientEmail.Should().Be("seller.buyer-auth-accept@smithlaw.test");
+    }
+
+    [Fact]
+    public async Task BuyerOfferedLien_decline_records_shared_public_response_for_authenticated_buyer()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var (lienId, token) = await CreatePublicLienOfferAsync(
+            "buyer-auth-decline",
+            lienNumber: "AUTH-DECLINE-100",
+            buyerOrgId: buyerOrgId);
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var accessLinkId = await GetBuyerOfferedLienAccessLinkIdAsync(buyerClient, "AUTH-DECLINE-100");
+        ClearCapturedEmails();
+
+        var response = await PostBuyerOfferedLienResponseAsync(
+            buyerClient,
+            accessLinkId,
+            "decline",
+            new { reason = "Declined from authenticated funding portal." },
+            "auth-buyer-decline-response");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("accessLink").GetProperty("responseStatus").GetString()
+            .Should().Be(SellingBuyerResponseStatus.Declined);
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Declined);
+
+        using var anonClient = _factory.CreateClient();
+        var publicView = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+        publicView.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await publicView.Content.ReadAsStringAsync()}");
+        var publicJson = await publicView.Content.ReadFromJsonAsync<JsonElement>();
+        publicJson.GetProperty("accessLink").GetProperty("responseStatus").GetString()
+            .Should().Be(SellingBuyerResponseStatus.Declined);
+        publicJson.GetProperty("accessLink").GetProperty("responseNotes").GetString()
+            .Should().Be("Declined from authenticated funding portal.");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Id == accessLinkId);
+        persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Declined);
+        persistedLink.ResponseIdempotencyKey.Should().Be("auth-buyer-decline-response");
+        db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Declined);
+
+        var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().HaveCount(2);
+        publisher.Emails.Single(email => email.Metadata["recipientRole"] == "seller")
+            .RecipientEmail.Should().Be("seller.buyer-auth-decline@smithlaw.test");
     }
 
     [Fact]
@@ -1281,7 +1714,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         json.GetProperty("account").GetProperty("hasExistingAccount").GetBoolean().Should().BeTrue();
         json.GetProperty("account").GetProperty("loginUrl").GetString()
-            .Should().Be("/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation");
+            .Should().Be($"/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation&tenantId={SeedHelper.TenantId:D}");
 
         using var verifyScope = _factory.Services.CreateScope();
         var provisioning = verifyScope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>();
@@ -1561,7 +1994,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         json.GetProperty("userId").GetGuid().Should().Be(new Guid("20000000-0000-0000-0000-000000000201"));
         json.GetProperty("isNew").GetBoolean().Should().BeTrue();
-        json.GetProperty("loginUrl").GetString().Should().Be("/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation");
+        json.GetProperty("loginUrl").GetString().Should().Be($"/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation&tenantId={SeedHelper.TenantId:D}");
 
         using var verifyScope = _factory.Services.CreateScope();
         var provisioning = verifyScope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>();
@@ -2272,13 +2705,39 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         return client;
     }
 
+    private static async Task<Guid> GetBuyerOfferedLienAccessLinkIdAsync(HttpClient buyerClient, string lienNumber)
+    {
+        var response = await buyerClient.GetAsync($"/api/liens/selling/buyer/liens?search={Uri.EscapeDataString(lienNumber)}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return json.GetProperty("rows").EnumerateArray().Single().GetProperty("id").GetGuid();
+    }
+
+    private static async Task<HttpResponseMessage> PostBuyerOfferedLienResponseAsync(
+        HttpClient buyerClient,
+        Guid accessLinkId,
+        string action,
+        object body,
+        string idempotencyKey)
+    {
+        var message = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/liens/selling/buyer/liens/{accessLinkId}/{action}");
+        message.Headers.Add("Idempotency-Key", idempotencyKey);
+        message.Content = JsonContent.Create(body);
+        return await buyerClient.SendAsync(message);
+    }
+
     private async Task<(Guid LienId, string Token)> CreatePublicLienOfferAsync(
         string scenario,
         string? buyerPhone = null,
         string? lienNumber = null,
         DateOnly? initialServiceDate = null,
         decimal originalAmount = 3875m,
-        Guid? buyerOrgId = null)
+        Guid? buyerOrgId = null,
+        string? documentFileName = null)
     {
         var buyerContactId = Guid.CreateVersion7();
         var (_, lienId) = await SeedExternalCaseAndLienAsync(
@@ -2294,7 +2753,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             sellerEmail: $"seller.{scenario}@smithlaw.test",
             buyerEmail: $"buyer.{scenario}@capital.test",
             buyerPhone: buyerPhone,
-            buyerOrgId: buyerOrgId);
+            buyerOrgId: buyerOrgId,
+            documentFileName: documentFileName);
 
         var confirmResponse = await PostConfirmSaleAsync(
             lienId,

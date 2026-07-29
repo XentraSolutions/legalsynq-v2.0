@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { OfferedLienRowActions } from "@/components/synqlien-funding-portal/offered-lien-row-actions";
 import {
   formatFundingCurrency,
   formatFundingDate,
@@ -232,19 +233,7 @@ function OfferedLienTableRow({ row }: { row: OfferedLienRow }) {
         </span>
       </td>
       <td className="h-[53px] w-12 px-4 text-center">
-        {detailHref ? (
-          <Link
-            href={detailHref}
-            aria-label={`View ${row.lienNumber}`}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
-          >
-            <i className="ri-more-2-fill text-[20px]" />
-          </Link>
-        ) : (
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[#525252]">
-            <i className="ri-more-2-fill text-[20px]" />
-          </span>
-        )}
+        <OfferedLienRowActions lienNumber={row.lienNumber} detailHref={detailHref} />
       </td>
     </tr>
   );
