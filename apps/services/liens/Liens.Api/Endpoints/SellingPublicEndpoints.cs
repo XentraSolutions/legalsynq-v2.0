@@ -27,7 +27,7 @@ public static class SellingPublicEndpoints
         group.MapPost("/{token}/accept", AcceptTemporaryBuyerPortal)
             .AllowAnonymous();
 
-        group.MapPost("/{token}/offers", AcceptTemporaryBuyerPortal)
+        group.MapPost("/{token}/offers", SubmitPublicBuyerOffer)
             .AllowAnonymous();
 
         group.MapPost("/{token}/decline", DeclineTemporaryBuyerPortal)
@@ -39,9 +39,11 @@ public static class SellingPublicEndpoints
 
     private static async Task<IResult> GetTemporaryBuyerPortal(
         string token,
+        HttpResponse response,
         LiensDbContext db,
         CancellationToken ct = default)
     {
+        SetNoReferrerHeader(response);
         var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
         if (resolved.Error is not null)
             return resolved.Error;
@@ -65,12 +67,40 @@ public static class SellingPublicEndpoints
     private static async Task<IResult> AcceptTemporaryBuyerPortal(
         string token,
         PublicBuyerAcceptLienRequest? request,
+        HttpRequest httpRequest,
+        HttpResponse response,
         LiensDbContext db,
         CancellationToken ct = default)
     {
+        SetNoReferrerHeader(response);
+        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError))
+            return idempotencyError!;
         var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
         if (resolved.Error is not null)
             return resolved.Error;
+
+        var replay = await SellingIdempotency.GetReplayAsync(
+            db,
+            resolved.AccessLink!.TenantId,
+            "BuyerAccessLink",
+            resolved.AccessLink.Id,
+            "/api/liens/selling/public/{token}/accept",
+            "Lien",
+            resolved.AccessLink.LienId.ToString(),
+            idempotencyKey!,
+            request,
+            ct);
+        if (replay is not null)
+            return replay;
+
+        if (!string.IsNullOrWhiteSpace(resolved.AccessLink.ResponseStatus))
+        {
+            return PublicLinkState(
+                "response-conflict",
+                "Lien response already recorded",
+                "A buyer response has already been recorded for this secure link.",
+                StatusCodes.Status409Conflict);
+        }
 
         var view = await BuildPublicViewAsync(db, resolved.AccessLink!, ct);
         if (view is null)
@@ -92,24 +122,152 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status409Conflict);
         }
 
-        return await RecordPublicResponseAsync(
+        if (!string.IsNullOrWhiteSpace(view.AccessLink.ResponseStatus))
+        {
+            return PublicLinkState(
+                "response-conflict",
+                "Lien response already recorded",
+                "A buyer response has already been recorded for this secure link.",
+                StatusCodes.Status409Conflict);
+        }
+
+        var lienTransition = await SellingIdempotency.TryBeginAsync(
             db,
-            view,
+            view.AccessLink.TenantId,
+            "LienStateTransition",
+            view.Lien.Id,
+            "/api/liens/selling/liens/{lienId}/state-transition",
+            "Lien",
+            view.Lien.Id.ToString(),
+            "lien-state-transition-v1",
+            request: null,
+            ct: ct);
+        if (lienTransition.Result is not null)
+        {
+            return PublicLinkState(
+                "not-actionable",
+                "Lien offer unavailable",
+                "This lien is changing state and cannot accept a buyer response.",
+                StatusCodes.Status409Conflict);
+        }
+
+        var responseTransition = await SellingIdempotency.TryBeginAsync(
+            db,
+            view.AccessLink.TenantId,
+            "BuyerLinkResponseTransition",
+            view.AccessLink.Id,
+            "/api/liens/selling/public/{token}/response",
+            "BuyerAccessLink",
+            view.AccessLink.Id.ToString(),
+            "buyer-response-transition-v1",
+            request: null,
+            ct: ct);
+        if (responseTransition.Result is not null)
+        {
+            db.SellingIdempotencyRecords.Remove(lienTransition.Record!);
+            await db.SaveChangesAsync(ct);
+            return PublicLinkState(
+                "response-conflict",
+                "Lien response already recorded",
+                "A buyer response is already being recorded for this secure link.",
+                StatusCodes.Status409Conflict);
+        }
+
+        var started = await SellingIdempotency.TryBeginAsync(
+            db,
+            view.AccessLink.TenantId,
+            "BuyerAccessLink",
+            view.AccessLink.Id,
+            "/api/liens/selling/public/{token}/accept",
+            "Lien",
+            view.Lien.Id.ToString(),
+            idempotencyKey!,
+            request,
+            ct);
+        if (started.Result is not null)
+        {
+            db.SellingIdempotencyRecords.Remove(responseTransition.Record!);
+            db.SellingIdempotencyRecords.Remove(lienTransition.Record!);
+            await db.SaveChangesAsync(ct);
+            return started.Result;
+        }
+
+        view.AccessLink.MarkAccessed();
+        view.AccessLink.RecordResponse(
             SellingBuyerResponseStatus.Accepted,
             responseAmount.Value,
-            FirstNonEmpty(request?.Notes, request?.Message),
+            FirstNonEmpty(request?.Notes, request?.Message));
+        await ApplyPublicResponseToLienAsync(db, view, SellingBuyerResponseStatus.Accepted, ct);
+        await db.SaveChangesAsync(ct);
+
+        var persistedLien = await db.Liens.AsNoTracking().FirstAsync(
+            lien => lien.TenantId == view.AccessLink.TenantId && lien.Id == view.Lien.Id,
             ct);
+        // Accepted links are intentionally no longer actionable, so the public
+        // projection builder returns null. Use the post-transition lien for the
+        // immediate response rather than leaking the stale Offered state.
+        var updatedView = await BuildPublicViewAsync(db, view.AccessLink, ct) ?? view with { Lien = persistedLien };
+        var completed = await SellingIdempotency.CompleteAsync(
+            db,
+            started.Record!,
+            ResolvePublicResponseActorId(view.AccessLink),
+            StatusCodes.Status200OK,
+            MapPublicPortalResponse(updatedView),
+            ct);
+        await SellingIdempotency.CompleteAsync(
+            db,
+            responseTransition.Record!,
+            ResolvePublicResponseActorId(view.AccessLink),
+            StatusCodes.Status200OK,
+            MapPublicPortalResponse(updatedView),
+            ct);
+        await SellingIdempotency.CompleteAsync(
+            db,
+            lienTransition.Record!,
+            ResolvePublicResponseActorId(view.AccessLink),
+            StatusCodes.Status200OK,
+            MapPublicPortalResponse(updatedView),
+            ct);
+        return completed;
     }
 
     private static async Task<IResult> DeclineTemporaryBuyerPortal(
         string token,
         PublicBuyerDeclineLienRequest? request,
+        HttpRequest httpRequest,
+        HttpResponse response,
         LiensDbContext db,
         CancellationToken ct = default)
     {
+        SetNoReferrerHeader(response);
+        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError))
+            return idempotencyError!;
         var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
         if (resolved.Error is not null)
             return resolved.Error;
+
+        var replay = await SellingIdempotency.GetReplayAsync(
+            db,
+            resolved.AccessLink!.TenantId,
+            "BuyerAccessLink",
+            resolved.AccessLink.Id,
+            "/api/liens/selling/public/{token}/decline",
+            "Lien",
+            resolved.AccessLink.LienId.ToString(),
+            idempotencyKey!,
+            request,
+            ct);
+        if (replay is not null)
+            return replay;
+
+        if (!string.IsNullOrWhiteSpace(resolved.AccessLink.ResponseStatus))
+        {
+            return PublicLinkState(
+                "response-conflict",
+                "Lien response already recorded",
+                "A buyer response has already been recorded for this secure link.",
+                StatusCodes.Status409Conflict);
+        }
 
         var view = await BuildPublicViewAsync(db, resolved.AccessLink!, ct);
         if (view is null)
@@ -121,22 +279,225 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status404NotFound);
         }
 
-        return await RecordPublicResponseAsync(
+        if (!IsActionableLien(view.Lien))
+        {
+            return PublicLinkState(
+                "not-actionable",
+                "Lien offer unavailable",
+                "This lien is no longer accepting buyer responses.",
+                StatusCodes.Status409Conflict);
+        }
+
+        var responseTransition = await SellingIdempotency.TryBeginAsync(
             db,
-            view,
-            SellingBuyerResponseStatus.Declined,
-            responseAmount: null,
-            responseNotes: request?.Reason,
+            view.AccessLink.TenantId,
+            "BuyerLinkResponseTransition",
+            view.AccessLink.Id,
+            "/api/liens/selling/public/{token}/response",
+            "BuyerAccessLink",
+            view.AccessLink.Id.ToString(),
+            "buyer-response-transition-v1",
+            request: null,
+            ct: ct);
+        if (responseTransition.Result is not null)
+        {
+            return PublicLinkState(
+                "response-conflict",
+                "Lien response already recorded",
+                "A buyer response is already being recorded for this secure link.",
+                StatusCodes.Status409Conflict);
+        }
+
+        var started = await SellingIdempotency.TryBeginAsync(
+            db,
+            view.AccessLink.TenantId,
+            "BuyerAccessLink",
+            view.AccessLink.Id,
+            "/api/liens/selling/public/{token}/decline",
+            "Lien",
+            view.Lien.Id.ToString(),
+            idempotencyKey!,
+            request,
             ct);
+        if (started.Result is not null)
+        {
+            db.SellingIdempotencyRecords.Remove(responseTransition.Record!);
+            await db.SaveChangesAsync(ct);
+            return started.Result;
+        }
+        view.AccessLink.MarkAccessed();
+        view.AccessLink.RecordResponse(SellingBuyerResponseStatus.Declined, null, request?.Reason);
+        await db.SaveChangesAsync(ct);
+        var completed = await SellingIdempotency.CompleteAsync(
+            db,
+            started.Record!,
+            view.AccessLink.BuyerContactId,
+            StatusCodes.Status200OK,
+            MapPublicPortalResponse(view),
+            ct);
+        await SellingIdempotency.CompleteAsync(
+            db,
+            responseTransition.Record!,
+            view.AccessLink.BuyerContactId,
+            StatusCodes.Status200OK,
+            MapPublicPortalResponse(view),
+            ct);
+        return completed;
+    }
+
+    private static async Task<IResult> SubmitPublicBuyerOffer(
+        string token,
+        PublicBuyerOfferRequest? request,
+        HttpRequest httpRequest,
+        HttpResponse response,
+        LiensDbContext db,
+        CancellationToken ct = default)
+    {
+        SetNoReferrerHeader(response);
+        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError))
+            return idempotencyError!;
+        if (request is null || request.OfferAmount <= 0m)
+        {
+            return PublicLinkState(
+                "invalid-offer",
+                "Lien offer unavailable",
+                "offerAmount must be positive.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var replay = await SellingIdempotency.GetReplayAsync(
+            db,
+            resolved.AccessLink!.TenantId,
+            "BuyerAccessLink",
+            resolved.AccessLink.Id,
+            "/api/liens/selling/public/{token}/offers",
+            "Lien",
+            resolved.AccessLink.LienId.ToString(),
+            idempotencyKey!,
+            request,
+            ct);
+        if (replay is not null)
+            return replay;
+
+        if (!string.IsNullOrWhiteSpace(resolved.AccessLink.ResponseStatus))
+        {
+            return PublicLinkState(
+                "response-conflict",
+                "Lien response already recorded",
+                "A buyer response has already been recorded for this secure link.",
+                StatusCodes.Status409Conflict);
+        }
+
+        var view = await BuildPublicViewAsync(db, resolved.AccessLink!, ct);
+        if (view is null || !IsActionableLien(view.Lien))
+        {
+            return PublicLinkState(
+                "not-actionable",
+                "Lien offer unavailable",
+                "This lien is no longer accepting buyer offers.",
+                StatusCodes.Status409Conflict);
+        }
+
+        var activeOfferExists = await db.LienOffers.AnyAsync(offer =>
+            offer.TenantId == view.AccessLink.TenantId &&
+            offer.LienId == view.Lien.Id &&
+            offer.BuyerOrgId == view.AccessLink.BuyerOrgId &&
+            offer.Status == OfferStatus.Pending &&
+            (!offer.ExpiresAtUtc.HasValue || offer.ExpiresAtUtc > DateTime.UtcNow),
+            ct);
+        if (activeOfferExists)
+        {
+            return PublicLinkState(
+                "active-offer-exists",
+                "Lien offer unavailable",
+                "An active offer has already been submitted by this buyer organization.",
+                StatusCodes.Status409Conflict);
+        }
+
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct)
+            : null;
+        try
+        {
+            var started = await SellingIdempotency.TryBeginAsync(
+                db,
+                view.AccessLink.TenantId,
+                "BuyerAccessLink",
+                view.AccessLink.Id,
+                "/api/liens/selling/public/{token}/offers",
+                "Lien",
+                view.Lien.Id.ToString(),
+                idempotencyKey!,
+                request,
+                ct);
+            if (started.Result is not null)
+                return started.Result;
+
+            // Repeat the predicate inside a serializable transaction after the
+            // idempotency row is reserved. This closes the different-key race
+            // that could otherwise create two active offers for one buyer/lien.
+            activeOfferExists = await db.LienOffers.AnyAsync(offer =>
+                offer.TenantId == view.AccessLink.TenantId &&
+                offer.LienId == view.Lien.Id &&
+                offer.BuyerOrgId == view.AccessLink.BuyerOrgId &&
+                offer.Status == OfferStatus.Pending &&
+                (!offer.ExpiresAtUtc.HasValue || offer.ExpiresAtUtc > DateTime.UtcNow),
+                ct);
+            if (activeOfferExists)
+            {
+                var conflict = await SellingIdempotency.CompleteAsync(
+                    db,
+                    started.Record!,
+                    view.AccessLink.BuyerContactId,
+                    StatusCodes.Status409Conflict,
+                    new { error = new { code = "active_offer_exists", message = "An active offer has already been submitted by this buyer organization." } },
+                    ct);
+                if (transaction is not null) await transaction.CommitAsync(ct);
+                return conflict;
+            }
+
+            var offer = LienOffer.Create(
+                view.AccessLink.TenantId,
+                view.Lien.Id,
+                view.AccessLink.BuyerOrgId,
+                view.AccessLink.SellerOrgId,
+                request.OfferAmount,
+                view.AccessLink.BuyerContactId,
+                request.Message);
+            db.LienOffers.Add(offer);
+            view.AccessLink.MarkAccessed();
+            await db.SaveChangesAsync(ct);
+            var completed = await SellingIdempotency.CompleteAsync(db, started.Record!, view.AccessLink.BuyerContactId, StatusCodes.Status201Created, new
+            {
+                offer.Id,
+                offer.LienId,
+                offer.OfferAmount,
+                offer.Status,
+                offer.OfferedAtUtc,
+            }, ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
+            return completed;
+        }
+        catch
+        {
+            if (transaction is not null) await transaction.RollbackAsync(ct);
+            throw;
+        }
     }
 
     private static async Task<IResult> ActivateBuyerAccount(
         string token,
         PublicBuyerActivateAccountRequest? request,
         IPublicBuyerAccountProvisioningService provisioningService,
+        HttpResponse response,
         LiensDbContext db,
         CancellationToken ct = default)
     {
+        SetNoReferrerHeader(response);
         if (request is null)
         {
             return PublicLinkState(
@@ -244,8 +605,9 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status404NotFound));
         }
 
+        var tokenHash = SellingBuyerAccessLink.ComputeTokenHash(token);
         var accessLink = await db.SellingBuyerAccessLinks
-            .FirstOrDefaultAsync(link => link.Token == token.Trim(), ct);
+            .FirstOrDefaultAsync(link => link.TokenHash == tokenHash, ct);
 
         if (accessLink is null)
         {
@@ -376,6 +738,9 @@ public static class SellingPublicEndpoints
             .FirstOrDefaultAsync(l => l.TenantId == accessLink.TenantId && l.Id == accessLink.LienId, ct);
 
         if (lien is null)
+            return null;
+
+        if (!IsActionableLien(lien))
             return null;
 
         var caseEntity = lien.CaseId.HasValue
@@ -539,26 +904,17 @@ public static class SellingPublicEndpoints
                 view.Lien.EndServiceDate,
                 view.Lien.OriginalAmount,
                 view.Lien.AskAmount,
-                view.Lien.OfferPrice,
-                FirstNonEmpty(view.Lien.Description, view.Lien.Notes)),
+                view.Lien.OfferPrice),
             new PublicBuyerSellerResponse(
                 view.SellerContact?.DisplayName,
                 view.SellerContact?.Organization,
                 view.SellerContact?.Email),
             new PublicBuyerOrganizationResponse(
-                view.BuyerContact?.DisplayName,
-                view.BuyerContact?.Organization,
-                view.BuyerContact?.Email,
-                view.BuyerContact?.Phone),
+                view.BuyerContact?.Organization),
             new PublicBuyerCaseResponse(
                 view.HandlingLawFirm,
                 view.CaseManager),
-            view.Documents
-                .Select(document => new PublicBuyerDocumentResponse(
-                    document.FileName,
-                    document.Category,
-                    document.SizeOrType))
-                .ToList());
+            []);
 
     private static IResult PublicLinkState(string code, string title, string message, int statusCode)
         => Results.Json(
@@ -675,6 +1031,19 @@ public static class SellingPublicEndpoints
         => string.Equals(status, LienStatus.Offered, StringComparison.Ordinal)
            || string.Equals(status, LienStatus.UnderReview, StringComparison.Ordinal);
 
+    private static bool HasIdempotencyKey(HttpRequest request) =>
+        !string.IsNullOrWhiteSpace(request.Headers["Idempotency-Key"].FirstOrDefault());
+
+    private static bool IsActionableLien(Lien lien)
+        => IsActionableLienStatus(lien.Status) &&
+           string.Equals(lien.SellerStatus, SellingLienStatus.SubmittedForSale, StringComparison.Ordinal) &&
+           !lien.ArchivedAtUtc.HasValue &&
+           !lien.WithdrawnAtUtc.HasValue &&
+           !lien.SoldAtUtc.HasValue;
+
+    private static void SetNoReferrerHeader(HttpResponse response) =>
+        response.Headers["Referrer-Policy"] = "no-referrer";
+
     private sealed record PublicPortalView(
         SellingBuyerAccessLink AccessLink,
         Lien Lien,
@@ -716,19 +1085,14 @@ public static class SellingPublicEndpoints
         DateOnly? EndServiceDate,
         decimal OriginalAmount,
         decimal? AskAmount,
-        decimal? OfferPrice,
-        string? Notes);
+        decimal? OfferPrice);
 
     private sealed record PublicBuyerSellerResponse(
         string? Name,
         string? Company,
         string? Email);
 
-    private sealed record PublicBuyerOrganizationResponse(
-        string? ContactName,
-        string? Company,
-        string? Email,
-        string? Phone);
+    private sealed record PublicBuyerOrganizationResponse(string? Company);
 
     private sealed record PublicBuyerCaseResponse(
         string? HandlingLawFirm,
@@ -744,6 +1108,8 @@ public static class SellingPublicEndpoints
     private sealed record PublicBuyerPortalError(string Code, string Title, string Message);
 
     private sealed record PublicBuyerAcceptLienRequest(string? Notes, string? Message);
+
+    private sealed record PublicBuyerOfferRequest(decimal OfferAmount, string? Message);
 
     private sealed record PublicBuyerDeclineLienRequest(string? Reason);
 

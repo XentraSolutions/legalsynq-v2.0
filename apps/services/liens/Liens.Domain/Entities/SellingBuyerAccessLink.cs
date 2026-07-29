@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using BuildingBlocks.Domain;
 using Liens.Domain.Enums;
 
@@ -11,8 +13,9 @@ public class SellingBuyerAccessLink : AuditableEntity
     public Guid SellerOrgId { get; private set; }
     public Guid BuyerOrgId { get; private set; }
     public Guid BuyerContactId { get; private set; }
-    public string Token { get; private set; } = string.Empty;
+    public string TokenHash { get; private set; } = string.Empty;
     public string Purpose { get; private set; } = string.Empty;
+    public string Route { get; private set; } = string.Empty;
     public string IdempotencyKey { get; private set; } = string.Empty;
     public DateTime ExpiresAtUtc { get; private set; }
     public DateTime? LastAccessedAtUtc { get; private set; }
@@ -36,6 +39,7 @@ public class SellingBuyerAccessLink : AuditableEntity
         Guid buyerContactId,
         string token,
         string purpose,
+        string route,
         string idempotencyKey,
         DateTime expiresAtUtc,
         Guid createdByUserId)
@@ -48,6 +52,7 @@ public class SellingBuyerAccessLink : AuditableEntity
         if (createdByUserId == Guid.Empty) throw new ArgumentException("CreatedByUserId is required.", nameof(createdByUserId));
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         ArgumentException.ThrowIfNullOrWhiteSpace(purpose);
+        ArgumentException.ThrowIfNullOrWhiteSpace(route);
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
 
         if (expiresAtUtc <= DateTime.UtcNow)
@@ -62,8 +67,9 @@ public class SellingBuyerAccessLink : AuditableEntity
             SellerOrgId = sellerOrgId,
             BuyerOrgId = buyerOrgId,
             BuyerContactId = buyerContactId,
-            Token = token.Trim(),
+            TokenHash = ComputeTokenHash(token),
             Purpose = purpose.Trim(),
+            Route = route.Trim(),
             IdempotencyKey = idempotencyKey.Trim(),
             ExpiresAtUtc = expiresAtUtc,
             CreatedByUserId = createdByUserId,
@@ -71,6 +77,18 @@ public class SellingBuyerAccessLink : AuditableEntity
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
+    }
+
+    /// <summary>
+    /// Produces the canonical SHA-256 digest used for public buyer-link lookups.
+    /// The raw token is intentionally never retained on the entity.
+    /// </summary>
+    public static string ComputeTokenHash(string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+
+        var bytes = Encoding.UTF8.GetBytes(token.Trim());
+        return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
     }
 
     public void MarkNotificationSubmitted(Guid? notificationId, string status)

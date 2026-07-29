@@ -85,6 +85,10 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<CapturingLegacyDocumentUploadClient>();
             services.AddSingleton<ILegacyDocumentUploadClient>(sp => sp.GetRequiredService<CapturingLegacyDocumentUploadClient>());
 
+            services.RemoveAll<ISellingDocumentReferenceValidator>();
+            services.AddSingleton<CapturingSellingDocumentReferenceValidator>();
+            services.AddSingleton<ISellingDocumentReferenceValidator>(sp => sp.GetRequiredService<CapturingSellingDocumentReferenceValidator>());
+
             services.RemoveAll<IPublicBuyerAccountProvisioningService>();
             services.AddSingleton<CapturingPublicBuyerAccountProvisioningService>();
             services.AddSingleton<IPublicBuyerAccountProvisioningService>(
@@ -225,6 +229,21 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
             null,
             null));
     }
+}
+
+internal sealed class CapturingSellingDocumentReferenceValidator : ISellingDocumentReferenceValidator
+{
+    public HashSet<Guid> DeniedDocumentIds { get; } = [];
+
+    public Task<bool> IsAccessibleAsync(
+        Guid tenantId,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        Guid lienId,
+        Guid? caseId,
+        Guid documentId,
+        CancellationToken ct = default)
+        => Task.FromResult(!DeniedDocumentIds.Contains(documentId));
 }
 
 internal sealed record CapturedEmail(

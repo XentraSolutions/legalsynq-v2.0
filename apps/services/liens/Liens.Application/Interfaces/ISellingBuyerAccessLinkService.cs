@@ -2,6 +2,22 @@ namespace Liens.Application.Interfaces;
 
 public interface ISellingBuyerAccessLinkService
 {
+    /// <summary>
+    /// Creates a buyer access grant for the supplied selling lien. The raw token is
+    /// returned only for a newly-created link; replay responses intentionally omit it.
+    /// </summary>
+    Task<SellingBuyerAccessLinkResult> CreateAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid actingUserId,
+        string route,
+        string idempotencyKey,
+        TimeSpan ttl,
+        CancellationToken ct = default);
+
     Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleAsync(
         Guid tenantId,
         Guid lienId,
@@ -23,7 +39,7 @@ public interface ISellingBuyerAccessLinkService
 
 public sealed record SellingBuyerAccessLinkResult(
     Guid Id,
-    string Token,
+    string? Token,
     string BuyerPortalUrl,
     DateTime ExpiresAtUtc,
     bool AlreadyExisted,

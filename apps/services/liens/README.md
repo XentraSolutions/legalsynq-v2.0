@@ -54,14 +54,25 @@ List filters accept both canonical persisted statuses and the legacy/UI lifecycl
 
 ## Selling Workflow
 
-Seller-mode endpoints live under `/api/liens/selling` and require SynqLien product access plus sell mode. The lien-first
-confirm-sale route is:
+Seller-mode endpoints live under `/api/liens/selling` and require SynqLien product access plus sell mode. The Selling V2
+lien-first lifecycle is `Pending`/`Internal` → `PreparedForSale` → `SubmittedForSale` → `Sold`; seller draft is not exposed.
+Intake writes are permitted only while the lien is `Pending` or `Internal`. State-changing V2 routes require an
+`Idempotency-Key`; a retry with the same payload replays its stored response, while reusing the key with a different payload
+returns `409 Conflict`.
+
+Import [`LegalSynq Selling V2 API.postman_collection.json`](LegalSynq%20Selling%20V2%20API.postman_collection.json) into
+Postman, set the collection variables for the appropriate seller or buyer token, and use a fresh `idempotencyKey` for each
+new mutation (reuse it only to retry that exact request).
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/liens/selling/dashboard?tab=pending\|internal\|sold\|all` | Returns seller-scoped portfolio totals, tab counts, and a paginated lien table. Supports search, funding company, law firm, case manager, facility, initial-service-date, and sort filters. |
 | `GET` | `/api/liens/selling/liens?tab=pending\|internal\|sold\|all` | Returns the same seller-scoped, filtered, paginated lien rows without dashboard totals. |
+| `POST` | `/api/liens/selling/liens` | Creates a lien directly in `Pending` or `Internal`; it does not create a seller draft. |
+| `PUT` | `/api/liens/selling/liens/{lienId}/lien-information`, `/case-information`, `/medical-pricing`, `/documents` | Saves the seller wizard sections. Existing document IDs are verified against the Documents service and must reference the seller-owned lien or case. |
+| `POST` | `/api/liens/selling/liens/{lienId}/prepare-sale` | Validates readiness and stores the selected buyer organisation/contact and buyer message without changing internal notes. |
 | `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and optionally sends the buyer `New Lien Offer` email |
+| `POST` | `/api/liens/selling/liens/{lienId}/withdraw-sale`, `/archive`, `/buyer-access-links` | Withdraws a submitted lien, archives an unsold lien, or creates a time-limited buyer capability link. Raw link tokens are returned only on first creation and are never persisted. |
 | `GET` | `/api/liens/selling/bulk-import-template` | Downloads the current CSV template for a staged selling-lien bulk import. |
 | `POST` | `/api/liens/selling/bulk-imports` | Uploads a CSV, XLS, or XLSX selling-lien import using `multipart/form-data`. The import is staged tenant-scoped for subsequent validation and confirmation; it does not create liens directly. |
 
@@ -83,14 +94,11 @@ such as `localhost` and `127.0.0.1` are rejected because outbound email recipien
 token is substituted, otherwise the token is appended as the final path segment.
 
 The temporary buyer portal endpoints are anonymous and token-scoped. `GET /api/liens/selling/public/{token}` returns
-JSON from persisted lien, case, contact, access-link, response, and servicing document metadata only. It does not render
-HTML; the tenant portal route `/selling/public/{token}` in `apps/web` fetches this JSON through the gateway and renders
-the funding-company review page. The page records buyer responses with
-`POST /api/liens/selling/public/{token}/accept` and `POST /api/liens/selling/public/{token}/decline`; accepting records
-the current ask amount and moves the lien to `Status=Accepted` / `SellerStatus=Accepted`; declining records an optional
-reason and moves the lien to `Status=Declined` / `SellerStatus=Declined`. `POST
-/api/liens/selling/public/{token}/offers` is a compatibility alias for public accept. These public responses do not
-finalize the sale, create a Bill of Sale, or mark the lien sold.
+buyer-safe JSON only: no lien notes, client PII, or document metadata. It sets `Referrer-Policy: no-referrer`. The page records
+responses with `POST /api/liens/selling/public/{token}/accept`, `/decline`, and `/offers`; every mutation requires an
+`Idempotency-Key`. Public offers create a pending `LienOffer` without accepting or selling the lien. Decline is recorded against
+the secure link and leaves the lien available to other buyers. These public responses do not finalize the sale, create a Bill of
+Sale, or mark the lien sold.
 The public page's `Activate Free Account` CTA opens `/selling/public/{token}/activate`, which submits account
 activation through the tenant-portal BFF to `POST /api/liens/selling/public/{token}/activate-account`. That endpoint
 uses the token-scoped buyer organization/contact data to ask Identity to create or resolve a tenant-scoped

@@ -1111,6 +1111,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         var sellerEmail = context.SellerContact.Email!.Trim();
         var handlingLawFirm = context.HandlingLawFirm.Trim();
         var caseManager = context.CaseManager?.Trim();
+        var buyerMessage = lien.BuyerMessage?.Trim();
         var documentNames = context.DocumentNames
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(name => name.Trim())
@@ -1136,6 +1137,9 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         if (!string.IsNullOrWhiteSpace(caseManager))
             templateData["caseManager"] = caseManager;
 
+        if (!string.IsNullOrWhiteSpace(buyerMessage))
+            templateData["buyerMessage"] = buyerMessage;
+
         if (documentNames.Count > 0)
             templateData["supportingDocuments"] = string.Join(", ", documentNames);
 
@@ -1153,6 +1157,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             ("Email Address", sellerEmail),
             ("Handling Law Firm", handlingLawFirm),
             ("Case Manager", caseManager),
+            ("Seller Message", buyerMessage),
         };
 
         var htmlBody = new StringBuilder();

@@ -79,7 +79,7 @@ Add lien needs:
 - Funding company and case information step.
 - Medical code and marketplace pricing step.
 - Document upload step.
-- Draft save and final submit.
+- Save each wizard step while the lien remains in its selected intake state (`Pending` or `Internal`).
 
 Lien detail needs:
 
@@ -140,7 +140,6 @@ SellerStatus
 Allowed values:
 
 ```text
-Draft
 Pending
 Internal
 PreparedForSale
@@ -154,8 +153,7 @@ State meanings:
 
 | State | Meaning |
 | --- | --- |
-| `Draft` | Lien wizard is started but not submitted. |
-| `Pending` | Lien is submitted and visible in the seller portfolio pending tab. |
+| `Pending` | Lien is created through intake and visible in the seller portfolio pending tab. |
 | `Internal` | Lien is retained internally and not actively submitted for sale. |
 | `PreparedForSale` | Sale data is ready, buyer/funding company may be selected, but seller has not confirmed. |
 | `SubmittedForSale` | Seller confirmed sale submission and buyer notification/access is active. |
@@ -167,8 +165,6 @@ Allowed transitions:
 
 | From | To | API |
 | --- | --- | --- |
-| `Draft` | `Pending` | `POST /liens/{lienId}/submit` |
-| `Draft` | `Internal` | `POST /liens/{lienId}/submit` |
 | `Pending` | `Internal` | `PUT /liens/{lienId}/lien-information` |
 | `Internal` | `Pending` | `PUT /liens/{lienId}/lien-information` |
 | `Pending` | `PreparedForSale` | `POST /liens/{lienId}/prepare-sale` |
@@ -193,8 +189,8 @@ Required mapping:
 
 | Selling action | SellerStatus result | Core `Lien.Status` result | Financial mapping |
 | --- | --- | --- | --- |
-| Create draft | `Draft` | `Draft` | no sale price required |
-| Submit intake | `Pending` or `Internal` | `Draft` | `billingAmount` maps to `Lien.OriginalAmount` |
+| Create lien intake | `Pending` or `Internal` | `Draft` | `billingAmount` maps to `Lien.OriginalAmount`; core `Draft` is technical only and is not a seller workflow state |
+| Update lien intake | unchanged | `Draft` | `billingAmount` maps to `Lien.OriginalAmount` |
 | Prepare sale | `PreparedForSale` | `Draft` | `AskAmount` is staged on `Lien.AskAmount` |
 | Confirm sale | `SubmittedForSale` | `Offered` | copy `AskAmount` to `Lien.OfferPrice` |
 | Buyer offer submitted | unchanged | `Offered` or `UnderReview` | offer amount stored on `LienOffer` |
@@ -218,7 +214,7 @@ Permission mapping:
 | API group | Permission |
 | --- | --- |
 | Dashboard, list, detail, activity | `LiensPermissions.LienSaleRead` |
-| Create draft, submit intake, bulk import upload/confirm | `LiensPermissions.LienSaleCreate` |
+| Create lien, bulk import upload/confirm | `LiensPermissions.LienSaleCreate` |
 | Save wizard steps, prepare sale, archive | `LiensPermissions.LienSaleUpdate` |
 | Confirm sale, buyer access link generation | `LiensPermissions.LienSalePublish` |
 | Withdraw sale | `LiensPermissions.LienSaleWithdraw` |
@@ -280,22 +276,23 @@ Purpose:
 - Can share filters with dashboard.
 - Use when frontend wants list data without summary cards.
 
-### Create Draft Lien
+### Create Lien Intake
 
 ```http
-POST /api/liens/selling/liens/drafts
+POST /api/liens/selling/liens
 ```
 
 Purpose:
 
-- Start single-lien wizard.
+- Start the single-lien wizard in `Pending` or `Internal`.
 - Return a `lienId` immediately so later wizard steps can save independently.
+- Do not expose a seller-facing `Draft` state.
 
 Request:
 
 ```json
 {
-  "sellerStatus": "Draft",
+  "sellerStatus": "Pending",
   "source": "Single"
 }
 ```
@@ -305,7 +302,7 @@ Response:
 ```json
 {
   "lienId": "guid",
-  "sellerStatus": "Draft"
+  "sellerStatus": "Pending"
 }
 ```
 
@@ -354,8 +351,8 @@ Request:
 
 Validation:
 
-- `sellerStatus` can be `Draft`, `Pending`, or `Internal` during intake.
-- `initialServiceDate` is required before submit.
+- `sellerStatus` can be `Pending` or `Internal` during intake.
+- `initialServiceDate` is required before preparing the lien for sale.
 - `listingVisibility` must be `Public` or `Private`.
 
 ### Step 2: Funding Company And Case Information
@@ -441,29 +438,9 @@ Request:
 }
 ```
 
-### Submit Lien Intake
-
-```http
-POST /api/liens/selling/liens/{lienId}/submit
-```
-
-Headers:
-
-```http
-Idempotency-Key: required-guid-or-client-generated-key
-```
-
-Purpose:
-
-- Finalize the add-lien wizard.
-- Moves `Draft` to `Pending` or `Internal`.
-
-Validation:
-
-- Required lien information exists.
-- Required case/funding information exists.
-- Required pricing fields exist.
-- Required documents exist if product rules require them.
+The wizard saves data while the lien remains `Pending` or `Internal`. The
+`prepare-sale` validation is the readiness gate: it must reject a lien that
+does not yet have its required lien, case/funding, pricing, or document data.
 
 ### Prepare Sale
 
@@ -923,7 +900,7 @@ Before implementation starts, create a contract matrix for every selling analyti
 Freeze these enum values before code begins:
 
 ```text
-sellerStatus=Draft|Pending|Internal|PreparedForSale|SubmittedForSale|Sold|Withdrawn|Archived
+sellerStatus=Pending|Internal|PreparedForSale|SubmittedForSale|Sold|Withdrawn|Archived
 listingVisibility=Public|Private
 dateDimension=submitted|sold|offer|service
 grain=day|week|month
@@ -1094,12 +1071,50 @@ Migration safety:
 - Backfill `SellerStatus` conservatively.
 - Avoid destructive migrations until frontend and tests are migrated.
 
+### Buyer Access Token Security Migration Runbook
+
+The buyer-access-token migration is intentionally forward-only. It adds
+`TokenHash` and idempotency storage, retains the legacy nullable `Token` only
+for a temporary compatibility window, and writes only hash values for newly
+created access links. Its `Down` migration must fail rather than leave EF
+migration history inconsistent with an irrecoverable bearer-token rollback.
+
+Deployment procedure:
+
+1. Before migration, run this duplicate-token preflight query. Resolve every
+   returned token by revoking and reissuing the affected buyer links; the new
+   hash lookup is global and its unique index cannot safely retain duplicate
+   legacy tokens from different tenants.
+
+   ```sql
+   SELECT `Token`, COUNT(*) AS `TokenCount`
+   FROM `liens_SellingBuyerAccessLinks`
+   WHERE `Token` IS NOT NULL AND `Token` <> ''
+   GROUP BY `Token`
+   HAVING COUNT(*) > 1;
+   ```
+
+2. Back up the Liens database and apply the additive migration.
+3. Deploy the new Liens API while the legacy-token compatibility trigger is
+   active.
+4. Drain all old public-buyer endpoint instances before permitting the new API
+   to issue access links. Old binaries cannot resolve a new link because its
+   legacy `Token` is intentionally null.
+5. Verify public view, accept, decline, and offer behavior using a newly issued
+   link, then remove the old application fleet.
+6. Keep the compatibility trigger and legacy column only until the prior
+   version is retired; remove them in a later, separately approved migration.
+
+Rollback is an audited restore of the pre-migration database backup together
+with the prior application version, or a corrective forward migration. Do not
+run `dotnet ef database update <previous-migration>` for this migration.
+
 ## Idempotency Plan
 
 Require `Idempotency-Key` on these operations:
 
 ```http
-POST /api/liens/selling/liens/{lienId}/submit
+POST /api/liens/selling/liens
 POST /api/liens/selling/liens/{lienId}/prepare-sale
 POST /api/liens/selling/liens/{lienId}/confirm-sale
 POST /api/liens/selling/liens/{lienId}/withdraw-sale
@@ -1123,12 +1138,11 @@ Rules:
 Record audit events for:
 
 ```text
-SellingLienDraftCreated
+SellingLienCreated
 SellingLienInformationUpdated
 SellingLienCaseInformationUpdated
 SellingLienMedicalPricingUpdated
 SellingLienDocumentsUpdated
-SellingLienSubmitted
 SellingLienPreparedForSale
 SellingLienConfirmedForSale
 SellingLienWithdrawn
@@ -1276,12 +1290,11 @@ Phase 3A: Selling analytics contract and read APIs
 
 Phase 4: Single-lien wizard
 
-- `POST /liens/drafts`
+- `POST /liens`
 - `PUT /lien-information`
 - `PUT /case-information`
 - `PUT /medical-pricing`
 - `PUT /documents`
-- `POST /submit`
 
 Phase 5: Sale flow
 
@@ -1334,10 +1347,9 @@ Add integration tests for:
 
 - Dashboard cards and tab counts.
 - Lien list search/filter/sort/pagination.
-- Create draft lien.
+- Create a lien in `Pending` or `Internal`.
 - Save each wizard step.
-- Submit lien.
-- Reject submit when required sections are missing.
+- Reject prepare-sale when required intake sections are missing.
 - Prepare sale.
 - Confirm sale with idempotency retry.
 - Confirm sale sets `SellerStatus = SubmittedForSale`, not `Sold`.
@@ -1397,7 +1409,7 @@ Manual verification:
 2. What exact columns are required in the bulk import template?
 3. Should `Internal` liens ever be visible to buyers?
 4. Are funding companies tenant contacts, marketplace organizations, or both?
-5. Which document types are required before a lien can be submitted or sold?
+5. Which document types are required before a lien can be prepared for sale or sold?
 
 ## Recommendation
 

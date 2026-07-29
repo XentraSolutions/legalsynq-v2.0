@@ -69,6 +69,9 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
         builder.Property(l => l.Notes)
             .HasMaxLength(4000);
 
+        builder.Property(l => l.BuyerMessage)
+            .HasMaxLength(4000);
+
         builder.Property(l => l.IncidentDate)
             .HasColumnType("date");
 

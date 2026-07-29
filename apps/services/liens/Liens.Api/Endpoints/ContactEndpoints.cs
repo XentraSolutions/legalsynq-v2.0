@@ -4,7 +4,10 @@ using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
+using Liens.Domain.Entities;
 using Liens.Domain.Enums;
+using Liens.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using System.Text;
 
 namespace Liens.Api.Endpoints;
@@ -22,6 +25,12 @@ public static class ContactEndpoints
             .RequirePermission(LiensPermissions.LienService);
 
         group.MapGet("/{id:guid}", GetContactById)
+            .RequirePermission(LiensPermissions.LienService);
+
+        group.MapGet("/{id:guid}/detail", GetContactDetail)
+            .RequirePermission(LiensPermissions.LienService);
+
+        group.MapPost("/{id:guid}/reassign-cases", ReassignContactCases)
             .RequirePermission(LiensPermissions.LienService);
 
         group.MapPost("/", CreateContact)
@@ -194,6 +203,145 @@ public static class ContactEndpoints
             ? Results.NotFound(new { error = new { code = "not_found", message = $"Contact '{id}' not found." } })
             : Results.Ok(result);
     }
+
+    private static async Task<IResult> GetContactDetail(
+        Guid id,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var contact = await db.Contacts.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == id, ct);
+        if (contact is null)
+            return Results.NotFound(new { error = new { code = "not_found", message = $"Contact '{id}' not found." } });
+
+        var relatedCases = await GetRelatedCasesQuery(db, tenantId, contact)
+            .OrderByDescending(item => item.UpdatedAtUtc)
+            .Take(100)
+            .Select(item => new { item.Id, item.CaseNumber, item.Title, item.Status, item.UpdatedAtUtc })
+            .ToListAsync(ct);
+        var linkedLienCount = await db.Liens.AsNoTracking().CountAsync(lien =>
+            lien.TenantId == tenantId &&
+            (lien.FundingCompanyId == contact.Id || lien.FundingCompanyContactId == contact.Id), ct);
+
+        return Results.Ok(new
+        {
+            contact = new
+            {
+                contact.Id,
+                contact.ContactType,
+                contact.ContactSubtype,
+                contact.FirstName,
+                contact.LastName,
+                contact.DisplayName,
+                contact.Organization,
+                contact.Email,
+                contact.Phone,
+                contact.IsActive,
+            },
+            relatedCases,
+            linkedLienCount,
+        });
+    }
+
+    private static async Task<IResult> ReassignContactCases(
+        Guid id,
+        ReassignContactCasesRequest request,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        var orgId = RequireOrgId(ctx);
+        var source = await db.Contacts.FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == id && item.IsActive, ct);
+        var target = await db.Contacts.AsNoTracking().FirstOrDefaultAsync(item =>
+            item.TenantId == tenantId && item.Id == request.TargetContactId && item.IsActive, ct);
+        if (source is null || target is null)
+            return Results.BadRequest(new { error = new { code = "invalid_contact", message = "Source and target contacts must exist in the current tenant." } });
+        if (source.Id == target.Id)
+            return Results.BadRequest(new { error = new { code = "same_contact", message = "Source and target contacts must differ." } });
+
+        // Case reassignment is an organisation-scoped operation. A contact in
+        // another org is neither an implicit delegate nor a valid destination;
+        // cross-org transfers require a dedicated, audited workflow.
+        if (source.OrgId != orgId || target.OrgId != orgId)
+        {
+            return Results.Forbid();
+        }
+
+        var relationship = request.RelationshipType?.Trim();
+        if (!string.Equals(relationship, "CaseManager", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(relationship, "LawFirm", StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new { error = new { code = "invalid_relationship_type", message = "relationshipType must be CaseManager or LawFirm." } });
+
+        var expectedType = string.Equals(relationship, "CaseManager", StringComparison.OrdinalIgnoreCase)
+            ? ContactType.CaseManager
+            : ContactType.LawFirm;
+        if (!string.Equals(source.ContactType, expectedType, StringComparison.Ordinal) ||
+            !string.Equals(target.ContactType, expectedType, StringComparison.Ordinal))
+        {
+            return Results.BadRequest(new
+            {
+                error = new
+                {
+                    code = "invalid_contact_relationship",
+                    message = $"Both source and target contacts must be active {expectedType} contacts.",
+                },
+            });
+        }
+
+        var selectedScope = string.Equals(request.Scope, "Selected", StringComparison.OrdinalIgnoreCase);
+        if (!selectedScope && !string.Equals(request.Scope, "All", StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new { error = new { code = "invalid_scope", message = "scope must be Selected or All." } });
+        if (selectedScope && request.CaseIds.Count == 0)
+            return Results.BadRequest(new { error = new { code = "case_ids_required", message = "caseIds is required for Selected scope." } });
+
+        var sourceCases = GetRelatedCasesQuery(db, tenantId, source);
+        if (selectedScope)
+            sourceCases = sourceCases.Where(item => request.CaseIds.Contains(item.Id));
+        var cases = await sourceCases.ToListAsync(ct);
+        var results = new List<ReassignCaseResult>(cases.Count);
+        foreach (var caseEntity in cases)
+        {
+            if (caseEntity.OrgId != orgId)
+            {
+                results.Add(new ReassignCaseResult(caseEntity.Id, false, "Case is not owned by the current organization."));
+                continue;
+            }
+
+            if (string.Equals(relationship, "CaseManager", StringComparison.OrdinalIgnoreCase))
+                caseEntity.ReassignCaseManager(target.Id, userId);
+            else
+                caseEntity.ReassignLawFirm(target.OrgId, userId);
+            results.Add(new ReassignCaseResult(caseEntity.Id, true, null));
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new
+        {
+            sourceContactId = source.Id,
+            targetContactId = target.Id,
+            relationshipType = relationship,
+            requestedCount = cases.Count,
+            reassignedCount = results.Count(result => result.Success),
+            results,
+        });
+    }
+
+    private static IQueryable<Case> GetRelatedCasesQuery(LiensDbContext db, Guid tenantId, Contact contact)
+    {
+        var query = db.Cases.Where(item => item.TenantId == tenantId);
+        return contact.ContactType switch
+        {
+            ContactType.CaseManager => query.Where(item => item.Notes != null && item.Notes.Contains($"caseManagerId={contact.Id}")),
+            ContactType.LawFirm => query.Where(item => item.OrgId == contact.OrgId || (item.Notes != null && item.Notes.Contains($"lawFirmId={contact.Id}"))),
+            _ => query.Where(item => item.OrgId == contact.OrgId),
+        };
+    }
+
+    private sealed record ReassignCaseResult(Guid CaseId, bool Success, string? Reason);
 
     private static async Task<IResult> CreateContact(
         CreateContactRequest request,

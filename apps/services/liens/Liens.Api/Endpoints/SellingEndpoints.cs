@@ -99,9 +99,6 @@ public static class SellingEndpoints
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(SellingImportMaxBytes))
             .DisableAntiforgery();
 
-        group.MapPost("/liens/{lienId:guid}/confirm-sale", ConfirmSale)
-            .RequirePermission(LiensPermissions.LienSaleUpdate);
-
         group.MapGet("/dashboard", GetDashboard)
             .RequirePermission(LiensPermissions.LienSaleRead);
 

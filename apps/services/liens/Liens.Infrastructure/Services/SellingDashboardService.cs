@@ -391,7 +391,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
             LienStatus.Withdrawn => SellingLienStatus.Withdrawn,
             LienStatus.Accepted => SellingLienStatus.Accepted,
             LienStatus.Offered or LienStatus.UnderReview => SellingLienStatus.SubmittedForSale,
-            _ => SellingLienStatus.Draft,
+            _ => SellingLienStatus.Pending,
         };
     }
 
