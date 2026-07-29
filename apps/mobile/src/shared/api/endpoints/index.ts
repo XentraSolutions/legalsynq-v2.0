@@ -1,8 +1,15 @@
 export * from './Authentication';
+export * from './BillOfSales';
 export * from './Cases';
+export * from './Contacts';
 export * from './Documents';
 export * from './LegacyPsa';
 export * from './Liens';
+export * from './Lookups';
 export * as OffersEndpoint from './Offers';
+export * from './Reports';
+export * from './Servicing';
+export * from './Tasks';
 export * from './User';
+export * from './UserManagement';
 export * from './Xenia';

@@ -16,6 +16,7 @@ export * from './Modal';
 export * from './PrivacyOverlay';
 export * from './Radio';
 export * from './SearchBar';
+export * from './SelectOptionModal';
 export * from './Skeleton';
 export * from './Spinner';
 export * from './Switch';

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Modal as ReactNativeModal, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import type { NavigationProp } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { CaseDetailHeader } from '@/features/cases/components/CaseDetailHeader';
@@ -17,6 +18,7 @@ import {
   useCaseNotes,
   useCaseUpdates,
 } from '@/features/cases/hooks';
+import { parseCaseTrackingMetadata } from '@/features/cases/utils/caseTrackingMetadata';
 import type { MainStackParamList } from '@/navigation/types/navigation';
 import type { CaseDetailResponse, CaseUpdate } from '@/shared/api/endpoints/Cases';
 import type { BadgeVariant } from '@/shared/components/Badge/Badge';
@@ -87,33 +89,68 @@ function SectionCard({ title, children }: { title: string; children: ReactNode }
   );
 }
 
-function CardHeader({
-  icon,
+function DetailSectionCard({
   title,
   onEdit,
+  children,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
   title: string;
   onEdit?: () => void;
+  children: ReactNode;
 }) {
+  const [expanded, setExpanded] = useState(true);
+
   return (
-    <View className="mb-2 flex-row items-center justify-between">
-      <View className="flex-row items-center gap-2">
-        <Ionicons color="#6f737d" name={icon} size={18} />
-        <Text className="font-jakarta-medium text-[14px] leading-5 text-[#202228] dark:text-white">
-          {title}
-        </Text>
-      </View>
-      {onEdit ? (
+    <View className="rounded-[20px] bg-white px-6 pb-3 pt-6 dark:bg-[#191a1f]" style={SHADOWS.sm}>
+      <View className="flex-row items-center justify-between gap-4">
         <Pressable
-          accessibilityLabel={`Edit ${title}`}
+          accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ${title}`}
           accessibilityRole="button"
-          className="h-9 w-9 items-center justify-center rounded-full border border-[#dedee0] dark:border-[#303138]"
-          onPress={onEdit}
+          className="min-h-8 flex-1 flex-row items-center gap-2"
+          onPress={() => setExpanded((value) => !value)}
         >
-          <Ionicons color="#6f737d" name="pencil-outline" size={16} />
+          <Ionicons
+            color="#6f737d"
+            name={expanded ? 'chevron-down' : 'chevron-forward'}
+            size={16}
+          />
+          <Text className="font-jakarta-semibold text-[16px] leading-6 text-[#202228] dark:text-white">
+            {title}
+          </Text>
         </Pressable>
-      ) : null}
+        {onEdit ? (
+          <Pressable
+            accessibilityLabel={`Edit ${title}`}
+            accessibilityRole="button"
+            className="h-8 flex-row items-center gap-1 rounded-2xl border border-[#dedee0] px-3 dark:border-[#303138]"
+            onPress={onEdit}
+          >
+            <Ionicons color="#202228" name="pencil-outline" size={14} />
+            <Text className="font-jakarta-medium text-[14px] leading-5 text-[#202228] dark:text-white">
+              Edit
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
+      {expanded ? <View className="mt-4">{children}</View> : null}
+    </View>
+  );
+}
+
+function TrackingFlag({ label, checked }: { label: string; checked: boolean }) {
+  return (
+    <View className="flex-row items-start gap-3 py-2">
+      <View
+        className={cx(
+          'mt-0.5 h-4 w-4 items-center justify-center rounded-md',
+          checked ? 'bg-[#f97332]' : 'bg-[#ebebec] dark:bg-[#303138]'
+        )}
+      >
+        {checked ? <Ionicons color="#ffffff" name="checkmark" size={12} /> : null}
+      </View>
+      <Text className="flex-1 font-jakarta text-[14px] leading-5 text-[#777a84] dark:text-[#a1a1aa]">
+        {label}
+      </Text>
     </View>
   );
 }
@@ -165,66 +202,99 @@ function DetailsTab({
   onEditDetails: () => void;
   onEditPersonal: () => void;
 }) {
+  const [showAllUpdates, setShowAllUpdates] = useState(false);
+  const visibleUpdates = showAllUpdates ? updates : updates.slice(0, 3);
+  const tracking = parseCaseTrackingMetadata(caseItem.notes);
+
   return (
     <CaseDetailTabPage testID="case-details-page">
-      <SectionCard title="Case Tracking">
-        <CardHeader icon="document-text-outline" title="Case Details" onEdit={onEditDetails} />
+      <DetailSectionCard title="Case Tracking Details" onEdit={onEditDetails}>
         <CaseSummaryRow label="Tracking Policy ID" value={caseItem.externalReference} />
-        <CaseSummaryRow label="Current Status" value={displayStatus(caseItem.status)} />
-        <CaseSummaryRow label="Case Type" value={caseItem.accidentType} />
-        <CaseSummaryRow label="Date of Loss" value={displayDate(caseItem.dateOfIncident)} />
-        <CaseSummaryRow label="State of Incident" value={caseItem.stateOfIncident} />
-        <CaseSummaryRow label="Insurance Carrier" value={caseItem.insuranceCarrier} />
-        <CaseSummaryRow label="Policy Number" value={caseItem.policyNumber} />
-        <CaseSummaryRow label="Claim Number" value={caseItem.claimNumber} />
-        <CaseSummaryRow label="Case Tracking Note" showDivider={false} value={caseItem.description} />
-      </SectionCard>
+        <CaseSummaryRow label="Document Type" value={tracking.documentType} />
+        <CaseSummaryRow
+          badgeVariant={statusVariant(caseItem.status)}
+          label="Current Status"
+          value={displayStatus(caseItem.status)}
+        />
+        <CaseSummaryRow
+          badgeVariant="success"
+          label="Current Medical Status"
+          value={tracking.currentMedicalStatus}
+        />
+        <CaseSummaryRow label="Case Type" value={caseItem.accidentType || tracking.accidentType} />
+        <CaseSummaryRow
+          label="State of Incident"
+          value={caseItem.stateOfIncident || tracking.stateOfIncident}
+        />
+        <CaseSummaryRow label="Lead" value={tracking.lead} />
+        <CaseSummaryRow label="Case Tracking Note" value={caseItem.description} />
+        <View className="pt-2">
+          <TrackingFlag
+            checked={tracking.shareCase}
+            label="Share this Case with Associated Law Firm"
+          />
+          <TrackingFlag checked={tracking.caseDropped} label="Case Dropped" />
+          <TrackingFlag checked={tracking.isUccFiled} label="UCC Filed" />
+          <TrackingFlag checked={tracking.childSupportLiens} label="Child Support" />
+          <TrackingFlag checked={tracking.minorComp} label="Minor Comp" />
+        </View>
+      </DetailSectionCard>
 
       <View className="mt-4">
-        <SectionCard title="Plaintiff">
-          <CardHeader icon="person-outline" title="Plaintiff Info" onEdit={onEditPersonal} />
+        <DetailSectionCard title="Plaintiff Info" onEdit={onEditPersonal}>
           <CaseSummaryRow label="Full Name" value={caseItem.clientDisplayName} />
           <CaseSummaryRow label="Phone Number" value={caseItem.clientPhone} />
           <CaseSummaryRow label="Email" value={caseItem.clientEmail} />
           <CaseSummaryRow label="Birthdate" value={displayDate(caseItem.clientDob)} />
           <CaseSummaryRow label="Address" showDivider={false} value={caseItem.clientAddress} />
-        </SectionCard>
+        </DetailSectionCard>
       </View>
 
       <View className="mt-4">
-        <SectionCard title="Recent Updates">
+        <DetailSectionCard title="Recent Updates">
           {updatesLoading ? (
             <Spinner />
           ) : updates.length > 0 ? (
-            updates.slice(0, 3).map((update, index) => (
-              <View
-                key={update.id ?? `${updateTimestamp(update)}-${index}`}
-                className={cx(
-                  'py-4',
-                  index < Math.min(updates.length, 3) - 1
-                    ? 'border-b border-[#e4e4e7] dark:border-[#303138]'
-                    : ''
-                )}
-              >
-                <View className="flex-row items-start justify-between gap-3">
-                  <Text className="flex-1 font-jakarta-medium text-[14px] leading-5 text-[#202228] dark:text-white">
-                    {update.title ?? update.action ?? 'Case Update'}
-                  </Text>
-                  <Text className="font-jakarta text-[12px] leading-4 text-[#777a84]">
-                    {updateTimestamp(update)}
+            <>
+              {visibleUpdates.map((update, index) => (
+                <View
+                  key={update.id ?? `${updateTimestamp(update)}-${index}`}
+                  className={cx(
+                    'py-4',
+                    index < visibleUpdates.length - 1
+                      ? 'border-b border-[#e4e4e7] dark:border-[#303138]'
+                      : ''
+                  )}
+                >
+                  <View className="flex-row items-start justify-between gap-3">
+                    <Text className="flex-1 font-jakarta-medium text-[14px] leading-5 text-[#202228] dark:text-white">
+                      {update.title ?? update.action ?? 'Case Update'}
+                    </Text>
+                    <Text className="font-jakarta text-[12px] leading-4 text-[#777a84]">
+                      {updateTimestamp(update)}
+                    </Text>
+                  </View>
+                  <Text className="mt-2 font-jakarta text-[12px] leading-4 text-[#777a84] dark:text-[#a1a1aa]">
+                    {update.description ?? update.message ?? update.note ?? 'Case record updated.'}
                   </Text>
                 </View>
-                <Text className="mt-2 font-jakarta text-[12px] leading-4 text-[#777a84] dark:text-[#a1a1aa]">
-                  {update.description ?? update.message ?? update.note ?? 'Case record updated.'}
-                </Text>
-              </View>
-            ))
+              ))}
+              {updates.length > 3 ? (
+                <Button
+                  className="mt-2"
+                  label={showAllUpdates ? 'Show Recent Updates' : 'View All Updates'}
+                  size="sm"
+                  variant="secondary"
+                  onPress={() => setShowAllUpdates((value) => !value)}
+                />
+              ) : null}
+            </>
           ) : (
             <Text className="py-5 text-center font-jakarta text-[14px] leading-5 text-[#777a84] dark:text-[#a1a1aa]">
               No recent updates.
             </Text>
           )}
-        </SectionCard>
+        </DetailSectionCard>
       </View>
     </CaseDetailTabPage>
   );

@@ -28,7 +28,8 @@ const caseDetail = {
   id: 'case-1',
   insuranceCarrier: 'Acme Insurance',
   lawFirm: 'Aaron Law Group',
-  notes: null,
+  notes:
+    'documentType=Case Intake; currentMedicalStatus=Pre-demand; lead=Jordan Lee; shareCase=true; isUccFiled=true',
   openedAtUtc: '2025-03-15T00:00:00Z',
   policyNumber: 'POL-100',
   settlementAmount: null,
@@ -112,7 +113,12 @@ describe('CaseDetailScreen', () => {
     fireEvent.press(getByText('Details'));
     expect(queryByTestId('case-summary-page')).toBeNull();
     expect(getByTestId('case-details-page')).toBeTruthy();
-    expect(getByText('Acme Insurance')).toBeTruthy();
+    expect(getByText('Document Type')).toBeTruthy();
+    expect(getByText('Case Intake')).toBeTruthy();
+    expect(getByText('Current Medical Status')).toBeTruthy();
+    expect(getByText('Jordan Lee')).toBeTruthy();
+    expect(getByText('Share this Case with Associated Law Firm')).toBeTruthy();
+    expect(getByText('UCC Filed')).toBeTruthy();
 
     fireEvent.press(getByText('Documents'));
     expect(getByTestId('case-documents-page')).toBeTruthy();
