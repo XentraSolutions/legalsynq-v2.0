@@ -369,7 +369,7 @@ export function AddPaymentForm({
             referenceNumber: form.checkNumber,
             notes: form.note,
             settlementType: form.type,
-            settlementStatus: form.status,
+            settlementStatus: form.lienStatus,
           }),
           settlementService.createLienSettlement({
             lienId: id,
