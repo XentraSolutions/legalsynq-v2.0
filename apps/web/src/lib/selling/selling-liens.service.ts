@@ -44,7 +44,7 @@ export const liensService = {
   async getLiens(query: LiensQuery = {}): Promise<LienListResult> {
     const { data } = await liensApi.list(query);
     return {
-      items: data.items.map(mapLienToListItem),
+      items: data.items,
       pagination: mapPagination(data),
     };
   },
@@ -55,7 +55,6 @@ export const liensService = {
   },
 
   async getSellingDashboard(query: DashboardQuery = {}): Promise<any> {
-    console.log("query");
     const { data } = await liensApi.getDashboard(query);
     console.log(data);
     return data;
