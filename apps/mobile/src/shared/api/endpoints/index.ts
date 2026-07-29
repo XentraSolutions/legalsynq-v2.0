@@ -5,6 +5,7 @@ export * from './Contacts';
 export * from './Documents';
 export * from './LegacyPsa';
 export * from './Liens';
+export * from './Lookups';
 export * as OffersEndpoint from './Offers';
 export * from './Reports';
 export * from './Servicing';

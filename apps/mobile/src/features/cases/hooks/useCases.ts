@@ -11,6 +11,8 @@ import {
   LegacyCasesAdapter,
   LegacyCasesApi,
 } from '@/shared/api/endpoints/Cases';
+import { ContactsApi } from '@/shared/api/endpoints/Contacts';
+import { LookupsApi } from '@/shared/api/endpoints/Lookups';
 import type {
   CaseDetailsUpdateRequest,
   CaseExportFilter,
@@ -28,7 +30,30 @@ export const caseFeatureKeys = {
   notes: (id: string) => [...caseFeatureKeys.all, 'notes', id] as const,
   updates: (id: string) => [...caseFeatureKeys.all, 'updates', id] as const,
   payoffQuote: (id: string) => [...caseFeatureKeys.all, 'payoff-quote', id] as const,
+  trackingOptions: () => [...caseFeatureKeys.all, 'tracking-options'] as const,
 };
+
+export function useCaseTrackingOptions() {
+  return useQuery({
+    queryKey: caseFeatureKeys.trackingOptions(),
+    queryFn: async () => {
+      const [medicalStatuses, caseTypes, states, leads] = await Promise.allSettled([
+        LookupsApi.getByCategory('MedicalStatus'),
+        LookupsApi.getByCategory('AccidentType'),
+        LookupsApi.getByCategory('State'),
+        ContactsApi.listByType('Lead'),
+      ]);
+
+      return {
+        medicalStatuses: medicalStatuses.status === 'fulfilled' ? medicalStatuses.value : [],
+        caseTypes: caseTypes.status === 'fulfilled' ? caseTypes.value : [],
+        states: states.status === 'fulfilled' ? states.value : [],
+        leads: leads.status === 'fulfilled' ? leads.value : [],
+      };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
 
 export function useCases(search = '', filters: CaseFilters = EMPTY_CASE_FILTERS) {
   const mode = useAtomValue(apiModeAtom);
