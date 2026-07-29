@@ -99,6 +99,7 @@ public static class DependencyInjection
         services.AddScoped<IAssistantToolRegistry, StaticAssistantToolRegistry>();
         services.AddScoped<IAssistantToolExecutor, StaticAssistantToolExecutor>();
         services.AddScoped<IAssistantProvider, ConfiguredAssistantProvider>();
+        services.AddSingleton<IAssistantConversationTitleGenerator, BackgroundAssistantConversationTitleGenerator>();
         services.AddScoped<IAssistantService, EfAssistantService>();
         if (hasDatabase && !skipDatabaseStartup)
             services.AddHostedService<AssistantModuleSeeder>();

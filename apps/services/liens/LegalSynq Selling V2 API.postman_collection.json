@@ -111,9 +111,27 @@
           "name": "Confirm Sale",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"confirmationAccepted\": true,\n  \"sendBuyerNotification\": true\n}", "options": { "raw": { "language": "json" } } },
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/confirm-sale"
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmationAccepted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/confirm-sale",
+            "description": "POST /api/liens/selling/liens/{lienId}/confirm-sale. Sets SellerStatus=SubmittedForSale, core Lien.Status=Offered, copies AskAmount to Lien.OfferPrice, and keeps SoldAtUtc null. The API always validates persisted buyer/seller/lien/case data, creates 30-day buyer and seller access links from an absolute Liens:Selling:BuyerPortalBaseUrl, or derives it from SYNQLIEN_COMMON_PORTAL_HOSTNAME when the explicit base URL is absent. The API rejects literal localhost/127.0.0.1 CTA links, allows named .localhost aliases such as synqlien-demo.localhost for local demo runs, and submits the buyer and seller New Lien Offer emails idempotently with SendGrid click tracking disabled for the CTA; callers do not provide email placeholder data or a CTA URL and cannot opt out of notifications. For local tenant-portal emails configure Liens__Selling__BuyerPortalBaseUrl to the active web origin, such as http://synqlien-demo.localhost:5000/selling/public for scripts/run-dev.sh or http://synqlien-demo.localhost:3000/selling/public when only apps/web dev is running."
           }
         },
         {
@@ -184,14 +202,14 @@
       "name": "05 - Authenticated Buyer",
       "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}", "type": "string" }] },
       "item": [
-        { "name": "View Submitted Lien", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/buyer/liens/{{sellerLienId}}" } },
+        { "name": "View Submitted Lien", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/buyer/liens/by-lien/{{sellerLienId}}" } },
         {
           "name": "Submit Offer",
-          "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"offerAmount\": 10000,\n  \"message\": \"Offer submitted from Postman.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/buyer/liens/{{sellerLienId}}/offers" }
+          "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"offerAmount\": 10000,\n  \"message\": \"Offer submitted from Postman.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/buyer/liens/by-lien/{{sellerLienId}}/offers" }
         },
         {
           "name": "Decline Lien",
-          "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Not a fit.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/buyer/liens/{{sellerLienId}}/decline" }
+          "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Not a fit.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/buyer/liens/by-lien/{{sellerLienId}}/decline" }
         }
       ]
     },

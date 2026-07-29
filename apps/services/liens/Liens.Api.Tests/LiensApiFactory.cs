@@ -171,12 +171,14 @@ internal sealed class NoOpFlowInstanceResolver : IFlowInstanceResolver
 internal sealed class CapturingNotificationPublisher : INotificationPublisher
 {
     private readonly List<CapturedEmail> _emails = [];
+    private readonly Dictionary<string, Guid> _idempotentEmails = new(StringComparer.Ordinal);
 
     public IReadOnlyList<CapturedEmail> Emails => _emails;
 
     public void Clear()
     {
         _emails.Clear();
+        _idempotentEmails.Clear();
         FailEmailSends = false;
     }
 
@@ -210,7 +212,23 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
                 "Simulated notification failure."));
         }
 
+        var idempotencyKey = options?.IdempotencyKey;
+        if (!string.IsNullOrWhiteSpace(idempotencyKey) &&
+            _idempotentEmails.TryGetValue($"{tenantId:N}:{idempotencyKey}", out var existingNotificationId))
+        {
+            return Task.FromResult(new NotificationEmailSendResult(
+                existingNotificationId,
+                "sent",
+                false,
+                null,
+                null,
+                null));
+        }
+
         var notificationId = Guid.CreateVersion7();
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            _idempotentEmails[$"{tenantId:N}:{idempotencyKey}"] = notificationId;
+
         _emails.Add(new CapturedEmail(
             notificationType,
             tenantId,
@@ -259,14 +277,29 @@ internal sealed record CapturedEmail(
 internal sealed class CapturingPublicBuyerAccountProvisioningService : IPublicBuyerAccountProvisioningService
 {
     private readonly List<PublicBuyerAccountProvisioningRequest> _requests = [];
+    private readonly List<PublicBuyerAccountStatusRequest> _statusRequests = [];
 
     public IReadOnlyList<PublicBuyerAccountProvisioningRequest> Requests => _requests;
+    public IReadOnlyList<PublicBuyerAccountStatusRequest> StatusRequests => _statusRequests;
+    public PublicBuyerAccountStatusResult? NextStatusResult { get; set; }
     public PublicBuyerAccountProvisioningResult? NextResult { get; set; }
 
     public void Clear()
     {
         _requests.Clear();
+        _statusRequests.Clear();
+        NextStatusResult = null;
         NextResult = null;
+    }
+
+    public Task<PublicBuyerAccountStatusResult> GetBuyerAccountStatusAsync(
+        PublicBuyerAccountStatusRequest request,
+        CancellationToken ct = default)
+    {
+        _statusRequests.Add(request);
+        return Task.FromResult(
+            NextStatusResult
+            ?? PublicBuyerAccountStatusResult.Found(accountExists: false));
     }
 
     public Task<PublicBuyerAccountProvisioningResult> ProvisionBuyerAccountAsync(

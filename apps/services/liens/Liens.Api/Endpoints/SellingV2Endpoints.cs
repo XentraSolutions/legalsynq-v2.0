@@ -91,11 +91,11 @@ public static class SellingV2Endpoints
             .RequireAuthorization(Policies.AuthenticatedUser)
             .RequireProductAccess(LiensPermissions.ProductCode);
 
-        buyer.MapGet("/liens/{lienId:guid}", GetBuyerLien)
+        buyer.MapGet("/liens/by-lien/{lienId:guid}", GetBuyerLien)
             .AddEndpointFilter(new BuyerViewPermissionFilter());
-        buyer.MapPost("/liens/{lienId:guid}/offers", SubmitBuyerOffer)
+        buyer.MapPost("/liens/by-lien/{lienId:guid}/offers", SubmitBuyerOffer)
             .RequirePermission(LiensPermissions.LienOffer);
-        buyer.MapPost("/liens/{lienId:guid}/decline", DeclineBuyerLien)
+        buyer.MapPost("/liens/by-lien/{lienId:guid}/decline", DeclineBuyerLien)
             .RequirePermission(LiensPermissions.LienOffer);
     }
 
@@ -728,7 +728,7 @@ public static class SellingV2Endpoints
         var (tenantId, buyerOrgId, userId) = RequireBuyerContext(context);
         if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError)) return idempotencyError!;
         var replay = await SellingIdempotency.GetReplayAsync(
-            db, tenantId, "User", userId, "/api/liens/selling/buyer/liens/{lienId}/offers", "Lien", lienId.ToString(), idempotencyKey!, request, ct);
+            db, tenantId, "User", userId, "/api/liens/selling/buyer/liens/by-lien/{lienId}/offers", "Lien", lienId.ToString(), idempotencyKey!, request, ct);
         if (replay is not null) return replay;
         var lien = await ResolveGrantedBuyerLienAsync(db, tenantId, buyerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
@@ -741,7 +741,7 @@ public static class SellingV2Endpoints
         try
         {
             var started = await SellingIdempotency.TryBeginAsync(
-                db, tenantId, "User", userId, "/api/liens/selling/buyer/liens/{lienId}/offers", "Lien", lienId.ToString(), idempotencyKey!, request, ct);
+                db, tenantId, "User", userId, "/api/liens/selling/buyer/liens/by-lien/{lienId}/offers", "Lien", lienId.ToString(), idempotencyKey!, request, ct);
             if (started.Result is not null) return started.Result;
             var activeOfferExists = await db.LienOffers.AnyAsync(offer =>
                 offer.TenantId == tenantId && offer.LienId == lien.Id && offer.BuyerOrgId == buyerOrgId &&
@@ -782,7 +782,7 @@ public static class SellingV2Endpoints
         var (tenantId, buyerOrgId, userId) = RequireBuyerContext(context);
         if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError)) return idempotencyError!;
         var replay = await SellingIdempotency.GetReplayAsync(
-            db, tenantId, "User", userId, "/api/liens/selling/buyer/liens/{lienId}/decline", "Lien", lienId.ToString(), idempotencyKey!, request, ct);
+            db, tenantId, "User", userId, "/api/liens/selling/buyer/liens/by-lien/{lienId}/decline", "Lien", lienId.ToString(), idempotencyKey!, request, ct);
         if (replay is not null) return replay;
         var lien = await ResolveGrantedBuyerLienAsync(db, tenantId, buyerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
@@ -828,7 +828,7 @@ public static class SellingV2Endpoints
         }
 
         var started = await SellingIdempotency.TryBeginAsync(
-            db, tenantId, "User", userId, "/api/liens/selling/buyer/liens/{lienId}/decline", "Lien", lienId.ToString(), idempotencyKey!, request, ct);
+            db, tenantId, "User", userId, "/api/liens/selling/buyer/liens/by-lien/{lienId}/decline", "Lien", lienId.ToString(), idempotencyKey!, request, ct);
         if (started.Result is not null)
         {
             db.SellingIdempotencyRecords.Remove(responseTransition.Record!);

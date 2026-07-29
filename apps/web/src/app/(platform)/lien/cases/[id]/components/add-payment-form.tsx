@@ -188,6 +188,17 @@ export function AddPaymentForm({
     },
   ];
 
+  function isLienPayable(l: CaseLienItem & CaseLienItemMetadata): boolean {
+    return (
+      l.status !== "Closed" &&
+      l.status !== "Withdrawn" &&
+      l.status !== "Sold" &&
+      l.balance > 0
+    );
+  }
+
+  const activeLiens = liens.filter(isLienPayable);
+
   useEffect(() => {
     if (!open) return;
     setLookupsLoading(true);
@@ -233,7 +244,10 @@ export function AddPaymentForm({
 
   const openLiens = liens.filter(
     (l) =>
-      l.status !== "Closed" && l.status !== "Withdrawn" && l.status !== "Sold",
+      l.status !== "Closed" &&
+      l.status !== "Withdrawn" &&
+      l.status !== "Sold" &&
+      l.balance > 0,
   );
 
   const allChecked =
@@ -283,7 +297,7 @@ export function AddPaymentForm({
     // Create a Set for fast lookups
     const checkedSet = new Set(checkedIds);
 
-    for (const l of openLiens) {
+    for (const l of activeLiens) {
       // Check if current lien ID is in the checked list
       if (checkedSet.has(l.id)) {
         if (l.balance != null) {
@@ -295,13 +309,11 @@ export function AddPaymentForm({
       }
     }
     return balances;
-    console.log(balances);
   };
 
   const handleAllocateProportionally = () => {
     const val = parseFloat(form.checkAmount);
     if (isNaN(val) || val <= 0 || checkedIds.size === 0) return;
-    const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
     const totalBalance = selectedLiens.reduce(
       (s, l) => s + (l.balance ?? 0),
       0,
@@ -318,7 +330,7 @@ export function AddPaymentForm({
   const handleDistributePayment = () => {
     const val = parseFloat(form.checkAmount);
     if (isNaN(val) || val <= 0 || checkedIds.size === 0) return;
-    const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
+    // const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
     const perLien = val / selectedLiens.length;
     const updates: Record<string, string> = { ...lienPayments };
     for (const l of selectedLiens) {
@@ -357,7 +369,7 @@ export function AddPaymentForm({
             referenceNumber: form.checkNumber,
             notes: form.note,
             settlementType: form.type,
-            settlementStatus: form.status,
+            settlementStatus: form.lienStatus,
           }),
           settlementService.createLienSettlement({
             lienId: id,
@@ -782,10 +794,11 @@ export function AddPaymentForm({
         </div>
 
         <LienTable
-          liens={openLiens}
+          liens={liens}
           checkedIds={checkedIds}
           onToggleCheck={toggleCheck}
           onToggleAll={toggleAll}
+          isRowSelectable={isLienPayable}
           columns={paymentColumns}
           footer={paymentFooter}
           loadedAt={liensLoadedAt}

@@ -19,7 +19,11 @@ public static class JwtTokenHelper
     /// <summary>
     /// Creates a signed JWT with all Liens permissions, suitable for happy-path tests.
     /// </summary>
-    public static string CreateFullAccessToken(Guid tenantId, Guid userId, Guid? orgId = null)
+    public static string CreateFullAccessToken(
+        Guid tenantId,
+        Guid userId,
+        Guid? orgId = null,
+        string? email = null)
     {
         var allPermissions = new[]
         {
@@ -53,11 +57,16 @@ public static class JwtTokenHelper
             LiensPermissions.CaseNoteManage,
             LiensPermissions.TaskNoteManage,
         };
-        return CreateToken(tenantId, userId, allPermissions, orgId);
+        return CreateToken(tenantId, userId, allPermissions, orgId, email);
     }
 
     /// <summary>Creates a signed JWT with explicit permission set.</summary>
-    public static string CreateToken(Guid tenantId, Guid userId, string[] permissions, Guid? orgId = null)
+    public static string CreateToken(
+        Guid tenantId,
+        Guid userId,
+        string[] permissions,
+        Guid? orgId = null,
+        string? email = null)
     {
         var claims = new List<Claim>
         {
@@ -67,6 +76,9 @@ public static class JwtTokenHelper
             // product_roles claim grants access to SYNQ_LIENS product
             new("product_roles", "SYNQ_LIENS:SYNQLIENS_USER"),
         };
+
+        if (!string.IsNullOrWhiteSpace(email))
+            claims.Add(new Claim("email", email.Trim()));
 
         foreach (var perm in permissions)
             claims.Add(new Claim("permissions", perm));

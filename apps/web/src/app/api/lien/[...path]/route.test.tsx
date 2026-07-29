@@ -14,6 +14,8 @@ function makeRequest(
 ): [NextRequest, RouteContext] {
   const headers: Record<string, string> = {
     "content-type": "application/json",
+    host: "synqlien-demo.localhost:3000",
+    "x-forwarded-proto": "http",
   };
   if (options.idempotencyKey) {
     headers["Idempotency-Key"] = options.idempotencyKey;
@@ -64,6 +66,8 @@ describe("SynqLien catch-all proxy", () => {
         method: "POST",
         headers: {
           "Idempotency-Key": "idem-123",
+          "x-legal-synq-public-host": "synqlien-demo.localhost:3000",
+          "x-legal-synq-public-proto": "http",
           "Content-Type": "application/json",
         },
         body: "{}",

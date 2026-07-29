@@ -2370,6 +2370,77 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.ToTable("liens_SellingIdempotencyRecords", (string)null);
                 });
 
+            modelBuilder.Entity("Liens.Domain.Entities.SellingPortalMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("AccessLinkId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("BuyerContactId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("BuyerOrgId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .IsRequired()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("LienId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("varchar(400)");
+
+                    b.Property<string>("SenderEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("varchar(320)");
+
+                    b.Property<string>("SenderName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("SenderType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<Guid>("SellerOrgId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccessLinkId");
+
+                    b.HasIndex("LienId");
+
+                    b.HasIndex("TenantId", "AccessLinkId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_SellingPortalMessages_Tenant_AccessLink_Created");
+
+                    b.HasIndex("TenantId", "LienId", "SellerOrgId", "BuyerOrgId", "BuyerContactId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_SellingPortalMessages_Tenant_Lien_Participants_Created");
+
+                    b.ToTable("liens_SellingPortalMessages", (string)null);
+                });
+
             modelBuilder.Entity("Liens.Domain.Entities.SellingPortfolio", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3009,6 +3080,21 @@ namespace Liens.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Liens.Domain.Entities.SellingBuyerAccessLink", b =>
                 {
+                    b.HasOne("Liens.Domain.Entities.Lien", null)
+                        .WithMany()
+                        .HasForeignKey("LienId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Liens.Domain.Entities.SellingPortalMessage", b =>
+                {
+                    b.HasOne("Liens.Domain.Entities.SellingBuyerAccessLink", null)
+                        .WithMany()
+                        .HasForeignKey("AccessLinkId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Liens.Domain.Entities.Lien", null)
                         .WithMany()
                         .HasForeignKey("LienId")

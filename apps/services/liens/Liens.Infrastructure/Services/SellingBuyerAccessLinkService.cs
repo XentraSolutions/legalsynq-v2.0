@@ -10,8 +10,8 @@ namespace Liens.Infrastructure.Services;
 
 public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkService
 {
-    private const string ConfirmSalePurpose = "ConfirmSale";
     private const string LegacyConfirmSaleRoute = "/api/liens/selling/liens/{lienId}/confirm-sale";
+    private const string ConfirmSaleSellerViewRoute = "/api/liens/selling/liens/{lienId}/confirm-sale/seller-view";
 
     private readonly LiensDbContext _db;
     private readonly IConfiguration _configuration;
@@ -24,7 +24,7 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
         _configuration = configuration;
     }
 
-    public async Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleAsync(
+    public Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleAsync(
         Guid tenantId,
         Guid lienId,
         Guid sellerOrgId,
@@ -34,7 +34,7 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
         string idempotencyKey,
         TimeSpan ttl,
         CancellationToken ct = default)
-        => await CreateAsync(
+        => CreateOrGetAsync(
             tenantId,
             lienId,
             sellerOrgId,
@@ -42,11 +42,12 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
             buyerContactId,
             actingUserId,
             LegacyConfirmSaleRoute,
+            SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
             idempotencyKey,
             ttl,
             ct);
 
-    public async Task<SellingBuyerAccessLinkResult> CreateAsync(
+    public Task<SellingBuyerAccessLinkResult> CreateAsync(
         Guid tenantId,
         Guid lienId,
         Guid sellerOrgId,
@@ -54,6 +55,54 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
         Guid buyerContactId,
         Guid actingUserId,
         string route,
+        string idempotencyKey,
+        TimeSpan ttl,
+        CancellationToken ct = default)
+        => CreateOrGetAsync(
+            tenantId,
+            lienId,
+            sellerOrgId,
+            buyerOrgId,
+            buyerContactId,
+            actingUserId,
+            route,
+            SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
+            idempotencyKey,
+            ttl,
+            ct);
+
+    public Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleSellerViewAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid actingUserId,
+        string idempotencyKey,
+        TimeSpan ttl,
+        CancellationToken ct = default)
+        => CreateOrGetAsync(
+            tenantId,
+            lienId,
+            sellerOrgId,
+            buyerOrgId,
+            buyerContactId,
+            actingUserId,
+            ConfirmSaleSellerViewRoute,
+            SellingAccessLinkPurposes.ConfirmSaleSellerView,
+            idempotencyKey,
+            ttl,
+            ct);
+
+    private async Task<SellingBuyerAccessLinkResult> CreateOrGetAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid actingUserId,
+        string route,
+        string purpose,
         string idempotencyKey,
         TimeSpan ttl,
         CancellationToken ct = default)
@@ -96,7 +145,7 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
             buyerOrgId,
             buyerContactId,
             token,
-            ConfirmSalePurpose,
+            purpose,
             trimmedRoute,
             trimmedIdempotencyKey,
             DateTime.UtcNow.Add(ttl),

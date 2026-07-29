@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import ReportDisplay from "../components/report-display";
 import { ReportTemplate } from "@/lib/liens/lien-report.types";
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
+import { PaginationMeta } from "@/lib/contacts";
 
 const SAMPLE_REPORTS: any[] = [
   {
@@ -34,31 +35,82 @@ export default function ReportDetailsPage() {
   const [report, setReport] = useState<any | null>(null);
   const [template, setTemplate] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingData, setLoadingData] = useState(true);
+
   const [editMode, setEditMode] = useState(false);
-  console.log(id);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    pageSize: 10,
+    totalCount: 0,
+    totalPages: 0,
+  });
   const fetchReport = useCallback(async () => {
-    setLoading(true);
     try {
       const result = await lienReportsService.getReportsById(
         id?.toString() ?? "",
       );
-      const generatedTemplate =
-        await lienReportsService.generateTemplate(result);
+      const generatedTemplate = await lienReportsService.generateTemplate({
+        ...result,
+        limit: 10,
+        page: pagination.page,
+      });
 
-      console.log(result, generatedTemplate);
       setReport(result);
-      setTemplate(generatedTemplate);
+      setTemplate({
+        ...generatedTemplate,
+        page: pagination.page,
+        limit: pagination.pageSize,
+        totalCount: generatedTemplate?.totalCount
+          ? generatedTemplate?.totalCount
+          : 0,
+        totalPages: generatedTemplate?.totalCount
+          ? Math.floor(generatedTemplate?.totalCount / 10)
+          : 1,
+      });
     } catch (err) {
     } finally {
       setLoading(false);
+      setLoadingData(false);
     }
   }, []);
+
+  const fetchReportData = useCallback(async () => {
+    setLoadingData(true);
+    try {
+      const result = await lienReportsService.getReportsById(
+        id?.toString() ?? "",
+      );
+      const generatedTemplate = await lienReportsService.generateTemplate({
+        ...result,
+        limit: 10,
+        page: pagination.page,
+      });
+
+      setReport(result);
+      setTemplate({
+        ...generatedTemplate,
+        page: pagination.page,
+        limit: pagination.pageSize,
+        totalCount: generatedTemplate?.totalCount
+          ? generatedTemplate?.totalCount
+          : 0,
+        totalPages: generatedTemplate?.totalCount
+          ? Math.round(generatedTemplate?.totalCount / 10)
+          : 1,
+      });
+    } catch (err) {
+    } finally {
+      setLoadingData(false);
+    }
+  }, [pagination]);
   useEffect(() => {
     setLoading(true);
     fetchReport();
   }, [id]);
 
-  useEffect(() => {}, [template]);
+  useEffect(() => {
+    fetchReportData();
+  }, [pagination]);
 
   if (loading) {
     return <div className="p-6 text-sm text-gray-500">Loading report...</div>;
@@ -92,6 +144,8 @@ export default function ReportDetailsPage() {
               router.push("/lien/reports");
             }, 500);
           }}
+          onPaginate={(e) => setPagination(e)}
+          loadingData={loadingData}
         />
       )}
     </div>

@@ -22,6 +22,7 @@ public sealed class EfAssistantServiceTests : IDisposable
     private readonly RecordingToolExecutor _toolExecutor = new();
     private readonly RecordingAssistantProvider _provider = new();
     private readonly XeniaMetrics _metrics = new(new TestMeterFactory());
+    private readonly ImmediateTitleGenerator _titleGenerator;
 
     public EfAssistantServiceTests()
     {
@@ -30,6 +31,7 @@ public sealed class EfAssistantServiceTests : IDisposable
             .Options;
 
         _db = new XeniaDbContext(options);
+        _titleGenerator = new ImmediateTitleGenerator(_db);
     }
 
     [Fact]
@@ -42,29 +44,7 @@ public sealed class EfAssistantServiceTests : IDisposable
         SeedGenericAgent();
         _tenantAccessor.Set(new FakeTenantContext(tenantId, actorId));
 
-        var httpContext = new DefaultHttpContext
-        {
-            User = new ClaimsPrincipal(new ClaimsIdentity([], "Bearer"))
-        };
-
-        var sut = new EfAssistantService(
-            _db,
-            _tenantAccessor,
-            new HttpContextAccessor { HttpContext = httpContext },
-            new StaticAssistantToolRegistry(),
-            _toolExecutor,
-            _provider,
-            new StaticRuntimeSettingsService(),
-            Options.Create(new XeniaAssistantOptions
-            {
-                Provider = "Fake",
-                ModelKey = "xenia-fake",
-                MaxConversationMessages = 10,
-                MaxPromptCharacters = 8000,
-                MaxToolIterations = 4,
-            }),
-            _metrics,
-            NullLogger<EfAssistantService>.Instance);
+        var sut = CreateSut();
 
         var conversation = await sut.CreateConversationAsync(new CreateAssistantConversationRequest(
             "generic",
@@ -101,6 +81,126 @@ public sealed class EfAssistantServiceTests : IDisposable
         var invocation = Assert.Single(_db.AssistantToolInvocations);
         Assert.Equal("completed", invocation.Status);
         Assert.Single(_db.AssistantMessages.Where(message => message.Role == AssistantMessageRole.Tool));
+    }
+
+    [Theory]
+    [InlineData("Show me total liens", "Total Liens")]
+    [InlineData("Generate a funded amount report", "Funded Amount Report")]
+    [InlineData("Find all dog bite cases", "Find All Dog Bite Cases")]
+    [InlineData("Summarize this settlement", "Settlement Summary")]
+    [InlineData("What cases are processing?", "Processing Cases")]
+    public async Task StreamMessageAsync_FirstMessage_RenamesGeneratedTitleFromPrompt(
+        string prompt,
+        string expectedTitle)
+    {
+        var tenantId = Guid.CreateVersion7();
+        var actorId = Guid.CreateVersion7();
+
+        SeedGenericAgent();
+        _tenantAccessor.Set(new FakeTenantContext(tenantId, actorId));
+        var sut = CreateSut();
+
+        var conversation = await sut.CreateConversationAsync(new CreateAssistantConversationRequest(
+            "generic",
+            null,
+            "page",
+            "{}"));
+
+        await CollectAsync(sut.StreamMessageAsync(
+            conversation.Id,
+            new CreateAssistantMessageRequest(prompt, null, null)));
+
+        var refreshed = await sut.GetConversationAsync(conversation.Id);
+        Assert.NotNull(refreshed);
+        Assert.Equal(expectedTitle, refreshed!.Title);
+        Assert.Equal(3, _provider.Requests.Count);
+        var titleRequest = Assert.Single(_titleGenerator.Requests);
+        Assert.Equal(prompt, titleRequest.FirstUserPrompt);
+        Assert.Equal("xenia-fake", titleRequest.ProviderModelKey);
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_DoesNotOverwriteExplicitConversationTitle()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var actorId = Guid.CreateVersion7();
+
+        SeedGenericAgent();
+        _tenantAccessor.Set(new FakeTenantContext(tenantId, actorId));
+        var sut = CreateSut();
+
+        var conversation = await sut.CreateConversationAsync(new CreateAssistantConversationRequest(
+            "generic",
+            "Custom Research",
+            "page",
+            "{}"));
+
+        await CollectAsync(sut.StreamMessageAsync(
+            conversation.Id,
+            new CreateAssistantMessageRequest("Show me total liens", null, null)));
+
+        var refreshed = await sut.GetConversationAsync(conversation.Id);
+        Assert.NotNull(refreshed);
+        Assert.Equal("Custom Research", refreshed!.Title);
+        Assert.Empty(_titleGenerator.Requests);
+    }
+
+    [Fact]
+    public async Task StreamMessageAsync_DoesNotRetitleExistingConversation()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var actorId = Guid.CreateVersion7();
+
+        SeedGenericAgent();
+        _tenantAccessor.Set(new FakeTenantContext(tenantId, actorId));
+        var sut = CreateSut();
+
+        var conversation = await sut.CreateConversationAsync(new CreateAssistantConversationRequest(
+            "generic",
+            null,
+            "page",
+            "{}"));
+
+        await CollectAsync(sut.StreamMessageAsync(
+            conversation.Id,
+            new CreateAssistantMessageRequest("Show me total liens", null, null)));
+
+        await CollectAsync(sut.StreamMessageAsync(
+            conversation.Id,
+            new CreateAssistantMessageRequest("Find all dog bite cases", null, null)));
+
+        var refreshed = await sut.GetConversationAsync(conversation.Id);
+        Assert.NotNull(refreshed);
+        Assert.Equal("Total Liens", refreshed!.Title);
+        Assert.Single(_titleGenerator.Requests);
+    }
+
+    private EfAssistantService CreateSut()
+    {
+        var httpContext = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity([], "Bearer"))
+        };
+
+        return new EfAssistantService(
+            _db,
+            _tenantAccessor,
+            new HttpContextAccessor { HttpContext = httpContext },
+            new StaticAssistantToolRegistry(),
+            _toolExecutor,
+            _provider,
+            new StaticRuntimeSettingsService(),
+            _titleGenerator,
+            Options.Create(new XeniaAssistantOptions
+            {
+                Provider = "Fake",
+                ModelKey = "xenia-fake",
+                MaxConversationMessages = 10,
+                MaxPromptCharacters = 8000,
+                MaxToolIterations = 4,
+            }),
+            _metrics,
+            NullLogger<EfAssistantService>.Instance);
     }
 
     private void SeedGenericAgent()
@@ -191,6 +291,28 @@ public sealed class EfAssistantServiceTests : IDisposable
             using var doc = System.Text.Json.JsonDocument.Parse(inputJson);
             return doc.RootElement.GetProperty("referralId").GetString()
                 ?? throw new InvalidOperationException("Missing referralId.");
+        }
+    }
+
+    private sealed class ImmediateTitleGenerator : IAssistantConversationTitleGenerator
+    {
+        private readonly XeniaDbContext _db;
+
+        public ImmediateTitleGenerator(XeniaDbContext db)
+            => _db = db;
+
+        public List<AssistantConversationTitleGenerationRequest> Requests { get; } = [];
+
+        public void QueueTitleGeneration(AssistantConversationTitleGenerationRequest request)
+        {
+            Requests.Add(request);
+
+            var conversation = _db.AssistantConversations.First(c => c.Id == request.ConversationId);
+            if (!AssistantConversationTitlePolicy.IsGeneratedTitle(conversation.Title, request.AgentName))
+                return;
+
+            conversation.Rename(AssistantConversationTitlePolicy.BuildFallbackTitle(request.FirstUserPrompt));
+            _db.SaveChanges();
         }
     }
 

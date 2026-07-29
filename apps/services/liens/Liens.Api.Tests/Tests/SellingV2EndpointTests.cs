@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
+using Liens.Application.Interfaces;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
@@ -47,6 +48,9 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     [Fact]
     public async Task Prepared_lien_confirm_sale_sets_offered_and_submitted_not_sold()
     {
+        var (buyerCompanyId, buyerContactId) = await SeedConfirmSaleContactsAsync(
+            "buyer.prepared-confirm@capital.test",
+            "seller.prepared-confirm@smithlaw.test");
         var lienId = await CreateSellingLienAsync();
 
         var lienInfo = await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/lien-information", new
@@ -60,8 +64,8 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         var caseInfo = await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/case-information", new
         {
-            fundingCompanyId = SeedHelper.FundingCompanyId,
-            fundingCompanyContactId = SeedHelper.FundingCompanyId,
+            fundingCompanyId = buyerCompanyId,
+            fundingCompanyContactId = buyerContactId,
             caseId = SeedHelper.CaseId,
             createCaseIfMissing = false,
         });
@@ -85,8 +89,8 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         {
             Content = JsonContent.Create(new
             {
-                buyerFundingCompanyId = SeedHelper.FundingCompanyId,
-                buyerContactId = SeedHelper.FundingCompanyId,
+                buyerFundingCompanyId = buyerCompanyId,
+                buyerContactId,
                 askAmount = 1250m,
                 listingVisibility = "Private",
             }),
@@ -162,7 +166,9 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         using var verifyScope = _factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
-        var link = verifyDb.SellingBuyerAccessLinks.Single(item => item.LienId == lienId);
+        var link = verifyDb.SellingBuyerAccessLinks.Single(item =>
+            item.LienId == lienId &&
+            item.Purpose == SellingAccessLinkPurposes.ConfirmSaleBuyerResponse);
         link.BuyerOrgId.Should().Be(buyerOrgId);
         link.BuyerContactId.Should().Be(buyerEmployeeId);
         var replay = verifyDb.SellingIdempotencyRecords.Single(item =>
@@ -170,7 +176,8 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         replay.ResponseBody.Should().NotContain(portalUrl!);
         replay.ResponseBody.Should().NotContain(portalUrl!.Split('/').Last());
         replay.ResponseBody.Should().Contain("\"buyerPortalUrl\":null");
-        var notification = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>().Emails.Last();
+        var notification = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>().Emails
+            .Single(email => email.RecipientEmail == "erin@buyer-capital.test");
         notification.Options!.TemplateData!["buyerMessage"].Should().Be("Please review this time-sensitive lien.");
     }
 
@@ -277,7 +284,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer", JwtTokenHelper.CreateFullAccessToken(SeedHelper.TenantId, SeedHelper.UserId, buyerOrgId));
         var accept = await PostPublicAsync(token, "accept", Guid.CreateVersion7().ToString(), new { });
-        using var decline = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/buyer/liens/{lienId}/decline")
+        using var decline = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/buyer/liens/by-lien/{lienId}/decline")
         {
             Content = JsonContent.Create(new { reason = "Competing authenticated response" }),
         };
@@ -406,7 +413,10 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     [Fact]
     public async Task Invalid_confirmation_does_not_reserve_the_transition_or_idempotency_key()
     {
-        var lienId = await PrepareSellingLienAsync(SeedHelper.FundingCompanyId, SeedHelper.FundingCompanyId);
+        var (buyerCompanyId, buyerContactId) = await SeedConfirmSaleContactsAsync(
+            "buyer.invalid-confirm@capital.test",
+            "seller.invalid-confirm@smithlaw.test");
+        var lienId = await PrepareSellingLienAsync(buyerCompanyId, buyerContactId);
         var key = Guid.CreateVersion7().ToString();
 
         using (var invalid = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/confirm-sale")
@@ -469,6 +479,54 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         return lienId;
     }
 
+    private async Task<(Guid BuyerCompanyId, Guid BuyerContactId)> SeedConfirmSaleContactsAsync(
+        string buyerEmail,
+        string sellerEmail)
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var buyerCompanyId = Guid.CreateVersion7();
+        var buyerContactId = Guid.CreateVersion7();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+        var buyerCompany = Contact.Create(
+            SeedHelper.TenantId,
+            buyerOrgId,
+            ContactType.FundingCompany,
+            "Buyer",
+            "Capital",
+            SeedHelper.UserId,
+            organization: "Buyer Capital LLC");
+        SetId(buyerCompany, buyerCompanyId);
+
+        var buyerContact = Contact.Create(
+            SeedHelper.TenantId,
+            buyerOrgId,
+            ContactType.Lead,
+            "Buyer",
+            "Reviewer",
+            SeedHelper.UserId,
+            organization: "Buyer Capital LLC",
+            email: buyerEmail);
+        SetId(buyerContact, buyerContactId);
+
+        var sellerContact = Contact.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            ContactType.LawFirm,
+            "Seller",
+            "Representative",
+            SeedHelper.UserId,
+            organization: "Seller Law LLP",
+            email: sellerEmail);
+
+        db.Contacts.AddRange(buyerCompany, buyerContact, sellerContact);
+        await db.SaveChangesAsync();
+
+        return (buyerCompanyId, buyerContactId);
+    }
+
     private async Task<(string Token, Guid LienId)> SeedPublicAccessLinkAsync()
     {
         var token = Convert.ToHexString(Guid.NewGuid().ToByteArray());
@@ -484,7 +542,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         lien.ListForSale(450m, SeedHelper.UserId);
         var accessLink = SellingBuyerAccessLink.Create(
             SeedHelper.TenantId, lienId, SeedHelper.OrgId, buyerOrgId, buyerContactId, token,
-            "Test", "/api/liens/selling/public/{token}", Guid.CreateVersion7().ToString(), DateTime.UtcNow.AddDays(1), SeedHelper.UserId);
+            SellingAccessLinkPurposes.ConfirmSaleBuyerResponse, "/api/liens/selling/public/{token}", Guid.CreateVersion7().ToString(), DateTime.UtcNow.AddDays(1), SeedHelper.UserId);
         db.Contacts.Add(buyer);
         db.Liens.Add(lien);
         db.SellingBuyerAccessLinks.Add(accessLink);

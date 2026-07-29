@@ -256,6 +256,8 @@ PID_CC=$!
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
     Liens__Selling__BuyerPortalBaseUrl="$Liens__Selling__BuyerPortalBaseUrl" \
+    NotificationsService__BaseUrl=http://127.0.0.1:5008 \
+    FLOW_SERVICE_TOKEN_SECRET="${FLOW_SERVICE_TOKEN_SECRET:-dev-flow-service-token-signing-key-32chars!}" \
     dotnet run --no-build --project "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj" &
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \

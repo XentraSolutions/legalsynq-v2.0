@@ -1,5 +1,11 @@
 namespace Liens.Application.Interfaces;
 
+public static class SellingAccessLinkPurposes
+{
+    public const string ConfirmSaleBuyerResponse = "ConfirmSale";
+    public const string ConfirmSaleSellerView = "ConfirmSaleSellerView";
+}
+
 public interface ISellingBuyerAccessLinkService
 {
     /// <summary>
@@ -29,6 +35,17 @@ public interface ISellingBuyerAccessLinkService
         TimeSpan ttl,
         CancellationToken ct = default);
 
+    Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleSellerViewAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid actingUserId,
+        string idempotencyKey,
+        TimeSpan ttl,
+        CancellationToken ct = default);
+
     Task MarkNotificationSubmittedAsync(
         Guid tenantId,
         Guid accessLinkId,
@@ -45,4 +62,7 @@ public sealed record SellingBuyerAccessLinkResult(
     bool AlreadyExisted,
     Guid? NotificationId,
     string? NotificationStatus,
-    DateTime? NotificationSubmittedAtUtc);
+    DateTime? NotificationSubmittedAtUtc)
+{
+    public string PublicPortalUrl => BuyerPortalUrl;
+}

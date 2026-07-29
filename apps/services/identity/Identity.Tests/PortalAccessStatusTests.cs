@@ -123,6 +123,40 @@ public class PortalAccessStatusTests
     }
 
     [Fact]
+    public async Task AccountExists_ReturnsTrue_WhenEmailExists()
+    {
+        using var factory = BuildFactory();
+        var tenantId = await SeedExistingCrossTenantUserAsync(factory, "existing.account@example.com");
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync(
+            $"/api/internal/users/account-exists?tenantId={tenantId}&email=existing.account@example.com");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<AccountExistsResponse>();
+        Assert.NotNull(body);
+        Assert.True(body.Exists);
+        Assert.Equal(tenantId, body.TenantId);
+    }
+
+    [Fact]
+    public async Task AccountExists_ReturnsFalse_WhenEmailDoesNotExist()
+    {
+        using var factory = BuildFactory();
+        var tenantId = await SeedTenantOnlyAsync(factory);
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync(
+            $"/api/internal/users/account-exists?tenantId={tenantId}&email=missing@example.com");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<AccountExistsResponse>();
+        Assert.NotNull(body);
+        Assert.False(body.Exists);
+        Assert.Equal(tenantId, body.TenantId);
+    }
+
+    [Fact]
     public async Task SelfRegister_LinksExistingUserByNormalizedEmail_WithoutCreatingDuplicateUser()
     {
         using var factory = BuildFactory();
@@ -538,6 +572,8 @@ public class PortalAccessStatusTests
     }
 
     private sealed record PortalAccessStatusResponse(string? Status);
+
+    private sealed record AccountExistsResponse(bool Exists, Guid? TenantId);
 
     private sealed record SelfRegisterResponse(Guid UserId, bool IsNew);
 

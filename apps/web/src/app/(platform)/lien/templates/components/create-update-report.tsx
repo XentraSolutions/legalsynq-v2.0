@@ -85,7 +85,6 @@ export default function CreateUpdateReport({
       ? { ...initialData, ...initialData.config }
       : { ...INITIAL_FORM },
   );
-  console.log(form, initialData, INITIAL_FORM);
   const [checkedAvailable, setCheckedAvailable] = useState<any>([]);
   const [checkedSelected, setCheckedSelected] = useState<any>([]);
   const [isValid, setIsValid] = useState(false);
@@ -602,8 +601,8 @@ export default function CreateUpdateReport({
       };
       const reportDataRes = await lienReportsService.generateTemplate({
         ...payload,
-        page: "1",
-        limit: "10",
+        page: 1,
+        limit: 10,
       });
     } catch {
     } finally {
@@ -702,9 +701,7 @@ export default function CreateUpdateReport({
 
     setSelectedCols(filtered);
   };
-  useEffect(() => {
-    console.log(form);
-  }, []);
+  useEffect(() => {}, []);
   return (
     <Modal
       open={true}

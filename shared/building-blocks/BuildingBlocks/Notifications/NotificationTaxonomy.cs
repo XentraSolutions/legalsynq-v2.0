@@ -34,6 +34,7 @@ public static class NotificationTaxonomy
             public const string SellingLienSubmitted = "lien.selling.submitted";
             public const string OfferAccepted        = "lien.offer.accepted";
             public const string OfferRejected        = "lien.offer.rejected";
+            public const string OfferMessageCreated  = "lien.offer.message.created";
             public const string SaleFinalized        = "lien.sale.finalized";
             public const string SaleDocumentGenerated = "lien.sale.document.generated";
             public const string TaskAssigned         = "liens.task.assigned";

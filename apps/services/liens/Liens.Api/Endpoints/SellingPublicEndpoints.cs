@@ -1,14 +1,34 @@
 using System.Globalization;
+using System.Net;
+using System.Text;
+using BuildingBlocks.Notifications;
 using Liens.Application.Interfaces;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Liens.Api.Endpoints;
 
 public static class SellingPublicEndpoints
 {
+    private const int MaxPublicMessageLength = 400;
+    private const string SynqLienBuyerLoginReturnTo = "/funding/dashboard";
+    private const string SynqLienBuyerActivationReason = "synqlien-buyer-activation";
+    private const string LegalSynqBrandIconContentId = "legalsynq-brand-icon";
+    private const string LegalSynqBrandIconPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAFH0lEQVR42u2d23HiMBSGU4JLcAmOSWZ4pIR0sDxsAYLdfQ4dLB2QDrYEtgOX4AZCVILXwmJyWRsdCev+/zPnFbA+jq7Wf+7uIAiCvIqzVcG39fq0XRzeNnXbR0cI/rZZHE/bmnG2LNGKocLd1s8DLBLUyRB/DoAOKmuXZZ+Bza1gv2a1yGi0bhBwyV2xdoheAa2cKNz3LhuZ7EViYmQb7qW7xpjsWK/9TNkRXBmLI1rdbfY2bgH34zF7rNDy7sZe9djJ6p2qa+WsKjg79wYtYSzeofUdqAfHVDBee2h6f5qKMGFDN+0G8KbeK5Y2B7Oe4WGlmmyh9QOYPZsua0R3rR6HqwIEPAMWM2zzz1YCxnIJgCEAhgA4610ssSadils2JAA4+d4BgAEYAmAIgPNS13VFH099sD52DuLJBHCvveJzxe9fiecB1QHsuo9j514HQ8A6Es+1zhWs+Je3nT+5AHyReM4yJ7jPnX+5BHzRcw5wD10Y8gE4bciBZK5vwEIs1TG3A+CzeHJjsucJVWiAzzPs1JZCOksL1Voz1HXwXnPJt0oF8JEI1nu3NcdOlngOYo+1T2WHSqUmta1KIuQ2l8lVmRpgjWcvYge8jmmyMfdhg5wxX1MVO2BmMptNCHCT9ERLzi5zBnwE4LQBV3IsnooCgCMGnMPhAgADMAADMADnA/hsdsaWpY1QAv75sLL13apwAoz/eqwGJ7ma/Xej4MfiyQVg9/4cQcXZlU+0wWzQpT2g0kVu7OI1AFuN9mYfLx17QAD2CFo3m0XW6vpQAbBvyMRLdxJuY2D7B8AxZLK04u0AOMZQOAHd0ngAHEaIpdy1hX4LwIlmMcEn6oOX8uLwNfiI+VhsO1khS+yiCfc+mu3iyI4bZewVJmQ6XlEAbAO0ugcb9SlRzZxNHOQA2NaeucIMrk/EsfGXGw/eAOxUKr/O0WS0cZKSO2B5qX19JYze6FBNNAHYHWAr72QBMAADMAADMAADMABfXHSmggFwxIBzly3ARmUNbGx0ALAdwKpDodEKMeo3OBYNkPkFLN+POxgdGarS/nIUhTJv9gGLN1TF26sf47R9+E08zuUT/w7ycWE3HEyIjM8rXN0unPtcXqObzvxtiRgAX/uNelkMwKEBJpXfo741AMBhAT5t7l/oC+nN4gVA4wGsBReZHBVgLg7/jaf51NKrAOwcMJfvx82zZB1AY4btCnA/RO7H3lwd6kKJK6wWi2SKOzDDl/gJ9dBx/9fWd4eyVZm0jE5SEtuLBmAABmAABmAABuDMAfu4XQjAbh9wnTngJnfAPFXA0vVdpej9oikPyRIFrKwTlcSkiOB6znX+yTEA7p/nWzaldWS5GVLZN0r9hpABSw9oavm+dSqAZ696ZgI4sMJcaVUk7R/mBYA/aZfU5oSsn9QCcCL1kiYauCJMuFIHnFbXbAtypIDThvtlbdxmBvjY5VTm/cM+dZs4YJ76FVnqduYfHdiBA27lWnh1B0124ZPRfK+YIeDSdoDeDIrpNAkCYAiAARiAAZimsZv1nwLuBnEDVl3PGfVhhgAYAmAIgAEYgHMAPOkTRQJ8/eI13P4cSNxPJrjNMP3PPRfihF9nCKJURBWVUynrVmkP+JtSGxAt70g028V3MIq43UEOmrubrsrQ/Tkgt1l8U5Ac5KDZs7hwZPGEsddzV20TcouuOVnI+vbBkM0xeT7rRWEPiDE31Gw2dOXjQ8bWzKqLHDQ38GV53b1OuPbhEB+CoND1D6mLXlFVwRdjAAAAAElFTkSuQmCC";
+
+    private static readonly IReadOnlyList<NotificationEmailInlineAttachment> PublicResponseInlineAttachments =
+    [
+        new(
+            LegalSynqBrandIconContentId,
+            "legalsynq-brand-icon.png",
+            "image/png",
+            LegalSynqBrandIconPngBase64),
+    ];
+
     private static readonly string[] DocumentTaskTypes =
     [
         "LegacyCaseDocument",
@@ -22,6 +42,9 @@ public static class SellingPublicEndpoints
             .AllowAnonymous();
 
         group.MapGet("/{token}", GetTemporaryBuyerPortal)
+            .AllowAnonymous();
+
+        group.MapPost("/{token}/messages", PostTemporaryBuyerPortalMessage)
             .AllowAnonymous();
 
         group.MapPost("/{token}/accept", AcceptTemporaryBuyerPortal)
@@ -40,6 +63,7 @@ public static class SellingPublicEndpoints
     private static async Task<IResult> GetTemporaryBuyerPortal(
         string token,
         HttpResponse response,
+        IPublicBuyerAccountProvisioningService buyerAccountService,
         LiensDbContext db,
         CancellationToken ct = default)
     {
@@ -48,7 +72,13 @@ public static class SellingPublicEndpoints
         if (resolved.Error is not null)
             return resolved.Error;
 
-        var view = await BuildPublicViewAsync(db, resolved.AccessLink!, ct);
+        var requireActionable =
+            string.IsNullOrWhiteSpace(resolved.AccessLink!.ResponseStatus) &&
+            !string.Equals(
+                resolved.AccessLink.Purpose,
+                SellingAccessLinkPurposes.ConfirmSaleSellerView,
+                StringComparison.Ordinal);
+        var view = await BuildPublicViewAsync(db, resolved.AccessLink, ct, requireActionable);
         if (view is null)
         {
             return PublicLinkState(
@@ -58,51 +88,202 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status404NotFound);
         }
 
+        var account = await ResolvePublicBuyerAccountAsync(view, buyerAccountService, ct);
         resolved.AccessLink!.MarkAccessed();
         await db.SaveChangesAsync(ct);
 
-        return Results.Ok(MapPublicPortalResponse(view));
+        return Results.Ok(MapPublicPortalResponse(view, account));
     }
 
-    private static async Task<IResult> AcceptTemporaryBuyerPortal(
+    internal static async Task<IResult> PostTemporaryBuyerPortalMessage(
         string token,
-        PublicBuyerAcceptLienRequest? request,
-        HttpRequest httpRequest,
-        HttpResponse response,
+        PublicPortalMessageRequest? request,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        IConfiguration configuration,
         LiensDbContext db,
         CancellationToken ct = default)
     {
-        SetNoReferrerHeader(response);
-        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError))
+        var messageText = request?.Message?.Trim() ?? string.Empty;
+        if (messageText.Length == 0)
+        {
+            return PublicLinkState(
+                "message-required",
+                "Message could not be sent",
+                "Enter a message before sending.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (messageText.Length > MaxPublicMessageLength)
+        {
+            return PublicLinkState(
+                "message-too-long",
+                "Message could not be sent",
+                $"Message must be {MaxPublicMessageLength} characters or fewer.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        return await PostResolvedBuyerPortalMessage(
+            resolved.AccessLink!,
+            token,
+            request,
+            httpContext,
+            notifications,
+            loggerFactory,
+            configuration,
+            db,
+            ct);
+    }
+
+    internal static async Task<IResult> PostResolvedBuyerPortalMessage(
+        SellingBuyerAccessLink accessLink,
+        string? currentToken,
+        PublicPortalMessageRequest? request,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        IConfiguration configuration,
+        LiensDbContext db,
+        CancellationToken ct = default)
+    {
+        var messageText = request?.Message?.Trim() ?? string.Empty;
+        if (messageText.Length == 0)
+        {
+            return PublicLinkState(
+                "message-required",
+                "Message could not be sent",
+                "Enter a message before sending.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (messageText.Length > MaxPublicMessageLength)
+        {
+            return PublicLinkState(
+                "message-too-long",
+                "Message could not be sent",
+                $"Message must be {MaxPublicMessageLength} characters or fewer.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var view = await BuildPublicViewAsync(db, accessLink, ct);
+        if (view is null)
+        {
+            return PublicLinkState(
+                "unavailable",
+                "Lien offer unavailable",
+                "The lien offer data could not be resolved.",
+                StatusCodes.Status404NotFound);
+        }
+
+        var senderType = ResolvePublicAudience(view.AccessLink);
+        var sender = ResolvePublicMessageSender(view, senderType);
+        var publicMessage = SellingPortalMessage.Create(
+            view.AccessLink.TenantId,
+            view.AccessLink.LienId,
+            view.AccessLink.SellerOrgId,
+            view.AccessLink.BuyerOrgId,
+            view.AccessLink.BuyerContactId,
+            view.AccessLink.Id,
+            senderType,
+            sender.Name,
+            sender.Email,
+            messageText,
+            ResolvePublicMessageActorId(view.AccessLink, senderType));
+
+        view.AccessLink.MarkAccessed();
+        db.SellingPortalMessages.Add(publicMessage);
+        await db.SaveChangesAsync(ct);
+
+        await SendPublicMessageNotificationAsync(
+            notifications,
+            loggerFactory,
+            configuration,
+            httpContext,
+            db,
+            view,
+            publicMessage,
+            currentToken,
+            ct);
+
+        var location = currentToken is null
+            ? $"/api/liens/selling/buyer/liens/{accessLink.Id}/messages/{publicMessage.Id}"
+            : $"/api/liens/selling/public/{Uri.EscapeDataString(currentToken)}/messages/{publicMessage.Id}";
+
+        return Results.Created(
+            location,
+            MapPublicMessage(publicMessage));
+    }
+
+    internal static async Task<IResult> AcceptTemporaryBuyerPortal(
+        string token,
+        PublicBuyerAcceptLienRequest? request,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        LiensDbContext db,
+        CancellationToken ct = default)
+    {
+        SetNoReferrerHeader(httpContext.Response);
+        if (!SellingIdempotency.TryGetKey(httpContext.Request, out var idempotencyKey, out var idempotencyError))
             return idempotencyError!;
         var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
         if (resolved.Error is not null)
             return resolved.Error;
 
+        return await AcceptResolvedBuyerPortal(
+            resolved.AccessLink!,
+            request,
+            httpContext,
+            notifications,
+            loggerFactory,
+            db,
+            ct);
+    }
+
+    internal static async Task<IResult> AcceptResolvedBuyerPortal(
+        SellingBuyerAccessLink accessLink,
+        PublicBuyerAcceptLienRequest? request,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        LiensDbContext db,
+        CancellationToken ct = default)
+    {
+        SetNoReferrerHeader(httpContext.Response);
+        if (!SellingIdempotency.TryGetKey(httpContext.Request, out var idempotencyKey, out var idempotencyError))
+            return idempotencyError!;
+        if (EnsureBuyerResponseLink(accessLink) is { } readOnlyError)
+            return readOnlyError;
+
         var replay = await SellingIdempotency.GetReplayAsync(
             db,
-            resolved.AccessLink!.TenantId,
+            accessLink.TenantId,
             "BuyerAccessLink",
-            resolved.AccessLink.Id,
+            accessLink.Id,
             "/api/liens/selling/public/{token}/accept",
             "Lien",
-            resolved.AccessLink.LienId.ToString(),
+            accessLink.LienId.ToString(),
             idempotencyKey!,
             request,
             ct);
         if (replay is not null)
             return replay;
 
-        if (!string.IsNullOrWhiteSpace(resolved.AccessLink.ResponseStatus))
-        {
-            return PublicLinkState(
-                "response-conflict",
-                "Lien response already recorded",
-                "A buyer response has already been recorded for this secure link.",
-                StatusCodes.Status409Conflict);
-        }
+        if (await HandleExistingPublicResponseAsync(
+                accessLink,
+                SellingBuyerResponseStatus.Accepted,
+                notifications,
+                loggerFactory,
+                db,
+                ct) is { } existingResponse)
+            return existingResponse;
 
-        var view = await BuildPublicViewAsync(db, resolved.AccessLink!, ct);
+        var view = await BuildPublicViewAsync(db, accessLink, ct);
         if (view is null)
         {
             return PublicLinkState(
@@ -207,6 +388,13 @@ public static class SellingPublicEndpoints
         // projection builder returns null. Use the post-transition lien for the
         // immediate response rather than leaking the stale Offered state.
         var updatedView = await BuildPublicViewAsync(db, view.AccessLink, ct) ?? view with { Lien = persistedLien };
+        await SendPublicResponseNotificationsAsync(
+            notifications,
+            loggerFactory,
+            updatedView,
+            SellingBuyerResponseStatus.Accepted,
+            updatedView.AccessLink.ResponseNotes,
+            ct);
         var completed = await SellingIdempotency.CompleteAsync(
             db,
             started.Record!,
@@ -231,45 +419,71 @@ public static class SellingPublicEndpoints
         return completed;
     }
 
-    private static async Task<IResult> DeclineTemporaryBuyerPortal(
+    internal static async Task<IResult> DeclineTemporaryBuyerPortal(
         string token,
         PublicBuyerDeclineLienRequest? request,
-        HttpRequest httpRequest,
-        HttpResponse response,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
         LiensDbContext db,
         CancellationToken ct = default)
     {
-        SetNoReferrerHeader(response);
-        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError))
+        SetNoReferrerHeader(httpContext.Response);
+        if (!SellingIdempotency.TryGetKey(httpContext.Request, out var idempotencyKey, out var idempotencyError))
             return idempotencyError!;
         var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
         if (resolved.Error is not null)
             return resolved.Error;
 
+        return await DeclineResolvedBuyerPortal(
+            resolved.AccessLink!,
+            request,
+            httpContext,
+            notifications,
+            loggerFactory,
+            db,
+            ct);
+    }
+
+    internal static async Task<IResult> DeclineResolvedBuyerPortal(
+        SellingBuyerAccessLink accessLink,
+        PublicBuyerDeclineLienRequest? request,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        LiensDbContext db,
+        CancellationToken ct = default)
+    {
+        SetNoReferrerHeader(httpContext.Response);
+        if (!SellingIdempotency.TryGetKey(httpContext.Request, out var idempotencyKey, out var idempotencyError))
+            return idempotencyError!;
+        if (EnsureBuyerResponseLink(accessLink) is { } readOnlyError)
+            return readOnlyError;
+
         var replay = await SellingIdempotency.GetReplayAsync(
             db,
-            resolved.AccessLink!.TenantId,
+            accessLink.TenantId,
             "BuyerAccessLink",
-            resolved.AccessLink.Id,
+            accessLink.Id,
             "/api/liens/selling/public/{token}/decline",
             "Lien",
-            resolved.AccessLink.LienId.ToString(),
+            accessLink.LienId.ToString(),
             idempotencyKey!,
             request,
             ct);
         if (replay is not null)
             return replay;
 
-        if (!string.IsNullOrWhiteSpace(resolved.AccessLink.ResponseStatus))
-        {
-            return PublicLinkState(
-                "response-conflict",
-                "Lien response already recorded",
-                "A buyer response has already been recorded for this secure link.",
-                StatusCodes.Status409Conflict);
-        }
+        if (await HandleExistingPublicResponseAsync(
+                accessLink,
+                SellingBuyerResponseStatus.Declined,
+                notifications,
+                loggerFactory,
+                db,
+                ct) is { } existingResponse)
+            return existingResponse;
 
-        var view = await BuildPublicViewAsync(db, resolved.AccessLink!, ct);
+        var view = await BuildPublicViewAsync(db, accessLink, ct);
         if (view is null)
         {
             return PublicLinkState(
@@ -327,20 +541,32 @@ public static class SellingPublicEndpoints
         }
         view.AccessLink.MarkAccessed();
         view.AccessLink.RecordResponse(SellingBuyerResponseStatus.Declined, null, request?.Reason);
+        await ApplyPublicResponseToLienAsync(db, view, SellingBuyerResponseStatus.Declined, ct);
         await db.SaveChangesAsync(ct);
+        var persistedLien = await db.Liens.AsNoTracking().FirstAsync(
+            lien => lien.TenantId == view.AccessLink.TenantId && lien.Id == view.Lien.Id,
+            ct);
+        var updatedView = await BuildPublicViewAsync(db, view.AccessLink, ct) ?? view with { Lien = persistedLien };
+        await SendPublicResponseNotificationsAsync(
+            notifications,
+            loggerFactory,
+            updatedView,
+            SellingBuyerResponseStatus.Declined,
+            updatedView.AccessLink.ResponseNotes,
+            ct);
         var completed = await SellingIdempotency.CompleteAsync(
             db,
             started.Record!,
             view.AccessLink.BuyerContactId,
             StatusCodes.Status200OK,
-            MapPublicPortalResponse(view),
+            MapPublicPortalResponse(updatedView),
             ct);
         await SellingIdempotency.CompleteAsync(
             db,
             responseTransition.Record!,
             view.AccessLink.BuyerContactId,
             StatusCodes.Status200OK,
-            MapPublicPortalResponse(view),
+            MapPublicPortalResponse(updatedView),
             ct);
         return completed;
     }
@@ -519,6 +745,8 @@ public static class SellingPublicEndpoints
         var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
         if (resolved.Error is not null)
             return resolved.Error;
+        if (EnsureBuyerResponseLink(resolved.AccessLink!) is { } readOnlyError)
+            return readOnlyError;
 
         var view = await BuildPublicViewAsync(db, resolved.AccessLink!, ct);
         if (view is null)
@@ -588,7 +816,7 @@ public static class SellingPublicEndpoints
         return Results.Ok(new PublicBuyerAccountActivationResponse(
             result.UserId!.Value,
             result.IsNew,
-            "/login?returnTo=%2Ffunding%2Foffered-liens&reason=synqlien-buyer-activation"));
+            BuildSynqLienBuyerLoginUrl(view.AccessLink.TenantId)));
     }
 
     private static async Task<(SellingBuyerAccessLink? AccessLink, IResult? Error)> ResolvePublicAccessLinkAsync(
@@ -636,7 +864,66 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status410Gone));
         }
 
+        if (!IsSupportedPublicPurpose(accessLink.Purpose))
+        {
+            return (null, PublicLinkState(
+                "not-found",
+                "Lien offer link unavailable",
+                "The secure link could not be found.",
+                StatusCodes.Status404NotFound));
+        }
+
         return (accessLink, null);
+    }
+
+    private static IResult? EnsureBuyerResponseLink(SellingBuyerAccessLink accessLink)
+        => IsBuyerResponseLink(accessLink)
+            ? null
+            : PublicLinkState(
+                "read-only-link",
+                "Lien offer is read-only",
+                "This secure link is for viewing lien details and cannot record buyer responses.",
+                StatusCodes.Status403Forbidden);
+
+    private static async Task<IResult?> HandleExistingPublicResponseAsync(
+        SellingBuyerAccessLink accessLink,
+        string requestedStatus,
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        LiensDbContext db,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(accessLink.ResponseStatus))
+            return null;
+
+        if (!string.Equals(accessLink.ResponseStatus, requestedStatus, StringComparison.Ordinal))
+        {
+            return PublicLinkState(
+                "response-conflict",
+                "Lien response already recorded",
+                "A different response has already been securely recorded for this lien offer.",
+                StatusCodes.Status409Conflict);
+        }
+
+        var view = await BuildPublicViewAsync(db, accessLink, ct, requireActionable: false);
+        if (view is null)
+        {
+            return PublicLinkState(
+                "unavailable",
+                "Lien offer unavailable",
+                "The lien offer data could not be resolved.",
+                StatusCodes.Status404NotFound);
+        }
+
+        await SendPublicResponseNotificationsAsync(
+            notifications,
+            loggerFactory,
+            view,
+            requestedStatus,
+            view.AccessLink.ResponseNotes,
+            ct);
+
+        return Results.Ok(MapPublicPortalResponse(view));
     }
 
     private static async Task<IResult> RecordPublicResponseAsync(
@@ -645,6 +932,8 @@ public static class SellingPublicEndpoints
         string responseStatus,
         decimal? responseAmount,
         string? responseNotes,
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(view.AccessLink.ResponseStatus))
@@ -655,6 +944,14 @@ public static class SellingPublicEndpoints
                 await db.SaveChangesAsync(ct);
 
                 var reconciledView = await BuildPublicViewAsync(db, view.AccessLink, ct) ?? view;
+                await SendPublicResponseNotificationsAsync(
+                    notifications,
+                    loggerFactory,
+                    reconciledView,
+                    responseStatus,
+                    reconciledView.AccessLink.ResponseNotes,
+                    ct);
+
                 return Results.Ok(MapPublicPortalResponse(reconciledView));
             }
 
@@ -665,7 +962,7 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status409Conflict);
         }
 
-        if (!IsActionableLienStatus(view.Lien.Status))
+        if (!IsActionableBuyerOffer(view.Lien.Status, view.Lien.SellerStatus))
         {
             return PublicLinkState(
                 "not-actionable",
@@ -684,7 +981,592 @@ public static class SellingPublicEndpoints
         await db.SaveChangesAsync(ct);
 
         var updatedView = await BuildPublicViewAsync(db, view.AccessLink, ct) ?? view;
+        await SendPublicResponseNotificationsAsync(
+            notifications,
+            loggerFactory,
+            updatedView,
+            responseStatus,
+            responseNotes,
+            ct);
+
         return Results.Ok(MapPublicPortalResponse(updatedView));
+    }
+
+    private static async Task SendPublicResponseNotificationsAsync(
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        PublicPortalView view,
+        string responseStatus,
+        string? responseNotes,
+        CancellationToken ct)
+    {
+        var eventKey = string.Equals(responseStatus, SellingBuyerResponseStatus.Accepted, StringComparison.Ordinal)
+            ? NotificationTaxonomy.Liens.Events.OfferAccepted
+            : NotificationTaxonomy.Liens.Events.OfferRejected;
+        var statusLabel = string.Equals(responseStatus, SellingBuyerResponseStatus.Accepted, StringComparison.Ordinal)
+            ? "Accepted"
+            : "Declined";
+        var responseVerb = string.Equals(responseStatus, SellingBuyerResponseStatus.Accepted, StringComparison.Ordinal)
+            ? "accepted"
+            : "declined";
+        var lienCode = ResolveLienCode(view.Lien);
+        var subject = $"Lien Offer {statusLabel}";
+        var respondedAtUtc = view.AccessLink.RespondedAtUtc?.ToString("O", CultureInfo.InvariantCulture)
+                             ?? DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+
+        var buyerName = FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Email, "Buyer")!;
+        var buyerCompany = FirstNonEmpty(view.BuyerContact?.Organization, "Funding company")!;
+        var sellerName = FirstNonEmpty(view.SellerContact?.DisplayName, view.SellerContact?.Email, "Seller")!;
+        var sellerCompany = FirstNonEmpty(view.SellerContact?.Organization, "Seller company")!;
+
+        var commonMetadata = new Dictionary<string, string>
+        {
+            ["tenantId"] = view.AccessLink.TenantId.ToString(),
+            ["lienId"] = view.AccessLink.LienId.ToString(),
+            ["lienCode"] = lienCode,
+            ["buyerContactId"] = view.AccessLink.BuyerContactId.ToString(),
+            ["buyerOrgId"] = view.AccessLink.BuyerOrgId.ToString(),
+            ["sellerOrgId"] = view.AccessLink.SellerOrgId.ToString(),
+            ["buyerAccessLinkId"] = view.AccessLink.Id.ToString(),
+            ["responseStatus"] = responseStatus,
+            ["respondedAtUtc"] = respondedAtUtc,
+        };
+
+        await SendPublicResponseNotificationAsync(
+            notifications,
+            loggerFactory,
+            eventKey,
+            view.AccessLink.TenantId,
+            FirstNonEmpty(view.BuyerContact?.Email),
+            subject,
+            BuildPublicResponseEmailBody(
+                recipientRole: "buyer",
+                responseVerb,
+                lienCode,
+                buyerName,
+                buyerCompany,
+                sellerCompany,
+                responseNotes),
+            BuildPublicResponseEmailHtmlBody(
+                recipientRole: "buyer",
+                statusLabel,
+                responseVerb,
+                lienCode,
+                buyerName,
+                buyerCompany,
+                sellerCompany,
+                responseNotes),
+            commonMetadata,
+            recipientRole: "buyer",
+            idempotencyKey: BuildPublicResponseNotificationIdempotencyKey(view.AccessLink, responseStatus, "buyer"),
+            requestedBy: ResolvePublicResponseActorId(view.AccessLink).ToString(),
+            ct: ct);
+
+        await SendPublicResponseNotificationAsync(
+            notifications,
+            loggerFactory,
+            eventKey,
+            view.AccessLink.TenantId,
+            FirstNonEmpty(view.SellerContact?.Email),
+            subject,
+            BuildPublicResponseEmailBody(
+                recipientRole: "seller",
+                responseVerb,
+                lienCode,
+                buyerName,
+                buyerCompany,
+                sellerCompany,
+                responseNotes),
+            BuildPublicResponseEmailHtmlBody(
+                recipientRole: "seller",
+                statusLabel,
+                responseVerb,
+                lienCode,
+                buyerName,
+                buyerCompany,
+                sellerCompany,
+                responseNotes),
+            commonMetadata,
+            recipientRole: "seller",
+            idempotencyKey: BuildPublicResponseNotificationIdempotencyKey(view.AccessLink, responseStatus, "seller"),
+            requestedBy: ResolvePublicResponseActorId(view.AccessLink).ToString(),
+            ct: ct);
+    }
+
+    private static async Task SendPublicResponseNotificationAsync(
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        string eventKey,
+        Guid tenantId,
+        string? recipientEmail,
+        string subject,
+        string body,
+        string htmlBody,
+        IReadOnlyDictionary<string, string> commonMetadata,
+        string recipientRole,
+        string idempotencyKey,
+        string requestedBy,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(recipientEmail))
+            return;
+
+        var metadata = new Dictionary<string, string>(commonMetadata)
+        {
+            ["recipientRole"] = recipientRole,
+        };
+
+        try
+        {
+            var result = await notifications.SendEmailAsync(
+                eventKey,
+                tenantId,
+                recipientEmail.Trim(),
+                subject,
+                body,
+                metadata,
+                ct,
+                new NotificationEmailSendOptions(
+                    IdempotencyKey: idempotencyKey,
+                    RequestedBy: requestedBy,
+                    HtmlBody: htmlBody,
+                    TextBody: body,
+                    InlineAttachments: PublicResponseInlineAttachments));
+
+            if (!IsNotificationSubmittedStatus(result.Status) || result.BlockedByPolicy || !string.IsNullOrWhiteSpace(result.FailureCategory))
+            {
+                loggerFactory
+                    .CreateLogger("Liens.Api.Endpoints.SellingPublicEndpoints")
+                    .LogWarning(
+                        "Public lien response notification was not submitted: Tenant={TenantId} Event={EventKey} Role={RecipientRole} Status={Status} FailureCategory={FailureCategory}",
+                        tenantId,
+                        eventKey,
+                        recipientRole,
+                        result.Status,
+                        result.FailureCategory);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            loggerFactory
+                .CreateLogger("Liens.Api.Endpoints.SellingPublicEndpoints")
+                .LogWarning(
+                    ex,
+                    "Public lien response notification failed: Tenant={TenantId} Event={EventKey} Role={RecipientRole}",
+                    tenantId,
+                    eventKey,
+                    recipientRole);
+        }
+    }
+
+    private static async Task SendPublicMessageNotificationAsync(
+        INotificationPublisher notifications,
+        ILoggerFactory loggerFactory,
+        IConfiguration configuration,
+        HttpContext httpContext,
+        LiensDbContext db,
+        PublicPortalView view,
+        SellingPortalMessage message,
+        string? currentToken,
+        CancellationToken ct)
+    {
+        var recipientRole = message.SenderType == SellingPortalMessageSenderType.Buyer
+            ? SellingPortalMessageSenderType.Seller
+            : SellingPortalMessageSenderType.Buyer;
+        var recipient = ResolvePublicMessageRecipient(view, recipientRole);
+        if (string.IsNullOrWhiteSpace(recipient.Email))
+        {
+            loggerFactory
+                .CreateLogger("Liens.Api.Endpoints.SellingPublicEndpoints")
+                .LogWarning(
+                    "Public lien message notification skipped because recipient email is missing: Tenant={TenantId} Lien={LienId} MessageId={MessageId} Role={RecipientRole} RecipientName={RecipientName}",
+                    view.AccessLink.TenantId,
+                    view.AccessLink.LienId,
+                    message.Id,
+                    recipientRole,
+                    recipient.Name);
+            return;
+        }
+
+        var recipientAccessLink = await ResolvePublicMessageRecipientAccessLinkAsync(db, view.AccessLink, recipientRole, ct);
+        var portalUrl = string.IsNullOrWhiteSpace(currentToken) ||
+                        recipientAccessLink is null ||
+                        recipientAccessLink.Id != view.AccessLink.Id
+            ? null
+            : BuildPublicPortalUrl(configuration, httpContext, currentToken);
+        var lienCode = ResolveLienCode(view.Lien);
+        var subject = "New message on lien offer";
+        var body = BuildPublicMessageEmailBody(message, lienCode, portalUrl);
+        var htmlBody = BuildPublicMessageEmailHtmlBody(message, lienCode, portalUrl);
+        var metadata = new Dictionary<string, string>
+        {
+            ["tenantId"] = view.AccessLink.TenantId.ToString(),
+            ["lienId"] = view.AccessLink.LienId.ToString(),
+            ["lienCode"] = lienCode,
+            ["buyerContactId"] = view.AccessLink.BuyerContactId.ToString(),
+            ["buyerOrgId"] = view.AccessLink.BuyerOrgId.ToString(),
+            ["sellerOrgId"] = view.AccessLink.SellerOrgId.ToString(),
+            ["accessLinkId"] = view.AccessLink.Id.ToString(),
+            ["messageId"] = message.Id.ToString(),
+            ["senderType"] = message.SenderType,
+            ["recipientRole"] = recipientRole,
+        };
+
+        try
+        {
+            var result = await notifications.SendEmailAsync(
+                NotificationTaxonomy.Liens.Events.OfferMessageCreated,
+                view.AccessLink.TenantId,
+                recipient.Email.Trim(),
+                subject,
+                body,
+                metadata,
+                ct,
+                new NotificationEmailSendOptions(
+                    IdempotencyKey: BuildPublicMessageNotificationIdempotencyKey(message, recipientRole),
+                    RequestedBy: ResolvePublicMessageActorId(view.AccessLink, message.SenderType).ToString(),
+                    HtmlBody: htmlBody,
+                    TextBody: body,
+                    InlineAttachments: PublicResponseInlineAttachments,
+                    DisableClickTracking: true));
+
+            if (!IsNotificationSubmittedStatus(result.Status) || result.BlockedByPolicy || !string.IsNullOrWhiteSpace(result.FailureCategory))
+            {
+                loggerFactory
+                    .CreateLogger("Liens.Api.Endpoints.SellingPublicEndpoints")
+                    .LogWarning(
+                        "Public lien message notification was not submitted: Tenant={TenantId} MessageId={MessageId} Role={RecipientRole} Status={Status} FailureCategory={FailureCategory}",
+                        view.AccessLink.TenantId,
+                        message.Id,
+                        recipientRole,
+                        result.Status,
+                        result.FailureCategory);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            loggerFactory
+                .CreateLogger("Liens.Api.Endpoints.SellingPublicEndpoints")
+                .LogWarning(
+                    ex,
+                    "Public lien message notification failed: Tenant={TenantId} MessageId={MessageId} Role={RecipientRole}",
+                    view.AccessLink.TenantId,
+                    message.Id,
+                    recipientRole);
+        }
+    }
+
+    private static Task<SellingBuyerAccessLink?> ResolvePublicMessageRecipientAccessLinkAsync(
+        LiensDbContext db,
+        SellingBuyerAccessLink currentAccessLink,
+        string recipientRole,
+        CancellationToken ct)
+    {
+        var purpose = recipientRole == SellingPortalMessageSenderType.Seller
+            ? SellingAccessLinkPurposes.ConfirmSaleSellerView
+            : SellingAccessLinkPurposes.ConfirmSaleBuyerResponse;
+
+        if (string.Equals(currentAccessLink.Purpose, purpose, StringComparison.Ordinal))
+            return Task.FromResult<SellingBuyerAccessLink?>(currentAccessLink);
+
+        return db.SellingBuyerAccessLinks
+            .AsNoTracking()
+            .Where(link =>
+                link.TenantId == currentAccessLink.TenantId &&
+                link.LienId == currentAccessLink.LienId &&
+                link.SellerOrgId == currentAccessLink.SellerOrgId &&
+                link.BuyerOrgId == currentAccessLink.BuyerOrgId &&
+                link.BuyerContactId == currentAccessLink.BuyerContactId &&
+                link.Purpose == purpose &&
+                !link.RevokedAtUtc.HasValue &&
+                link.ExpiresAtUtc > DateTime.UtcNow)
+            .OrderByDescending(link => link.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    private static (string Name, string? Email) ResolvePublicMessageSender(
+        PublicPortalView view,
+        string senderType)
+        => senderType == SellingPortalMessageSenderType.Seller
+            ? (
+                FirstNonEmpty(view.SellerContact?.DisplayName, view.SellerContact?.Email, view.SellerContact?.Organization, "Seller")!,
+                FirstNonEmpty(view.SellerContact?.Email))
+            : (
+                FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Email, view.BuyerContact?.Organization, "Buyer")!,
+                FirstNonEmpty(view.BuyerContact?.Email));
+
+    private static (string Name, string? Email) ResolvePublicMessageRecipient(
+        PublicPortalView view,
+        string recipientRole)
+        => recipientRole == SellingPortalMessageSenderType.Seller
+            ? (
+                FirstNonEmpty(view.SellerContact?.DisplayName, view.SellerContact?.Email, view.SellerContact?.Organization, "Seller")!,
+                FirstNonEmpty(view.SellerContact?.Email))
+            : (
+                FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Email, view.BuyerContact?.Organization, "Buyer")!,
+                FirstNonEmpty(view.BuyerContact?.Email));
+
+    private static Guid ResolvePublicMessageActorId(SellingBuyerAccessLink accessLink, string senderType)
+        => senderType == SellingPortalMessageSenderType.Buyer
+            ? accessLink.BuyerContactId
+            : accessLink.CreatedByUserId.GetValueOrDefault(accessLink.BuyerContactId);
+
+    private static string BuildPublicMessageEmailBody(
+        SellingPortalMessage message,
+        string lienCode,
+        string? portalUrl)
+    {
+        var body = new List<string>
+        {
+            "LegalSynq",
+            "New message on lien offer",
+            string.Empty,
+            $"{message.SenderName} sent a message regarding lien offer {lienCode}.",
+            string.Empty,
+            message.Message,
+        };
+
+        if (!string.IsNullOrWhiteSpace(portalUrl))
+        {
+            body.Add(string.Empty);
+            body.Add($"View and reply: {portalUrl}");
+        }
+
+        return string.Join(Environment.NewLine, body);
+    }
+
+    private static string BuildPublicMessageEmailHtmlBody(
+        SellingPortalMessage message,
+        string lienCode,
+        string? portalUrl)
+    {
+        var html = new StringBuilder();
+        html.AppendLine("<!doctype html>");
+        html.AppendLine("<html lang=\"en\">");
+        html.AppendLine("<head>");
+        html.AppendLine("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">");
+        html.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+        html.AppendLine("<title>New message on lien offer</title>");
+        html.AppendLine("</head>");
+        html.AppendLine("<body style=\"margin:0;padding:0;background-color:#f4f5f7;color:#111827;font-family:Arial,Helvetica,sans-serif;\">");
+        html.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#f4f5f7\" style=\"width:100%;border-collapse:collapse;background-color:#f4f5f7;\">");
+        html.AppendLine("<tr><td align=\"center\" style=\"padding:28px 14px;\">");
+        html.AppendLine("<table role=\"presentation\" width=\"560\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" style=\"width:100%;max-width:560px;border-collapse:separate;border-spacing:0;background-color:#ffffff;border-radius:10px;overflow:hidden;\">");
+        html.AppendLine("<tr><td bgcolor=\"#071b31\" style=\"background-color:#071b31;padding:28px 30px;\">");
+        AppendPublicResponseEmailBrand(html);
+        html.AppendLine("<h1 style=\"margin:24px 0 10px 0;color:#ffffff;font-size:24px;line-height:1.25;font-weight:700;letter-spacing:0;\">New message on lien offer</h1>");
+        html.Append("<p style=\"margin:0;color:#ffffff;font-size:16px;line-height:1.55;font-weight:400;opacity:.92;\">")
+            .Append(Html(message.SenderName))
+            .Append(" sent a message regarding lien offer ")
+            .Append(Html(lienCode))
+            .AppendLine(".</p>");
+        html.AppendLine("</td></tr>");
+        html.AppendLine("<tr><td bgcolor=\"#ffffff\" style=\"background-color:#ffffff;color:#111827;border:1px solid #e5e5e5;border-top:0;border-radius:0 0 10px 10px;padding:24px 24px 28px;\">");
+        html.Append("<p style=\"margin:0 0 20px 0;color:#111827;font-size:15px;line-height:1.6;white-space:pre-wrap;\">")
+            .Append(Html(message.Message))
+            .AppendLine("</p>");
+        if (!string.IsNullOrWhiteSpace(portalUrl))
+        {
+            html.Append("<a href=\"")
+                .Append(Html(portalUrl))
+                .AppendLine("\" style=\"display:inline-block;background:#ee7132;color:#ffffff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;line-height:1.2;\">View &amp; Reply</a>");
+        }
+        html.AppendLine("</td></tr>");
+        html.AppendLine("</table>");
+        html.AppendLine("</td></tr>");
+        html.AppendLine("</table>");
+        html.AppendLine("</body></html>");
+
+        return html.ToString();
+    }
+
+    private static string BuildPublicMessageNotificationIdempotencyKey(
+        SellingPortalMessage message,
+        string recipientRole)
+    {
+        var key = string.Join(":", new[]
+        {
+            "liens.public-message.email",
+            message.TenantId.ToString("N"),
+            message.Id.ToString("N"),
+            recipientRole.Trim().ToLowerInvariant(),
+        });
+
+        return key.Length > 280 ? key[..280] : key;
+    }
+
+    private static string? BuildPublicPortalUrl(
+        IConfiguration configuration,
+        HttpContext httpContext,
+        string token)
+    {
+        var baseUrl = ResolveConfiguredBuyerPortalBaseUrl(configuration);
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            var host = httpContext.Request.Headers["x-legal-synq-public-host"].FirstOrDefault()
+                       ?? httpContext.Request.Host.Value;
+            if (string.IsNullOrWhiteSpace(host))
+                return null;
+
+            var proto = httpContext.Request.Headers["x-legal-synq-public-proto"].FirstOrDefault()
+                        ?? httpContext.Request.Headers["x-forwarded-proto"].FirstOrDefault()
+                        ?? (httpContext.Request.IsHttps ? Uri.UriSchemeHttps : Uri.UriSchemeHttp);
+            baseUrl = $"{proto.Replace(":", string.Empty, StringComparison.Ordinal)}://{host}/selling/public";
+        }
+
+        return BuildPublicPortalUrl(baseUrl, token);
+    }
+
+    private static string? ResolveConfiguredBuyerPortalBaseUrl(IConfiguration configuration)
+    {
+        var value = configuration["Liens:Selling:BuyerPortalBaseUrl"]?.Trim();
+        if (!string.IsNullOrWhiteSpace(value))
+            return value;
+
+        var portalHostname = configuration["SYNQLIEN_COMMON_PORTAL_HOSTNAME"]?.Trim();
+        if (string.IsNullOrWhiteSpace(portalHostname))
+            return null;
+
+        var scheme = portalHostname.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase)
+            ? Uri.UriSchemeHttp
+            : Uri.UriSchemeHttps;
+        var port = portalHostname.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase)
+            ? ":5000"
+            : string.Empty;
+        return $"{scheme}://{portalHostname.TrimEnd('/')}{port}/selling/public";
+    }
+
+    private static string BuildPublicPortalUrl(string portalBaseUrl, string token)
+    {
+        if (portalBaseUrl.Contains("{token}", StringComparison.Ordinal))
+            return portalBaseUrl.Replace("{token}", Uri.EscapeDataString(token), StringComparison.Ordinal);
+
+        return $"{portalBaseUrl.TrimEnd('/')}/{Uri.EscapeDataString(token)}";
+    }
+
+    private static string BuildPublicResponseEmailBody(
+        string recipientRole,
+        string responseVerb,
+        string lienCode,
+        string buyerName,
+        string buyerCompany,
+        string sellerCompany,
+        string? responseNotes)
+    {
+        var body = new List<string>
+        {
+            "LegalSynq",
+            $"Lien Offer {CultureInfo.InvariantCulture.TextInfo.ToTitleCase(responseVerb)}",
+            string.Empty,
+            recipientRole == "buyer"
+                ? $"This confirms that your company, {buyerCompany}, {responseVerb} lien offer {lienCode}."
+                : $"{buyerName} from {buyerCompany} {responseVerb} lien offer {lienCode}.",
+            $"Seller: {sellerCompany}",
+        };
+
+        if (!string.IsNullOrWhiteSpace(responseNotes))
+            body.Add($"Response notes: {responseNotes.Trim()}");
+
+        return string.Join(Environment.NewLine, body);
+    }
+
+    private static string BuildPublicResponseEmailHtmlBody(
+        string recipientRole,
+        string statusLabel,
+        string responseVerb,
+        string lienCode,
+        string buyerName,
+        string buyerCompany,
+        string sellerCompany,
+        string? responseNotes)
+    {
+        var title = $"Lien Offer {statusLabel}";
+        var isAccepted = string.Equals(statusLabel, "Accepted", StringComparison.Ordinal);
+        var badgeBackground = isAccepted ? "#d1fae5" : "#fee2e2";
+        var badgeColor = isAccepted ? "#047857" : "#b91c1c";
+        var summary = recipientRole == "buyer"
+            ? $"This confirms that your company, {buyerCompany}, {responseVerb} lien offer {lienCode}."
+            : $"{buyerName} from {buyerCompany} {responseVerb} lien offer {lienCode}.";
+
+        var html = new StringBuilder();
+        html.AppendLine("<!doctype html>");
+        html.AppendLine("<html lang=\"en\">");
+        html.AppendLine("<head>");
+        html.AppendLine("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">");
+        html.AppendLine("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+        html.AppendLine("<title>").Append(Html(title)).AppendLine("</title>");
+        html.AppendLine("</head>");
+        html.AppendLine("<body style=\"margin:0;padding:0;background-color:#f4f5f7;color:#111827;font-family:Arial,Helvetica,sans-serif;\">");
+        html.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#f4f5f7\" style=\"width:100%;border-collapse:collapse;background-color:#f4f5f7;\">");
+        html.AppendLine("<tr><td align=\"center\" style=\"padding:28px 14px;\">");
+        html.AppendLine("<table role=\"presentation\" width=\"560\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" style=\"width:100%;max-width:560px;border-collapse:separate;border-spacing:0;background-color:#ffffff;border-radius:10px;overflow:hidden;\">");
+        html.AppendLine("<tr><td bgcolor=\"#071b31\" style=\"background-color:#071b31;padding:28px 30px;\">");
+        html.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"width:100%;border-collapse:collapse;margin:0 0 28px 0;\"><tr>");
+        html.AppendLine("<td align=\"left\" style=\"vertical-align:middle;padding:0;\">");
+        AppendPublicResponseEmailBrand(html);
+        html.AppendLine("</td>");
+        html.Append("<td align=\"right\" style=\"vertical-align:middle;padding:0;\"><span style=\"display:inline-block;background-color:")
+            .Append(badgeBackground)
+            .Append(";color:")
+            .Append(badgeColor)
+            .Append(";border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;line-height:1.1;white-space:nowrap;\">")
+            .Append(Html(statusLabel))
+            .AppendLine("</span></td>");
+        html.AppendLine("</tr></table>");
+        html.Append("<h1 style=\"margin:0 0 10px 0;color:#ffffff;font-size:24px;line-height:1.25;font-weight:700;letter-spacing:0;\">")
+            .Append(Html(title))
+            .AppendLine("</h1>");
+        html.Append("<p style=\"margin:0;color:#ffffff;font-size:16px;line-height:1.55;font-weight:400;opacity:.92;\">")
+            .Append(Html(summary))
+            .AppendLine("</p>");
+        html.AppendLine("</td></tr>");
+        html.AppendLine("<tr><td bgcolor=\"#ffffff\" style=\"background-color:#ffffff;color:#111827;border:1px solid #e5e5e5;border-top:0;border-radius:0 0 10px 10px;padding:24px 24px 28px;\">");
+        html.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:separate;border-spacing:0;margin:0 0 20px 0;\">");
+        AppendPublicResponseEmailRow(html, "Lien Number", lienCode, isFirstRow: true, isLastRow: false);
+        AppendPublicResponseEmailRow(html, "Buyer", buyerName, isFirstRow: false, isLastRow: false);
+        AppendPublicResponseEmailRow(html, "Funding Company", buyerCompany, isFirstRow: false, isLastRow: false);
+        AppendPublicResponseEmailRow(html, "Seller", sellerCompany, isFirstRow: false, isLastRow: string.IsNullOrWhiteSpace(responseNotes));
+        if (!string.IsNullOrWhiteSpace(responseNotes))
+            AppendPublicResponseEmailRow(html, "Response Notes", responseNotes.Trim(), isFirstRow: false, isLastRow: true);
+        html.AppendLine("</table>");
+        html.AppendLine("</td></tr>");
+        html.AppendLine("</table>");
+        html.AppendLine("</td></tr>");
+        html.AppendLine("</table>");
+        html.AppendLine("</body></html>");
+
+        return html.ToString();
+    }
+
+    private static void AppendPublicResponseEmailBrand(StringBuilder html)
+    {
+        html.Append("<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" aria-label=\"LegalSynq\" style=\"border-collapse:collapse;\"><tr><td width=\"36\" style=\"width:36px;padding:0 6px 0 0;vertical-align:middle;\"><img src=\"cid:")
+            .Append(LegalSynqBrandIconContentId)
+            .AppendLine("\" width=\"36\" height=\"36\" alt=\"\" role=\"presentation\" style=\"display:block;width:36px;height:36px;border:0;outline:none;text-decoration:none;\"></td><td style=\"padding:0;vertical-align:middle;white-space:nowrap;\"><span style=\"color:#ffffff !important;-webkit-text-fill-color:#ffffff;font-size:22px;line-height:1;font-weight:700;letter-spacing:0;\">Legal</span><span style=\"color:#f26a2e !important;-webkit-text-fill-color:#f26a2e;font-size:22px;line-height:1;font-weight:700;letter-spacing:0;\">Synq</span></td></tr></table>");
+    }
+
+    private static void AppendPublicResponseEmailRow(
+        StringBuilder html,
+        string label,
+        string value,
+        bool isFirstRow,
+        bool isLastRow)
+    {
+        var border = isFirstRow ? "border-top:1px solid #e5e5e5;" : string.Empty;
+        var radiusLeft = isFirstRow ? "border-top-left-radius:10px;" : isLastRow ? "border-bottom-left-radius:10px;" : string.Empty;
+        var radiusRight = isFirstRow ? "border-top-right-radius:10px;" : isLastRow ? "border-bottom-right-radius:10px;" : string.Empty;
+
+        html.Append("<tr><td style=\"width:42%;padding:14px 14px;color:#6f6f6f;font-size:13px;line-height:1.35;border-left:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5;")
+            .Append(border)
+            .Append(radiusLeft)
+            .Append("\">")
+            .Append(Html(label))
+            .Append("</td><td align=\"right\" style=\"padding:14px 14px;color:#111111;font-size:15px;line-height:1.35;font-weight:600;border-right:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5;")
+            .Append(border)
+            .Append(radiusRight)
+            .Append("\">")
+            .Append(Html(value))
+            .AppendLine("</td></tr>");
     }
 
     private static async Task ApplyPublicResponseToLienAsync(
@@ -708,7 +1590,7 @@ public static class SellingPublicEndpoints
             if (IsActionableLienStatus(lien.Status))
                 lien.TransitionStatus(LienStatus.Accepted, updatedByUserId);
 
-            if (string.Equals(lien.Status, LienStatus.Accepted, StringComparison.Ordinal) &&
+            if (IsActionableBuyerOffer(view.Lien.Status, view.Lien.SellerStatus) &&
                 !string.Equals(lien.SellerStatus, SellingLienStatus.Accepted, StringComparison.Ordinal))
                 lien.UpdateSellingAnalyticsFields(updatedByUserId, sellerStatus: SellingLienStatus.Accepted);
         }
@@ -719,7 +1601,7 @@ public static class SellingPublicEndpoints
             else if (string.Equals(lien.Status, LienStatus.Withdrawn, StringComparison.Ordinal))
                 lien.SetLegacyMedicalStatus(LienStatus.Declined, updatedByUserId);
 
-            if (string.Equals(lien.Status, LienStatus.Declined, StringComparison.Ordinal) &&
+            if (IsActionableBuyerOffer(view.Lien.Status, view.Lien.SellerStatus) &&
                 !string.Equals(lien.SellerStatus, SellingLienStatus.Declined, StringComparison.Ordinal))
                 lien.UpdateSellingAnalyticsFields(updatedByUserId, sellerStatus: SellingLienStatus.Declined);
         }
@@ -731,7 +1613,8 @@ public static class SellingPublicEndpoints
     private static async Task<PublicPortalView?> BuildPublicViewAsync(
         LiensDbContext db,
         SellingBuyerAccessLink accessLink,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool requireActionable = true)
     {
         var lien = await db.Liens
             .AsNoTracking()
@@ -740,7 +1623,7 @@ public static class SellingPublicEndpoints
         if (lien is null)
             return null;
 
-        if (!IsActionableLien(lien))
+        if (requireActionable && !IsActionableLien(lien))
             return null;
 
         var caseEntity = lien.CaseId.HasValue
@@ -766,6 +1649,8 @@ public static class SellingPublicEndpoints
         var handlingLawFirm = await ResolveHandlingLawFirmAsync(db, accessLink.TenantId, caseEntity, ct);
         var caseManager = await ResolveCaseManagerAsync(db, accessLink.TenantId, caseEntity, ct);
         var documents = await ResolveDocumentsAsync(db, accessLink.TenantId, lien, caseEntity, ct);
+        var messages = await ResolveMessagesAsync(db, accessLink, ct);
+        var buyerResponseAccessLink = await ResolveBuyerResponseAccessLinkAsync(db, accessLink, ct);
 
         return new PublicPortalView(
             accessLink,
@@ -775,7 +1660,84 @@ public static class SellingPublicEndpoints
             sellerContact,
             handlingLawFirm,
             caseManager,
-            documents);
+            documents,
+            messages,
+            buyerResponseAccessLink);
+    }
+
+    private static async Task<PublicBuyerAccountResponse?> ResolvePublicBuyerAccountAsync(
+        PublicPortalView view,
+        IPublicBuyerAccountProvisioningService buyerAccountService,
+        CancellationToken ct)
+    {
+        if (!IsBuyerResponseLink(view.AccessLink))
+            return null;
+
+        var email = view.BuyerContact?.Email?.Trim();
+        if (string.IsNullOrWhiteSpace(email))
+            return new PublicBuyerAccountResponse(false, BuildSynqLienBuyerLoginUrl(view.AccessLink.TenantId));
+
+        var status = await buyerAccountService.GetBuyerAccountStatusAsync(
+            new PublicBuyerAccountStatusRequest(view.AccessLink.TenantId, email),
+            ct);
+
+        return new PublicBuyerAccountResponse(
+            status.Success && status.AccountExists,
+            BuildSynqLienBuyerLoginUrl(view.AccessLink.TenantId));
+    }
+
+    private static string BuildSynqLienBuyerLoginUrl(Guid tenantId)
+    {
+        var query = new Dictionary<string, string>
+        {
+            ["returnTo"] = SynqLienBuyerLoginReturnTo,
+            ["reason"] = SynqLienBuyerActivationReason,
+            ["tenantId"] = tenantId.ToString("D"),
+        };
+
+        return "/login?" + string.Join(
+            '&',
+            query.Select(item =>
+                $"{Uri.EscapeDataString(item.Key)}={Uri.EscapeDataString(item.Value)}"));
+    }
+
+    private static async Task<IReadOnlyList<SellingPortalMessage>> ResolveMessagesAsync(
+        LiensDbContext db,
+        SellingBuyerAccessLink accessLink,
+        CancellationToken ct)
+        => await db.SellingPortalMessages
+            .AsNoTracking()
+            .Where(message =>
+                message.TenantId == accessLink.TenantId &&
+                message.LienId == accessLink.LienId &&
+                message.SellerOrgId == accessLink.SellerOrgId &&
+                message.BuyerOrgId == accessLink.BuyerOrgId &&
+                message.BuyerContactId == accessLink.BuyerContactId)
+            .OrderBy(message => message.CreatedAtUtc)
+            .ThenBy(message => message.Id)
+            .ToListAsync(ct);
+
+    private static Task<SellingBuyerAccessLink?> ResolveBuyerResponseAccessLinkAsync(
+        LiensDbContext db,
+        SellingBuyerAccessLink accessLink,
+        CancellationToken ct)
+    {
+        if (!string.Equals(accessLink.Purpose, SellingAccessLinkPurposes.ConfirmSaleSellerView, StringComparison.Ordinal))
+            return Task.FromResult<SellingBuyerAccessLink?>(null);
+
+        return db.SellingBuyerAccessLinks
+            .AsNoTracking()
+            .Where(link =>
+                link.TenantId == accessLink.TenantId &&
+                link.LienId == accessLink.LienId &&
+                link.SellerOrgId == accessLink.SellerOrgId &&
+                link.BuyerOrgId == accessLink.BuyerOrgId &&
+                link.BuyerContactId == accessLink.BuyerContactId &&
+                link.Purpose == SellingAccessLinkPurposes.ConfirmSaleBuyerResponse)
+            .OrderByDescending(link => link.RespondedAtUtc.HasValue)
+            .ThenByDescending(link => link.RespondedAtUtc)
+            .ThenByDescending(link => link.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
     }
 
     private static async Task<string?> ResolveHandlingLawFirmAsync(
@@ -882,17 +1844,23 @@ public static class SellingPublicEndpoints
         return new PublicDocumentView(fileName.Trim(), category, FormatDocumentSize(size));
     }
 
-    private static PublicBuyerPortalResponse MapPublicPortalResponse(PublicPortalView view)
-        => new(
+    private static PublicBuyerPortalResponse MapPublicPortalResponse(
+        PublicPortalView view,
+        PublicBuyerAccountResponse? account = null)
+    {
+        var responseAccessLink = view.BuyerResponseAccessLink ?? view.AccessLink;
+
+        return new(
+            ResolvePublicAudience(view.AccessLink),
             new PublicBuyerAccessLinkResponse(
                 view.AccessLink.CreatedAtUtc,
                 view.AccessLink.ExpiresAtUtc,
                 view.AccessLink.LastAccessedAtUtc,
                 view.AccessLink.NotificationSubmittedAtUtc,
-                view.AccessLink.ResponseStatus,
-                view.AccessLink.ResponseAmount,
-                view.AccessLink.ResponseNotes,
-                view.AccessLink.RespondedAtUtc),
+                responseAccessLink.ResponseStatus,
+                responseAccessLink.ResponseAmount,
+                responseAccessLink.ResponseNotes,
+                responseAccessLink.RespondedAtUtc),
             new PublicBuyerLienResponse(
                 view.Lien.Id,
                 ResolveLienCode(view.Lien),
@@ -914,7 +1882,38 @@ public static class SellingPublicEndpoints
             new PublicBuyerCaseResponse(
                 view.HandlingLawFirm,
                 view.CaseManager),
-            []);
+            view.Documents
+                .Select(document => new PublicBuyerDocumentResponse(
+                    document.FileName,
+                    document.Category,
+                    document.SizeOrType))
+                .ToList(),
+            view.Messages
+                .Select(MapPublicMessage)
+                .ToList(),
+            account);
+    }
+
+    private static PublicPortalMessageResponse MapPublicMessage(SellingPortalMessage message)
+        => new(
+            message.Id,
+            message.SenderType,
+            message.SenderName,
+            message.SenderEmail,
+            message.Message,
+            message.CreatedAtUtc);
+
+    private static bool IsSupportedPublicPurpose(string purpose)
+        => string.Equals(purpose, SellingAccessLinkPurposes.ConfirmSaleBuyerResponse, StringComparison.Ordinal) ||
+           string.Equals(purpose, SellingAccessLinkPurposes.ConfirmSaleSellerView, StringComparison.Ordinal);
+
+    private static bool IsBuyerResponseLink(SellingBuyerAccessLink accessLink)
+        => string.Equals(accessLink.Purpose, SellingAccessLinkPurposes.ConfirmSaleBuyerResponse, StringComparison.Ordinal);
+
+    private static string ResolvePublicAudience(SellingBuyerAccessLink accessLink)
+        => string.Equals(accessLink.Purpose, SellingAccessLinkPurposes.ConfirmSaleSellerView, StringComparison.Ordinal)
+            ? "seller"
+            : "buyer";
 
     private static IResult PublicLinkState(string code, string title, string message, int statusCode)
         => Results.Json(
@@ -952,6 +1951,9 @@ public static class SellingPublicEndpoints
 
     private static string? FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
+    private static string Html(string? value)
+        => WebUtility.HtmlEncode(value ?? string.Empty);
 
     private static string? NormalizePhoneForIdentity(string? value)
     {
@@ -1035,11 +2037,39 @@ public static class SellingPublicEndpoints
         !string.IsNullOrWhiteSpace(request.Headers["Idempotency-Key"].FirstOrDefault());
 
     private static bool IsActionableLien(Lien lien)
-        => IsActionableLienStatus(lien.Status) &&
-           string.Equals(lien.SellerStatus, SellingLienStatus.SubmittedForSale, StringComparison.Ordinal) &&
+        => IsActionableBuyerOffer(lien.Status, lien.SellerStatus) &&
            !lien.ArchivedAtUtc.HasValue &&
            !lien.WithdrawnAtUtc.HasValue &&
            !lien.SoldAtUtc.HasValue;
+
+    private static bool IsActionableBuyerOffer(string? lienStatus, string? sellerStatus)
+        => string.Equals(sellerStatus, SellingLienStatus.SubmittedForSale, StringComparison.Ordinal) ||
+           (string.IsNullOrWhiteSpace(sellerStatus) && IsActionableLienStatus(lienStatus ?? string.Empty));
+
+    private static bool IsNotificationSubmittedStatus(string? status)
+        => string.Equals(status, "sent", StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(status, "accepted", StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(status, "queued", StringComparison.OrdinalIgnoreCase);
+
+    private static string BuildPublicResponseNotificationIdempotencyKey(
+        SellingBuyerAccessLink accessLink,
+        string responseStatus,
+        string recipientRole)
+    {
+        var key = string.Join(":", new[]
+        {
+            "liens.public-response.email",
+            accessLink.TenantId.ToString("N"),
+            accessLink.Id.ToString("N"),
+            responseStatus.Trim().ToLowerInvariant(),
+            recipientRole.Trim().ToLowerInvariant(),
+        });
+
+        return key.Length > 280 ? key[..280] : key;
+    }
+
+    private static string? ReadIdempotencyKey(HttpContext httpContext)
+        => httpContext.Request.Headers["Idempotency-Key"].FirstOrDefault();
 
     private static void SetNoReferrerHeader(HttpResponse response) =>
         response.Headers["Referrer-Policy"] = "no-referrer";
@@ -1052,17 +2082,26 @@ public static class SellingPublicEndpoints
         Contact? SellerContact,
         string? HandlingLawFirm,
         string? CaseManager,
-        IReadOnlyList<PublicDocumentView> Documents);
+        IReadOnlyList<PublicDocumentView> Documents,
+        IReadOnlyList<SellingPortalMessage> Messages,
+        SellingBuyerAccessLink? BuyerResponseAccessLink);
 
     private sealed record PublicDocumentView(string FileName, string? Category, string SizeOrType);
 
     private sealed record PublicBuyerPortalResponse(
+        string Audience,
         PublicBuyerAccessLinkResponse AccessLink,
         PublicBuyerLienResponse Lien,
         PublicBuyerSellerResponse Seller,
         PublicBuyerOrganizationResponse Buyer,
         PublicBuyerCaseResponse Case,
-        IReadOnlyList<PublicBuyerDocumentResponse> Documents);
+        IReadOnlyList<PublicBuyerDocumentResponse> Documents,
+        IReadOnlyList<PublicPortalMessageResponse> Messages,
+        PublicBuyerAccountResponse? Account);
+
+    private sealed record PublicBuyerAccountResponse(
+        bool HasExistingAccount,
+        string LoginUrl);
 
     private sealed record PublicBuyerAccessLinkResponse(
         DateTime CreatedAtUtc,
@@ -1103,15 +2142,25 @@ public static class SellingPublicEndpoints
         string? Category,
         string SizeOrType);
 
+    private sealed record PublicPortalMessageResponse(
+        Guid Id,
+        string SenderType,
+        string SenderName,
+        string? SenderEmail,
+        string Message,
+        DateTime CreatedAtUtc);
+
     private sealed record PublicBuyerPortalErrorResponse(PublicBuyerPortalError Error);
 
     private sealed record PublicBuyerPortalError(string Code, string Title, string Message);
 
-    private sealed record PublicBuyerAcceptLienRequest(string? Notes, string? Message);
+    internal sealed record PublicPortalMessageRequest(string? Message);
 
     private sealed record PublicBuyerOfferRequest(decimal OfferAmount, string? Message);
 
-    private sealed record PublicBuyerDeclineLienRequest(string? Reason);
+    internal sealed record PublicBuyerAcceptLienRequest(string? Notes, string? Message);
+
+    internal sealed record PublicBuyerDeclineLienRequest(string? Reason);
 
     private sealed record PublicBuyerActivateAccountRequest(
         string? CompanyName,

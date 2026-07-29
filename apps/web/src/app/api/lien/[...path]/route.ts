@@ -41,6 +41,16 @@ async function proxy(
     headers["Idempotency-Key"] = idempotencyKey;
   }
 
+  const publicHost = req.headers.get("host");
+  if (publicHost) {
+    headers["x-legal-synq-public-host"] = publicHost;
+  }
+
+  const publicProto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(/:$/, "");
+  if (publicProto) {
+    headers["x-legal-synq-public-proto"] = publicProto;
+  }
+
   let body: ArrayBuffer | string | undefined;
   if (req.method !== "GET" && req.method !== "HEAD") {
     if (isMultipart) {

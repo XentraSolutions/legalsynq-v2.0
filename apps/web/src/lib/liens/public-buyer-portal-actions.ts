@@ -1,7 +1,8 @@
-import type {
-  PublicBuyerPortalData,
-  PublicBuyerPortalError,
-  PublicBuyerPortalResult,
+import {
+  normalizePublicBuyerPortalData,
+  type PublicBuyerPortalData,
+  type PublicBuyerPortalError,
+  type PublicBuyerPortalResult,
 } from "./public-buyer-portal";
 
 export type PublicBuyerPortalResponseAction = "accept" | "decline";
@@ -61,7 +62,7 @@ export async function submitPublicBuyerPortalResponse(
     ok: true,
     status: response.status,
     correlationId,
-    data: body as PublicBuyerPortalData,
+    data: normalizePublicBuyerPortalData(body as PublicBuyerPortalData),
   };
 }
 

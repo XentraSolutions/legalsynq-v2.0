@@ -25,6 +25,7 @@ internal sealed class EfAssistantService : IAssistantService
     private readonly IAssistantToolExecutor _toolExecutor;
     private readonly IAssistantProvider _provider;
     private readonly IAssistantRuntimeSettingsService _runtimeSettings;
+    private readonly IAssistantConversationTitleGenerator _titleGenerator;
     private readonly IOptions<XeniaAssistantOptions> _options;
     private readonly XeniaMetrics _metrics;
     private readonly ILogger<EfAssistantService> _logger;
@@ -37,6 +38,7 @@ internal sealed class EfAssistantService : IAssistantService
         IAssistantToolExecutor toolExecutor,
         IAssistantProvider provider,
         IAssistantRuntimeSettingsService runtimeSettings,
+        IAssistantConversationTitleGenerator titleGenerator,
         IOptions<XeniaAssistantOptions> options,
         XeniaMetrics metrics,
         ILogger<EfAssistantService> logger)
@@ -48,6 +50,7 @@ internal sealed class EfAssistantService : IAssistantService
         _toolExecutor = toolExecutor;
         _provider = provider;
         _runtimeSettings = runtimeSettings;
+        _titleGenerator = titleGenerator;
         _options = options;
         _metrics = metrics;
         _logger = logger;
@@ -235,11 +238,28 @@ internal sealed class EfAssistantService : IAssistantService
 
         _db.AssistantMessages.Add(userMessage);
         conversation.Touch(DateTime.UtcNow);
+        var shouldGenerateTitle = priorMessages.Count == 0 &&
+                                  AssistantConversationTitlePolicy.IsGeneratedTitle(conversation.Title, agent.Name);
         await _db.SaveChangesAsync(ct);
 
         yield return new AssistantStreamEventDto("user_message", null, ToMessageDto(userMessage, []), null);
 
         var mergedContextJson = MergeContextJson(conversation.ContextJson, request.ContextJson);
+        if (shouldGenerateTitle)
+        {
+            _titleGenerator.QueueTitleGeneration(new AssistantConversationTitleGenerationRequest(
+                conversation.Id,
+                tenantId,
+                actorId,
+                agent.AgentKey,
+                agent.Version,
+                agent.Name,
+                content,
+                mergedContextJson,
+                providerModelKey,
+                correlationId));
+        }
+
         var toolDefinitions = _toolRegistry.ListToolsForAgent(agent.AgentKey);
         var contextualToolHint = TryBuildContextualToolHint(mergedContextJson);
         var workingMessages = new List<AssistantMessage>(priorMessages) { userMessage };

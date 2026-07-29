@@ -87,10 +87,69 @@ describe("PublicBuyerPortalInteractiveContent", () => {
     expect(screen.getByRole("button", { name: "Accept Lien" })).not.toBeDisabled();
     expect(screen.getByRole("button", { name: "Decline Lien" })).not.toBeDisabled();
   });
+
+  test("renders seller email address on the buyer-facing lien summary", () => {
+    render(<PublicBuyerPortalInteractiveContent token="token-abc" data={basePortalData()} />);
+
+    expect(screen.getByText("Seller Information")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "seller@example.test" })).toHaveAttribute(
+      "href",
+      "mailto:seller@example.test",
+    );
+  });
+
+  test("renders seller audience as a read-only view with buyer information", () => {
+    render(
+      <PublicBuyerPortalInteractiveContent
+        token="token-abc"
+        data={{ ...basePortalData(), audience: "seller" }}
+      />,
+    );
+
+    expect(screen.getByText("Offered")).toBeInTheDocument();
+    expect(screen.queryByText("Sent to Funding Company")).not.toBeInTheDocument();
+    expect(screen.queryByText(/This lien offer was sent to/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accept Lien" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Decline Lien" })).not.toBeInTheDocument();
+    expect(screen.getByText("Buyer Information")).toBeInTheDocument();
+    expect(screen.getByText("Ralph Buyer")).toBeInTheDocument();
+    expect(screen.getAllByText("Xentra Group Funding Review").length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "buyer@example.test" })).toHaveAttribute(
+      "href",
+      "mailto:buyer@example.test",
+    );
+    expect(submitPublicBuyerPortalResponseMock).not.toHaveBeenCalled();
+  });
+
+  test("shows mirrored buyer response status on seller read-only view", () => {
+    const data = basePortalData();
+
+    render(
+      <PublicBuyerPortalInteractiveContent
+        token="token-abc"
+        data={{
+          ...data,
+          audience: "seller",
+          accessLink: {
+            ...data.accessLink,
+            responseStatus: "Declined",
+            responseNotes: "Not in buying criteria",
+            respondedAtUtc: "2026-07-23T14:11:00Z",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Declined")).toBeInTheDocument();
+    expect(screen.queryByText("Offered")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accept Lien" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Decline Lien" })).not.toBeInTheDocument();
+  });
 });
 
 function basePortalData(): PublicBuyerPortalData {
   return {
+    audience: "buyer",
     accessLink: {
       createdAtUtc: "2026-07-23T13:59:57Z",
       expiresAtUtc: "2026-08-22T13:59:57Z",
@@ -124,6 +183,7 @@ function basePortalData(): PublicBuyerPortalData {
       contactName: "Ralph Buyer",
       company: "Xentra Group Funding Review",
       email: "buyer@example.test",
+      phone: "3105551212",
     },
     case: {
       handlingLawFirm: "RL Liens1",

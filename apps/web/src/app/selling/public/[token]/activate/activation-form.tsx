@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import type { PublicBuyerPortalData } from "@/lib/liens/public-buyer-portal";
+import {
+  SYNQLIEN_BUYER_LOGIN_URL,
+  type PublicBuyerPortalData,
+} from "@/lib/liens/public-buyer-portal";
 import {
   activatePublicBuyerPortalAccount,
   type PublicBuyerPortalActivationData,
@@ -110,7 +113,7 @@ export function PublicBuyerActivationForm({
           </div>
         </div>
         <a
-          href={activation.loginUrl || "/login?returnTo=%2Ffunding%2Foffered-liens"}
+          href={activation.loginUrl || SYNQLIEN_BUYER_LOGIN_URL}
           className="public-portal-primary inline-flex h-11 items-center justify-center rounded-[10px] px-4 py-2 text-sm font-semibold leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:shadow-[0_4px_10px_rgba(238,113,50,0.24)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132]"
         >
           Log in to Manage Liens

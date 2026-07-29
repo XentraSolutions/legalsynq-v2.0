@@ -95,11 +95,24 @@ export interface OfferedLienRow {
   detailHref?: string | null;
 }
 
+export type OfferedLiensSortKey =
+  | 'lienNumber'
+  | 'sellerName'
+  | 'initialServiceDate'
+  | 'billingAmount'
+  | 'askAmount'
+  | 'highestBidAmount'
+  | 'status';
+
+export type OfferedLiensSortDirection = 'asc' | 'desc';
+
 export interface OfferedLiensQuery {
   status?: string;
   search?: string;
   page?: number;
   pageSize?: number;
+  sort?: OfferedLiensSortKey;
+  direction?: OfferedLiensSortDirection;
 }
 
 export interface OfferedLiensResult {
@@ -107,4 +120,67 @@ export interface OfferedLiensResult {
   page: number;
   pageSize: number;
   total: number;
+}
+
+export interface OfferedLienPartyDetail {
+  name?: string | null;
+  contactName?: string | null;
+  company?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}
+
+export interface OfferedLienDocument {
+  id: string;
+  fileName: string;
+  category?: string | null;
+  sizeOrType?: string | null;
+  url?: string | null;
+  createdAtUtc: string;
+}
+
+export interface OfferedLienMessage {
+  id: string;
+  senderType: string;
+  senderName: string;
+  senderInitials?: string | null;
+  senderEmail?: string | null;
+  message: string;
+  createdAtUtc: string;
+  isCurrentUser?: boolean;
+}
+
+export interface OfferedLienActivityItem {
+  id: string;
+  label: string;
+  occurredAtUtc: string;
+  notes?: string | null;
+}
+
+export interface OfferedLienDetail {
+  id: string;
+  lienId: string;
+  lienNumber: string;
+  title: string;
+  subtitle?: string | null;
+  seller: OfferedLienPartyDetail;
+  buyer?: OfferedLienPartyDetail | null;
+  providerName?: string | null;
+  status: string;
+  submittedAtUtc: string;
+  initialServiceDate?: string | null;
+  endServiceDate?: string | null;
+  billingAmount: number;
+  askAmount?: number | null;
+  highestBidAmount?: number | null;
+  responseAmount?: number | null;
+  notes?: string | null;
+  responseDueAtUtc?: string | null;
+  responseStatus?: string | null;
+  responseNotes?: string | null;
+  respondedAtUtc?: string | null;
+  allowedActions?: OfferedLienAction[];
+  documents: OfferedLienDocument[];
+  messages: OfferedLienMessage[];
+  activity: OfferedLienActivityItem[];
 }

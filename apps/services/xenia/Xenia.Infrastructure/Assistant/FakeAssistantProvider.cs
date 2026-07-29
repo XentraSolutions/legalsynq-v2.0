@@ -53,6 +53,27 @@ internal sealed class FakeAssistantProvider : IAssistantProvider
         AssistantProviderRequest request,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
+        if (request.Purpose == AssistantProviderPurpose.TitleGeneration)
+        {
+            var titleUserMessage = request.Messages.LastOrDefault(m => m.Role.Equals("user", StringComparison.OrdinalIgnoreCase))?.Content
+                ?? "Assistant Conversation";
+            var title = AssistantConversationTitlePolicy.BuildFallbackTitle(titleUserMessage);
+            foreach (var chunk in Chunk(title, 24))
+            {
+                ct.ThrowIfCancellationRequested();
+                await Task.Delay(5, ct);
+                yield return new AssistantProviderEvent("delta", Delta: chunk);
+            }
+
+            yield return new AssistantProviderEvent(
+                "completed",
+                ProviderResponseId: $"fake-title-{Guid.CreateVersion7()}",
+                InputTokens: EstimateTokens(request.Messages.Sum(m => m.Content.Length) + request.SystemPrompt.Length),
+                OutputTokens: EstimateTokens(title.Length),
+                FinishReason: "stop");
+            yield break;
+        }
+
         if (request.Purpose == AssistantProviderPurpose.ToolSelection)
         {
             var decision = BuildToolDecisionPayload(request);

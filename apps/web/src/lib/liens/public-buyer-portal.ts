@@ -1,6 +1,38 @@
 const GATEWAY_URL = process.env.GATEWAY_URL ?? "http://127.0.0.1:5010";
+const SYNQLIEN_BUYER_ACTIVATION_REASON = "synqlien-buyer-activation";
+const SYNQLIEN_BUYER_DASHBOARD_RETURN_TO = "/funding/dashboard";
+const SYNQLIEN_BUYER_OFFERED_LIENS_RETURN_TO = "/funding/offered-liens";
+
+export const SYNQLIEN_BUYER_LOGIN_URL =
+  "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation";
+
+export function normalizeSynqLienBuyerLoginUrl(
+  loginUrl: string | null | undefined,
+): string {
+  const candidate = loginUrl?.trim();
+  if (!candidate) return SYNQLIEN_BUYER_LOGIN_URL;
+
+  try {
+    const isAbsolute = /^[a-z][a-z\d+\-.]*:/i.test(candidate);
+    const parsed = new URL(candidate, "https://portal.legalsynq.local");
+
+    if (
+      parsed.pathname === "/login" &&
+      parsed.searchParams.get("reason") === SYNQLIEN_BUYER_ACTIVATION_REASON &&
+      parsed.searchParams.get("returnTo") === SYNQLIEN_BUYER_OFFERED_LIENS_RETURN_TO
+    ) {
+      parsed.searchParams.set("returnTo", SYNQLIEN_BUYER_DASHBOARD_RETURN_TO);
+      return isAbsolute ? parsed.toString() : `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+  } catch {
+    return candidate;
+  }
+
+  return candidate;
+}
 
 export interface PublicBuyerPortalData {
+  audience: "buyer" | "seller";
   accessLink: {
     createdAtUtc: string;
     expiresAtUtc: string;
@@ -41,12 +73,28 @@ export interface PublicBuyerPortalData {
     caseManager: string | null;
   };
   documents: PublicBuyerPortalDocument[];
+  messages?: PublicBuyerPortalMessage[];
+  account?: PublicBuyerPortalAccount | null;
+}
+
+export interface PublicBuyerPortalAccount {
+  hasExistingAccount: boolean;
+  loginUrl: string;
 }
 
 export interface PublicBuyerPortalDocument {
   fileName: string;
   category: string | null;
   sizeOrType: string;
+}
+
+export interface PublicBuyerPortalMessage {
+  id: string;
+  senderType: "buyer" | "seller";
+  senderName: string;
+  senderEmail: string | null;
+  message: string;
+  createdAtUtc: string;
 }
 
 export interface PublicBuyerPortalError {
@@ -115,7 +163,21 @@ export async function fetchPublicBuyerPortal(
     ok: true,
     status: response.status,
     correlationId,
-    data: body as PublicBuyerPortalData,
+    data: normalizePublicBuyerPortalData(body as PublicBuyerPortalData),
+  };
+}
+
+export function normalizePublicBuyerPortalData(
+  data: PublicBuyerPortalData,
+): PublicBuyerPortalData {
+  if (!data.account) return data;
+
+  return {
+    ...data,
+    account: {
+      ...data.account,
+      loginUrl: normalizeSynqLienBuyerLoginUrl(data.account.loginUrl),
+    },
   };
 }
 

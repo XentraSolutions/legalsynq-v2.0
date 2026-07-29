@@ -1,10 +1,13 @@
 import { headers } from "next/headers";
 import {
   fetchPublicBuyerPortal,
+  SYNQLIEN_BUYER_LOGIN_URL,
+  type PublicBuyerPortalAccount,
   type PublicBuyerPortalDocument,
   type PublicBuyerPortalError,
   type PublicBuyerPortalResult,
 } from "@/lib/liens/public-buyer-portal";
+import { PublicPortalMessagesCard } from "./messages-client";
 import { PublicBuyerPortalInteractiveContent } from "./response-client";
 
 export const dynamic = "force-dynamic";
@@ -89,15 +92,16 @@ function PortalContent({
   result: Extract<PublicBuyerPortalResult, { ok: true }>;
 }) {
   const { data } = result;
+  const isSellerView = data.audience === "seller";
   return (
     <section
       className="flex flex-col items-center gap-6 bg-white px-5 py-6 pb-8 max-sm:px-3.5 max-sm:py-[18px]"
-      aria-label="Temporary funding company portal"
+      aria-label={isSellerView ? "Temporary seller lien portal" : "Temporary funding company portal"}
     >
-      <HeroBanner token={token} />
+      <HeroBanner token={token} audience={data.audience} account={data.account} />
       <PublicBuyerPortalInteractiveContent token={token} data={data} />
       <DocumentsCard documents={data.documents} />
-      <MessagesCard />
+      <PublicPortalMessagesCard token={token} audience={data.audience} initialMessages={data.messages} />
       <p className="m-0 w-full max-w-[700px] text-center text-sm leading-[1.6] text-[#737373]">
         Accessible only with the secure link from the email. The link will
         expire 30 days from the date it was sent.
@@ -106,7 +110,22 @@ function PortalContent({
   );
 }
 
-function HeroBanner({ token }: { token: string }) {
+function HeroBanner({
+  token,
+  audience,
+  account,
+}: {
+  token: string;
+  audience: "buyer" | "seller";
+  account?: PublicBuyerPortalAccount | null;
+}) {
+  const isSellerView = audience === "seller";
+  const hasExistingAccount = account?.hasExistingAccount === true;
+  const ctaHref = hasExistingAccount
+    ? account?.loginUrl || SYNQLIEN_BUYER_LOGIN_URL
+    : `/selling/public/${encodeURIComponent(token)}/activate`;
+  const ctaLabel = hasExistingAccount ? "Log In" : "Activate Free Account";
+
   return (
     <section
       className="relative w-full max-w-[700px] overflow-hidden rounded-2xl bg-[#0d1e34] p-8 text-[#fafafa] shadow-[0_1px_3px_rgba(0,0,0,0.1)] max-sm:rounded-[14px] max-sm:p-6"
@@ -121,18 +140,21 @@ function HeroBanner({ token }: { token: string }) {
       <div className="relative z-10">
         <div className="mb-2 flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
           <h1 id="manage-offered-liens-title" className="m-0 text-lg font-extrabold leading-[1.6] tracking-normal">
-            Manage Offered Liens
+            {isSellerView ? "View Offered Liens" : "Manage Offered Liens"}
           </h1>
-          <a
-            href={`/selling/public/${encodeURIComponent(token)}/activate`}
-            className="public-portal-primary inline-flex h-[38px] cursor-pointer items-center justify-center whitespace-nowrap rounded-[10px] border border-transparent px-4 py-2 text-sm font-semibold leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:shadow-[0_4px_10px_rgba(238,113,50,0.28)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132]"
-          >
-            Activate Free Account
-          </a>
+          {isSellerView ? null : (
+            <a
+              href={ctaHref}
+              className="public-portal-primary inline-flex h-[38px] cursor-pointer items-center justify-center whitespace-nowrap rounded-[10px] border border-transparent px-4 py-2 text-sm font-semibold leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:shadow-[0_4px_10px_rgba(238,113,50,0.28)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132]"
+            >
+              {ctaLabel}
+            </a>
+          )}
         </div>
         <p className="m-0 max-w-[560px] text-base leading-[1.6] text-white/90">
-          Manage all lien submissions sent to your company, from initial review
-          through the final purchase decision.
+          {isSellerView
+            ? "Review the lien details and funding company contact tied to this submitted offer."
+            : "Manage all lien submissions sent to your company, from initial review through the final purchase decision."}
         </p>
       </div>
     </section>
@@ -201,42 +223,6 @@ function DocumentsCard({ documents }: { documents: PublicBuyerPortalDocument[] }
             ))}
           </div>
         )}
-      </div>
-    </details>
-  );
-}
-
-function MessagesCard() {
-  return (
-    <details
-      open
-      className="public-portal-details group w-full max-w-[700px] rounded-2xl border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px]"
-      aria-labelledby="messages-title"
-    >
-      <summary className="-mx-2 flex min-h-10 cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-1 transition-colors hover:bg-[#f5f5f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] [&::-webkit-details-marker]:hidden">
-        <i className="ri-arrow-down-s-line -rotate-90 text-2xl leading-none text-[#0a0a0a] transition-transform group-open:rotate-0" aria-hidden="true" />
-        <h2 id="messages-title" className="m-0 text-lg font-extrabold leading-[1.6] tracking-normal">
-          Messages
-        </h2>
-      </summary>
-      <div className="details-content mt-6 flex flex-col gap-6">
-        <EmptyState icon="ri-message-3-line" message="No messages yet. Send a message to the seller below." />
-        <div className="flex w-full items-center gap-4 rounded-xl border border-[#e5e5e5] py-3 pl-4 pr-3 shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors focus-within:border-[#ee7132]">
-          <input
-            aria-label="Message"
-            placeholder="Type a message..."
-            maxLength={400}
-            className="min-w-0 flex-1 border-0 text-sm text-[#737373] outline-none"
-          />
-          <span className="whitespace-nowrap text-sm text-[#737373]">0/400</span>
-          <button
-            type="button"
-            aria-label="Send message"
-            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-0 bg-[#ee7132] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#d85f25] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] active:bg-[#c95720]"
-          >
-            <i className="ri-send-plane-2-line text-base leading-none" aria-hidden="true" />
-          </button>
-        </div>
       </div>
     </details>
   );

@@ -109,7 +109,6 @@ public sealed class SendLienBuyerEmailResponse
 public sealed class ConfirmSellingLienSaleRequest
 {
     public bool ConfirmationAccepted { get; init; }
-    public bool SendBuyerNotification { get; init; }
 }
 
 public sealed class ConfirmSellingLienSaleResponse
@@ -123,6 +122,7 @@ public sealed class ConfirmSellingLienSaleResponse
     public DateTime? SubmittedForSaleAtUtc { get; init; }
     public DateTime? SoldAtUtc { get; init; }
     public ConfirmSellingLienBuyerNotificationResponse? Notification { get; init; }
+    public ConfirmSellingLienSellerNotificationResponse? SellerNotification { get; init; }
 }
 
 public sealed class ConfirmSellingLienBuyerNotificationResponse
@@ -138,6 +138,21 @@ public sealed class ConfirmSellingLienBuyerNotificationResponse
     public Guid? BuyerContactId { get; init; }
     public Guid? BuyerOrgId { get; init; }
     public string? BuyerEmail { get; init; }
+}
+
+public sealed class ConfirmSellingLienSellerNotificationResponse
+{
+    public bool Requested { get; init; }
+    public bool Submitted { get; init; }
+    public Guid? NotificationId { get; init; }
+    public string? NotificationStatus { get; init; }
+    public string? FailureMessage { get; init; }
+    public Guid? SellerAccessLinkId { get; init; }
+    public string? SellerPortalUrl { get; init; }
+    public DateTime? ExpiresAtUtc { get; init; }
+    public Guid? SellerContactId { get; init; }
+    public Guid? SellerOrgId { get; init; }
+    public string? SellerEmail { get; init; }
 }
 
 public sealed class SellingPortfolioResponse
