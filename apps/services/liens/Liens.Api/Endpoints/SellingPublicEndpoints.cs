@@ -65,7 +65,6 @@ public static class SellingPublicEndpoints
     private static async Task<IResult> AcceptTemporaryBuyerPortal(
         string token,
         PublicBuyerAcceptLienRequest? request,
-        HttpContext httpContext,
         LiensDbContext db,
         CancellationToken ct = default)
     {
@@ -99,14 +98,12 @@ public static class SellingPublicEndpoints
             SellingBuyerResponseStatus.Accepted,
             responseAmount.Value,
             FirstNonEmpty(request?.Notes, request?.Message),
-            ReadIdempotencyKey(httpContext),
             ct);
     }
 
     private static async Task<IResult> DeclineTemporaryBuyerPortal(
         string token,
         PublicBuyerDeclineLienRequest? request,
-        HttpContext httpContext,
         LiensDbContext db,
         CancellationToken ct = default)
     {
@@ -130,7 +127,6 @@ public static class SellingPublicEndpoints
             SellingBuyerResponseStatus.Declined,
             responseAmount: null,
             responseNotes: request?.Reason,
-            responseIdempotencyKey: ReadIdempotencyKey(httpContext),
             ct);
     }
 
@@ -287,7 +283,6 @@ public static class SellingPublicEndpoints
         string responseStatus,
         decimal? responseAmount,
         string? responseNotes,
-        string? responseIdempotencyKey,
         CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(view.AccessLink.ResponseStatus))
@@ -321,8 +316,7 @@ public static class SellingPublicEndpoints
         view.AccessLink.RecordResponse(
             responseStatus,
             responseAmount,
-            responseNotes,
-            responseIdempotencyKey);
+            responseNotes);
 
         await ApplyPublicResponseToLienAsync(db, view, responseStatus, ct);
         await db.SaveChangesAsync(ct);
@@ -680,9 +674,6 @@ public static class SellingPublicEndpoints
     private static bool IsActionableLienStatus(string status)
         => string.Equals(status, LienStatus.Offered, StringComparison.Ordinal)
            || string.Equals(status, LienStatus.UnderReview, StringComparison.Ordinal);
-
-    private static string? ReadIdempotencyKey(HttpContext httpContext)
-        => httpContext.Request.Headers["Idempotency-Key"].FirstOrDefault();
 
     private sealed record PublicPortalView(
         SellingBuyerAccessLink AccessLink,

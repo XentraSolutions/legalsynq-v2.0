@@ -93,8 +93,7 @@ public class SellingBuyerAccessLink : AuditableEntity
     public void RecordResponse(
         string responseStatus,
         decimal? responseAmount,
-        string? responseNotes,
-        string? responseIdempotencyKey)
+        string? responseNotes)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(responseStatus);
         if (!SellingBuyerResponseStatus.All.Contains(responseStatus))
@@ -112,7 +111,7 @@ public class SellingBuyerAccessLink : AuditableEntity
         ResponseStatus = responseStatus;
         ResponseAmount = responseAmount;
         ResponseNotes = responseNotes?.Trim();
-        ResponseIdempotencyKey = responseIdempotencyKey?.Trim();
+        ResponseIdempotencyKey = null;
         RespondedAtUtc = DateTime.UtcNow;
         UpdatedAtUtc = DateTime.UtcNow;
     }

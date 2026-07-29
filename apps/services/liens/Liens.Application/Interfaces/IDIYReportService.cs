@@ -25,6 +25,7 @@ public sealed class DIYReportRow
     public string? Status       { get; init; }
     public string? CaseStatus   { get; init; }
     public DateOnly? DateOfLoss { get; init; }
+    public DateOnly? PurchaseDate { get; init; }
     public DateTime? DateClosed { get; init; }
     public DateOnly? InitialServiceDate { get; init; }
     public decimal BillingAmount { get; init; }
@@ -34,6 +35,11 @@ public sealed class DIYReportRow
     public int NumberOfLiens { get; init; }
     public decimal? ToSettleAmount { get; init; }
     public decimal? SettledAmount { get; init; }
+    public int? DaysSinceReductionApproval { get; init; }
+    public string MedicalFacility { get; init; } = string.Empty;
+    public string LawFirm { get; init; } = string.Empty;
+    public string CaseType { get; init; } = string.Empty;
+    public string CaseManager { get; init; } = string.Empty;
     public Dictionary<string, object?> Extra { get; init; } = new();
 }
 

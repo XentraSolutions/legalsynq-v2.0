@@ -165,20 +165,21 @@ public static class ServiceLegacyEndpoints
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
-        Guid? lawFirmId = Guid.TryParse(filter.lawFirmId, out var parsedLawFirmId) ? parsedLawFirmId : null;
-
         var result = await caseService.SearchV3Async(
-            tenantId,
-            filter.keyword,
-            filter.statusId,
-            Math.Max(filter.page, 1),
-            Math.Max(filter.limit, 1),
-            filter.sortBy,
-            filter.sortDirection,
-            lawFirmId,
-            filter.accidentTypeId,
-            filter.caseManagerId,
-            ct);
+            tenantId: tenantId,
+            keyword: filter.keyword,
+            statusId: filter.statusId,
+            page: Math.Max(filter.page, 1),
+            limit: Math.Max(filter.limit, 1),
+            sortBy: filter.sortBy,
+            sortDirection: filter.sortDirection,
+            // The repository treats GUID values as legacy organization IDs and
+            // metadata contact IDs, preserving both contracts with OR semantics.
+            lawFirmOrgId: null,
+            accidentTypeId: filter.accidentTypeId,
+            caseManagerId: filter.caseManagerId,
+            lawFirmIds: filter.lawFirmId,
+            ct: ct);
 
         return Results.Ok(new
         {

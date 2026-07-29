@@ -65,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<ILienOfferService, LienOfferService>();
         services.AddScoped<ILienEligibilityValidator, LienEligibilityValidator>();
         services.AddScoped<ISellingPortfolioService, SellingPortfolioService>();
+        services.AddScoped<ISellingDashboardService, SellingDashboardService>();
         services.AddScoped<ISellingBuyerAccessLinkService, SellingBuyerAccessLinkService>();
         services.AddScoped<ISellingAnalyticsService, SellingAnalyticsService>();
         services.AddScoped<IBillOfSaleService, BillOfSaleService>();

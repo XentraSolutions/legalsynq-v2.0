@@ -1,5 +1,6 @@
 using Liens.Application.Repositories;
 using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -53,12 +54,15 @@ public class CaseRepository : ICaseRepository
         string? sortDirection = null,
         string? accidentTypeId = null,
         string? caseManagerId = null,
+        string? lawFirmIds = null,
         CancellationToken ct = default)
     {
         var q = _db.Cases.Where(c => c.TenantId == tenantId);
 
         if (orgId.HasValue)
             q = q.Where(c => c.OrgId == orgId.Value);
+
+        q = ApplyLawFirmFilter(q, lawFirmIds);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -86,15 +90,12 @@ public class CaseRepository : ICaseRepository
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(status))
+        var statuses = CaseStatus.ExpandFilterValues(SplitFilterValues(status));
+        if (statuses.Count > 0)
         {
-            var statuses = status
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToList();
-
             if (statuses.Count == 1)
             {
-                var single = statuses[0];
+                var single = statuses.Single();
                 q = q.Where(c => c.Status == single);
             }
             else if (statuses.Count > 1)
@@ -103,35 +104,8 @@ public class CaseRepository : ICaseRepository
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(accidentTypeId))
-        {
-            var accidentTypeToken = $"accidentTypeId={accidentTypeId.Trim()}";
-            q = q.Where(c => c.Notes != null &&
-                (c.Notes == accidentTypeToken ||
-                 c.Notes.StartsWith(accidentTypeToken + ";") ||
-                 c.Notes.Contains(";" + accidentTypeToken + ";") ||
-                 c.Notes.Contains("; " + accidentTypeToken + ";") ||
-                 c.Notes.Contains(Environment.NewLine + accidentTypeToken + ";") ||
-                 c.Notes.EndsWith(";" + accidentTypeToken) ||
-                 c.Notes.EndsWith("; " + accidentTypeToken) ||
-                 c.Notes.EndsWith(Environment.NewLine + accidentTypeToken) ||
-                 c.Notes.EndsWith(accidentTypeToken)));
-        }
-
-        if (!string.IsNullOrWhiteSpace(caseManagerId))
-        {
-            var caseManagerToken = $"caseManagerId={caseManagerId.Trim()}";
-            q = q.Where(c => c.Notes != null &&
-                (c.Notes == caseManagerToken ||
-                 c.Notes.StartsWith(caseManagerToken + ";") ||
-                 c.Notes.Contains(";" + caseManagerToken + ";") ||
-                 c.Notes.Contains("; " + caseManagerToken + ";") ||
-                 c.Notes.Contains(Environment.NewLine + caseManagerToken + ";") ||
-                 c.Notes.EndsWith(";" + caseManagerToken) ||
-                 c.Notes.EndsWith("; " + caseManagerToken) ||
-                 c.Notes.EndsWith(Environment.NewLine + caseManagerToken) ||
-                 c.Notes.EndsWith(caseManagerToken)));
-        }
+        q = ApplyMetadataFilter(q, "accidentTypeId", accidentTypeId);
+        q = ApplyMetadataFilter(q, "caseManagerId", caseManagerId);
 
         var totalCount = await q.CountAsync(ct);
 
@@ -158,6 +132,70 @@ public class CaseRepository : ICaseRepository
 
         return (items, totalCount);
     }
+
+    private static IQueryable<Case> ApplyLawFirmFilter(IQueryable<Case> query, string? rawValues)
+    {
+        var values = SplitFilterValues(rawValues);
+        if (values.Count == 0)
+            return query;
+
+        var orgIds = values
+            .Where(value => Guid.TryParse(value, out _))
+            .Select(Guid.Parse)
+            .ToList();
+
+        IQueryable<Case> matches = orgIds.Count == 0
+            ? query.Where(_ => false)
+            : query.Where(caseEntity => orgIds.Contains(caseEntity.OrgId));
+
+        foreach (var value in values)
+            matches = matches.Concat(FilterByMetadataToken(query, "lawFirmId", value));
+
+        return matches.Distinct();
+    }
+
+    private static IQueryable<Case> ApplyMetadataFilter(
+        IQueryable<Case> query,
+        string key,
+        string? rawValues)
+    {
+        var values = SplitFilterValues(rawValues);
+        if (values.Count == 0)
+            return query;
+
+        IQueryable<Case>? matches = null;
+        foreach (var value in values)
+        {
+            var valueMatches = FilterByMetadataToken(query, key, value);
+            matches = matches is null ? valueMatches : matches.Concat(valueMatches);
+        }
+
+        return matches!.Distinct();
+    }
+
+    private static IQueryable<Case> FilterByMetadataToken(
+        IQueryable<Case> query,
+        string key,
+        string value)
+    {
+        var token = $"{key}={value}";
+        return query.Where(caseEntity => caseEntity.Notes != null &&
+            (caseEntity.Notes == token ||
+             caseEntity.Notes.StartsWith(token + ";") ||
+             caseEntity.Notes.Contains(";" + token + ";") ||
+             caseEntity.Notes.Contains("; " + token + ";") ||
+             caseEntity.Notes.Contains(Environment.NewLine + token + ";") ||
+             caseEntity.Notes.EndsWith(";" + token) ||
+             caseEntity.Notes.EndsWith("; " + token) ||
+             caseEntity.Notes.EndsWith(Environment.NewLine + token)));
+    }
+
+    private static List<string> SplitFilterValues(string? rawValues) =>
+        string.IsNullOrWhiteSpace(rawValues)
+            ? []
+            : rawValues.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
 
     public async Task AddAsync(Case entity, CancellationToken ct = default)
     {

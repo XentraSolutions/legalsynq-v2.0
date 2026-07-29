@@ -3,6 +3,9 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
+using Liens.Domain.Entities;
+using Liens.Domain.Enums;
+using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -92,6 +95,47 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         });
         resp.StatusCode.Should().Be(HttpStatusCode.Created,
             $"Body: {await resp.Content.ReadAsStringAsync()}");
+    }
+
+    [Theory]
+    [InlineData("Open", LienStatus.Active)]
+    [InlineData("Closed", LienStatus.Settled)]
+    public async Task CreateSettlement_updates_lien_status_for_open_and_closed(
+        string settlementStatus,
+        string expectedLienStatus)
+    {
+        Lien lien;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"SETTLEMENT-STATUS-{Guid.CreateVersion7():N}",
+                LienType.MedicalLien,
+                1_000m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var resp = await _client.PostAsJsonAsync("/api/liens/settlement/create", new
+        {
+            caseId = SeedHelper.CaseId,
+            lienId = lien.Id,
+            paymentNumber = 1,
+            amount = 1_000m,
+            status = settlementStatus,
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedLien = await verificationDb.Liens.FindAsync(lien.Id);
+        persistedLien!.Status.Should().Be(expectedLienStatus);
     }
 
     // ── POST /service/liens/settlement/payment ────────────────────────────────

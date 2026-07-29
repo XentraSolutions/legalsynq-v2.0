@@ -7,6 +7,7 @@ using Liens.Domain.Enums;
 using Liens.Domain;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
@@ -164,8 +165,9 @@ public static class ReportEndpoints
         CancellationToken ct = default)
     {
         var tenantId = CaseEndpoints.RequireTenantId(ctx);
-        var result = await svc.RunReportAsync(tenantId, request, ct);
-        return Results.Ok(ToLegacyRunResponse(result, request));
+        var effectiveRequest = await ResolveSavedReportRequestAsync(request, svc, tenantId, ct);
+        var result = await svc.RunReportAsync(tenantId, effectiveRequest, ct);
+        return Results.Ok(ToLegacyRunResponse(result, effectiveRequest));
     }
 
     private static async Task<IResult> ExportReport(
@@ -175,8 +177,9 @@ public static class ReportEndpoints
         CancellationToken ct = default)
     {
         var tenantId = CaseEndpoints.RequireTenantId(ctx);
-        var result = await svc.RunReportAsync(tenantId, request, ct);
-        var rows = BuildLegacyReportRows(result, request);
+        var effectiveRequest = await ResolveSavedReportRequestAsync(request, svc, tenantId, ct);
+        var result = await svc.RunReportAsync(tenantId, effectiveRequest, ct);
+        var rows = BuildLegacyReportRows(result, effectiveRequest);
         var csvBytes = BuildLegacyReportCsv(rows);
         var filename = $"diy_report_{DateTime.UtcNow:yyyyMMddHHmmss}.csv";
 
@@ -194,6 +197,31 @@ public static class ReportEndpoints
                 },
             },
         });
+    }
+
+    private static async Task<DIYReportRunRequest> ResolveSavedReportRequestAsync(
+        DIYReportRunRequest request,
+        IDIYReportService svc,
+        Guid tenantId,
+        CancellationToken ct)
+    {
+        if (!TryGetReportProperty(request, "reportId", out var reportIdValue) ||
+            reportIdValue.ValueKind != JsonValueKind.String ||
+            !Guid.TryParse(reportIdValue.GetString(), out var reportId))
+        {
+            return request;
+        }
+
+        var savedReport = await svc.GetByIdAsync(tenantId, reportId, ct);
+        return new DIYReportRunRequest
+        {
+            Config = savedReport.Config.Clone(),
+            Page = request.Page,
+            Limit = request.Limit,
+            SortBy = request.SortBy,
+            SortDir = request.SortDir,
+            ExtensionData = request.ExtensionData,
+        };
     }
 
     private static IResult GetLegacyColumns(string reportType = "LIENS")
@@ -393,7 +421,7 @@ public static class ReportEndpoints
             ["plaintiff_last_name"] = r.PlaintiffLastName,
             ["case_id"] = r.CaseNumber,
             ["lien_id"] = r.LienNumber,
-            ["purchase_date"] = string.Empty,
+            ["purchase_date"] = FormatLegacyDate(r.PurchaseDate),
             ["days_since_purchase"] = string.Empty,
             ["purchase_amt"] = FormatLegacyMoney(r.PurchaseAmount),
             ["billing_amt"] = FormatLegacyMoney(r.BillingAmount),
@@ -414,7 +442,7 @@ public static class ReportEndpoints
             ["end_service_date"] = string.Empty,
             ["medical_provider"] = string.Empty,
             ["medical_facility_contact"] = string.Empty,
-            ["medical_facility"] = string.Empty,
+            ["medical_facility"] = r.MedicalFacility,
             ["medical_facility_address"] = string.Empty,
             ["medical_facility_city"] = string.Empty,
             ["medical_facility_state"] = string.Empty,
@@ -424,19 +452,19 @@ public static class ReportEndpoints
             ["attorney"] = string.Empty,
             ["attorney_phone"] = string.Empty,
             ["attorney_email"] = string.Empty,
-            ["lawfirm"] = string.Empty,
+            ["lawfirm"] = r.LawFirm,
             ["law_firm_address"] = string.Empty,
             ["law_firm_city"] = string.Empty,
             ["law_firm_state"] = string.Empty,
             ["law_firm_zip_code"] = string.Empty,
             ["law_firm_phone"] = string.Empty,
-            ["case_type"] = string.Empty,
-            ["case_manager"] = " ",
+            ["case_type"] = r.CaseType,
+            ["case_manager"] = r.CaseManager,
             ["case_manager_email"] = string.Empty,
             ["state_of_incident"] = string.Empty,
             ["settlement_date"] = string.Empty,
             ["reduction_date"] = string.Empty,
-            ["days_since_reduction_approval"] = string.Empty,
+            ["days_since_reduction_approval"] = r.DaysSinceReductionApproval?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
             ["days_to_return"] = string.Empty,
             ["lawfirm_email"] = string.Empty,
             ["number_of_liens"] = r.NumberOfLiens,
@@ -494,7 +522,13 @@ public static class ReportEndpoints
         }
 
         return columns.EnumerateArray()
-            .Select(column => column.ValueKind == JsonValueKind.String ? column.GetString() : null)
+            .Select(column => column.ValueKind switch
+            {
+                JsonValueKind.String => column.GetString(),
+                JsonValueKind.Object when column.TryGetProperty("key", out var key) && key.ValueKind == JsonValueKind.String => key.GetString(),
+                JsonValueKind.Object when column.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String => name.GetString(),
+                _ => null,
+            })
             .Where(column => !string.IsNullOrWhiteSpace(column))
             .Select(column => column!.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)

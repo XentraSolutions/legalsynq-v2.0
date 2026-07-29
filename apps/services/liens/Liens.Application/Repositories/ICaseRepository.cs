@@ -19,6 +19,7 @@ public interface ICaseRepository
         string? sortDirection = null,
         string? accidentTypeId = null,
         string? caseManagerId = null,
+        string? lawFirmIds = null,
         CancellationToken ct = default);
     Task AddAsync(Case entity, CancellationToken ct = default);
     Task UpdateAsync(Case entity, CancellationToken ct = default);

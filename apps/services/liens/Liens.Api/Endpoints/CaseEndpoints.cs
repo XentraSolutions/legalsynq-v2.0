@@ -5136,34 +5136,19 @@ public static class CaseEndpoints
 
         var page = filter.page < 1 ? 1 : filter.page;
         var limit = filter.limit < 1 ? 20 : filter.limit;
-        Guid? lawFirmOrgId = null;
-
-        if (!string.IsNullOrWhiteSpace(filter.lawFirmId))
-        {
-            if (!Guid.TryParse(filter.lawFirmId, out var parsedLawFirmId))
-            {
-                return Results.NotFound(new
-                {
-                    isSuccess = false,
-                    message = "No cases found.",
-                });
-            }
-
-            lawFirmOrgId = parsedLawFirmId;
-        }
-
         var result = await caseService.SearchV3Async(
-            tenantId,
-            filter.keyword,
-            filter.statusId,
-            page,
-            limit,
-            filter.sortBy,
-            filter.sortDirection,
-            lawFirmOrgId,
-            filter.accidentTypeId,
-            filter.caseManagerId,
-            ct);
+            tenantId: tenantId,
+            keyword: filter.keyword,
+            statusId: filter.statusId,
+            page: page,
+            limit: limit,
+            sortBy: filter.sortBy,
+            sortDirection: filter.sortDirection,
+            lawFirmOrgId: null,
+            accidentTypeId: filter.accidentTypeId,
+            caseManagerId: filter.caseManagerId,
+            lawFirmIds: filter.lawFirmId,
+            ct: ct);
 
         if (result.TotalCount == 0)
         {
@@ -5758,6 +5743,7 @@ public static class CaseEndpoints
     {
         public int    Page    { get; init; } = 1;
         public int    Limit   { get; init; } = 20;
+        public string? Keyword { get; init; }
         public string? Status { get; init; }
         public Guid?   CaseId { get; init; }
     }
@@ -5770,7 +5756,7 @@ public static class CaseEndpoints
     {
         var tenantId = RequireTenantId(ctx);
         var result = await lienService.SearchAsync(
-            tenantId, null, request.Status, null,
+            tenantId, request.Keyword, request.Status, null,
             request.CaseId, null, request.Page, request.Limit, ct);
         return Results.Ok(ToLegacyCaseLienResponse(MapBuyingLienStatuses(result)));
     }
@@ -5784,7 +5770,7 @@ public static class CaseEndpoints
     {
         var tenantId = RequireTenantId(ctx);
         var result = await lienService.SearchAsync(
-            tenantId, null, request.Status, null,
+            tenantId, request.Keyword, request.Status, null,
             caseId, null, request.Page, request.Limit, ct);
         return Results.Ok(ToLegacyCaseLienResponse(MapBuyingLienStatuses(result)));
     }
@@ -5797,7 +5783,7 @@ public static class CaseEndpoints
     {
         var tenantId = RequireTenantId(ctx);
         var result = await lienService.SearchAsync(
-            tenantId, null, request.Status, null,
+            tenantId, request.Keyword, request.Status, null,
             request.CaseId, null, request.Page, request.Limit, ct);
         return Results.Ok(ToLegacyCaseLienResponse(MapBuyingLienStatuses(result)));
     }

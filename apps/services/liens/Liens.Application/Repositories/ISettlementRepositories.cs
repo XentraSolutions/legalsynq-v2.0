@@ -7,6 +7,7 @@ public interface ILienReductionRepository
     Task<LienReduction?>      GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<List<LienReduction>> GetByCaseIdAsync(Guid tenantId, Guid caseId, CancellationToken ct = default);
     Task<List<LienReduction>> GetByLienIdAsync(Guid tenantId, Guid lienId, CancellationToken ct = default);
+    Task<List<LienReduction>> GetByLienIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> lienIds, CancellationToken ct = default);
     Task AddAsync(LienReduction reduction, CancellationToken ct = default);
     Task UpdateAsync(LienReduction reduction, CancellationToken ct = default);
 }

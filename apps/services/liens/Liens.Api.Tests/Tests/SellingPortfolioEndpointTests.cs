@@ -953,7 +953,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         email.Metadata["lienId"].Should().Be(lienId.ToString());
         email.Metadata["buyerContactId"].Should().Be(buyerContactId.ToString());
         email.Options.Should().NotBeNull();
-        email.Options!.IdempotencyKey.Should().Contain("confirm-sale-success");
+        email.Options!.IdempotencyKey.Should().Be(
+            $"liens.confirm-sale.email:{SeedHelper.TenantId:N}:{lienId:N}:{buyerContactId:N}");
         email.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
         email.Options.TextBody.Should().Be(email.Body);
         email.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
@@ -1226,7 +1227,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Accepted);
         persistedLink.ResponseAmount.Should().Be(2500m);
         persistedLink.ResponseNotes.Should().Be("Accepted at ask from public portal");
-        persistedLink.ResponseIdempotencyKey.Should().Be("public-accept-response");
+        persistedLink.ResponseIdempotencyKey.Should().BeNull();
         persistedLink.RespondedAtUtc.Should().NotBeNull();
         persistedLink.LastAccessedAtUtc.Should().NotBeNull();
 
@@ -1598,12 +1599,11 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         return (await response.Content.ReadFromJsonAsync<SellingPortfolioResponse>())!;
     }
 
-    private Task<HttpResponseMessage> PostConfirmSaleAsync(Guid lienId, string idempotencyKey)
+    private Task<HttpResponseMessage> PostConfirmSaleAsync(Guid lienId, string _)
     {
         var message = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/liens/selling/liens/{lienId}/confirm-sale");
-        message.Headers.Add("Idempotency-Key", idempotencyKey);
         message.Content = JsonContent.Create(new ConfirmSellingLienSaleRequest
         {
             ConfirmationAccepted = true,
@@ -1646,13 +1646,12 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         string token,
         string action,
         object body,
-        string idempotencyKey)
+        string _)
     {
         using var anonClient = _factory.CreateClient();
         var message = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/liens/selling/public/{token}/{action}");
-        message.Headers.Add("Idempotency-Key", idempotencyKey);
         message.Content = JsonContent.Create(body);
         return await anonClient.SendAsync(message);
     }

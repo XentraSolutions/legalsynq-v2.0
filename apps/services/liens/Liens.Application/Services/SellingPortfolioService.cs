@@ -809,7 +809,6 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         Guid sellerOrgId,
         Guid actingUserId,
         ConfirmSellingLienSaleRequest request,
-        string? idempotencyKey,
         CancellationToken ct = default)
     {
         if (!request.ConfirmationAccepted)
@@ -862,8 +861,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             notificationIdempotencyKey = BuildConfirmSaleNotificationIdempotencyKey(
                 tenantId,
                 lien.Id,
-                notificationContext.BuyerContact.Id,
-                idempotencyKey);
+                notificationContext.BuyerContact.Id);
         }
 
         SellingBuyerAccessLinkResult? accessLink = null;
@@ -1584,20 +1582,14 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private static string BuildConfirmSaleNotificationIdempotencyKey(
         Guid tenantId,
         Guid lienId,
-        Guid buyerContactId,
-        string? requestIdempotencyKey)
+        Guid buyerContactId)
     {
-        var requestSegment = string.IsNullOrWhiteSpace(requestIdempotencyKey)
-            ? "default"
-            : requestIdempotencyKey.Trim();
-
         var key = string.Join(":", new[]
         {
             "liens.confirm-sale.email",
             tenantId.ToString("N"),
             lienId.ToString("N"),
             buyerContactId.ToString("N"),
-            requestSegment,
         });
 
         return key.Length > 280 ? key[..280] : key;

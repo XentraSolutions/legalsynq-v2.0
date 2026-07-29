@@ -46,6 +46,12 @@ DIY reports treat `isBulk: "N"` as non-bulk for legacy `N`, canonical `No`, and 
 
 DIY report billing and purchase columns aggregate `billingAmount` and `purchaseAmount` from linked legacy medical-code records, falling back to lien-level amounts when none exist.
 
+`POST /api/liens/settlement/create` preserves its settlement-detail status and,
+when that status is `Open` or `Closed`, also updates the linked lien to `Active`
+or `Settled`, respectively. Other settlement statuses do not change the lien.
+
+List filters accept both canonical persisted statuses and the legacy/UI lifecycle groups: `Open` expands to all active lien states, `Closed` expands to `Settled`, and `Rejected` expands to `Declined`, `Withdrawn`, and `Cancelled`. Historical rows literally persisted as `Rejected` remain hidden by default. The V3 case filter accepts comma-separated status, law-firm, case-manager, and accident-type selections. Law-firm values match the contact ID saved in case metadata and continue to accept legacy organization IDs.
+
 ## Selling Workflow
 
 Seller-mode endpoints live under `/api/liens/selling` and require SynqLien product access plus sell mode. The lien-first
@@ -53,7 +59,11 @@ confirm-sale route is:
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/api/liens/selling/dashboard?tab=pending\|internal\|sold\|all` | Returns seller-scoped portfolio totals, tab counts, and a paginated lien table. Supports search, funding company, law firm, case manager, facility, initial-service-date, and sort filters. |
+| `GET` | `/api/liens/selling/liens?tab=pending\|internal\|sold\|all` | Returns the same seller-scoped, filtered, paginated lien rows without dashboard totals. |
 | `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and optionally sends the buyer `New Lien Offer` email |
+| `GET` | `/api/liens/selling/bulk-import-template` | Downloads the current CSV template for a staged selling-lien bulk import. |
+| `POST` | `/api/liens/selling/bulk-imports` | Uploads a CSV, XLS, or XLSX selling-lien import using `multipart/form-data`. The import is staged tenant-scoped for subsequent validation and confirmation; it does not create liens directly. |
 
 Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. When
 `sendBuyerNotification=true`, the service validates real buyer/seller contact data, creates a 30-day buyer access link,
@@ -146,6 +156,25 @@ endpoint does not write an `.xlsx` file itself.
 ## Database
 
 `LiensDb` (MySQL).
+
+## Legacy SL-CORE core import
+
+The tenant-scoped, dry-run-first legacy importer lives in
+[`scripts/LegacyLiensImport`](../../scripts/LegacyLiensImport/). It imports only
+approved core cases, medical-lien headers, and case notes from an isolated
+`SL-CORE` staging database. It requires explicit tenant, organization,
+migration-user, and legacy-program parameters plus an Identity-signed mapping
+manifest for `--apply` that binds the approved dump fingerprint; it does not
+run the dump or infer tenant ownership. A controlled staging restore receipt
+must bind the queried database to that same fingerprint. See its README for
+preflight, apply, collision-policy, certificate-store trust, mapping-evidence,
+source-fingerprint, and restore-provenance requirements.
+
+For the currently approved tenant/org pair, the importer folder also contains
+a guarded MySQL-only one-time runner. It must be executed only against a
+controlled staging restore on the same MySQL server as LiensDb; see the
+importer README for its trusted approval, source-receipt, dry-run, and
+single-use apply requirements.
 
 ## Workflow Engine (Flow)
 

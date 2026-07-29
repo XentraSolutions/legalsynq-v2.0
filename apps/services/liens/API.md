@@ -298,12 +298,6 @@ Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared li
 
 **Permission:** `SYNQ_LIENS.lien_sale:update`
 
-**Headers:**
-
-| Header | Required | Description |
-|---|---|---|
-| `Idempotency-Key` | No | Used with tenant/lien/buyer contact to suppress duplicate buyer email sends on replay |
-
 **Request:**
 
 ```json
@@ -485,12 +479,6 @@ or finalize sale. The
 `/offers` alias accepts the same response shape; legacy `message` fields are stored as response notes.
 
 **Authentication:** None.
-
-**Headers:**
-
-| Header | Required | Notes |
-|---|---|---|
-| `Idempotency-Key` | No | Stored with the access-link response for replay/audit correlation |
 
 **Request:**
 

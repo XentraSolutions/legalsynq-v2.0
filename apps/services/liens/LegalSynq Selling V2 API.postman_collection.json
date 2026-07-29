@@ -14,21 +14,6 @@
       }
     ]
   },
-  "event": [
-    {
-      "listen": "prerequest",
-      "script": {
-        "type": "text/javascript",
-        "exec": [
-          "// Set {{token}} to a seller JWT and {{buyerToken}} to a buyer JWT before running authenticated requests.",
-          "// Clear {{idempotencyKey}} when you want a fresh key; keep it unchanged when testing retries.",
-          "if (!pm.collectionVariables.get('idempotencyKey')) {",
-          "  pm.collectionVariables.set('idempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
-          "}"
-        ]
-      }
-    }
-  ],
   "variable": [
     {
       "key": "baseUrl",
@@ -40,10 +25,6 @@
     },
     {
       "key": "buyerToken",
-      "value": ""
-    },
-    {
-      "key": "idempotencyKey",
       "value": ""
     },
     {
@@ -273,10 +254,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
               }
             ],
             "body": {
@@ -323,10 +300,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
               }
             ],
             "body": {
@@ -350,10 +323,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
               }
             ],
             "body": {
@@ -377,10 +346,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
               }
             ],
             "body": {
@@ -404,10 +369,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
               }
             ],
             "body": {
@@ -446,10 +407,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
               }
             ],
             "body": {
@@ -559,12 +516,7 @@
           "name": "Confirm Bulk Import",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
-              }
-            ],
+            "header": [],
             "url": "{{baseUrl}}/api/liens/selling/bulk-imports/{{bulkImportId}}/confirm",
             "description": "POST /api/liens/selling/bulk-imports/{importId}/confirm."
           }
@@ -610,10 +562,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
               }
             ],
             "body": {
@@ -637,10 +585,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
               }
             ],
             "body": {
@@ -687,10 +631,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
               }
             ],
             "body": {
@@ -717,10 +657,6 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
               }
             ],
             "body": {

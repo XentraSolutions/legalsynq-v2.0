@@ -338,6 +338,239 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         body.Items[0].Status.Should().NotBe("Rejected").And.NotBe("Cancelled");
     }
 
+    [Fact]
+    public async Task Lien_status_group_open_expands_for_get_and_advanced_search()
+    {
+        var prefix = $"LIEN-OPEN-GROUP-{Guid.CreateVersion7():N}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var draft = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-DRAFT", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            var active = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-ACTIVE", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            active.SetLegacyMedicalStatus(LienStatus.Active, SeedHelper.UserId);
+            var settled = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-SETTLED", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            settled.SetLegacyMedicalStatus(LienStatus.Settled, SeedHelper.UserId);
+
+            db.Liens.AddRange(draft, active, settled);
+            await db.SaveChangesAsync();
+        }
+
+        var getResponse = await _client.GetAsync(
+            $"/api/liens/liens?search={prefix}&status=Open&page=1&pageSize=20");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await getResponse.Content.ReadAsStringAsync()}");
+        var getBody = await getResponse.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        getBody!.Items.Select(item => item.LienNumber)
+            .Should().Contain([ $"{prefix}-DRAFT", $"{prefix}-ACTIVE" ]);
+        getBody.Items.Should().NotContain(item => item.LienNumber == $"{prefix}-SETTLED");
+
+        var postResponse = await _client.PostAsJsonAsync("/api/liens/liens/search", new
+        {
+            search = prefix,
+            lienStatusIds = new[] { "Open" },
+            page = 1,
+            pageSize = 20,
+        });
+        postResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await postResponse.Content.ReadAsStringAsync()}");
+        var postBody = await postResponse.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        postBody!.Items.Select(item => item.LienNumber)
+            .Should().Contain([ $"{prefix}-DRAFT", $"{prefix}-ACTIVE" ]);
+        postBody.Items.Should().NotContain(item => item.LienNumber == $"{prefix}-SETTLED");
+    }
+
+    [Fact]
+    public async Task SearchLiens_uses_lookup_status_display_name_when_legacy_code_is_not_a_status()
+    {
+        var prefix = $"LIEN-OPEN-LOOKUP-{Guid.CreateVersion7():N}";
+        Guid openStatusLookupId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var openStatus = LookupValue.Create(
+                LookupCategory.LienStatus,
+                "1",
+                "Open",
+                SeedHelper.UserId,
+                tenantId: SeedHelper.TenantId);
+            var draft = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-DRAFT", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            var active = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-ACTIVE", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            active.SetLegacyMedicalStatus(LienStatus.Active, SeedHelper.UserId);
+            var settled = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-SETTLED", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            settled.SetLegacyMedicalStatus(LienStatus.Settled, SeedHelper.UserId);
+
+            openStatusLookupId = openStatus.Id;
+            db.LookupValues.Add(openStatus);
+            db.Liens.AddRange(draft, active, settled);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/liens/search", new
+        {
+            page = 1,
+            pageSize = 10,
+            lawFirmIds = Array.Empty<string>(),
+            medicalFacilityIds = Array.Empty<string>(),
+            caseManagerIds = Array.Empty<string>(),
+            lienStatusIds = new[] { openStatusLookupId.ToString() },
+            search = prefix,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = await response.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        body!.Items.Select(item => item.LienNumber)
+            .Should().Contain([ $"{prefix}-DRAFT", $"{prefix}-ACTIVE" ]);
+        body.Items.Should().NotContain(item => item.LienNumber == $"{prefix}-SETTLED");
+    }
+
+    [Fact]
+    public async Task SearchLiens_expands_legacy_lookup_id_backed_by_a_canonical_open_status()
+    {
+        var prefix = $"LIEN-OPEN-LOOKUP-CANONICAL-{Guid.CreateVersion7():N}";
+        Guid openStatusLookupId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            // The legacy lookup endpoint returns this row's ID for its
+            // business-level "Open" option, even though the stored code is
+            // the first canonical Open lifecycle status (Draft).
+            var openStatus = LookupValue.Create(
+                LookupCategory.LienStatus,
+                LienStatus.Draft,
+                "Draft",
+                SeedHelper.UserId,
+                tenantId: SeedHelper.TenantId);
+            var draft = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-DRAFT", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            var active = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-ACTIVE", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            active.SetLegacyMedicalStatus(LienStatus.Active, SeedHelper.UserId);
+            var settled = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-SETTLED", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            settled.SetLegacyMedicalStatus(LienStatus.Settled, SeedHelper.UserId);
+
+            openStatusLookupId = openStatus.Id;
+            db.LookupValues.Add(openStatus);
+            db.Liens.AddRange(draft, active, settled);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/liens/search", new
+        {
+            page = 1,
+            pageSize = 10,
+            lienStatusIds = new[] { openStatusLookupId.ToString() },
+            search = prefix,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = await response.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        body!.Items.Select(item => item.LienNumber)
+            .Should().Contain([ $"{prefix}-DRAFT", $"{prefix}-ACTIVE" ]);
+        body.Items.Should().NotContain(item => item.LienNumber == $"{prefix}-SETTLED");
+    }
+
+    [Fact]
+    public async Task Lien_status_canonical_value_remains_exact()
+    {
+        var prefix = $"LIEN-CANONICAL-STATUS-{Guid.CreateVersion7():N}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var draft = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-DRAFT", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            var active = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-ACTIVE", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            active.SetLegacyMedicalStatus(LienStatus.Active, SeedHelper.UserId);
+            db.Liens.AddRange(draft, active);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync(
+            $"/api/liens/liens?search={prefix}&status=Draft&page=1&pageSize=20");
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        body!.Items.Should().ContainSingle(item => item.LienNumber == $"{prefix}-DRAFT");
+        body.Items.Should().NotContain(item => item.LienNumber == $"{prefix}-ACTIVE");
+    }
+
+    [Fact]
+    public async Task Lien_status_group_rejected_includes_cancelled_in_all_list_paths()
+    {
+        var prefix = $"LIEN-REJECTED-GROUP-{Guid.CreateVersion7():N}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var declined = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-DECLINED", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            declined.SetLegacyMedicalStatus(LienStatus.Declined, SeedHelper.UserId);
+            var withdrawn = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-WITHDRAWN", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            withdrawn.SetLegacyMedicalStatus(LienStatus.Withdrawn, SeedHelper.UserId);
+            var cancelled = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, $"{prefix}-CANCELLED", LienType.MedicalLien,
+                125m, SeedHelper.UserId, caseId: SeedHelper.CaseId);
+            cancelled.SetLegacyMedicalStatus(LienStatus.Cancelled, SeedHelper.UserId);
+            db.Liens.AddRange(declined, withdrawn, cancelled);
+            await db.SaveChangesAsync();
+        }
+
+        var expected = new[] { $"{prefix}-DECLINED", $"{prefix}-WITHDRAWN", $"{prefix}-CANCELLED" };
+
+        var getResponse = await _client.GetAsync(
+            $"/api/liens/liens?search={prefix}&status=Rejected&page=1&pageSize=20");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await getResponse.Content.ReadAsStringAsync()}");
+        var getBody = await getResponse.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        getBody!.Items.Select(item => item.LienNumber).Should().Contain(expected);
+
+        var searchResponse = await _client.PostAsJsonAsync("/api/liens/liens/search", new
+        {
+            search = prefix,
+            lienStatusIds = new[] { "Rejected" },
+            page = 1,
+            pageSize = 20,
+        });
+        searchResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await searchResponse.Content.ReadAsStringAsync()}");
+        var searchBody = await searchResponse.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        searchBody!.Items.Select(item => item.LienNumber).Should().Contain(expected);
+
+        var advancedResponse = await _client.GetAsync(
+            $"/api/liens/liens?search={prefix}&lienStatusIds=Rejected&page=1&pageSize=20");
+        advancedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await advancedResponse.Content.ReadAsStringAsync()}");
+        var advancedBody = await advancedResponse.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        advancedBody!.Items.Select(item => item.LienNumber).Should().Contain(expected);
+    }
+
     [Theory]
     [InlineData("Open")]
     [InlineData("Closed")]

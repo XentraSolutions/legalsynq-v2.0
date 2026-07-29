@@ -285,6 +285,7 @@ public static class LienEndpoints
                 ct);
         }
 
+        var selectedStatusCodes = LienStatus.ExpandFilterValues(SplitCsvValues(status));
         var result = await lienService.SearchAsync(
             tenantId,
             search,
@@ -295,7 +296,7 @@ public static class LienEndpoints
             page,
             pageSize,
             ct,
-            excludeRejectedAndCancelled: true);
+            excludeRejectedAndCancelled: !selectedStatusCodes.Contains(LienStatus.Cancelled));
         var enriched = await EnrichLienResponsesAsync(result.Items, tenantId, servicingItemService, ct);
         var mappedItems = MapBuyingLienStatuses(enriched);
         return Results.Ok(new PaginatedResult<LienResponse>
@@ -493,11 +494,25 @@ public static class LienEndpoints
         var purchaseTo = ParseDateOnlyFilter(purchaseDateTo);
         var closedFrom = ParseDateTimeFilter(closedDateFrom, endOfDay: false);
         var closedTo = ParseDateTimeFilter(closedDateTo, endOfDay: true);
+        var directStatusCodes = LienStatus.ExpandFilterValues(
+            string.IsNullOrWhiteSpace(status)
+                ? []
+                : SplitCsvValues(status));
+
+        var shouldExcludeRejectedAndCancelled =
+            !directStatusCodes.Contains(LienStatus.Cancelled) &&
+            !resolvedStatusCodes.Contains(LienStatus.Cancelled);
 
         var query = db.Liens
             .AsNoTracking()
-            .Where(l => l.TenantId == tenantId)
-            .Where(l => l.Status != LienStatus.Cancelled && l.Status != "Rejected");
+            .Where(l => l.TenantId == tenantId);
+
+        if (shouldExcludeRejectedAndCancelled)
+        {
+            query = query.Where(l =>
+                l.Status != LienStatus.Cancelled &&
+                l.Status != "Rejected");
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -509,8 +524,10 @@ public static class LienEndpoints
                 (l.Description != null && l.Description.Contains(term)));
         }
 
-        if (!string.IsNullOrWhiteSpace(status))
-            query = query.Where(l => l.Status == status);
+        if (directStatusCodes.Count == 1)
+            query = query.Where(l => l.Status == directStatusCodes.Single());
+        else if (directStatusCodes.Count > 1)
+            query = query.Where(l => directStatusCodes.Contains(l.Status));
 
         if (resolvedStatusCodes.Count > 0)
             query = query.Where(l => resolvedStatusCodes.Contains(l.Status));
@@ -839,18 +856,41 @@ public static class LienEndpoints
             .Select(Guid.Parse)
             .ToList();
 
-        var lookupCodes = guidIds.Count == 0
+        var lookupStatusValues = guidIds.Count == 0
             ? []
             : await db.LookupValues
                 .AsNoTracking()
                 .Where(l => (l.TenantId == tenantId || l.TenantId == null) &&
                             l.Category == LookupCategory.LienStatus &&
                             guidIds.Contains(l.Id))
-                .Select(l => l.Code)
+                .Select(l => new { l.Code, l.Name, l.Description })
                 .ToListAsync(ct);
 
-        return normalized
-            .Concat(lookupCodes)
+        // Older lien-list clients send the lookup row ID for the three
+        // legacy business groups (Open, Closed, Rejected).  Those rows are
+        // backed by a canonical lifecycle status such as Draft, so treating
+        // the ID as only that canonical status incorrectly omits Active and
+        // the other Open states.  Preserve direct canonical status filters,
+        // while expanding lookup-ID filters back to their business group.
+        var lookupFilterValues = lookupStatusValues.SelectMany(value =>
+        {
+            var values = new List<string> { value.Code, value.Name };
+            if (!string.IsNullOrWhiteSpace(value.Description))
+                values.Add(value.Description);
+
+            if (LienStatus.Open.Contains(value.Code))
+                values.Add("Open");
+            else if (string.Equals(value.Code, LienStatus.Settled, StringComparison.OrdinalIgnoreCase))
+                values.Add("Closed");
+            else if (string.Equals(value.Code, LienStatus.Declined, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(value.Code, LienStatus.Withdrawn, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(value.Code, LienStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
+                values.Add("Rejected");
+
+            return values;
+        });
+
+        return LienStatus.ExpandFilterValues(normalized.Concat(lookupFilterValues))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
