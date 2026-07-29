@@ -404,6 +404,11 @@ Summary metrics are current buyer-scoped totals across all visible offers:
 | `purchasedLienCount` | Count of accepted buyer responses |
 | `capitalDeployedAmount` | Sum of accepted response amounts, falling back to ask amount |
 
+`summary.trends` contains one trend per KPI card: `totalLienPending`, `totalPendingOffered`, `purchasedLiens`, and
+`capitalDeployed`. Each trend compares current calendar month activity with the previous full calendar month and returns
+`value` as the absolute percent delta, `direction` as `up`, `down`, or `flat`, and `label` as the previous-month range
+shown by the portal.
+
 `range=last7Days|last30Days|custom`, `from=yyyy-MM-dd`, and `to=yyyy-MM-dd` filter the acquisition pipeline activity
 stages only. Pending activity uses the received-offer timestamp; accepted and declined activity uses the response
 timestamp. Missing custom dates are treated as open-ended.
@@ -421,7 +426,28 @@ timestamp. Missing custom dates are treated as open-ended.
     "totalPendingOfferedAmount": 2500.00,
     "purchasedLienCount": 1,
     "capitalDeployedAmount": 2500.00,
-    "trends": {}
+    "trends": {
+      "totalLienPending": {
+        "value": 8.9,
+        "direction": "up",
+        "label": "vs Apr 1 - Apr 30"
+      },
+      "totalPendingOffered": {
+        "value": 6.4,
+        "direction": "up",
+        "label": "vs Apr 1 - Apr 30"
+      },
+      "purchasedLiens": {
+        "value": 14.2,
+        "direction": "up",
+        "label": "vs Apr 1 - Apr 30"
+      },
+      "capitalDeployed": {
+        "value": 5.0,
+        "direction": "down",
+        "label": "vs Apr 1 - Apr 30"
+      }
+    }
   },
   "pendingOffers": [
     {

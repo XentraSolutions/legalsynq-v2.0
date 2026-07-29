@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -1321,6 +1322,19 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         summary.GetProperty("totalPendingOfferedAmount").GetDecimal().Should().Be(2500m);
         summary.GetProperty("purchasedLienCount").GetInt32().Should().Be(1);
         summary.GetProperty("capitalDeployedAmount").GetDecimal().Should().Be(2500m);
+
+        var previousMonthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1).AddMonths(-1);
+        var previousMonthEnd = previousMonthStart.AddMonths(1).AddDays(-1);
+        var expectedTrendLabel =
+            $"vs {previousMonthStart.ToString("MMM d", CultureInfo.InvariantCulture)} - {previousMonthEnd.ToString("MMM d", CultureInfo.InvariantCulture)}";
+        var trends = summary.GetProperty("trends");
+        foreach (var key in new[] { "totalLienPending", "totalPendingOffered", "purchasedLiens", "capitalDeployed" })
+        {
+            var trend = trends.GetProperty(key);
+            trend.GetProperty("direction").GetString().Should().Be("up");
+            trend.GetProperty("value").GetDecimal().Should().Be(100m);
+            trend.GetProperty("label").GetString().Should().Be(expectedTrendLabel);
+        }
 
         var pendingOffer = json.GetProperty("pendingOffers").EnumerateArray().Single();
         pendingOffer.GetProperty("lienNumber").GetString().Should().Be("DASH-ALPHA-100");

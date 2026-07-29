@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowRight, TrendingDown, TrendingUp } from "lucide-react";
 import {
   formatFundingCurrency,
   formatFundingDateTime,
@@ -147,8 +148,9 @@ function TrendPill({ trend }: { trend?: FundingMetricTrend | null }) {
         : "bg-[#dcfce7] text-[#15803d]";
 
   return (
-    <span className={`inline-flex h-6 items-center rounded-full px-2 text-[12px] font-medium leading-[1.6] ${tone}`}>
-      {formatSignedPercent(trend)}
+    <span className={`inline-flex h-6 items-center gap-0.5 rounded-full px-2 text-[12px] font-medium leading-[1.6] ${tone}`}>
+      <TrendIcon direction={trend.direction} className="h-3 w-3 shrink-0" />
+      {formatTrendPercent(trend)}
     </span>
   );
 }
@@ -172,7 +174,7 @@ function TrendSummary({ trend }: { trend?: FundingMetricTrend | null }) {
   return (
     <div className="mt-4 space-y-1">
       <p className="text-[12px] font-semibold leading-[1.6] text-[#0a0a0a]">
-        {verb} <i className={trend.direction === "down" ? "ri-line-chart-line" : "ri-line-chart-line"} />
+        {verb} <TrendIcon direction={trend.direction} className="ml-1 inline-block h-3.5 w-3.5 align-[-2px]" />
       </p>
       <p className="text-[12px] font-normal leading-[1.6] text-[#737373]">
         {directionLabel} {formatFundingPercent(Math.abs(trend.value))}
@@ -180,6 +182,18 @@ function TrendSummary({ trend }: { trend?: FundingMetricTrend | null }) {
       </p>
     </div>
   );
+}
+
+function TrendIcon({
+  direction,
+  className,
+}: {
+  direction: FundingMetricTrend["direction"];
+  className?: string;
+}) {
+  const Icon = direction === "down" ? TrendingDown : direction === "flat" ? ArrowRight : TrendingUp;
+
+  return <Icon aria-hidden className={className} strokeWidth={2.25} />;
 }
 
 function PendingOffersCard({ rows }: { rows: PendingFundingOfferRow[] }) {
@@ -458,9 +472,8 @@ function formatAcceptance(row: ProviderPerformanceRow): string {
   return formatFundingPercent((row.acceptedAmount / row.offeredAmount) * 100);
 }
 
-function formatSignedPercent(trend: FundingMetricTrend): string {
-  const sign = trend.direction === "down" ? "-" : trend.direction === "flat" ? "" : "+";
-  return `${sign}${formatFundingPercent(Math.abs(trend.value))}`;
+function formatTrendPercent(trend: FundingMetricTrend): string {
+  return formatFundingPercent(Math.abs(trend.value));
 }
 
 function getPipelineTone(label: string): {

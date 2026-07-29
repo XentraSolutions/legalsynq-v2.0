@@ -1110,6 +1110,81 @@ public static class SellingEndpoints
             source.SubjectLastName,
         }.Where(value => !string.IsNullOrWhiteSpace(value)));
 
+    private static IReadOnlyDictionary<string, BuyerFundingMetricTrend?> BuildBuyerFundingMetricTrends(
+        IReadOnlyCollection<BuyerDashboardOffer> offers,
+        DateTime nowUtc)
+    {
+        var currentMonthStart = new DateTime(nowUtc.Year, nowUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var nextMonthStart = currentMonthStart.AddMonths(1);
+        var previousMonthStart = currentMonthStart.AddMonths(-1);
+        var previousMonthEndExclusive = currentMonthStart;
+        var label = $"vs {FormatTrendMonthDay(previousMonthStart)} - {FormatTrendMonthDay(previousMonthEndExclusive.AddDays(-1))}";
+
+        var currentMonth = new BuyerDashboardWindow(currentMonthStart, nextMonthStart);
+        var previousMonth = new BuyerDashboardWindow(previousMonthStart, previousMonthEndExclusive);
+
+        var currentPendingOffers = FilterTrendOffers(offers, currentMonth, BuyerOfferedLienStatuses.Pending).ToList();
+        var previousPendingOffers = FilterTrendOffers(offers, previousMonth, BuyerOfferedLienStatuses.Pending).ToList();
+        var currentAcceptedOffers = FilterTrendOffers(offers, currentMonth, BuyerOfferedLienStatuses.Accepted).ToList();
+        var previousAcceptedOffers = FilterTrendOffers(offers, previousMonth, BuyerOfferedLienStatuses.Accepted).ToList();
+
+        return new Dictionary<string, BuyerFundingMetricTrend?>
+        {
+            ["totalLienPending"] = BuildBuyerFundingMetricTrend(
+                currentPendingOffers.Count,
+                previousPendingOffers.Count,
+                label),
+            ["totalPendingOffered"] = BuildBuyerFundingMetricTrend(
+                currentPendingOffers.Sum(offer => offer.Row.OfferedAmount),
+                previousPendingOffers.Sum(offer => offer.Row.OfferedAmount),
+                label),
+            ["purchasedLiens"] = BuildBuyerFundingMetricTrend(
+                currentAcceptedOffers.Count,
+                previousAcceptedOffers.Count,
+                label),
+            ["capitalDeployed"] = BuildBuyerFundingMetricTrend(
+                currentAcceptedOffers.Sum(offer => offer.Row.OfferedAmount),
+                previousAcceptedOffers.Sum(offer => offer.Row.OfferedAmount),
+                label),
+        };
+    }
+
+    private static IEnumerable<BuyerDashboardOffer> FilterTrendOffers(
+        IEnumerable<BuyerDashboardOffer> offers,
+        BuyerDashboardWindow window,
+        string status)
+        => offers.Where(offer =>
+            string.Equals(offer.Row.Status, status, StringComparison.Ordinal) &&
+            IsWithinDashboardWindow(GetBuyerDashboardActivityAt(offer.Source), window));
+
+    private static BuyerFundingMetricTrend BuildBuyerFundingMetricTrend(
+        decimal currentValue,
+        decimal previousValue,
+        string label)
+    {
+        if (currentValue == 0m && previousValue == 0m)
+            return new BuyerFundingMetricTrend(0m, "flat", label);
+
+        if (previousValue == 0m)
+            return new BuyerFundingMetricTrend(100m, "up", label);
+
+        var percentChange = ((currentValue - previousValue) / previousValue) * 100m;
+        var direction = percentChange switch
+        {
+            > 0m => "up",
+            < 0m => "down",
+            _ => "flat",
+        };
+
+        return new BuyerFundingMetricTrend(
+            Math.Round(Math.Abs(percentChange), 1, MidpointRounding.AwayFromZero),
+            direction,
+            label);
+    }
+
+    private static string FormatTrendMonthDay(DateTime value)
+        => value.ToString("MMM d", CultureInfo.InvariantCulture);
+
     private static IReadOnlyList<BuyerFundingPipelineStage> BuildBuyerFundingPipelineStages(
         IReadOnlyCollection<BuyerDashboardOffer> offers)
     {
@@ -1391,10 +1466,12 @@ public static class SellingEndpoints
             .Where(offer => string.Equals(offer.Row.Status, BuyerOfferedLienStatuses.Accepted, StringComparison.Ordinal))
             .ToList();
 
-        var window = ResolveBuyerDashboardWindow(range, from, to, DateTime.UtcNow);
+        var nowUtc = DateTime.UtcNow;
+        var window = ResolveBuyerDashboardWindow(range, from, to, nowUtc);
         var windowedOffers = offers
             .Where(offer => IsWithinDashboardWindow(GetBuyerDashboardActivityAt(offer.Source), window))
             .ToList();
+        var trends = BuildBuyerFundingMetricTrends(offers, nowUtc);
 
         var summary = new BuyerFundingDashboardSummary(
             pendingOffers.Count,
@@ -1403,7 +1480,7 @@ public static class SellingEndpoints
             pendingOffers.Sum(offer => offer.Row.OfferedAmount),
             acceptedOffers.Count,
             acceptedOffers.Sum(offer => offer.Row.OfferedAmount),
-            new Dictionary<string, BuyerFundingMetricTrend?>());
+            trends);
 
         var response = new BuyerFundingDashboardResponse(
             summary,
