@@ -1,10 +1,13 @@
 import Link from "next/link";
+import { OfferedLiensPageSizeSelect } from "@/components/synqlien-funding-portal/offered-liens-page-size-select";
 import { OfferedLienRowActions } from "@/components/synqlien-funding-portal/offered-lien-row-actions";
 import {
+  OFFERED_LIENS_DEFAULT_PAGE_SIZE,
   formatFundingCurrency,
   formatFundingDate,
   formatFundingNumber,
   getOfferedLiens,
+  getOfferedLiensDisplayRange,
   getOfferedLiensEmptyStateCopy,
   statusBadgeClass,
   type OfferedLienRow,
@@ -39,7 +42,7 @@ export default async function OfferedLiensPage({
     status: normalizeFilter(sp.status),
     search: normalizeFilter(sp.search),
     page: parsePositiveInt(sp.page, 1),
-    pageSize: parsePositiveInt(sp.pageSize, 10),
+    pageSize: parsePositiveInt(sp.pageSize, OFFERED_LIENS_DEFAULT_PAGE_SIZE),
     sort,
     direction: sort ? normalizeDirection(sp.direction) : undefined,
   };
@@ -72,7 +75,7 @@ function SearchForm({ query }: { query: OfferedLiensQuery }) {
   return (
     <form action="/funding/offered-liens" className="w-full">
       {query.status ? <input type="hidden" name="status" value={query.status} /> : null}
-      {query.pageSize && query.pageSize !== 10 ? (
+      {query.pageSize && query.pageSize !== OFFERED_LIENS_DEFAULT_PAGE_SIZE ? (
         <input type="hidden" name="pageSize" value={query.pageSize} />
       ) : null}
       {query.sort ? <input type="hidden" name="sort" value={query.sort} /> : null}
@@ -256,18 +259,18 @@ function Pagination({
 }) {
   const totalPages = result.pageSize > 0 ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
   const currentPage = Math.min(Math.max(result.page, 1), totalPages);
-  const firstItem = result.total === 0 ? 0 : (currentPage - 1) * result.pageSize + 1;
-  const lastItem = Math.min(result.total, currentPage * result.pageSize);
+  const { firstItem, lastItem } = getOfferedLiensDisplayRange(result);
   const pageNumbers = buildPageNumbers(currentPage, totalPages);
 
   return (
     <div className="flex flex-col gap-4 px-6 pb-6 pt-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-3 text-[14px] font-normal leading-5 text-[#737373]">
         <span>Showing</span>
-        <span className="inline-flex h-9 min-w-[92px] items-center justify-between rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[#0a0a0a] shadow-[0_1px_1px_rgba(0,0,0,0.08)]">
-          {formatFundingNumber(firstItem)}-{formatFundingNumber(lastItem)}
-          <i className="ri-arrow-down-s-line ml-2 text-[16px] text-[#525252]" />
-        </span>
+        <OfferedLiensPageSizeSelect
+          pageSize={result.pageSize}
+          firstItem={firstItem}
+          lastItem={lastItem}
+        />
         <span>of {formatFundingNumber(result.total)} entries.</span>
       </div>
 
@@ -387,7 +390,7 @@ function buildHref(query: OfferedLiensQuery): string {
   if (query.status) params.set("status", query.status);
   if (query.search) params.set("search", query.search);
   if (query.page && query.page > 1) params.set("page", String(query.page));
-  if (query.pageSize && query.pageSize !== 10) params.set("pageSize", String(query.pageSize));
+  if (query.pageSize && query.pageSize !== OFFERED_LIENS_DEFAULT_PAGE_SIZE) params.set("pageSize", String(query.pageSize));
   if (query.sort) {
     params.set("sort", query.sort);
     params.set("direction", query.direction ?? DEFAULT_SORT_DIRECTION);
