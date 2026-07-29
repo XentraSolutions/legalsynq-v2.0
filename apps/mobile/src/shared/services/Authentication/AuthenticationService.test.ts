@@ -82,6 +82,24 @@ describe('AuthenticationService', () => {
     });
   });
 
+  it('prioritizes the selected tenant over a stale hidden login-form tenant code', async () => {
+    const selectedTenant = await TenantSelectionService.addLocalTenantCode('smith-law');
+    authenticationApi.login.mockResolvedValue(loginResponse);
+
+    await AuthenticationService.login({
+      email: 'avery.mendoza@smithlaw.example',
+      password: 'ValidPass123',
+      tenantCode: 'stale-default-tenant',
+      activeTenant: selectedTenant,
+    });
+
+    expect(authenticationApi.login).toHaveBeenCalledWith({
+      email: 'avery.mendoza@smithlaw.example',
+      password: 'ValidPass123',
+      tenantCode: 'smith-law',
+    });
+  });
+
   it('keeps remembered tenant storage when logging out', async () => {
     await TenantSelectionService.addLocalTenantCode('smith-law');
     await secureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, 'token');

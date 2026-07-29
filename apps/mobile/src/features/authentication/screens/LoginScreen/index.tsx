@@ -136,26 +136,10 @@ export function LoginScreen() {
       ) : (
         <>
           {!isLegacyMode && activeTenant ? (
-            <View className="mt-8 rounded-[18px] border border-[#ececee] bg-white p-4 dark:border-[#303138] dark:bg-[#191a1f]">
-              <Text className={cx(FIGMA_TEXT.formLabel, 'text-[#6f737d] dark:text-[#a1a1aa]')}>
-                Current Tenant
-              </Text>
-              <Text className="mt-1 font-jakarta-bold text-[20px] leading-[26px] text-[#202228] dark:text-white">
-                {activeTenant.tenantName}
-              </Text>
-              {!activeTenant.isConfirmed ? (
-                <Text className={cx(FIGMA_TEXT.formLabel, 'mt-1 text-[#8f929b]')}>
-                  This tenant will be confirmed after your next successful sign in.
-                </Text>
-              ) : null}
-              <Pressable
-                accessibilityRole="button"
-                className="mt-3 self-start"
-                onPress={() => navigation.navigate('TenantSelection')}
-              >
-                <Text className={cx(FIGMA_TEXT.rowValue, 'text-[#f97332]')}>Switch Tenant</Text>
-              </Pressable>
-            </View>
+            <CurrentTenantCard
+              tenant={activeTenant}
+              onSwitch={() => navigation.navigate('TenantSelection')}
+            />
           ) : null}
           <Controller
             control={control}
@@ -238,6 +222,37 @@ export function LoginScreen() {
           </Text> */}
         </>
       )}
+    </View>
+  );
+}
+
+export function CurrentTenantCard({
+  tenant,
+  onSwitch,
+}: {
+  tenant: RememberedTenant;
+  onSwitch: () => void;
+}) {
+  return (
+    <View className="mt-8 rounded-[18px] border border-[#ececee] bg-white p-4 dark:border-[#303138] dark:bg-[#191a1f]">
+      <Text className={cx(FIGMA_TEXT.formLabel, 'text-[#6f737d] dark:text-[#a1a1aa]')}>
+        Current Tenant
+      </Text>
+      <Text className="mt-1 font-jakarta-bold text-[20px] leading-[26px] text-[#202228] dark:text-white">
+        {tenant.tenantName} ({tenant.tenantCode})
+      </Text>
+      {!tenant.isConfirmed ? (
+        <Text className={cx(FIGMA_TEXT.formLabel, 'mt-1 text-[#8f929b]')}>
+          This tenant will be confirmed after your next successful sign in.
+        </Text>
+      ) : null}
+      <Pressable
+        accessibilityRole="button"
+        className="mt-3 self-start"
+        onPress={onSwitch}
+      >
+        <Text className={cx(FIGMA_TEXT.rowValue, 'text-[#f97332]')}>Switch Tenant</Text>
+      </Pressable>
     </View>
   );
 }

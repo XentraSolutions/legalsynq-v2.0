@@ -97,7 +97,7 @@ async function loginCurrent({
   tenantCode,
   activeTenant,
 }: LoginInput): Promise<UserSession> {
-  const effectiveTenantCode = tenantCode?.trim() || activeTenant?.tenantCode;
+  const effectiveTenantCode = activeTenant?.tenantCode.trim() || tenantCode?.trim();
   if (!effectiveTenantCode) {
     throw new Error('Select or enter a tenant code before signing in.');
   }
