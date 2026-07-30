@@ -99,6 +99,43 @@ async function request<T>(
   return { data, correlationId, status: res.status };
 }
 
+// ── Raw (non-JSON) responses, e.g. CSV/file downloads ─────────────────────────
+
+async function requestBlob(
+  path: string,
+  options: RequestOptions = {},
+): Promise<Blob> {
+  const url = `${GATEWAY_PREFIX}${path}`;
+  const method = options.method ?? 'GET';
+
+  const res = await fetch(url, {
+    method,
+    credentials: 'include',
+    headers: options.headers,
+  });
+
+  const correlationId = res.headers.get('X-Correlation-Id') ?? 'unknown';
+
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const errBody = await res.json();
+      const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+      message =
+        str(errBody?.message) ??
+        str(errBody?.error)   ??
+        str(errBody?.detail)  ??
+        str(errBody?.title)   ??
+        message;
+    } catch {
+      // non-JSON error body
+    }
+    throw new ApiError(res.status, message, correlationId);
+  }
+
+  return res.blob();
+}
+
 // ── Multipart / form-data upload ──────────────────────────────────────────────
 
 async function requestForm<T>(
@@ -151,6 +188,7 @@ export const apiClient = {
   patch:    <T>(path: string, body: unknown)               => request<T>(path, { method: 'PATCH', body }),
   delete:   <T>(path: string)                              => request<T>(path, { method: 'DELETE' }),
   postForm: <T>(path: string, formData: FormData)          => requestForm<T>(path, formData),
+  getBlob:  (path: string)                                 => requestBlob(path),
 };
 
 // ── Usage convention ──────────────────────────────────────────────────────────

@@ -65,10 +65,8 @@ export const liensService = {
     return data;
   },
 
-  async downloadTemplate(): Promise<any> {
-    const { data } = await liensApi.downloadTemplate();
-    console.log(data);
-    return data;
+  async downloadTemplate(): Promise<Blob> {
+    return liensApi.downloadTemplate();
   },
 
   async validateUpload(id: string): Promise<any> {

@@ -60,7 +60,7 @@ export const liensApi = {
   },
 
   downloadTemplate() {
-    return apiClient.get<any>(`${BASE}/bulk-import-template`);
+    return apiClient.getBlob(`${BASE}/bulk-import-template`);
   },
 
   confirmUpload(id: string) {

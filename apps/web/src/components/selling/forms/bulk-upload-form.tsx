@@ -113,8 +113,7 @@ export function BulkUploadForm({
   };
 
   const downloadTemplate = async () => {
-    const csv = await liensService.downloadTemplate();
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const blob = await liensService.downloadTemplate();
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement("a");
