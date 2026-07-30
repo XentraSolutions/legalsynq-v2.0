@@ -6,6 +6,7 @@ import { ConfigService } from '@/shared/services/Config';
 import { ErrorTrackingService } from '@/shared/services/ErrorTracking';
 import { SecureStorageService } from '@/shared/services/SecureStorage';
 import { apiModeAtom } from '@/shared/state/atoms/apiModeAtom';
+import { authAtom } from '@/shared/state/atoms/authAtom';
 import { ApiError } from '@/shared/types/api';
 
 type UnauthorizedHandler = () => void | Promise<void>;
@@ -27,7 +28,10 @@ function generateUUID(): string {
   });
 }
 
-function headerValue(headers: AxiosResponse['headers'] | undefined, name: string): string | undefined {
+function headerValue(
+  headers: AxiosResponse['headers'] | undefined,
+  name: string
+): string | undefined {
   const value = headers?.[name] ?? headers?.[name.toLowerCase()];
   return Array.isArray(value) ? value[0] : value?.toString();
 }
@@ -43,7 +47,8 @@ function toApiError(error: AxiosError): ApiError {
 
   return new ApiError({
     code: data?.code ?? data?.title ?? 'API_ERROR',
-    message: data?.message ?? data?.detail ?? data?.title ?? error.message ?? 'Unexpected API error',
+    message:
+      data?.message ?? data?.detail ?? data?.title ?? error.message ?? 'Unexpected API error',
     statusCode: error.response?.status,
     correlationId: headerValue(error.response?.headers, 'x-correlation-id'),
     details: data?.details ?? data,
@@ -98,9 +103,10 @@ export function attachInterceptors(apiClient: AxiosInstance): void {
       setHeader(config, 'apiKey', ConfigService.getLegacyApiKey());
     }
 
-    const tokenKey =
-      mode === 'legacy' ? STORAGE_KEYS.LEGACY_ACCESS_TOKEN : STORAGE_KEYS.ACCESS_TOKEN;
-    const token = await SecureStorageService.getItem(tokenKey);
+    const token =
+      mode === 'legacy'
+        ? await SecureStorageService.getItem(STORAGE_KEYS.LEGACY_ACCESS_TOKEN)
+        : store.get(authAtom).token;
     if (token) {
       if (mode === 'legacy') {
         // The legacy backend authenticates via a `sessionId` header, not a bearer token.
@@ -118,7 +124,6 @@ export function attachInterceptors(apiClient: AxiosInstance): void {
     (response) => response,
     async (error: AxiosError) => {
       if (error.response?.status === 401) {
-        await SecureStorageService.clearAll();
         await unauthorizedHandler?.();
       }
 

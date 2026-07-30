@@ -5,13 +5,15 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { AuthHeader } from '@/features/authentication/components';
-import { useLogin } from '@/features/authentication/hooks';
+import { AuthHeader, BiometricLoginButton } from '@/features/authentication/components';
+import { useBiometricLogin, useLogin } from '@/features/authentication/hooks';
 import type { AuthStackParamList } from '@/navigation/types/navigation';
 import { Button } from '@/shared/components/Button';
+import { Divider } from '@/shared/components/Divider';
 import { Input } from '@/shared/components/Input';
 import { Switch } from '@/shared/components/Switch';
 import { useApiMode, useToast } from '@/shared/hooks';
+import { BiometricAuthenticationCancelledError } from '@/shared/services/Authentication';
 import { ConfigService } from '@/shared/services/Config';
 import { TenantSelectionService } from '@/shared/services/TenantSelection';
 import { cx, FIGMA_TEXT } from '@/shared/styles';
@@ -55,6 +57,7 @@ export function getLoginDefaultValues({
 export function LoginScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const login = useLogin();
+  const biometricLogin = useBiometricLogin();
   const toast = useToast();
   const { mode: apiMode, setMode: setApiMode } = useApiMode();
   const isProduction = ConfigService.isProduction();
@@ -116,6 +119,17 @@ export function LoginScreen() {
       });
     } catch (error) {
       toast.showError(error instanceof Error ? error.message : 'Unable to sign in');
+    }
+  }
+
+  async function signInWithBiometrics() {
+    try {
+      await biometricLogin.signIn();
+    } catch (error) {
+      if (error instanceof BiometricAuthenticationCancelledError) return;
+      toast.showError(
+        error instanceof Error ? error.message : 'Unable to sign in with biometrics.'
+      );
     }
   }
 
@@ -215,15 +229,17 @@ export function LoginScreen() {
             loading={login.isPending}
             onPress={handleSubmit(submit)}
           />
-
-          {/* 
-          // ENABLE THIS WHEN WE HAVE BIOMETRICS WORKING
-          {biometricsAvailable ? (
+          {!isLegacyMode && biometricLogin.status?.available ? (
             <>
               <Divider label="or continue with" />
-              <Button label="Face ID / Touch ID" variant="ghost" />
+              <BiometricLoginButton
+                accountLabel={biometricLogin.status.preference?.accountLabel}
+                label={biometricLogin.status.capability.label}
+                loading={biometricLogin.isSigningIn}
+                onPress={() => void signInWithBiometrics()}
+              />
             </>
-          ) : null} */}
+          ) : null}
           {/* 
           // ENABLE THIS WHEN WE HAVE A WAY TO CONTACT THE ADMIN
           <Text
@@ -257,11 +273,7 @@ export function CurrentTenantCard({
           This tenant will be confirmed after your next successful sign in.
         </Text>
       ) : null}
-      <Pressable
-        accessibilityRole="button"
-        className="mt-3 self-start"
-        onPress={onSwitch}
-      >
+      <Pressable accessibilityRole="button" className="mt-3 self-start" onPress={onSwitch}>
         <Text className={cx(FIGMA_TEXT.rowValue, 'text-[#f97332]')}>Switch Tenant</Text>
       </Pressable>
     </View>

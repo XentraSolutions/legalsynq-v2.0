@@ -6,6 +6,7 @@ export const STORAGE_KEYS = {
   ACTIVE_TENANT_ID: 'legalsynq.active_tenant_id',
   THEME_PREFERENCE: 'legalsynq.theme',
   BIOMETRICS_ENABLED: 'legalsynq.biometrics_enabled',
+  BIOMETRIC_REFRESH_TOKEN: 'legalsynq.biometric_refresh_token',
   ONBOARDING_COMPLETE: 'legalsynq.onboarding_complete',
 } as const;
 

@@ -9,6 +9,7 @@ import {
 } from '@/shared/api/endpoints/Authentication';
 import { STORAGE_KEYS, type StorageKey } from '@/shared/constants/storageKeys';
 import { authAtom } from '@/shared/state/atoms/authAtom';
+import { biometricEnrollmentOfferAtom } from '@/shared/state/atoms/biometricAtom';
 import { apiModeAtom } from '@/shared/state/atoms/apiModeAtom';
 import { SecureStorageService } from '@/shared/services/SecureStorage';
 import { StorageService } from '@/shared/services/Storage';
@@ -17,6 +18,8 @@ import type { UserSession } from '@/shared/types/auth';
 import type { RememberedTenant } from '@/shared/types/tenant';
 
 import { AuthenticationAdapter } from './AuthenticationAdapter';
+import { BiometricAuthenticationService } from './BiometricAuthenticationService';
+import type { BiometricEnrollmentCredentials } from './biometricTypes';
 
 const store = getDefaultStore();
 
@@ -27,9 +30,21 @@ interface LoginInput {
   activeTenant?: RememberedTenant | null;
 }
 
-async function clearSession(): Promise<void> {
+function maskedAccountLabel(email: string): string {
+  const [localPart, domain] = email.split('@');
+  if (!localPart || !domain) return 'your saved account';
+  return `${localPart.slice(0, 1)}***@${domain}`;
+}
+
+export interface LoginOutcome {
+  biometricEnrollment?: BiometricEnrollmentCredentials;
+  user: UserSession;
+}
+
+async function clearAccessSession(): Promise<void> {
   await Promise.all([
-    SecureStorageService.clearAll(),
+    SecureStorageService.deleteItem(STORAGE_KEYS.ACCESS_TOKEN),
+    SecureStorageService.deleteItem(STORAGE_KEYS.LEGACY_ACCESS_TOKEN),
     StorageService.removeItem(STORAGE_KEYS.USER_SESSION),
   ]);
   store.set(authAtom, {
@@ -37,19 +52,26 @@ async function clearSession(): Promise<void> {
     token: null,
     isAuthenticated: false,
   });
+  store.set(biometricEnrollmentOfferAtom, {
+    label: 'Biometrics',
+    visible: false,
+  });
+  BiometricAuthenticationService.discardPendingEnrollment();
 }
 
 async function persistSession(
   accessToken: string,
   user: UserSession,
-  tokenStorageKey: StorageKey
+  tokenStorageKey?: StorageKey
 ): Promise<UserSession> {
   const authState = AuthenticationAdapter.toAuthState(accessToken, user);
 
-  await Promise.all([
-    SecureStorageService.setItem(tokenStorageKey, accessToken),
-    StorageService.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(user)),
-  ]);
+  await Promise.all(
+    [
+      tokenStorageKey ? SecureStorageService.setItem(tokenStorageKey, accessToken) : null,
+      StorageService.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(user)),
+    ].filter((operation): operation is Promise<void> => operation !== null)
+  );
 
   store.set(authAtom, authState);
   return user;
@@ -96,7 +118,7 @@ async function loginCurrent({
   password,
   tenantCode,
   activeTenant,
-}: LoginInput): Promise<UserSession> {
+}: LoginInput): Promise<LoginOutcome> {
   const effectiveTenantCode = activeTenant?.tenantCode.trim() || tenantCode?.trim();
   if (!effectiveTenantCode) {
     throw new Error('Select or enter a tenant code before signing in.');
@@ -108,12 +130,24 @@ async function loginCurrent({
     tenantCode: effectiveTenantCode,
   });
   const user = AuthenticationAdapter.toUserSession(response);
-  await persistSession(response.accessToken, user, STORAGE_KEYS.ACCESS_TOKEN);
+  await persistSession(response.accessToken, user);
   await persistRememberedTenant(response, effectiveTenantCode, activeTenant);
-  return user;
+  const deviceSessionId = response.deviceSession?.id;
+  const biometricEnrollment =
+    response.refreshToken && deviceSessionId
+      ? {
+          accountLabel: maskedAccountLabel(response.user.email),
+          deviceSessionId,
+          refreshToken: response.refreshToken,
+          tenantId: response.user.tenantId,
+          user,
+        }
+      : undefined;
+
+  return { biometricEnrollment, user };
 }
 
-async function loginLegacy({ email, password }: LoginInput): Promise<UserSession> {
+async function loginLegacy({ email, password }: LoginInput): Promise<LoginOutcome> {
   const response = await LegacyAuthenticationApi.login({ username: email, password });
   if (!response.isSuccess || !response.sessionId) {
     // TEMP DIAGNOSTIC: remove once the parsing question is resolved.
@@ -130,11 +164,12 @@ async function loginLegacy({ email, password }: LoginInput): Promise<UserSession
   }
 
   const user = LegacyAuthenticationAdapter.toUserSession(response);
-  return persistSession(response.sessionId, user, STORAGE_KEYS.LEGACY_ACCESS_TOKEN);
+  await persistSession(response.sessionId, user, STORAGE_KEYS.LEGACY_ACCESS_TOKEN);
+  return { user };
 }
 
 export const AuthenticationService = {
-  async login(input: LoginInput): Promise<UserSession> {
+  async login(input: LoginInput): Promise<LoginOutcome> {
     const mode = store.get(apiModeAtom);
     return mode === 'legacy' ? loginLegacy(input) : loginCurrent(input);
   },
@@ -148,8 +183,15 @@ export const AuthenticationService = {
         await AuthenticationApi.logout();
       }
     } finally {
-      await clearSession();
+      await Promise.all([
+        clearAccessSession(),
+        BiometricAuthenticationService.clearLocalEnrollment(),
+      ]);
     }
+  },
+
+  async establishSession(accessToken: string, user: UserSession): Promise<UserSession> {
+    return persistSession(accessToken, user);
   },
 
   async forgotPassword(body: ForgotPasswordRequest): Promise<void> {
@@ -171,16 +213,23 @@ export const AuthenticationService = {
     try {
       return JSON.parse(serializedSession) as UserSession;
     } catch {
-      await clearSession();
+      await clearAccessSession();
       return null;
     }
   },
 
   async isAuthenticated(): Promise<boolean> {
-    return Boolean(await SecureStorageService.getItem(STORAGE_KEYS.ACCESS_TOKEN));
+    return store.get(authAtom).isAuthenticated;
+  },
+
+  async clearAccessSession(): Promise<void> {
+    await clearAccessSession();
   },
 
   async clearSession(): Promise<void> {
-    await clearSession();
+    await Promise.all([
+      clearAccessSession(),
+      BiometricAuthenticationService.clearLocalEnrollment(),
+    ]);
   },
 };

@@ -6,4 +6,6 @@ declare const jest: {
   clearAllMocks: () => void;
   fn: (implementation?: (...args: any[]) => any) => any;
   mock: (moduleName: string, factory?: () => any) => void;
+  restoreAllMocks: () => void;
+  spyOn: <T extends object, K extends keyof T>(object: T, method: K) => any;
 };

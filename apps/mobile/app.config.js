@@ -25,8 +25,19 @@ module.exports = {
       ]
     },
     "plugins": [
-      "expo-secure-store",
-      "expo-local-authentication",
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": false,
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to access your saved login using Face ID."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID to sign in."
+        }
+      ],
       "expo-font",
       "@react-native-community/datetimepicker",
       [

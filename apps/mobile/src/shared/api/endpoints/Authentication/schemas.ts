@@ -49,6 +49,14 @@ export const tenantSummarySchema = z.object({
 export const loginResponseSchema = z.object({
   accessToken: z.string(),
   expiresAtUtc: z.string(),
+  refreshToken: z.string().optional(),
+  refreshTokenExpiresAt: z.string().optional(),
+  deviceSession: z
+    .object({
+      id: z.string(),
+      biometricEnabled: z.boolean(),
+    })
+    .optional(),
   user: loginUserResponseSchema,
   tenants: z.array(tenantSummarySchema).nullable().optional(),
 });

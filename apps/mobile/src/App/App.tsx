@@ -7,6 +7,7 @@ import { useSetAtom } from 'jotai';
 import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
 
 import { RootNavigator } from '@/navigation/RootNavigator';
+import { BiometricEnrollmentModal } from '@/features/authentication/components';
 import { registerUnauthorizedHandler } from '@/shared/api/client';
 import { PrivacyOverlay } from '@/shared/components/PrivacyOverlay';
 import { ApiModeService } from '@/shared/services/ApiMode';
@@ -22,7 +23,7 @@ export default function App() {
   const setApiModeHydrated = useSetAtom(apiModeHydratedAtom);
 
   useEffect(() => {
-    registerUnauthorizedHandler(AuthenticationService.clearSession);
+    registerUnauthorizedHandler(AuthenticationService.clearAccessSession);
   }, []);
 
   useEffect(() => {
@@ -51,6 +52,7 @@ function AppContent() {
     <>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       <RootNavigator />
+      <BiometricEnrollmentModal />
       <PrivacyOverlay />
     </>
   );

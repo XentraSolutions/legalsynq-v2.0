@@ -100,6 +100,32 @@ describe('AuthenticationService', () => {
     });
   });
 
+  it('keeps the current access token in memory and returns masked biometric enrollment data', async () => {
+    const selectedTenant = await TenantSelectionService.addLocalTenantCode('smith-law');
+    authenticationApi.login.mockResolvedValue({
+      ...loginResponse,
+      refreshToken: 'refresh-token',
+      deviceSession: {
+        id: 'device-session-1',
+        biometricEnabled: false,
+      },
+    });
+
+    const outcome = await AuthenticationService.login({
+      email: 'avery.mendoza@smithlaw.example',
+      password: 'ValidPass123',
+      activeTenant: selectedTenant,
+    });
+
+    expect(outcome.biometricEnrollment).toMatchObject({
+      accountLabel: 'a***@smithlaw.example',
+      deviceSessionId: 'device-session-1',
+      refreshToken: 'refresh-token',
+      tenantId: 'tenant-1',
+    });
+    await expect(secureStore.getItemAsync(STORAGE_KEYS.ACCESS_TOKEN)).resolves.toBeNull();
+  });
+
   it('keeps remembered tenant storage when logging out', async () => {
     await TenantSelectionService.addLocalTenantCode('smith-law');
     await secureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, 'token');

@@ -8,23 +8,63 @@ import { Chip } from '@/shared/components/Chip';
 import { Divider } from '@/shared/components/Divider';
 import { Header } from '@/shared/components/Header';
 import { Switch } from '@/shared/components/Switch';
+import { useBiometricSettings } from '@/features/authentication/hooks';
 import { useApiMode } from '@/shared/hooks/useApiMode';
 import { useDashboardSettings } from '@/shared/hooks/useDashboardSettings';
 import { useMenuSettings } from '@/shared/hooks/useMenuSettings';
+import { useToast } from '@/shared/hooks/useToast';
 import { MENU_VISIBILITY_HIERARCHY } from '@/shared/constants/menuSettings';
+import { BiometricAuthenticationService } from '@/shared/services/Authentication';
 import { ConfigService } from '@/shared/services/Config';
-import { featureFlagsAtom } from '@/shared/state/atoms/featureFlagsAtom';
 import { themeAtom } from '@/shared/state/atoms/themeAtom';
 import type { ThemePreference } from '@/shared/types/common';
 
 export function SettingsScreen() {
   const navigation = useNavigation();
   const [theme, setTheme] = useAtom(themeAtom);
-  const [flags, setFlags] = useAtom(featureFlagsAtom);
+  const biometricSettings = useBiometricSettings();
+  const toast = useToast();
   const { settings: dashboardSettings, setUseDummyData } = useDashboardSettings();
   const { settings: menuVisibility, setMenuGroupVisible, setMenuVisible } = useMenuSettings();
   const { mode: apiMode, setMode: setApiMode } = useApiMode();
   const showNonProductionSettings = !ConfigService.isProduction();
+  const biometricStatus = biometricSettings.status;
+  const canUpdateBiometrics =
+    Boolean(biometricStatus?.backendAvailable) &&
+    Boolean(biometricStatus?.capability.canUseBiometrics) &&
+    (Boolean(biometricStatus?.enabled) || BiometricAuthenticationService.hasPendingEnrollment());
+
+  async function updateBiometricLogin(enabled: boolean): Promise<void> {
+    try {
+      await biometricSettings.setEnabled(enabled);
+      toast.showSuccess(
+        enabled
+          ? 'Biometric login has been enabled on this device.'
+          : 'Biometric login has been disabled on this device.'
+      );
+    } catch (error) {
+      toast.showError(error instanceof Error ? error.message : 'Unable to update biometric login.');
+    }
+  }
+
+  function biometricDescription(): string {
+    if (biometricSettings.isLoading) return 'Checking device security...';
+    if (!biometricStatus?.backendAvailable) {
+      return 'Biometric login will be available when secure session support is enabled.';
+    }
+    if (!biometricStatus.capability.hasHardware) {
+      return 'Biometric authentication is not available on this device.';
+    }
+    if (!biometricStatus.capability.isEnrolled) {
+      return 'Set up biometrics in your device settings before enabling this option.';
+    }
+    if (!biometricStatus.enabled && !BiometricAuthenticationService.hasPendingEnrollment()) {
+      return 'Sign in with your password again before enabling biometric login.';
+    }
+    return biometricStatus.enabled
+      ? `Use ${biometricStatus.capability.label} to sign in on this device.`
+      : `Enable ${biometricStatus.capability.label} for faster sign-in on this device.`;
+  }
 
   return (
     <View className="flex-1 bg-[#f7f7f8] dark:bg-[#050506]">
@@ -124,15 +164,19 @@ export function SettingsScreen() {
             Security
           </Text>
           <Card>
-            <View className="flex-row items-center justify-between">
-              <Text className="font-jakarta-medium text-[14px] leading-[20px] text-[#202228] dark:text-white">
-                Biometric Login
-              </Text>
+            <View className="flex-row items-center justify-between gap-4">
+              <View className="flex-1">
+                <Text className="font-jakarta-medium text-[14px] leading-[20px] text-[#202228] dark:text-white">
+                  Biometric Login
+                </Text>
+                <Text className="mt-1 font-jakarta-regular text-[12px] leading-[17px] text-[#8d9098] dark:text-[#8f929b]">
+                  {biometricDescription()}
+                </Text>
+              </View>
               <Switch
-                value={flags.enableBiometrics}
-                onValueChange={(value) =>
-                  setFlags((current) => ({ ...current, enableBiometrics: value }))
-                }
+                disabled={!canUpdateBiometrics || biometricSettings.isUpdating}
+                value={Boolean(biometricStatus?.enabled)}
+                onValueChange={(value) => void updateBiometricLogin(value)}
               />
             </View>
             <Divider />
