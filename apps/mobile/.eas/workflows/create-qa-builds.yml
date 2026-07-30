@@ -31,8 +31,6 @@ jobs:
       - name: Send status to Teams
         env:
           TEAMS_WEBHOOK_URL: "https://defaultaa988e77b0e34f06aabede25235728.77.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/096e911d604d4dd888079d793342333c/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=KzG5jznBNR16wX9Xem3NYI9_T25_Q7reFftMPTsbvHE"
-          APP_VERSION: ${{ needs.build_ios.outputs.app_version }}
-          BUILD_NUMBER: ${{ needs.build_ios.outputs.app_build_version }}
         run: |
           curl -H "Content-Type: application/json" -d "{
               \"type\": \"message\",
@@ -54,8 +52,8 @@ jobs:
                                       {\"title\": \"Workflow:\", \"value\": \"Build and Submit QA IOS App\"},
                                       {\"title\": \"Platform:\", \"value\": \"iOS\"},
                                       {\"title\": \"Profile:\", \"value\": \"QA\"},
-                                      {\"title\": \"App Version:\", \"value\": \"$APP_VERSION\"},
-                                      {\"title\": \"Build Number:\", \"value\": \"$BUILD_NUMBER\"}
+                                      {\"title\": \"App Version:\", \"value\": \"${{ needs.build_ios.outputs.app_version }}\"},
+                                      {\"title\": \"Build Number:\", \"value\": \"${{ needs.build_ios.outputs.app_build_version }}\"}
                                   ]
                               }
                           ],
