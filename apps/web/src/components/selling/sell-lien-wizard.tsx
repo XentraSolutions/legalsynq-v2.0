@@ -12,7 +12,10 @@ import { ConfirmDialog, Modal } from "@/components/lien/modal";
 import { LienInformationPanel } from "@/components/selling/lien-detail/lien-information-panel";
 import { FundingCompanyAndCaseInformationPanel } from "@/components/selling/lien-detail/funding-company-information-panel";
 import { MedicalCodesInformationPanel } from "@/components/selling/lien-detail/medical-codes-information-panel";
-import { sellingLookupsApi, type SellingLookupItem } from "@/lib/selling/lookup.api";
+import {
+  sellingLookupsApi,
+  type SellingLookupItem,
+} from "@/lib/selling/lookup.api";
 import type { LienDetailsResult } from "@/types/lien-selling";
 import {
   REQUIRED_SALE_DOCUMENT_TYPES,
@@ -65,9 +68,8 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
   // step only displays what's already been set, matching how the rest of
   // this page treats those fields as read-only-until-explicitly-edited.
   const [messageToBuyer, setMessageToBuyer] = useState("");
-  const [docSlots, setDocSlots] = useState<Record<string, DocSlotState>>(
-    emptyDocSlots(),
-  );
+  const [docSlots, setDocSlots] =
+    useState<Record<string, DocSlotState>>(emptyDocSlots());
   const [sellingDocumentTypes, setSellingDocumentTypes] = useState<string[]>(
     [],
   );
@@ -148,7 +150,9 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
   const filteredContacts = useMemo(() => {
     if (!contactSearch.trim()) return contacts.slice(0, 25);
     const q = contactSearch.trim().toLowerCase();
-    return contacts.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 50);
+    return contacts
+      .filter((c) => c.name.toLowerCase().includes(q))
+      .slice(0, 50);
   }, [contacts, contactSearch]);
 
   const askAmount = lien?.medicalPricing.askAmount ?? null;
@@ -157,8 +161,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
   const requiredDocsReady = REQUIRED_SALE_DOCUMENT_TYPES.every(
     (type) => docSlots[type]?.documentId,
   );
-  const canAuthorize =
-    !!companyId && !!contactId && pricingReady && requiredDocsReady;
+  const canAuthorize = !!companyId && !!contactId && pricingReady; // && requiredDocsReady; -TEMPORARILY COMMENTED AS NOT SUPPORTED YET
 
   const handleFileSelect = async (documentType: string, file: File) => {
     setDocSlots((prev) => ({
@@ -171,7 +174,9 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
         (c) => c.code === categoryCode,
       )?.id;
       if (!documentTypeId) {
-        throw new Error("Document type list is still loading. Please try again.");
+        throw new Error(
+          "Document type list is still loading. Please try again.",
+        );
       }
       const uploaded = await documentsService.upload({
         file,
@@ -240,9 +245,9 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
     if (!companyId || !contactId || askAmount === null) return;
     setSubmitting(true);
     try {
-      await liensService.saveDocuments(lienId, {
-        documents: uploadedDocumentRefs(),
-      });
+      // await liensService.saveDocuments(lienId, {
+      //   documents: uploadedDocumentRefs(),
+      // });
       await liensService.prepareSale(lienId, {
         buyerFundingCompanyId: companyId,
         buyerContactId: contactId,
@@ -439,8 +444,8 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
             <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
               <i className="ri-alert-line text-amber-600 shrink-0" />
               <p className="text-xs text-amber-700">
-                This lien has no medical pricing or ask amount set yet. Go
-                back to{" "}
+                This lien has no medical pricing or ask amount set yet. Go back
+                to{" "}
                 <Link
                   href={`/selling/portfolio/${lienId}`}
                   className="underline font-medium"
@@ -545,10 +550,10 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
             <p>
               You&apos;re about to sell lien{" "}
               <strong>{lien.lienInformation.lienNumber}</strong> to{" "}
-              <strong>{companyName}</strong> for purchase consideration. Are
-              you sure you want to continue?
+              <strong>{companyName}</strong> for purchase consideration. Are you
+              sure you want to continue?
             </p>
-            <div>
+            {/* <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">
                 Message to Buyer (optional)
               </label>
@@ -559,7 +564,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
                 placeholder="Optional note included with the buyer notification..."
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
-            </div>
+            </div> */}
           </div>
         }
         confirmLabel="Yes, Sell"
@@ -581,9 +586,8 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
       >
         <p className="text-sm text-gray-600">
           Lien <strong>{lien.lienInformation.lienNumber}</strong> has been
-          successfully submitted to <strong>{companyName}</strong> for
-          review. The buyer has been notified and can now begin the
-          evaluation process.
+          successfully submitted to <strong>{companyName}</strong> for review.
+          The buyer has been notified and can now begin the evaluation process.
         </p>
       </Modal>
     </div>
@@ -613,7 +617,7 @@ function DocumentSlot({
         <p className="text-xs text-gray-400 truncate">
           {slot.documentId
             ? slot.displayName
-            : meta?.description ?? "(Optional)"}
+            : (meta?.description ?? "(Optional)")}
         </p>
       </div>
       <label
