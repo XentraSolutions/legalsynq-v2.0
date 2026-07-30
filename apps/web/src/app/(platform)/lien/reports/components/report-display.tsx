@@ -22,6 +22,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 type SummaryTotals = {
   summaryTotals: ReportTotals;
 };
+
+function formatAmount(value?: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(value ?? 0);
+}
 interface ReportDisplayProps {
   report: ReportListResponse &
     SummaryTotals &
@@ -60,53 +67,65 @@ export default function ReportDisplay({
       ? [
           {
             label: "Total Cases",
-            value: report?.summaryTotals?.totalCases ?? report.totalCount,
+            value: (
+              report?.summaryTotals?.totalCases ?? report.totalCount
+            ).toLocaleString("en-US"),
           },
           {
             label: "Open Cases",
-            value: report?.summaryTotals?.totalOpenCases ?? 0,
+            value: (
+              report?.summaryTotals?.totalOpenCases ?? 0
+            ).toLocaleString("en-US"),
           },
           {
             label: "Closed Cases",
-            value: report?.summaryTotals?.totalClosedCases ?? 0,
+            value: (
+              report?.summaryTotals?.totalClosedCases ?? 0
+            ).toLocaleString("en-US"),
           },
           {
             label: "Total Purchase Amount",
-            value: report?.summaryTotals?.totalPurchaseAmt ?? `$ 0.00`,
+            value: formatAmount(report?.summaryTotals?.totalPurchaseAmt),
           },
           {
             label: "Total Returned",
-            value: report?.summaryTotals?.totalReturnedAmt ?? `$ 0.00`,
+            value: formatAmount(report?.summaryTotals?.totalReturnedAmt),
           },
           {
             label: "Total Billing Amount",
-            value: report?.summaryTotals?.totalBillingAmt ?? `$ 0.00`,
+            value: formatAmount(report?.summaryTotals?.totalBillingAmt),
           },
         ]
       : [
           {
             label: "Total Liens",
-            value: report?.summaryTotals?.totalLiens ?? 0,
+            value: (report?.summaryTotals?.totalLiens ?? 0).toLocaleString(
+              "en-US",
+            ),
           },
           {
             label: "Open Liens",
-            value: report?.summaryTotals?.totalOpenLiens ?? 0,
+            value: (
+              report?.summaryTotals?.totalOpenLiens ?? 0
+            ).toLocaleString("en-US"),
           },
           {
             label: "Closed Liens",
-            value: report?.summaryTotals?.totalClosedLiens ?? 0,
+            value: (
+              report?.summaryTotals?.totalClosedLiens ?? 0
+            ).toLocaleString("en-US"),
           },
           {
             label: "Total Purchase Amount",
-            value: report?.summaryTotals?.totalPurchaseAmt ?? `$ 0.00`,
+            value: formatAmount(report?.summaryTotals?.totalPurchaseAmt),
           },
           {
             label: "Total Returned",
-            value: report?.summaryTotals?.totalReturnedAmt ?? `$ 0.00`,
+            value: formatAmount(report?.summaryTotals?.totalReturnedAmt),
           },
           {
             label: "Total Billing Amount",
-            value: report?.summaryTotals?.totalBillingAmt ?? `$ 0.00`,
+            value: formatAmount(report?.summaryTotals?.totalBillingAmt),
           },
         ];
 
