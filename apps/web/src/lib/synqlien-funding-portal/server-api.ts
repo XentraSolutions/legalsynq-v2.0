@@ -2,6 +2,7 @@ import { ServerApiError, serverApi } from '@/lib/server-api-client';
 import type {
   FundingDashboardQuery,
   FundingDashboardSummary,
+  OfferedLienDetail,
   OfferedLiensQuery,
   OfferedLiensResult,
   SynqLienFundingDashboard,
@@ -67,6 +68,20 @@ export async function getOfferedLiens(
   }
 }
 
+export async function getOfferedLienDetail(
+  id: string,
+): Promise<OfferedLienDetail | null> {
+  try {
+    const response = await serverApi.get<OfferedLienDetail | { data: OfferedLienDetail } | undefined>(
+      `${OFFERED_LIENS_PATH}/${encodeURIComponent(id)}`,
+    );
+    return normalizeOfferedLienDetail(unwrapData(response));
+  } catch (error) {
+    if (isSemanticEmptyError(error)) return null;
+    throw error;
+  }
+}
+
 function isSemanticEmptyError(error: unknown): boolean {
   return error instanceof ServerApiError && (error.status === 404 || error.status === 501);
 }
@@ -119,6 +134,22 @@ function normalizeOfferedLiensResult(
     page: normalizePositiveInteger(value.page, empty.page),
     pageSize: normalizePositiveInteger(value.pageSize, empty.pageSize),
     total: normalizePositiveInteger(value.total, empty.total),
+  };
+}
+
+function normalizeOfferedLienDetail(
+  value: OfferedLienDetail | undefined,
+): OfferedLienDetail | null {
+  if (!value) return null;
+
+  return {
+    ...value,
+    seller: value.seller ?? {},
+    buyer: value.buyer ?? null,
+    documents: Array.isArray(value.documents) ? value.documents : [],
+    messages: Array.isArray(value.messages) ? value.messages : [],
+    activity: Array.isArray(value.activity) ? value.activity : [],
+    allowedActions: Array.isArray(value.allowedActions) ? value.allowedActions : [],
   };
 }
 

@@ -109,7 +109,6 @@ public sealed class SendLienBuyerEmailResponse
 public sealed class ConfirmSellingLienSaleRequest
 {
     public bool ConfirmationAccepted { get; init; }
-    public bool SendBuyerNotification { get; init; }
 }
 
 public sealed class ConfirmSellingLienSaleResponse

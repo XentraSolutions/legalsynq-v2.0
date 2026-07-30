@@ -129,6 +129,7 @@ describe('POST /api/auth/login', () => {
       body: JSON.stringify({
         email: 'buyer@example.com',
         password: 'Password123!',
+        tenantId: '019ea7f6-21e9-7421-ab54-7846cdc6bc76',
       }),
     });
 
@@ -140,6 +141,7 @@ describe('POST /api/auth/login', () => {
     expect(JSON.parse(String(options?.body))).toMatchObject({
       tenantCode: null,
       email: 'buyer@example.com',
+      tenantId: '019ea7f6-21e9-7421-ab54-7846cdc6bc76',
       resolveByEmail: true,
       portalProductCode: 'SYNQ_LIENS',
     });

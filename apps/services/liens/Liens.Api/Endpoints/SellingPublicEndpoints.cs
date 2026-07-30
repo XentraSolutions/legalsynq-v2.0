@@ -15,8 +15,8 @@ namespace Liens.Api.Endpoints;
 public static class SellingPublicEndpoints
 {
     private const int MaxPublicMessageLength = 400;
-    private const string SynqLienBuyerLoginUrl =
-        "/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation";
+    private const string SynqLienBuyerLoginReturnTo = "/funding/dashboard";
+    private const string SynqLienBuyerActivationReason = "synqlien-buyer-activation";
     private const string LegalSynqBrandIconContentId = "legalsynq-brand-icon";
     private const string LegalSynqBrandIconPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAFH0lEQVR42u2d23HiMBSGU4JLcAmOSWZ4pIR0sDxsAYLdfQ4dLB2QDrYEtgOX4AZCVILXwmJyWRsdCev+/zPnFbA+jq7Wf+7uIAiCvIqzVcG39fq0XRzeNnXbR0cI/rZZHE/bmnG2LNGKocLd1s8DLBLUyRB/DoAOKmuXZZ+Bza1gv2a1yGi0bhBwyV2xdoheAa2cKNz3LhuZ7EViYmQb7qW7xpjsWK/9TNkRXBmLI1rdbfY2bgH34zF7rNDy7sZe9djJ6p2qa+WsKjg79wYtYSzeofUdqAfHVDBee2h6f5qKMGFDN+0G8KbeK5Y2B7Oe4WGlmmyh9QOYPZsua0R3rR6HqwIEPAMWM2zzz1YCxnIJgCEAhgA4610ssSadils2JAA4+d4BgAEYAmAIgPNS13VFH099sD52DuLJBHCvveJzxe9fiecB1QHsuo9j514HQ8A6Es+1zhWs+Je3nT+5AHyReM4yJ7jPnX+5BHzRcw5wD10Y8gE4bciBZK5vwEIs1TG3A+CzeHJjsucJVWiAzzPs1JZCOksL1Voz1HXwXnPJt0oF8JEI1nu3NcdOlngOYo+1T2WHSqUmta1KIuQ2l8lVmRpgjWcvYge8jmmyMfdhg5wxX1MVO2BmMptNCHCT9ERLzi5zBnwE4LQBV3IsnooCgCMGnMPhAgADMAADMADnA/hsdsaWpY1QAv75sLL13apwAoz/eqwGJ7ma/Xej4MfiyQVg9/4cQcXZlU+0wWzQpT2g0kVu7OI1AFuN9mYfLx17QAD2CFo3m0XW6vpQAbBvyMRLdxJuY2D7B8AxZLK04u0AOMZQOAHd0ngAHEaIpdy1hX4LwIlmMcEn6oOX8uLwNfiI+VhsO1khS+yiCfc+mu3iyI4bZewVJmQ6XlEAbAO0ugcb9SlRzZxNHOQA2NaeucIMrk/EsfGXGw/eAOxUKr/O0WS0cZKSO2B5qX19JYze6FBNNAHYHWAr72QBMAADMAADMAADMABfXHSmggFwxIBzly3ARmUNbGx0ALAdwKpDodEKMeo3OBYNkPkFLN+POxgdGarS/nIUhTJv9gGLN1TF26sf47R9+E08zuUT/w7ycWE3HEyIjM8rXN0unPtcXqObzvxtiRgAX/uNelkMwKEBJpXfo741AMBhAT5t7l/oC+nN4gVA4wGsBReZHBVgLg7/jaf51NKrAOwcMJfvx82zZB1AY4btCnA/RO7H3lwd6kKJK6wWi2SKOzDDl/gJ9dBx/9fWd4eyVZm0jE5SEtuLBmAABmAABmAABuDMAfu4XQjAbh9wnTngJnfAPFXA0vVdpej9oikPyRIFrKwTlcSkiOB6znX+yTEA7p/nWzaldWS5GVLZN0r9hpABSw9oavm+dSqAZ696ZgI4sMJcaVUk7R/mBYA/aZfU5oSsn9QCcCL1kiYauCJMuFIHnFbXbAtypIDThvtlbdxmBvjY5VTm/cM+dZs4YJ76FVnqduYfHdiBA27lWnh1B0124ZPRfK+YIeDSdoDeDIrpNAkCYAiAARiAAZimsZv1nwLuBnEDVl3PGfVhhgAYAmAIgAEYgHMAPOkTRQJ8/eI13P4cSNxPJrjNMP3PPRfihF9nCKJURBWVUynrVmkP+JtSGxAt70g028V3MIq43UEOmrubrsrQ/Tkgt1l8U5Ac5KDZs7hwZPGEsddzV20TcouuOVnI+vbBkM0xeT7rRWEPiDE31Gw2dOXjQ8bWzKqLHDQ38GV53b1OuPbhEB+CoND1D6mLXlFVwRdjAAAAAElFTkSuQmCC";
 
@@ -87,7 +87,7 @@ public static class SellingPublicEndpoints
         return Results.Ok(MapPublicPortalResponse(view, account));
     }
 
-    private static async Task<IResult> PostTemporaryBuyerPortalMessage(
+    internal static async Task<IResult> PostTemporaryBuyerPortalMessage(
         string token,
         PublicPortalMessageRequest? request,
         HttpContext httpContext,
@@ -164,7 +164,7 @@ public static class SellingPublicEndpoints
             MapPublicMessage(publicMessage));
     }
 
-    private static async Task<IResult> AcceptTemporaryBuyerPortal(
+    internal static async Task<IResult> AcceptTemporaryBuyerPortal(
         string token,
         PublicBuyerAcceptLienRequest? request,
         HttpContext httpContext,
@@ -211,7 +211,7 @@ public static class SellingPublicEndpoints
             ct);
     }
 
-    private static async Task<IResult> DeclineTemporaryBuyerPortal(
+    internal static async Task<IResult> DeclineTemporaryBuyerPortal(
         string token,
         PublicBuyerDeclineLienRequest? request,
         HttpContext httpContext,
@@ -347,7 +347,7 @@ public static class SellingPublicEndpoints
         return Results.Ok(new PublicBuyerAccountActivationResponse(
             result.UserId!.Value,
             result.IsNew,
-            SynqLienBuyerLoginUrl));
+            BuildSynqLienBuyerLoginUrl(view.AccessLink.TenantId)));
     }
 
     private static async Task<(SellingBuyerAccessLink? AccessLink, IResult? Error)> ResolvePublicAccessLinkAsync(
@@ -452,7 +452,7 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status409Conflict);
         }
 
-        if (!IsActionableLienStatus(view.Lien.Status))
+        if (!IsActionableBuyerOffer(view.Lien.Status, view.Lien.SellerStatus))
         {
             return PublicLinkState(
                 "not-actionable",
@@ -665,7 +665,18 @@ public static class SellingPublicEndpoints
             : SellingPortalMessageSenderType.Buyer;
         var recipient = ResolvePublicMessageRecipient(view, recipientRole);
         if (string.IsNullOrWhiteSpace(recipient.Email))
+        {
+            loggerFactory
+                .CreateLogger("Liens.Api.Endpoints.SellingPublicEndpoints")
+                .LogWarning(
+                    "Public lien message notification skipped because recipient email is missing: Tenant={TenantId} Lien={LienId} MessageId={MessageId} Role={RecipientRole} RecipientName={RecipientName}",
+                    view.AccessLink.TenantId,
+                    view.AccessLink.LienId,
+                    message.Id,
+                    recipientRole,
+                    recipient.Name);
             return;
+        }
 
         var recipientAccessLink = await ResolvePublicMessageRecipientAccessLinkAsync(db, view.AccessLink, recipientRole, ct);
         var portalUrl = recipientAccessLink is null
@@ -1067,7 +1078,7 @@ public static class SellingPublicEndpoints
             if (IsActionableLienStatus(lien.Status))
                 lien.TransitionStatus(LienStatus.Accepted, updatedByUserId);
 
-            if (string.Equals(lien.Status, LienStatus.Accepted, StringComparison.Ordinal) &&
+            if (IsActionableBuyerOffer(view.Lien.Status, view.Lien.SellerStatus) &&
                 !string.Equals(lien.SellerStatus, SellingLienStatus.Accepted, StringComparison.Ordinal))
                 lien.UpdateSellingAnalyticsFields(updatedByUserId, sellerStatus: SellingLienStatus.Accepted);
         }
@@ -1078,7 +1089,7 @@ public static class SellingPublicEndpoints
             else if (string.Equals(lien.Status, LienStatus.Withdrawn, StringComparison.Ordinal))
                 lien.SetLegacyMedicalStatus(LienStatus.Declined, updatedByUserId);
 
-            if (string.Equals(lien.Status, LienStatus.Declined, StringComparison.Ordinal) &&
+            if (IsActionableBuyerOffer(view.Lien.Status, view.Lien.SellerStatus) &&
                 !string.Equals(lien.SellerStatus, SellingLienStatus.Declined, StringComparison.Ordinal))
                 lien.UpdateSellingAnalyticsFields(updatedByUserId, sellerStatus: SellingLienStatus.Declined);
         }
@@ -1148,7 +1159,7 @@ public static class SellingPublicEndpoints
 
         var email = view.BuyerContact?.Email?.Trim();
         if (string.IsNullOrWhiteSpace(email))
-            return new PublicBuyerAccountResponse(false, SynqLienBuyerLoginUrl);
+            return new PublicBuyerAccountResponse(false, BuildSynqLienBuyerLoginUrl(view.AccessLink.TenantId));
 
         var status = await buyerAccountService.GetBuyerAccountStatusAsync(
             new PublicBuyerAccountStatusRequest(view.AccessLink.TenantId, email),
@@ -1156,7 +1167,22 @@ public static class SellingPublicEndpoints
 
         return new PublicBuyerAccountResponse(
             status.Success && status.AccountExists,
-            SynqLienBuyerLoginUrl);
+            BuildSynqLienBuyerLoginUrl(view.AccessLink.TenantId));
+    }
+
+    private static string BuildSynqLienBuyerLoginUrl(Guid tenantId)
+    {
+        var query = new Dictionary<string, string>
+        {
+            ["returnTo"] = SynqLienBuyerLoginReturnTo,
+            ["reason"] = SynqLienBuyerActivationReason,
+            ["tenantId"] = tenantId.ToString("D"),
+        };
+
+        return "/login?" + string.Join(
+            '&',
+            query.Select(item =>
+                $"{Uri.EscapeDataString(item.Key)}={Uri.EscapeDataString(item.Value)}"));
     }
 
     private static async Task<IReadOnlyList<SellingPortalMessage>> ResolveMessagesAsync(
@@ -1495,6 +1521,10 @@ public static class SellingPublicEndpoints
         => string.Equals(status, LienStatus.Offered, StringComparison.Ordinal)
            || string.Equals(status, LienStatus.UnderReview, StringComparison.Ordinal);
 
+    private static bool IsActionableBuyerOffer(string? lienStatus, string? sellerStatus)
+        => string.Equals(sellerStatus, SellingLienStatus.SubmittedForSale, StringComparison.Ordinal) ||
+           (string.IsNullOrWhiteSpace(sellerStatus) && IsActionableLienStatus(lienStatus ?? string.Empty));
+
     private static bool IsNotificationSubmittedStatus(string? status)
         => string.Equals(status, "sent", StringComparison.OrdinalIgnoreCase) ||
            string.Equals(status, "accepted", StringComparison.OrdinalIgnoreCase) ||
@@ -1605,11 +1635,11 @@ public static class SellingPublicEndpoints
 
     private sealed record PublicBuyerPortalError(string Code, string Title, string Message);
 
-    private sealed record PublicPortalMessageRequest(string? Message);
+    internal sealed record PublicPortalMessageRequest(string? Message);
 
-    private sealed record PublicBuyerAcceptLienRequest(string? Notes, string? Message);
+    internal sealed record PublicBuyerAcceptLienRequest(string? Notes, string? Message);
 
-    private sealed record PublicBuyerDeclineLienRequest(string? Reason);
+    internal sealed record PublicBuyerDeclineLienRequest(string? Reason);
 
     private sealed record PublicBuyerActivateAccountRequest(
         string? CompanyName,
