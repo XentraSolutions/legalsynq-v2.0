@@ -356,8 +356,8 @@ function PipelineStageRow({
     <div>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] ${tone.iconBg}`}>
-            <i className={`${tone.icon} text-[16px] ${tone.iconText}`} />
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] ${tone.iconBg}`}>
+            <i className={`${tone.icon} text-[22px] leading-none ${tone.iconText}`} />
           </span>
           <p className="truncate text-[16px] font-medium leading-5 text-[#0a0a0a]">
             {stage.label}
@@ -512,7 +512,7 @@ function getPipelineTone(label: string): {
   if (normalized.includes("accepted") || normalized.includes("purchased")) {
     return {
       icon: "ri-checkbox-circle-line",
-      iconBg: "bg-[#dcfce7]",
+      iconBg: "bg-[#f5f5f5]",
       iconText: "text-[#15803d]",
       bar: "bg-[#22c55e]",
     };
@@ -520,14 +520,14 @@ function getPipelineTone(label: string): {
   if (normalized.includes("declined") || normalized.includes("expired")) {
     return {
       icon: "ri-close-circle-line",
-      iconBg: "bg-[#fee2e2]",
-      iconText: "text-[#b91c1c]",
+      iconBg: "bg-[#f5f5f5]",
+      iconText: "text-[#ef4444]",
       bar: "bg-[#ef4444]",
     };
   }
   return {
     icon: "ri-time-line",
-    iconBg: "bg-[#fef3c7]",
+    iconBg: "bg-[#f5f5f5]",
     iconText: "text-[#a16207]",
     bar: "bg-[#eab308]",
   };
