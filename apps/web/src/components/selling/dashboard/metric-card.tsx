@@ -17,7 +17,6 @@ export function MetricCard({
   statsPercentage,
   formatAsCurrency,
 }: MetricCardProps) {
-  console.log(trend);
   const displayValue =
     typeof value === "number" && formatAsCurrency
       ? `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

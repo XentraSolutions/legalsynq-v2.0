@@ -286,6 +286,7 @@ export default function PortfolioClient() {
             onApplyFilter={handleApplyFilter}
             primaryReady={bgReady}
           />
+
           <PortfolioTable
             pagination={paginationData}
             sorting={sorting}
@@ -294,7 +295,6 @@ export default function PortfolioClient() {
             liens={liens?.items ?? []}
             onRowSelect={(id) => router.push(`portfolio/${id}`)}
           />
-          {/* {data.items && <PortfolioTable liens={data.items} />} */}
         </Card>
 
         {bulkUpload && (
