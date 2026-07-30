@@ -1,3 +1,4 @@
+"use client";
 import Link from "next/link";
 import { DateDisplay } from "@/components/ui/date-display";
 import { LIEN_TYPE_LABELS } from "@/types/lien";

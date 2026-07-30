@@ -100,11 +100,7 @@ export default function PortfolioClient() {
       initialServiceDateTo: filters.initialServiceDateTo,
       sortBy: sorting[0] ? SORT_BY_MAP[sorting[0].id] : undefined,
       initialServiceDate: filters.initialServiceDate,
-      sortDirection: sorting[0]
-        ? sorting[0].desc
-          ? "desc"
-          : "asc"
-        : undefined,
+      sortDirection: sorting[0] ? (sorting[0].desc ? "desc" : "asc") : "desc",
       page: pagination.page,
       pageSize: pagination.pageSize,
     }),
@@ -144,7 +140,7 @@ export default function PortfolioClient() {
 
   useEffect(() => {
     refetchLiens();
-  }, [currentQuery, refetch]);
+  }, [currentQuery]);
 
   useEffect(() => {
     setPagination({
@@ -305,6 +301,9 @@ export default function PortfolioClient() {
           <BulkUploadForm
             open={bulkUpload}
             onClose={() => setbulkUpload(false)}
+            onUploaded={() => {
+              refetchLiens();
+            }}
           ></BulkUploadForm>
         )}
       </div>

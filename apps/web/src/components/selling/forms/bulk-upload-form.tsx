@@ -66,19 +66,25 @@ export function BulkUploadForm({
       formData.append("defaultListingVisibility", "Private");
       formData.append("defaultSellerStatus", "Pending");
       const uploadedfiles = await liensService.upload(formData);
-      console.log(uploadedfiles);
       const validated = await liensService.validateUpload(
         uploadedfiles.importId,
       );
       const confirmed = await liensService.confirmUpload(
         uploadedfiles.importId,
       );
-      console.log(confirmed);
+      if (validated.status == "VALIDATED_WITH_ERRORS") {
+        return showToast(
+          `Failed to import ${validated.invalidCount} row/s`,
+          "error",
+        );
+      }
+
       if (confirmed.status == "CONFIRMED") {
         showToast(
           "Lien has been successfully added to the Portfolio.",
           "success",
         );
+        onUploaded?.();
       }
       resetAndClose();
     } catch (err) {
