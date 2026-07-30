@@ -35,12 +35,30 @@ const LEGACY_DEFAULT_VALUES: LoginScreenFormValues = {
   password: 'Super@123!',
 };
 
+const PRODUCTION_DEFAULT_VALUES: LoginScreenFormValues = {
+  email: '',
+  password: '',
+  tenantCode: '',
+};
+
+export function getLoginDefaultValues({
+  isLegacyMode,
+  isProduction,
+}: {
+  isLegacyMode: boolean;
+  isProduction: boolean;
+}): LoginScreenFormValues {
+  if (isProduction) return PRODUCTION_DEFAULT_VALUES;
+  return isLegacyMode ? LEGACY_DEFAULT_VALUES : CURRENT_DEFAULT_VALUES;
+}
+
 export function LoginScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const login = useLogin();
   const toast = useToast();
   const { mode: apiMode, setMode: setApiMode } = useApiMode();
-  const showLegacyApiSwitch = !ConfigService.isProduction();
+  const isProduction = ConfigService.isProduction();
+  const showLegacyApiSwitch = !isProduction;
   const isLegacyMode = showLegacyApiSwitch && apiMode === 'legacy';
   const [activeTenant, setActiveTenant] = useState<RememberedTenant | null>(null);
   const [tenantLoading, setTenantLoading] = useState(true);
@@ -54,13 +72,13 @@ export function LoginScreen() {
     reset,
     formState: { errors },
   } = useForm<LoginScreenFormValues>({
-    defaultValues: isLegacyMode ? LEGACY_DEFAULT_VALUES : CURRENT_DEFAULT_VALUES,
+    defaultValues: getLoginDefaultValues({ isLegacyMode, isProduction }),
     resolver,
   });
 
   useEffect(() => {
-    reset(isLegacyMode ? LEGACY_DEFAULT_VALUES : CURRENT_DEFAULT_VALUES);
-  }, [isLegacyMode, reset]);
+    reset(getLoginDefaultValues({ isLegacyMode, isProduction }));
+  }, [isLegacyMode, isProduction, reset]);
 
   useFocusEffect(
     useCallback(() => {

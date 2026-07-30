@@ -1,10 +1,23 @@
 import { fireEvent, render } from '@testing-library/react-native';
 
-import { CurrentTenantCard, LoginScreen } from './index';
+import { CurrentTenantCard, getLoginDefaultValues, LoginScreen } from './index';
 
 describe('LoginScreen', () => {
   it('exports the screen entrypoint', () => {
     expect(typeof LoginScreen).toBe('function');
+  });
+
+  it('does not prefill login credentials or tenant code in production', () => {
+    expect(
+      getLoginDefaultValues({
+        isLegacyMode: false,
+        isProduction: true,
+      })
+    ).toEqual({
+      email: '',
+      password: '',
+      tenantCode: '',
+    });
   });
 
   it('displays the current selected tenant name and code', () => {
