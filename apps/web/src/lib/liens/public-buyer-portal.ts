@@ -83,9 +83,12 @@ export interface PublicBuyerPortalAccount {
 }
 
 export interface PublicBuyerPortalDocument {
+  id?: string | null;
   fileName: string;
   category: string | null;
   sizeOrType: string;
+  viewUrl?: string | null;
+  downloadUrl?: string | null;
 }
 
 export interface PublicBuyerPortalMessage {

@@ -750,9 +750,12 @@ already belongs to an Identity account so the tenant portal can render `Log In` 
   },
   "documents": [
     {
+      "id": "document-guid",
       "fileName": "real-document.pdf",
       "category": "Lien Document",
-      "sizeOrType": "PDF"
+      "sizeOrType": "PDF",
+      "viewUrl": "/api/lien/api/liens/selling/public/{token}/documents/{document-guid}/view",
+      "downloadUrl": "/api/lien/api/liens/selling/public/{token}/documents/{document-guid}/download"
     }
   ],
   "messages": [
@@ -778,6 +781,36 @@ SynqLien funding organizations sign into the tenant that issued the offer.
 For seller-view links, `audience` is `seller`; the same JSON includes buyer/funding-company details. Seller-view links
 can post messages, but response and activation endpoints reject that token with `403 read-only-link`. Seller-view JSON
 does not include an account-action requirement; `account` may be `null`.
+
+The `documents` array is limited to servicing document records attached to the offered lien. Selling v2 document
+references (`SellingDocumentReference`) are read from their JSON metadata, while legacy lien document records still use
+the existing semicolon metadata. Case-level documents that are not attached to the lien are excluded. `viewUrl` and
+`downloadUrl` are same-origin tenant-portal BFF paths that preserve the public offer token and redirect through Liens to
+the anonymous Documents access-token route.
+
+### GET `/api/liens/selling/public/{token}/documents/{documentId}/view`
+
+Issues a short-lived Documents view access token for a document attached to the token-scoped lien, then redirects to the
+anonymous Documents access route. This endpoint is anonymous but requires the same valid, unexpired, unrevoked public
+offer token as the portal `GET`. Buyer-response and seller-view tokens can both open lien documents. Documents not
+attached to that lien return `404 document-not-found`.
+
+**Authentication:** None.
+
+**Response:** `302 Found`
+
+`Location` points to `/documents/access/{accessToken}` when called through the gateway. The tenant portal BFF path
+`/api/lien/api/liens/selling/public/{token}/documents/{documentId}/view` rewrites that redirect to
+`/api/lien/documents/access/{accessToken}` for same-origin browser access.
+
+### GET `/api/liens/selling/public/{token}/documents/{documentId}/download`
+
+Same validation and ownership checks as the public document view endpoint, but requests a Documents download access
+token.
+
+**Authentication:** None.
+
+**Response:** `302 Found`
 
 ### POST `/api/liens/selling/public/{token}/messages`
 

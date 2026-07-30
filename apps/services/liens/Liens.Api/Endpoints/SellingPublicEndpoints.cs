@@ -1,6 +1,9 @@
 using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Notifications;
 using Liens.Application.Interfaces;
 using Liens.Domain.Entities;
@@ -17,6 +20,7 @@ public static class SellingPublicEndpoints
     private const int MaxPublicMessageLength = 400;
     private const string SynqLienBuyerLoginReturnTo = "/funding/dashboard";
     private const string SynqLienBuyerActivationReason = "synqlien-buyer-activation";
+    private const string DocumentsServiceAudience = "documents-service";
     private const string LegalSynqBrandIconContentId = "legalsynq-brand-icon";
     private const string LegalSynqBrandIconPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAFH0lEQVR42u2d23HiMBSGU4JLcAmOSWZ4pIR0sDxsAYLdfQ4dLB2QDrYEtgOX4AZCVILXwmJyWRsdCev+/zPnFbA+jq7Wf+7uIAiCvIqzVcG39fq0XRzeNnXbR0cI/rZZHE/bmnG2LNGKocLd1s8DLBLUyRB/DoAOKmuXZZ+Bza1gv2a1yGi0bhBwyV2xdoheAa2cKNz3LhuZ7EViYmQb7qW7xpjsWK/9TNkRXBmLI1rdbfY2bgH34zF7rNDy7sZe9djJ6p2qa+WsKjg79wYtYSzeofUdqAfHVDBee2h6f5qKMGFDN+0G8KbeK5Y2B7Oe4WGlmmyh9QOYPZsua0R3rR6HqwIEPAMWM2zzz1YCxnIJgCEAhgA4610ssSadils2JAA4+d4BgAEYAmAIgPNS13VFH099sD52DuLJBHCvveJzxe9fiecB1QHsuo9j514HQ8A6Es+1zhWs+Je3nT+5AHyReM4yJ7jPnX+5BHzRcw5wD10Y8gE4bciBZK5vwEIs1TG3A+CzeHJjsucJVWiAzzPs1JZCOksL1Voz1HXwXnPJt0oF8JEI1nu3NcdOlngOYo+1T2WHSqUmta1KIuQ2l8lVmRpgjWcvYge8jmmyMfdhg5wxX1MVO2BmMptNCHCT9ERLzi5zBnwE4LQBV3IsnooCgCMGnMPhAgADMAADMADnA/hsdsaWpY1QAv75sLL13apwAoz/eqwGJ7ma/Xej4MfiyQVg9/4cQcXZlU+0wWzQpT2g0kVu7OI1AFuN9mYfLx17QAD2CFo3m0XW6vpQAbBvyMRLdxJuY2D7B8AxZLK04u0AOMZQOAHd0ngAHEaIpdy1hX4LwIlmMcEn6oOX8uLwNfiI+VhsO1khS+yiCfc+mu3iyI4bZewVJmQ6XlEAbAO0ugcb9SlRzZxNHOQA2NaeucIMrk/EsfGXGw/eAOxUKr/O0WS0cZKSO2B5qX19JYze6FBNNAHYHWAr72QBMAADMAADMAADMABfXHSmggFwxIBzly3ARmUNbGx0ALAdwKpDodEKMeo3OBYNkPkFLN+POxgdGarS/nIUhTJv9gGLN1TF26sf47R9+E08zuUT/w7ycWE3HEyIjM8rXN0unPtcXqObzvxtiRgAX/uNelkMwKEBJpXfo741AMBhAT5t7l/oC+nN4gVA4wGsBReZHBVgLg7/jaf51NKrAOwcMJfvx82zZB1AY4btCnA/RO7H3lwd6kKJK6wWi2SKOzDDl/gJ9dBx/9fWd4eyVZm0jE5SEtuLBmAABmAABmAABuDMAfu4XQjAbh9wnTngJnfAPFXA0vVdpej9oikPyRIFrKwTlcSkiOB6znX+yTEA7p/nWzaldWS5GVLZN0r9hpABSw9oavm+dSqAZ696ZgI4sMJcaVUk7R/mBYA/aZfU5oSsn9QCcCL1kiYauCJMuFIHnFbXbAtypIDThvtlbdxmBvjY5VTm/cM+dZs4YJ76FVnqduYfHdiBA27lWnh1B0124ZPRfK+YIeDSdoDeDIrpNAkCYAiAARiAAZimsZv1nwLuBnEDVl3PGfVhhgAYAmAIgAEYgHMAPOkTRQJ8/eI13P4cSNxPJrjNMP3PPRfihF9nCKJURBWVUynrVmkP+JtSGxAt70g028V3MIq43UEOmrubrsrQ/Tkgt1l8U5Ac5KDZs7hwZPGEsddzV20TcouuOVnI+vbBkM0xeT7rRWEPiDE31Gw2dOXjQ8bWzKqLHDQ38GV53b1OuPbhEB+CoND1D6mLXlFVwRdjAAAAAElFTkSuQmCC";
 
@@ -34,6 +38,7 @@ public static class SellingPublicEndpoints
         "LegacyCaseDocument",
         "LegacyLienDocument",
         "LegacyMedicalDocument",
+        "SellingDocumentReference",
     ];
 
     public static void MapSellingPublicEndpoints(this WebApplication app)
@@ -42,6 +47,12 @@ public static class SellingPublicEndpoints
             .AllowAnonymous();
 
         group.MapGet("/{token}", GetTemporaryBuyerPortal)
+            .AllowAnonymous();
+
+        group.MapGet("/{token}/documents/{documentId:guid}/view", ViewTemporaryBuyerPortalDocument)
+            .AllowAnonymous();
+
+        group.MapGet("/{token}/documents/{documentId:guid}/download", DownloadTemporaryBuyerPortalDocument)
             .AllowAnonymous();
 
         group.MapPost("/{token}/messages", PostTemporaryBuyerPortalMessage)
@@ -92,7 +103,120 @@ public static class SellingPublicEndpoints
         resolved.AccessLink!.MarkAccessed();
         await db.SaveChangesAsync(ct);
 
-        return Results.Ok(MapPublicPortalResponse(view, account));
+        return Results.Ok(MapPublicPortalResponse(view, account, token));
+    }
+
+    private static Task<IResult> ViewTemporaryBuyerPortalDocument(
+        string token,
+        Guid documentId,
+        HttpResponse response,
+        LiensDbContext db,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct = default)
+        => RedirectTemporaryBuyerPortalDocument(
+            token,
+            documentId,
+            "view",
+            response,
+            db,
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            ct);
+
+    private static Task<IResult> DownloadTemporaryBuyerPortalDocument(
+        string token,
+        Guid documentId,
+        HttpResponse response,
+        LiensDbContext db,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct = default)
+        => RedirectTemporaryBuyerPortalDocument(
+            token,
+            documentId,
+            "download",
+            response,
+            db,
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            ct);
+
+    private static async Task<IResult> RedirectTemporaryBuyerPortalDocument(
+        string token,
+        Guid documentId,
+        string accessType,
+        HttpResponse response,
+        LiensDbContext db,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        SetNoReferrerHeader(response);
+        if (documentId == Guid.Empty)
+        {
+            return PublicLinkState(
+                "document-required",
+                "Document unavailable",
+                "A valid document id is required.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var accessLink = resolved.AccessLink!;
+        if (!IsSupportedPublicPurpose(accessLink.Purpose))
+        {
+            return PublicLinkState(
+                "unsupported-link",
+                "Lien offer link unavailable",
+                "This secure link cannot access lien documents.",
+                StatusCodes.Status404NotFound);
+        }
+
+        var documentReference = await ResolvePublicDocumentReferenceAsync(
+            db,
+            accessLink.TenantId,
+            accessLink.LienId,
+            documentId,
+            ct);
+        if (documentReference is null)
+        {
+            return PublicLinkState(
+                "document-not-found",
+                "Document unavailable",
+                "This document is not attached to the lien offer.",
+                StatusCodes.Status404NotFound);
+        }
+
+        var redeemUrl = await IssueDocumentsAccessUrlAsync(
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            accessLink,
+            documentReference.Value,
+            accessType,
+            ct);
+        if (string.IsNullOrWhiteSpace(redeemUrl))
+        {
+            return PublicLinkState(
+                "document-unavailable",
+                "Document unavailable",
+                "The document could not be opened right now.",
+                StatusCodes.Status502BadGateway);
+        }
+
+        accessLink.MarkAccessed();
+        await db.SaveChangesAsync(ct);
+
+        return Results.Redirect(redeemUrl, permanent: false, preserveMethod: false);
     }
 
     internal static async Task<IResult> PostTemporaryBuyerPortalMessage(
@@ -1648,7 +1772,7 @@ public static class SellingPublicEndpoints
         var sellerContact = SelectSellerContact(sellerContacts);
         var handlingLawFirm = await ResolveHandlingLawFirmAsync(db, accessLink.TenantId, caseEntity, ct);
         var caseManager = await ResolveCaseManagerAsync(db, accessLink.TenantId, caseEntity, ct);
-        var documents = await ResolveDocumentsAsync(db, accessLink.TenantId, lien, caseEntity, ct);
+        var documents = await ResolveDocumentsAsync(db, accessLink.TenantId, lien, ct);
         var messages = await ResolveMessagesAsync(db, accessLink, ct);
         var buyerResponseAccessLink = await ResolveBuyerResponseAccessLinkAsync(db, accessLink, ct);
 
@@ -1798,20 +1922,13 @@ public static class SellingPublicEndpoints
         LiensDbContext db,
         Guid tenantId,
         Lien lien,
-        Case? caseEntity,
         CancellationToken ct)
     {
-        var caseId = caseEntity?.Id;
-        var query = db.ServicingItems
+        var items = await db.ServicingItems
             .AsNoTracking()
-            .Where(item => item.TenantId == tenantId);
-
-        query = caseId.HasValue
-            ? query.Where(item => item.LienId == lien.Id || item.CaseId == caseId.Value)
-            : query.Where(item => item.LienId == lien.Id);
-
-        var items = await query
+            .Where(item => item.TenantId == tenantId && item.LienId == lien.Id)
             .OrderBy(item => item.CreatedAtUtc)
+            .ThenBy(item => item.Id)
             .ToListAsync(ct);
 
         return items
@@ -1827,12 +1944,14 @@ public static class SellingPublicEndpoints
         var fields = ParseLegacyNoteFields(item.Notes);
         var fileName = FirstNonEmpty(
             fields.GetValueOrDefault("originalFileName"),
+            fields.GetValueOrDefault("displayName"),
             fields.GetValueOrDefault("filename"),
             item.Description) ?? string.Empty;
 
         var category = FirstNonEmpty(
             fields.GetValueOrDefault("documentCategory"),
             fields.GetValueOrDefault("category"),
+            FormatSellingDocumentType(fields.GetValueOrDefault("documentType")),
             HumanizeDocumentTaskType(item.TaskType));
 
         var size = FirstNonEmpty(
@@ -1841,12 +1960,166 @@ public static class SellingPublicEndpoints
             fields.GetValueOrDefault("contentLength"),
             ResolveFileExtension(fileName));
 
-        return new PublicDocumentView(fileName.Trim(), category, FormatDocumentSize(size));
+        var documentId = TryResolveDocumentId(fields, out var resolvedDocumentId)
+            ? resolvedDocumentId
+            : (Guid?)null;
+
+        return new PublicDocumentView(documentId, fileName.Trim(), category, FormatDocumentSize(size));
+    }
+
+    private static async Task<Guid?> ResolvePublicDocumentReferenceAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid lienId,
+        Guid documentId,
+        CancellationToken ct)
+    {
+        var items = await db.ServicingItems
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.LienId == lienId)
+            .ToListAsync(ct);
+
+        foreach (var item in items.Where(item => DocumentTaskTypes.Contains(item.TaskType, StringComparer.Ordinal)))
+        {
+            var fields = ParseLegacyNoteFields(item.Notes);
+            if (TryResolveDocumentId(fields, out var resolvedDocumentId) &&
+                resolvedDocumentId == documentId)
+            {
+                return resolvedDocumentId;
+            }
+        }
+
+        return null;
+    }
+
+    private static async Task<string?> IssueDocumentsAccessUrlAsync(
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        SellingBuyerAccessLink accessLink,
+        Guid documentId,
+        string accessType,
+        CancellationToken ct)
+    {
+        var normalizedAccessType = string.Equals(accessType, "download", StringComparison.OrdinalIgnoreCase)
+            ? "download"
+            : "view";
+        var path = normalizedAccessType == "download"
+            ? $"/documents/{documentId:D}/download-url"
+            : $"/documents/{documentId:D}/view-url";
+        using var request = new HttpRequestMessage(HttpMethod.Post, path);
+        ApplyDocumentsAuthorization(
+            request,
+            serviceTokenIssuer,
+            loggerFactory,
+            accessLink.TenantId,
+            ResolvePublicResponseActorId(accessLink));
+        request.Headers.TryAddWithoutValidation("X-Organization-Id", accessLink.SellerOrgId.ToString());
+
+        try
+        {
+            var client = httpClientFactory.CreateClient("DocumentsService");
+            using var response = await client.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(ct));
+            var data = body.RootElement.TryGetProperty("data", out var dataElement)
+                ? dataElement
+                : body.RootElement;
+
+            if (data.TryGetProperty("redeemUrl", out var redeemUrl) &&
+                !string.IsNullOrWhiteSpace(redeemUrl.GetString()))
+            {
+                return NormalizeDocumentsRedeemUrl(redeemUrl.GetString()!);
+            }
+
+            if (data.TryGetProperty("accessToken", out var accessToken) &&
+                !string.IsNullOrWhiteSpace(accessToken.GetString()))
+            {
+                return $"/documents/access/{Uri.EscapeDataString(accessToken.GetString()!)}";
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            loggerFactory
+                .CreateLogger(nameof(SellingPublicEndpoints))
+                .LogWarning(ex, "Documents access token request failed for document {DocumentId}", documentId);
+        }
+        catch (JsonException ex)
+        {
+            loggerFactory
+                .CreateLogger(nameof(SellingPublicEndpoints))
+                .LogWarning(ex, "Documents access token response was invalid for document {DocumentId}", documentId);
+        }
+
+        return null;
+    }
+
+    private static void ApplyDocumentsAuthorization(
+        HttpRequestMessage request,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        Guid tenantId,
+        Guid actorUserId)
+    {
+        if (!serviceTokenIssuer.IsConfigured)
+            return;
+
+        try
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue(
+                "Bearer",
+                serviceTokenIssuer.IssueToken(tenantId.ToString(), actorUserId.ToString(), DocumentsServiceAudience));
+        }
+        catch (Exception ex)
+        {
+            loggerFactory
+                .CreateLogger(nameof(SellingPublicEndpoints))
+                .LogWarning(ex, "Unable to mint Documents service token for tenant {TenantId}", tenantId);
+        }
+    }
+
+    private static string NormalizeDocumentsRedeemUrl(string redeemUrl)
+    {
+        var trimmed = redeemUrl.Trim();
+        if (trimmed.StartsWith("/documents/access/", StringComparison.OrdinalIgnoreCase))
+            return trimmed;
+        if (trimmed.StartsWith("/access/", StringComparison.OrdinalIgnoreCase))
+            return $"/documents{trimmed}";
+        return trimmed;
+    }
+
+    private static string? BuildPublicDocumentActionUrl(string? publicToken, Guid? documentId, string action)
+    {
+        if (string.IsNullOrWhiteSpace(publicToken) || !documentId.HasValue)
+            return null;
+
+        var normalizedAction = string.Equals(action, "download", StringComparison.OrdinalIgnoreCase)
+            ? "download"
+            : "view";
+        return $"/api/lien/api/liens/selling/public/{Uri.EscapeDataString(publicToken.Trim())}/documents/{documentId.Value:D}/{normalizedAction}";
+    }
+
+    private static bool TryResolveDocumentId(
+        IReadOnlyDictionary<string, string> fields,
+        out Guid documentId)
+    {
+        if (Guid.TryParse(fields.GetValueOrDefault("documentId"), out documentId))
+            return true;
+
+        var url = fields.GetValueOrDefault("url");
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+
+        var segment = url.Trim().TrimEnd('/').Split('/').LastOrDefault();
+        return Guid.TryParse(segment, out documentId);
     }
 
     private static PublicBuyerPortalResponse MapPublicPortalResponse(
         PublicPortalView view,
-        PublicBuyerAccountResponse? account = null)
+        PublicBuyerAccountResponse? account = null,
+        string? publicToken = null)
     {
         var responseAccessLink = view.BuyerResponseAccessLink ?? view.AccessLink;
 
@@ -1884,9 +2157,12 @@ public static class SellingPublicEndpoints
                 view.CaseManager),
             view.Documents
                 .Select(document => new PublicBuyerDocumentResponse(
+                    document.DocumentId,
                     document.FileName,
                     document.Category,
-                    document.SizeOrType))
+                    document.SizeOrType,
+                    BuildPublicDocumentActionUrl(publicToken, document.DocumentId, "view"),
+                    BuildPublicDocumentActionUrl(publicToken, document.DocumentId, "download")))
                 .ToList(),
             view.Messages
                 .Select(MapPublicMessage)
@@ -1930,9 +2206,33 @@ public static class SellingPublicEndpoints
 
     private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
     {
-        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(notes))
             return result;
+
+        var trimmed = notes.Trim();
+        if (trimmed.StartsWith('{'))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(trimmed);
+                if (document.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var property in document.RootElement.EnumerateObject())
+                    {
+                        var value = property.Value.ValueKind == JsonValueKind.String
+                            ? property.Value.GetString()
+                            : property.Value.GetRawText();
+                        if (!string.IsNullOrWhiteSpace(value))
+                            result[property.Name] = value;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Fall back to the legacy key/value parser below.
+            }
+        }
 
         foreach (var segment in notes.Split("; ", StringSplitOptions.RemoveEmptyEntries))
         {
@@ -1947,6 +2247,37 @@ public static class SellingPublicEndpoints
         }
 
         return result;
+    }
+
+    private static string? FormatSellingDocumentType(string? documentType)
+    {
+        if (string.IsNullOrWhiteSpace(documentType))
+            return null;
+
+        return documentType.Trim() switch
+        {
+            "LienAgreement" => "Signed Lien / LOP (Letter of Protection)",
+            "MedicalBill" => "Itemized Bill / HCFA-1500 Form",
+            "MedicalRecord" => "Clinical Chart Notes / Medical Records",
+            "SettlementStatement" => "Settlement Statement",
+            "Other" => "Supporting Document",
+            var value => SplitCamelCase(value),
+        };
+    }
+
+    private static string SplitCamelCase(string value)
+    {
+        var label = new StringBuilder(value.Length + 8);
+        for (var i = 0; i < value.Length; i++)
+        {
+            var current = value[i];
+            if (i > 0 && char.IsUpper(current) && char.IsLower(value[i - 1]))
+                label.Append(' ');
+
+            label.Append(current);
+        }
+
+        return label.ToString();
     }
 
     private static string? FirstNonEmpty(params string?[] values)
@@ -2026,6 +2357,7 @@ public static class SellingPublicEndpoints
             "LegacyCaseDocument" => "Case Document",
             "LegacyLienDocument" => "Lien Document",
             "LegacyMedicalDocument" => "Medical Document",
+            "SellingDocumentReference" => "Supporting Document",
             _ => "Document",
         };
 
@@ -2086,7 +2418,7 @@ public static class SellingPublicEndpoints
         IReadOnlyList<SellingPortalMessage> Messages,
         SellingBuyerAccessLink? BuyerResponseAccessLink);
 
-    private sealed record PublicDocumentView(string FileName, string? Category, string SizeOrType);
+    private sealed record PublicDocumentView(Guid? DocumentId, string FileName, string? Category, string SizeOrType);
 
     private sealed record PublicBuyerPortalResponse(
         string Audience,
@@ -2138,9 +2470,12 @@ public static class SellingPublicEndpoints
         string? CaseManager);
 
     private sealed record PublicBuyerDocumentResponse(
+        Guid? Id,
         string FileName,
         string? Category,
-        string SizeOrType);
+        string SizeOrType,
+        string? ViewUrl,
+        string? DownloadUrl);
 
     private sealed record PublicPortalMessageResponse(
         Guid Id,

@@ -90,6 +90,7 @@ public static class SellingEndpoints
         "LegacyCaseDocument",
         "LegacyLienDocument",
         "LegacyMedicalDocument",
+        "SellingDocumentReference",
     ];
 
     public static void MapSellingEndpoints(this WebApplication app)
@@ -846,14 +847,9 @@ public static class SellingEndpoints
         Case? caseEntity,
         CancellationToken ct)
     {
-        var caseId = caseEntity?.Id;
         var query = db.ServicingItems
             .AsNoTracking()
-            .Where(item => item.TenantId == tenantId);
-
-        query = caseId.HasValue
-            ? query.Where(item => item.LienId == lien.Id || item.CaseId == caseId.Value)
-            : query.Where(item => item.LienId == lien.Id);
+            .Where(item => item.TenantId == tenantId && item.LienId == lien.Id);
 
         var items = await query
             .OrderBy(item => item.CreatedAtUtc)
@@ -874,6 +870,7 @@ public static class SellingEndpoints
         var fileName = FirstNonEmpty(new[]
         {
             fields.GetValueOrDefault("originalFileName"),
+            fields.GetValueOrDefault("displayName"),
             fields.GetValueOrDefault("filename"),
             item.Description,
         }) ?? string.Empty;
@@ -882,6 +879,7 @@ public static class SellingEndpoints
         {
             fields.GetValueOrDefault("documentCategory"),
             fields.GetValueOrDefault("category"),
+            FormatSellingDocumentType(fields.GetValueOrDefault("documentType")),
             HumanizeDocumentTaskType(item.TaskType),
         });
 
@@ -898,7 +896,11 @@ public static class SellingEndpoints
             fileName.Trim(),
             category,
             FormatDocumentSize(sizeOrType),
-            fields.GetValueOrDefault("url"),
+            FirstNonEmpty(new[]
+            {
+                fields.GetValueOrDefault("url"),
+                TryResolveDocumentId(fields, out var documentId) ? $"/documents/{documentId:D}" : null,
+            }),
             item.CreatedAtUtc);
     }
 
@@ -1183,9 +1185,33 @@ public static class SellingEndpoints
 
     private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
     {
-        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(notes))
             return result;
+
+        var trimmed = notes.Trim();
+        if (trimmed.StartsWith('{'))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(trimmed);
+                if (document.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var property in document.RootElement.EnumerateObject())
+                    {
+                        var value = property.Value.ValueKind == JsonValueKind.String
+                            ? property.Value.GetString()
+                            : property.Value.GetRawText();
+                        if (!string.IsNullOrWhiteSpace(value))
+                            result[property.Name] = value;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Fall back to the legacy key/value parser below.
+            }
+        }
 
         foreach (var segment in notes.Split("; ", StringSplitOptions.RemoveEmptyEntries))
         {
@@ -1200,6 +1226,52 @@ public static class SellingEndpoints
         }
 
         return result;
+    }
+
+    private static bool TryResolveDocumentId(
+        IReadOnlyDictionary<string, string> fields,
+        out Guid documentId)
+    {
+        if (Guid.TryParse(fields.GetValueOrDefault("documentId"), out documentId))
+            return true;
+
+        var url = fields.GetValueOrDefault("url");
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+
+        var segment = url.Trim().TrimEnd('/').Split('/').LastOrDefault();
+        return Guid.TryParse(segment, out documentId);
+    }
+
+    private static string? FormatSellingDocumentType(string? documentType)
+    {
+        if (string.IsNullOrWhiteSpace(documentType))
+            return null;
+
+        return documentType.Trim() switch
+        {
+            "LienAgreement" => "Signed Lien / LOP (Letter of Protection)",
+            "MedicalBill" => "Itemized Bill / HCFA-1500 Form",
+            "MedicalRecord" => "Clinical Chart Notes / Medical Records",
+            "SettlementStatement" => "Settlement Statement",
+            "Other" => "Supporting Document",
+            var value => SplitCamelCase(value),
+        };
+    }
+
+    private static string SplitCamelCase(string value)
+    {
+        var label = new StringBuilder(value.Length + 8);
+        for (var i = 0; i < value.Length; i++)
+        {
+            var current = value[i];
+            if (i > 0 && char.IsUpper(current) && char.IsLower(value[i - 1]))
+                label.Append(' ');
+
+            label.Append(current);
+        }
+
+        return label.ToString();
     }
 
     private static string FormatDocumentSize(string? value)

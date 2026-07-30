@@ -65,16 +65,30 @@ async function proxy(
     method: req.method,
     headers,
     body,
+    redirect: "manual",
   });
 
   const responseHeaders: Record<string, string> = {};
   const correlationId = res.headers.get("X-Correlation-Id");
   if (correlationId) responseHeaders["X-Correlation-Id"] = correlationId;
-  responseHeaders["Content-Type"] =
-    res.headers.get("Content-Type") ?? "application/json";
+  const isRedirect = res.status >= 300 && res.status < 400;
+  if (isRedirect) {
+    const location = res.headers.get("Location");
+    if (location) responseHeaders["Location"] = location;
+  } else {
+    responseHeaders["Content-Type"] =
+      res.headers.get("Content-Type") ?? "application/json";
+  }
 
   if (res.status === 204) {
     return new NextResponse(null, { status: 204, headers: responseHeaders });
+  }
+
+  if (isRedirect) {
+    return new NextResponse(null, {
+      status: res.status,
+      headers: responseHeaders,
+    });
   }
 
   const data = await res.text();

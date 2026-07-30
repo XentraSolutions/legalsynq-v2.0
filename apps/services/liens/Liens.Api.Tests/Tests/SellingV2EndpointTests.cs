@@ -178,7 +178,28 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         replay.ResponseBody.Should().Contain("\"buyerPortalUrl\":null");
         var notification = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>().Emails
             .Single(email => email.RecipientEmail == "erin@buyer-capital.test");
-        notification.Options!.TemplateData!["buyerMessage"].Should().Be("Please review this time-sensitive lien.");
+        notification.Options!.TemplateData!.Should().NotContainKey("buyerMessage");
+        notification.Body.Should().Contain("Itemized Bill / HCFA-1500 Form: bill.pdf");
+        notification.Options.HtmlBody.Should().Contain("Itemized Bill / HCFA-1500 Form");
+        notification.Options.HtmlBody.Should().Contain("bill.pdf");
+        notification.Body.Should().NotContain("Please review this time-sensitive lien.");
+        notification.Options.HtmlBody.Should().NotContain("Please review this time-sensitive lien.");
+        notification.Options.HtmlBody.Should().NotContain("Seller Message");
+
+        var token = portalUrl!.Split('/').Last();
+        using var anonClient = _factory.CreateClient();
+        var publicResponse = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+        publicResponse.StatusCode.Should().Be(HttpStatusCode.OK, await publicResponse.Content.ReadAsStringAsync());
+        using var publicJson = JsonDocument.Parse(await publicResponse.Content.ReadAsStringAsync());
+        var documents = publicJson.RootElement.GetProperty("documents").EnumerateArray().ToList();
+        documents.Should().ContainSingle();
+        documents[0].GetProperty("fileName").GetString().Should().Be("bill.pdf");
+        documents[0].GetProperty("category").GetString().Should().Be("Itemized Bill / HCFA-1500 Form");
+        documents[0].GetProperty("id").GetGuid().Should().NotBeEmpty();
+        documents[0].GetProperty("viewUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{documents[0].GetProperty("id").GetGuid():D}/view");
+        documents[0].GetProperty("downloadUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{documents[0].GetProperty("id").GetGuid():D}/download");
     }
 
     [Fact]
