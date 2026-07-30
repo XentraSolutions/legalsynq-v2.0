@@ -75,15 +75,6 @@ export default function PortfolioLienDetailPage() {
     load();
   }, [session, sessionLoading, isBuyer, isHolder, router, load]);
 
-  if (sessionLoading || loading) {
-    return (
-      <div className="space-y-4 animate-pulse">
-        <div className="h-6 w-32 bg-gray-100 rounded" />
-        <div className="h-48 bg-gray-100 rounded" />
-      </div>
-    );
-  }
-
   if (error) {
     return (
       <div className="space-y-4">
