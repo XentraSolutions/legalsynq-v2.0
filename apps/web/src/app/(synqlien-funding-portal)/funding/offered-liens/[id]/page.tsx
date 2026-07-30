@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { OfferedLienDetailActions } from "@/components/synqlien-funding-portal/offered-lien-detail-actions";
 import { OfferedLienMessages } from "@/components/synqlien-funding-portal/offered-lien-messages";
 import {
-  formatFundingCurrency,
   formatFundingDate,
   getOfferedLienDetail,
   statusBadgeClass,
@@ -130,10 +129,6 @@ function OverviewTab({ detail }: { detail: OfferedLienDetail }) {
           <DetailField label="Submitted Date" value={formatDateTimeParts(detail.submittedAtUtc)} />
           <DetailField label="Initial Service Date" value={formatOptionalDate(detail.initialServiceDate)} />
           <DetailField label="End Service Date" value={formatOptionalDate(detail.endServiceDate)} />
-          <DetailField label="Billing Amount" value={formatOptionalCurrency(detail.billingAmount)} />
-          <DetailField label="Ask Amount" value={formatOptionalCurrency(detail.askAmount)} />
-          <DetailField label="Highest Bid" value={formatOptionalCurrency(detail.highestBidAmount)} />
-          <DetailField label="Response Amount" value={formatOptionalCurrency(detail.responseAmount)} />
           <div className="pb-4 sm:col-span-2">
             <p className="text-[16px] font-normal leading-[1.6] text-[#737373]">Lien Notes</p>
             <p className="mt-2 max-w-[680px] whitespace-pre-wrap text-[16px] font-medium leading-[1.6] text-[#0a0a0a]">
@@ -329,12 +324,6 @@ function safeHref(value?: string | null): string | null {
 
 function isExternalHref(value: string): boolean {
   return value.startsWith("http://") || value.startsWith("https://");
-}
-
-function formatOptionalCurrency(value?: number | null): string {
-  return value === undefined || value === null || !Number.isFinite(value)
-    ? "-"
-    : formatFundingCurrency(value);
 }
 
 function formatOptionalDate(value?: string | null): string {

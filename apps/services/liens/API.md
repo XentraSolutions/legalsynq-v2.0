@@ -393,7 +393,7 @@ transition or buyer notification.
 Returns the authenticated funding-company dashboard used by `/funding/dashboard`. The endpoint scopes data to the
 current buyer organization, including the email-based source buyer organization fallback used by the offered-liens list.
 
-Summary metrics are current buyer-scoped totals across all visible offers:
+Summary metrics are buyer-scoped totals across the selected dashboard range:
 
 | Field | Definition |
 |---|---|
@@ -409,12 +409,14 @@ Summary metrics are current buyer-scoped totals across all visible offers:
 `value` as the absolute percent delta, `direction` as `up`, `down`, or `flat`, and `label` as the previous-month range
 shown by the portal.
 
-`range=last7Days|last30Days|custom`, `from=yyyy-MM-dd`, and `to=yyyy-MM-dd` filter the acquisition pipeline activity
-stages only. Pending activity uses the received-offer timestamp; accepted and declined activity uses the response
-timestamp. Missing custom dates are treated as open-ended.
+`range=last7Days|last30Days|custom`, `from=yyyy-MM-dd`, and `to=yyyy-MM-dd` filter summary metrics, pending offers,
+acquisition pipeline stages, provider performance, and offer inbox data. Range filtering uses the offer received
+timestamp for pending, accepted, and declined rows so the dashboard matches the offered-liens received date. Custom
+ranges require both `from` and `to`; missing or invalid custom dates return empty dashboard data.
 
-`pendingOffers` returns at most five pending offers for the dashboard preview. `providerPerformance` returns at most five
-provider groups, ordered by highest `lienCount` first and then by `providerName`.
+`pendingOffers` returns at most five pending offers for the dashboard preview within the selected range.
+`providerPerformance` returns at most five provider groups within the selected range, ordered by highest `lienCount`
+first and then by `providerName`.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 

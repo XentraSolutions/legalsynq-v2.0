@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, TrendingDown, TrendingUp } from "lucide-react";
+import { CustomDateRangeForm } from "@/components/synqlien-funding-portal/custom-date-range-form";
 import {
   formatFundingCurrency,
   formatFundingDateTime,
@@ -33,16 +34,20 @@ const RANGE_LABELS: Record<FundingDashboardRange, string> = {
 };
 
 const RANGE_OPTIONS: FundingDashboardRange[] = ["last7Days", "last30Days", "custom"];
+const DATE_PARAM_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function SynqLienFundingDashboardPage({
   searchParams,
 }: DashboardPageProps) {
   const sp = await searchParams;
   const range = parseRange(sp.range);
+  const from = parseDateParam(sp.from);
+  const to = parseDateParam(sp.to);
+  const today = getTodayDateParam();
   const dashboard = await getFundingDashboard({
     range,
-    from: sp.from || undefined,
-    to: sp.to || undefined,
+    from,
+    to,
   });
 
   return (
@@ -71,8 +76,9 @@ export default async function SynqLienFundingDashboardPage({
         <PendingOffersCard rows={dashboard.pendingOffers} />
         <PipelineCard
           range={range}
-          from={sp.from}
-          to={sp.to}
+          from={from}
+          to={to}
+          defaultDate={today}
           stages={dashboard.pipelineStages}
         />
       </div>
@@ -249,37 +255,51 @@ function PipelineCard({
   range,
   from,
   to,
+  defaultDate,
   stages,
 }: {
   range: FundingDashboardRange;
   from?: string;
   to?: string;
+  defaultDate: string;
   stages: AcquisitionPipelineStage[];
 }) {
-  const totalCount = stages.reduce((sum, stage) => sum + stage.count, 0);
+  const waitingForCustomRange = range === "custom" && (!from || !to);
+  const visibleStages = waitingForCustomRange ? [] : stages;
+  const totalCount = visibleStages.reduce((sum, stage) => sum + stage.count, 0);
 
   return (
     <section className="rounded-[16px] border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.08)]">
       <h2 className="text-[16px] font-semibold leading-5 text-[#0a0a0a]">
         Acquisition Pipeline
       </h2>
-      <RangeTabs range={range} from={from} to={to} />
+      <RangeTabs range={range} from={from} to={to} defaultDate={defaultDate} />
 
-      <div className="mt-8 flex items-center justify-between gap-3">
-        <p className="text-[24px] font-semibold leading-8 text-[#0a0a0a]">Total:</p>
-        <p className="text-[24px] font-semibold leading-8 text-[#0a0a0a]">
-          {formatFundingNumber(totalCount)}
-        </p>
-      </div>
-
-      {stages.length === 0 ? (
-        <EmptyState icon="ri-bar-chart-horizontal-line" title="No pipeline activity for this range" compact />
-      ) : (
-        <div className="mt-7 space-y-8">
-          {stages.map(stage => (
-            <PipelineStageRow key={stage.key} stage={stage} totalCount={totalCount} />
-          ))}
+      {waitingForCustomRange ? (
+        <div className="mt-8 rounded-[10px] border border-dashed border-[#e5e5e5] bg-[#fafafa] px-4 py-8 text-center">
+          <p className="text-[14px] font-medium leading-[1.6] text-[#525252]">
+            Select a start and end date to view pipeline data.
+          </p>
         </div>
+      ) : (
+        <>
+          <div className="mt-8 flex items-center justify-between gap-3">
+            <p className="text-[24px] font-semibold leading-8 text-[#0a0a0a]">Total:</p>
+            <p className="text-[24px] font-semibold leading-8 text-[#0a0a0a]">
+              {formatFundingNumber(totalCount)}
+            </p>
+          </div>
+
+          {visibleStages.length === 0 ? (
+            <EmptyState icon="ri-bar-chart-horizontal-line" title="No pipeline activity for this range" compact />
+          ) : (
+            <div className="mt-7 space-y-8">
+              {visibleStages.map(stage => (
+                <PipelineStageRow key={stage.key} stage={stage} totalCount={totalCount} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -289,30 +309,36 @@ function RangeTabs({
   range,
   from,
   to,
+  defaultDate,
 }: {
   range: FundingDashboardRange;
   from?: string;
   to?: string;
+  defaultDate: string;
 }) {
   return (
-    <div className="mt-4 grid h-9 grid-cols-3 overflow-hidden rounded-[8px] bg-[#f5f5f5] p-px">
-      {RANGE_OPTIONS.map(item => {
-        const active = range === item;
-        return (
-          <Link
-            key={item}
-            href={buildDashboardHref(item, from, to)}
-            className={`flex items-center justify-center rounded-[7px] text-[12px] font-medium leading-[1.6] transition-colors ${
-              active
-                ? "border border-[#e5e5e5] bg-white text-[#0a0a0a] shadow-[0_1px_1px_rgba(0,0,0,0.08)]"
-                : "text-[#0a0a0a] hover:bg-white/70"
-            }`}
-          >
-            {RANGE_LABELS[item]}
-          </Link>
-        );
-      })}
-    </div>
+    <>
+      <div className="mt-4 grid h-9 grid-cols-3 overflow-hidden rounded-[8px] bg-[#f5f5f5] p-px">
+        {RANGE_OPTIONS.map(item => {
+          const active = range === item;
+          return (
+            <Link
+              key={item}
+              href={buildDashboardHref(item, from, to)}
+              className={`flex items-center justify-center rounded-[7px] text-[12px] font-medium leading-[1.6] transition-colors ${
+                active
+                  ? "border border-[#e5e5e5] bg-white text-[#0a0a0a] shadow-[0_1px_1px_rgba(0,0,0,0.08)]"
+                  : "text-[#0a0a0a] hover:bg-white/70"
+              }`}
+            >
+              {RANGE_LABELS[item]}
+            </Link>
+          );
+        })}
+      </div>
+
+      {range === "custom" ? <CustomDateRangeForm from={from} to={to} defaultDate={defaultDate} /> : null}
+    </>
   );
 }
 
@@ -519,4 +545,19 @@ function buildDashboardHref(range: FundingDashboardRange, from?: string, to?: st
 function parseRange(value?: string): FundingDashboardRange {
   if (value === "last7Days" || value === "custom") return value;
   return "last30Days";
+}
+
+function parseDateParam(value?: string): string | undefined {
+  if (!value || !DATE_PARAM_PATTERN.test(value)) return undefined;
+
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return undefined;
+
+  return date.toISOString().slice(0, 10) === value ? value : undefined;
+}
+
+function getTodayDateParam(): string {
+  const now = new Date();
+  const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 10);
 }

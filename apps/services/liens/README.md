@@ -97,11 +97,13 @@ such as `localhost` and `127.0.0.1` are rejected because outbound email recipien
 token is substituted, otherwise the token is appended as the final path segment.
 
 The authenticated funding-company portal reads KPI, pending-offer, acquisition pipeline, and provider performance data
-from `GET /api/liens/selling/buyer/dashboard`. Summary cards are current buyer-scoped totals: pending access links with
+from `GET /api/liens/selling/buyer/dashboard`. Summary cards are range-scoped buyer totals: pending access links with
 no buyer response, pending offered amount, accepted buyer responses as purchased liens, and accepted response amount as
 capital deployed. Dashboard KPI trends compare current calendar month activity with the previous full calendar month and
-return the previous-month range for the portal detail line. Dashboard preview lists are capped to five rows; provider
-performance is ordered by highest offered-lien count. The same buyer scoping also drives
+return the previous-month range for the portal detail line on preset ranges. Dashboard date ranges filter by the offer
+received timestamp for pending, accepted, and declined rows; custom ranges require both start and end dates and otherwise
+return empty dashboard data. Dashboard preview lists are capped to five rows; provider performance is ordered by highest
+offered-lien count. The same buyer scoping also drives
 `GET /api/liens/selling/buyer/liens`. That endpoint projects buyer response access links into table rows scoped to the
 current buyer organization, with an email-based source buyer organization fallback for accounts created from public
 activation. It supports `status=Pending|Accepted|Declined`, free-text `search`, `page`, `pageSize`, `sort`, and

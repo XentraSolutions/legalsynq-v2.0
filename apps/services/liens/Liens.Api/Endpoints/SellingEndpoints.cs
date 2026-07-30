@@ -1481,6 +1481,11 @@ public static class SellingEndpoints
            ?? source.SubmittedForSaleAtUtc
            ?? source.CreatedAtUtc;
 
+    private static DateTime GetBuyerDashboardReceivedAt(BuyerOfferedLienSource source)
+        => source.NotificationSubmittedAtUtc
+           ?? source.SubmittedForSaleAtUtc
+           ?? source.CreatedAtUtc;
+
     private static BuyerDashboardWindow ResolveBuyerDashboardWindow(
         string? range,
         string? from,
@@ -1489,9 +1494,14 @@ public static class SellingEndpoints
     {
         if (string.Equals(range, "custom", StringComparison.OrdinalIgnoreCase))
         {
-            var start = ParseDashboardDate(from)?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-            var end = ParseDashboardDate(to)?.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-            return new BuyerDashboardWindow(start, end);
+            var startDate = ParseDashboardDate(from);
+            var endDate = ParseDashboardDate(to);
+            if (!startDate.HasValue || !endDate.HasValue || endDate.Value < startDate.Value)
+                return BuyerDashboardWindow.Empty;
+
+            return new BuyerDashboardWindow(
+                startDate.Value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                endDate.Value.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
         }
 
         var days = string.Equals(range, "last7Days", StringComparison.OrdinalIgnoreCase) ? 7 : 30;
@@ -1507,8 +1517,12 @@ public static class SellingEndpoints
             : null;
 
     private static bool IsWithinDashboardWindow(DateTime value, BuyerDashboardWindow window)
-        => (!window.StartUtc.HasValue || value >= window.StartUtc.Value) &&
+        => !window.IsEmpty &&
+           (!window.StartUtc.HasValue || value >= window.StartUtc.Value) &&
            (!window.EndExclusiveUtc.HasValue || value < window.EndExclusiveUtc.Value);
+
+    private static bool IsCustomDashboardRange(string? range)
+        => string.Equals(range, "custom", StringComparison.OrdinalIgnoreCase);
 
     private static async Task<IResult> TransitionStatus(
         Guid id,
@@ -1677,20 +1691,23 @@ public static class SellingEndpoints
             .ThenBy(offer => offer.Row.LienNumber, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var pendingOffers = offers
+        var nowUtc = DateTime.UtcNow;
+        var window = ResolveBuyerDashboardWindow(range, from, to, nowUtc);
+        var dashboardOffers = offers
+            .Where(offer => IsWithinDashboardWindow(GetBuyerDashboardReceivedAt(offer.Source), window))
+            .ToList();
+
+        var pendingOffers = dashboardOffers
             .Where(offer => string.Equals(offer.Row.Status, BuyerOfferedLienStatuses.Pending, StringComparison.Ordinal))
             .ToList();
 
-        var acceptedOffers = offers
+        var acceptedOffers = dashboardOffers
             .Where(offer => string.Equals(offer.Row.Status, BuyerOfferedLienStatuses.Accepted, StringComparison.Ordinal))
             .ToList();
 
-        var nowUtc = DateTime.UtcNow;
-        var window = ResolveBuyerDashboardWindow(range, from, to, nowUtc);
-        var windowedOffers = offers
-            .Where(offer => IsWithinDashboardWindow(GetBuyerDashboardActivityAt(offer.Source), window))
-            .ToList();
-        var trends = BuildBuyerFundingMetricTrends(offers, nowUtc);
+        var trends = IsCustomDashboardRange(range)
+            ? new Dictionary<string, BuyerFundingMetricTrend?>()
+            : BuildBuyerFundingMetricTrends(dashboardOffers, nowUtc);
 
         var summary = new BuyerFundingDashboardSummary(
             pendingOffers.Count,
@@ -1716,8 +1733,8 @@ public static class SellingEndpoints
                     offer.Row.Status,
                     offer.Row.DetailHref))
                 .ToList(),
-            BuildBuyerFundingPipelineStages(windowedOffers),
-            BuildBuyerFundingProviderPerformance(offers),
+            BuildBuyerFundingPipelineStages(dashboardOffers),
+            BuildBuyerFundingProviderPerformance(dashboardOffers),
             new BuyerFundingOfferInboxSummary(
                 pendingOffers.Count,
                 0,
@@ -2349,7 +2366,11 @@ public static class SellingEndpoints
 
     private sealed record BuyerDashboardWindow(
         DateTime? StartUtc,
-        DateTime? EndExclusiveUtc);
+        DateTime? EndExclusiveUtc,
+        bool IsEmpty = false)
+    {
+        public static BuyerDashboardWindow Empty { get; } = new(null, null, IsEmpty: true);
+    }
 
     private sealed record BuyerContactScope(
         Guid Id,

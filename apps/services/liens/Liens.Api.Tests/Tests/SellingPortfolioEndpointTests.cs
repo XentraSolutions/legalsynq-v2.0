@@ -1419,6 +1419,96 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task BuyerDashboard_custom_range_filters_pipeline_by_offer_received_date()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var responseInsideRangeAtUtc = today.ToDateTime(new TimeOnly(12, 0), DateTimeKind.Utc);
+        var receivedOutsideRangeAtUtc = responseInsideRangeAtUtc.AddDays(-10);
+        var (_, token) = await CreatePublicLienOfferAsync(
+            "buyer-dashboard-custom-range",
+            lienNumber: "DASH-CUSTOM-RANGE-100",
+            buyerOrgId: buyerOrgId);
+
+        var acceptResponse = await PostPublicBuyerResponseAsync(
+            token,
+            "accept",
+            new { notes = "Accepted inside the custom dashboard range." },
+            "buyer-dashboard-custom-range-accept-response");
+        acceptResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await acceptResponse.Content.ReadAsStringAsync()}");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var accessLink = db.SellingBuyerAccessLinks.Single(link =>
+                link.TokenHash == SellingBuyerAccessLink.ComputeTokenHash(token));
+            var lien = db.Liens.Single(lien => lien.Id == accessLink.LienId);
+
+            SetDateTimeProperty(accessLink, nameof(SellingBuyerAccessLink.CreatedAtUtc), receivedOutsideRangeAtUtc);
+            SetDateTimeProperty(accessLink, nameof(SellingBuyerAccessLink.NotificationSubmittedAtUtc), receivedOutsideRangeAtUtc);
+            SetDateTimeProperty(accessLink, nameof(SellingBuyerAccessLink.RespondedAtUtc), responseInsideRangeAtUtc);
+            SetDateTimeProperty(lien, nameof(Lien.SubmittedForSaleAtUtc), receivedOutsideRangeAtUtc);
+            await db.SaveChangesAsync();
+        }
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var selectedDate = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var response = await buyerClient.GetAsync(
+            $"/api/liens/selling/buyer/dashboard?range=custom&from={selectedDate}&to={selectedDate}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        var summary = json.GetProperty("summary");
+        summary.GetProperty("totalLienPendingCount").GetInt32().Should().Be(0);
+        summary.GetProperty("totalLienPendingAmount").GetDecimal().Should().Be(0m);
+        summary.GetProperty("totalPendingOfferCount").GetInt32().Should().Be(0);
+        summary.GetProperty("totalPendingOfferedAmount").GetDecimal().Should().Be(0m);
+        summary.GetProperty("purchasedLienCount").GetInt32().Should().Be(0);
+        summary.GetProperty("capitalDeployedAmount").GetDecimal().Should().Be(0m);
+        summary.GetProperty("trends").EnumerateObject().Should().BeEmpty();
+        json.GetProperty("pendingOffers").EnumerateArray().Should().BeEmpty();
+        json.GetProperty("pipelineStages").EnumerateArray().Should().BeEmpty();
+        json.GetProperty("providerPerformance").EnumerateArray().Should().BeEmpty();
+
+        var offerInbox = json.GetProperty("offerInbox");
+        offerInbox.GetProperty("pendingCount").GetInt32().Should().Be(0);
+        offerInbox.GetProperty("latestReceivedAtUtc").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task BuyerDashboard_custom_range_without_dates_returns_empty_dashboard_data()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        await CreatePublicLienOfferAsync(
+            "buyer-dashboard-custom-missing-dates",
+            lienNumber: "DASH-CUSTOM-MISSING-DATES-100",
+            buyerOrgId: buyerOrgId);
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var response = await buyerClient.GetAsync("/api/liens/selling/buyer/dashboard?range=custom");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        var summary = json.GetProperty("summary");
+        summary.GetProperty("totalLienPendingCount").GetInt32().Should().Be(0);
+        summary.GetProperty("totalPendingOfferCount").GetInt32().Should().Be(0);
+        summary.GetProperty("purchasedLienCount").GetInt32().Should().Be(0);
+        summary.GetProperty("trends").EnumerateObject().Should().BeEmpty();
+        json.GetProperty("pendingOffers").EnumerateArray().Should().BeEmpty();
+        json.GetProperty("pipelineStages").EnumerateArray().Should().BeEmpty();
+        json.GetProperty("providerPerformance").EnumerateArray().Should().BeEmpty();
+
+        var offerInbox = json.GetProperty("offerInbox");
+        offerInbox.GetProperty("pendingCount").GetInt32().Should().Be(0);
+        offerInbox.GetProperty("latestReceivedAtUtc").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
     public async Task BuyerDashboard_returns_top_five_provider_performance_rows_by_lien_count()
     {
         var buyerOrgId = Guid.CreateVersion7();
