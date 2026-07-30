@@ -1,6 +1,6 @@
-{
+module.exports = {
   "expo": {
-    "name": "LegalSynq",
+    "name": process.env.EXPO_PUBLIC_APP_ENV === 'production' ? "LegalSynq" : "LegalSynq QA",
     "slug": "legalsynq",
     "version": "3.0.0",
     "orientation": "portrait",
@@ -8,7 +8,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.legalsynq",
+      "bundleIdentifier": process.env.EXPO_PUBLIC_APP_ENV === 'production' ? "com.legalsynq" : "com.legalsynq.qa",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -18,7 +18,7 @@
         "foregroundImage": "./src/assets/images/adaptive-icon.png",
         "backgroundColor": "#0d1f35"
       },
-      "package": "com.legalsynq",
+      "package": process.env.EXPO_PUBLIC_APP_ENV === 'production' ? "com.legalsynq" : "com.legalsynq.qa",
       "permissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"
@@ -59,4 +59,4 @@
       "url": "https://u.expo.dev/e30e217d-14d9-4aea-ae3a-de4b51be604e"
     }
   }
-}
+};

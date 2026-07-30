@@ -4,7 +4,8 @@
   "private": true,
   "main": "index.js",
   "scripts": {
-    "start:qa": "EXPO_PUBLIC_API_URL=https://core-qa.legalsynq.net expo start",
+    "start:qa": "eas env:pull preview &&expo start",
+    "start:production": "eas env:pull production &&expo start",
     "start": "expo start",
     "scaffold:feature-module": "node scripts/scaffold-feature-module.mjs",
     "check:feature-modules": "node scripts/check-feature-modules.mjs",

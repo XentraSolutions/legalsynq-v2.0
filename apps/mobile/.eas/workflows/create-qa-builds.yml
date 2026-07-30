@@ -2,7 +2,7 @@ name: Build and Submit QA IOS App
 
 on:
   push:
-    branches: [main]
+    branches: [xenia]
 
 jobs:
   build_ios:
@@ -10,7 +10,7 @@ jobs:
     type: build
     params:
       platform: ios
-      profile: qa
+      profile: preview
 
   submit_ios_app:
     name: Submit QA Build to App Stores
@@ -21,7 +21,7 @@ jobs:
     params:
       platform: ios
       build_id: ${{ needs.build_ios.outputs.build_id }}
-      profile: qa
+      profile: preview
 
   notification_teams:
     name: Notify Microsoft Teams
