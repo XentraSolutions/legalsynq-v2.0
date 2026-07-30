@@ -3,8 +3,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronRight, PanelLeft } from "lucide-react";
+import { ChevronDown, ChevronRight, PanelLeft } from "lucide-react";
 import { useEffect, useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { PlatformSession } from "@/types";
 import { useSession } from "@/hooks/use-session";
 import { cn } from "@/lib/utils";
@@ -210,24 +216,51 @@ export function SynqLienFundingPortalShell({
               >
                 <i className="ri-notification-3-line text-[16px]" />
               </Link>
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fdf1eb] text-center text-[18px] font-medium leading-[1.6] text-[#a95024]">
-                {initials}
-              </div>
-              <div className="hidden min-w-0 flex-col items-start leading-[1.6] text-[#0a0a0a] sm:flex">
-                <p className="max-w-[220px] truncate text-[14px] font-bold">
-                  {orgName}
-                </p>
-                <p className="text-[12px] font-normal text-[#525252]">Funding Company</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleSignOut}
-                aria-label="Sign out"
-                title="Sign out"
-                className="hidden h-7 w-7 items-center justify-center rounded-[8px] text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a] sm:flex"
-              >
-                <i className="ri-logout-box-r-line text-[16px]" />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Open account menu"
+                    className="flex min-w-0 items-center gap-2 rounded-[8px] py-1 pl-1 pr-0 text-left transition-colors hover:bg-[#f5f5f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] sm:pr-1"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#fdf1eb] text-center text-[18px] font-medium leading-[1.6] text-[#a95024]">
+                      {initials}
+                    </span>
+                    <span className="hidden min-w-0 flex-col items-start leading-[1.6] text-[#0a0a0a] sm:flex">
+                      <span className="max-w-[220px] truncate text-[14px] font-bold">
+                        {orgName}
+                      </span>
+                      <span className="text-[12px] font-normal text-[#525252]">
+                        Funding Company
+                      </span>
+                    </span>
+                    <ChevronDown
+                      className="h-4 w-4 shrink-0 text-[#737373]"
+                      aria-hidden="true"
+                      strokeWidth={2}
+                    />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  sideOffset={10}
+                  className="w-[220px] rounded-[8px] border-[#e5e5e5] p-1 shadow-[0px_8px_24px_rgba(10,10,10,0.12)]"
+                >
+                  <DropdownMenuItem asChild className="h-10 gap-3 rounded-[8px] px-3 text-[14px] text-[#0a0a0a] focus:bg-[#f5f5f5]">
+                    <Link href="/funding/settings">
+                      <i className="ri-settings-3-line text-[16px] leading-none text-[#737373]" />
+                      <span>Account Settings</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={handleSignOut}
+                    className="h-10 gap-3 rounded-[8px] px-3 text-[14px] text-red-600 focus:bg-red-50 focus:text-red-600"
+                  >
+                    <i className="ri-logout-box-r-line text-[16px] leading-none" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </header>
@@ -283,6 +316,10 @@ function buildHeaderBreadcrumbs(pathname: string, currentLabel: string): HeaderB
       { href: "/funding/offered-liens", label: "Offered Liens" },
       { label: "Lien" },
     ];
+  }
+
+  if (pathname === "/funding/settings") {
+    return [{ label: "Account Settings" }];
   }
 
   return [{ label: currentLabel }];
