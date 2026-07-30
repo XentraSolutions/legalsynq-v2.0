@@ -24,7 +24,7 @@ export function SettingsScreen() {
   const { settings: dashboardSettings, setUseDummyData } = useDashboardSettings();
   const { settings: menuVisibility, setMenuGroupVisible, setMenuVisible } = useMenuSettings();
   const { mode: apiMode, setMode: setApiMode } = useApiMode();
-  const showLegacyApiSwitch = !ConfigService.isProduction();
+  const showNonProductionSettings = !ConfigService.isProduction();
 
   return (
     <View className="flex-1 bg-[#f7f7f8] dark:bg-[#050506]">
@@ -52,71 +52,73 @@ export function SettingsScreen() {
             </View>
           </Card>
         </View>
-        <View className="mx-5 mt-6">
-          <Text className="mb-3 font-jakarta-semibold text-[14px] leading-[20px] text-[#6f737d] dark:text-[#a1a1aa]">
-            Menu Visibility
-          </Text>
-          <Card>
-            <Text className="mb-4 font-jakarta-regular text-[12px] leading-[17px] text-[#8d9098] dark:text-[#8f929b]">
-              Choose which navigation items appear in the app menu.
+        {showNonProductionSettings ? (
+          <View className="mx-5 mt-6">
+            <Text className="mb-3 font-jakarta-semibold text-[14px] leading-[20px] text-[#6f737d] dark:text-[#a1a1aa]">
+              Menu Visibility
             </Text>
-            {MENU_VISIBILITY_HIERARCHY.map((item, index) => (
-              <View key={item.key}>
-                {index > 0 ? <Divider /> : null}
-                {'children' in item ? (
-                  <View className="py-1">
-                    <View className="flex-row items-center justify-between gap-4">
-                      <View className="flex-1">
-                        <Text className="font-jakarta-semibold text-[14px] leading-[20px] text-[#202228] dark:text-white">
-                          {item.label}
-                        </Text>
-                        <Text className="mt-0.5 font-jakarta-regular text-[11px] leading-[15px] text-[#8d9098] dark:text-[#8f929b]">
-                          {item.children.filter((child) => menuVisibility[child.key]).length} of{' '}
-                          {item.children.length} shown
-                        </Text>
+            <Card>
+              <Text className="mb-4 font-jakarta-regular text-[12px] leading-[17px] text-[#8d9098] dark:text-[#8f929b]">
+                Choose which navigation items appear in the app menu.
+              </Text>
+              {MENU_VISIBILITY_HIERARCHY.map((item, index) => (
+                <View key={item.key}>
+                  {index > 0 ? <Divider /> : null}
+                  {'children' in item ? (
+                    <View className="py-1">
+                      <View className="flex-row items-center justify-between gap-4">
+                        <View className="flex-1">
+                          <Text className="font-jakarta-semibold text-[14px] leading-[20px] text-[#202228] dark:text-white">
+                            {item.label}
+                          </Text>
+                          <Text className="mt-0.5 font-jakarta-regular text-[11px] leading-[15px] text-[#8d9098] dark:text-[#8f929b]">
+                            {item.children.filter((child) => menuVisibility[child.key]).length} of{' '}
+                            {item.children.length} shown
+                          </Text>
+                        </View>
+                        <Switch
+                          value={item.children.some((child) => menuVisibility[child.key])}
+                          onValueChange={(visible) =>
+                            setMenuGroupVisible(
+                              item.children.map((child) => child.key),
+                              visible
+                            )
+                          }
+                        />
                       </View>
+                      <View className="ml-3 mt-3 border-l border-[#dedfe3] pl-4 dark:border-[#2e3036]">
+                        {item.children.map((child, childIndex) => (
+                          <View key={child.key}>
+                            {childIndex > 0 ? <Divider /> : null}
+                            <View className="flex-row items-center justify-between gap-4 py-1">
+                              <Text className="flex-1 font-jakarta-medium text-[13px] leading-[18px] text-[#555964] dark:text-[#d8d9dd]">
+                                {child.label}
+                              </Text>
+                              <Switch
+                                value={menuVisibility[child.key]}
+                                onValueChange={(visible) => setMenuVisible(child.key, visible)}
+                              />
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  ) : (
+                    <View className="flex-row items-center justify-between gap-4 py-1">
+                      <Text className="flex-1 font-jakarta-semibold text-[14px] leading-[20px] text-[#202228] dark:text-white">
+                        {item.label}
+                      </Text>
                       <Switch
-                        value={item.children.some((child) => menuVisibility[child.key])}
-                        onValueChange={(visible) =>
-                          setMenuGroupVisible(
-                            item.children.map((child) => child.key),
-                            visible
-                          )
-                        }
+                        value={menuVisibility[item.key]}
+                        onValueChange={(visible) => setMenuVisible(item.key, visible)}
                       />
                     </View>
-                    <View className="ml-3 mt-3 border-l border-[#dedfe3] pl-4 dark:border-[#2e3036]">
-                      {item.children.map((child, childIndex) => (
-                        <View key={child.key}>
-                          {childIndex > 0 ? <Divider /> : null}
-                          <View className="flex-row items-center justify-between gap-4 py-1">
-                            <Text className="flex-1 font-jakarta-medium text-[13px] leading-[18px] text-[#555964] dark:text-[#d8d9dd]">
-                              {child.label}
-                            </Text>
-                            <Switch
-                              value={menuVisibility[child.key]}
-                              onValueChange={(visible) => setMenuVisible(child.key, visible)}
-                            />
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                ) : (
-                  <View className="flex-row items-center justify-between gap-4 py-1">
-                    <Text className="flex-1 font-jakarta-semibold text-[14px] leading-[20px] text-[#202228] dark:text-white">
-                      {item.label}
-                    </Text>
-                    <Switch
-                      value={menuVisibility[item.key]}
-                      onValueChange={(visible) => setMenuVisible(item.key, visible)}
-                    />
-                  </View>
-                )}
-              </View>
-            ))}
-          </Card>
-        </View>
+                  )}
+                </View>
+              ))}
+            </Card>
+          </View>
+        ) : null}
         <View className="mx-5 mt-6">
           <Text className="mb-3 font-jakarta-semibold text-[14px] leading-[20px] text-[#6f737d] dark:text-[#a1a1aa]">
             Security
@@ -142,25 +144,27 @@ export function SettingsScreen() {
             </Pressable>
           </Card>
         </View>
-        <View className="mx-5 mt-6">
-          <Text className="mb-3 font-jakarta-semibold text-[14px] leading-[20px] text-[#6f737d] dark:text-[#a1a1aa]">
-            Reports
-          </Text>
-          <Card>
-            <View className="flex-row items-center justify-between gap-4">
-              <View className="flex-1">
-                <Text className="font-jakarta-medium text-[14px] leading-[20px] text-[#202228] dark:text-white">
-                  Use Dummy Dashboard Data
-                </Text>
-                <Text className="mt-1 font-jakarta-regular text-[12px] leading-[17px] text-[#8d9098] dark:text-[#8f929b]">
-                  Show demo values for dashboard reports instead of API data.
-                </Text>
+        {showNonProductionSettings ? (
+          <View className="mx-5 mt-6">
+            <Text className="mb-3 font-jakarta-semibold text-[14px] leading-[20px] text-[#6f737d] dark:text-[#a1a1aa]">
+              Reports
+            </Text>
+            <Card>
+              <View className="flex-row items-center justify-between gap-4">
+                <View className="flex-1">
+                  <Text className="font-jakarta-medium text-[14px] leading-[20px] text-[#202228] dark:text-white">
+                    Use Dummy Dashboard Data
+                  </Text>
+                  <Text className="mt-1 font-jakarta-regular text-[12px] leading-[17px] text-[#8d9098] dark:text-[#8f929b]">
+                    Show demo values for dashboard reports instead of API data.
+                  </Text>
+                </View>
+                <Switch value={dashboardSettings.useDummyData} onValueChange={setUseDummyData} />
               </View>
-              <Switch value={dashboardSettings.useDummyData} onValueChange={setUseDummyData} />
-            </View>
-          </Card>
-        </View>
-        {showLegacyApiSwitch ? (
+            </Card>
+          </View>
+        ) : null}
+        {showNonProductionSettings ? (
           <View className="mx-5 mt-6">
             <Text className="mb-3 font-jakarta-semibold text-[14px] leading-[20px] text-[#6f737d] dark:text-[#a1a1aa]">
               Advanced
