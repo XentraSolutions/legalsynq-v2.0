@@ -7,51 +7,23 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "env": {
-        "EXPO_PUBLIC_APP_ENV": "development",
-        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
-        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core.legalsynq.com",
-        "EXPO_PUBLIC_LEGACY_API_KEY": "V2D6MPPWD7Z5NPCT",
-        "SENTRY_ALLOW_FAILURE": "true"
-      }
+      "environment": "development"
     },
     "preview": {
-      "distribution": "internal",
-      "env": {
-        "EXPO_PUBLIC_APP_ENV": "qa",
-        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
-        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core.legalsynq.com",
-        "EXPO_PUBLIC_LEGACY_API_KEY": "V2D6MPPWD7Z5NPCT",
-        "SENTRY_ALLOW_FAILURE": "true"
-      }
-    },
-    "qa": {
       "autoIncrement": true,
       "channel": "qa",
-      "env": {
-        "EXPO_PUBLIC_APP_ENV": "qa",
-        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
-        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core.legalsynq.com",
-        "EXPO_PUBLIC_LEGACY_API_KEY": "V2D6MPPWD7Z5NPCT",
-        "SENTRY_ALLOW_FAILURE": "true"
-      }
+      "environment": "preview"
     },
     "production": {
       "autoIncrement": true,
       "channel": "production",
-      "env": {
-        "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_API_URL": "https://core-qa.legalsynq.net",
-        "EXPO_PUBLIC_LEGACY_API_URL": "https://synqlien-core.legalsynq.com",
-        "EXPO_PUBLIC_LEGACY_API_KEY": "V2D6MPPWD7Z5NPCT",
-        "SENTRY_ALLOW_FAILURE": "true"
-      }
+      "environment": "production"
     }
   },
   "submit": {
-    "qa": {
+    "preview": {
       "ios": {
-        "ascAppId": "6783912563"
+        "ascAppId": "6796348504"
       }
     },
     "production": {
