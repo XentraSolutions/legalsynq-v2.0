@@ -88,6 +88,11 @@ const UploadDocumentComponent = forwardRef<
   );
 
   const cleanFile = async (file: File): Promise<File> => {
+    const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    if (extension !== ".csv") {
+      return file;
+    }
+
     const text = await file.text();
 
     const cleanedText = text

@@ -294,6 +294,10 @@ export default function PortfolioClient() {
             handlePageChange={handlePageChange}
             liens={liens?.items ?? []}
             onRowSelect={(id) => router.push(`portfolio/${id}`)}
+            onActionComplete={() => {
+              refetchLiens();
+              refetch();
+            }}
           />
         </Card>
 

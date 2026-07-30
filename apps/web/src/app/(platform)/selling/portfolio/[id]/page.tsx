@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useSession } from "@/hooks/use-session";
 import { ProductRole } from "@/types";
-import { lienApi } from "@/lib/lien-api";
 import { ApiError } from "@/lib/api-client";
-import { LienDetailPanel } from "@/components/lien/lien-detail-panel";
-import type { LienDetail, LienDetailsResult } from "@/types/lien-selling";
+import type { LienDetailsResult } from "@/types/lien-selling";
 import { liensService } from "@/lib/selling";
 import { PortfolioDetailPanel } from "@/components/selling/portfolio-details";
 
@@ -34,6 +32,35 @@ export default function PortfolioLienDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await liensService.getLienById(params?.id ?? "");
+      setLien(data);
+      setError(null);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.isUnauthorized) {
+          router.push("/login");
+          return;
+        }
+        if (err.isNotFound) {
+          setError("Lien not found in your portfolio.");
+          return;
+        }
+        if (err.isForbidden) {
+          setError("You do not have access to this lien.");
+          return;
+        }
+        setError(err.message);
+      } else {
+        setError("Failed to load lien.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [params?.id, router]);
+
   useEffect(() => {
     if (sessionLoading) return;
     if (!session) {
@@ -45,36 +72,8 @@ export default function PortfolioLienDetailPage() {
       return;
     }
 
-    async function load() {
-      setLoading(true);
-      try {
-        const data = await liensService.getLienById(params?.id ?? "");
-        setLien(data);
-      } catch (err) {
-        if (err instanceof ApiError) {
-          if (err.isUnauthorized) {
-            router.push("/login");
-            return;
-          }
-          if (err.isNotFound) {
-            setError("Lien not found in your portfolio.");
-            return;
-          }
-          if (err.isForbidden) {
-            setError("You do not have access to this lien.");
-            return;
-          }
-          setError(err.message);
-        } else {
-          setError("Failed to load lien.");
-        }
-      } finally {
-        setLoading(false);
-      }
-    }
-
     load();
-  }, [params?.id ?? "", session, sessionLoading, isBuyer, isHolder, router]);
+  }, [session, sessionLoading, isBuyer, isHolder, router, load]);
 
   if (sessionLoading || loading) {
     return (
@@ -116,7 +115,7 @@ export default function PortfolioLienDetailPage() {
         </Link>
       </nav>
 
-      <PortfolioDetailPanel lien={lien} />
+      <PortfolioDetailPanel lien={lien} onRefresh={load} />
     </div>
   );
 }

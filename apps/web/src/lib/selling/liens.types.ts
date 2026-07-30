@@ -166,7 +166,6 @@ export interface LiensQuery {
 // price — that's the only "amount" shape this view needs. Add a field here
 // only once something actually reads it; don't mirror the DTO 1:1.
 export interface LienListItem {
-  id: string;
   lienId: string;
   lienNumber: string;
   fundingCompany: string;
@@ -175,6 +174,8 @@ export interface LienListItem {
   askAmount: string;
   highestBid: string;
   status: string;
+  sellerStatus: string;
+  availableActions: string[];
 }
 
 export interface AgingListItem {
@@ -237,4 +238,70 @@ export interface PaginationMeta {
   pageSize: number;
   totalCount: number;
   totalPages: number;
+}
+
+// Mirrors Liens.Application/DTOs/SellingV2Dtos.cs on origin/sellingV2 — the
+// backend actually deployed behind /api/liens/selling (this branch's local
+// apps/services/liens checkout doesn't have it; see the plan doc).
+export interface SaveSellingLienInformationRequest {
+  sellerStatus: string;
+  initialServiceDate?: string;
+  endServiceDate?: string;
+  listingVisibility?: string;
+  notes?: string;
+}
+
+export interface SaveSellingCaseInformationRequest {
+  fundingCompanyId?: string;
+  fundingCompanyContactId?: string;
+  handlingLawFirmId?: string;
+  caseManagerId?: string;
+  caseId?: string;
+  createCaseIfMissing?: boolean;
+}
+
+export interface SellingMedicalPricingRowRequest {
+  medicalCode: string;
+  description?: string;
+  serviceDate?: string;
+  billingAmount: number;
+  medicareCost: number;
+  targetSaleAmount: number;
+}
+
+export interface SaveSellingMedicalPricingRequest {
+  askAmount?: number;
+  billingAmount?: number;
+  rows: SellingMedicalPricingRowRequest[];
+}
+
+export interface SellingDocumentReferenceRequest {
+  documentId: string;
+  documentType: string;
+  displayName?: string;
+}
+
+export interface SaveSellingDocumentsRequest {
+  documents: SellingDocumentReferenceRequest[];
+}
+
+export interface PrepareSellingLienRequest {
+  buyerFundingCompanyId: string;
+  buyerContactId: string;
+  askAmount?: number;
+  listingVisibility?: string;
+  messageToBuyer?: string;
+}
+
+export interface ConfirmSellingLienSaleRequest {
+  confirmationAccepted: boolean;
+  sendBuyerNotification: boolean;
+}
+
+export interface WithdrawSellingLienRequest {
+  reason?: string;
+}
+
+export interface ArchiveSellingLienRequest {
+  reason?: string;
 }

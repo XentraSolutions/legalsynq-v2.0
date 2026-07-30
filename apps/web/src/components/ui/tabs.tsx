@@ -5,6 +5,7 @@ import { useState } from "react";
 type TabType = {
   label: string;
   key: string;
+  badge?: number;
 };
 export interface TabsProps {
   tabs: TabType[];
@@ -36,6 +37,7 @@ export function Tabs({
             setActiveTab(tab.key);
             onChange?.(tab.key);
           }}
+          badge={tab.badge}
         >
           {tab.label}
         </TabButton>
@@ -49,11 +51,13 @@ function TabButton({
   bordered,
   onClick,
   children,
+  badge,
 }: {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
   bordered: boolean;
+  badge?: number;
 }) {
   return (
     <button
@@ -70,6 +74,11 @@ function TabButton({
       aria-current={active && bordered ? "page" : undefined}
     >
       {children}
+      {!!badge && (
+        <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
+          {badge}
+        </span>
+      )}
     </button>
   );
 }

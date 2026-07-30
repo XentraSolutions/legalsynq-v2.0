@@ -1,12 +1,10 @@
-import {
-  LienCaseDetail,
-  LienDetail,
-  LienFundingCompanyDetail,
-  LienStatusHistoryItem,
-} from "@/types/lien-selling";
+import { LienCaseDetail, LienFundingCompanyDetail } from "@/types/lien-selling";
+import { PanelShell } from "./panel-shell";
 
 interface LienDetailPanelProps {
-  lien: LienFundingCompanyDetail & LienCaseDetail;
+  fundingCompany: LienFundingCompanyDetail | null;
+  caseInformation: LienCaseDetail | null;
+  onEdit?: () => void;
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -20,36 +18,22 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="border-t border-gray-100 pt-5 mt-5 first:border-0 first:pt-0 first:mt-0">
-      <h3 className="text-md font-semibold mb-4">{title}</h3>
-      {children}
-    </section>
-  );
-}
 export function FundingCompanyAndCaseInformationPanel({
-  lien,
+  fundingCompany,
+  caseInformation,
+  onEdit,
 }: LienDetailPanelProps) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="px-6 py-5">
-        <Section title="Funding Company & Case Information">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
-            <Field label="Funding Company" value={lien.fundingCompany} />
-            <Field label="Handling Law Firm" value={lien.lawfirm} />
-            <Field label="Contact Person" value={lien.contactPerson} />
-            <Field label="Case Manager" value={lien.caseManager} />
-            <Field label="Email Address" value={lien.email} />
-          </div>
-        </Section>
+    <PanelShell title="Funding Company & Case Information" onEdit={onEdit}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
+        <Field label="Funding Company" value={fundingCompany?.name} />
+        <Field label="Handling Law Firm" value={caseInformation?.lawFirm} />
+        <Field label="Contact Person" value={fundingCompany?.contact?.name} />
+        <Field
+          label="Case Manager"
+          value={caseInformation?.caseManagerName}
+        />
       </div>
-    </div>
+    </PanelShell>
   );
 }

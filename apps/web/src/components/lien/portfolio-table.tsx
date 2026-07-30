@@ -15,6 +15,7 @@ import {
 } from "@/app/(platform)/selling/liens/components/liens-filter";
 import { LienListItem } from "@/lib/selling";
 import { useRouter } from "next/navigation";
+import { LienRowActionsMenu } from "@/components/selling/lien-row-actions-menu";
 
 interface PortfolioTableProps {
   liens: LienListItem[];
@@ -23,6 +24,7 @@ interface PortfolioTableProps {
   pagination: PaginationMeta;
   handlePageChange: (e: any) => void;
   onRowSelect: (id: string) => void;
+  onActionComplete?: () => void;
 }
 
 function formatCurrency(amount?: number): string {
@@ -41,6 +43,7 @@ export function PortfolioTable({
   handlePageChange,
   pagination,
   onRowSelect,
+  onActionComplete,
 }: PortfolioTableProps) {
   const router = useRouter();
   const columns = useMemo<ColumnDef<LienListItem, any>[]>(
@@ -102,8 +105,22 @@ export function PortfolioTable({
         header: "Lien Status",
         cell: ({ row }) => <StatusBadge status={row.original.status} />,
       },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex justify-end">
+            <LienRowActionsMenu
+              lienId={row.original.lienId}
+              availableActions={row.original.availableActions ?? []}
+              onActionComplete={() => onActionComplete?.()}
+            />
+          </div>
+        ),
+      },
     ],
-    [],
+    [onActionComplete],
   );
 
   return (

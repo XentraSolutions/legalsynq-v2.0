@@ -1,8 +1,10 @@
-import { LienDetail, LienStatusHistoryItem } from "@/types/lien-selling";
+import { LienDetail } from "@/types/lien-selling";
 import { LienStatusBadge } from "../../lien/lien-status-badge";
+import { PanelShell } from "./panel-shell";
 
 interface LienDetailPanelProps {
   lien: LienDetail;
+  onEdit?: () => void;
 }
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -16,38 +18,23 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+export function LienInformationPanel({ lien, onEdit }: LienDetailPanelProps) {
   return (
-    <section className="border-t border-gray-100 pt-5 mt-5 first:border-0 first:pt-0 first:mt-0">
-      <h3 className="text-md font-semibold mb-4">{title}</h3>
-      {children}
-    </section>
-  );
-}
-export function LienInformationPanel({ lien }: LienDetailPanelProps) {
-  return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="px-6 py-5">
-        <Section title="Lien Information">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
-            <div>
-              <dt className="text-[11px] font-medium text-gray-400 leading-tight">
-                Current Status
-              </dt>
-              <dd className="mt-1">
-                <LienStatusBadge status={lien.status} />
-              </dd>
-            </div>
-            <Field label="Listing Visibility" value={lien.listingVisibility} />
-          </div>
-        </Section>
+    <PanelShell title="Lien Information" onEdit={onEdit}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
+        <div>
+          <dt className="text-[11px] font-medium text-gray-400 leading-tight">
+            Current Status
+          </dt>
+          <dd className="mt-1">
+            <LienStatusBadge status={lien.status} />
+          </dd>
+        </div>
+        <Field label="Listing Visibility" value={lien.listingVisibility} />
+        <Field label="Initial Service Date" value={lien.initialServiceDate} />
+        <Field label="End Service Date" value={lien.endServiceDate} />
+        <Field label="Lien Notes" value={lien.notes} />
       </div>
-    </div>
+    </PanelShell>
   );
 }

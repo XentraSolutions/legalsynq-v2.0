@@ -465,7 +465,7 @@ export default function LienDashboardPage() {
           <BaseTable
             data={liens}
             columns={topLiensColumns}
-            getRowId={(l) => l.id}
+            getRowId={(l) => l.lienId}
             enableSorting={false}
             emptyMessage="No liens match your filters."
             className="bg-white border-none w-full p-0"
@@ -476,7 +476,7 @@ export default function LienDashboardPage() {
           <BaseTable
             data={liens}
             columns={topLiensColumns}
-            getRowId={(l) => l.id}
+            getRowId={(l) => l.lienId}
             enableSorting={false}
             emptyMessage="No liens match your filters."
             className="bg-white border-none w-full p-0"
@@ -489,7 +489,7 @@ export default function LienDashboardPage() {
           <BaseTable
             data={liens}
             columns={agingColumns}
-            getRowId={(l) => l.id}
+            getRowId={(l) => l.lienId}
             enableSorting={false}
             emptyMessage="No liens match your filters."
             className="bg-white border-none w-full p-0"

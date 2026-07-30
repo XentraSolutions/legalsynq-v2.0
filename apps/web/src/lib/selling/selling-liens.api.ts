@@ -12,12 +12,26 @@ import type {
   ReassignContactPersonRequestDto,
   ReassignFundingCompanyRequestDto,
   ReassignMedicalProviderRequestDto,
+  SaveSellingLienInformationRequest,
+  SaveSellingCaseInformationRequest,
+  SaveSellingMedicalPricingRequest,
+  SaveSellingDocumentsRequest,
+  PrepareSellingLienRequest,
+  ConfirmSellingLienSaleRequest,
+  WithdrawSellingLienRequest,
+  ArchiveSellingLienRequest,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import { DraftLienParams, LienInfoParams } from "../liens/liens.types";
 import { LienDetailsResult } from "@/types/lien-selling";
 
 const BASE = "/selling/api/liens/selling";
+
+// prepare-sale / confirm-sale / withdraw-sale / archive all require an
+// Idempotency-Key header per SellingV2Endpoints.cs (SellingIdempotency.TryGetKey).
+function idempotencyHeaders(): Record<string, string> {
+  return { "Idempotency-Key": crypto.randomUUID() };
+}
 
 // Arrays are sent as a single comma-joined value (e.g. `lawFirmIds=a,b`) —
 // same convention the cases v3 endpoint uses for its multi-select filters
@@ -80,5 +94,53 @@ export const liensApi = {
 
   createLienDraft(request: DraftLienParams) {
     return apiClient.post<any>(`${BASE}/drafts`, request);
+  },
+
+  saveLienInformation(lienId: string, request: SaveSellingLienInformationRequest) {
+    return apiClient.put<any>(`${BASE}/liens/${lienId}/lien-information`, request);
+  },
+
+  saveCaseInformation(lienId: string, request: SaveSellingCaseInformationRequest) {
+    return apiClient.put<any>(`${BASE}/liens/${lienId}/case-information`, request);
+  },
+
+  saveMedicalPricing(lienId: string, request: SaveSellingMedicalPricingRequest) {
+    return apiClient.put<any>(`${BASE}/liens/${lienId}/medical-pricing`, request);
+  },
+
+  saveDocuments(lienId: string, request: SaveSellingDocumentsRequest) {
+    return apiClient.put<any>(`${BASE}/liens/${lienId}/documents`, request);
+  },
+
+  prepareSale(lienId: string, request: PrepareSellingLienRequest) {
+    return apiClient.post<any>(
+      `${BASE}/liens/${lienId}/prepare-sale`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  confirmSale(lienId: string, request: ConfirmSellingLienSaleRequest) {
+    return apiClient.post<any>(
+      `${BASE}/liens/${lienId}/confirm-sale`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  withdrawSale(lienId: string, request: WithdrawSellingLienRequest = {}) {
+    return apiClient.post<any>(
+      `${BASE}/liens/${lienId}/withdraw-sale`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  archiveLien(lienId: string, request: ArchiveSellingLienRequest = {}) {
+    return apiClient.post<any>(
+      `${BASE}/liens/${lienId}/archive`,
+      request,
+      idempotencyHeaders(),
+    );
   },
 };
