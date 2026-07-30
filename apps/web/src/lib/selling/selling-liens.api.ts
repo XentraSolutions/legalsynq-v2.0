@@ -20,6 +20,7 @@ import type {
   ConfirmSellingLienSaleRequest,
   WithdrawSellingLienRequest,
   ArchiveSellingLienRequest,
+  SubmitSellingLienRequest,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import { DraftLienParams, LienInfoParams } from "../liens/liens.types";
@@ -139,6 +140,14 @@ export const liensApi = {
   archiveLien(lienId: string, request: ArchiveSellingLienRequest = {}) {
     return apiClient.post<any>(
       `${BASE}/liens/${lienId}/archive`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  submitLien(lienId: string, request: SubmitSellingLienRequest) {
+    return apiClient.post<any>(
+      `${BASE}/liens/${lienId}/submit`,
       request,
       idempotencyHeaders(),
     );

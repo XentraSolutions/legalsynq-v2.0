@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import Field from "../../field";
 import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
+import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
 
 export interface MedicalFacilityProviderInfoProps {
   caseId?: string;
@@ -84,8 +85,8 @@ export default function MedicalFacilityProviderInfo(
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Facility Name<span className="text-red-500 ml-0.5">*</span>
             </label>
-            <ContactEntitySelect
-              contactType="MedicalFacility"
+            <SellingEntitySelect
+              entityType="Facility"
               value={form.facilityId}
               onChange={(v, option) =>
                 updateForm({
@@ -100,6 +101,7 @@ export default function MedicalFacilityProviderInfo(
               searchPlaceholder="Search facilities..."
               allowCreate
               createLabel="Add New Medical Facility"
+              createContactType="MedicalFacility"
             />
           </div>
 

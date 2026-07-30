@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
+import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
 import { useSessionContext } from "@/providers/session-provider";
 import { BaseSelectOption } from "@/components/ui/base-select";
 import Field from "@/components/lien/field";
@@ -87,8 +87,8 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Funding Company
               </label>
-              <ContactEntitySelect
-                contactType="FundingCompany"
+              <SellingEntitySelect
+                entityType="FundingCompany"
                 value={form.fundingCompanyId}
                 onChange={(v, option) =>
                   setForm({
@@ -101,6 +101,7 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
                 searchPlaceholder="Search funding companies..."
                 allowCreate
                 createLabel="Add Funding Company"
+                createContactType="FundingCompany"
               />
             </div>
 
@@ -108,12 +109,11 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Select Contact Person
               </label>
-              <ContactEntitySelect
-                contactType="FundingCompany"
-                contactSubtype={FUNDING_CONTACT_SUBTYPE}
-                facilityId={form.fundingCompanyId}
+              <SellingEntitySelect
+                entityType="FundingCompanyContact"
+                fundingCompanyId={form.fundingCompanyId}
                 requireParent
-                parentHint="Select a facility first"
+                parentHint="Select a funding company first"
                 value={form.facilityContactId}
                 onChange={(v, option) =>
                   setForm({
@@ -126,6 +126,8 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
                 searchPlaceholder="Search contacts..."
                 allowCreate
                 createLabel="Add New Contact Person"
+                createContactType="FundingCompany"
+                createContactSubtype={FUNDING_CONTACT_SUBTYPE}
               />
             </div>
           </div>
@@ -145,8 +147,8 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Handling Law Firm<span className="text-red-500 ml-0.5">*</span>
             </label>
-            <ContactEntitySelect
-              contactType="LawFirm"
+            <SellingEntitySelect
+              entityType="LawFirm"
               value={form.lawfirmId}
               onChange={(v) => {
                 setForm((prev: any) => ({
@@ -159,15 +161,15 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
               searchPlaceholder="Search law firms..."
               allowCreate
               createLabel="Add New Law Firm"
+              createContactType="LawFirm"
             />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Case Manager
             </label>
-            <ContactEntitySelect
-              contactType="LawFirm"
-              contactSubtype={caseManagerRoleCode}
+            <SellingEntitySelect
+              entityType="CaseManager"
               lawFirmId={form.lawfirmId}
               requireParent
               parentHint="Select a law firm first"
@@ -177,6 +179,8 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
               searchPlaceholder="Search case managers..."
               allowCreate
               createLabel="Add Case Manager"
+              createContactType="LawFirm"
+              createContactSubtype={caseManagerRoleCode}
             />
           </div>
         </div>

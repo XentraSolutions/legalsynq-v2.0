@@ -37,6 +37,7 @@ export function LienRowActionsMenu({
     "withdraw-sale" | "archive" | null
   >(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [keepLoading, setKeepLoading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,6 +66,23 @@ export function LienRowActionsMenu({
     if (action === "withdraw-sale" || action === "archive") {
       setConfirmAction(action);
       return;
+    }
+  };
+
+  const keepAsInternalAsset = async () => {
+    setKeepLoading(true);
+    try {
+      await liensService.submitLien(lienId, { targetSellerStatus: "Internal" });
+      showToast("Lien kept as internal asset.", "success");
+      setShowDecisionModal(false);
+      onActionComplete();
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Action failed",
+        "error",
+      );
+    } finally {
+      setKeepLoading(false);
     }
   };
 
@@ -137,17 +155,19 @@ export function LienRowActionsMenu({
         footer={
           <>
             <button
-              onClick={() => setShowDecisionModal(false)}
-              className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+              onClick={keepAsInternalAsset}
+              disabled={keepLoading}
+              className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
             >
-              Keep
+              {keepLoading ? "Keeping..." : "Keep"}
             </button>
             <button
               onClick={() => {
                 setShowDecisionModal(false);
                 router.push(`/selling/portfolio/${lienId}/sell`);
               }}
-              className="text-sm px-4 py-2 bg-[#EE7132] hover:bg-[#EE7132]/90 text-white rounded-lg"
+              disabled={keepLoading}
+              className="text-sm px-4 py-2 bg-[#EE7132] hover:bg-[#EE7132]/90 text-white rounded-lg disabled:opacity-50"
             >
               Sell
             </button>

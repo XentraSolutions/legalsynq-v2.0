@@ -35,4 +35,15 @@ export const sellingLookupsApi = {
   documentTypes() {
     return apiClient.get<{ items: string[] }>(`${BASE}/document-types`);
   },
+  facilities() {
+    return apiClient.get<{ items: SellingLookupItem[] }>(`${BASE}/facilities`);
+  },
+  lawFirms() {
+    return apiClient.get<{ items: SellingLookupItem[] }>(`${BASE}/law-firms`);
+  },
+  caseManagers(lawFirmId: string) {
+    return apiClient.get<{ items: SellingLookupItem[] }>(
+      `${BASE}/case-managers?lawFirmId=${encodeURIComponent(lawFirmId)}`,
+    );
+  },
 };

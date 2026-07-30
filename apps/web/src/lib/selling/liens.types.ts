@@ -305,3 +305,7 @@ export interface WithdrawSellingLienRequest {
 export interface ArchiveSellingLienRequest {
   reason?: string;
 }
+
+export interface SubmitSellingLienRequest {
+  targetSellerStatus: string;
+}

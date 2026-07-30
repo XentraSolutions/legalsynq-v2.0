@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FormModal } from "@/components/lien/modal";
-import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
+import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
 import { contactsService } from "@/lib/contacts";
 import { liensService } from "@/lib/selling";
 import { useToast } from "@/lib/toast-context";
@@ -80,8 +80,8 @@ export function EditCaseInformationModal({
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Funding Company
           </label>
-          <ContactEntitySelect
-            contactType="FundingCompany"
+          <SellingEntitySelect
+            entityType="FundingCompany"
             value={fundingCompanyId}
             onChange={(v) => {
               setFundingCompanyId(v);
@@ -91,16 +91,16 @@ export function EditCaseInformationModal({
             searchPlaceholder="Search funding companies..."
             allowCreate
             createLabel="Add Funding Company"
+            createContactType="FundingCompany"
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Contact Person
           </label>
-          <ContactEntitySelect
-            contactType="FundingCompany"
-            contactSubtype={FUNDING_CONTACT_SUBTYPE}
-            facilityId={fundingCompanyId}
+          <SellingEntitySelect
+            entityType="FundingCompanyContact"
+            fundingCompanyId={fundingCompanyId}
             requireParent
             parentHint="Select a funding company first"
             value={fundingCompanyContactId}
@@ -109,14 +109,16 @@ export function EditCaseInformationModal({
             searchPlaceholder="Search contacts..."
             allowCreate
             createLabel="Add New Contact Person"
+            createContactType="FundingCompany"
+            createContactSubtype={FUNDING_CONTACT_SUBTYPE}
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Handling Law Firm
           </label>
-          <ContactEntitySelect
-            contactType="LawFirm"
+          <SellingEntitySelect
+            entityType="LawFirm"
             value={lawFirmId}
             onChange={(v) => {
               setLawFirmId(v);
@@ -126,15 +128,15 @@ export function EditCaseInformationModal({
             searchPlaceholder="Search law firms..."
             allowCreate
             createLabel="Add New Law Firm"
+            createContactType="LawFirm"
           />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Case Manager
           </label>
-          <ContactEntitySelect
-            contactType="LawFirm"
-            contactSubtype={caseManagerRoleCode}
+          <SellingEntitySelect
+            entityType="CaseManager"
             lawFirmId={lawFirmId}
             requireParent
             parentHint="Select a law firm first"
@@ -144,6 +146,8 @@ export function EditCaseInformationModal({
             searchPlaceholder="Search case managers..."
             allowCreate
             createLabel="Add Case Manager"
+            createContactType="LawFirm"
+            createContactSubtype={caseManagerRoleCode}
           />
         </div>
       </div>

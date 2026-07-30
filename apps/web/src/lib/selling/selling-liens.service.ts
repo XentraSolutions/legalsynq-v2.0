@@ -4,7 +4,6 @@ import {
   type SellingLookupItem,
   type SellingMedicalCodeLookupItem,
 } from "./lookup.api";
-import { lookupService } from "../lookup";
 import { mapOfferToItem, mapPagination } from "./liens.mapper";
 import type {
   LiensQuery,
@@ -24,6 +23,7 @@ import type {
   ConfirmSellingLienSaleRequest,
   WithdrawSellingLienRequest,
   ArchiveSellingLienRequest,
+  SubmitSellingLienRequest,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import { DraftLienParams, LienInfoParams } from "../liens/liens.types";
@@ -162,6 +162,14 @@ export const liensService = {
     return data;
   },
 
+  async submitLien(
+    lienId: string,
+    request: SubmitSellingLienRequest,
+  ): Promise<any> {
+    const { data } = await liensApi.submitLien(lienId, request);
+    return data;
+  },
+
   async getFundingCompanies(): Promise<SellingLookupItem[]> {
     const { data } = await sellingLookupsApi.fundingCompanies();
     return data.items;
@@ -178,26 +186,22 @@ export const liensService = {
   async getMedicalCodes(
     search: string,
   ): Promise<SellingMedicalCodeLookupItem[]> {
-    // TODO: swap back once /selling/api/liens/selling/lookups/medical-codes
-    // exists on the backend (see sellingLookupsApi.medicalCodes — currently
-    // only a stub, route isn't implemented). Until then, reuse the lien
-    // module's procedure-code lookup (/lien/lookup/medical/procedure/codes),
-    // which already returns { code, description } and is used for the same
-    // purpose by MedicalCodesDescription (add-medical-lien flow). It has no
-    // `search` param, so filter client-side.
-    // const { data } = await sellingLookupsApi.medicalCodes(search);
-    // return data.items;
-    const { data } = await lookupService.getMedicalProcedureCodes();
-    const query = search.trim().toLowerCase();
-    const items = data.map((item) => ({
-      code: item.code,
-      description: item.description,
-    }));
-    if (!query) return items;
-    return items.filter(
-      (item) =>
-        item.code.toLowerCase().includes(query) ||
-        item.description.toLowerCase().includes(query),
-    );
+    const { data } = await sellingLookupsApi.medicalCodes(search);
+    return data.items;
+  },
+
+  async getFacilities(): Promise<SellingLookupItem[]> {
+    const { data } = await sellingLookupsApi.facilities();
+    return data.items;
+  },
+
+  async getLawFirms(): Promise<SellingLookupItem[]> {
+    const { data } = await sellingLookupsApi.lawFirms();
+    return data.items;
+  },
+
+  async getCaseManagers(lawFirmId: string): Promise<SellingLookupItem[]> {
+    const { data } = await sellingLookupsApi.caseManagers(lawFirmId);
+    return data.items;
   },
 };
