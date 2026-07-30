@@ -31,6 +31,10 @@ export const ConfigService = {
     return 'development';
   },
 
+  isProduction(): boolean {
+    return ConfigService.getEnvironment() === 'production';
+  },
+
   getFeatureFlagDefaults(): FeatureFlags {
     return DEFAULT_FEATURE_FLAGS;
   },

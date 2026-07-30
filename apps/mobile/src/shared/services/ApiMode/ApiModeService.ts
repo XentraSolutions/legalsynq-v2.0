@@ -3,6 +3,7 @@ import { getDefaultStore } from 'jotai';
 import { API_MODE_STORAGE_KEY, DEFAULT_API_MODE, type ApiMode } from '@/shared/constants/apiMode';
 import { queryClient } from '@/shared/providers/QueryProvider';
 import { AuthenticationService } from '@/shared/services/Authentication';
+import { ConfigService } from '@/shared/services/Config';
 import { LegacyPsaService } from '@/shared/services/LegacyPsa';
 import { StorageService } from '@/shared/services/Storage';
 import { apiModeAtom } from '@/shared/state/atoms/apiModeAtom';
@@ -11,6 +12,10 @@ import { toastAtom } from '@/shared/state/atoms/toastAtom';
 const store = getDefaultStore();
 
 function normalizeMode(value: string | null): ApiMode {
+  if (ConfigService.isProduction()) {
+    return 'current';
+  }
+
   return value === 'legacy' ? 'legacy' : DEFAULT_API_MODE;
 }
 
@@ -25,10 +30,11 @@ export const ApiModeService = {
   },
 
   async setMode(mode: ApiMode): Promise<void> {
-    await StorageService.setItem(API_MODE_STORAGE_KEY, mode);
+    await StorageService.setItem(API_MODE_STORAGE_KEY, normalizeMode(mode));
   },
 
   async switchMode(nextMode: ApiMode): Promise<void> {
+    nextMode = normalizeMode(nextMode);
     const currentMode = store.get(apiModeAtom);
     if (currentMode === nextMode) {
       return;

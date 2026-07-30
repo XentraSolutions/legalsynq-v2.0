@@ -12,6 +12,7 @@ import { useApiMode } from '@/shared/hooks/useApiMode';
 import { useDashboardSettings } from '@/shared/hooks/useDashboardSettings';
 import { useMenuSettings } from '@/shared/hooks/useMenuSettings';
 import { MENU_VISIBILITY_HIERARCHY } from '@/shared/constants/menuSettings';
+import { ConfigService } from '@/shared/services/Config';
 import { featureFlagsAtom } from '@/shared/state/atoms/featureFlagsAtom';
 import { themeAtom } from '@/shared/state/atoms/themeAtom';
 import type { ThemePreference } from '@/shared/types/common';
@@ -23,6 +24,7 @@ export function SettingsScreen() {
   const { settings: dashboardSettings, setUseDummyData } = useDashboardSettings();
   const { settings: menuVisibility, setMenuGroupVisible, setMenuVisible } = useMenuSettings();
   const { mode: apiMode, setMode: setApiMode } = useApiMode();
+  const showLegacyApiSwitch = !ConfigService.isProduction();
 
   return (
     <View className="flex-1 bg-[#f7f7f8] dark:bg-[#050506]">
@@ -158,27 +160,30 @@ export function SettingsScreen() {
             </View>
           </Card>
         </View>
-        <View className="mx-5 mt-6">
-          <Text className="mb-3 font-jakarta-semibold text-[14px] leading-[20px] text-[#6f737d] dark:text-[#a1a1aa]">
-            Advanced
-          </Text>
-          <Card>
-            <View className="flex-row items-center justify-between gap-4">
-              <View className="flex-1">
-                <Text className="font-jakarta-medium text-[14px] leading-[20px] text-[#202228] dark:text-white">
-                  Legacy API Mode
-                </Text>
-                <Text className="mt-1 font-jakarta-regular text-[12px] leading-[17px] text-[#8d9098] dark:text-[#8f929b]">
-                  Connect to the legacy backend instead of the current one. Switching signs you out.
-                </Text>
+        {showLegacyApiSwitch ? (
+          <View className="mx-5 mt-6">
+            <Text className="mb-3 font-jakarta-semibold text-[14px] leading-[20px] text-[#6f737d] dark:text-[#a1a1aa]">
+              Advanced
+            </Text>
+            <Card>
+              <View className="flex-row items-center justify-between gap-4">
+                <View className="flex-1">
+                  <Text className="font-jakarta-medium text-[14px] leading-[20px] text-[#202228] dark:text-white">
+                    Legacy API Mode
+                  </Text>
+                  <Text className="mt-1 font-jakarta-regular text-[12px] leading-[17px] text-[#8d9098] dark:text-[#8f929b]">
+                    Connect to the legacy backend instead of the current one. Switching signs you
+                    out.
+                  </Text>
+                </View>
+                <Switch
+                  value={apiMode === 'legacy'}
+                  onValueChange={(value) => void setApiMode(value ? 'legacy' : 'current')}
+                />
               </View>
-              <Switch
-                value={apiMode === 'legacy'}
-                onValueChange={(value) => void setApiMode(value ? 'legacy' : 'current')}
-              />
-            </View>
-          </Card>
-        </View>
+            </Card>
+          </View>
+        ) : null}
         <View className="mx-5 mt-6">
           <Text className="mb-3 font-jakarta-semibold text-[14px] leading-[20px] text-[#6f737d] dark:text-[#a1a1aa]">
             About
