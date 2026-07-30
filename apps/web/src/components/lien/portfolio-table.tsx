@@ -97,16 +97,6 @@ export function PortfolioTable({
         ),
       },
       {
-        id: "highestBid",
-        header: "Highest Bid",
-        accessorKey: "highestBid",
-        cell: ({ row }) => (
-          <span className="text-sm text-gray-700">
-            {row.original.highestBid || "—"}
-          </span>
-        ),
-      },
-      {
         id: "status",
         accessorKey: "status",
         header: "Lien Status",
