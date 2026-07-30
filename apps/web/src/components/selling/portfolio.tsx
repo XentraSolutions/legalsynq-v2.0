@@ -167,7 +167,7 @@ export default function PortfolioClient() {
   return (
     <>
       <div className="space-y-4">
-        <div className="flex justify-between">
+        <div className="flex justify-between items-start">
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Portfolio</h1>
             <p className="text-md text-[#737373]">
@@ -178,25 +178,25 @@ export default function PortfolioClient() {
 
           <div className="flex items-end">
             <div className="relative">
-              {/* Dropdown Button */}
               <button
                 onClick={() => {
                   setActionOpen(!actionOpen);
                 }}
-                className="flex items-center justify-between gap-1.5 text-sm font-medium text-center text-white bg-[#EE7132] hover:bg-[#EE7132]/90 rounded-lg px-2 py-2 w-35 transition-colors"
+                className="flex items-center gap-1.5 text-sm font-medium text-white bg-[#EE7132] hover:bg-[#EE7132]/90 rounded-lg px-4 py-2 transition-colors"
               >
                 Add New Lien
                 <i className="ri-arrow-down-s-line text-base" />
               </button>
-              {/* Dropdown Menu */}
               {actionOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                <div
+                  className={`absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden divide-y divide-gray-100`}
+                >
                   <button
                     onClick={() => {
                       router.push("add-liens");
                       setActionOpen(false);
                     }}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                   >
                     <i className="ri-file-line mr-2"></i>
                     Add Single Lien
@@ -206,12 +206,18 @@ export default function PortfolioClient() {
                       setbulkUpload(true);
                       setActionOpen(false);
                     }}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                   >
                     <i className="ri-upload-cloud-2-line mr-2"></i>
                     Bulk Upload
                   </button>
                 </div>
+              )}
+
+              {actionOpen && (
+                <div
+                  className={`absolute left-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden divide-y divide-gray-100`}
+                ></div>
               )}
             </div>
           </div>
