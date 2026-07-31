@@ -1,11 +1,17 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { Alert } from 'react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import { CaseDetailScreen } from './index';
 
 const mockGoBack = jest.fn();
 const mockNavigate = jest.fn();
 const mockMutateAsync = jest.fn();
+const mockDeleteCase = jest.fn(() => Promise.resolve());
+const mockMergeCase = jest.fn(() => Promise.resolve());
 const mockUseCaseDetail = jest.fn();
+const mockAlert = jest.fn();
+
+Alert.alert = mockAlert;
 
 const caseDetail = {
   accidentType: 'Motor Vehicle',
@@ -47,8 +53,20 @@ jest.mock('@react-navigation/native', () => ({
 jest.mock('@/features/cases/hooks', () => ({
   useAddCaseNote: () => ({ isPending: false, mutateAsync: mockMutateAsync }),
   useCaseDetail: () => mockUseCaseDetail(),
+  useCases: () => ({
+    cases: [
+      {
+        caseNumber: '24-20000',
+        clientName: 'Jordan Kim',
+        id: 'case-2',
+      },
+    ],
+    isLoading: false,
+  }),
   useCaseNotes: () => ({ data: [], isLoading: false }),
   useCaseUpdates: () => ({ data: [], isLoading: false }),
+  useDeleteCase: () => ({ isPending: false, mutateAsync: mockDeleteCase }),
+  useMergeCase: () => ({ isPending: false, mutateAsync: mockMergeCase }),
 }));
 
 jest.mock('@/shared/hooks', () => ({
@@ -135,5 +153,34 @@ describe('CaseDetailScreen', () => {
 
     fireEvent.press(getByText('Payoff Quote'));
     expect(mockNavigate).toHaveBeenCalledWith('PayoffQuote', { caseId: 'case-1' });
+  });
+
+  it('requires confirmation before merging or deleting a case', async () => {
+    const { getByLabelText, getByText } = render(<CaseDetailScreen />);
+
+    fireEvent.press(getByLabelText('Manage case'));
+    fireEvent.press(getByText('Merge Case'));
+
+    expect(getByText('Select Case to Merge')).toBeTruthy();
+    fireEvent.press(getByText('Jordan Kim (24-20000)'));
+    expect(mockAlert).toHaveBeenCalledTimes(1);
+    expect(mockAlert.mock.calls[0][0]).toBe('Merge Cases');
+    expect(mockAlert.mock.calls[0][1]).toContain('Jordan Kim (24-20000)');
+    expect(Array.isArray(mockAlert.mock.calls[0][2])).toBe(true);
+    expect(mockMergeCase).not.toHaveBeenCalled();
+
+    mockAlert.mock.calls[0][2][1].onPress();
+    await waitFor(() => expect(mockMergeCase).toHaveBeenCalledWith('case-2'));
+
+    fireEvent.press(getByLabelText('Manage case'));
+    fireEvent.press(getByText('Delete Case'));
+    expect(mockAlert).toHaveBeenCalledTimes(2);
+    expect(mockAlert.mock.calls[1][0]).toBe('Delete Case');
+    expect(mockAlert.mock.calls[1][1]).toContain('cannot be undone');
+    expect(Array.isArray(mockAlert.mock.calls[1][2])).toBe(true);
+    expect(mockDeleteCase).not.toHaveBeenCalled();
+
+    mockAlert.mock.calls[1][2][1].onPress();
+    await waitFor(() => expect(mockDeleteCase).toHaveBeenCalledTimes(1));
   });
 });

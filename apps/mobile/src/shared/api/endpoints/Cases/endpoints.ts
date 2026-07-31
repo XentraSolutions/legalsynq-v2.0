@@ -27,6 +27,7 @@ import type {
 } from './types';
 
 const CASES_BASE_PATH = '/liens/api/liens/cases';
+const MANAGE_CASES_BASE_PATH = '/api/lien/api/liens/cases';
 
 export const caseKeys = {
   all: ['cases'] as const,
@@ -162,13 +163,23 @@ export const CasesApi = {
   },
 
   async getPayoffQuote(caseId: string): Promise<PayoffQuote> {
-    const response = await apiClient.get<unknown>(`${CASES_BASE_PATH}/payoff-quote/${caseId}`);
+    const response = await apiClient.get<unknown>(
+      `${MANAGE_CASES_BASE_PATH}/payoff-quote/${caseId}`
+    );
     const payload = asRecord(response.data);
     const url = payload?.url;
     if (typeof url !== 'string' || !url.trim()) {
       throw new Error('A payoff quote is not available for this case.');
     }
     return { url };
+  },
+
+  async mergeCase(caseIdA: string, caseIdB: string): Promise<void> {
+    await apiClient.post(`${MANAGE_CASES_BASE_PATH}/mergecase`, { caseIdA, caseIdB });
+  },
+
+  async deleteCase(caseId: string): Promise<void> {
+    await apiClient.delete(`${MANAGE_CASES_BASE_PATH}/delete/${caseId}`);
   },
 
   async updatePersonalInfo(body: PersonalCaseUpdateRequest): Promise<void> {
@@ -184,8 +195,19 @@ export const CasesApi = {
   },
 
   async getCaseUpdates(caseId: string): Promise<CaseUpdate[]> {
-    const response = await apiClient.get<unknown>(`${CASES_BASE_PATH}/case-updates/${caseId}`);
-    return normalizeArray<CaseUpdate>(response.data);
+    const response = await apiClient.post<unknown>(`${CASES_BASE_PATH}/case-updates/v3`, {
+      caseId,
+      page: 1,
+      limit: 10,
+    });
+
+    return normalizeArray<CaseUpdate>(response.data).map((update) => ({
+      ...update,
+      createdAt:
+        update.createdAt ?? (typeof update.created === 'string' ? update.created : undefined),
+      updatedAt:
+        update.updatedAt ?? (typeof update.updated === 'string' ? update.updated : undefined),
+    }));
   },
 
   async createCase(body: CreateCaseRequest): Promise<CaseDetailResponse> {
