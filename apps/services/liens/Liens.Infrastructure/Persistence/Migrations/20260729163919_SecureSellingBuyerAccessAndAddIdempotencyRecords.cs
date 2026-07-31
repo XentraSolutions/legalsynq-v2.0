@@ -55,29 +55,23 @@ namespace Liens.Infrastructure.Persistence.Migrations
                    OR lien.`SellerStatus` = 'Draft';
                 """);
 
-            migrationBuilder.AddColumn<string>(
-                name: "BuyerMessage",
-                table: "liens_Liens",
-                type: "varchar(4000)",
-                maxLength: 4000,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
+            AddColumnIfMissing(
+                migrationBuilder,
+                "liens_Liens",
+                "BuyerMessage",
+                "varchar(4000) CHARACTER SET utf8mb4 NULL");
 
-            migrationBuilder.AddColumn<string>(
-                name: "TokenHash",
-                table: "liens_SellingBuyerAccessLinks",
-                type: "varchar(64)",
-                maxLength: 64,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
+            AddColumnIfMissing(
+                migrationBuilder,
+                "liens_SellingBuyerAccessLinks",
+                "TokenHash",
+                "varchar(64) CHARACTER SET utf8mb4 NULL");
 
-            migrationBuilder.AddColumn<string>(
-                name: "Route",
-                table: "liens_SellingBuyerAccessLinks",
-                type: "varchar(180)",
-                maxLength: 180,
-                nullable: true)
-                .Annotation("MySql:CharSet", "utf8mb4");
+            AddColumnIfMissing(
+                migrationBuilder,
+                "liens_SellingBuyerAccessLinks",
+                "Route",
+                "varchar(180) CHARACTER SET utf8mb4 NULL");
 
             // Preserve existing issued links by backfilling their digest. The
             // plaintext column remains during this compatibility deployment.
@@ -100,61 +94,48 @@ namespace Liens.Infrastructure.Persistence.Migrations
                 oldMaxLength: 128)
                 .Annotation("MySql:CharSet", "utf8mb4");
 
-            migrationBuilder.CreateTable(
-                name: "liens_SellingIdempotencyRecords",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    TenantId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    SubjectType = table.Column<string>(type: "varchar(32)", maxLength: 32, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    SubjectId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    Route = table.Column<string>(type: "varchar(180)", maxLength: 180, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    ResourceType = table.Column<string>(type: "varchar(80)", maxLength: 80, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                ResourceKey = table.Column<string>(type: "varchar(180)", maxLength: 180, nullable: false)
-                    .Annotation("MySql:CharSet", "utf8mb4"),
-                IdempotencyKey = table.Column<string>(type: "varchar(280)", maxLength: 280, nullable: false)
-                    .Annotation("MySql:CharSet", "utf8mb4"),
-                IdempotencyKeyHash = table.Column<string>(type: "varchar(64)", maxLength: 64, nullable: false)
-                    .Annotation("MySql:CharSet", "utf8mb4"),
-                RequestHash = table.Column<string>(type: "varchar(64)", maxLength: 64, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    ProcessingState = table.Column<string>(type: "varchar(20)", maxLength: 20, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    ResponseStatusCode = table.Column<int>(type: "int", nullable: true),
-                    ResponseContentType = table.Column<string>(type: "varchar(100)", maxLength: 100, nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    ResponseBody = table.Column<string>(type: "longtext", nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    CompletedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: true),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: false),
-                    CreatedByUserId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    UpdatedByUserId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_liens_SellingIdempotencyRecords", x => x.Id);
-                })
-                .Annotation("MySql:CharSet", "utf8mb4");
+            migrationBuilder.Sql("""
+                CREATE TABLE IF NOT EXISTS `liens_SellingIdempotencyRecords` (
+                    `Id` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `TenantId` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `SubjectType` varchar(32) CHARACTER SET utf8mb4 NOT NULL,
+                    `SubjectId` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `Route` varchar(180) CHARACTER SET utf8mb4 NOT NULL,
+                    `ResourceType` varchar(80) CHARACTER SET utf8mb4 NOT NULL,
+                    `ResourceKey` varchar(180) CHARACTER SET utf8mb4 NOT NULL,
+                    `IdempotencyKey` varchar(280) CHARACTER SET utf8mb4 NOT NULL,
+                    `IdempotencyKeyHash` varchar(64) CHARACTER SET utf8mb4 NOT NULL,
+                    `RequestHash` varchar(64) CHARACTER SET utf8mb4 NOT NULL,
+                    `ProcessingState` varchar(20) CHARACTER SET utf8mb4 NOT NULL,
+                    `ResponseStatusCode` int NULL,
+                    `ResponseContentType` varchar(100) CHARACTER SET utf8mb4 NULL,
+                    `ResponseBody` longtext CHARACTER SET utf8mb4 NULL,
+                    `CompletedAtUtc` datetime(6) NULL,
+                    `CreatedAtUtc` datetime(6) NOT NULL,
+                    `UpdatedAtUtc` datetime(6) NOT NULL,
+                    `CreatedByUserId` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `UpdatedByUserId` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    CONSTRAINT `PK_liens_SellingIdempotencyRecords` PRIMARY KEY (`Id`)
+                ) CHARACTER SET=utf8mb4;
+                """);
 
-            migrationBuilder.CreateIndex(
-                name: "UX_SellingBuyerAccessLinks_Tenant_Scope_IdempotencyKey",
-                table: "liens_SellingBuyerAccessLinks",
-                columns: new[] { "TenantId", "SellerOrgId", "LienId", "BuyerOrgId", "BuyerContactId", "CreatedByUserId", "Route", "IdempotencyKey" },
-                unique: true);
+            CreateIndexIfMissing(
+                migrationBuilder,
+                "liens_SellingBuyerAccessLinks",
+                "UX_SellingBuyerAccessLinks_Tenant_Scope_IdempotencyKey",
+                "CREATE UNIQUE INDEX `UX_SellingBuyerAccessLinks_Tenant_Scope_IdempotencyKey` ON `liens_SellingBuyerAccessLinks` (`TenantId`, `SellerOrgId`, `LienId`, `BuyerOrgId`, `BuyerContactId`, `CreatedByUserId`, `Route`, `IdempotencyKey`)");
 
-            migrationBuilder.CreateIndex(
-                name: "UX_SellingBuyerAccessLinks_TokenHash",
-                table: "liens_SellingBuyerAccessLinks",
-                column: "TokenHash",
-                unique: true);
+            CreateIndexIfMissing(
+                migrationBuilder,
+                "liens_SellingBuyerAccessLinks",
+                "UX_SellingBuyerAccessLinks_TokenHash",
+                "CREATE UNIQUE INDEX `UX_SellingBuyerAccessLinks_TokenHash` ON `liens_SellingBuyerAccessLinks` (`TokenHash`)");
 
             // Old binaries still write Token only. These triggers keep their
             // inserts discoverable by the new hash-only lookup without making
             // new application writes persist plaintext tokens.
+            migrationBuilder.Sql("DROP TRIGGER IF EXISTS `TRG_SellingBuyerAccessLink_HashToken_BI`;");
+
             migrationBuilder.Sql("""
                 CREATE TRIGGER `TRG_SellingBuyerAccessLink_HashToken_BI`
                 BEFORE INSERT ON `liens_SellingBuyerAccessLinks`
@@ -164,6 +145,8 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     ELSE NEW.`TokenHash`
                 END;
                 """);
+
+            migrationBuilder.Sql("DROP TRIGGER IF EXISTS `TRG_SellingBuyerAccessLink_HashToken_BU`;");
 
             migrationBuilder.Sql("""
                 CREATE TRIGGER `TRG_SellingBuyerAccessLink_HashToken_BU`
@@ -175,16 +158,17 @@ namespace Liens.Infrastructure.Persistence.Migrations
                 END;
                 """);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_SellingIdem_Tenant_CreatedAtUtc",
-                table: "liens_SellingIdempotencyRecords",
-                columns: new[] { "TenantId", "CreatedAtUtc" });
+            CreateIndexIfMissing(
+                migrationBuilder,
+                "liens_SellingIdempotencyRecords",
+                "IX_SellingIdem_Tenant_CreatedAtUtc",
+                "CREATE INDEX `IX_SellingIdem_Tenant_CreatedAtUtc` ON `liens_SellingIdempotencyRecords` (`TenantId`, `CreatedAtUtc`)");
 
-            migrationBuilder.CreateIndex(
-                name: "UX_SellingIdem_Tenant_Subject_Route_Resource_Key",
-                table: "liens_SellingIdempotencyRecords",
-                columns: new[] { "TenantId", "SubjectType", "SubjectId", "Route", "ResourceType", "ResourceKey", "IdempotencyKeyHash" },
-                unique: true);
+            CreateIndexIfMissing(
+                migrationBuilder,
+                "liens_SellingIdempotencyRecords",
+                "UX_SellingIdem_Tenant_Subject_Route_Resource_Key",
+                "CREATE UNIQUE INDEX `UX_SellingIdem_Tenant_Subject_Route_Resource_Key` ON `liens_SellingIdempotencyRecords` (`TenantId`, `SubjectType`, `SubjectId`, `Route`, `ResourceType`, `ResourceKey`, `IdempotencyKeyHash`)");
         }
 
         /// <inheritdoc />
@@ -193,6 +177,36 @@ namespace Liens.Infrastructure.Persistence.Migrations
             throw new InvalidOperationException(
                 "This security migration is forward-only. New buyer links retain only TokenHash, so plaintext Token values cannot be restored safely. " +
                 "Use an audited database restore taken before this migration together with the application rollback, or deploy a forward corrective migration; do not mark this migration reverted in place.");
+        }
+
+        private static void AddColumnIfMissing(
+            MigrationBuilder migrationBuilder,
+            string tableName,
+            string columnName,
+            string columnDefinition)
+        {
+            migrationBuilder.Sql($"""
+                SET @db = DATABASE();
+                SET @ddl = IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@db AND TABLE_NAME='{tableName}' AND COLUMN_NAME='{columnName}')=0,
+                    'ALTER TABLE `{tableName}` ADD COLUMN `{columnName}` {columnDefinition}',
+                    'SELECT 1');
+                PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+                """);
+        }
+
+        private static void CreateIndexIfMissing(
+            MigrationBuilder migrationBuilder,
+            string tableName,
+            string indexName,
+            string createIndexSql)
+        {
+            migrationBuilder.Sql($"""
+                SET @db = DATABASE();
+                SET @ddl = IF((SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA=@db AND TABLE_NAME='{tableName}' AND INDEX_NAME='{indexName}')=0,
+                    '{createIndexSql}',
+                    'SELECT 1');
+                PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+                """);
         }
     }
 }
