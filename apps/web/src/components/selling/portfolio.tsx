@@ -28,6 +28,7 @@ const PORTFOLIO_STATUSES = [
   { key: "Pending", label: "Pending" },
   { key: "Internal", label: "Internal" },
   { key: "Sold", label: "Sold" },
+  // { key: "all", label: "all" },
 ];
 
 const SORT_BY_MAP: Record<string, string> = {

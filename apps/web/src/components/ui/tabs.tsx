@@ -26,7 +26,7 @@ export function Tabs({
 
   return (
     <div
-      className={`flex flex-wrap gap-4 bg-gray-200 rounded-md p-1 ${bordered ? "border-b border-gray-200" : ""} ${className}`}
+      className={`flex flex-wrap gap-4 bg-[#FAFAFA] rounded-md p-1 ${bordered ? "border-b border-gray-200" : ""} ${className}`}
     >
       {tabs.map((tab) => (
         <TabButton
@@ -64,11 +64,11 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={
-        "p-1 text-sm font-medium transition-colors rounded-md flex-1 cursor-pointer " +
+        "p-1 text-sm font-medium transition-colors rounded-lg flex-1 cursor-pointer " +
         (active
           ? bordered
-            ? "border-b-2 border-indigo-600 text-indigo-600"
-            : "bg-white "
+            ? "border-b-2 border-indigo-600 text-indigo-600 "
+            : "bg-white shadow-sm"
           : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300")
       }
       aria-current={active && bordered ? "page" : undefined}

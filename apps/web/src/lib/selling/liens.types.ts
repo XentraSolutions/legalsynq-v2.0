@@ -177,17 +177,17 @@ export interface LienListItem {
   sellerStatus: string;
   availableActions: string[];
 
-  caseId: string;
-  caseNumber: string;
-  fundingCompanyId: string;
-  lawFirmId: string;
-  lawFirm: string;
-  caseManagerId: null | string;
-  caseManager: null | string;
-  facilityId: null | string;
-  facility: null | string;
-  highestBidAmount: 0;
-  purchasePrice: null;
+  caseId?: string;
+  caseNumber?: string;
+  fundingCompanyId?: string;
+  lawFirmId?: string;
+  lawFirm?: string;
+  caseManagerId?: null | string;
+  caseManager?: null | string;
+  facilityId?: null | string;
+  facility?: null | string;
+  highestBidAmount?: 0;
+  purchasePrice?: null;
 }
 
 export interface AgingListItem {

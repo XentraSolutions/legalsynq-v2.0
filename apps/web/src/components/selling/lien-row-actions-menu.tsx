@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Modal, ConfirmDialog } from "@/components/lien/modal";
-import { liensService } from "@/lib/selling";
+import { LienDetail, LienListItem, liensService } from "@/lib/selling";
 import { useToast } from "@/lib/toast-context";
 
 interface LienRowActionsMenuProps {
   lienId: string;
+  lien?: LienListItem;
   availableActions: string[];
   onActionComplete: () => void;
   align?: "left" | "right";
@@ -29,6 +30,7 @@ const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
 
 export function LienRowActionsMenu({
   lienId,
+  lien,
   availableActions,
   onActionComplete,
   align = "right",
@@ -79,6 +81,7 @@ export function LienRowActionsMenu({
     setKeepLoading(true);
     try {
       await liensService.submitLien(lienId, {
+        ...lien,
         sellerStatus: "Internal",
         listingVisibility: "Private",
       });

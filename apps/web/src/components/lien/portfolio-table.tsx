@@ -112,6 +112,7 @@ export function PortfolioTable({
           <div className="flex justify-end">
             <LienRowActionsMenu
               lienId={row.original.lienId}
+              lien={row.original}
               availableActions={row.original.availableActions ?? []}
               onActionComplete={() => onActionComplete?.()}
             />
