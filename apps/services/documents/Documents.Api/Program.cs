@@ -10,6 +10,7 @@ using Documents.Infrastructure;
 using Documents.Infrastructure.Database;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -410,7 +411,11 @@ app.MapPublicLogoEndpoints();
         var filePath = Path.Combine(basePath, key.Replace('/', Path.DirectorySeparatorChar));
         if (!File.Exists(filePath)) return Results.NotFound();
 
-        var mimeType = "application/octet-stream";
+        var contentTypeProvider = new FileExtensionContentTypeProvider();
+        var mimeType = contentTypeProvider.TryGetContentType(filePath, out var resolvedContentType)
+            ? resolvedContentType
+            : "application/octet-stream";
+
         return Results.File(filePath, mimeType,
             enableRangeProcessing: true,
             fileDownloadName: disposition == "download" ? Path.GetFileName(key) : null);

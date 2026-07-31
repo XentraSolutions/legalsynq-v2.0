@@ -149,10 +149,20 @@ describe("PublicBuyerPortalPage", () => {
       "href",
       "/api/lien/api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/view",
     );
-    expect(screen.getByRole("link", { name: "Download signed-lien-real.pdf" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "View signed-lien-real.pdf" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+    expect(screen.getByRole("link", { name: "View signed-lien-real.pdf" })).toHaveAttribute(
+      "rel",
+      "noopener noreferrer",
+    );
+    const downloadLink = screen.getByRole("link", { name: "Download signed-lien-real.pdf" });
+    expect(downloadLink).toHaveAttribute(
       "href",
       "/api/lien/api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/download",
     );
+    expect(downloadLink).not.toHaveAttribute("target");
     expect(screen.queryByText("John Doe")).not.toBeInTheDocument();
     expect(screen.queryByText("Velantrix")).not.toBeInTheDocument();
   });

@@ -208,6 +208,7 @@ function DocumentsCard({ documents }: { documents: PublicBuyerPortalDocument[] }
                     href={document.viewUrl}
                     label={`View ${document.fileName}`}
                     icon="ri-eye-line"
+                    openInNewTab
                   />
                   <DocumentActionLink
                     href={document.downloadUrl}
@@ -228,10 +229,12 @@ function DocumentActionLink({
   href,
   label,
   icon,
+  openInNewTab = false,
 }: {
   href?: string | null;
   label: string;
   icon: string;
+  openInNewTab?: boolean;
 }) {
   const safeUrl = safeHref(href);
   const className =
@@ -250,11 +253,13 @@ function DocumentActionLink({
     );
   }
 
+  const opensInNewTab = openInNewTab || isExternalHref(safeUrl);
+
   return (
     <a
       href={safeUrl}
-      target={isExternalHref(safeUrl) ? "_blank" : undefined}
-      rel={isExternalHref(safeUrl) ? "noreferrer" : undefined}
+      target={opensInNewTab ? "_blank" : undefined}
+      rel={opensInNewTab ? "noopener noreferrer" : undefined}
       aria-label={label}
       className={`${className} cursor-pointer hover:border-[#d6d6d6] hover:bg-[#f5f5f5] active:bg-[#ededed]`}
     >

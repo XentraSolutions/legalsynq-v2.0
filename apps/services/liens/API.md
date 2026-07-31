@@ -803,7 +803,8 @@ attached to that lien return `404 document-not-found`.
 
 `Location` points to `/documents/access/{accessToken}` when called through the gateway. The tenant portal BFF path
 `/api/lien/api/liens/selling/public/{token}/documents/{documentId}/view` rewrites that redirect to
-`/api/lien/documents/access/{accessToken}` for same-origin browser access.
+`/api/lien/documents/access/{accessToken}` for same-origin browser access. When local Documents storage then redirects
+to `/internal/files`, the tenant portal keeps that final file hop under `/api/lien/documents/internal/files`.
 
 ### GET `/api/liens/selling/public/{token}/documents/{documentId}/download`
 
