@@ -1798,23 +1798,36 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     }
 
     private static Contact? SelectSellerContact(IReadOnlyList<Contact> contacts)
-        => contacts.FirstOrDefault(c =>
+    {
+        var orderedContacts = OrderSellerContacts(contacts);
+        return orderedContacts.FirstOrDefault(c =>
                string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
                string.IsNullOrWhiteSpace(c.ContactSubtype) &&
                !string.IsNullOrWhiteSpace(c.Email))
-           ?? contacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email))
-           ?? contacts.FirstOrDefault();
+           ?? orderedContacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email))
+           ?? orderedContacts.FirstOrDefault();
+    }
 
     private static string? ResolveSellerCompany(Contact sellerContact, IReadOnlyList<Contact> sellerContacts)
-        => FirstNonEmpty(
+    {
+        var orderedContacts = OrderSellerContacts(sellerContacts);
+        return FirstNonEmpty(
             sellerContact.Organization,
-            sellerContacts.FirstOrDefault(c =>
+            orderedContacts.FirstOrDefault(c =>
                 string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
                 string.IsNullOrWhiteSpace(c.ContactSubtype) &&
                 !string.IsNullOrWhiteSpace(c.Organization))?.Organization,
-            sellerContacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Organization))?.Organization,
+            orderedContacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Organization))?.Organization,
             sellerContact.DisplayName,
             sellerContact.Email);
+    }
+
+    private static IReadOnlyList<Contact> OrderSellerContacts(IReadOnlyList<Contact> contacts)
+        => contacts
+            .OrderBy(c => c.DisplayName)
+            .ThenBy(c => c.Email ?? string.Empty)
+            .ThenBy(c => c.Id)
+            .ToList();
 
     private static ConfirmSellingLienSaleResponse MapConfirmSaleResponse(
         Lien lien,

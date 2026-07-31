@@ -316,7 +316,8 @@ Notification delivery is mandatory and cannot be opted out through request paylo
 `FundingCompanyId`, `FundingCompanyContactId`, `InitialServiceDate`, `AskAmount`, buyer email, seller
 name/email, a seller display company/label resolved from the seller organization contacts, and handling law firm data.
 The selected seller email contact does not have to carry its own company when another active contact in the same seller
-organization supplies it; otherwise the seller display name is used. The API creates a 30-day buyer response access link and a separate
+organization supplies it; otherwise the seller display name is used. The public-link JSON and authenticated
+funding-company views use this same seller display resolver for the access link. The API creates a 30-day buyer response access link and a separate
 30-day seller-view access link from
 `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide CTA URLs. If the explicit base URL is absent, the API
 derives it from `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
@@ -392,8 +393,9 @@ transition or buyer notification.
 
 ### GET `/api/liens/selling/buyer/dashboard`
 
-Returns the authenticated funding-company dashboard used by `/funding/dashboard`. The endpoint scopes data to the
-current buyer organization, including the email-based source buyer organization fallback used by the offered-liens list.
+Returns the authenticated funding-company dashboard used by `/funding/dashboard`. The endpoint scopes data to active
+tenant buyer contacts whose email matches the authenticated user and whose contact type is `FundingCompany` or
+`LienHolder`, then includes only access links where `BuyerContactId` matches one of those contacts.
 
 Summary metrics are buyer-scoped totals across the selected dashboard range:
 
@@ -500,9 +502,10 @@ first and then by `providerName`.
 ### GET `/api/liens/selling/buyer/liens`
 
 Returns offered-liens rows for the authenticated SynqLien buyer/funding company. The endpoint reads confirmed buyer
-access links created by seller confirm-sale notifications and scopes results to the current organization. It also
-includes source buyer organizations for active funding-company contacts whose email matches the authenticated user,
-which supports accounts provisioned from public buyer activation.
+access links created by seller confirm-sale notifications and scopes results to active tenant buyer contacts whose email
+matches the authenticated user and whose contact type is `FundingCompany` or `LienHolder`. Only access links where
+`BuyerContactId` matches one of those contacts are returned, which supports accounts provisioned from public buyer
+activation without exposing another contact's offers from the same buyer organization.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 
@@ -556,8 +559,8 @@ non-actionable rows expose `view` only.
 ### GET `/api/liens/selling/buyer/liens/{accessLinkId}`
 
 Returns the authenticated funding-company detail view for one offered lien. The `{accessLinkId}` is the `id` returned
-by `GET /api/liens/selling/buyer/liens`; access is scoped to the current buyer organization, including the same
-email-based source buyer organization fallback used by the list endpoint.
+by `GET /api/liens/selling/buyer/liens`; access is scoped to the authenticated buyer contact matched by email, using the
+same `BuyerContactId` filtering as the list endpoint.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 
@@ -640,7 +643,7 @@ when the servicing item does not contain a resolvable Documents-service id.
 ### GET `/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view`
 
 Issues a short-lived Documents view access token for a document attached to an authenticated offered lien, then
-redirects to the Documents access route. The endpoint validates the same buyer organization access link as the detail
+redirects to the Documents access route. The endpoint validates the same buyer-contact-scoped access link as the detail
 endpoint before minting the Documents token. Documents not attached to the offered lien return
 `404 document_not_found`.
 
@@ -664,10 +667,9 @@ download access token.
 ### POST `/api/liens/selling/buyer/liens/{accessLinkId}/messages`
 
 Posts a message from the authenticated funding-company detail page into the same persisted offer thread used by
-`POST /api/liens/selling/public/{token}/messages`. The endpoint first resolves `{accessLinkId}` with the same buyer
-organization and email fallback scoping as the detail `GET`, then delegates to the public-link message workflow so both
-the public email link and `/funding/offered-liens/{accessLinkId}?tab=messages` show the same messages and notification
-behavior.
+`POST /api/liens/selling/public/{token}/messages`. The endpoint first resolves `{accessLinkId}` with the same
+buyer-contact scoping as the detail `GET`, then delegates to the public-link message workflow so both the public email
+link and `/funding/offered-liens/{accessLinkId}?tab=messages` show the same messages and notification behavior.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 
@@ -736,7 +738,8 @@ rendering.
 The JSON payload is populated only from persisted lien, case, contact, buyer, seller, access-link, and servicing
 document metadata. It includes seller, buyer/funding company, lien summary, case, access-link expiry, and real
 supporting-document fields. It never inserts sample company names, sample people, sample files, `example.com`, or
-caller-provided CTA data. For buyer-purpose links, the `account` block indicates whether the access link has already
+caller-provided CTA data. Seller display fields are resolved with the same selected seller contact and seller-company
+fallback used by the confirm-sale email and authenticated funding-company views. For buyer-purpose links, the `account` block indicates whether the access link has already
 activated an account or whether the token-scoped buyer email already belongs to an Identity account, so the tenant portal
 can render `Log In` instead of `Activate Free Account`.
 

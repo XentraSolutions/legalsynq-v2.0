@@ -1145,7 +1145,7 @@ public static class SellingPublicEndpoints
         var buyerName = FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Email, "Buyer")!;
         var buyerCompany = FirstNonEmpty(view.BuyerContact?.Organization, "Funding company")!;
         var sellerName = FirstNonEmpty(view.SellerContact?.DisplayName, view.SellerContact?.Email, "Seller")!;
-        var sellerCompany = FirstNonEmpty(view.SellerContact?.Organization, "Seller company")!;
+        var sellerCompany = FirstNonEmpty(view.SellerCompany, "Seller company")!;
 
         var commonMetadata = new Dictionary<string, string>
         {
@@ -1463,7 +1463,7 @@ public static class SellingPublicEndpoints
         string senderType)
         => senderType == SellingPortalMessageSenderType.Seller
             ? (
-                FirstNonEmpty(view.SellerContact?.DisplayName, view.SellerContact?.Email, view.SellerContact?.Organization, "Seller")!,
+                FirstNonEmpty(view.SellerContact?.DisplayName, view.SellerContact?.Email, view.SellerCompany, "Seller")!,
                 FirstNonEmpty(view.SellerContact?.Email))
             : (
                 FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Email, view.BuyerContact?.Organization, "Buyer")!,
@@ -1474,7 +1474,7 @@ public static class SellingPublicEndpoints
         string recipientRole)
         => recipientRole == SellingPortalMessageSenderType.Seller
             ? (
-                FirstNonEmpty(view.SellerContact?.DisplayName, view.SellerContact?.Email, view.SellerContact?.Organization, "Seller")!,
+                FirstNonEmpty(view.SellerContact?.DisplayName, view.SellerContact?.Email, view.SellerCompany, "Seller")!,
                 FirstNonEmpty(view.SellerContact?.Email))
             : (
                 FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Email, view.BuyerContact?.Organization, "Buyer")!,
@@ -1835,6 +1835,7 @@ public static class SellingPublicEndpoints
             .ToListAsync(ct);
 
         var sellerContact = SelectSellerContact(sellerContacts);
+        var sellerCompany = ResolveSellerCompany(sellerContact, sellerContacts);
         var handlingLawFirm = await ResolveHandlingLawFirmAsync(db, accessLink.TenantId, caseEntity, ct);
         var caseManager = await ResolveCaseManagerAsync(db, accessLink.TenantId, caseEntity, ct);
         var documents = await ResolveDocumentsAsync(db, accessLink.TenantId, lien, ct);
@@ -1847,6 +1848,7 @@ public static class SellingPublicEndpoints
             caseEntity,
             buyerContact,
             sellerContact,
+            sellerCompany,
             handlingLawFirm,
             caseManager,
             documents,
@@ -2216,7 +2218,7 @@ public static class SellingPublicEndpoints
                 view.Lien.OfferPrice),
             new PublicBuyerSellerResponse(
                 view.SellerContact?.DisplayName,
-                view.SellerContact?.Organization,
+                view.SellerCompany,
                 view.SellerContact?.Email),
             new PublicBuyerOrganizationResponse(
                 view.BuyerContact?.DisplayName,
@@ -2268,12 +2270,39 @@ public static class SellingPublicEndpoints
             statusCode: statusCode);
 
     private static Contact? SelectSellerContact(IReadOnlyList<Contact> contacts)
-        => contacts.FirstOrDefault(c =>
+    {
+        var orderedContacts = OrderSellerContacts(contacts);
+        return orderedContacts.FirstOrDefault(c =>
                string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
                string.IsNullOrWhiteSpace(c.ContactSubtype) &&
                !string.IsNullOrWhiteSpace(c.Email))
-           ?? contacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email))
-           ?? contacts.FirstOrDefault();
+           ?? orderedContacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email))
+           ?? orderedContacts.FirstOrDefault();
+    }
+
+    private static string? ResolveSellerCompany(Contact? sellerContact, IReadOnlyList<Contact> sellerContacts)
+    {
+        if (sellerContact is null)
+            return null;
+
+        var orderedContacts = OrderSellerContacts(sellerContacts);
+        return FirstNonEmpty(
+            sellerContact.Organization,
+            orderedContacts.FirstOrDefault(c =>
+                string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
+                string.IsNullOrWhiteSpace(c.ContactSubtype) &&
+                !string.IsNullOrWhiteSpace(c.Organization))?.Organization,
+            orderedContacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Organization))?.Organization,
+            sellerContact.DisplayName,
+            sellerContact.Email);
+    }
+
+    private static IReadOnlyList<Contact> OrderSellerContacts(IReadOnlyList<Contact> contacts)
+        => contacts
+            .OrderBy(c => c.DisplayName)
+            .ThenBy(c => c.Email ?? string.Empty)
+            .ThenBy(c => c.Id)
+            .ToList();
 
     private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
     {
@@ -2483,6 +2512,7 @@ public static class SellingPublicEndpoints
         Case? Case,
         Contact? BuyerContact,
         Contact? SellerContact,
+        string? SellerCompany,
         string? HandlingLawFirm,
         string? CaseManager,
         IReadOnlyList<PublicDocumentView> Documents,

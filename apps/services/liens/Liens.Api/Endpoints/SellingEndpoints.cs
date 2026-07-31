@@ -510,6 +510,7 @@ public static class SellingEndpoints
             .ToListAsync(ct);
 
         var sellerContact = SelectSellerContact(sellerContacts);
+        var sellerCompany = ResolveSellerCompany(sellerContact, sellerContacts);
         var providerName = await ResolveProviderNameAsync(db, tenantId, lien.FacilityId, ct);
         var documents = await ResolveBuyerOfferedLienDocumentsAsync(db, tenantId, accessLink.Id, lien, ct);
         var messages = await ResolveBuyerOfferedLienMessagesAsync(db, accessLink, ct);
@@ -518,6 +519,7 @@ public static class SellingEndpoints
             accessLink,
             lien,
             sellerContact,
+            sellerCompany,
             buyerContact,
             providerName,
             documents,
@@ -713,18 +715,18 @@ public static class SellingEndpoints
         CancellationToken ct)
     {
         var tenantId = RequireTenantId(ctx);
-        var authenticatedOrgId = RequireOrgId(ctx);
-        var buyerOrgIds = await ResolveBuyerOrgIdsAsync(db, tenantId, authenticatedOrgId, ctx.Email, ct);
+        var buyerContactIds = await ResolveBuyerContactIdsAsync(db, tenantId, ctx.Email, ct);
 
         var accessLink = await db.SellingBuyerAccessLinks
             .FirstOrDefaultAsync(link =>
                 link.TenantId == tenantId &&
                 link.Id == accessLinkId &&
                 link.Purpose == SellingAccessLinkPurposes.ConfirmSaleBuyerResponse &&
-                link.RevokedAtUtc == null,
+                link.RevokedAtUtc == null &&
+                buyerContactIds.Contains(link.BuyerContactId),
                 ct);
 
-        if (accessLink is null || !buyerOrgIds.Contains(accessLink.BuyerOrgId))
+        if (accessLink is null)
         {
             return (null, Results.NotFound(new
             {
@@ -745,8 +747,7 @@ public static class SellingEndpoints
         CancellationToken ct)
     {
         var tenantId = RequireTenantId(ctx);
-        var authenticatedOrgId = RequireOrgId(ctx);
-        var buyerOrgIds = await ResolveBuyerOrgIdsAsync(db, tenantId, authenticatedOrgId, ctx.Email, ct);
+        var buyerContactIds = await ResolveBuyerContactIdsAsync(db, tenantId, ctx.Email, ct);
         var linkQuery = db.SellingBuyerAccessLinks
             .AsNoTracking()
             .Where(link =>
@@ -754,7 +755,7 @@ public static class SellingEndpoints
                 link.Purpose == SellingAccessLinkPurposes.ConfirmSaleBuyerResponse &&
                 link.RevokedAtUtc == null);
 
-        var links = await LoadBuyerAccessLinksAsync(linkQuery, buyerOrgIds, ct);
+        var links = await LoadBuyerAccessLinksAsync(linkQuery, buyerContactIds, ct);
         var lienIds = links.Select(link => link.LienId).Distinct().ToArray();
         var liens = await LoadLiensByIdAsync(db, tenantId, lienIds, ct);
 
@@ -792,23 +793,15 @@ public static class SellingEndpoints
 
     private static async Task<List<SellingBuyerAccessLink>> LoadBuyerAccessLinksAsync(
         IQueryable<SellingBuyerAccessLink> linkQuery,
-        HashSet<Guid> buyerOrgIds,
+        HashSet<Guid> buyerContactIds,
         CancellationToken ct)
     {
-        var links = new Dictionary<Guid, SellingBuyerAccessLink>();
-        foreach (var buyerOrgId in buyerOrgIds)
-        {
-            var matches = await linkQuery
-                .Where(link => link.BuyerOrgId == buyerOrgId)
-                .ToListAsync(ct);
+        if (buyerContactIds.Count == 0)
+            return [];
 
-            foreach (var match in matches)
-            {
-                links[match.Id] = match;
-            }
-        }
-
-        return links.Values.ToList();
+        return await linkQuery
+            .Where(link => buyerContactIds.Contains(link.BuyerContactId))
+            .ToListAsync(ct);
     }
 
     private static async Task<Dictionary<Guid, Lien>> LoadLiensByIdAsync(
@@ -831,38 +824,34 @@ public static class SellingEndpoints
         return liens;
     }
 
-    private static async Task<HashSet<Guid>> ResolveBuyerOrgIdsAsync(
+    private static async Task<HashSet<Guid>> ResolveBuyerContactIdsAsync(
         LiensDbContext db,
         Guid tenantId,
-        Guid authenticatedOrgId,
         string? email,
         CancellationToken ct)
     {
-        var buyerOrgIds = new HashSet<Guid> { authenticatedOrgId };
+        var buyerContactIds = new HashSet<Guid>();
         var normalizedEmail = email?.Trim().ToLowerInvariant();
 
         if (string.IsNullOrWhiteSpace(normalizedEmail))
-            return buyerOrgIds;
+            return buyerContactIds;
 
-        var buyerContacts = await db.Contacts
+        var contactIds = await db.Contacts
             .AsNoTracking()
             .Where(contact =>
                 contact.TenantId == tenantId &&
+                contact.IsActive &&
                 contact.Email != null &&
-                contact.Email.ToLower() == normalizedEmail)
-            .Select(contact => new BuyerContactScope(
-                contact.Id,
-                contact.OrgId,
-                contact.ContactType))
+                contact.Email.ToLower() == normalizedEmail &&
+                (contact.ContactType == ContactType.LienHolder ||
+                 contact.ContactType == ContactType.FundingCompany))
+            .Select(contact => contact.Id)
             .ToListAsync(ct);
 
-        foreach (var contact in buyerContacts.Where(contact => IsFundingCompanyContactType(contact.ContactType)))
-        {
-            buyerOrgIds.Add(contact.Id);
-            buyerOrgIds.Add(contact.OrgId);
-        }
+        foreach (var contactId in contactIds)
+            buyerContactIds.Add(contactId);
 
-        return buyerOrgIds;
+        return buyerContactIds;
     }
 
     private static async Task<Dictionary<Guid, SellerDisplay>> ResolveSellerDisplaysAsync(
@@ -883,15 +872,13 @@ public static class SellingEndpoints
                 .Where(item =>
                     item.TenantId == tenantId &&
                     item.IsActive &&
-                    item.OrgId == orgId &&
-                    item.ContactType == ContactType.LawFirm)
-                .OrderBy(item => item.CreatedAtUtc)
+                    item.OrgId == orgId)
                 .ToListAsync(ct);
             var contact = SelectSellerContact(contacts);
 
-            var company = FirstNonEmpty(new[] { contact?.Organization, contact?.DisplayName }) ??
+            var company = ResolveSellerCompany(contact, contacts) ??
                           "Seller company unavailable";
-            var name = FirstNonEmpty(new[] { contact?.DisplayName, contact?.Organization }) ??
+            var name = FirstNonEmpty(new[] { contact?.DisplayName, company }) ??
                        "Seller unavailable";
             names[orgId] = new SellerDisplay(company, name);
         }
@@ -1175,6 +1162,7 @@ public static class SellingEndpoints
         SellingBuyerAccessLink accessLink,
         Lien lien,
         Contact? sellerContact,
+        string? sellerCompany,
         Contact? buyerContact,
         string? providerName,
         IReadOnlyList<BuyerOfferedLienDocument> documents,
@@ -1184,9 +1172,9 @@ public static class SellingEndpoints
         var askAmount = lien.AskAmount ?? lien.OfferPrice;
         var submittedAtUtc = accessLink.NotificationSubmittedAtUtc ?? lien.SubmittedForSaleAtUtc ?? accessLink.CreatedAtUtc;
         var sellerName = FirstNonEmpty(new[] { sellerContact?.DisplayName, "Seller unavailable" }) ?? "Seller unavailable";
-        var sellerCompany = FirstNonEmpty(new[] { sellerContact?.Organization, sellerContact?.DisplayName });
+        var resolvedSellerCompany = FirstNonEmpty(new[] { sellerCompany, sellerContact?.Organization, sellerContact?.DisplayName });
         var title = FirstNonEmpty(new[] { sellerContact?.DisplayName, ResolveLienSubjectName(lien), lien.LienNumber }) ?? lien.Id.ToString();
-        var subtitle = FirstNonEmpty(new[] { sellerCompany, providerName, lien.LienNumber });
+        var subtitle = FirstNonEmpty(new[] { resolvedSellerCompany, providerName, lien.LienNumber });
         var canRespond = status == BuyerOfferedLienStatuses.Pending &&
             IsBuyerResponseActionableOffer(lien.Status, lien.SellerStatus);
         var allowedActions = canRespond
@@ -1201,7 +1189,7 @@ public static class SellingEndpoints
             subtitle,
             new BuyerOfferedLienSellerDetail(
                 sellerName,
-                sellerCompany,
+                resolvedSellerCompany,
                 sellerContact?.Email),
             new BuyerOfferedLienBuyerDetail(
                 FirstNonEmpty(new[] { buyerContact?.DisplayName }),
@@ -1417,20 +1405,45 @@ public static class SellingEndpoints
         => string.Equals(status, LienStatus.Offered, StringComparison.Ordinal) ||
            string.Equals(status, LienStatus.UnderReview, StringComparison.Ordinal);
 
-    private static bool IsFundingCompanyContactType(string contactType)
-        => string.Equals(contactType, ContactType.LienHolder, StringComparison.Ordinal) ||
-           string.Equals(contactType, ContactType.FundingCompany, StringComparison.Ordinal);
-
     private static string? FirstNonEmpty(IEnumerable<string?> values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 
     private static Contact? SelectSellerContact(IReadOnlyList<Contact> contacts)
-        => contacts.FirstOrDefault(contact =>
+    {
+        var orderedContacts = OrderSellerContacts(contacts);
+        return orderedContacts.FirstOrDefault(contact =>
                string.Equals(contact.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
                string.IsNullOrWhiteSpace(contact.ContactSubtype) &&
                !string.IsNullOrWhiteSpace(contact.Email))
-           ?? contacts.FirstOrDefault(contact => !string.IsNullOrWhiteSpace(contact.Email))
-           ?? contacts.FirstOrDefault();
+           ?? orderedContacts.FirstOrDefault(contact => !string.IsNullOrWhiteSpace(contact.Email))
+           ?? orderedContacts.FirstOrDefault();
+    }
+
+    private static string? ResolveSellerCompany(Contact? sellerContact, IReadOnlyList<Contact> sellerContacts)
+    {
+        if (sellerContact is null)
+            return null;
+
+        var orderedContacts = OrderSellerContacts(sellerContacts);
+        return FirstNonEmpty(new[]
+        {
+            sellerContact.Organization,
+            orderedContacts.FirstOrDefault(contact =>
+                string.Equals(contact.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
+                string.IsNullOrWhiteSpace(contact.ContactSubtype) &&
+                !string.IsNullOrWhiteSpace(contact.Organization))?.Organization,
+            orderedContacts.FirstOrDefault(contact => !string.IsNullOrWhiteSpace(contact.Organization))?.Organization,
+            sellerContact.DisplayName,
+            sellerContact.Email,
+        });
+    }
+
+    private static IReadOnlyList<Contact> OrderSellerContacts(IReadOnlyList<Contact> contacts)
+        => contacts
+            .OrderBy(contact => contact.DisplayName)
+            .ThenBy(contact => contact.Email ?? string.Empty)
+            .ThenBy(contact => contact.Id)
+            .ToList();
 
     private static string? ResolveLienSubjectName(Lien lien)
         => FirstNonEmpty(new[]
@@ -2629,11 +2642,6 @@ public static class SellingEndpoints
     {
         public static BuyerDashboardWindow Empty { get; } = new(null, null, IsEmpty: true);
     }
-
-    private sealed record BuyerContactScope(
-        Guid Id,
-        Guid OrgId,
-        string ContactType);
 
     private sealed record SellerDisplay(
         string Company,
