@@ -211,7 +211,8 @@ public sealed class LienService : ILienService
             endServiceDate: request.EndServiceDate,
             isBulk: request.IsBulk,
             isServicing: request.IsServicing,
-            description: request.Description);
+            description: request.Description,
+            purchaseDate: request.PurchaseDate);
 
         await _lienRepo.AddAsync(entity, ct);
 
@@ -318,7 +319,8 @@ public sealed class LienService : ILienService
             endServiceDate: request.EndServiceDate ?? entity.EndServiceDate,
             isBulk: request.IsBulk ?? entity.IsBulk,
             isServicing: request.IsServicing ?? entity.IsServicing,
-            description: request.Description);
+            description: request.Description,
+            purchaseDate: request.PurchaseDate ?? entity.PurchaseDate);
 
         if (request.CaseId.HasValue)
             entity.AttachCase(request.CaseId.Value, actingUserId);
@@ -464,7 +466,7 @@ public sealed class LienService : ILienService
             BuyingOrgId = entity.BuyingOrgId,
             HoldingOrgId = entity.HoldingOrgId,
             IncidentDate = entity.IncidentDate,
-            PurchaseDate = entity.IncidentDate?.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture),
+            PurchaseDate = entity.PurchaseDate?.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture),
             InitialServiceDate = entity.InitialServiceDate,
             EndServiceDate = entity.EndServiceDate,
             TotalPurchase = null,

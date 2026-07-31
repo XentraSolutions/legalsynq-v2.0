@@ -168,10 +168,10 @@ public class LienRepository : ILienRepository
         }
 
         if (purchaseDateFrom.HasValue)
-            q = q.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value >= purchaseDateFrom.Value);
+            q = q.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value >= purchaseDateFrom.Value);
 
         if (purchaseDateTo.HasValue)
-            q = q.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value <= purchaseDateTo.Value);
+            q = q.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value <= purchaseDateTo.Value);
 
         if (closedDateFrom.HasValue)
             q = q.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value >= closedDateFrom.Value);

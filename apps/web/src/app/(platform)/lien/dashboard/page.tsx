@@ -134,43 +134,11 @@ export default function LienDashboardPage() {
     (s) => new Date(s.dueDate) < new Date(),
   );
 
-  const lienAmountsByStatus = useMemo(() => {
-    const result: Record<string, { purchase: number; billing: number }> = {};
-    for (const lien of lienRows) {
-      const key = lien.status ?? "Unknown";
-      if (!result[key]) result[key] = { purchase: 0, billing: 0 };
-      result[key].purchase += lien.totalPurchaseAmount ?? 0;
-      result[key].billing += lien.totalBillingAmount ?? 0;
-    }
-    return result;
-  }, [lienRows]);
-
-  const lienStatusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const lien of lienRows) {
-      const key = lien.status ?? "Unknown";
-      counts[key] = (counts[key] ?? 0) + 1;
-    }
-    return counts;
-  }, [lienRows]);
-
-  const caseStatusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const c of caseRows) {
-      const key = c.status ?? "Unknown";
-      counts[key] = (counts[key] ?? 0) + 1;
-    }
-    return counts;
-  }, [caseRows]);
-
-  const totalLienPurchase = lienRows.reduce(
-    (s, l) => s + (l.totalPurchaseAmount ?? 0),
-    0,
-  );
-  const totalLienBilling = lienRows.reduce(
-    (s, l) => s + (l.totalBillingAmount ?? 0),
-    0,
-  );
+  const lienAmountsByStatus = reports?.liens.statusAmounts ?? {};
+  const lienStatusCounts = reports?.liens.statusCounts ?? {};
+  const caseStatusCounts = reports?.cases.statusCounts ?? {};
+  const totalLienPurchase = reports?.liens.totalPurchaseAmount ?? 0;
+  const totalLienBilling = reports?.liens.totalBillingAmount ?? 0;
 
   // Built from the known status order plus whatever the API actually returns, so a
   // status this list doesn't anticipate still shows up instead of silently dropping
@@ -240,7 +208,7 @@ export default function LienDashboardPage() {
     try {
       const response = await reportExporters[activeReport]({
         page: 1,
-        limit: 1000,
+        limit: 500,
         startDate: dashboardRange.from,
         endDate: dashboardRange.to,
       });

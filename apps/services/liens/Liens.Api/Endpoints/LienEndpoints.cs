@@ -443,7 +443,7 @@ public static class LienEndpoints
                 BuyingOrgId = lien.BuyingOrgId,
                 HoldingOrgId = lien.HoldingOrgId,
                 IncidentDate = lien.IncidentDate,
-                PurchaseDate = lien.IncidentDate.HasValue ? FormatLegacyDate(lien.IncidentDate) : lien.PurchaseDate,
+                PurchaseDate = lien.PurchaseDate,
                 InitialServiceDate = lien.InitialServiceDate,
                 EndServiceDate = lien.EndServiceDate,
                 TotalPurchase = totalPurchase,
@@ -542,10 +542,10 @@ public static class LienEndpoints
             query = query.Where(l => l.FacilityId == facilityId.Value);
 
         if (purchaseFrom.HasValue)
-            query = query.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value >= purchaseFrom.Value);
+            query = query.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value >= purchaseFrom.Value);
 
         if (purchaseTo.HasValue)
-            query = query.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value <= purchaseTo.Value);
+            query = query.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value <= purchaseTo.Value);
 
         if (closedFrom.HasValue)
             query = query.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value >= closedFrom.Value);
@@ -1043,7 +1043,7 @@ public static class LienEndpoints
                     id = lien.Id.ToString(),
                     caseId = lien.CaseId?.ToString() ?? string.Empty,
                     status = lien.Status,
-                    purchaseDate = FormatLegacyDate(lien.IncidentDate),
+                    purchaseDate = lien.PurchaseDate ?? string.Empty,
                     initialServiceDate = FormatLegacyDate(lien.InitialServiceDate),
                     endServiceDate = FormatLegacyDate(lien.EndServiceDate),
                     note = lien.Description ?? string.Empty,

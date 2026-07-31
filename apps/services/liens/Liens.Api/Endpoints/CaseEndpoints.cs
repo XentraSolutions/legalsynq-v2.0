@@ -1124,7 +1124,8 @@ public static class CaseEndpoints
                     IsConfidential = existing.IsConfidential,
                     SubjectFirstName = existing.SubjectFirstName,
                     SubjectLastName = existing.SubjectLastName,
-                    IncidentDate = ParseLegacyDate(request.purchaseDate) ?? existing.IncidentDate,
+                    IncidentDate = existing.IncidentDate,
+                    PurchaseDate = ParseLegacyDate(request.purchaseDate) ?? ParseLegacyDate(existing.PurchaseDate),
                     InitialServiceDate = ParseLegacyDate(request.initialServiceDate) ?? existing.InitialServiceDate,
                     EndServiceDate = ParseLegacyDate(request.endServiceDate) ?? existing.EndServiceDate,
                     IsBulk = request.isBulk ?? existing.IsBulk,
@@ -1174,7 +1175,7 @@ public static class CaseEndpoints
             IsConfidential = false,
             SubjectFirstName = null,
             SubjectLastName = null,
-            IncidentDate = ParseLegacyDate(request.purchaseDate),
+            PurchaseDate = ParseLegacyDate(request.purchaseDate),
             InitialServiceDate = ParseLegacyDate(request.initialServiceDate),
             EndServiceDate = ParseLegacyDate(request.endServiceDate),
             IsBulk = request.isBulk,
@@ -1247,7 +1248,8 @@ public static class CaseEndpoints
             IsConfidential = existing.IsConfidential,
             SubjectFirstName = existing.SubjectFirstName,
             SubjectLastName = existing.SubjectLastName,
-            IncidentDate = ParseLegacyDate(request.purchaseDate) ?? existing.IncidentDate,
+            IncidentDate = existing.IncidentDate,
+            PurchaseDate = ParseLegacyDate(request.purchaseDate) ?? ParseLegacyDate(existing.PurchaseDate),
             InitialServiceDate = ParseLegacyDate(request.initialServiceDate) ?? existing.InitialServiceDate,
             EndServiceDate = ParseLegacyDate(request.endServiceDate) ?? existing.EndServiceDate,
             IsBulk = request.isBulk ?? existing.IsBulk,
@@ -1319,7 +1321,7 @@ public static class CaseEndpoints
             id = lien.Id.ToString(),
             caseId = lien.CaseId?.ToString() ?? string.Empty,
             status = lien.Status,
-            purchaseDate = FormatLegacyDate(lien.IncidentDate),
+            purchaseDate = lien.PurchaseDate ?? string.Empty,
             initialServiceDate = FormatLegacyDate(lien.InitialServiceDate),
             endServiceDate = FormatLegacyDate(lien.EndServiceDate),
             note = lien.Description ?? string.Empty,
@@ -2114,7 +2116,8 @@ public static class CaseEndpoints
             db,
             ctx,
             ct,
-            requireLawFirm);
+            requireLawFirm,
+            includeAllItems: true);
 
         return rows.Items
             .Select(row => casesById.GetValueOrDefault(row.Id))
@@ -2148,7 +2151,8 @@ public static class CaseEndpoints
             db,
             ctx,
             ct,
-            requireMedicalProvider);
+            requireMedicalProvider,
+            includeAllItems: true);
 
         return rows.Items
             .Where(row => row.CaseRecordId.HasValue)
@@ -4164,7 +4168,7 @@ public static class CaseEndpoints
                 .Where(l => facilityIdFilter.Count == 0 || (l.FacilityId.HasValue && facilityIdFilter.Contains(l.FacilityId.Value)))
                 .Where(l => lawFirmCaseIds.Count == 0 || (l.CaseId.HasValue && lawFirmCaseIds.Contains(l.CaseId.Value)))
                 .Where(l => lienStatusFilter.Count == 0 || lienStatusFilter.Contains(l.Status))
-                .Where(l => MatchesLegacyPurchaseDateFilter(l.IncidentDate, request.purchaseDate))
+                .Where(l => MatchesLegacyPurchaseDateFilter(ParseLegacyDate(l.PurchaseDate), request.purchaseDate))
                 .OrderByDescending(l => l.CreatedAtUtc)
                 .ToList();
 
@@ -4254,7 +4258,7 @@ public static class CaseEndpoints
                     CaseCode = caseInfo?.CaseNumber ?? string.Empty,
                     LiensCode = lien.LienNumber,
                     Status = lien.Status,
-                    PurchaseDate = FormatLegacyDate(lien.IncidentDate),
+                    PurchaseDate = lien.PurchaseDate ?? string.Empty,
                     InitialServiceDate = FormatLegacyDate(lien.InitialServiceDate) is { Length: > 0 } initialServiceDate
                         ? initialServiceDate
                         : facilityFields.GetValueOrDefault("initialServiceDate", string.Empty),
@@ -6121,6 +6125,7 @@ public static class CaseEndpoints
         public string FundingCompanyId { get; init; } = string.Empty;
         public string FundingCompany { get; init; } = string.Empty;
         public string IncidentDate { get; init; } = string.Empty;
+        public string PurchaseDate { get; init; } = string.Empty;
         public string InitialServiceDate { get; init; } = string.Empty;
         public string EndServiceDate { get; init; } = string.Empty;
         public decimal OriginalAmount { get; init; }
@@ -6130,6 +6135,28 @@ public static class CaseEndpoints
         public decimal TotalBillingAmount { get; init; }
         public DateTime CreatedAtUtc { get; init; }
         public DateTime UpdatedAtUtc { get; init; }
+    }
+
+    private sealed class DashboardAmountSummary
+    {
+        public decimal Purchase { get; init; }
+        public decimal Billing { get; init; }
+    }
+
+    private sealed class DashboardReportResult<T>
+    {
+        public IReadOnlyList<T> Items { get; init; } = [];
+        public int Page { get; init; }
+        public int PageSize { get; init; }
+        public int TotalCount { get; init; }
+        public decimal TotalPurchaseAmount { get; init; }
+        public decimal TotalBillingAmount { get; init; }
+        public IReadOnlyDictionary<string, int> StatusCounts { get; init; } =
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        public IReadOnlyDictionary<string, DashboardAmountSummary> StatusAmounts { get; init; } =
+            new Dictionary<string, DashboardAmountSummary>(StringComparer.OrdinalIgnoreCase);
+        public IReadOnlyDictionary<string, int> AllocationCounts { get; init; } =
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     }
 
     private sealed class LegacyDashboardMetricRequest
@@ -6165,9 +6192,12 @@ public static class CaseEndpoints
 
         if (!hasStart && !hasEnd)
         {
-            // No supplied range means all available history, rather than the previous month.
-            periodStart = null;
-            periodEnd = null;
+            var firstDayOfCurrentMonth = new DateTime(
+                DateTime.UtcNow.Year,
+                DateTime.UtcNow.Month,
+                1);
+            periodStart = firstDayOfCurrentMonth.AddMonths(-1);
+            periodEnd = firstDayOfCurrentMonth.AddDays(-1);
             return true;
         }
 
@@ -6215,20 +6245,23 @@ public static class CaseEndpoints
         }
 
         var query = db.Liens.AsNoTracking()
-            .Where(l => l.TenantId == tenantId);
+            .Where(l => l.TenantId == tenantId &&
+                        l.PurchaseDate.HasValue);
 
         if (periodStart.HasValue && periodEnd.HasValue)
         {
+            var purchaseStart = DateOnly.FromDateTime(periodStart.Value);
+            var purchaseEnd = DateOnly.FromDateTime(periodEnd.Value);
             query = query.Where(l =>
-                l.CreatedAtUtc.Date >= periodStart.Value &&
-                l.CreatedAtUtc.Date <= periodEnd.Value);
+                l.PurchaseDate!.Value >= purchaseStart &&
+                l.PurchaseDate.Value <= purchaseEnd);
         }
 
         if (orgId.HasValue)
             query = query.Where(l => l.OrgId == orgId.Value || l.SellingOrgId == orgId.Value || l.BuyingOrgId == orgId.Value || l.HoldingOrgId == orgId.Value);
 
         var liens = await query.ToListAsync(ct);
-        var amount = liens.Sum(l => l.PurchasePrice ?? l.OriginalAmount);
+        var amount = liens.Sum(l => l.PurchasePrice ?? 0m);
 
         return Results.Ok(new
         {
@@ -6257,20 +6290,22 @@ public static class CaseEndpoints
             return Results.BadRequest(new { isSuccess = false, message = validationMessage });
         }
 
-        var paymentsQuery = db.SettlementPaymentDetails.AsNoTracking()
-            .Where(p => p.TenantId == tenantId &&
-                        p.PaymentDate.HasValue);
+        var settlementsQuery = db.LienSettlements.AsNoTracking()
+            .Where(s => s.TenantId == tenantId &&
+                        !s.IsDeleted &&
+                        s.SettlementDate.HasValue);
 
         if (periodStart.HasValue && periodEnd.HasValue)
         {
-            paymentsQuery = paymentsQuery.Where(p =>
-                p.PaymentDate!.Value.ToDateTime(TimeOnly.MinValue) >= periodStart.Value &&
-                p.PaymentDate!.Value.ToDateTime(TimeOnly.MinValue) <= periodEnd.Value);
+            var settlementStart = DateOnly.FromDateTime(periodStart.Value);
+            var settlementEnd = DateOnly.FromDateTime(periodEnd.Value);
+            settlementsQuery = settlementsQuery.Where(s =>
+                s.SettlementDate!.Value >= settlementStart &&
+                s.SettlementDate.Value <= settlementEnd);
         }
 
-        var payments = await paymentsQuery.ToListAsync(ct);
-
-        var amount = payments.Sum(p => p.Amount);
+        var settlements = await settlementsQuery.ToListAsync(ct);
+        var amount = settlements.Sum(s => s.Amount);
 
         return Results.Ok(new
         {
@@ -6281,7 +6316,7 @@ public static class CaseEndpoints
                 periodStart = periodStart?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
                 periodEnd = periodEnd?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
                 totalAmount = amount.ToString("0.00", CultureInfo.InvariantCulture),
-                totalCount = payments.Count,
+                totalCount = settlements.Count,
             },
         });
     }
@@ -6308,8 +6343,14 @@ public static class CaseEndpoints
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
-        var result = await BuildDashboardLienReportResultAsync(request, db, ctx, ct);
-        return IsDashboardCsvRequested(request)
+        var isCsv = IsDashboardCsvRequested(request);
+        var result = await BuildDashboardLienReportResultAsync(
+            request,
+            db,
+            ctx,
+            ct,
+            includeAllItems: isCsv);
+        return isCsv
             ? BuildDashboardCsvResponse(BuildTotalLienReportCsv(result.Items), "total_lien_report")
             : Results.Ok(result);
     }
@@ -6333,8 +6374,14 @@ public static class CaseEndpoints
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
-        var result = await BuildDashboardCaseReportResultAsync(request, db, ctx, ct);
-        return IsDashboardCsvRequested(request)
+        var isCsv = IsDashboardCsvRequested(request);
+        var result = await BuildDashboardCaseReportResultAsync(
+            request,
+            db,
+            ctx,
+            ct,
+            includeAllItems: isCsv);
+        return isCsv
             ? BuildDashboardCsvResponse(BuildTotalCaseReportCsv(result.Items), "total_case_report")
             : Results.Ok(result);
     }
@@ -6359,8 +6406,15 @@ public static class CaseEndpoints
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
-        var result = await BuildDashboardCaseReportResultAsync(request, db, ctx, ct, requireLawFirm: true);
-        return IsDashboardCsvRequested(request)
+        var isCsv = IsDashboardCsvRequested(request);
+        var result = await BuildDashboardCaseReportResultAsync(
+            request,
+            db,
+            ctx,
+            ct,
+            requireLawFirm: true,
+            includeAllItems: isCsv);
+        return isCsv
             ? BuildDashboardCsvResponse(BuildLawFirmCaseReportCsv(result.Items), "lawfirm_case_report")
             : Results.Ok(result);
     }
@@ -6385,8 +6439,15 @@ public static class CaseEndpoints
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
-        var result = await BuildDashboardLienReportResultAsync(request, db, ctx, ct, requireMedicalProvider: true);
-        return IsDashboardCsvRequested(request)
+        var isCsv = IsDashboardCsvRequested(request);
+        var result = await BuildDashboardLienReportResultAsync(
+            request,
+            db,
+            ctx,
+            ct,
+            requireMedicalProvider: true,
+            includeAllItems: isCsv);
+        return isCsv
             ? BuildDashboardCsvResponse(BuildMedicalProviderReportCsv(result.Items), "medical_provider_report")
             : Results.Ok(result);
     }
@@ -6471,12 +6532,13 @@ public static class CaseEndpoints
         _ => value.ToString() ?? string.Empty,
     };
 
-    private static async Task<PaginatedResult<DashboardCaseReportRow>> BuildDashboardCaseReportResultAsync(
+    private static async Task<DashboardReportResult<DashboardCaseReportRow>> BuildDashboardCaseReportResultAsync(
         ReportFilterRequest? request,
         LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct,
-        bool requireLawFirm = false)
+        bool requireLawFirm = false,
+        bool includeAllItems = false)
     {
         var tenantId = RequireTenantId(ctx);
         var (page, limit) = NormalizeDashboardReportPaging(request);
@@ -6495,6 +6557,20 @@ public static class CaseEndpoints
             .AsNoTracking()
             .Where(l => l.TenantId == tenantId && l.CaseId.HasValue && caseIds.Contains(l.CaseId.Value))
             .ToListAsync(ct);
+
+        if (requireLawFirm &&
+            TryResolveDashboardLienReportPeriod(request, out var periodStart, out var periodEnd))
+        {
+            var purchaseStart = DateOnly.FromDateTime(periodStart);
+            var purchaseEnd = DateOnly.FromDateTime(periodEnd);
+            var casesInPurchasePeriod = caseLiens
+                .Where(l => l.PurchaseDate.HasValue &&
+                            l.PurchaseDate.Value >= purchaseStart &&
+                            l.PurchaseDate.Value <= purchaseEnd)
+                .Select(l => l.CaseId!.Value)
+                .ToHashSet();
+            cases = cases.Where(c => casesInPurchasePeriod.Contains(c.Id)).ToList();
+        }
 
         var liensByCaseId = caseLiens
             .GroupBy(l => l.CaseId!.Value)
@@ -6574,31 +6650,38 @@ public static class CaseEndpoints
                     UpdatedAtUtc = c.UpdatedAtUtc,
                 };
             })
-            .Where(r => !requireLawFirm || !string.IsNullOrWhiteSpace(r.LawFirm) || !string.IsNullOrWhiteSpace(r.LawFirmId))
             .Where(r => MatchesDashboardCaseFilter(request, r))
             .OrderByDescending(r => r.CreatedAtUtc)
             .ThenByDescending(r => r.CaseNumber, StringComparer.Ordinal)
             .ToList();
 
-        return PaginateDashboardRows(rows, page, limit);
+        return BuildDashboardReportResult(
+            rows,
+            page,
+            limit,
+            includeAllItems,
+            row => row.Status,
+            allocationSelector: requireLawFirm ? row => row.LawFirm : null);
     }
 
-    private static async Task<PaginatedResult<DashboardLienReportRow>> BuildDashboardLienReportResultAsync(
+    private static async Task<DashboardReportResult<DashboardLienReportRow>> BuildDashboardLienReportResultAsync(
         ReportFilterRequest? request,
         LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct,
-        bool requireMedicalProvider = false)
+        bool requireMedicalProvider = false,
+        bool includeAllItems = false)
     {
         var tenantId = RequireTenantId(ctx);
         var (page, limit) = NormalizeDashboardReportPaging(request);
-        var hasDateRange = TryResolveDashboardLienReportPeriod(request, out var periodStart, out var periodEnd);
+        var periodStart = default(DateTime);
+        var periodEnd = default(DateTime);
+        var hasDateRange = requireMedicalProvider &&
+                           TryResolveDashboardLienReportPeriod(request, out periodStart, out periodEnd);
 
         var liens = await db.Liens
             .AsNoTracking()
-            .Where(l => l.TenantId == tenantId &&
-                        l.Status != LienStatus.Cancelled &&
-                        l.Status != "Rejected")
+            .Where(l => l.TenantId == tenantId)
             .OrderByDescending(l => l.CreatedAtUtc)
             .ToListAsync(ct);
 
@@ -6614,22 +6697,13 @@ public static class CaseEndpoints
 
         if (hasDateRange)
         {
-            if (requireMedicalProvider)
-            {
-                var purchaseStart = DateOnly.FromDateTime(periodStart);
-                var purchaseEnd = DateOnly.FromDateTime(periodEnd);
-                liens = liens
-                    .Where(l => l.IncidentDate.HasValue &&
-                                l.IncidentDate.Value >= purchaseStart &&
-                                l.IncidentDate.Value <= purchaseEnd)
-                    .ToList();
-            }
-            else
-            {
-                liens = liens
-                    .Where(l => l.CreatedAtUtc.Date >= periodStart && l.CreatedAtUtc.Date <= periodEnd)
-                    .ToList();
-            }
+            var purchaseStart = DateOnly.FromDateTime(periodStart);
+            var purchaseEnd = DateOnly.FromDateTime(periodEnd);
+            liens = liens
+                .Where(l => l.PurchaseDate.HasValue &&
+                            l.PurchaseDate.Value >= purchaseStart &&
+                            l.PurchaseDate.Value <= purchaseEnd)
+                .ToList();
         }
 
         var caseIds = liens.Where(l => l.CaseId.HasValue).Select(l => l.CaseId!.Value).Distinct().ToList();
@@ -6813,6 +6887,7 @@ public static class CaseEndpoints
                     FundingCompanyId = fundingCompanyId,
                     FundingCompany = fundingCompany,
                     IncidentDate = FormatLegacyDate(l.IncidentDate),
+                    PurchaseDate = FormatLegacyDate(l.PurchaseDate),
                     InitialServiceDate = FormatLegacyDate(l.InitialServiceDate),
                     EndServiceDate = FormatLegacyDate(l.EndServiceDate),
                     OriginalAmount = l.OriginalAmount,
@@ -6824,13 +6899,20 @@ public static class CaseEndpoints
                     UpdatedAtUtc = l.UpdatedAtUtc,
                 };
             })
-            .Where(r => !requireMedicalProvider || !string.IsNullOrWhiteSpace(r.MedicalProvider) || !string.IsNullOrWhiteSpace(r.MedicalProviderId))
             .Where(r => MatchesDashboardLienFilter(request, r))
             .OrderByDescending(r => r.CreatedAtUtc)
             .ThenByDescending(r => r.LienNumber, StringComparer.Ordinal)
             .ToList();
 
-        return PaginateDashboardRows(rows, page, limit);
+        return BuildDashboardReportResult(
+            rows,
+            page,
+            limit,
+            includeAllItems,
+            row => row.Status,
+            row => row.TotalPurchaseAmount,
+            row => row.TotalBillingAmount,
+            requireMedicalProvider ? row => row.FacilityName : null);
     }
 
     private static string MapDashboardLienBusinessStatus(string status) => status switch
@@ -6967,16 +7049,53 @@ public static class CaseEndpoints
         return (page, limit);
     }
 
-    private static PaginatedResult<T> PaginateDashboardRows<T>(List<T> rows, int page, int limit)
+    private static DashboardReportResult<T> BuildDashboardReportResult<T>(
+        List<T> rows,
+        int page,
+        int limit,
+        bool includeAllItems,
+        Func<T, string> statusSelector,
+        Func<T, decimal>? purchaseSelector = null,
+        Func<T, decimal>? billingSelector = null,
+        Func<T, string>? allocationSelector = null)
     {
-        return new PaginatedResult<T>
+        var statusCounts = rows
+            .GroupBy(row => NormalizeDashboardSummaryKey(statusSelector(row)), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+        var statusAmounts = rows
+            .GroupBy(row => NormalizeDashboardSummaryKey(statusSelector(row)), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => new DashboardAmountSummary
+                {
+                    Purchase = purchaseSelector is null ? 0m : group.Sum(purchaseSelector),
+                    Billing = billingSelector is null ? 0m : group.Sum(billingSelector),
+                },
+                StringComparer.OrdinalIgnoreCase);
+        var allocationCounts = allocationSelector is null
+            ? new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            : rows
+                .GroupBy(row => NormalizeDashboardSummaryKey(allocationSelector(row)), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+
+        return new DashboardReportResult<T>
         {
-            Items = rows.Skip((page - 1) * limit).Take(limit).ToList(),
+            Items = includeAllItems
+                ? rows
+                : rows.Skip((page - 1) * limit).Take(limit).ToList(),
             Page = page,
             PageSize = limit,
             TotalCount = rows.Count,
+            TotalPurchaseAmount = purchaseSelector is null ? 0m : rows.Sum(purchaseSelector),
+            TotalBillingAmount = billingSelector is null ? 0m : rows.Sum(billingSelector),
+            StatusCounts = statusCounts,
+            StatusAmounts = statusAmounts,
+            AllocationCounts = allocationCounts,
         };
     }
+
+    private static string NormalizeDashboardSummaryKey(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "Unknown" : value.Trim();
 
     private static bool MatchesDashboardCaseFilter(ReportFilterRequest? request, DashboardCaseReportRow row)
     {

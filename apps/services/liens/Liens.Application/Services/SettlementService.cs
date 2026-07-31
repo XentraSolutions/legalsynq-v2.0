@@ -105,7 +105,7 @@ public class SettlementService : ISettlementService
         var entity = LienSettlement.Create(
             tenantId, request.CaseId, request.LienId,
             request.PaymentNumber, request.Amount, userId,
-            request.Status, request.Note);
+            request.Status, request.Note, request.SettlementDate);
         await _settlementRepo.AddAsync(entity, ct);
         return MapSettlement(entity);
     }
@@ -119,7 +119,13 @@ public class SettlementService : ISettlementService
     {
         var entity = await _settlementRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new KeyNotFoundException($"Settlement {id} not found.");
-        entity.Update(request.PaymentNumber, request.Amount, userId, request.Status, request.Note);
+        entity.Update(
+            request.PaymentNumber,
+            request.Amount,
+            userId,
+            request.Status,
+            request.Note,
+            request.SettlementDate ?? entity.SettlementDate);
         await _settlementRepo.UpdateAsync(entity, ct);
         return MapSettlement(entity);
     }
@@ -132,6 +138,7 @@ public class SettlementService : ISettlementService
         LienId        = s.LienId,
         PaymentNumber = s.PaymentNumber,
         Amount        = s.Amount,
+        SettlementDate = s.SettlementDate,
         Status        = s.Status,
         Note          = s.Note,
         CreatedAtUtc  = s.CreatedAtUtc,

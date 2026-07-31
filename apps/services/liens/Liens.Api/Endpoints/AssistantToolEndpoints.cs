@@ -1194,7 +1194,7 @@ public static class AssistantToolEndpoints
             totalBilling = lien.TotalBilling ?? lien.OriginalAmount;
 
         var reduction = Math.Max(totalBilling - totalPurchase, 0m);
-        var purchaseDate = NullIfWhiteSpace(lien.PurchaseDate) ?? FormatDate(lien.IncidentDate);
+        var purchaseDate = NullIfWhiteSpace(lien.PurchaseDate);
         var isMedical = string.Equals(lien.LienType, LienType.MedicalLien, StringComparison.OrdinalIgnoreCase);
 
         return new SynqLienLienInsight(

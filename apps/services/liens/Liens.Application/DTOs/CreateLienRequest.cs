@@ -13,6 +13,7 @@ public sealed class CreateLienRequest
     public string? SubjectFirstName { get; init; }
     public string? SubjectLastName { get; init; }
     public DateOnly? IncidentDate { get; init; }
+    public DateOnly? PurchaseDate { get; init; }
     public DateOnly? InitialServiceDate { get; init; }
     public DateOnly? EndServiceDate { get; init; }
     public string? IsBulk { get; init; }

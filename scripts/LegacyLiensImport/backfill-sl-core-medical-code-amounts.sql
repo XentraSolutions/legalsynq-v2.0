@@ -9,8 +9,10 @@
 -- This procedure never updates liens_Liens amounts or deletes crosswalks. It
 -- creates deterministic LegacyMedicalCode servicing records, which the Liens
 -- API uses to calculate the Billing Amount and Purchase Amount grid columns.
+-- Only rows with SL_LEINS_MEDICAL_CODE.LMC_STATUS = 'A' are active source
+-- data and are included in validation, totals, and servicing-item inserts.
 
-USE LS_QA_LIENS;
+USE LS_LIENS;
 
 DROP PROCEDURE IF EXISTS liens_backfill_sl_core_medical_code_amounts;
 
@@ -134,7 +136,8 @@ BEGIN
     INNER JOIN liens_Liens l
       ON l.Id = x.TargetId
      AND l.TenantId = v_tenant_id
-     AND l.OrgId = v_org_id;
+     AND l.OrgId = v_org_id
+    WHERE UPPER(TRIM(COALESCE(mc.LMC_STATUS, ''))) = 'A';
 
     SELECT COUNT(*) INTO v_source_code_count
     FROM tmp_sl_core_backfill_raw;

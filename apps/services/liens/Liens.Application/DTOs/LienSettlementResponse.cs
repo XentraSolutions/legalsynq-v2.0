@@ -8,6 +8,7 @@ public sealed class LienSettlementResponse
     public Guid    LienId        { get; init; }
     public int     PaymentNumber { get; init; }
     public decimal Amount        { get; init; }
+    public DateOnly? SettlementDate { get; init; }
     public string  Status        { get; init; } = "Pending";
     public string? Note          { get; init; }
     public DateTime CreatedAtUtc { get; init; }
@@ -22,6 +23,7 @@ public sealed class CreateLienSettlementRequest
     public Guid    LienId        { get; init; }
     public int     PaymentNumber { get; init; }
     public decimal Amount        { get; init; }
+    public DateOnly? SettlementDate { get; init; }
     public string? Status        { get; init; }
     public string? Note          { get; init; }
 }
@@ -30,6 +32,7 @@ public sealed class UpdateLienSettlementRequest
 {
     public int     PaymentNumber { get; init; }
     public decimal Amount        { get; init; }
+    public DateOnly? SettlementDate { get; init; }
     public string? Status        { get; init; }
     public string? Note          { get; init; }
 }

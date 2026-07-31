@@ -40,7 +40,15 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `GET` | `/api/liens/cases/{id}` | Case detail |
 | `DELETE` | `/api/liens/cases/delete/{id}` | Legacy case deletion; blocks when a linked lien is active, and detaches terminal/rejected liens before removing the case |
 | `POST` | `/api/liens/reports/diy/export` | Export a DIY report as Base64-encoded CSV in the legacy `data` export envelope |
-| `POST` | `/api/liens/cases/dashboard/*-report-export/v3` | Returns the paginated JSON report by default; include `isCsv: true` or `isCsv: "yes"` for a Base64-encoded CSV export envelope with the report's four designated columns |
+| `POST` | `/api/liens/cases/dashboard/total-lien-report-export/v3` | Returns all legacy-eligible liens with full-result status and billing/purchase summaries; the legacy V3 request has no date filter |
+| `POST` | `/api/liens/cases/dashboard/total-case-report-export/v3` | Returns all legacy-eligible cases with full-result status counts; the legacy V3 request has no date filter |
+| `POST` | `/api/liens/cases/dashboard/lawfirm-case-report-export/v3` | Returns case/law-firm allocation and filters cases by the purchase date of any linked lien |
+| `POST` | `/api/liens/cases/dashboard/medical-provider-report-export/v3` | Returns lien/facility allocation filtered by lien purchase date |
+| `POST` | `/api/liens/cases/dashboard/deployed` | Sums lien purchase amounts by persisted `PurchaseDate` |
+| `POST` | `/api/liens/cases/dashboard/cash-received` | Sums non-deleted lien settlements by persisted `SettlementDate` |
+
+All four V3 report endpoints return paginated rows plus full-result summaries.
+Set `isCsv: true` or `isCsv: "yes"` for an uncapped Base64-encoded CSV export.
 
 DIY reports treat `isBulk: "N"` as non-bulk for legacy `N`, canonical `No`, and unset lien values, so a newly created ordinary lien is included in its report.
 
@@ -69,6 +77,7 @@ new mutation (reuse it only to retry that exact request).
 | `GET` | `/api/liens/selling/dashboard?tab=pending\|internal\|sold\|all` | Returns seller-scoped portfolio totals, tab counts, and a paginated lien table. Supports search, funding company, law firm, case manager, facility, initial-service-date, and sort filters. |
 | `GET` | `/api/liens/selling/liens?tab=pending\|internal\|sold\|all` | Returns the same seller-scoped, filtered, paginated lien rows without dashboard totals. |
 | `POST` | `/api/liens/selling/liens` | Creates a lien directly in `Pending` or `Internal`; it does not create a seller draft. |
+| `GET` | `/api/liens/selling/liens/{lienId}` | Returns seller-scoped lien detail for the intake wizard, including funding-company contact person/email and case-manager/law-firm details when available. |
 | `PUT` | `/api/liens/selling/liens/{lienId}/lien-information`, `/case-information`, `/medical-pricing`, `/documents` | Saves the seller wizard sections. Existing document IDs are verified against the Documents service and must reference the seller-owned lien or case. |
 | `POST` | `/api/liens/selling/liens/{lienId}/prepare-sale` | Validates readiness and stores the selected buyer organisation/contact and buyer message without changing internal notes. |
 | `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and sends buyer and seller `New Lien Offer` emails. |
@@ -235,6 +244,14 @@ a guarded MySQL-only one-time runner. It must be executed only against a
 controlled staging restore on the same MySQL server as LiensDb; see the
 importer README for its trusted approval, source-receipt, dry-run, and
 single-use apply requirements.
+
+The complete SQL procedure requires migration
+`20260731000001_AddLienPurchaseAndSettlementDates`. It preserves
+`LM_PURCHASE_DATE` on the lien, preserves settlement amount/date rows for the
+Cash Received metric, and excludes source rows marked deleted (`CASE_IS_DELETED
+= 'Y'`, `LM_IS_DELETED = 'Y'`, or `SLSPD_IS_DELETED = 'Y'`). Medical-code
+amounts and servicing rows are imported only when `LMC_STATUS = 'A'`, matching
+the legacy dashboard calculations.
 
 ## Workflow Engine (Flow)
 

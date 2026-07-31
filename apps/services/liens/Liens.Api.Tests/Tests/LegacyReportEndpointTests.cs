@@ -284,7 +284,8 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
                 caseId: caseEntity.Id,
                 facilityId: SeedHelper.FacilityId,
                 incidentDate: new DateOnly(2024, 6, 15),
-                isBulk: "N");
+                isBulk: "N",
+                purchaseDate: new DateOnly(2024, 6, 15));
             var reduction = LienReduction.Create(
                 SeedHelper.TenantId,
                 caseEntity.Id,

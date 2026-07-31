@@ -18,6 +18,9 @@ internal static class LegacyLiensImportProgram
 
     public static async Task<int> RunAsync(string[] args)
     {
+        if (args.Any(arg => arg == "--backfill-case-relationships"))
+            return await CaseRelationshipBackfill.RunAsync(args);
+
         if (args.Any(arg => arg is "--help" or "-h"))
         {
             WriteUsage();
@@ -153,6 +156,12 @@ Apply controls:
 Scope: cases, medical-lien headers, and case notes only. It records durable import runs,
 crosswalks, and reserves non-sensitive exception storage. It does not migrate documents, detailed medical
 charges/facility links, payments/settlements, contacts, or workflow state.
+
+Relationship repair:
+  --backfill-case-relationships  Runs the guarded Program 1 case-manager,
+                                  accident-type, and lien-facility repair.
+                                  Use --backfill-case-relationships --help for
+                                  its required arguments and dry-run/apply flow.
 """);
     }
 

@@ -501,6 +501,17 @@ export interface ReportPaginatedResult<T> {
   page: number;
   pageSize: number;
   totalCount: number;
+  totalPurchaseAmount?: number;
+  totalBillingAmount?: number;
+  statusCounts?: Record<string, number>;
+  statusAmounts?: Record<
+    string,
+    {
+      purchase: number;
+      billing: number;
+    }
+  >;
+  allocationCounts?: Record<string, number>;
 }
 
 export interface CashMetricResponse {
