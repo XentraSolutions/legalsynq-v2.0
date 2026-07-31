@@ -2151,7 +2151,10 @@ public static class SellingPublicEndpoints
                 view.SellerContact?.Organization,
                 view.SellerContact?.Email),
             new PublicBuyerOrganizationResponse(
-                view.BuyerContact?.Organization),
+                view.BuyerContact?.DisplayName,
+                view.BuyerContact?.Organization,
+                view.BuyerContact?.Email,
+                view.BuyerContact?.Phone),
             new PublicBuyerCaseResponse(
                 view.HandlingLawFirm,
                 view.CaseManager),
@@ -2463,7 +2466,11 @@ public static class SellingPublicEndpoints
         string? Company,
         string? Email);
 
-    private sealed record PublicBuyerOrganizationResponse(string? Company);
+    private sealed record PublicBuyerOrganizationResponse(
+        string? ContactName,
+        string? Company,
+        string? Email,
+        string? Phone);
 
     private sealed record PublicBuyerCaseResponse(
         string? HandlingLawFirm,

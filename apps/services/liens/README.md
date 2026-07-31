@@ -89,7 +89,9 @@ Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldA
 seller acceptance; notification delivery is mandatory and cannot be opted out through request payload. On every
 confirmation, the service validates real buyer/seller contact data, creates a 30-day buyer response link and a separate
 30-day seller-view link, then requests both buyer and seller emails through Notifications with idempotency keys. The
-seller email uses matching branded copy with buyer/funding-company information and a `View Lien Details` link.
+seller email uses matching branded copy with buyer/funding-company information and a `View Lien Details` link. The
+seller display company is resolved from the selected seller contact, another active contact in the same seller
+organization, or finally the seller display name.
 Supporting document names are pulled from existing legacy
 lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
 email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark

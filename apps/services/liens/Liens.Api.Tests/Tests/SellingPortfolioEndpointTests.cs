@@ -1093,6 +1093,42 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task ConfirmSale_uses_same_seller_org_company_when_notification_contact_has_no_company()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            originalAmount: 3875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.individual@smithlaw.test",
+            buyerEmail: "buyer.reviewer@capital.test",
+            sellerOrganization: null,
+            fallbackSellerOrganization: "Smith & Associates LLP");
+
+        var response = await PostConfirmSaleAsync(lienId, "confirm-sale-seller-company-fallback");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().HaveCount(2);
+
+        var buyerEmail = publisher.Emails.Single(captured => captured.RecipientEmail == "buyer.reviewer@capital.test");
+        buyerEmail.Body.Should().Contain("Seller Operator");
+        buyerEmail.Body.Should().Contain("Smith & Associates LLP");
+        buyerEmail.Options.Should().NotBeNull();
+        buyerEmail.Options!.TemplateData.Should().NotBeNull();
+        buyerEmail.Options.TemplateData!["sellerCompany"].Should().Be("Smith & Associates LLP");
+    }
+
+    [Fact]
     public async Task PublicBuyerPortal_returns_temporary_portal_json_with_real_data()
     {
         var buyerContactId = Guid.CreateVersion7();
@@ -1160,6 +1196,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         json.GetProperty("seller").GetProperty("company").GetString().Should().Be("Smith & Associates LLP");
         json.GetProperty("seller").GetProperty("email").GetString().Should().Be("seller.portal@smithlaw.test");
         json.GetProperty("buyer").GetProperty("company").GetString().Should().Be("Capital Fund LLC");
+        json.GetProperty("buyer").GetProperty("contactName").GetString().Should().Be("Buyer Reviewer");
+        json.GetProperty("buyer").GetProperty("email").GetString().Should().Be("buyer.portal@capital.test");
+        json.GetProperty("buyer").GetProperty("phone").ValueKind.Should().Be(JsonValueKind.Null);
         json.GetProperty("case").GetProperty("caseManager").GetString().Should().Be("Case Manager");
         json.GetProperty("case").GetProperty("handlingLawFirm").GetString().Should().Be("Smith & Associates LLP");
         json.GetProperty("accessLink").GetProperty("expiresAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
@@ -3168,7 +3207,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         string? documentFileName = null,
         string? buyerPhone = null,
         Guid? buyerOrgId = null,
-        string? buyerMessage = null)
+        string? buyerMessage = null,
+        string? sellerOrganization = "Smith & Associates LLP",
+        string? fallbackSellerOrganization = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -3203,8 +3244,20 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
                 "Seller",
                 "Operator",
                 SeedHelper.UserId,
-                organization: "Smith & Associates LLP",
+                organization: sellerOrganization,
                 email: sellerEmail));
+
+            if (!string.IsNullOrWhiteSpace(fallbackSellerOrganization))
+            {
+                db.Contacts.Add(Contact.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    ContactType.LawFirm,
+                    "Seller",
+                    "Company",
+                    SeedHelper.UserId,
+                    organization: fallbackSellerOrganization));
+            }
         }
 
         var buyerContact = Contact.Create(

@@ -314,7 +314,9 @@ Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared li
 
 Notification delivery is mandatory and cannot be opted out through request payload. The lien must have real
 `FundingCompanyId`, `FundingCompanyContactId`, `InitialServiceDate`, `AskAmount`, buyer email, seller
-name/company/email, and handling law firm data. The API creates a 30-day buyer response access link and a separate
+name/email, a seller display company/label resolved from the seller organization contacts, and handling law firm data.
+The selected seller email contact does not have to carry its own company when another active contact in the same seller
+organization supplies it; otherwise the seller display name is used. The API creates a 30-day buyer response access link and a separate
 30-day seller-view access link from
 `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide CTA URLs. If the explicit base URL is absent, the API
 derives it from `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to

@@ -956,15 +956,17 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         if (string.IsNullOrWhiteSpace(buyerContact.Email))
             errors["fundingCompanyContactId"] = ["Buyer contact must have an email address."];
 
-        var sellerContact = SelectSellerContact(await _contactRepo.GetByOrgIdAsync(tenantId, sellerOrgId, isActive: true, ct));
+        var sellerContacts = await _contactRepo.GetByOrgIdAsync(tenantId, sellerOrgId, isActive: true, ct);
+        var sellerContact = SelectSellerContact(sellerContacts);
+        var sellerCompany = sellerContact is null ? null : ResolveSellerCompany(sellerContact, sellerContacts);
         if (sellerContact is null)
             errors["sellerContact"] = ["An active seller contact is required before sending the buyer notification."];
         else
         {
             if (string.IsNullOrWhiteSpace(sellerContact.DisplayName))
                 errors["sellerContact"] = ["Seller contact must have a display name."];
-            if (string.IsNullOrWhiteSpace(sellerContact.Organization))
-                errors["sellerCompany"] = ["Seller contact must have an organization/company."];
+            if (string.IsNullOrWhiteSpace(sellerCompany))
+                errors["sellerCompany"] = ["Seller contact must have a company, display name, or email address."];
             if (string.IsNullOrWhiteSpace(sellerContact.Email))
                 errors["sellerEmail"] = ["Seller contact must have an email address."];
         }
@@ -985,6 +987,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         return new ConfirmSaleNotificationContext(
             buyerContact,
             sellerContact!,
+            sellerCompany!,
             caseEntity,
             handlingLawFirm!,
             caseManager,
@@ -1251,7 +1254,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         var billingAmount = lien.OriginalAmount.ToString("C", CultureInfo.GetCultureInfo("en-US"));
         var initialServiceDate = lien.InitialServiceDate!.Value.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
         var sellerName = context.SellerContact.DisplayName.Trim();
-        var sellerCompany = context.SellerContact.Organization!.Trim();
+        var sellerCompany = context.SellerCompany.Trim();
         var sellerEmail = context.SellerContact.Email!.Trim();
         var buyerName = context.BuyerContact.DisplayName.Trim();
         var buyerCompany = context.BuyerContact.Organization?.Trim();
@@ -1802,6 +1805,17 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
            ?? contacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email))
            ?? contacts.FirstOrDefault();
 
+    private static string? ResolveSellerCompany(Contact sellerContact, IReadOnlyList<Contact> sellerContacts)
+        => FirstNonEmpty(
+            sellerContact.Organization,
+            sellerContacts.FirstOrDefault(c =>
+                string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
+                string.IsNullOrWhiteSpace(c.ContactSubtype) &&
+                !string.IsNullOrWhiteSpace(c.Organization))?.Organization,
+            sellerContacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Organization))?.Organization,
+            sellerContact.DisplayName,
+            sellerContact.Email);
+
     private static ConfirmSellingLienSaleResponse MapConfirmSaleResponse(
         Lien lien,
         ConfirmSellingLienBuyerNotificationResponse? notification,
@@ -1916,6 +1930,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private sealed record ConfirmSaleNotificationContext(
         Contact BuyerContact,
         Contact SellerContact,
+        string SellerCompany,
         Case? Case,
         string HandlingLawFirm,
         string? CaseManager,
