@@ -25,8 +25,9 @@ target mappings and service-owned import paths.
    Base64 RSA-SHA256 (PKCS#1 v1.5) signature before any `--apply` write, then
    binds the approved organization, mapping version, approval reference, and
    manifest hash to the import run.
-3. Apply Liens migrations, including `20260726000001_AddLegacyImportControlPlane`
-   and `20260727000001_AddLegacyImportApprovals`.
+3. Apply Liens migrations, including `20260726000001_AddLegacyImportControlPlane`,
+   `20260727000001_AddLegacyImportApprovals`, and
+   `20260731000001_AddLienPurchaseAndSettlementDates`.
 4. Set connection strings outside source control:
 
 ```powershell
@@ -57,6 +58,113 @@ VALUES
 The restore process must replace this one current row only as part of an
 approved restore workflow. The tool checks its fingerprint and scope before it
 reads source business rows.
+
+## Program 1 law-firm repair
+
+If the reviewed core import was run before it mapped `SL_CASE.CASE_LAW_FIRM`,
+run [`backfill-sl-core-case-law-firms.sql`](backfill-sl-core-case-law-firms.sql)
+only after the completed Program 1 contacts/facilities import. It uses the
+existing `SL_CASE` and `SL_CONTACT` crosswalks to restore the target contact
+UUID as `lawFirmId` in each target case's legacy metadata. It does not change
+`OrgId`: organization ownership is not a law-firm relationship.
+
+Run the whole script through **Execute SQL Script** (DBeaver Alt+X), then run
+its preflight call with `p_apply = '0'` and `p_expected_updates = -1`. Review
+the returned `CasesNeedingUpdate` and use that exact value for the apply call.
+The repair is deliberately blocked by a missing/invalid crosswalk, a target
+contact that is not a `LawFirm`, conflicting metadata, or a Notes overflow.
+`CasesWithoutLegacyLawFirm` is reported but not guessed; resolve those cases
+separately if it is nonzero.
+
+## Program 1 lien medical-provider repair
+
+Use [`backfill-sl-core-lien-medical-providers.sql`](backfill-sl-core-lien-medical-providers.sql)
+after the Program 1 contacts/facilities import to restore `medicalProviderId`
+metadata on a `LegacyMedicalFacilityInfo` servicing item for each imported
+medical lien. It maps each non-deleted medical lien's
+`SL_LEINS_MEDICAL_INFORMATION_FACILITY.LMI_MEDICAL_PROVIDER` value through the
+existing active Provider contact and its `SL_CONTACT` crosswalk. A case may
+have multiple providers across its liens; only multiple providers for one lien,
+a missing or inactive source Provider, an invalid target crosswalk, conflicting
+metadata, or a Notes overflow blocks the repair.
+
+Run the complete file through **Execute SQL Script** (DBeaver Alt+X), then use
+`CALL liens_backfill_sl_core_lien_medical_providers('<tenant-guid>', -1, '0');`
+for preflight. It reports any blocking `Resolution` values without changing
+data. The apply writes only the validated rows, leaving conflicts untouched and
+reporting them as `UnresolvedConflicts`. Use the exact `ChangesToApply` count
+with `p_apply = '1'` for the apply call, then reconcile the reported conflicts
+separately.
+
+## Program 1 facility-contact repair
+
+The Contacts page lists `MedicalFacility` contacts, while the legacy facility
+import stores `SL_FACILITY` rows in `liens_Facilities`. Use
+[`backfill-sl-core-facility-contacts.sql`](backfill-sl-core-facility-contacts.sql)
+to create the missing, active main `MedicalFacility` contact for each imported
+facility. Each created contact is linked through `FacilityId`; facility staff
+remain separate sub-contacts.
+
+Open an **LS_QA_LIENS** connection in DBeaver before deploying or calling this
+script; it deliberately has no `USE` statement. Run the complete file through
+**Execute SQL Script** (DBeaver Alt+X), then run
+`CALL liens_backfill_sl_core_facility_contacts('<tenant-guid>', -1, '0');`.
+Resolve any returned conflicts, then rerun it with the exact `ContactsToInsert`
+value and `p_apply = '1'.` Production execution requires explicit approval and
+an intentionally selected `LS_LIENS` connection.
+
+## Program 1 case-manager, accident-type, and facility repair
+
+Use [`backfill-sl-core-case-relationships.sql`](backfill-sl-core-case-relationships.sql)
+after both the Program 1 core import and the Program 1 contacts/facilities
+import have completed for the same source fingerprint. It repairs only omitted
+relationships:
+
+- `SL_CASE.CASE_MANAGER` through its `SL_CONTACT` crosswalk to `caseManagerId`
+  metadata on the target case.
+- `SL_CASE.CASE_ACCIDENT_TYPE` through `SL_ACCIDENT_TYPE` to the matching
+  system `liens_LookupValues` UUID plus the target `accidentType` name.
+- `SL_LEINS_MEDICAL_INFORMATION_FACILITY` to a blank target lien `FacilityId`.
+
+The facility relationship is lien-level, not a column on `liens_Cases`. The
+script never creates contacts, facilities, lookups, or crosswalks; a missing or
+ambiguous mapping blocks the entire apply. It also refuses to overwrite an
+existing different case-manager, accident-type, or facility assignment.
+
+You may use DBeaver to inspect the SQL file in dry-run mode (`@apply = 0`),
+but use the checked-in .NET runner for every apply. It owns the transaction and
+rolls it back on a script error, cancellation, an unexpected updated-row count,
+or a failed postcondition—none of those conditions can leave a partial repair.
+Before it stages data, the runner acquires the core-import lock and then the
+contacts-import lock for the tenant, holding both through commit or rollback so
+an import or another relationship repair cannot change its mappings mid-run.
+
+Run the dry run from the repository root:
+
+```powershell
+dotnet run --project scripts/LegacyLiensImport -- `
+  --backfill-case-relationships `
+  --tenant-id 019f6ae6-4348-784a-aae0-f4d636f843ad `
+  --target-connection '<LS_QA_LIENS connection string>'
+```
+
+Copy the exact `Case rows to update` and `Lien facility rows to update` output,
+then run the apply:
+
+```powershell
+dotnet run --project scripts/LegacyLiensImport -- `
+  --backfill-case-relationships `
+  --tenant-id 019f6ae6-4348-784a-aae0-f4d636f843ad `
+  --target-connection '<LS_QA_LIENS connection string>' `
+  --expected-case-updates <dry-run-case-count> `
+  --expected-lien-facility-updates <dry-run-lien-facility-count> `
+  --apply
+```
+
+The target connection must select `LS_QA_LIENS` (or the explicitly approved
+`LS_LIENS` production schema), and `SL-CORE` must be on the same MySQL server.
+The runner refuses an apply when the counts differ or any preflight/conflict
+check fails.
 
 ## Run
 
@@ -140,6 +248,26 @@ use an audited compensation or database restore procedure. Keep raw source data
 and document bytes in protected staging, not in migration logs.
 
 ## Tenant-bound SQL runner
+
+For the complete Program import used by the dashboard reconciliation, deploy
+[`import-sl-core-complete.sql`](import-sl-core-complete.sql), then run:
+
+```sql
+CALL liens_migrate_sl_core_complete('<tenant-guid>', '0'); -- preflight
+CALL liens_migrate_sl_core_complete('<tenant-guid>', '1'); -- apply
+```
+
+The complete procedure maps `LM_PURCHASE_DATE` to `liens_Liens.PurchaseDate`,
+maps nonblank `SLS_SETTLE_AMOUNT` and `SLS_SETTLE_DATE` rows to
+`liens_LienSettlements`, and retains non-deleted settlement payment details.
+It excludes `CASE_IS_DELETED = 'Y'`, `LM_IS_DELETED = 'Y'`, and
+`SLSPD_IS_DELETED = 'Y'`; medical-code amounts and servicing rows require the
+legacy active status `LMC_STATUS = 'A'`, matching the dashboard calculations.
+Its temporary staging tables are indexed before the high-volume joins. Apply
+remains single-use and tenant-scoped through the approval and crosswalk guards.
+The preflight result includes case/lien/settlement counts plus the all-time
+purchase, billing, and cash-received totals that the migrated dashboard should
+reconcile against.
 
 For a MySQL-only rehearsal or controlled one-time import, use
 [`import-sl-core-core-to-019ea7f6-21e9-7421-ab54-7846cdc6bc76.sql`](import-sl-core-core-to-019ea7f6-21e9-7421-ab54-7846cdc6bc76.sql).

@@ -257,7 +257,7 @@ public class DIYReportService : IDIYReportService
             Status = l.Status,
             CaseStatus = caseEntity?.Status,
             DateOfLoss = caseEntity?.DateOfIncident ?? l.IncidentDate,
-            PurchaseDate = l.IncidentDate ?? caseEntity?.DateOfIncident,
+            PurchaseDate = l.PurchaseDate,
             DateClosed = l.ClosedAtUtc ?? caseEntity?.ClosedAtUtc,
             InitialServiceDate = l.InitialServiceDate,
             BillingAmount = ResolveBillingAmount(l, legacyMedicalAmounts),
@@ -302,8 +302,8 @@ public class DIYReportService : IDIYReportService
                 var first = g.First();
                 var caseDetails = enrichment.CaseDetailsById.GetValueOrDefault(g.Key, CaseReportDetails.Empty);
                 var purchaseDates = g
-                    .Where(l => l.IncidentDate.HasValue)
-                    .Select(l => l.IncidentDate!.Value)
+                    .Where(l => l.PurchaseDate.HasValue)
+                    .Select(l => l.PurchaseDate!.Value)
                     .ToList();
                 var reductionDates = g
                     .Select(l => enrichment.LatestReductionDateByLienId.TryGetValue(l.Id, out var date)
@@ -333,7 +333,7 @@ public class DIYReportService : IDIYReportService
                     DateOfLoss = caseEntity?.DateOfIncident ?? first.IncidentDate,
                     PurchaseDate = purchaseDates.Count > 0
                         ? purchaseDates.Min()
-                        : caseEntity?.DateOfIncident,
+                        : null,
                     DateClosed = caseEntity?.ClosedAtUtc ?? g.Max(l => l.ClosedAtUtc),
                     InitialServiceDate = g.Min(l => l.InitialServiceDate),
                     BillingAmount = g.Sum(l => ResolveBillingAmount(l, legacyMedicalAmounts)),

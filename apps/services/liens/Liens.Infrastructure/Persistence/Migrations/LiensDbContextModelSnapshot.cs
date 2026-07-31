@@ -1149,6 +1149,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("PurchasePrice")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<DateOnly?>("PurchaseDate")
+                        .HasColumnType("date");
+
                     b.Property<string>("SellerStatus")
                         .HasMaxLength(50)
                         .HasColumnType("varchar(50)");
@@ -1203,6 +1206,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "CreatedAtUtc")
                         .HasDatabaseName("IX_Liens_TenantId_CreatedAtUtc");
+
+                    b.HasIndex("TenantId", "PurchaseDate")
+                        .HasDatabaseName("IX_Liens_TenantId_PurchaseDate");
 
                     b.HasIndex("TenantId", "LienNumber")
                         .IsUnique()
@@ -1523,6 +1529,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<int>("PaymentNumber")
                         .HasColumnType("int");
 
+                    b.Property<DateOnly?>("SettlementDate")
+                        .HasColumnType("date");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1542,6 +1551,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CaseId");
 
                     b.HasIndex("TenantId", "LienId");
+
+                    b.HasIndex("TenantId", "SettlementDate")
+                        .HasDatabaseName("IX_LienSettlements_TenantId_SettlementDate");
 
                     b.ToTable("liens_LienSettlements", (string)null);
                 });

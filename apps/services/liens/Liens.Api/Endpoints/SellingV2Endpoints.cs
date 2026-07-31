@@ -153,12 +153,23 @@ public static class SellingV2Endpoints
         var caseEntity = lien.CaseId.HasValue
             ? await db.Cases.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == lien.CaseId.Value, ct)
             : null;
+        var caseMetadata = ParseCaseMetadata(caseEntity?.Notes);
+        var caseManagerId = ParseMetadataGuid(caseMetadata, "caseManagerId");
+        var lawFirmId = ParseMetadataGuid(caseMetadata, "lawFirmId");
         var fundingCompany = lien.FundingCompanyId.HasValue
             ? await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == lien.FundingCompanyId.Value, ct)
             : null;
         var fundingContact = lien.FundingCompanyContactId.HasValue
             ? await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == lien.FundingCompanyContactId.Value, ct)
             : null;
+        var caseManager = caseManagerId.HasValue
+            ? await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == caseManagerId.Value, ct)
+            : null;
+        var lawFirm = lawFirmId.HasValue
+            ? await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == lawFirmId.Value, ct)
+            : caseEntity is null
+                ? null
+                : await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.ContactType == ContactType.LawFirm && c.OrgId == caseEntity.OrgId, ct);
         var pricing = await db.ServicingItems.AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingMedicalPricingTaskType)
             .OrderBy(item => item.CreatedAtUtc)
@@ -199,11 +210,17 @@ public static class SellingV2Endpoints
                 caseEntity.Id,
                 caseEntity.CaseNumber,
                 caseEntity.Title,
+                caseManagerId = caseManager?.Id,
+                caseManagerName = caseManager?.DisplayName,
+                lawFirmId = lawFirm?.Id,
+                lawFirm = lawFirm is null ? null : DisplayName(lawFirm),
             },
             fundingCompany = fundingCompany is null ? null : new
             {
                 fundingCompany.Id,
                 name = DisplayName(fundingCompany),
+                contactPerson = fundingContact?.DisplayName,
+                emailAddress = fundingContact?.Email,
                 contact = fundingContact is null ? null : new { fundingContact.Id, name = DisplayName(fundingContact) },
             },
             medicalPricing = new { lien.AskAmount, billingAmount = lien.OriginalAmount, rows = pricing },
@@ -1033,6 +1050,25 @@ public static class SellingV2Endpoints
         SellingLienStatus.SubmittedForSale => ["withdraw-sale", "archive", "buyer-access-links"],
         _ => [],
     };
+    private static Dictionary<string, string> ParseCaseMetadata(string? notes)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(notes)) return metadata;
+
+        const string legacyMetadataMarker = "[legacy-meta]";
+        var markerIndex = notes.IndexOf(legacyMetadataMarker, StringComparison.Ordinal);
+        var rawMetadata = markerIndex >= 0 ? notes[(markerIndex + legacyMetadataMarker.Length)..].Trim() : notes;
+        foreach (var segment in rawMetadata.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separatorIndex = segment.IndexOf('=');
+            if (separatorIndex > 0)
+                metadata[segment[..separatorIndex].Trim()] = segment[(separatorIndex + 1)..].Trim();
+        }
+
+        return metadata;
+    }
+    private static Guid? ParseMetadataGuid(IReadOnlyDictionary<string, string> metadata, string key)
+        => metadata.TryGetValue(key, out var value) && Guid.TryParse(value, out var id) ? id : null;
     private static string AppendMetadata(string? notes, string key, Guid value)
     {
         var map = (notes ?? string.Empty).Split("; ", StringSplitOptions.RemoveEmptyEntries).Where(segment => segment.Contains('='))

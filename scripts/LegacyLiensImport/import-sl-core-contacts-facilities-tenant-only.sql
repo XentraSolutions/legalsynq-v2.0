@@ -37,6 +37,7 @@ BEGIN
     DECLARE v_source_contact_count INT DEFAULT 0;
     DECLARE v_source_law_firm_count INT DEFAULT 0;
     DECLARE v_source_provider_count INT DEFAULT 0;
+    DECLARE v_facility_contacts_to_insert INT DEFAULT 0;
     DECLARE v_contact_crosswalks_to_repair INT DEFAULT 0;
     DECLARE v_source_facility_count INT DEFAULT 0;
     DECLARE v_source_person_count INT DEFAULT 0;
@@ -46,6 +47,7 @@ BEGIN
     DECLARE v_people_to_insert INT DEFAULT 0;
     DECLARE v_links_to_apply INT DEFAULT 0;
     DECLARE v_contacts_inserted INT DEFAULT 0;
+    DECLARE v_facility_contacts_inserted INT DEFAULT 0;
     DECLARE v_facilities_inserted INT DEFAULT 0;
     DECLARE v_people_inserted INT DEFAULT 0;
     DECLARE v_links_applied INT DEFAULT 0;
@@ -588,6 +590,16 @@ BEGIN
     END IF;
 
     SELECT COUNT(*) INTO v_contacts_to_insert FROM tmp_sl_core_contacts WHERE ExistingTargetId IS NULL;
+    SELECT COUNT(*) INTO v_facility_contacts_to_insert
+    FROM tmp_sl_core_facilities facility
+    LEFT JOIN liens_Contacts contact
+      ON contact.TenantId = v_tenant_id
+     AND contact.OrgId = v_org_id
+     AND contact.ContactType = 'MedicalFacility'
+     AND (contact.ContactSubtype IS NULL OR contact.ContactSubtype = '')
+     AND contact.FacilityId = facility.TargetFacilityId
+     AND contact.IsActive = 1
+    WHERE contact.Id IS NULL;
     SELECT COUNT(*) INTO v_source_law_firm_count
     FROM tmp_sl_core_contacts
     WHERE TargetContactType = 'LawFirm' AND TargetContactSubtype IS NULL;
@@ -605,7 +617,7 @@ BEGIN
     ) pending_links;
 
     IF v_contact_run_count = 1
-       AND (v_contacts_to_insert <> 0 OR v_facilities_to_insert <> 0 OR v_people_to_insert <> 0
+       AND (v_contacts_to_insert <> 0 OR v_facility_contacts_to_insert <> 0 OR v_facilities_to_insert <> 0 OR v_people_to_insert <> 0
             OR EXISTS (SELECT 1 FROM tmp_sl_core_lien_facility_links WHERE ExistingTargetId IS NULL)) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-026 completed contact migration is incomplete and requires reconciliation';
     END IF;
@@ -618,6 +630,7 @@ BEGIN
             v_source_contact_count AS SourceContacts,
             v_source_law_firm_count AS SourceLawFirms,
             v_source_provider_count AS SourceProviders,
+            v_facility_contacts_to_insert AS FacilityContactsToInsert,
             v_contact_crosswalks_to_repair AS ContactCrosswalksToRepair,
             v_source_facility_count AS SourceFacilities,
             v_source_person_count AS SourceFacilityContactPeople,
@@ -682,6 +695,30 @@ BEGIN
             FROM tmp_sl_core_facilities
             WHERE ExistingTargetId IS NULL;
             SET v_facilities_inserted = ROW_COUNT();
+
+            INSERT INTO liens_Contacts (
+                Id, TenantId, OrgId, ContactType, FirstName, LastName, DisplayName,
+                Title, Organization, Email, Phone, Fax, Website, AddressLine1, City, State,
+                PostalCode, Notes, IsActive, CreatedAtUtc, UpdatedAtUtc, CreatedByUserId,
+                UpdatedByUserId, ContactSubtype, FacilityId, LawFirmId)
+            SELECT UUID(), v_tenant_id, v_org_id, 'MedicalFacility',
+                   LEFT(COALESCE(NULLIF(TRIM(SUBSTRING_INDEX(Name, ' ', 1)), ''), 'Legacy'), 100),
+                   LEFT(COALESCE(NULLIF(TRIM(SUBSTRING(Name, CHAR_LENGTH(SUBSTRING_INDEX(Name, ' ', 1)) + 1)), ''), 'Facility'), 100),
+                   LEFT(Name, 250),
+                   NULL, LEFT(Name, 200), Email, Phone, NULL, NULL, AddressLine1, City, State,
+                   PostalCode, CONCAT('legacySource=SL-CORE:SL_FACILITY:FacilityId=', TargetFacilityId),
+                   1, CreatedAtUtc, UTC_TIMESTAMP(6), v_migration_user_id, v_migration_user_id,
+                   NULL, TargetFacilityId, NULL
+            FROM tmp_sl_core_facilities facility
+            LEFT JOIN liens_Contacts contact
+              ON contact.TenantId = v_tenant_id
+             AND contact.OrgId = v_org_id
+             AND contact.ContactType = 'MedicalFacility'
+             AND (contact.ContactSubtype IS NULL OR contact.ContactSubtype = '')
+             AND contact.FacilityId = facility.TargetFacilityId
+             AND contact.IsActive = 1
+            WHERE contact.Id IS NULL;
+            SET v_facility_contacts_inserted = ROW_COUNT();
 
             INSERT INTO liens_FacilityContactPersons (
                 Id, TenantId, FacilityId, FirstName, LastName, Position, Email, Phone, IsActive,
@@ -755,6 +792,7 @@ BEGIN
             SET Status = 'Completed', CompletedAtUtc = UTC_TIMESTAMP(6),
                 SummaryJson = JSON_OBJECT(
                     'SourceContacts', v_source_contact_count,
+                    'FacilityContactsInserted', v_facility_contacts_inserted,
                     'SourceFacilities', v_source_facility_count,
                     'SourceFacilityContactPeople', v_source_person_count,
                     'SourceLienFacilityLinks', v_source_link_count,
@@ -775,6 +813,7 @@ BEGIN
             v_core_run_id AS CoreImportRunId,
             v_contact_run_id AS ContactImportRunId,
             v_contacts_inserted AS ContactsInserted,
+            v_facility_contacts_inserted AS FacilityContactsInserted,
             v_facilities_inserted AS FacilitiesInserted,
             v_people_inserted AS FacilityContactPeopleInserted,
             v_links_applied AS LienFacilityLinksApplied;

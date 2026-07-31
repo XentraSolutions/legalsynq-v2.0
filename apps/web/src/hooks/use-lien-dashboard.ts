@@ -17,7 +17,7 @@ export function useDashboardReports(range: DateRangeValue) {
     queryFn: async () => {
       const request = {
         page: 1,
-        limit: 1000,
+        limit: 500,
         startDate: range.from,
         endDate: range.to,
       };

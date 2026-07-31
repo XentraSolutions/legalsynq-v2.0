@@ -108,7 +108,8 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 facilityId: SeedHelper.FacilityId,
                 subjectFirstName: "Billing",
                 subjectLastName: "Case",
-                incidentDate: new DateOnly(2024, 6, 15));
+                incidentDate: new DateOnly(2024, 6, 15),
+                purchaseDate: new DateOnly(2024, 6, 15));
             typeof(Lien).GetProperty(nameof(Lien.Id))!.SetValue(lien, lienId);
             db.Liens.Add(lien);
 
@@ -690,7 +691,8 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 isBulk: lien.IsBulk,
                 isServicing: lien.IsServicing,
                 description: lien.Description,
-                notes: lien.Notes);
+                notes: lien.Notes,
+                purchaseDate: new DateOnly(2026, 7, 16));
 
             await db.SaveChangesAsync();
         }
@@ -733,7 +735,8 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 isBulk: lien.IsBulk,
                 isServicing: lien.IsServicing,
                 description: lien.Description,
-                notes: lien.Notes);
+                notes: lien.Notes,
+                purchaseDate: new DateOnly(2024, 6, 15));
             await db.SaveChangesAsync();
         }
 
@@ -895,7 +898,8 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 100m,
                 SeedHelper.UserId,
                 caseId: july17CaseId,
-                incidentDate: new DateOnly(2026, 7, 17)));
+                incidentDate: new DateOnly(2026, 7, 17),
+                purchaseDate: new DateOnly(2026, 7, 17)));
 
             db.Liens.Add(Lien.Create(
                 SeedHelper.TenantId,
@@ -905,7 +909,8 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 100m,
                 SeedHelper.UserId,
                 caseId: july18CaseId,
-                incidentDate: new DateOnly(2026, 7, 18)));
+                incidentDate: new DateOnly(2026, 7, 18),
+                purchaseDate: new DateOnly(2026, 7, 18)));
 
             db.Liens.Add(Lien.Create(
                 SeedHelper.TenantId,
@@ -915,7 +920,8 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 100m,
                 SeedHelper.UserId,
                 caseId: july23CaseId,
-                incidentDate: new DateOnly(2026, 7, 23)));
+                incidentDate: new DateOnly(2026, 7, 23),
+                purchaseDate: new DateOnly(2026, 7, 23)));
 
             await db.SaveChangesAsync();
         }
@@ -983,7 +989,8 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 100m,
                 SeedHelper.UserId,
                 caseId: july17CaseId,
-                incidentDate: new DateOnly(2026, 7, 17)));
+                incidentDate: new DateOnly(2026, 7, 17),
+                purchaseDate: new DateOnly(2026, 7, 17)));
 
             db.Liens.Add(Lien.Create(
                 SeedHelper.TenantId,
@@ -993,7 +1000,8 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 100m,
                 SeedHelper.UserId,
                 caseId: july18CaseId,
-                incidentDate: new DateOnly(2026, 7, 18)));
+                incidentDate: new DateOnly(2026, 7, 18),
+                purchaseDate: new DateOnly(2026, 7, 18)));
 
             db.Liens.Add(Lien.Create(
                 SeedHelper.TenantId,
@@ -1003,7 +1011,8 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 100m,
                 SeedHelper.UserId,
                 caseId: july23CaseId,
-                incidentDate: new DateOnly(2026, 7, 23)));
+                incidentDate: new DateOnly(2026, 7, 23),
+                purchaseDate: new DateOnly(2026, 7, 23)));
 
             await db.SaveChangesAsync();
         }

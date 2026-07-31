@@ -10,6 +10,7 @@ public class LienSettlement : AuditableEntity
     public Guid    LienId        { get; private set; }
     public int     PaymentNumber { get; private set; }
     public decimal Amount        { get; private set; }
+    public DateOnly? SettlementDate { get; private set; }
     public string  Status        { get; private set; } = "Pending";
     public string? Note          { get; private set; }
     public bool    IsDeleted     { get; private set; }
@@ -19,7 +20,8 @@ public class LienSettlement : AuditableEntity
     public static LienSettlement Create(
         Guid tenantId, Guid caseId, Guid lienId,
         int paymentNumber, decimal amount, Guid createdByUserId,
-        string? status = null, string? note = null)
+        string? status = null, string? note = null,
+        DateOnly? settlementDate = null)
     {
         if (tenantId == Guid.Empty)   throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (caseId == Guid.Empty)     throw new ArgumentException("CaseId is required.", nameof(caseId));
@@ -35,6 +37,7 @@ public class LienSettlement : AuditableEntity
             LienId          = lienId,
             PaymentNumber   = paymentNumber,
             Amount          = amount,
+            SettlementDate  = settlementDate,
             Status          = (status ?? "Pending").Trim(),
             Note            = note?.Trim(),
             IsDeleted       = false,
@@ -45,10 +48,17 @@ public class LienSettlement : AuditableEntity
         };
     }
 
-    public void Update(int paymentNumber, decimal amount, Guid updatedByUserId, string? status = null, string? note = null)
+    public void Update(
+        int paymentNumber,
+        decimal amount,
+        Guid updatedByUserId,
+        string? status = null,
+        string? note = null,
+        DateOnly? settlementDate = null)
     {
         PaymentNumber   = paymentNumber;
         Amount          = amount;
+        SettlementDate  = settlementDate;
         Status          = (status ?? Status).Trim();
         Note            = note?.Trim();
         UpdatedByUserId = updatedByUserId;

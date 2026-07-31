@@ -124,6 +124,52 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Seller_lien_detail_includes_funding_contact_and_case_assignments()
+    {
+        var fundingContactId = Guid.CreateVersion7();
+        var caseManagerId = Guid.CreateVersion7();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var fundingContact = Contact.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, ContactType.Lead,
+                "Fiona", "Funder", SeedHelper.UserId, email: "fiona@capital-fund.test");
+            SetId(fundingContact, fundingContactId);
+            var caseManager = Contact.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, ContactType.CaseManager,
+                "Casey", "Manager", SeedHelper.UserId, lawFirmId: SeedHelper.LawFirmId);
+            SetId(caseManager, caseManagerId);
+            db.Contacts.AddRange(fundingContact, caseManager);
+            await db.SaveChangesAsync();
+        }
+
+        var lienId = await CreateSellingLienAsync();
+        var caseInformation = await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/case-information", new
+        {
+            fundingCompanyId = SeedHelper.FundingCompanyId,
+            fundingCompanyContactId = fundingContactId,
+            handlingLawFirmId = SeedHelper.LawFirmId,
+            caseManagerId,
+            caseId = SeedHelper.CaseId,
+            createCaseIfMissing = false,
+        });
+        caseInformation.EnsureSuccessStatusCode();
+
+        var response = await _client.GetAsync($"/api/liens/selling/liens/{lienId}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var fundingCompany = payload.RootElement.GetProperty("fundingCompany");
+        fundingCompany.GetProperty("contactPerson").GetString().Should().Be("Fiona Funder");
+        fundingCompany.GetProperty("emailAddress").GetString().Should().Be("fiona@capital-fund.test");
+        var caseInfo = payload.RootElement.GetProperty("caseInformation");
+        caseInfo.GetProperty("caseManagerId").GetGuid().Should().Be(caseManagerId);
+        caseInfo.GetProperty("caseManagerName").GetString().Should().Be("Casey Manager");
+        caseInfo.GetProperty("lawFirmId").GetGuid().Should().Be(SeedHelper.LawFirmId);
+        caseInfo.GetProperty("lawFirm").GetString().Should().Be("Smith & Associates LLP");
+    }
+
+    [Fact]
     public async Task Confirm_sale_notification_uses_buyer_organization_and_never_persists_portal_capability_in_idempotency_replay()
     {
         var buyerOrgId = Guid.CreateVersion7();

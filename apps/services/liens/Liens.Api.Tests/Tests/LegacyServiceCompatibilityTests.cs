@@ -457,8 +457,12 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
-    public async Task LegacyDashboardMetric_routes_without_date_range_include_all_history()
+    public async Task LegacyDashboardMetric_routes_without_date_range_default_to_previous_calendar_month()
     {
+        var firstDayOfCurrentMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+        var expectedStart = firstDayOfCurrentMonth.AddMonths(-1).ToString("MM/dd/yyyy");
+        var expectedEnd = firstDayOfCurrentMonth.AddDays(-1).ToString("MM/dd/yyyy");
+
         var deployedResponse = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/deployed", new
         {
             page = 1,
@@ -468,9 +472,9 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
             $"Body: {await deployedResponse.Content.ReadAsStringAsync()}");
 
         var deployed = JsonNode.Parse(await deployedResponse.Content.ReadAsStringAsync())!["data"]!;
-        deployed["periodStart"]!.GetValue<string>().Should().BeEmpty();
-        deployed["periodEnd"]!.GetValue<string>().Should().BeEmpty();
-        deployed["totalCount"]!.GetValue<int>().Should().BeGreaterThan(0);
+        deployed["periodStart"]!.GetValue<string>().Should().Be(expectedStart);
+        deployed["periodEnd"]!.GetValue<string>().Should().Be(expectedEnd);
+        deployed["totalCount"]!.GetValue<int>().Should().BeGreaterThanOrEqualTo(0);
 
         var cashReceivedResponse = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/cash-received", new
         {
@@ -481,8 +485,8 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
             $"Body: {await cashReceivedResponse.Content.ReadAsStringAsync()}");
 
         var cashReceived = JsonNode.Parse(await cashReceivedResponse.Content.ReadAsStringAsync())!["data"]!;
-        cashReceived["periodStart"]!.GetValue<string>().Should().BeEmpty();
-        cashReceived["periodEnd"]!.GetValue<string>().Should().BeEmpty();
-        cashReceived["totalCount"]!.GetValue<int>().Should().BeGreaterThan(0);
+        cashReceived["periodStart"]!.GetValue<string>().Should().Be(expectedStart);
+        cashReceived["periodEnd"]!.GetValue<string>().Should().Be(expectedEnd);
+        cashReceived["totalCount"]!.GetValue<int>().Should().BeGreaterThanOrEqualTo(0);
     }
 }
