@@ -23,6 +23,7 @@ import {
   SALE_DOCUMENT_LABELS,
   SALE_DOCUMENT_TYPE_TO_CATEGORY_CODE,
   SALE_DOCUMENT_TYPE_TO_SELLING_TYPE,
+  parseDocumentReference,
 } from "@/lib/selling/selling-detail.mapper";
 
 interface DocSlotState {
@@ -38,6 +39,36 @@ function emptyDocSlots(): Record<string, DocSlotState> {
     ...OPTIONAL_SALE_DOCUMENT_TYPES,
   ]) {
     slots[type] = { uploading: false, documentId: null, displayName: null };
+  }
+  return slots;
+}
+
+// Reverse of SALE_DOCUMENT_TYPE_TO_SELLING_TYPE — used to repopulate docSlots
+// from documents already saved on the lien (lien.documents). "Other" is
+// ambiguous (both the PoliceReport slot and a true "Other" upload save as
+// "Other"), but PoliceReport is the only wizard slot that maps to it, so it's
+// the correct slot to restore into.
+const SELLING_TYPE_TO_SALE_DOCUMENT_TYPE: Record<string, string> = {
+  LienAgreement: "LienAgreement",
+  MedicalBill: "MedicalBill",
+  MedicalRecord: "MedicalRecord",
+  Other: "PoliceReport",
+};
+
+function docSlotsFromLien(
+  documents: LienDetailsResult["documents"],
+): Record<string, DocSlotState> {
+  const slots = emptyDocSlots();
+  for (const doc of documents) {
+    const data = parseDocumentReference(doc);
+    if (!data.documentId) continue;
+    const slotType = SELLING_TYPE_TO_SALE_DOCUMENT_TYPE[data.documentType];
+    if (!slotType || !slots[slotType]) continue;
+    slots[slotType] = {
+      uploading: false,
+      documentId: data.documentId,
+      displayName: data.displayName,
+    };
   }
   return slots;
 }
@@ -89,6 +120,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
         setLien(detail);
         setCompanies(companyList);
         setSellingDocumentTypes(documentTypesRes.data.items);
+        setDocSlots(docSlotsFromLien(detail.documents));
         if (detail.fundingCompany) {
           setCompanyId(detail.fundingCompany.id);
           setCompanyName(detail.fundingCompany.name);
@@ -170,14 +202,21 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
         documentTypeId,
         title: file.name,
       });
-      setDocSlots((prev) => ({
-        ...prev,
+      const nextSlots = {
+        ...docSlots,
         [documentType]: {
           uploading: false,
           documentId: uploaded.id,
           displayName: file.name,
         },
-      }));
+      };
+      setDocSlots(nextSlots);
+      // Persist the reference immediately so it survives navigating away —
+      // otherwise it only lives in this component's state until "Save for
+      // Later" or "Authorize & Send" is clicked.
+      await liensService.saveDocuments(lienId, {
+        documents: uploadedDocumentRefs(nextSlots),
+      });
     } catch (err) {
       setDocSlots((prev) => ({
         ...prev,
@@ -190,8 +229,8 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
     }
   };
 
-  const uploadedDocumentRefs = () =>
-    Object.entries(docSlots)
+  const uploadedDocumentRefs = (slots: Record<string, DocSlotState> = docSlots) =>
+    Object.entries(slots)
       .filter(([, slot]) => slot.documentId)
       .map(([documentType, slot]) => {
         const sellingType =
