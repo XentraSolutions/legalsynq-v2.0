@@ -154,12 +154,27 @@ function OverviewTab({ detail }: { detail: OfferedLienDetail }) {
 }
 
 function DocumentsTab({ documents }: { documents: OfferedLienDocument[] }) {
+  const documentRows = chunkDocuments(documents, 2);
+
   return (
-    <section className="min-h-[420px] rounded-[16px] border border-[#e5e5e5] bg-white px-6 pb-4 pt-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)]">
+    <section className="min-h-[420px] rounded-[16px] border border-[#e5e5e5] bg-white px-6 py-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)]">
       {documents.length > 0 ? (
-        <div className="divide-y divide-[#e5e5e5]" aria-label="Attached documents">
-          {documents.map(document => (
-            <DocumentRow key={document.id} document={document} />
+        <div aria-label="Attached documents">
+          {documentRows.map((row, index) => (
+            <div
+              key={row.map(document => document.id).join("-")}
+              className={`grid grid-cols-1 lg:grid-cols-2 ${
+                index < documentRows.length - 1 ? "border-b border-[#e5e5e5]" : ""
+              }`}
+            >
+              {row.map((document, columnIndex) => (
+                <DocumentRow
+                  key={document.id}
+                  document={document}
+                  hasTrailingDivider={columnIndex === 0 && row.length > 1}
+                />
+              ))}
+            </div>
           ))}
         </div>
       ) : (
@@ -230,28 +245,32 @@ function formatActivityLabel(value: string): string {
 
 function DocumentRow({
   document,
+  hasTrailingDivider = false,
 }: {
   document: OfferedLienDocument;
+  hasTrailingDivider?: boolean;
 }) {
   const detail = [document.category, document.sizeOrType].filter(Boolean).join("  •  ");
   const viewUrl = safeHref(document.viewUrl ?? document.url);
   const downloadUrl = safeHref(document.downloadUrl);
 
   return (
-    <div className="flex min-h-[96px] items-center gap-4 py-4 first:pt-0 last:pb-0">
-      <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[12px] bg-[#f5f5f5] text-[#0a0a0a]">
-        <i className="ri-file-text-line text-[32px]" />
+    <div className={`flex min-h-[88px] min-w-0 items-center gap-4 py-4 lg:px-6 lg:first:pl-0 ${
+      hasTrailingDivider ? "border-b border-[#e5e5e5] lg:border-b-0 lg:border-r" : ""
+    }`}>
+      <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[12px] bg-[#f5f5f5] text-[#0a0a0a]">
+        <i className="ri-file-text-line text-[28px]" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+        <div className="grid min-w-0 gap-1 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
           <p className="min-w-0 break-words text-[16px] font-semibold leading-5 text-[#0a0a0a]">
             {document.fileName}
           </p>
-          <p className="shrink-0 whitespace-nowrap text-[14px] font-normal leading-[1.6] text-[#737373]">
+          <p className="shrink-0 whitespace-nowrap text-[14px] font-normal leading-[1.6] text-[#737373] xl:pl-4">
             {formatDateTimeParts(document.createdAtUtc)}
           </p>
         </div>
-        <p className="mt-2 text-[16px] font-normal leading-[1.6] text-[#737373]">
+        <p className="mt-1 text-[16px] font-normal leading-[1.6] text-[#737373]">
           {detail || "Document"}
         </p>
       </div>
@@ -270,6 +289,17 @@ function DocumentRow({
       </div>
     </div>
   );
+}
+
+function chunkDocuments(
+  documents: OfferedLienDocument[],
+  size: number,
+): OfferedLienDocument[][] {
+  const rows: OfferedLienDocument[][] = [];
+  for (let index = 0; index < documents.length; index += size) {
+    rows.push(documents.slice(index, index + size));
+  }
+  return rows;
 }
 
 function DocumentActionLink({
