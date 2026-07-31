@@ -191,7 +191,8 @@ export default function PortfolioClient() {
                 <div
                   className={`absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden divide-y divide-gray-100`}
                 >
-                  <button
+                  {/* TEMPORARILY DISABLED SINCE API IS REQUESTING A LIEN ID */}
+                  {/* <button
                     onClick={() => {
                       router.push("add-liens");
                       setActionOpen(false);
@@ -200,7 +201,7 @@ export default function PortfolioClient() {
                   >
                     <i className="ri-file-line mr-2"></i>
                     Add Single Lien
-                  </button>
+                  </button> */}
                   <button
                     onClick={() => {
                       setbulkUpload(true);
