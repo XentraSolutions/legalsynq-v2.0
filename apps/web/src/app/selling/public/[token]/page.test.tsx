@@ -64,9 +64,14 @@ const buyerPortalData: PublicBuyerPortalData = {
   },
   documents: [
     {
+      id: "019f8a97-aa3d-70ef-a549-a7710b38d4b5",
       fileName: "signed-lien-real.pdf",
       category: "Lien Document",
       sizeOrType: "PDF",
+      viewUrl:
+        "/api/lien/api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/view",
+      downloadUrl:
+        "/api/lien/api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/download",
     },
   ],
 };
@@ -140,6 +145,24 @@ describe("PublicBuyerPortalPage", () => {
     expect(screen.getAllByText("RL Liens1").length).toBeGreaterThan(0);
     expect(screen.getByText("Funding Company & Case Information")).toBeInTheDocument();
     expect(screen.getByText("signed-lien-real.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View signed-lien-real.pdf" })).toHaveAttribute(
+      "href",
+      "/api/lien/api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/view",
+    );
+    expect(screen.getByRole("link", { name: "View signed-lien-real.pdf" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+    expect(screen.getByRole("link", { name: "View signed-lien-real.pdf" })).toHaveAttribute(
+      "rel",
+      "noopener noreferrer",
+    );
+    const downloadLink = screen.getByRole("link", { name: "Download signed-lien-real.pdf" });
+    expect(downloadLink).toHaveAttribute(
+      "href",
+      "/api/lien/api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/download",
+    );
+    expect(downloadLink).not.toHaveAttribute("target");
     expect(screen.queryByText("John Doe")).not.toBeInTheDocument();
     expect(screen.queryByText("Velantrix")).not.toBeInTheDocument();
   });

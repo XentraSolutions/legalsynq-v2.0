@@ -79,8 +79,14 @@ public class LienRepository : ILienRepository
                 (l.Description != null && l.Description.Contains(term)));
         }
 
-        if (!string.IsNullOrWhiteSpace(status))
-            q = q.Where(l => l.Status == status);
+        var statuses = LienStatus.ExpandFilterValues(
+            string.IsNullOrWhiteSpace(status)
+                ? []
+                : status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        if (statuses.Count == 1)
+            q = q.Where(l => l.Status == statuses.Single());
+        else if (statuses.Count > 1)
+            q = q.Where(l => statuses.Contains(l.Status));
 
         if (!string.IsNullOrWhiteSpace(lienType))
             q = q.Where(l => l.LienType == lienType);
@@ -125,6 +131,14 @@ public class LienRepository : ILienRepository
     {
         var q = _db.Liens.Where(l => l.TenantId == tenantId);
 
+        // DIY reports are operational views and must never include liens that
+        // were rejected or cancelled, even when a saved filter requests them.
+        q = q.Where(l =>
+            l.Status != LienStatus.Declined &&
+            l.Status != LienStatus.Withdrawn &&
+            l.Status != LienStatus.Cancelled &&
+            l.Status != "Rejected");
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim();
@@ -135,9 +149,10 @@ public class LienRepository : ILienRepository
                 (l.Description != null && l.Description.Contains(term)));
         }
 
-        if (lienStatuses.Count > 0)
+        var expandedLienStatuses = LienStatus.ExpandFilterValues(lienStatuses);
+        if (expandedLienStatuses.Count > 0)
         {
-            var statusList = lienStatuses.ToList();
+            var statusList = expandedLienStatuses.ToList();
             q = q.Where(l => statusList.Contains(l.Status));
         }
 
@@ -153,10 +168,10 @@ public class LienRepository : ILienRepository
         }
 
         if (purchaseDateFrom.HasValue)
-            q = q.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value >= purchaseDateFrom.Value);
+            q = q.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value >= purchaseDateFrom.Value);
 
         if (purchaseDateTo.HasValue)
-            q = q.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value <= purchaseDateTo.Value);
+            q = q.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value <= purchaseDateTo.Value);
 
         if (closedDateFrom.HasValue)
             q = q.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value >= closedDateFrom.Value);

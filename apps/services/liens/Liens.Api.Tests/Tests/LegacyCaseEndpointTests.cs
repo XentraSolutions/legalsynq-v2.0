@@ -110,6 +110,108 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
     }
 
     [Fact]
+    public async Task GetCasesV3_filters_contact_ids_and_legacy_status_aliases_with_multi_select_values()
+    {
+        var matchCaseNumber = $"CASE-V3-CONTACT-{Guid.CreateVersion7():N}";
+        var otherCaseNumber = $"CASE-V3-CONTACT-OTHER-{Guid.CreateVersion7():N}";
+        var falsePositiveCaseNumber = $"CASE-V3-CONTACT-FALSE-POSITIVE-{Guid.CreateVersion7():N}";
+        var crossTenantCaseNumber = $"CASE-V3-CONTACT-OTHER-TENANT-{Guid.CreateVersion7():N}";
+        var lawFirmId = SeedHelper.LawFirmId;
+        var otherLawFirmId = Guid.CreateVersion7();
+        var caseManagerId = Guid.CreateVersion7();
+        var accidentTypeId = Guid.CreateVersion7().ToString();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                Guid.CreateVersion7(),
+                matchCaseNumber,
+                "Contact",
+                "Match",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={lawFirmId}; accidentTypeId={accidentTypeId}; caseManagerId={caseManagerId}"));
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                Guid.CreateVersion7(),
+                otherCaseNumber,
+                "Contact",
+                "Other",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={otherLawFirmId}; accidentTypeId=other; caseManagerId={Guid.CreateVersion7()}"));
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                Guid.CreateVersion7(),
+                falsePositiveCaseNumber,
+                "Contact",
+                "FalsePositive",
+                SeedHelper.UserId,
+                notes: $"notlawFirmId={lawFirmId}; accidentTypeId={accidentTypeId}; caseManagerId={caseManagerId}"));
+            db.Cases.Add(Case.Create(
+                Guid.CreateVersion7(),
+                Guid.CreateVersion7(),
+                crossTenantCaseNumber,
+                "Contact",
+                "Tenant",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={lawFirmId}; accidentTypeId={accidentTypeId}; caseManagerId={caseManagerId}"));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+        {
+            keyword = "Contact",
+            page = 1,
+            limit = 50,
+            statusId = "New",
+            lawFirmId = $"{lawFirmId},{Guid.CreateVersion7()}",
+            accidentTypeId = $"{accidentTypeId},{Guid.CreateVersion7()}",
+            caseManagerId = $"{caseManagerId},{Guid.CreateVersion7()}",
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var items = payload!.RootElement.GetProperty("data").EnumerateArray().ToList();
+        items.Should().ContainSingle(item => item.GetProperty("caseNumber").GetString() == matchCaseNumber);
+        items.Should().NotContain(item => item.GetProperty("caseNumber").GetString() == otherCaseNumber);
+        items.Should().NotContain(item => item.GetProperty("caseNumber").GetString() == falsePositiveCaseNumber);
+        items.Should().NotContain(item => item.GetProperty("caseNumber").GetString() == crossTenantCaseNumber);
+    }
+
+    [Fact]
+    public async Task GetCasesV3_maps_negotiations_to_in_negotiation()
+    {
+        var caseNumber = $"CASE-V3-NEGOTIATIONS-{Guid.CreateVersion7():N}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, caseNumber, "Negotiation", "Match", SeedHelper.UserId);
+            caseEntity.TransitionStatus(CaseStatus.DemandSent, SeedHelper.UserId);
+            caseEntity.TransitionStatus(CaseStatus.InNegotiation, SeedHelper.UserId);
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+        {
+            keyword = caseNumber,
+            page = 1,
+            limit = 20,
+            statusId = "Negotiations",
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        payload!.RootElement.GetProperty("data").EnumerateArray()
+            .Should().Contain(item => item.GetProperty("caseNumber").GetString() == caseNumber);
+    }
+
+    [Fact]
     public async Task GetCasesV3_returns_law_firm_case_manager_and_accident_type_display_values()
     {
         var caseManagerId = Guid.CreateVersion7();

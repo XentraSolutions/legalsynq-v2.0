@@ -32,10 +32,12 @@ Documents.Infrastructure/ DbContext (DocsDb), S3 adapter, ClamAV adapter, EF mig
 | `GET` | `/api/documents/{id}` | Bearer | Document metadata |
 | `POST` | `/api/documents/{id}/view-token` | Bearer | Request short-lived view URL |
 | `POST` | `/api/documents/{id}/download-token` | Bearer | Request download URL |
+| `GET` | `/access/{token}` | Anonymous | Redeem short-lived view/download token |
 | `GET` | `/api/documents/{id}/versions` | Bearer | Version history |
 | `GET` | `/public/logos/{id}` | Anonymous | Public tenant logo |
 
 Authenticated Documents endpoints accept either a standard Identity user JWT or a shared platform service JWT. The preferred service-token audience is `documents-service`.
+For local storage, redeemed file responses infer `Content-Type` from the stored filename so browser view links can render supported files such as PNGs and PDFs.
 
 ## Storage
 

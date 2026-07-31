@@ -72,7 +72,11 @@ export function OfferedLienDetailActions({
         className="inline-flex h-[38px] shrink-0 items-center overflow-hidden rounded-[10px] bg-[#ee7132] text-[14px] font-medium leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#d85f25] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] disabled:cursor-not-allowed disabled:bg-[#e5e5e5] disabled:text-[#737373]"
       >
         <span className="px-4 py-2">Actions</span>
-        <span className="flex h-full w-9 items-center justify-center border-l border-[#f4a076]">
+        <span
+          className={`flex h-full w-9 items-center justify-center border-l ${
+            disabled ? "border-[#d4d4d4]" : "border-[#f4a076]"
+          }`}
+        >
           <i className="ri-arrow-down-s-line text-[16px]" />
         </span>
       </button>

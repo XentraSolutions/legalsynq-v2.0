@@ -181,7 +181,7 @@ function DocumentsCard({ documents }: { documents: PublicBuyerPortalDocument[] }
           <div className="flex flex-col gap-3">
             {documents.map(document => (
               <article
-                key={document.fileName}
+                key={document.id ?? document.fileName}
                 className="flex items-center justify-between gap-6 rounded-xl border border-dashed border-[#e5e5e5] p-6 max-sm:flex-col max-sm:items-stretch"
               >
                 <div className="flex min-w-0 items-start gap-3">
@@ -204,20 +204,17 @@ function DocumentsCard({ documents }: { documents: PublicBuyerPortalDocument[] }
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-3 max-sm:self-end">
-                  <button
-                    type="button"
-                    aria-label="View document"
-                    className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-[10px] border border-[#e5e5e5] bg-white text-[#333] shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:border-[#d6d6d6] hover:bg-[#f5f5f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] active:bg-[#ededed]"
-                  >
-                    <i className="ri-eye-line text-base leading-none" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Download document"
-                    className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-[10px] border border-[#e5e5e5] bg-white text-[#333] shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:border-[#d6d6d6] hover:bg-[#f5f5f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] active:bg-[#ededed]"
-                  >
-                    <i className="ri-download-line text-base leading-none" aria-hidden="true" />
-                  </button>
+                  <DocumentActionLink
+                    href={document.viewUrl}
+                    label={`View ${document.fileName}`}
+                    icon="ri-eye-line"
+                    openInNewTab
+                  />
+                  <DocumentActionLink
+                    href={document.downloadUrl}
+                    label={`Download ${document.fileName}`}
+                    icon="ri-download-line"
+                  />
                 </div>
               </article>
             ))}
@@ -225,6 +222,49 @@ function DocumentsCard({ documents }: { documents: PublicBuyerPortalDocument[] }
         )}
       </div>
     </details>
+  );
+}
+
+function DocumentActionLink({
+  href,
+  label,
+  icon,
+  openInNewTab = false,
+}: {
+  href?: string | null;
+  label: string;
+  icon: string;
+  openInNewTab?: boolean;
+}) {
+  const safeUrl = safeHref(href);
+  const className =
+    "flex h-9 w-9 items-center justify-center rounded-[10px] border border-[#e5e5e5] bg-white text-[#333] shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132]";
+
+  if (!safeUrl) {
+    return (
+      <span
+        aria-label={label}
+        aria-disabled="true"
+        className={`${className} cursor-not-allowed opacity-50`}
+        role="button"
+      >
+        <i className={`${icon} text-base leading-none`} aria-hidden="true" />
+      </span>
+    );
+  }
+
+  const opensInNewTab = openInNewTab || isExternalHref(safeUrl);
+
+  return (
+    <a
+      href={safeUrl}
+      target={opensInNewTab ? "_blank" : undefined}
+      rel={opensInNewTab ? "noopener noreferrer" : undefined}
+      aria-label={label}
+      className={`${className} cursor-pointer hover:border-[#d6d6d6] hover:bg-[#f5f5f5] active:bg-[#ededed]`}
+    >
+      <i className={`${icon} text-base leading-none`} aria-hidden="true" />
+    </a>
   );
 }
 
@@ -237,6 +277,32 @@ function EmptyState({ icon, message }: { icon: string; message: string }) {
       <p className="m-0">{message}</p>
     </div>
   );
+}
+
+function safeHref(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("/")) return trimmed;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function isExternalHref(value: string): boolean {
+  try {
+    const parsed = new URL(value, "https://portal.legalsynq.local");
+    return parsed.origin !== "https://portal.legalsynq.local";
+  } catch {
+    return false;
+  }
 }
 
 function LinkState({ error }: { error: PublicBuyerPortalError }) {

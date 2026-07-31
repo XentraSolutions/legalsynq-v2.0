@@ -30,6 +30,7 @@ public class LiensDbContext : DbContext
     public DbSet<SellingPortfolioStatusHistory> SellingPortfolioStatusHistory => Set<SellingPortfolioStatusHistory>();
     public DbSet<SellingPortfolioActivity> SellingPortfolioActivities => Set<SellingPortfolioActivity>();
     public DbSet<SellingBuyerAccessLink> SellingBuyerAccessLinks => Set<SellingBuyerAccessLink>();
+    public DbSet<SellingIdempotencyRecord> SellingIdempotencyRecords => Set<SellingIdempotencyRecord>();
     public DbSet<SellingPortalMessage> SellingPortalMessages => Set<SellingPortalMessage>();
     public DbSet<BillOfSale> BillsOfSale => Set<BillOfSale>();
     public DbSet<ServicingItem> ServicingItems => Set<ServicingItem>();
@@ -43,6 +44,10 @@ public class LiensDbContext : DbContext
     public DbSet<LienGeneratedTaskMetadata> LienGeneratedTaskMetadatas => Set<LienGeneratedTaskMetadata>();
     public DbSet<LienTaskNote> LienTaskNotes => Set<LienTaskNote>();
     public DbSet<LienCaseNote> LienCaseNotes => Set<LienCaseNote>();
+    public DbSet<LegacyImportApproval> LegacyImportApprovals => Set<LegacyImportApproval>();
+    public DbSet<LegacyImportRun> LegacyImportRuns => Set<LegacyImportRun>();
+    public DbSet<LegacyIdCrosswalk> LegacyIdCrosswalks => Set<LegacyIdCrosswalk>();
+    public DbSet<LegacyImportException> LegacyImportExceptions => Set<LegacyImportException>();
     // TASK-MIG-09: LienTaskGovernanceSettings DbSet removed — liens_TaskGovernanceSettings dropped (MIG-09 migration)
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

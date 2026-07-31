@@ -119,7 +119,7 @@ Implemented routes:
 
 | Route | Purpose |
 |---|---|
-| `/funding/dashboard` | Funding dashboard with KPI summary, pending offers, acquisition pipeline, provider performance, and Offer Inbox. |
+| `/funding/dashboard` | Funding dashboard with KPI summary, pending offers, acquisition pipeline, and Offer Inbox. |
 | `/funding/offered-liens` | Server-rendered offered-liens list with search, status filters, pagination, and API-authorized row actions. |
 | `/funding/offered-liens/{accessLinkId}` | Authenticated offered-lien detail page with Overview, Documents, and Messages tabs backed by real Liens service data. Its Messages tab posts to the same offer thread as the public email link, and its Actions menu records accept/decline responses through the same Liens workflow. |
 | `/selling/public/{token}` | Public, token-gated buyer or seller-view offer page opened from `New Lien Offer` emails; rendered by `apps/web` from Liens JSON without a `platform_session` cookie. Buyer-audience links include accept/decline buttons; seller-audience links are read-only and show buyer/funding-company details. |
@@ -133,6 +133,8 @@ The frontend does not include mock rows. Server components target Liens endpoint
 | `/liens/api/liens/selling/buyer/dashboard?range=last7Days\|last30Days\|custom&from=&to=` | `/api/liens/selling/buyer/dashboard` |
 | `/liens/api/liens/selling/buyer/liens?status=&search=&page=&pageSize=&sort=&direction=` | `/api/liens/selling/buyer/liens` |
 | `/liens/api/liens/selling/buyer/liens/{accessLinkId}` | `/api/liens/selling/buyer/liens/{accessLinkId}` |
+| `/api/lien/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view` | `/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view` |
+| `/api/lien/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/download` | `/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/download` |
 | `/api/lien/api/liens/selling/buyer/liens/{accessLinkId}/messages` | `/api/liens/selling/buyer/liens/{accessLinkId}/messages` |
 | `/api/lien/api/liens/selling/buyer/liens/{accessLinkId}/accept` | `/api/liens/selling/buyer/liens/{accessLinkId}/accept` |
 | `/api/lien/api/liens/selling/buyer/liens/{accessLinkId}/decline` | `/api/liens/selling/buyer/liens/{accessLinkId}/decline` |

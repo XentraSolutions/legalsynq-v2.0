@@ -1,345 +1,110 @@
 {
   "info": {
+    "_postman_id": "c8c0b109-4b1b-4d51-8d7f-9d83ec06c3bf",
     "name": "LegalSynq Selling V2 API",
-    "description": "Planned lien-first SynqLien selling API collection based on analysis/SynqLiens/synqlien-selling-backend-api-rebuild-plan.md. Use {{token}} for seller requests and {{buyerToken}} for authenticated buyer requests. Public-token requests intentionally use no auth.",
+    "description": "Implemented lien-first SynqLien Selling V2 contract. Seller intake begins at Pending or Internal; there is no seller Draft route or submit endpoint. Set a new idempotencyKey before a distinct mutation and keep it unchanged only when retrying that same request.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "auth": {
-    "type": "bearer",
-    "bearer": [
-      {
-        "key": "token",
-        "value": "{{token}}",
-        "type": "string"
-      }
-    ]
-  },
-  "event": [
-    {
-      "listen": "prerequest",
-      "script": {
-        "type": "text/javascript",
-        "exec": [
-          "// Set {{token}} to a seller JWT and {{buyerToken}} to a buyer JWT before running authenticated requests.",
-          "// Clear {{idempotencyKey}} when you want a fresh key; keep it unchanged when testing retries.",
-          "if (!pm.collectionVariables.get('idempotencyKey')) {",
-          "  pm.collectionVariables.set('idempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
-          "}"
-        ]
-      }
-    }
-  ],
   "variable": [
-    {
-      "key": "baseUrl",
-      "value": "http://localhost:5009"
-    },
-    {
-      "key": "token",
-      "value": ""
-    },
-    {
-      "key": "buyerToken",
-      "value": ""
-    },
-    {
-      "key": "idempotencyKey",
-      "value": ""
-    },
-    {
-      "key": "sellerLienId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "lienNumber",
-      "value": "LN-POSTMAN-001"
-    },
-    {
-      "key": "caseId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "fundingCompanyId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "fundingCompanyContactId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "buyerFundingCompanyId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "buyerContactId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "handlingLawFirmId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "caseManagerId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "facilityId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "documentId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "bulkImportId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "buyerAccessToken",
-      "value": ""
-    },
-    {
-      "key": "contactId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    },
-    {
-      "key": "targetContactId",
-      "value": "00000000-0000-0000-0000-000000000000"
-    }
+    { "key": "baseUrl", "value": "http://localhost:5009" },
+    { "key": "sellerToken", "value": "" },
+    { "key": "buyerToken", "value": "" },
+    { "key": "idempotencyKey", "value": "selling-v2-postman-001" },
+    { "key": "sellerLienId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "bulkImportId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "buyerAccessToken", "value": "" },
+    { "key": "fundingCompanyId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "fundingCompanyContactId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "buyerFundingCompanyId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "buyerContactId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "handlingLawFirmId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "caseManagerId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "caseId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "facilityId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "documentId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "contactId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "targetContactId", "value": "00000000-0000-0000-0000-000000000000" }
   ],
   "item": [
     {
-      "name": "01 - Dashboard and List",
+      "name": "01 - Seller Portfolio",
+      "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}", "type": "string" }] },
       "item": [
         {
           "name": "Get Dashboard",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/dashboard?tab=pending&search=&fundingCompanyId=&lawFirmId=&caseManagerId=&facilityId=&initialServiceDateFrom=&initialServiceDateTo=&sortBy=initialServiceDate&sortDirection=desc&page=1&pageSize=25",
-            "description": "GET /api/liens/selling/dashboard. Returns summary cards, tab totals, and paginated portfolio rows."
-          }
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/dashboard?tab=pending&search=&sortBy=initialServiceDate&sortDirection=desc&page=1&pageSize=25" }
         },
         {
-          "name": "List Selling Liens",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/liens?tab=pending&search=&fundingCompanyId=&lawFirmId=&caseManagerId=&facilityId=&sortBy=initialServiceDate&sortDirection=desc&page=1&pageSize=25",
-            "description": "GET /api/liens/selling/liens. Returns seller lien rows without dashboard summary cards."
-          }
+          "name": "List Seller Liens",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/liens?tab=pending&search=&sortBy=initialServiceDate&sortDirection=desc&page=1&pageSize=25" }
         }
       ]
     },
     {
-      "name": "02 - Single Lien Wizard",
+      "name": "02 - Seller Lien Intake and Sale",
+      "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}", "type": "string" }] },
       "item": [
         {
-          "name": "Create Draft Lien",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
-                  "  const body = pm.response.json();",
-                  "  const id = body.lienId || body.id;",
-                  "  if (id) pm.collectionVariables.set('sellerLienId', id);",
-                  "  if (body.lienNumber) pm.collectionVariables.set('lienNumber', body.lienNumber);",
-                  "}"
-                ]
-              }
-            }
-          ],
+          "name": "Create Seller Lien (Pending or Internal)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.lienId) pm.collectionVariables.set('sellerLienId', body.lienId);"] } }],
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"sellerStatus\": \"Draft\",\n  \"source\": \"Single\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/liens/drafts",
-            "description": "POST /api/liens/selling/liens/drafts. Captures {{sellerLienId}} from lienId or id."
+            "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"sellerStatus\": \"Pending\",\n  \"source\": \"Postman\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/liens"
           }
         },
         {
-          "name": "Save Step 1 - Lien Information",
+          "name": "Get Seller Lien Detail",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}" }
+        },
+        {
+          "name": "Get Seller Lien Activity",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/activity" }
+        },
+        {
+          "name": "Save Lien Information",
           "request": {
             "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"sellerStatus\": \"Pending\",\n  \"initialServiceDate\": \"2026-07-19\",\n  \"endServiceDate\": null,\n  \"listingVisibility\": \"Private\",\n  \"notes\": \"Created from Postman selling v2 collection\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/lien-information",
-            "description": "PUT /api/liens/selling/liens/{lienId}/lien-information."
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"sellerStatus\": \"Pending\",\n  \"initialServiceDate\": \"2026-07-30\",\n  \"endServiceDate\": null,\n  \"listingVisibility\": \"Private\",\n  \"notes\": \"Selling V2 intake created from Postman\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/lien-information"
           }
         },
         {
-          "name": "Save Step 2 - Case Information",
+          "name": "Save Case Information",
           "request": {
             "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"fundingCompanyContactId\": \"{{fundingCompanyContactId}}\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseId\": \"{{caseId}}\",\n  \"createCaseIfMissing\": false\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/case-information",
-            "description": "PUT /api/liens/selling/liens/{lienId}/case-information."
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"fundingCompanyContactId\": \"{{fundingCompanyContactId}}\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseId\": \"{{caseId}}\",\n  \"createCaseIfMissing\": false\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/case-information"
           }
         },
         {
-          "name": "Save Step 3 - Medical Pricing",
+          "name": "Save Medical Pricing",
           "request": {
             "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"askAmount\": 12500,\n  \"billingAmount\": 18000,\n  \"rows\": [\n    {\n      \"medicalCode\": \"99213\",\n      \"description\": \"Office visit\",\n      \"serviceDate\": \"2026-07-19\",\n      \"billingAmount\": 600,\n      \"medicareCost\": 180,\n      \"targetSaleAmount\": 350\n    }\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/medical-pricing",
-            "description": "PUT /api/liens/selling/liens/{lienId}/medical-pricing. Top-level billingAmount maps to Lien.OriginalAmount."
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"askAmount\": 12500,\n  \"billingAmount\": 18000,\n  \"rows\": [{\n    \"medicalCode\": \"99213\",\n    \"description\": \"Office visit\",\n    \"serviceDate\": \"2026-07-30\",\n    \"billingAmount\": 600,\n    \"medicareCost\": 180,\n    \"targetSaleAmount\": 350\n  }]\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/medical-pricing"
           }
         },
         {
-          "name": "Save Step 4 - Documents",
+          "name": "Save Existing Documents",
           "request": {
             "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"documents\": [\n    {\n      \"documentId\": \"{{documentId}}\",\n      \"documentType\": \"MedicalBill\",\n      \"displayName\": \"medical-bill.pdf\"\n    }\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/documents",
-            "description": "PUT /api/liens/selling/liens/{lienId}/documents. Attach existing document ids from the document service."
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"documents\": [{\n    \"documentId\": \"{{documentId}}\",\n    \"documentType\": \"MedicalBill\",\n    \"displayName\": \"medical-bill.pdf\"\n  }]\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/documents"
           }
         },
-        {
-          "name": "Submit Lien Intake",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"targetSellerStatus\": \"Pending\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/submit",
-            "description": "POST /api/liens/selling/liens/{lienId}/submit. Finalizes intake from Draft to Pending or Internal."
-          }
-        },
-        {
-          "name": "Get Lien Detail",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}",
-            "description": "GET /api/liens/selling/liens/{lienId}. Aggregates lien, case, pricing, documents, sale readiness, offers, activity, and actions."
-          }
-        },
-        {
-          "name": "Get Lien Activity",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/activity",
-            "description": "GET /api/liens/selling/liens/{lienId}/activity."
-          }
-        }
-      ]
-    },
-    {
-      "name": "03 - Sale Flow",
-      "item": [
         {
           "name": "Prepare Sale",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"buyerFundingCompanyId\": \"{{buyerFundingCompanyId}}\",\n  \"buyerContactId\": \"{{buyerContactId}}\",\n  \"askAmount\": 12500,\n  \"listingVisibility\": \"Private\",\n  \"messageToBuyer\": \"Please review this lien for purchase consideration.\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/prepare-sale",
-            "description": "POST /api/liens/selling/liens/{lienId}/prepare-sale. Moves SellerStatus to PreparedForSale while core Lien.Status remains Draft."
+            "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"buyerFundingCompanyId\": \"{{buyerFundingCompanyId}}\",\n  \"buyerContactId\": \"{{buyerContactId}}\",\n  \"askAmount\": 12500,\n  \"listingVisibility\": \"Private\",\n  \"messageToBuyer\": \"Please review this lien for purchase consideration.\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/prepare-sale"
           }
         },
         {
@@ -373,505 +138,116 @@
           "name": "Withdraw Sale",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"reason\": \"Seller withdrew sale from Postman collection\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/withdraw-sale",
-            "description": "POST /api/liens/selling/liens/{lienId}/withdraw-sale."
+            "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Seller withdrew the listing.\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/withdraw-sale"
           }
         },
         {
-          "name": "Archive Lien",
+          "name": "Archive Unsold Lien",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"reason\": \"Archived from Postman collection\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/archive",
-            "description": "POST /api/liens/selling/liens/{lienId}/archive. Soft-hides the lien from the selling workflow."
+            "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"reason\": \"No longer needed.\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/archive"
           }
         },
         {
-          "name": "Generate Buyer Access Link",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
-                  "  const body = pm.response.json();",
-                  "  const token = body.token || body.publicToken || body.accessToken || body.buyerAccessToken;",
-                  "  if (token) pm.collectionVariables.set('buyerAccessToken', token);",
-                  "}"
-                ]
-              }
-            }
-          ],
+          "name": "Create Buyer Access Link",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.token) pm.collectionVariables.set('buyerAccessToken', body.token);"] } }],
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"buyerFundingCompanyId\": \"{{buyerFundingCompanyId}}\",\n  \"buyerContactId\": \"{{buyerContactId}}\",\n  \"expiresInHours\": 168\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/buyer-access-links",
-            "description": "POST /api/liens/selling/liens/{lienId}/buyer-access-links. Captures public token into {{buyerAccessToken}} if returned."
+            "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"buyerFundingCompanyId\": \"{{buyerFundingCompanyId}}\",\n  \"buyerContactId\": \"{{buyerContactId}}\",\n  \"expiresInHours\": 168\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/buyer-access-links"
           }
         }
       ]
     },
     {
-      "name": "04 - Bulk Import",
+      "name": "03 - Bulk Import",
+      "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}", "type": "string" }] },
       "item": [
+        { "name": "Download Template", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/bulk-import-template" } },
         {
-          "name": "Download Bulk Import Template",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/bulk-import-template",
-            "description": "GET /api/liens/selling/bulk-import-template."
-          }
-        },
-        {
-          "name": "Create Bulk Import",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
-                  "  const body = pm.response.json();",
-                  "  const id = body.importId || body.id;",
-                  "  if (id) pm.collectionVariables.set('bulkImportId', id);",
-                  "}"
-                ]
-              }
-            }
-          ],
+          "name": "Upload Import",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.importId) pm.collectionVariables.set('bulkImportId', body.importId);"] } }],
           "request": {
             "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "file",
-                  "type": "file",
-                  "src": ""
-                },
-                {
-                  "key": "templateType",
-                  "value": "SellingLienImport",
-                  "type": "text"
-                },
-                {
-                  "key": "defaultListingVisibility",
-                  "value": "Private",
-                  "type": "text"
-                },
-                {
-                  "key": "defaultSellerStatus",
-                  "value": "Pending",
-                  "type": "text"
-                }
-              ]
-            },
-            "url": "{{baseUrl}}/api/liens/selling/bulk-imports",
-            "description": "POST /api/liens/selling/bulk-imports multipart/form-data. Select a CSV/XLSX file before sending. Captures {{bulkImportId}}."
+            "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": "" }, { "key": "templateType", "value": "SellingLienImport", "type": "text" }, { "key": "defaultListingVisibility", "value": "Private", "type": "text" }, { "key": "defaultSellerStatus", "value": "Pending", "type": "text" }] },
+            "url": "{{baseUrl}}/api/liens/selling/bulk-imports"
           }
         },
-        {
-          "name": "Get Bulk Import",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/bulk-imports/{{bulkImportId}}",
-            "description": "GET /api/liens/selling/bulk-imports/{importId}."
-          }
-        },
-        {
-          "name": "Get Bulk Import Rows",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/bulk-imports/{{bulkImportId}}/rows?status=all&page=1&pageSize=100",
-            "description": "GET /api/liens/selling/bulk-imports/{importId}/rows."
-          }
-        },
-        {
-          "name": "Validate Bulk Import",
-          "request": {
-            "method": "POST",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/bulk-imports/{{bulkImportId}}/validate",
-            "description": "POST /api/liens/selling/bulk-imports/{importId}/validate."
-          }
-        },
-        {
-          "name": "Confirm Bulk Import",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
-              }
-            ],
-            "url": "{{baseUrl}}/api/liens/selling/bulk-imports/{{bulkImportId}}/confirm",
-            "description": "POST /api/liens/selling/bulk-imports/{importId}/confirm."
-          }
-        },
-        {
-          "name": "Cancel Bulk Import",
-          "request": {
-            "method": "DELETE",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/bulk-imports/{{bulkImportId}}",
-            "description": "DELETE /api/liens/selling/bulk-imports/{importId}. Cancels an unconfirmed import."
-          }
-        }
+        { "name": "Get Import", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/bulk-imports/{{bulkImportId}}" } },
+        { "name": "Get Import Rows", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/bulk-imports/{{bulkImportId}}/rows?status=all&page=1&pageSize=100" } },
+        { "name": "Validate Import", "request": { "method": "POST", "url": "{{baseUrl}}/api/liens/selling/bulk-imports/{{bulkImportId}}/validate" } },
+        { "name": "Confirm Import", "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }], "url": "{{baseUrl}}/api/liens/selling/bulk-imports/{{bulkImportId}}/confirm" } },
+        { "name": "Cancel Import", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/liens/selling/bulk-imports/{{bulkImportId}}" } }
+      ]
+    },
+    {
+      "name": "04 - Selling Lookups",
+      "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}", "type": "string" }] },
+      "item": [
+        { "name": "Funding Companies", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/lookups/funding-companies" } },
+        { "name": "Funding Company Contacts", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/lookups/funding-company-contacts?fundingCompanyId={{fundingCompanyId}}" } },
+        { "name": "Law Firms", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/lookups/law-firms" } },
+        { "name": "Case Managers", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/lookups/case-managers?lawFirmId={{handlingLawFirmId}}" } },
+        { "name": "Facilities", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/lookups/facilities" } },
+        { "name": "Medical Codes", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/lookups/medical-codes?search=99213" } },
+        { "name": "Document Types", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/lookups/document-types" } }
       ]
     },
     {
       "name": "05 - Authenticated Buyer",
-      "auth": {
-        "type": "bearer",
-        "bearer": [
-          {
-            "key": "token",
-            "value": "{{buyerToken}}",
-            "type": "string"
-          }
-        ]
-      },
+      "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}", "type": "string" }] },
       "item": [
+        { "name": "View Submitted Lien", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/buyer/liens/by-lien/{{sellerLienId}}" } },
         {
-          "name": "Buyer View Lien",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/buyer/liens/{{sellerLienId}}",
-            "description": "GET /api/liens/selling/buyer/liens/{lienId}. Requires buyer JWT and LienBrowse permission."
-          }
+          "name": "Submit Offer",
+          "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"offerAmount\": 10000,\n  \"message\": \"Offer submitted from Postman.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/buyer/liens/by-lien/{{sellerLienId}}/offers" }
         },
         {
-          "name": "Buyer Submit Offer",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"offerAmount\": 10000,\n  \"message\": \"Offer submitted from authenticated buyer Postman flow\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/buyer/liens/{{sellerLienId}}/offers",
-            "description": "POST /api/liens/selling/buyer/liens/{lienId}/offers. Requires buyer JWT and LienOffer permission."
-          }
-        },
-        {
-          "name": "Buyer Decline",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"reason\": \"Declined from authenticated buyer Postman flow\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/buyer/liens/{{sellerLienId}}/decline",
-            "description": "POST /api/liens/selling/buyer/liens/{lienId}/decline."
-          }
+          "name": "Decline Lien",
+          "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Not a fit.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/buyer/liens/by-lien/{{sellerLienId}}/decline" }
         }
       ]
     },
     {
-      "name": "06 - Public Token Buyer",
-      "auth": {
-        "type": "noauth"
-      },
+      "name": "06 - Public Buyer Token",
       "item": [
+        { "name": "View Public Lien", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/public/{{buyerAccessToken}}" } },
         {
-          "name": "Public View Lien",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/public/{{buyerAccessToken}}",
-            "description": "GET /api/liens/selling/public/{token}. No JWT; token controls tenant, lien, buyer, expiry, and visibility. Returns JSON data for apps/web to render /selling/public/{token}; this endpoint does not render HTML."
-          }
+          "name": "Accept Public Lien",
+          "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"notes\": \"Accepted from Postman.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/public/{{buyerAccessToken}}/accept" }
         },
         {
-          "name": "Public Submit Offer",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"offerAmount\": 10000,\n  \"message\": \"Offer submitted from public token Postman flow\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/public/{{buyerAccessToken}}/offers",
-            "description": "POST /api/liens/selling/public/{token}/offers. No JWT."
-          }
+          "name": "Submit Public Offer",
+          "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"offerAmount\": 10000,\n  \"message\": \"Public buyer offer.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/public/{{buyerAccessToken}}/offers" }
         },
         {
-          "name": "Public Decline",
-          "request": {
-            "auth": {
-              "type": "noauth"
-            },
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              },
-              {
-                "key": "Idempotency-Key",
-                "value": "{{idempotencyKey}}"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"reason\": \"Declined from public token Postman flow\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/selling/public/{{buyerAccessToken}}/decline",
-            "description": "POST /api/liens/selling/public/{token}/decline. No JWT."
-          }
+          "name": "Decline Public Lien",
+          "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"reason\": \"Not a fit.\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/public/{{buyerAccessToken}}/decline" }
+        },
+        {
+          "name": "Activate Buyer Account",
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"companyName\": \"Buyer Company\",\n  \"email\": \"buyer@example.test\",\n  \"password\": \"Replace-With-A-Strong-Password\",\n  \"firstName\": \"Buyer\",\n  \"lastName\": \"User\",\n  \"phone\": \"+15555550100\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/public/{{buyerAccessToken}}/activate-account" }
         }
       ]
     },
     {
-      "name": "07 - Selling Lookups",
+      "name": "07 - Contacts",
+      "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}", "type": "string" }] },
       "item": [
-        {
-          "name": "Funding Companies",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/lookups/funding-companies",
-            "description": "GET /api/liens/selling/lookups/funding-companies."
-          }
-        },
-        {
-          "name": "Funding Company Contacts",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/lookups/funding-company-contacts?fundingCompanyId={{fundingCompanyId}}",
-            "description": "GET /api/liens/selling/lookups/funding-company-contacts."
-          }
-        },
-        {
-          "name": "Law Firms",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/lookups/law-firms",
-            "description": "GET /api/liens/selling/lookups/law-firms."
-          }
-        },
-        {
-          "name": "Case Managers",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/lookups/case-managers?lawFirmId={{handlingLawFirmId}}",
-            "description": "GET /api/liens/selling/lookups/case-managers."
-          }
-        },
-        {
-          "name": "Facilities",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/lookups/facilities",
-            "description": "GET /api/liens/selling/lookups/facilities."
-          }
-        },
-        {
-          "name": "Medical Codes",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/lookups/medical-codes?search=99213",
-            "description": "GET /api/liens/selling/lookups/medical-codes."
-          }
-        },
-        {
-          "name": "Document Types",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/lookups/document-types",
-            "description": "GET /api/liens/selling/lookups/document-types."
-          }
-        }
-      ]
-    },
-    {
-      "name": "08 - Related Contacts",
-      "item": [
-        {
-          "name": "List Contacts",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/contacts?search=&contactType=&page=1&pageSize=25",
-            "description": "GET /api/liens/contacts."
-          }
-        },
-        {
-          "name": "Get Contact Detail",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{baseUrl}}/api/liens/contacts/{{contactId}}/detail",
-            "description": "GET /api/liens/contacts/{contactId}/detail."
-          }
-        },
+        { "name": "List Contacts", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/contacts?search=&contactType=&isActive=true&page=1&pageSize=25" } },
+        { "name": "Get Contact Detail", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/contacts/{{contactId}}/detail" } },
         {
           "name": "Reassign Contact Cases",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"targetContactId\": \"{{targetContactId}}\",\n  \"relationshipType\": \"CaseManager\",\n  \"scope\": \"Selected\",\n  \"caseIds\": [\n    \"{{caseId}}\"\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/contacts/{{contactId}}/reassign-cases",
-            "description": "POST /api/liens/contacts/{contactId}/reassign-cases."
-          }
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"targetContactId\": \"{{targetContactId}}\",\n  \"relationshipType\": \"CaseManager\",\n  \"scope\": \"Selected\",\n  \"caseIds\": [\"{{caseId}}\"]\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/contacts/{{contactId}}/reassign-cases" }
         },
         {
           "name": "Export Contacts CSV",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"search\": \"\",\n  \"contactType\": \"FundingCompany\",\n  \"isActive\": true,\n  \"selectedIds\": []\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": "{{baseUrl}}/api/liens/contacts/export-csv",
-            "description": "POST /api/liens/contacts/export-csv."
-          }
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"search\": \"\",\n  \"contactType\": \"FundingCompany\",\n  \"isActive\": true,\n  \"selectedIds\": []\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/contacts/export-csv" }
         }
       ]
     }

@@ -69,7 +69,13 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
         builder.Property(l => l.Notes)
             .HasMaxLength(4000);
 
+        builder.Property(l => l.BuyerMessage)
+            .HasMaxLength(4000);
+
         builder.Property(l => l.IncidentDate)
+            .HasColumnType("date");
+
+        builder.Property(l => l.PurchaseDate)
             .HasColumnType("date");
 
         builder.Property(l => l.InitialServiceDate)
@@ -167,6 +173,9 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
 
         builder.HasIndex(l => new { l.TenantId, l.CreatedAtUtc })
             .HasDatabaseName("IX_Liens_TenantId_CreatedAtUtc");
+
+        builder.HasIndex(l => new { l.TenantId, l.PurchaseDate })
+            .HasDatabaseName("IX_Liens_TenantId_PurchaseDate");
 
         builder.HasOne<Case>()
             .WithMany()

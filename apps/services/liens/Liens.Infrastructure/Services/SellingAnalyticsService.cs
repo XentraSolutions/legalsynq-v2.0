@@ -69,7 +69,6 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
         var sold = data.Liens.Where(IsSoldForAnalytics).ToList();
         var stageData = new (string Stage, List<Lien> Liens)[]
         {
-            ("Draft", data.Liens.Where(l => StatusFor(l) == SellingLienStatus.Draft).ToList()),
             ("Pending/Internal", data.Liens.Where(l => StatusFor(l) is SellingLienStatus.Pending or SellingLienStatus.Internal).ToList()),
             ("PreparedForSale", data.Liens.Where(l => StatusFor(l) == SellingLienStatus.PreparedForSale).ToList()),
             ("SubmittedForSale", submitted),
@@ -468,7 +467,9 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
             AskAmount = liens.Sum(l => l.AskAmount ?? 0m),
             HighestBidAmount = liens.Sum(l => HighestBidFor(l.Id, l.HighestBidAmount, offers)),
             SoldAmount = liens.Where(IsSoldForAnalytics).Sum(l => l.PurchasePrice ?? 0m),
-            DraftCount = liens.Count(l => StatusFor(l) == SellingLienStatus.Draft),
+            // Retained for response compatibility with the legacy analytics DTO.
+            // Selling V2 never emits a seller-facing Draft status.
+            DraftCount = 0,
             PendingCount = liens.Count(l => StatusFor(l) == SellingLienStatus.Pending),
             InternalCount = liens.Count(l => StatusFor(l) == SellingLienStatus.Internal),
             PreparedForSaleCount = liens.Count(l => StatusFor(l) == SellingLienStatus.PreparedForSale),
@@ -542,7 +543,7 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
             LienStatus.Withdrawn => SellingLienStatus.Withdrawn,
             LienStatus.Accepted => SellingLienStatus.Accepted,
             LienStatus.Offered or LienStatus.UnderReview => SellingLienStatus.SubmittedForSale,
-            _ => SellingLienStatus.Draft,
+            _ => SellingLienStatus.Pending,
         };
     }
 

@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { buildCareConnectLoginUrl, isCareConnectCommonPortalHost } from '@/lib/careconnect-login-url';
+import { getServerPortalConfig } from '@/lib/portal';
 import { ResetPasswordPageClient } from './reset-password-page-client';
 
 export const dynamic = 'force-dynamic';
@@ -11,10 +12,11 @@ export default async function ResetPasswordPage() {
   // or overwrite this header from external traffic before forwarding — same
   // requirement as proxy.ts and the forgot-password/login BFF routes.
   const rawHost = hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? '';
-  const isPortal = isCareConnectCommonPortalHost(rawHost);
-  const loginHref = isPortal
+  const portalProductId = getServerPortalConfig(rawHost)?.productId ?? null;
+  const isCareConnectPortal = isCareConnectCommonPortalHost(rawHost);
+  const loginHref = isCareConnectPortal
     ? buildCareConnectLoginUrl(process.env.CC_COMMON_PORTAL_HOSTNAME)
     : '/login';
 
-  return <ResetPasswordPageClient isPortal={isPortal} loginHref={loginHref} />;
+  return <ResetPasswordPageClient portalProductId={portalProductId} loginHref={loginHref} />;
 }

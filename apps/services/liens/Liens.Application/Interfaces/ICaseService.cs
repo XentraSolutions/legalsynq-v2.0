@@ -20,6 +20,7 @@ public interface ICaseService
         Guid? lawFirmOrgId = null,
         string? accidentTypeId = null,
         string? caseManagerId = null,
+        string? lawFirmIds = null,
         CancellationToken ct = default);
 
     Task<CaseResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);

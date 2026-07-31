@@ -135,6 +135,55 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
+    public async Task RunReport_returns_zero_days_since_reduction_approval_when_no_reduction_exists()
+    {
+        string lienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-NO-REDUCTION-{Guid.CreateVersion7():N}"[..30],
+                "NoReduction",
+                "Plaintiff",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-NO-REDUCTION-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N");
+
+            lienNumber = lien.LienNumber;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            search = lienNumber,
+            isBulk = "N",
+            columns = new[] { "lien_id", "days_since_reduction_approval" },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = payload.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("lien_id").GetString() == lienNumber);
+        row.GetProperty("days_since_reduction_approval").GetString().Should().Be("0");
+    }
+
+    [Fact]
     public async Task RunReport_uses_legacy_medical_code_billing_and_purchase_amounts()
     {
         string lienNumber;
@@ -197,6 +246,163 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             .Should().BeGreaterThanOrEqualTo(275.50m);
         payload.RootElement.GetProperty("summaryTotals").GetProperty("totalBillingAmt").GetDecimal()
             .Should().BeGreaterThanOrEqualTo(600.75m);
+    }
+
+    [Fact]
+    public async Task RunReport_populates_data_backed_legacy_columns()
+    {
+        string lienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseManager = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.CaseManager,
+                "Case",
+                "Manager",
+                SeedHelper.UserId,
+                lawFirmId: SeedHelper.LawFirmId,
+                organization: "Smith & Associates LLP");
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-DATA-{Guid.CreateVersion7():N}"[..30],
+                "Data",
+                "Plaintiff",
+                SeedHelper.UserId,
+                dateOfIncident: new DateOnly(2024, 6, 15),
+                notes: $"lawFirmId={SeedHelper.LawFirmId}; caseManagerId={caseManager.Id}; accidentType=Motor Vehicle Accident");
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-DATA-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                2000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                facilityId: SeedHelper.FacilityId,
+                incidentDate: new DateOnly(2024, 6, 15),
+                isBulk: "N",
+                purchaseDate: new DateOnly(2024, 6, 15));
+            var reduction = LienReduction.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                new DateOnly(2025, 1, 10),
+                200m,
+                SeedHelper.UserId);
+            var returnedPayment = SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                1,
+                1234.56m,
+                SeedHelper.UserId,
+                paymentDate: new DateOnly(2025, 2, 1));
+
+            lienNumber = lien.LienNumber;
+            db.Contacts.Add(caseManager);
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.LienReductions.Add(reduction);
+            db.SettlementPaymentDetails.Add(returnedPayment);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            search = lienNumber,
+            isBulk = "N",
+            columns = new[]
+            {
+                "lien_id",
+                "purchase_date",
+                "returned_amount",
+                "days_since_reduction_approval",
+                "medical_facility",
+                "lawfirm",
+                "case_type",
+                "case_manager",
+            },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = payload.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("lien_id").GetString() == lienNumber);
+        row.GetProperty("purchase_date").GetString().Should().Be("06/15/2024");
+        row.GetProperty("returned_amount").GetString().Should().Be("1,234.56");
+        int.Parse(row.GetProperty("days_since_reduction_approval").GetString()!)
+            .Should().BeGreaterThan(0);
+        row.GetProperty("medical_facility").GetString().Should().Be("Sunrise Clinic");
+        row.GetProperty("lawfirm").GetString().Should().Be("Smith & Associates LLP");
+        row.GetProperty("case_type").GetString().Should().Be("Motor Vehicle Accident");
+        row.GetProperty("case_manager").GetString().Should().Be("Case Manager");
+    }
+
+    [Fact]
+    public async Task RunReport_and_export_exclude_rejected_and_cancelled_liens()
+    {
+        var prefix = $"LIEN-DIY-EXCLUDED-{Guid.CreateVersion7():N}"[..36];
+        var openLienNumber = $"{prefix}-OPEN";
+        var rejectedLienNumber = $"{prefix}-REJECTED";
+        var cancelledLienNumber = $"{prefix}-CANCELLED";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var openLien = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, openLienNumber, LienType.MedicalLien,
+                100m, SeedHelper.UserId, isBulk: "N");
+            var rejectedLien = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, rejectedLienNumber, LienType.MedicalLien,
+                100m, SeedHelper.UserId, isBulk: "N");
+            rejectedLien.SetLegacyMedicalStatus(LienStatus.Declined, SeedHelper.UserId);
+            var cancelledLien = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, cancelledLienNumber, LienType.MedicalLien,
+                100m, SeedHelper.UserId, isBulk: "N");
+            cancelledLien.SetLegacyMedicalStatus(LienStatus.Cancelled, SeedHelper.UserId);
+
+            db.Liens.AddRange(openLien, rejectedLien, cancelledLien);
+            await db.SaveChangesAsync();
+        }
+
+        var request = new
+        {
+            reportType = "LIENS",
+            search = prefix,
+            isBulk = "N",
+            columns = new[] { "lien_id" },
+            page = 1,
+            limit = 50,
+        };
+
+        var runResponse = await _client.PostAsJsonAsync("/report/diy", request);
+        runResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await runResponse.Content.ReadAsStringAsync()}");
+
+        using var runPayload = JsonDocument.Parse(await runResponse.Content.ReadAsStringAsync());
+        var previewLienNumbers = runPayload.RootElement.GetProperty("data").EnumerateArray()
+            .Select(row => row.GetProperty("lien_id").GetString())
+            .ToList();
+        previewLienNumbers.Should().ContainSingle().Which.Should().Be(openLienNumber);
+        previewLienNumbers.Should().NotContain(rejectedLienNumber).And.NotContain(cancelledLienNumber);
+
+        var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", request);
+        exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await exportResponse.Content.ReadAsStringAsync()}");
+
+        var exportPayload = await exportResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var export = exportPayload!.RootElement.GetProperty("data").EnumerateArray().Single();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
+        csv.Should().Contain(openLienNumber);
+        csv.Should().NotContain(rejectedLienNumber).And.NotContain(cancelledLienNumber);
     }
 
     // ── POST /report/diy/export ───────────────────────────────────────────────
@@ -358,6 +564,66 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
 
         var csv = Encoding.UTF8.GetString(Convert.FromBase64String(exportItem.GetProperty("base64").GetString()!));
         csv.Should().StartWith("billing_amt,case_status,plaintiff_last_name,plaintiff_first_name");
+    }
+
+    [Fact]
+    public async Task ExportReport_honors_saved_object_column_configuration()
+    {
+        var response = await _client.PostAsJsonAsync("/report/diy/export", new
+        {
+            reportType = "LIENS",
+            isBulk = "N",
+            columns = new[]
+            {
+                new { key = "lien_id", label = "Lien ID" },
+                new { key = "purchase_amt", label = "Purchase Amount" },
+            },
+            page = 1,
+            limit = 10,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var export = payload!.RootElement.GetProperty("data").EnumerateArray().Single();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
+
+        csv.Should().StartWith("lien_id,purchase_amt");
+        csv.Split('\n', StringSplitOptions.RemoveEmptyEntries).First().TrimEnd('\r')
+            .Should().Be("lien_id,purchase_amt");
+    }
+
+    [Fact]
+    public async Task ExportReport_uses_saved_report_columns_when_requested_by_report_id()
+    {
+        Guid reportId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var savedReport = DIYReportConfig.Create(
+                SeedHelper.TenantId,
+                SeedHelper.UserId,
+                "Saved export columns",
+                """{"reportType":"LIENS","isBulk":"N","columns":["lien_id","purchase_date","case_status"]}""",
+                SeedHelper.UserId);
+            reportId = savedReport.Id;
+            db.DIYReportConfigs.Add(savedReport);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy/export", new
+        {
+            reportId,
+            format = "csv",
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var export = payload!.RootElement.GetProperty("data").EnumerateArray().Single();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
+        csv.Split('\n', StringSplitOptions.RemoveEmptyEntries).First().TrimEnd('\r')
+            .Should().Be("lien_id,purchase_date,case_status");
     }
 
     // ── POST /report/diy/save ─────────────────────────────────────────────────

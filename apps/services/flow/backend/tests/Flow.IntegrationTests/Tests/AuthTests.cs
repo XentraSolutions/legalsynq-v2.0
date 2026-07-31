@@ -46,21 +46,35 @@ public class AuthTests : IClassFixture<SeedFixture>
     }
 
     [Fact]
-    public async Task User_with_matching_product_role_can_get()
+    public async Task User_with_seller_product_role_can_get()
     {
-        // Critical: the only permission carried is unrelated to liens
-        // (AppointmentCreate). If the capability policy ever stops honouring
-        // the product_roles claim, this test will FAIL — proving the branch
-        // is what is granting access, not a happenstance permission.
+        // The only permission is unrelated to liens. This proves the policy
+        // honours the explicit seller role, rather than broad product access.
         var resp = await _fx.Factory.AsUser(
                 TestIds.TenantA,
                 permissions: PermissionCodes.AppointmentCreate,
-                productRoles: ProductCodes.SynqLiens + ":lien_sell_clerk")
+                productRoles: ProductCodes.SynqLiens + ":" + ProductRoleCodes.SynqLienSeller)
             .GetAsync(HttpClientExtensions.Path(
                 TestIds.SlugLien, TestIds.LienEntityType,
                 TestIds.LienEntityId_Happy_A, TestIds.HappyLienInstance_A));
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(ProductRoleCodes.SynqLienBuyer)]
+    [InlineData(ProductRoleCodes.SynqLienHolder)]
+    public async Task User_with_non_seller_lien_role_is_403(string productRole)
+    {
+        var resp = await _fx.Factory.AsUser(
+                TestIds.TenantA,
+                permissions: PermissionCodes.AppointmentCreate,
+                productRoles: ProductCodes.SynqLiens + ":" + productRole)
+            .GetAsync(HttpClientExtensions.Path(
+                TestIds.SlugLien, TestIds.LienEntityType,
+                TestIds.LienEntityId_Happy_A, TestIds.HappyLienInstance_A));
+
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
 
     [Fact]

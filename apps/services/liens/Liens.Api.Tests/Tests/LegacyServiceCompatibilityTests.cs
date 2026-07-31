@@ -156,6 +156,102 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
+    public async Task Global_and_v3_searches_rank_reversed_fuzzy_plaintiff_names()
+    {
+        var caseNumber = $"CASE-FUZZY-{Guid.CreateVersion7():N}"[..40];
+        var lienNumber = $"LIEN-FUZZY-{Guid.CreateVersion7():N}"[..40];
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                caseNumber,
+                "Jude",
+                "Hannah",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                lienNumber,
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        const string keyword = "Hanna Jud";
+
+        var globalResponse = await _client.PostAsJsonAsync("/api/liens/cases/global-search", new
+        {
+            query = keyword,
+            page = 1,
+            limit = 20,
+        });
+        globalResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await globalResponse.Content.ReadAsStringAsync()}");
+
+        var global = JsonNode.Parse(await globalResponse.Content.ReadAsStringAsync())!;
+        global["cases"]!["items"]!.AsArray().Should().Contain(item =>
+            item!["caseNumber"]!.GetValue<string>() == caseNumber);
+        global["liens"]!["items"]!.AsArray().Should().Contain(item =>
+            item!["lienNumber"]!.GetValue<string>() == lienNumber);
+
+        var caseResponse = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+        {
+            keyword,
+            page = 1,
+            limit = 20,
+        });
+        caseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await caseResponse.Content.ReadAsStringAsync()}");
+        var caseBody = JsonNode.Parse(await caseResponse.Content.ReadAsStringAsync())!;
+        caseBody["data"]!.AsArray().Should().Contain(item =>
+            item!["caseNumber"]!.GetValue<string>() == caseNumber);
+
+        var lienResponse = await _client.PostAsJsonAsync("/api/liens/cases/liens/v3", new
+        {
+            keyword,
+            page = 1,
+            limit = 20,
+        });
+        lienResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await lienResponse.Content.ReadAsStringAsync()}");
+        var lienBody = JsonNode.Parse(await lienResponse.Content.ReadAsStringAsync())!;
+        lienBody["items"]!.AsArray().Should().Contain(item =>
+            item!["lienNumber"]!.GetValue<string>() == lienNumber);
+
+        var serviceCaseResponse = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            keyword,
+            page = 1,
+            limit = 20,
+        });
+        serviceCaseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await serviceCaseResponse.Content.ReadAsStringAsync()}");
+        var serviceCase = JsonNode.Parse(await serviceCaseResponse.Content.ReadAsStringAsync())!;
+        serviceCase["data"]!.AsArray().Should().Contain(item =>
+            item!["caseCode"]!.GetValue<string>() == caseNumber);
+
+        var serviceLienResponse = await _client.PostAsJsonAsync("/service/liens/v3", new
+        {
+            keyword,
+            page = 1,
+            limit = 20,
+        });
+        serviceLienResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await serviceLienResponse.Content.ReadAsStringAsync()}");
+        var serviceLien = JsonNode.Parse(await serviceLienResponse.Content.ReadAsStringAsync())!;
+        serviceLien["data"]!.AsArray().Should().Contain(item =>
+            item!["lienCode"]!.GetValue<string>() == lienNumber);
+    }
+
+    [Fact]
     public async Task ServiceSettlementCompatibility_routes_return_data()
     {
         var historyResponse = await _client.PostAsJsonAsync("/service/settlement/history/v3", new
@@ -361,8 +457,12 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
-    public async Task LegacyDashboardMetric_routes_without_date_range_include_all_history()
+    public async Task LegacyDashboardMetric_routes_without_date_range_default_to_previous_calendar_month()
     {
+        var firstDayOfCurrentMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+        var expectedStart = firstDayOfCurrentMonth.AddMonths(-1).ToString("MM/dd/yyyy");
+        var expectedEnd = firstDayOfCurrentMonth.AddDays(-1).ToString("MM/dd/yyyy");
+
         var deployedResponse = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/deployed", new
         {
             page = 1,
@@ -372,9 +472,9 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
             $"Body: {await deployedResponse.Content.ReadAsStringAsync()}");
 
         var deployed = JsonNode.Parse(await deployedResponse.Content.ReadAsStringAsync())!["data"]!;
-        deployed["periodStart"]!.GetValue<string>().Should().BeEmpty();
-        deployed["periodEnd"]!.GetValue<string>().Should().BeEmpty();
-        deployed["totalCount"]!.GetValue<int>().Should().BeGreaterThan(0);
+        deployed["periodStart"]!.GetValue<string>().Should().Be(expectedStart);
+        deployed["periodEnd"]!.GetValue<string>().Should().Be(expectedEnd);
+        deployed["totalCount"]!.GetValue<int>().Should().BeGreaterThanOrEqualTo(0);
 
         var cashReceivedResponse = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/cash-received", new
         {
@@ -385,8 +485,8 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
             $"Body: {await cashReceivedResponse.Content.ReadAsStringAsync()}");
 
         var cashReceived = JsonNode.Parse(await cashReceivedResponse.Content.ReadAsStringAsync())!["data"]!;
-        cashReceived["periodStart"]!.GetValue<string>().Should().BeEmpty();
-        cashReceived["periodEnd"]!.GetValue<string>().Should().BeEmpty();
-        cashReceived["totalCount"]!.GetValue<int>().Should().BeGreaterThan(0);
+        cashReceived["periodStart"]!.GetValue<string>().Should().Be(expectedStart);
+        cashReceived["periodEnd"]!.GetValue<string>().Should().Be(expectedEnd);
+        cashReceived["totalCount"]!.GetValue<int>().Should().BeGreaterThanOrEqualTo(0);
     }
 }

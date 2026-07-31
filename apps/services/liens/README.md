@@ -40,26 +40,58 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `GET` | `/api/liens/cases/{id}` | Case detail |
 | `DELETE` | `/api/liens/cases/delete/{id}` | Legacy case deletion; blocks when a linked lien is active, and detaches terminal/rejected liens before removing the case |
 | `POST` | `/api/liens/reports/diy/export` | Export a DIY report as Base64-encoded CSV in the legacy `data` export envelope |
-| `POST` | `/api/liens/cases/dashboard/*-report-export/v3` | Returns the paginated JSON report by default; include `isCsv: true` or `isCsv: "yes"` for a Base64-encoded CSV export envelope with the report's four designated columns |
+| `POST` | `/api/liens/cases/dashboard/total-lien-report-export/v3` | Returns all legacy-eligible liens with full-result status and billing/purchase summaries; the legacy V3 request has no date filter |
+| `POST` | `/api/liens/cases/dashboard/total-case-report-export/v3` | Returns all legacy-eligible cases with full-result status counts; the legacy V3 request has no date filter |
+| `POST` | `/api/liens/cases/dashboard/lawfirm-case-report-export/v3` | Returns case/law-firm allocation and filters cases by the purchase date of any linked lien |
+| `POST` | `/api/liens/cases/dashboard/medical-provider-report-export/v3` | Returns lien/facility allocation filtered by lien purchase date |
+| `POST` | `/api/liens/cases/dashboard/deployed` | Sums lien purchase amounts by persisted `PurchaseDate` |
+| `POST` | `/api/liens/cases/dashboard/cash-received` | Sums non-deleted lien settlements by persisted `SettlementDate` |
+
+All four V3 report endpoints return paginated rows plus full-result summaries.
+Set `isCsv: true` or `isCsv: "yes"` for an uncapped Base64-encoded CSV export.
 
 DIY reports treat `isBulk: "N"` as non-bulk for legacy `N`, canonical `No`, and unset lien values, so a newly created ordinary lien is included in its report.
 
 DIY report billing and purchase columns aggregate `billingAmount` and `purchaseAmount` from linked legacy medical-code records, falling back to lien-level amounts when none exist.
 
+`POST /api/liens/settlement/create` preserves its settlement-detail status and,
+when that status is `Open` or `Closed`, also updates the linked lien to `Active`
+or `Settled`, respectively. Other settlement statuses do not change the lien.
+
+List filters accept both canonical persisted statuses and the legacy/UI lifecycle groups: `Open` expands to all active lien states, `Closed` expands to `Settled`, and `Rejected` expands to `Declined`, `Withdrawn`, and `Cancelled`. Historical rows literally persisted as `Rejected` remain hidden by default. The V3 case filter accepts comma-separated status, law-firm, case-manager, and accident-type selections. Law-firm values match the contact ID saved in case metadata and continue to accept legacy organization IDs.
+
 ## Selling Workflow
 
-Seller-mode endpoints live under `/api/liens/selling` and require SynqLien product access plus sell mode. The lien-first
-confirm-sale route is:
+Seller-mode endpoints live under `/api/liens/selling` and require SynqLien product access plus sell mode. The Selling V2
+lien-first lifecycle is `Pending`/`Internal` → `PreparedForSale` → `SubmittedForSale` → `Sold`; seller draft is not exposed.
+Intake writes are permitted only while the lien is `Pending` or `Internal`. State-changing V2 routes require an
+`Idempotency-Key`; a retry with the same payload replays its stored response, while reusing the key with a different payload
+returns `409 Conflict`.
+
+Import [`LegalSynq Selling V2 API.postman_collection.json`](LegalSynq%20Selling%20V2%20API.postman_collection.json) into
+Postman, set the collection variables for the appropriate seller or buyer token, and use a fresh `idempotencyKey` for each
+new mutation (reuse it only to retry that exact request).
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and sends buyer and seller `New Lien Offer` emails |
+| `GET` | `/api/liens/selling/dashboard?tab=pending\|internal\|sold\|all` | Returns seller-scoped portfolio totals, tab counts, and a paginated lien table. Supports search, funding company, law firm, case manager, facility, initial-service-date, and sort filters. |
+| `GET` | `/api/liens/selling/liens?tab=pending\|internal\|sold\|all` | Returns the same seller-scoped, filtered, paginated lien rows without dashboard totals. |
+| `POST` | `/api/liens/selling/liens` | Creates a lien directly in `Pending` or `Internal`; it does not create a seller draft. |
+| `GET` | `/api/liens/selling/liens/{lienId}` | Returns seller-scoped lien detail for the intake wizard, including funding-company contact person/email and case-manager/law-firm details when available. |
+| `PUT` | `/api/liens/selling/liens/{lienId}/lien-information`, `/case-information`, `/medical-pricing`, `/documents` | Saves the seller wizard sections. Existing document IDs are verified against the Documents service and must reference the seller-owned lien or case. |
+| `POST` | `/api/liens/selling/liens/{lienId}/prepare-sale` | Validates readiness and stores the selected buyer organisation/contact and buyer message without changing internal notes. |
+| `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and sends buyer and seller `New Lien Offer` emails. |
+| `POST` | `/api/liens/selling/liens/{lienId}/withdraw-sale`, `/archive`, `/buyer-access-links` | Withdraws a submitted lien, archives an unsold lien, or creates a time-limited buyer capability link. Raw link tokens are returned only on first creation and are never persisted. |
+| `GET` | `/api/liens/selling/bulk-import-template` | Downloads the current CSV template for a staged selling-lien bulk import. |
+| `POST` | `/api/liens/selling/bulk-imports` | Uploads a CSV, XLS, or XLSX selling-lien import using `multipart/form-data`. The import is staged tenant-scoped for subsequent validation and confirmation; it does not create liens directly. |
 
 Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. The request only confirms
 seller acceptance; notification delivery is mandatory and cannot be opted out through request payload. On every
 confirmation, the service validates real buyer/seller contact data, creates a 30-day buyer response link and a separate
 30-day seller-view link, then requests both buyer and seller emails through Notifications with idempotency keys. The
-seller email uses matching branded copy with buyer/funding-company information and a `View Lien Details` link.
+seller email uses matching branded copy with buyer/funding-company information and a `View Lien Details` link. The
+seller display company is resolved from the selected seller contact, another active contact in the same seller
+organization, or finally the seller display name.
 Supporting document names are pulled from existing legacy
 lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
 email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark
@@ -76,11 +108,13 @@ such as `localhost` and `127.0.0.1` are rejected because outbound email recipien
 token is substituted, otherwise the token is appended as the final path segment.
 
 The authenticated funding-company portal reads KPI, pending-offer, acquisition pipeline, and provider performance data
-from `GET /api/liens/selling/buyer/dashboard`. Summary cards are current buyer-scoped totals: pending access links with
+from `GET /api/liens/selling/buyer/dashboard`. Summary cards are range-scoped buyer totals: pending access links with
 no buyer response, pending offered amount, accepted buyer responses as purchased liens, and accepted response amount as
 capital deployed. Dashboard KPI trends compare current calendar month activity with the previous full calendar month and
-return the previous-month range for the portal detail line. Dashboard preview lists are capped to five rows; provider
-performance is ordered by highest offered-lien count. The same buyer scoping also drives
+return the previous-month range for the portal detail line on preset ranges. Dashboard date ranges filter by the offer
+received timestamp for pending, accepted, and declined rows; custom ranges require both start and end dates and otherwise
+return empty dashboard data. Dashboard preview lists are capped to five rows; provider performance is ordered by highest
+offered-lien count. The same buyer scoping also drives
 `GET /api/liens/selling/buyer/liens`. That endpoint projects buyer response access links into table rows scoped to the
 current buyer organization, with an email-based source buyer organization fallback for accounts created from public
 activation. It supports `status=Pending|Accepted|Declined`, free-text `search`, `page`, `pageSize`, `sort`, and
@@ -90,7 +124,10 @@ otherwise non-actionable rows return `view` only. Row `detailHref` values point 
 `/funding/offered-liens/{accessLinkId}`. The portal backs that route with
 `GET /api/liens/selling/buyer/liens/{accessLinkId}`, which returns persisted seller/lien fields plus real servicing
 documents, portal messages, and response activity for the funding company. Missing documents, messages, or activity are
-returned as empty arrays for the frontend empty states. The authenticated detail page posts messages through
+returned as empty arrays for the frontend empty states. Detail documents include same-origin tenant-portal `viewUrl` and
+`downloadUrl` BFF paths when a Documents-service id can be resolved; those paths call
+`GET /api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view` or `/download`, enforce the same buyer
+scope, and redirect to a short-lived Documents access URL. The authenticated detail page posts messages through
 `POST /api/liens/selling/buyer/liens/{accessLinkId}/messages` and records responses through
 `POST /api/liens/selling/buyer/liens/{accessLinkId}/accept` or
 `POST /api/liens/selling/buyer/liens/{accessLinkId}/decline`; these endpoints enforce the same buyer scoping and then
@@ -99,11 +136,13 @@ status, activity, and notification behavior.
 
 The temporary public portal endpoints are anonymous and token-scoped. `GET /api/liens/selling/public/{token}` returns
 JSON from persisted lien, case, contact, access-link, response, and servicing document metadata only, including
-`audience=buyer|seller`. It does not render HTML; the tenant portal route `/selling/public/{token}` in `apps/web`
+`audience=buyer|seller`, and sets `Referrer-Policy: no-referrer`. It does not render HTML; the tenant portal route `/selling/public/{token}` in `apps/web`
 fetches this JSON through the gateway and renders either the funding-company response page or the seller details page.
 Both buyer-purpose and seller-purpose links can view and post public messages on the offer thread with
 `POST /api/liens/selling/public/{token}/messages`; Liens derives the sender from the token purpose, stores the message,
-and emails the other party's public link with an idempotent message notification. Buyer-purpose links record buyer responses with
+and emails the other party with an idempotent message notification. Because access-link raw tokens are only returned on
+first creation and are not persisted, message notification emails omit a reply URL when the recipient's raw token is no
+longer available. Buyer-purpose links record buyer responses with
 `POST /api/liens/selling/public/{token}/accept` and `POST /api/liens/selling/public/{token}/decline`; accepting records
 the current ask amount and moves the lien to `Status=Accepted` / `SellerStatus=Accepted`; declining records an optional
 reason and moves the lien to `Status=Declined` / `SellerStatus=Declined`. `POST
@@ -191,6 +230,33 @@ endpoint does not write an `.xlsx` file itself.
 ## Database
 
 `LiensDb` (MySQL).
+
+## Legacy SL-CORE core import
+
+The tenant-scoped, dry-run-first legacy importer lives in
+[`scripts/LegacyLiensImport`](../../scripts/LegacyLiensImport/). It imports only
+approved core cases, medical-lien headers, and case notes from an isolated
+`SL-CORE` staging database. It requires explicit tenant, organization,
+migration-user, and legacy-program parameters plus an Identity-signed mapping
+manifest for `--apply` that binds the approved dump fingerprint; it does not
+run the dump or infer tenant ownership. A controlled staging restore receipt
+must bind the queried database to that same fingerprint. See its README for
+preflight, apply, collision-policy, certificate-store trust, mapping-evidence,
+source-fingerprint, and restore-provenance requirements.
+
+For the currently approved tenant/org pair, the importer folder also contains
+a guarded MySQL-only one-time runner. It must be executed only against a
+controlled staging restore on the same MySQL server as LiensDb; see the
+importer README for its trusted approval, source-receipt, dry-run, and
+single-use apply requirements.
+
+The complete SQL procedure requires migration
+`20260731000001_AddLienPurchaseAndSettlementDates`. It preserves
+`LM_PURCHASE_DATE` on the lien, preserves settlement amount/date rows for the
+Cash Received metric, and excludes source rows marked deleted (`CASE_IS_DELETED
+= 'Y'`, `LM_IS_DELETED = 'Y'`, or `SLSPD_IS_DELETED = 'Y'`). Medical-code
+amounts and servicing rows are imported only when `LMC_STATUS = 'A'`, matching
+the legacy dashboard calculations.
 
 ## Workflow Engine (Flow)
 

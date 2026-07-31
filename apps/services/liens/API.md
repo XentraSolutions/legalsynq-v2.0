@@ -314,7 +314,9 @@ Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared li
 
 Notification delivery is mandatory and cannot be opted out through request payload. The lien must have real
 `FundingCompanyId`, `FundingCompanyContactId`, `InitialServiceDate`, `AskAmount`, buyer email, seller
-name/company/email, and handling law firm data. The API creates a 30-day buyer response access link and a separate
+name/email, a seller display company/label resolved from the seller organization contacts, and handling law firm data.
+The selected seller email contact does not have to carry its own company when another active contact in the same seller
+organization supplies it; otherwise the seller display name is used. The API creates a 30-day buyer response access link and a separate
 30-day seller-view access link from
 `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide CTA URLs. If the explicit base URL is absent, the API
 derives it from `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
@@ -393,7 +395,7 @@ transition or buyer notification.
 Returns the authenticated funding-company dashboard used by `/funding/dashboard`. The endpoint scopes data to the
 current buyer organization, including the email-based source buyer organization fallback used by the offered-liens list.
 
-Summary metrics are current buyer-scoped totals across all visible offers:
+Summary metrics are buyer-scoped totals across the selected dashboard range:
 
 | Field | Definition |
 |---|---|
@@ -409,12 +411,14 @@ Summary metrics are current buyer-scoped totals across all visible offers:
 `value` as the absolute percent delta, `direction` as `up`, `down`, or `flat`, and `label` as the previous-month range
 shown by the portal.
 
-`range=last7Days|last30Days|custom`, `from=yyyy-MM-dd`, and `to=yyyy-MM-dd` filter the acquisition pipeline activity
-stages only. Pending activity uses the received-offer timestamp; accepted and declined activity uses the response
-timestamp. Missing custom dates are treated as open-ended.
+`range=last7Days|last30Days|custom`, `from=yyyy-MM-dd`, and `to=yyyy-MM-dd` filter summary metrics, pending offers,
+acquisition pipeline stages, provider performance, and offer inbox data. Range filtering uses the offer received
+timestamp for pending, accepted, and declined rows so the dashboard matches the offered-liens received date. Custom
+ranges require both `from` and `to`; missing or invalid custom dates return empty dashboard data.
 
-`pendingOffers` returns at most five pending offers for the dashboard preview. `providerPerformance` returns at most five
-provider groups, ordered by highest `lienCount` first and then by `providerName`.
+`pendingOffers` returns at most five pending offers for the dashboard preview within the selected range.
+`providerPerformance` returns at most five provider groups within the selected range, ordered by highest `lienCount`
+first and then by `providerName`.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 
@@ -457,7 +461,8 @@ provider groups, ordered by highest `lienCount` first and then by `providerName`
       "id": "access-link-guid",
       "lienNumber": "LIEN-001",
       "providerName": "Sunrise Clinic",
-      "sellerName": "Smith & Associates LLP",
+      "sellerCompany": "Smith & Associates LLP",
+      "sellerName": "Seller Operator",
       "offeredAmount": 2500.00,
       "receivedAtUtc": "2026-07-28T12:00:00Z",
       "responseDueAtUtc": "2026-08-27T12:00:00Z",
@@ -521,7 +526,7 @@ which supports accounts provisioned from public buyer activation.
       "id": "access-link-guid",
       "lienNumber": "LIEN-001",
       "providerName": "Sunrise Clinic",
-      "sellerName": "Smith & Associates LLP",
+      "sellerName": "Seller Operator",
       "initialServiceDate": "2026-05-01",
       "serviceDate": "2026-05-01",
       "billingAmount": 9000.00,
@@ -598,6 +603,8 @@ email-based source buyer organization fallback used by the list endpoint.
       "category": "Lien Document",
       "sizeOrType": "PDF",
       "url": "/documents/document-guid",
+      "viewUrl": "/api/lien/api/liens/selling/buyer/liens/{access-link-guid}/documents/{document-guid}/view",
+      "downloadUrl": "/api/lien/api/liens/selling/buyer/liens/{access-link-guid}/documents/{document-guid}/download",
       "createdAtUtc": "2026-07-28T12:00:00Z"
     }
   ],
@@ -626,7 +633,33 @@ email-based source buyer organization fallback used by the list endpoint.
 
 `documents`, `messages`, and `activity` are returned only from persisted records. They are empty arrays when no matching
 servicing documents, portal messages, or buyer response activity exist. `allowedActions` exposes `accept` and `decline`
-only when the access link has not recorded a response and the lien itself is still actionable.
+only when the access link has not recorded a response and the lien itself is still actionable. `viewUrl` and
+`downloadUrl` are same-origin tenant-portal BFF paths for authenticated funding-portal document access. They are `null`
+when the servicing item does not contain a resolvable Documents-service id.
+
+### GET `/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view`
+
+Issues a short-lived Documents view access token for a document attached to an authenticated offered lien, then
+redirects to the Documents access route. The endpoint validates the same buyer organization access link as the detail
+endpoint before minting the Documents token. Documents not attached to the offered lien return
+`404 document_not_found`.
+
+**Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
+
+**Response:** `302 Found`
+
+`Location` points to `/documents/access/{accessToken}` when called through the gateway. The tenant portal BFF path
+`/api/lien/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view` rewrites that redirect to
+`/api/lien/documents/access/{accessToken}` for same-origin browser access.
+
+### GET `/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/download`
+
+Same validation and ownership checks as the authenticated offered-lien document view endpoint, but requests a Documents
+download access token.
+
+**Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
+
+**Response:** `302 Found`
 
 ### POST `/api/liens/selling/buyer/liens/{accessLinkId}/messages`
 
@@ -750,9 +783,12 @@ already belongs to an Identity account so the tenant portal can render `Log In` 
   },
   "documents": [
     {
+      "id": "document-guid",
       "fileName": "real-document.pdf",
       "category": "Lien Document",
-      "sizeOrType": "PDF"
+      "sizeOrType": "PDF",
+      "viewUrl": "/api/lien/api/liens/selling/public/{token}/documents/{document-guid}/view",
+      "downloadUrl": "/api/lien/api/liens/selling/public/{token}/documents/{document-guid}/download"
     }
   ],
   "messages": [
@@ -778,6 +814,37 @@ SynqLien funding organizations sign into the tenant that issued the offer.
 For seller-view links, `audience` is `seller`; the same JSON includes buyer/funding-company details. Seller-view links
 can post messages, but response and activation endpoints reject that token with `403 read-only-link`. Seller-view JSON
 does not include an account-action requirement; `account` may be `null`.
+
+The `documents` array is limited to servicing document records attached to the offered lien. Selling v2 document
+references (`SellingDocumentReference`) are read from their JSON metadata, while legacy lien document records still use
+the existing semicolon metadata. Case-level documents that are not attached to the lien are excluded. `viewUrl` and
+`downloadUrl` are same-origin tenant-portal BFF paths that preserve the public offer token and redirect through Liens to
+the anonymous Documents access-token route.
+
+### GET `/api/liens/selling/public/{token}/documents/{documentId}/view`
+
+Issues a short-lived Documents view access token for a document attached to the token-scoped lien, then redirects to the
+anonymous Documents access route. This endpoint is anonymous but requires the same valid, unexpired, unrevoked public
+offer token as the portal `GET`. Buyer-response and seller-view tokens can both open lien documents. Documents not
+attached to that lien return `404 document-not-found`.
+
+**Authentication:** None.
+
+**Response:** `302 Found`
+
+`Location` points to `/documents/access/{accessToken}` when called through the gateway. The tenant portal BFF path
+`/api/lien/api/liens/selling/public/{token}/documents/{documentId}/view` rewrites that redirect to
+`/api/lien/documents/access/{accessToken}` for same-origin browser access. When local Documents storage then redirects
+to `/internal/files`, the tenant portal keeps that final file hop under `/api/lien/documents/internal/files`.
+
+### GET `/api/liens/selling/public/{token}/documents/{documentId}/download`
+
+Same validation and ownership checks as the public document view endpoint, but requests a Documents download access
+token.
+
+**Authentication:** None.
+
+**Response:** `302 Found`
 
 ### POST `/api/liens/selling/public/{token}/messages`
 
@@ -873,12 +940,6 @@ service-token signing key through `FLOW_SERVICE_TOKEN_SECRET` or `ServiceTokens:
 requires service JWT auth for producer submissions.
 
 **Authentication:** None.
-
-**Headers:**
-
-| Header | Required | Notes |
-|---|---|---|
-| `Idempotency-Key` | No | Stored with the access-link response for replay/audit correlation |
 
 **Request:**
 

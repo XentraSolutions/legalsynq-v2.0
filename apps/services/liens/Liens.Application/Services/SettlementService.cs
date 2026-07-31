@@ -10,15 +10,18 @@ public class SettlementService : ISettlementService
     private readonly ILienReductionRepository          _reductionRepo;
     private readonly ILienSettlementRepository         _settlementRepo;
     private readonly ISettlementPaymentDetailRepository _paymentRepo;
+    private readonly ILienService                       _lienService;
 
     public SettlementService(
         ILienReductionRepository reductionRepo,
         ILienSettlementRepository settlementRepo,
-        ISettlementPaymentDetailRepository paymentRepo)
+        ISettlementPaymentDetailRepository paymentRepo,
+        ILienService lienService)
     {
         _reductionRepo  = reductionRepo;
         _settlementRepo = settlementRepo;
         _paymentRepo    = paymentRepo;
+        _lienService    = lienService;
     }
 
     // ── Reductions ────────────────────────────────────────────────────────────
@@ -91,20 +94,38 @@ public class SettlementService : ISettlementService
     public async Task<LienSettlementResponse> CreateSettlementAsync(
         Guid tenantId, Guid userId, CreateLienSettlementRequest request, CancellationToken ct = default)
     {
+        if (IsLienStatusSyncRequest(request.Status))
+        {
+            // Legacy medical status normalization maps Open to Active and Closed
+            // to Settled while retaining the status transition audit/history.
+            await _lienService.SetLegacyMedicalStatusAsync(
+                tenantId, request.LienId, userId, request.Status!, ct);
+        }
+
         var entity = LienSettlement.Create(
             tenantId, request.CaseId, request.LienId,
             request.PaymentNumber, request.Amount, userId,
-            request.Status, request.Note);
+            request.Status, request.Note, request.SettlementDate);
         await _settlementRepo.AddAsync(entity, ct);
         return MapSettlement(entity);
     }
+
+    private static bool IsLienStatusSyncRequest(string? status) =>
+        string.Equals(status?.Trim(), "Open", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status?.Trim(), "Closed", StringComparison.OrdinalIgnoreCase);
 
     public async Task<LienSettlementResponse> UpdateSettlementAsync(
         Guid tenantId, Guid id, Guid userId, UpdateLienSettlementRequest request, CancellationToken ct = default)
     {
         var entity = await _settlementRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new KeyNotFoundException($"Settlement {id} not found.");
-        entity.Update(request.PaymentNumber, request.Amount, userId, request.Status, request.Note);
+        entity.Update(
+            request.PaymentNumber,
+            request.Amount,
+            userId,
+            request.Status,
+            request.Note,
+            request.SettlementDate ?? entity.SettlementDate);
         await _settlementRepo.UpdateAsync(entity, ct);
         return MapSettlement(entity);
     }
@@ -117,6 +138,7 @@ public class SettlementService : ISettlementService
         LienId        = s.LienId,
         PaymentNumber = s.PaymentNumber,
         Amount        = s.Amount,
+        SettlementDate = s.SettlementDate,
         Status        = s.Status,
         Note          = s.Note,
         CreatedAtUtc  = s.CreatedAtUtc,

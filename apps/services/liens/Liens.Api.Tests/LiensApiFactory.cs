@@ -85,6 +85,10 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<CapturingLegacyDocumentUploadClient>();
             services.AddSingleton<ILegacyDocumentUploadClient>(sp => sp.GetRequiredService<CapturingLegacyDocumentUploadClient>());
 
+            services.RemoveAll<ISellingDocumentReferenceValidator>();
+            services.AddSingleton<CapturingSellingDocumentReferenceValidator>();
+            services.AddSingleton<ISellingDocumentReferenceValidator>(sp => sp.GetRequiredService<CapturingSellingDocumentReferenceValidator>());
+
             services.RemoveAll<IPublicBuyerAccountProvisioningService>();
             services.AddSingleton<CapturingPublicBuyerAccountProvisioningService>();
             services.AddSingleton<IPublicBuyerAccountProvisioningService>(
@@ -94,6 +98,8 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
                 .ConfigurePrimaryHttpMessageHandler(() => new StubMedicareProcedureLookupHandler());
             services.AddHttpClient("Identity")
                 .ConfigurePrimaryHttpMessageHandler(() => new StubIdentityHandler());
+            services.AddHttpClient("DocumentsService")
+                .ConfigurePrimaryHttpMessageHandler(() => new StubDocumentsServiceHandler());
         });
     }
 }
@@ -123,6 +129,51 @@ internal sealed class StubMedicareProcedureLookupHandler : HttpMessageHandler
                   { "code": "45385", "facilityType": "hospital", "cost": 1156, "copay": 288, "facilityTotal": 1222, "physicianTotal": 223, "total": 1445 },
                   { "code": "45385", "facilityType": "asc", "cost": 703, "copay": 175, "facilityTotal": 656, "physicianTotal": 223, "total": 879 }
                 ]
+                """),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+        };
+
+        return Task.FromResult(response);
+    }
+
+    private static HttpResponseMessage JsonResponse(string json)
+        => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+        };
+}
+
+internal sealed class StubDocumentsServiceHandler : HttpMessageHandler
+{
+    private const string ViewToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    private const string DownloadToken = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+        var response = true switch
+        {
+            _ when path.EndsWith("/view-url", StringComparison.OrdinalIgnoreCase) => JsonResponse($$"""
+                {
+                  "data": {
+                    "accessToken": "{{ViewToken}}",
+                    "redeemUrl": "/access/{{ViewToken}}",
+                    "expiresInSeconds": 300,
+                    "type": "view"
+                  }
+                }
+                """),
+            _ when path.EndsWith("/download-url", StringComparison.OrdinalIgnoreCase) => JsonResponse($$"""
+                {
+                  "data": {
+                    "accessToken": "{{DownloadToken}}",
+                    "redeemUrl": "/access/{{DownloadToken}}",
+                    "expiresInSeconds": 300,
+                    "type": "download"
+                  }
+                }
                 """),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound)
         };
@@ -243,6 +294,21 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
             null,
             null));
     }
+}
+
+internal sealed class CapturingSellingDocumentReferenceValidator : ISellingDocumentReferenceValidator
+{
+    public HashSet<Guid> DeniedDocumentIds { get; } = [];
+
+    public Task<bool> IsAccessibleAsync(
+        Guid tenantId,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        Guid lienId,
+        Guid? caseId,
+        Guid documentId,
+        CancellationToken ct = default)
+        => Task.FromResult(!DeniedDocumentIds.Contains(documentId));
 }
 
 internal sealed record CapturedEmail(

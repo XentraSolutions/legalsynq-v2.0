@@ -2,6 +2,7 @@ using BuildingBlocks.Exceptions;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
+using Liens.Application.Search;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Microsoft.Extensions.Logging;
@@ -40,14 +41,33 @@ public sealed class CaseService : ICaseService
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
+        var hasKeyword = !string.IsNullOrWhiteSpace(search);
+        var keyword = search?.Trim();
         var (items, totalCount) = await _caseRepo.SearchAsync(
             tenantId,
-            search,
+            hasKeyword ? null : search,
             status,
-            page,
-            pageSize,
+            hasKeyword ? 1 : page,
+            hasKeyword ? FuzzySearchScorer.CandidateLimit : pageSize,
             orgId,
             ct: ct);
+
+        if (hasKeyword)
+        {
+            var matches = items
+                .Select(item => new { Item = item, Score = GetCaseKeywordScore(item, keyword!) })
+                .Where(match => FuzzySearchScorer.IsAccepted(match.Score))
+                .OrderByDescending(match => match.Score.Value)
+                .ThenByDescending(match => match.Item.Id)
+                .ToList();
+
+            totalCount = matches.Count;
+            items = matches
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(match => match.Item)
+                .ToList();
+        }
 
         return new PaginatedResult<CaseResponse>
         {
@@ -69,23 +89,27 @@ public sealed class CaseService : ICaseService
         Guid? lawFirmOrgId = null,
         string? accidentTypeId = null,
         string? caseManagerId = null,
+        string? lawFirmIds = null,
         CancellationToken ct = default)
     {
         if (page < 1) page = 1;
         if (limit < 1) limit = 20;
         if (limit > 100) limit = 100;
 
+        var hasKeyword = !string.IsNullOrWhiteSpace(keyword);
+        var normalizedKeyword = keyword?.Trim();
         var (items, totalCount) = await _caseRepo.SearchAsync(
             tenantId,
-            keyword,
+            hasKeyword ? null : keyword,
             statusId,
-            page,
-            limit,
+            hasKeyword ? 1 : page,
+            hasKeyword ? FuzzySearchScorer.CandidateLimit : limit,
             lawFirmOrgId,
             sortBy,
             sortDirection,
             accidentTypeId,
             caseManagerId,
+            lawFirmIds,
             ct);
 
         var lawFirmContacts = await _contactRepo.GetAllByTypeAsync(
@@ -113,19 +137,49 @@ public sealed class CaseService : ICaseService
                 .ToDictionary(c => c.Id);
         }
 
+        var candidates = items.Select(item =>
+        {
+            var metadata = ParseCaseMetadata(item.Notes);
+            var lawFirmId = GetMetadataValue(metadata, "lawFirmId");
+            var caseManagerIdValue = GetMetadataValue(metadata, "caseManagerId");
+
+            return new CaseSearchCandidate(
+                item,
+                ResolveLawFirmName(item.OrgId, lawFirmId, lawFirmById, lawFirmByOrgId),
+                ResolveCaseManagerName(caseManagerIdValue, caseManagerById));
+        }).ToList();
+
+        if (hasKeyword)
+        {
+            var matches = candidates
+                .Select(candidate => new
+                {
+                    Candidate = candidate,
+                    Score = GetCaseKeywordScore(
+                        candidate.Case,
+                        normalizedKeyword!,
+                        candidate.LawFirm,
+                        candidate.CaseManager),
+                })
+                .Where(match => FuzzySearchScorer.IsAccepted(match.Score))
+                .OrderByDescending(match => match.Score.Value)
+                .ThenByDescending(match => match.Candidate.Case.Id)
+                .ToList();
+
+            totalCount = matches.Count;
+            candidates = matches
+                .Skip((page - 1) * limit)
+                .Take(limit)
+                .Select(match => match.Candidate)
+                .ToList();
+        }
+
         return new PaginatedResult<CaseResponse>
         {
-            Items = items.Select(item =>
-            {
-                var metadata = ParseCaseMetadata(item.Notes);
-                var lawFirmId = GetMetadataValue(metadata, "lawFirmId");
-                var caseManagerIdValue = GetMetadataValue(metadata, "caseManagerId");
-
-                return MapToResponse(
-                    item,
-                    lawFirm: ResolveLawFirmName(item.OrgId, lawFirmId, lawFirmById, lawFirmByOrgId),
-                    caseManager: ResolveCaseManagerName(caseManagerIdValue, caseManagerById));
-            }).ToList(),
+            Items = candidates.Select(candidate => MapToResponse(
+                candidate.Case,
+                lawFirm: candidate.LawFirm,
+                caseManager: candidate.CaseManager)).ToList(),
             Page = page,
             PageSize = limit,
             TotalCount = totalCount,
@@ -440,6 +494,26 @@ public sealed class CaseService : ICaseService
 
         return true;
     }
+
+    private sealed record CaseSearchCandidate(Case Case, string? LawFirm, string? CaseManager);
+
+    private static FuzzyMatchScore GetCaseKeywordScore(
+        Case caseEntity,
+        string keyword,
+        string? lawFirm = null,
+        string? caseManager = null) =>
+        FuzzySearchScorer.Best(
+            FuzzySearchScorer.ScorePersonName(
+                caseEntity.ClientFirstName,
+                caseEntity.ClientLastName,
+                keyword),
+            FuzzySearchScorer.ScoreFields(
+                keyword,
+                caseEntity.CaseNumber,
+                caseEntity.ExternalReference,
+                caseEntity.Title,
+                lawFirm,
+                caseManager));
 
     private static CaseResponse MapToResponse(
         Case entity,

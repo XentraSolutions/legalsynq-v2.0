@@ -11,6 +11,7 @@ using Liens.Application.Interfaces;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using NPOI.HSSF.UserModel;
 
@@ -907,7 +908,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             sellerEmail: "seller.operations@smithlaw.test",
             buyerEmail: "buyer.reviewer@capital.test",
             caseManagerId: caseManagerId,
-            documentFileName: "signed-lien-real.pdf");
+            documentFileName: "signed-lien-real.pdf",
+            buyerMessage: "Please review this lien offer.");
 
         var response = await PostConfirmSaleAsync(lienId, "confirm-sale-success");
 
@@ -948,7 +950,10 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         email.Body.Should().Contain("Seller Operator");
         email.Body.Should().Contain("Smith & Associates LLP");
         email.Body.Should().Contain("Case Manager");
+        email.Body.Should().Contain("Lien Document: signed-lien-real.pdf");
         email.Body.Should().Contain("signed-lien-real.pdf");
+        email.Body.Should().NotContain("Seller Message");
+        email.Body.Should().NotContain("Please review this lien offer.");
         email.Body.Should().NotContain("<!doctype html>");
         email.Body.Should().NotContain("<html");
         email.Body.Should().NotContain("<body");
@@ -959,7 +964,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         email.Metadata["lienId"].Should().Be(lienId.ToString());
         email.Metadata["buyerContactId"].Should().Be(buyerContactId.ToString());
         email.Options.Should().NotBeNull();
-        email.Options!.IdempotencyKey.Should().Contain("confirm-sale-success");
+        email.Options!.IdempotencyKey.Should().Be(
+            $"liens.confirm-sale.email:{SeedHelper.TenantId:N}:{lienId:N}:{buyerContactId:N}");
         email.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
         email.Options.TextBody.Should().Be(email.Body);
         email.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
@@ -998,7 +1004,10 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         html.Should().Contain("Seller Operator");
         html.Should().Contain("Smith &amp; Associates LLP");
         html.Should().Contain("Case Manager");
+        html.Should().Contain("Lien Document");
         html.Should().Contain("signed-lien-real.pdf");
+        html.Should().NotContain("Seller Message");
+        html.Should().NotContain("Please review this lien offer.");
         html.Should().Contain("href=\"mailto:seller.operations@smithlaw.test\" style=\"color:#111111 !important;text-decoration:none;\"");
         html.Should().Contain("href=\"mailto:seller.operations@smithlaw.test\" style=\"color:#f26a2e !important;text-decoration:underline;\"");
         html.Should().Contain("href=\"https://app.legalsynq.test/selling/public/");
@@ -1044,7 +1053,10 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerEmail.Body.Should().Contain("View Lien Details");
         sellerEmail.Body.Should().Contain("$3,875.00");
         sellerEmail.Body.Should().Contain("06/01/2026");
+        sellerEmail.Body.Should().Contain("Lien Document: signed-lien-real.pdf");
         sellerEmail.Body.Should().Contain("signed-lien-real.pdf");
+        sellerEmail.Body.Should().NotContain("Seller Message");
+        sellerEmail.Body.Should().NotContain("Please review this lien offer.");
         sellerEmail.Body.Should().NotContain("Accept Lien");
         sellerEmail.Body.Should().NotContain("Decline Lien");
         sellerEmail.Body.Should().NotContain("Awaiting Your Response");
@@ -1053,7 +1065,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerEmail.Metadata["sellerContactId"].Should().NotBeNullOrWhiteSpace();
         sellerEmail.Metadata["buyerContactId"].Should().Be(buyerContactId.ToString());
         sellerEmail.Options.Should().NotBeNull();
-        sellerEmail.Options!.IdempotencyKey.Should().Contain("confirm-sale-success");
+        sellerEmail.Options!.IdempotencyKey.Should().Be(
+            $"liens.confirm-sale.seller-email:{SeedHelper.TenantId:N}:{lienId:N}:{Guid.Parse(sellerEmail.Metadata["sellerContactId"]):N}:{buyerContactId:N}");
         sellerEmail.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
         sellerEmail.Options.TextBody.Should().Be(sellerEmail.Body);
         sellerEmail.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
@@ -1062,6 +1075,10 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerEmail.Options.HtmlBody.Should().Contain("View Lien Details");
         sellerEmail.Options.HtmlBody.Should().Contain("Capital Fund LLC");
         sellerEmail.Options.HtmlBody.Should().Contain("buyer.reviewer@capital.test");
+        sellerEmail.Options.HtmlBody.Should().Contain("Lien Document");
+        sellerEmail.Options.HtmlBody.Should().Contain("signed-lien-real.pdf");
+        sellerEmail.Options.HtmlBody.Should().NotContain("Seller Message");
+        sellerEmail.Options.HtmlBody.Should().NotContain("Please review this lien offer.");
         var sellerBuyerInformationHtml = ExtractSection(sellerEmail.Options.HtmlBody!, "Buyer Information", "Asset Overview");
         sellerBuyerInformationHtml.Should().Contain("Buyer Reviewer");
         sellerBuyerInformationHtml.Should().Contain("Capital Fund LLC");
@@ -1076,11 +1093,47 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task ConfirmSale_uses_same_seller_org_company_when_notification_contact_has_no_company()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            originalAmount: 3875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.individual@smithlaw.test",
+            buyerEmail: "buyer.reviewer@capital.test",
+            sellerOrganization: null,
+            fallbackSellerOrganization: "Smith & Associates LLP");
+
+        var response = await PostConfirmSaleAsync(lienId, "confirm-sale-seller-company-fallback");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().HaveCount(2);
+
+        var buyerEmail = publisher.Emails.Single(captured => captured.RecipientEmail == "buyer.reviewer@capital.test");
+        buyerEmail.Body.Should().Contain("Seller Operator");
+        buyerEmail.Body.Should().Contain("Smith & Associates LLP");
+        buyerEmail.Options.Should().NotBeNull();
+        buyerEmail.Options!.TemplateData.Should().NotBeNull();
+        buyerEmail.Options.TemplateData!["sellerCompany"].Should().Be("Smith & Associates LLP");
+    }
+
+    [Fact]
     public async Task PublicBuyerPortal_returns_temporary_portal_json_with_real_data()
     {
         var buyerContactId = Guid.CreateVersion7();
         var caseManagerId = Guid.CreateVersion7();
-        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+        var (caseId, lienId) = await SeedExternalCaseAndLienAsync(
             caseExternalId: $"case-{Guid.NewGuid():N}",
             lienExternalId: $"lien-{Guid.NewGuid():N}",
             lienNumber: $"LIEN-{Guid.NewGuid():N}",
@@ -1098,6 +1151,22 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             buyerEmail: "buyer.portal@capital.test",
             caseManagerId: caseManagerId,
             documentFileName: "signed-lien-real.pdf");
+
+        using (var caseDocScope = _factory.Services.CreateScope())
+        {
+            var caseDocDb = caseDocScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            caseDocDb.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DOC-{Guid.CreateVersion7():N}"[..36],
+                "LegacyCaseDocument",
+                "Case-only underwriting document",
+                "Seller Operator",
+                SeedHelper.UserId,
+                caseId: caseId,
+                notes: "originalFileName=case-only-underwriting.pdf"));
+            await caseDocDb.SaveChangesAsync();
+        }
 
         var confirmResponse = await PostConfirmSaleAsync(lienId, "confirm-sale-public-portal");
         confirmResponse.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -1122,11 +1191,14 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         json.GetProperty("lien").GetProperty("listingVisibility").GetString().Should().Be(SellingListingVisibility.Private);
         json.GetProperty("lien").GetProperty("initialServiceDate").GetString().Should().Be("2026-06-01");
         json.GetProperty("lien").GetProperty("endServiceDate").GetString().Should().Be("2026-06-30");
-        json.GetProperty("lien").GetProperty("notes").GetString().Should().Be("Medical provider lien filed after treatment and pending review.");
+        json.GetProperty("lien").TryGetProperty("notes", out _).Should().BeFalse();
         json.GetProperty("seller").GetProperty("name").GetString().Should().Be("Seller Operator");
         json.GetProperty("seller").GetProperty("company").GetString().Should().Be("Smith & Associates LLP");
         json.GetProperty("seller").GetProperty("email").GetString().Should().Be("seller.portal@smithlaw.test");
         json.GetProperty("buyer").GetProperty("company").GetString().Should().Be("Capital Fund LLC");
+        json.GetProperty("buyer").GetProperty("contactName").GetString().Should().Be("Buyer Reviewer");
+        json.GetProperty("buyer").GetProperty("email").GetString().Should().Be("buyer.portal@capital.test");
+        json.GetProperty("buyer").GetProperty("phone").ValueKind.Should().Be(JsonValueKind.Null);
         json.GetProperty("case").GetProperty("caseManager").GetString().Should().Be("Case Manager");
         json.GetProperty("case").GetProperty("handlingLawFirm").GetString().Should().Be("Smith & Associates LLP");
         json.GetProperty("accessLink").GetProperty("expiresAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
@@ -1139,6 +1211,26 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         documents[0].GetProperty("fileName").GetString().Should().Be("signed-lien-real.pdf");
         documents[0].GetProperty("category").GetString().Should().Be("Lien Document");
         documents[0].GetProperty("sizeOrType").GetString().Should().Be("PDF");
+        var documentId = documents[0].GetProperty("id").GetGuid();
+        documents[0].GetProperty("viewUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{documentId:D}/view");
+        documents[0].GetProperty("downloadUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{documentId:D}/download");
+
+        using var noRedirectClient = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+        });
+        var viewDocumentResponse = await noRedirectClient.GetAsync(
+            $"/api/liens/selling/public/{token}/documents/{documentId:D}/view");
+        viewDocumentResponse.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        viewDocumentResponse.Headers.Location!.OriginalString.Should()
+            .Be("/documents/access/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        var downloadDocumentResponse = await noRedirectClient.GetAsync(
+            $"/api/liens/selling/public/{token}/documents/{documentId:D}/download");
+        downloadDocumentResponse.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        downloadDocumentResponse.Headers.Location!.OriginalString.Should()
+            .Be("/documents/access/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
         serialized.Should().NotContain("<!doctype html>");
         serialized.Should().NotContain("<html");
@@ -1146,13 +1238,14 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         serialized.Should().NotContain("Velantrix");
         serialized.Should().NotContain("Henderson_Signed_Lien_LOP.pdf");
         serialized.Should().NotContain("ApexIndustries");
+        serialized.Should().NotContain("case-only-underwriting.pdf");
         serialized.Should().NotContain("example.com");
         serialized.Should().NotContain("class=\"safari\"");
         serialized.Should().NotContain("toolbar-icons");
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-        db.SellingBuyerAccessLinks.Single(link => link.Token == token)
+        db.SellingBuyerAccessLinks.Single(link => link.TokenHash == SellingBuyerAccessLink.ComputeTokenHash(token))
             .LastAccessedAtUtc.Should().NotBeNull();
     }
 
@@ -1202,7 +1295,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         pageOneRows.Should().HaveCount(2);
         pageOneRows.Select(row => row.GetProperty("lienNumber").GetString())
             .Should().Equal("ALPHA-100", "BETA-200");
-        pageOneRows[0].GetProperty("sellerName").GetString().Should().Be("Smith & Associates LLP");
+        pageOneRows[0].GetProperty("sellerName").GetString().Should().Be("Seller Operator");
         pageOneRows[0].GetProperty("status").GetString().Should().Be("Pending");
         pageOneRows[0].GetProperty("billingAmount").GetDecimal().Should().Be(9000m);
         pageOneRows[0].GetProperty("askAmount").GetDecimal().Should().Be(2500m);
@@ -1338,6 +1431,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         var pendingOffer = json.GetProperty("pendingOffers").EnumerateArray().Single();
         pendingOffer.GetProperty("lienNumber").GetString().Should().Be("DASH-ALPHA-100");
+        pendingOffer.GetProperty("sellerCompany").GetString().Should().Be("Smith & Associates LLP");
+        pendingOffer.GetProperty("sellerName").GetString().Should().Be("Seller Operator");
         pendingOffer.GetProperty("status").GetString().Should().Be("Pending");
         pendingOffer.GetProperty("offeredAmount").GetDecimal().Should().Be(2500m);
         pendingOffer.GetProperty("detailHref").GetString()
@@ -1362,6 +1457,96 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         offerInbox.GetProperty("pendingCount").GetInt32().Should().Be(1);
         offerInbox.GetProperty("unreadCount").GetInt32().Should().Be(0);
         offerInbox.GetProperty("latestReceivedAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task BuyerDashboard_custom_range_filters_pipeline_by_offer_received_date()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var responseInsideRangeAtUtc = today.ToDateTime(new TimeOnly(12, 0), DateTimeKind.Utc);
+        var receivedOutsideRangeAtUtc = responseInsideRangeAtUtc.AddDays(-10);
+        var (_, token) = await CreatePublicLienOfferAsync(
+            "buyer-dashboard-custom-range",
+            lienNumber: "DASH-CUSTOM-RANGE-100",
+            buyerOrgId: buyerOrgId);
+
+        var acceptResponse = await PostPublicBuyerResponseAsync(
+            token,
+            "accept",
+            new { notes = "Accepted inside the custom dashboard range." },
+            "buyer-dashboard-custom-range-accept-response");
+        acceptResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await acceptResponse.Content.ReadAsStringAsync()}");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var accessLink = db.SellingBuyerAccessLinks.Single(link =>
+                link.TokenHash == SellingBuyerAccessLink.ComputeTokenHash(token));
+            var lien = db.Liens.Single(lien => lien.Id == accessLink.LienId);
+
+            SetDateTimeProperty(accessLink, nameof(SellingBuyerAccessLink.CreatedAtUtc), receivedOutsideRangeAtUtc);
+            SetDateTimeProperty(accessLink, nameof(SellingBuyerAccessLink.NotificationSubmittedAtUtc), receivedOutsideRangeAtUtc);
+            SetDateTimeProperty(accessLink, nameof(SellingBuyerAccessLink.RespondedAtUtc), responseInsideRangeAtUtc);
+            SetDateTimeProperty(lien, nameof(Lien.SubmittedForSaleAtUtc), receivedOutsideRangeAtUtc);
+            await db.SaveChangesAsync();
+        }
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var selectedDate = today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var response = await buyerClient.GetAsync(
+            $"/api/liens/selling/buyer/dashboard?range=custom&from={selectedDate}&to={selectedDate}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        var summary = json.GetProperty("summary");
+        summary.GetProperty("totalLienPendingCount").GetInt32().Should().Be(0);
+        summary.GetProperty("totalLienPendingAmount").GetDecimal().Should().Be(0m);
+        summary.GetProperty("totalPendingOfferCount").GetInt32().Should().Be(0);
+        summary.GetProperty("totalPendingOfferedAmount").GetDecimal().Should().Be(0m);
+        summary.GetProperty("purchasedLienCount").GetInt32().Should().Be(0);
+        summary.GetProperty("capitalDeployedAmount").GetDecimal().Should().Be(0m);
+        summary.GetProperty("trends").EnumerateObject().Should().BeEmpty();
+        json.GetProperty("pendingOffers").EnumerateArray().Should().BeEmpty();
+        json.GetProperty("pipelineStages").EnumerateArray().Should().BeEmpty();
+        json.GetProperty("providerPerformance").EnumerateArray().Should().BeEmpty();
+
+        var offerInbox = json.GetProperty("offerInbox");
+        offerInbox.GetProperty("pendingCount").GetInt32().Should().Be(0);
+        offerInbox.GetProperty("latestReceivedAtUtc").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task BuyerDashboard_custom_range_without_dates_returns_empty_dashboard_data()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        await CreatePublicLienOfferAsync(
+            "buyer-dashboard-custom-missing-dates",
+            lienNumber: "DASH-CUSTOM-MISSING-DATES-100",
+            buyerOrgId: buyerOrgId);
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var response = await buyerClient.GetAsync("/api/liens/selling/buyer/dashboard?range=custom");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        var summary = json.GetProperty("summary");
+        summary.GetProperty("totalLienPendingCount").GetInt32().Should().Be(0);
+        summary.GetProperty("totalPendingOfferCount").GetInt32().Should().Be(0);
+        summary.GetProperty("purchasedLienCount").GetInt32().Should().Be(0);
+        summary.GetProperty("trends").EnumerateObject().Should().BeEmpty();
+        json.GetProperty("pendingOffers").EnumerateArray().Should().BeEmpty();
+        json.GetProperty("pipelineStages").EnumerateArray().Should().BeEmpty();
+        json.GetProperty("providerPerformance").EnumerateArray().Should().BeEmpty();
+
+        var offerInbox = json.GetProperty("offerInbox");
+        offerInbox.GetProperty("pendingCount").GetInt32().Should().Be(0);
+        offerInbox.GetProperty("latestReceivedAtUtc").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
@@ -1444,7 +1629,29 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         documents[0].GetProperty("fileName").GetString().Should().Be("signed-lien-detail.pdf");
         documents[0].GetProperty("category").GetString().Should().Be("Lien Document");
         documents[0].GetProperty("sizeOrType").GetString().Should().Be("PDF");
-        documents[0].GetProperty("url").GetString().Should().StartWith("/documents/");
+        var documentUrl = documents[0].GetProperty("url").GetString();
+        documentUrl.Should().StartWith("/documents/");
+        var documentId = Guid.Parse(documentUrl!.TrimEnd('/').Split('/').Last());
+        documents[0].GetProperty("viewUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/buyer/liens/{accessLinkId:D}/documents/{documentId:D}/view");
+        documents[0].GetProperty("downloadUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/buyer/liens/{accessLinkId:D}/documents/{documentId:D}/download");
+
+        using var noRedirectBuyerClient = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+        });
+        noRedirectBuyerClient.DefaultRequestHeaders.Authorization = buyerClient.DefaultRequestHeaders.Authorization;
+        var viewDocumentResponse = await noRedirectBuyerClient.GetAsync(
+            $"/api/liens/selling/buyer/liens/{accessLinkId:D}/documents/{documentId:D}/view");
+        viewDocumentResponse.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        viewDocumentResponse.Headers.Location!.OriginalString.Should()
+            .Be("/documents/access/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        var downloadDocumentResponse = await noRedirectBuyerClient.GetAsync(
+            $"/api/liens/selling/buyer/liens/{accessLinkId:D}/documents/{documentId:D}/download");
+        downloadDocumentResponse.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        downloadDocumentResponse.Headers.Location!.OriginalString.Should()
+            .Be("/documents/access/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
         var messages = detail.GetProperty("messages").EnumerateArray().ToList();
         messages.Should().ContainSingle();
@@ -1622,6 +1829,13 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             "buyer-auth-message",
             lienNumber: "AUTH-MSG-100",
             buyerOrgId: buyerOrgId);
+        string sellerToken;
+        using (var setupScope = _factory.Services.CreateScope())
+        {
+            var publisher = setupScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+            var sellerEmail = publisher.Emails.Single(email => email.RecipientEmail == "seller.buyer-auth-message@smithlaw.test");
+            sellerToken = ExtractBuyerAccessToken(sellerEmail.Options!.TemplateData!["publicPortalUrl"]);
+        }
 
         using var buyerClient = CreateBuyerClient(buyerOrgId);
         var accessLinkId = await GetBuyerOfferedLienAccessLinkIdAsync(buyerClient, "AUTH-MSG-100");
@@ -1665,17 +1879,6 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             sellerEmail.RecipientEmail.Should().Be("seller.buyer-auth-message@smithlaw.test");
             sellerEmail.Body.Should().Contain("Buyer Reviewer sent a message");
             sellerEmail.Body.Should().Contain("Shared portal message from funding detail.");
-        }
-
-        string sellerToken;
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-            sellerToken = db.SellingBuyerAccessLinks
-                .Single(link =>
-                    link.LienId == lienId &&
-                    link.Purpose == SellingAccessLinkPurposes.ConfirmSaleSellerView)
-                .Token;
         }
 
         ClearCapturedEmails();
@@ -1755,7 +1958,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Id == accessLinkId);
         persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Accepted);
-        persistedLink.ResponseIdempotencyKey.Should().Be("auth-buyer-accept-response");
+        persistedLink.ResponseIdempotencyKey.Should().BeNull();
         db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Accepted);
 
         var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
@@ -1805,7 +2008,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Id == accessLinkId);
         persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Declined);
-        persistedLink.ResponseIdempotencyKey.Should().Be("auth-buyer-decline-response");
+        persistedLink.ResponseIdempotencyKey.Should().BeNull();
         db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Declined);
 
         var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
@@ -1877,10 +2080,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             $"Body: {await response.Content.ReadAsStringAsync()}");
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         json.GetProperty("audience").GetString().Should().Be("seller");
-        json.GetProperty("buyer").GetProperty("contactName").GetString().Should().Be("Buyer Reviewer");
         json.GetProperty("buyer").GetProperty("company").GetString().Should().Be("Capital Fund LLC");
-        json.GetProperty("buyer").GetProperty("email").GetString().Should().Be("buyer.readonly@capital.test");
-        json.GetProperty("buyer").GetProperty("phone").GetString().Should().Be("3105551212");
         json.GetProperty("accessLink").GetProperty("responseStatus").ValueKind.Should().Be(JsonValueKind.Null);
         json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Offered);
 
@@ -1934,7 +2134,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-        db.SellingBuyerAccessLinks.Single(link => link.Token == sellerToken)
+        db.SellingBuyerAccessLinks.Single(link => link.TokenHash == SellingBuyerAccessLink.ComputeTokenHash(sellerToken))
             .Purpose.Should().Be(SellingAccessLinkPurposes.ConfirmSaleSellerView);
     }
 
@@ -1996,13 +2196,13 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             sellerEmail.Subject.Should().Be("New message on lien offer");
             sellerEmail.Body.Should().Contain("Buyer Reviewer sent a message");
             sellerEmail.Body.Should().Contain("Can you confirm the signed LOP is final?");
-            sellerEmail.Body.Should().Contain($"/selling/public/{sellerToken}");
+            sellerEmail.Body.Should().NotContain("/selling/public/");
             sellerEmail.Metadata["recipientRole"].Should().Be("seller");
             sellerEmail.Metadata["senderType"].Should().Be("buyer");
             sellerEmail.Metadata["messageId"].Should().Be(buyerMessage.GetProperty("id").GetGuid().ToString());
             sellerEmail.Options.Should().NotBeNull();
             sellerEmail.Options!.DisableClickTracking.Should().BeTrue();
-            sellerEmail.Options.HtmlBody.Should().Contain("View &amp; Reply");
+            sellerEmail.Options.HtmlBody.Should().NotContain("View &amp; Reply");
             sellerEmail.Options.IdempotencyKey.Should().Contain(":seller");
         }
 
@@ -2042,7 +2242,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             buyerEmail.Subject.Should().Be("New message on lien offer");
             buyerEmail.Body.Should().Contain("Seller Operator sent a message");
             buyerEmail.Body.Should().Contain("The LOP is final and attached to the package.");
-            buyerEmail.Body.Should().Contain($"/selling/public/{buyerToken}");
+            buyerEmail.Body.Should().NotContain("/selling/public/");
             buyerEmail.Metadata["recipientRole"].Should().Be("buyer");
             buyerEmail.Metadata["senderType"].Should().Be("seller");
             buyerEmail.Metadata["messageId"].Should().Be(sellerMessage.GetProperty("id").GetGuid().ToString());
@@ -2206,11 +2406,11 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-        var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+        var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.TokenHash == SellingBuyerAccessLink.ComputeTokenHash(token));
         persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Accepted);
         persistedLink.ResponseAmount.Should().Be(2500m);
         persistedLink.ResponseNotes.Should().Be("Accepted at ask from public portal");
-        persistedLink.ResponseIdempotencyKey.Should().Be("public-accept-response");
+        persistedLink.ResponseIdempotencyKey.Should().BeNull();
         persistedLink.RespondedAtUtc.Should().NotBeNull();
         persistedLink.LastAccessedAtUtc.Should().NotBeNull();
 
@@ -2275,7 +2475,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task PublicBuyerPortal_offers_alias_records_accepted_buyer_response()
+    public async Task PublicBuyerPortal_offers_creates_an_offer_without_accepting_the_lien()
     {
         var (_, token) = await CreatePublicLienOfferAsync("offers-alias");
 
@@ -2285,13 +2485,11 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             new { offerAmount = 999m, message = "Accepted through legacy public offer route" },
             "public-offers-alias-response");
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK,
+        response.StatusCode.Should().Be(HttpStatusCode.Created,
             $"Body: {await response.Content.ReadAsStringAsync()}");
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var accessLink = json.GetProperty("accessLink");
-        accessLink.GetProperty("responseStatus").GetString().Should().Be(SellingBuyerResponseStatus.Accepted);
-        accessLink.GetProperty("responseAmount").GetDecimal().Should().Be(2500m);
-        accessLink.GetProperty("responseNotes").GetString().Should().Be("Accepted through legacy public offer route");
+        json.GetProperty("offerAmount").GetDecimal().Should().Be(999m);
+        json.GetProperty("status").GetString().Should().Be(OfferStatus.Pending);
     }
 
     [Fact]
@@ -2319,7 +2517,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-        var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+        var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.TokenHash == SellingBuyerAccessLink.ComputeTokenHash(token));
         persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Declined);
         persistedLink.ResponseAmount.Should().BeNull();
         persistedLink.ResponseNotes.Should().Be("Not in buying criteria");
@@ -2407,8 +2605,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var second = await PostPublicBuyerResponseAsync(
             token,
             "decline",
-            new { reason = "Different duplicate reason" },
-            "public-decline-idempotent-replay");
+            new { reason = "Not this one" },
+            "public-decline-idempotent");
 
         second.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await second.Content.ReadAsStringAsync()}");
@@ -2522,7 +2720,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-            var accessLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+            var accessLink = db.SellingBuyerAccessLinks.Single(link => link.TokenHash == SellingBuyerAccessLink.ComputeTokenHash(token));
             SetDateTimeProperty(accessLink, nameof(SellingBuyerAccessLink.ExpiresAtUtc), DateTime.UtcNow.AddMinutes(-1));
             await db.SaveChangesAsync();
         }
@@ -2546,7 +2744,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-            var accessLink = db.SellingBuyerAccessLinks.Single(link => link.Token == token);
+            var accessLink = db.SellingBuyerAccessLinks.Single(link => link.TokenHash == SellingBuyerAccessLink.ComputeTokenHash(token));
             accessLink.Revoke(SeedHelper.UserId);
             await db.SaveChangesAsync();
         }
@@ -2767,16 +2965,16 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         return (await response.Content.ReadFromJsonAsync<SellingPortfolioResponse>())!;
     }
 
-    private Task<HttpResponseMessage> PostConfirmSaleAsync(Guid lienId, string idempotencyKey)
+    private Task<HttpResponseMessage> PostConfirmSaleAsync(Guid lienId, string _)
     {
         var message = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/liens/selling/liens/{lienId}/confirm-sale");
-        message.Headers.Add("Idempotency-Key", idempotencyKey);
         message.Content = JsonContent.Create(new ConfirmSellingLienSaleRequest
         {
             ConfirmationAccepted = true,
         });
+        message.Headers.Add("Idempotency-Key", _);
 
         return _client.SendAsync(message);
     }
@@ -2935,6 +3133,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             otherBuyerContactId,
             $"other-buyer-{Guid.NewGuid():N}",
             SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
+            "/api/liens/selling/liens/{lienId}/confirm-sale",
             $"other-buyer-{Guid.NewGuid():N}",
             DateTime.UtcNow.AddDays(7),
             SeedHelper.UserId));
@@ -2986,6 +3185,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
                     Guid.CreateVersion7(),
                     $"dashboard-provider-{providerIndex}-{offerIndex}-{Guid.NewGuid():N}",
                     SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
+                    "/api/liens/selling/liens/{lienId}/confirm-sale",
                     $"dashboard-provider-{providerIndex}-{offerIndex}-{Guid.NewGuid():N}",
                     DateTime.UtcNow.AddDays(7),
                     SeedHelper.UserId);
@@ -3007,8 +3207,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var message = new HttpRequestMessage(
             HttpMethod.Post,
             $"/api/liens/selling/public/{token}/{action}");
-        message.Headers.Add("Idempotency-Key", idempotencyKey);
         message.Content = JsonContent.Create(body);
+        message.Headers.Add("Idempotency-Key", idempotencyKey);
         return await anonClient.SendAsync(message);
     }
 
@@ -3030,7 +3230,10 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         Guid? caseManagerId = null,
         string? documentFileName = null,
         string? buyerPhone = null,
-        Guid? buyerOrgId = null)
+        Guid? buyerOrgId = null,
+        string? buyerMessage = null,
+        string? sellerOrganization = "Smith & Associates LLP",
+        string? fallbackSellerOrganization = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -3065,8 +3268,20 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
                 "Seller",
                 "Operator",
                 SeedHelper.UserId,
-                organization: "Smith & Associates LLP",
+                organization: sellerOrganization,
                 email: sellerEmail));
+
+            if (!string.IsNullOrWhiteSpace(fallbackSellerOrganization))
+            {
+                db.Contacts.Add(Contact.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    ContactType.LawFirm,
+                    "Seller",
+                    "Company",
+                    SeedHelper.UserId,
+                    organization: fallbackSellerOrganization));
+            }
         }
 
         var buyerContact = Contact.Create(
@@ -3105,6 +3320,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             fundingCompanyId: effectiveBuyerOrgId,
             fundingCompanyContactId: buyerContactId,
             askAmount: 2500m);
+        lien.SetBuyerMessage(buyerMessage, SeedHelper.UserId);
 
         if (!string.IsNullOrWhiteSpace(documentFileName))
         {

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using BuildingBlocks.Exceptions;
 using BuildingBlocks.Notifications;
 using Liens.Application.DTOs;
@@ -798,7 +799,6 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         Guid sellerOrgId,
         Guid actingUserId,
         ConfirmSellingLienSaleRequest request,
-        string? idempotencyKey,
         CancellationToken ct = default)
     {
         if (!request.ConfirmationAccepted)
@@ -847,14 +847,12 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         var buyerNotificationIdempotencyKey = BuildConfirmSaleNotificationIdempotencyKey(
             tenantId,
             lien.Id,
-            notificationContext.BuyerContact.Id,
-            idempotencyKey);
+            notificationContext.BuyerContact.Id);
         var sellerNotificationIdempotencyKey = BuildConfirmSaleSellerNotificationIdempotencyKey(
             tenantId,
             lien.Id,
             notificationContext.SellerContact.Id,
-            notificationContext.BuyerContact.Id,
-            idempotencyKey);
+            notificationContext.BuyerContact.Id);
 
         SellingBuyerAccessLinkResult? buyerAccessLink = null;
         SellingBuyerAccessLinkResult? sellerAccessLink = null;
@@ -958,15 +956,17 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         if (string.IsNullOrWhiteSpace(buyerContact.Email))
             errors["fundingCompanyContactId"] = ["Buyer contact must have an email address."];
 
-        var sellerContact = SelectSellerContact(await _contactRepo.GetByOrgIdAsync(tenantId, sellerOrgId, isActive: true, ct));
+        var sellerContacts = await _contactRepo.GetByOrgIdAsync(tenantId, sellerOrgId, isActive: true, ct);
+        var sellerContact = SelectSellerContact(sellerContacts);
+        var sellerCompany = sellerContact is null ? null : ResolveSellerCompany(sellerContact, sellerContacts);
         if (sellerContact is null)
             errors["sellerContact"] = ["An active seller contact is required before sending the buyer notification."];
         else
         {
             if (string.IsNullOrWhiteSpace(sellerContact.DisplayName))
                 errors["sellerContact"] = ["Seller contact must have a display name."];
-            if (string.IsNullOrWhiteSpace(sellerContact.Organization))
-                errors["sellerCompany"] = ["Seller contact must have an organization/company."];
+            if (string.IsNullOrWhiteSpace(sellerCompany))
+                errors["sellerCompany"] = ["Seller contact must have a company, display name, or email address."];
             if (string.IsNullOrWhiteSpace(sellerContact.Email))
                 errors["sellerEmail"] = ["Seller contact must have an email address."];
         }
@@ -982,15 +982,16 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             throw new ValidationException("One or more required fields are missing or invalid.", errors);
 
         var caseManager = await ResolveCaseManagerAsync(tenantId, caseEntity, ct);
-        var documentNames = await GetSupportingDocumentNamesAsync(tenantId, lien, caseEntity, ct);
+        var documents = await GetSupportingDocumentsAsync(tenantId, lien, ct);
 
         return new ConfirmSaleNotificationContext(
             buyerContact,
             sellerContact!,
+            sellerCompany!,
             caseEntity,
             handlingLawFirm!,
             caseManager,
-            documentNames);
+            documents);
     }
 
     private async Task<ConfirmSellingLienBuyerNotificationResponse> SendConfirmSaleNotificationAsync(
@@ -1253,7 +1254,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         var billingAmount = lien.OriginalAmount.ToString("C", CultureInfo.GetCultureInfo("en-US"));
         var initialServiceDate = lien.InitialServiceDate!.Value.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
         var sellerName = context.SellerContact.DisplayName.Trim();
-        var sellerCompany = context.SellerContact.Organization!.Trim();
+        var sellerCompany = context.SellerCompany.Trim();
         var sellerEmail = context.SellerContact.Email!.Trim();
         var buyerName = context.BuyerContact.DisplayName.Trim();
         var buyerCompany = context.BuyerContact.Organization?.Trim();
@@ -1261,9 +1262,13 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         var buyerPhone = context.BuyerContact.Phone?.Trim();
         var handlingLawFirm = context.HandlingLawFirm.Trim();
         var caseManager = context.CaseManager?.Trim();
-        var documentNames = context.DocumentNames
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => name.Trim())
+        var documents = context.Documents
+            .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
+            .Select(document => document with
+            {
+                FileName = document.FileName.Trim(),
+                Category = document.Category?.Trim(),
+            })
             .ToList();
         var status = isSellerView ? FormatStatusLabel(lien.Status) : "Awaiting Your Response";
         var intro = isSellerView
@@ -1307,8 +1312,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         if (!string.IsNullOrWhiteSpace(caseManager))
             templateData["caseManager"] = caseManager;
 
-        if (documentNames.Count > 0)
-            templateData["supportingDocuments"] = string.Join(", ", documentNames);
+        if (documents.Count > 0)
+            templateData["supportingDocuments"] = string.Join(", ", documents.Select(document => document.FileName));
 
         var sellerRows = new (string Label, string? Value)[]
         {
@@ -1376,8 +1381,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         AppendEmailSection(htmlBody, informationSectionTitle, informationRows);
         AppendEmailSection(htmlBody, "Asset Overview", assetRows);
 
-        if (documentNames.Count > 0)
-            AppendDocumentsSection(htmlBody, documentNames);
+        if (documents.Count > 0)
+            AppendDocumentsSection(htmlBody, documents);
 
         htmlBody.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:separate;border-spacing:0;margin:4px 0 12px 0;\"><tr>");
         htmlBody.Append("<td align=\"center\" bgcolor=\"#f26a2e\" style=\"background-color:#f26a2e !important;border-radius:8px;\"><a href=\"")
@@ -1418,7 +1423,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             informationSectionTitle,
             informationRows,
             assetRows,
-            documentNames);
+            documents);
 
         return new ConfirmSaleEmail(subject, htmlBody.ToString(), textBody, templateData, ConfirmSaleEmailAssets.InlineAttachments);
     }
@@ -1506,25 +1511,31 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
     private static void AppendDocumentsSection(
         StringBuilder body,
-        IReadOnlyList<string> documentNames)
+        IReadOnlyList<ConfirmSaleDocument> documents)
     {
         body.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" class=\"email-card\" style=\"width:100%;border-collapse:collapse;margin:0 0 24px 0;background-color:#ffffff !important;\">");
         AppendEmailSectionHeading(body, "Supporting Documents");
         body.AppendLine("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"padding:0;background-color:#ffffff !important;\">");
         body.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" class=\"email-card email-rule\" style=\"width:100%;border-collapse:separate;border-spacing:0;background-color:#ffffff !important;\">");
 
-        for (var i = 0; i < documentNames.Count; i++)
+        for (var i = 0; i < documents.Count; i++)
         {
+            var document = documents[i];
             var isFirstRow = i == 0;
-            var isLastRow = i == documentNames.Count - 1;
+            var isLastRow = i == documents.Count - 1;
             var iconBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: true, rightEdge: false);
+            var labelBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: false, rightEdge: false);
             var valueBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: false, rightEdge: true);
             body.Append("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"width:32px;padding:15px 0 15px 14px;background-color:#ffffff !important;")
                 .Append(iconBorder)
-                .Append("\"><span style=\"display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;border-radius:5px;background-color:#f26a2e !important;color:#ffffff !important;font-size:12px;font-weight:700;\">&#10003;</span></td><td align=\"right\" bgcolor=\"#ffffff\" class=\"email-card email-value\" style=\"padding:15px 14px 15px 8px;color:#111111 !important;background-color:#ffffff !important;font-size:15px;line-height:1.45;font-weight:500;")
+                .Append("\"><span style=\"display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;border-radius:5px;background-color:#f26a2e !important;color:#ffffff !important;font-size:12px;font-weight:700;\">&#10003;</span></td><td align=\"left\" bgcolor=\"#ffffff\" class=\"email-card email-label\" style=\"padding:15px 10px 15px 8px;color:#6f6f6f !important;background-color:#ffffff !important;font-size:14px;line-height:1.45;font-weight:500;")
+                .Append(labelBorder)
+                .Append("\">")
+                .Append(Html(FirstNonEmpty(document.Category, "Document")!))
+                .Append("</td><td align=\"right\" bgcolor=\"#ffffff\" class=\"email-card email-value\" style=\"padding:15px 14px 15px 10px;color:#111111 !important;background-color:#ffffff !important;font-size:15px;line-height:1.45;font-weight:500;")
                 .Append(valueBorder)
                 .Append("\">")
-                .Append(Html(documentNames[i]))
+                .Append(Html(document.FileName))
                 .AppendLine("</td></tr>");
         }
 
@@ -1597,7 +1608,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         string informationSectionTitle,
         IReadOnlyList<(string Label, string? Value)> informationRows,
         IReadOnlyList<(string Label, string? Value)> assetRows,
-        IReadOnlyList<string> documentNames)
+        IReadOnlyList<ConfirmSaleDocument> documents)
     {
         var body = new StringBuilder();
         body.AppendLine("LegalSynq");
@@ -1609,11 +1620,17 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         AppendTextSection(body, informationSectionTitle, informationRows);
         AppendTextSection(body, "Asset Overview", assetRows);
 
-        if (documentNames.Count > 0)
+        if (documents.Count > 0)
         {
             body.AppendLine("Supporting Documents");
-            foreach (var documentName in documentNames)
-                body.Append("- ").AppendLine(documentName);
+            foreach (var document in documents)
+            {
+                body.Append("- ")
+                    .Append(FirstNonEmpty(document.Category, "Document"))
+                    .Append(": ")
+                    .AppendLine(document.FileName);
+            }
+
             body.AppendLine();
         }
 
@@ -1685,13 +1702,11 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         return FirstNonEmpty(caseManager?.DisplayName);
     }
 
-    private async Task<List<string>> GetSupportingDocumentNamesAsync(
+    private async Task<List<ConfirmSaleDocument>> GetSupportingDocumentsAsync(
         Guid tenantId,
         Lien lien,
-        Case? caseEntity,
         CancellationToken ct)
     {
-        var names = new List<string>();
         var lienDocs = await _servicingItemRepo.SearchAsync(
             tenantId,
             search: null,
@@ -1703,51 +1718,84 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             page: 1,
             pageSize: 100,
             ct: ct);
-        names.AddRange(ExtractDocumentNames(lienDocs.Items));
 
-        if (caseEntity is not null)
-        {
-            var caseDocs = await _servicingItemRepo.SearchAsync(
-                tenantId,
-                search: null,
-                status: null,
-                priority: null,
-                assignedTo: null,
-                caseId: caseEntity.Id,
-                lienId: null,
-                page: 1,
-                pageSize: 100,
-                ct: ct);
-            names.AddRange(ExtractDocumentNames(caseDocs.Items));
-        }
-
-        return names
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => name.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+        return ExtractDocuments(lienDocs.Items)
+            .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
+            .DistinctBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    private static IEnumerable<string> ExtractDocumentNames(IEnumerable<ServicingItem> items)
+    private static IEnumerable<ConfirmSaleDocument> ExtractDocuments(IEnumerable<ServicingItem> items)
     {
         foreach (var item in items.Where(IsDocumentServicingItem))
         {
             var fields = ParseLegacyNoteFields(item.Notes);
-            var name = FirstNonEmpty(
+            var fileName = FirstNonEmpty(
                 fields.GetValueOrDefault("originalFileName"),
+                fields.GetValueOrDefault("displayName"),
                 fields.GetValueOrDefault("filename"),
                 item.Description);
 
-            if (!string.IsNullOrWhiteSpace(name))
-                yield return name;
+            if (string.IsNullOrWhiteSpace(fileName))
+                continue;
+
+            var category = FirstNonEmpty(
+                fields.GetValueOrDefault("documentCategory"),
+                fields.GetValueOrDefault("category"),
+                FormatSellingDocumentType(fields.GetValueOrDefault("documentType")),
+                HumanizeDocumentTaskType(item.TaskType));
+
+            yield return new ConfirmSaleDocument(fileName.Trim(), category);
         }
     }
 
     private static bool IsDocumentServicingItem(ServicingItem item)
         => string.Equals(item.TaskType, "LegacyCaseDocument", StringComparison.Ordinal) ||
            string.Equals(item.TaskType, "LegacyLienDocument", StringComparison.Ordinal) ||
-           string.Equals(item.TaskType, "LegacyMedicalDocument", StringComparison.Ordinal);
+           string.Equals(item.TaskType, "LegacyMedicalDocument", StringComparison.Ordinal) ||
+           string.Equals(item.TaskType, "SellingDocumentReference", StringComparison.Ordinal);
+
+    private static string HumanizeDocumentTaskType(string taskType)
+        => taskType switch
+        {
+            "LegacyCaseDocument" => "Case Document",
+            "LegacyLienDocument" => "Lien Document",
+            "LegacyMedicalDocument" => "Medical Document",
+            "SellingDocumentReference" => "Supporting Document",
+            _ => "Document",
+        };
+
+    private static string? FormatSellingDocumentType(string? documentType)
+    {
+        if (string.IsNullOrWhiteSpace(documentType))
+            return null;
+
+        return documentType.Trim() switch
+        {
+            "LienAgreement" => "Signed Lien / LOP (Letter of Protection)",
+            "MedicalBill" => "Itemized Bill / HCFA-1500 Form",
+            "MedicalRecord" => "Clinical Chart Notes / Medical Records",
+            "SettlementStatement" => "Settlement Statement",
+            "Other" => "Supporting Document",
+            var value => SplitCamelCase(value),
+        };
+    }
+
+    private static string SplitCamelCase(string value)
+    {
+        var label = new StringBuilder(value.Length + 8);
+        for (var i = 0; i < value.Length; i++)
+        {
+            var current = value[i];
+            if (i > 0 && char.IsUpper(current) && char.IsLower(value[i - 1]))
+                label.Append(' ');
+
+            label.Append(current);
+        }
+
+        return label.ToString();
+    }
 
     private static Contact? SelectSellerContact(IReadOnlyList<Contact> contacts)
         => contacts.FirstOrDefault(c =>
@@ -1756,6 +1804,17 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                !string.IsNullOrWhiteSpace(c.Email))
            ?? contacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email))
            ?? contacts.FirstOrDefault();
+
+    private static string? ResolveSellerCompany(Contact sellerContact, IReadOnlyList<Contact> sellerContacts)
+        => FirstNonEmpty(
+            sellerContact.Organization,
+            sellerContacts.FirstOrDefault(c =>
+                string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
+                string.IsNullOrWhiteSpace(c.ContactSubtype) &&
+                !string.IsNullOrWhiteSpace(c.Organization))?.Organization,
+            sellerContacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Organization))?.Organization,
+            sellerContact.DisplayName,
+            sellerContact.Email);
 
     private static ConfirmSellingLienSaleResponse MapConfirmSaleResponse(
         Lien lien,
@@ -1778,20 +1837,14 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private static string BuildConfirmSaleNotificationIdempotencyKey(
         Guid tenantId,
         Guid lienId,
-        Guid buyerContactId,
-        string? requestIdempotencyKey)
+        Guid buyerContactId)
     {
-        var requestSegment = string.IsNullOrWhiteSpace(requestIdempotencyKey)
-            ? "default"
-            : requestIdempotencyKey.Trim();
-
         var key = string.Join(":", new[]
         {
             "liens.confirm-sale.email",
             tenantId.ToString("N"),
             lienId.ToString("N"),
             buyerContactId.ToString("N"),
-            requestSegment,
         });
 
         return key.Length > 280 ? key[..280] : key;
@@ -1801,13 +1854,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         Guid tenantId,
         Guid lienId,
         Guid sellerContactId,
-        Guid buyerContactId,
-        string? requestIdempotencyKey)
+        Guid buyerContactId)
     {
-        var requestSegment = string.IsNullOrWhiteSpace(requestIdempotencyKey)
-            ? "default"
-            : requestIdempotencyKey.Trim();
-
         var key = string.Join(":", new[]
         {
             "liens.confirm-sale.seller-email",
@@ -1815,7 +1863,6 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             lienId.ToString("N"),
             sellerContactId.ToString("N"),
             buyerContactId.ToString("N"),
-            requestSegment,
         });
 
         return key.Length > 280 ? key[..280] : key;
@@ -1828,9 +1875,33 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
     private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
     {
-        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(notes))
             return result;
+
+        var trimmed = notes.Trim();
+        if (trimmed.StartsWith('{'))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(trimmed);
+                if (document.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var property in document.RootElement.EnumerateObject())
+                    {
+                        var value = property.Value.ValueKind == JsonValueKind.String
+                            ? property.Value.GetString()
+                            : property.Value.GetRawText();
+                        if (!string.IsNullOrWhiteSpace(value))
+                            result[property.Name] = value;
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Fall back to the legacy key/value parser below.
+            }
+        }
 
         foreach (var segment in notes.Split("; ", StringSplitOptions.RemoveEmptyEntries))
         {
@@ -1859,10 +1930,13 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private sealed record ConfirmSaleNotificationContext(
         Contact BuyerContact,
         Contact SellerContact,
+        string SellerCompany,
         Case? Case,
         string HandlingLawFirm,
         string? CaseManager,
-        IReadOnlyList<string> DocumentNames);
+        IReadOnlyList<ConfirmSaleDocument> Documents);
+
+    private sealed record ConfirmSaleDocument(string FileName, string? Category);
 
     private sealed record ConfirmSaleEmail(
         string Subject,

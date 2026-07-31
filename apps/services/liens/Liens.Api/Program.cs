@@ -179,6 +179,7 @@ app.MapAssistantToolEndpoints();
 app.MapLienOfferEndpoints();
 app.MapSellingPublicEndpoints();
 app.MapSellingEndpoints();
+app.MapSellingV2Endpoints();
 app.MapSellingAnalyticsEndpoints();
 app.MapBillOfSaleEndpoints();
 app.MapBatchUploadEndpoints();

@@ -51,6 +51,11 @@ Identity.Api.Tests/      Integration and unit tests
 
 `IdentityDb` (MySQL) — all tables prefixed `idt_`.
 
+`20260728000001_SeedSynqLienSellWorkflowPermission` maps
+`SYNQ_LIENS.lien:sell` to `SYNQLIEN_SELLER`. This is the explicit Flow
+capability for seller workflow access; it supplements the lien-sale API
+permissions seeded by `20260627000002_SeedSynqLienSalePermissions`.
+
 ## External Integrations
 
 - **AWS Route53** — DNS record management for tenant subdomain provisioning

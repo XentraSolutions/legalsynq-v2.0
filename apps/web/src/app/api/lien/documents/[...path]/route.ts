@@ -65,23 +65,81 @@ async function proxy(
     method: req.method,
     headers,
     body,
+    redirect: "manual",
   });
 
   const responseHeaders: Record<string, string> = {};
   const correlationId = res.headers.get("X-Correlation-Id");
   if (correlationId) responseHeaders["X-Correlation-Id"] = correlationId;
-  responseHeaders["Content-Type"] =
-    res.headers.get("Content-Type") ?? "application/json";
+  const isRedirect = res.status >= 300 && res.status < 400;
+  if (isRedirect) {
+    const location = res.headers.get("Location");
+    if (location) responseHeaders["Location"] = rewriteRedirectLocation(location);
+  } else {
+    const contentType = res.headers.get("Content-Type") ?? "application/json";
+    responseHeaders["Content-Type"] = contentType;
+    copyHeader(res, responseHeaders, "Content-Disposition");
+    copyHeader(res, responseHeaders, "Accept-Ranges");
+    copyHeader(res, responseHeaders, "Content-Range");
+    copyHeader(res, responseHeaders, "Cache-Control");
+  }
 
   if (res.status === 204) {
     return new NextResponse(null, { status: 204, headers: responseHeaders });
   }
 
-  const data = await res.text();
+  if (isRedirect) {
+    return new NextResponse(null, {
+      status: res.status,
+      headers: responseHeaders,
+    });
+  }
+
+  const contentType = responseHeaders["Content-Type"] ?? "";
+  const isTextOrJson =
+    contentType.startsWith("application/json") ||
+    contentType.startsWith("text/") ||
+    contentType.startsWith("application/problem");
+
+  const data = isTextOrJson ? await res.text() : res.body;
   return new NextResponse(data, {
     status: res.status,
     headers: responseHeaders,
   });
+}
+
+function copyHeader(
+  source: Response,
+  target: Record<string, string>,
+  headerName: string,
+) {
+  const value = source.headers.get(headerName);
+  if (value) target[headerName] = value;
+}
+
+function rewriteRedirectLocation(location: string): string {
+  if (location.startsWith("/access/") || location.startsWith("/internal/")) {
+    return `/api/lien/documents${location}`;
+  }
+
+  if (location.startsWith("/documents/access/") || location.startsWith("/documents/internal/")) {
+    return `/api/lien${location}`;
+  }
+
+  try {
+    const parsed = new URL(location);
+    if (parsed.pathname.startsWith("/access/") || parsed.pathname.startsWith("/internal/")) {
+      return `/api/lien/documents${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+
+    if (parsed.pathname.startsWith("/documents/access/") || parsed.pathname.startsWith("/documents/internal/")) {
+      return `/api/lien${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+  } catch {
+    /* keep relative non-document redirects as-is */
+  }
+
+  return location;
 }
 
 export async function GET(
