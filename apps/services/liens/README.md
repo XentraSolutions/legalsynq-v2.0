@@ -90,10 +90,13 @@ seller acceptance; notification delivery is mandatory and cannot be opted out th
 confirmation, the service validates real buyer/seller contact data, creates a 30-day buyer response link and a separate
 30-day seller-view link, then requests both buyer and seller emails through Notifications with idempotency keys. The
 seller email uses matching branded copy with buyer/funding-company information and a `View Lien Details` link. The
-seller display company is resolved from the selected seller contact, another active contact in the same seller
-organization, or finally the seller display name. The public-link JSON and authenticated funding-company dashboard,
-offered-liens list, and detail views use the same seller display resolver for the access link, so the email CTA and
-logged-in views do not select different seller information for the same offer.
+buyer-facing seller name is resolved from the Identity tenant owner
+(`idt_Tenants.OwnerUserId` -> `idt_Users.FirstName` + `LastName`). Seller company is resolved from the selling
+organization (`sellerOrgId`) through Identity, with fallback only to non-law-firm and non-case-manager contacts in that
+seller organization. Handling law firm and case manager remain case/asset details. The public-link JSON and
+authenticated funding-company dashboard, offered-liens list, and detail views use the same tenant-owner and seller
+organization resolver, so the email CTA and logged-in views do not select different seller information for the same
+offer. The handling law firm value is the selected law-firm contact's `liens_Contacts.Organization` column.
 Supporting document names are pulled from existing legacy
 lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
 email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark

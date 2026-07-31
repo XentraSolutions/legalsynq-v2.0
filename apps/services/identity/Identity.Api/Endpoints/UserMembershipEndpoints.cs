@@ -14,6 +14,8 @@ namespace Identity.Api.Endpoints;
 ///
 /// POST /api/internal/users/assign-tenant  — assign user to tenant + optional roles
 /// POST /api/internal/users/assign-roles   — assign roles to a user (idempotent)
+/// GET  /api/internal/users/{userId}/display — tenant-scoped user display name
+/// GET  /api/internal/users/tenant-owner/display — tenant owner display name
 /// GET  /api/internal/users/portal-access  — tenant-scoped CareConnect portal access status
 ///
 /// Auth: X-Provisioning-Token header must match TenantService:ProvisioningSecret.
@@ -171,6 +173,188 @@ public static class UserMembershipEndpoints
                 .AnyAsync(u => u.Email.Trim().ToLower() == emailNorm, ct);
 
             return CreateAccountExistsResult(exists, tenantId);
+        });
+
+        // ── GET /api/internal/users/{userId}/display?tenantId=xxx ───────────
+        //
+        // Internal display lookup for trusted product services that store only
+        // actor ids but need the tenant account's idt_Users name for historical
+        // records and cross-service notifications.
+        //
+        // Auth: X-Provisioning-Token (same pattern as other internal endpoints).
+
+        group.MapGet("/{userId:guid}/display", async (
+            HttpContext       httpContext,
+            Guid              userId,
+            Guid?             tenantId,
+            IdentityDbContext db,
+            IConfiguration    configuration,
+            ILoggerFactory    loggerFactory,
+            CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.UserDisplay");
+
+            if (!ValidateProvisioningToken(httpContext, configuration, log, "user-display"))
+                return Results.Unauthorized();
+
+            if (userId == Guid.Empty)
+                return Results.BadRequest(new { error = "userId is required." });
+            if (tenantId is null || tenantId == Guid.Empty)
+                return Results.BadRequest(new { error = "tenantId is required." });
+
+            var user = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Id == userId)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.Email,
+                    u.FirstName,
+                    u.LastName,
+                })
+                .FirstOrDefaultAsync(ct);
+
+            if (user is null)
+                return CreateUserDisplayResult(false, userId, tenantId.Value);
+
+            var belongsToTenant = await db.UserTenants
+                .AsNoTracking()
+                .AnyAsync(ut => ut.UserId == userId && ut.TenantId == tenantId.Value, ct);
+
+            if (!belongsToTenant)
+                return CreateUserDisplayResult(false, userId, tenantId.Value);
+
+            var displayName = string.Join(' ', new[] { user.FirstName, user.LastName }
+                .Where(part => !string.IsNullOrWhiteSpace(part)))
+                .Trim();
+
+            return CreateUserDisplayResult(
+                true,
+                userId,
+                tenantId.Value,
+                user.Email,
+                user.FirstName,
+                user.LastName,
+                displayName);
+        });
+
+        // ── GET /api/internal/users/tenant-owner/display?organizationId=xxx ──
+        //
+        // Internal owner display lookup for trusted product services that need the
+        // tenant owner's idt_Users name for an organization/tenant display.
+        //
+        // Auth: X-Provisioning-Token (same pattern as other internal endpoints).
+
+        group.MapGet("/tenant-owner/display", async (
+            HttpContext       httpContext,
+            Guid?             organizationId,
+            Guid?             tenantId,
+            IdentityDbContext db,
+            IConfiguration    configuration,
+            ILoggerFactory    loggerFactory,
+            CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.TenantOwnerDisplay");
+
+            if (!ValidateProvisioningToken(httpContext, configuration, log, "tenant-owner-display"))
+                return Results.Unauthorized();
+
+            var hasOrganizationId = organizationId.HasValue && organizationId.Value != Guid.Empty;
+            var hasTenantId = tenantId.HasValue && tenantId.Value != Guid.Empty;
+            if (!hasOrganizationId && !hasTenantId)
+                return Results.BadRequest(new { error = "organizationId or tenantId is required." });
+
+            Guid? resolvedTenantId = hasTenantId ? tenantId!.Value : null;
+            string? organizationName = null;
+            string? organizationDisplayName = null;
+
+            if (hasOrganizationId)
+            {
+                var organization = await db.Organizations
+                    .AsNoTracking()
+                    .Where(o => o.Id == organizationId!.Value)
+                    .Select(o => new
+                    {
+                        o.Id,
+                        o.TenantId,
+                        o.Name,
+                        o.DisplayName,
+                    })
+                    .FirstOrDefaultAsync(ct);
+
+                if (organization is null || !organization.TenantId.HasValue || organization.TenantId.Value == Guid.Empty)
+                {
+                    return CreateTenantOwnerDisplayResult(
+                        false,
+                        resolvedTenantId,
+                        organizationId);
+                }
+
+                if (hasTenantId && organization.TenantId.Value != tenantId!.Value)
+                    return Results.BadRequest(new { error = "organizationId does not belong to tenantId." });
+
+                resolvedTenantId = organization.TenantId.Value;
+                organizationName = organization.Name;
+                organizationDisplayName = organization.DisplayName;
+            }
+
+            if (!resolvedTenantId.HasValue || resolvedTenantId.Value == Guid.Empty)
+                return Results.BadRequest(new { error = "tenantId is required." });
+
+            var ownerUserId = await db.Tenants
+                .AsNoTracking()
+                .Where(t => t.Id == resolvedTenantId.Value)
+                .Select(t => t.OwnerUserId)
+                .FirstOrDefaultAsync(ct);
+
+            if (!ownerUserId.HasValue || ownerUserId.Value == Guid.Empty)
+            {
+                return CreateTenantOwnerDisplayResult(
+                    false,
+                    resolvedTenantId,
+                    organizationId,
+                    organizationName: organizationName,
+                    organizationDisplayName: organizationDisplayName);
+            }
+
+            var owner = await db.Users
+                .AsNoTracking()
+                .Where(u => u.Id == ownerUserId.Value)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.Email,
+                    u.FirstName,
+                    u.LastName,
+                })
+                .FirstOrDefaultAsync(ct);
+
+            if (owner is null)
+            {
+                return CreateTenantOwnerDisplayResult(
+                    false,
+                    resolvedTenantId,
+                    organizationId,
+                    userId: ownerUserId.Value,
+                    organizationName: organizationName,
+                    organizationDisplayName: organizationDisplayName);
+            }
+
+            var displayName = string.Join(' ', new[] { owner.FirstName, owner.LastName }
+                .Where(part => !string.IsNullOrWhiteSpace(part)))
+                .Trim();
+
+            return CreateTenantOwnerDisplayResult(
+                true,
+                resolvedTenantId.Value,
+                organizationId,
+                owner.Id,
+                owner.Email,
+                owner.FirstName,
+                owner.LastName,
+                displayName,
+                organizationName,
+                organizationDisplayName);
         });
 
         // ── GET /api/internal/users/portal-access?tenantId=xxx&email=xxx ─────
@@ -461,6 +645,73 @@ public static class UserMembershipEndpoints
             statusCode: StatusCodes.Status200OK);
 
     private sealed record AccountExistsResponse(bool Exists, Guid? TenantId);
+
+    private static IResult CreateUserDisplayResult(
+        bool found,
+        Guid userId,
+        Guid tenantId,
+        string? email = null,
+        string? firstName = null,
+        string? lastName = null,
+        string? displayName = null) =>
+        Results.Text(
+            JsonSerializer.Serialize(new UserDisplayResponse(
+                found,
+                userId,
+                tenantId,
+                email,
+                firstName,
+                lastName,
+                displayName)),
+            "application/json",
+            statusCode: StatusCodes.Status200OK);
+
+    private sealed record UserDisplayResponse(
+        bool Found,
+        Guid UserId,
+        Guid TenantId,
+        string? Email,
+        string? FirstName,
+        string? LastName,
+        string? DisplayName);
+
+    private static IResult CreateTenantOwnerDisplayResult(
+        bool found,
+        Guid? tenantId,
+        Guid? organizationId = null,
+        Guid? userId = null,
+        string? email = null,
+        string? firstName = null,
+        string? lastName = null,
+        string? displayName = null,
+        string? organizationName = null,
+        string? organizationDisplayName = null) =>
+        Results.Text(
+            JsonSerializer.Serialize(new TenantOwnerDisplayResponse(
+                found,
+                tenantId,
+                organizationId,
+                userId,
+                email,
+                firstName,
+                lastName,
+                displayName,
+                organizationName,
+                organizationDisplayName)),
+            "application/json",
+            statusCode: StatusCodes.Status200OK);
+
+    private sealed record TenantOwnerDisplayResponse(
+        bool Found,
+        Guid? TenantId,
+        Guid? OrganizationId,
+        Guid? UserId,
+        string? Email,
+        string? FirstName,
+        string? LastName,
+        string? DisplayName,
+        string? OrganizationName,
+        string? OrganizationDisplayName);
 
     // ── Shared token guard ────────────────────────────────────────────────────
 

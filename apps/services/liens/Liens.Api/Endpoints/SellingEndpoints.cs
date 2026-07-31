@@ -436,6 +436,7 @@ public static class SellingEndpoints
     private static async Task<IResult> GetBuyerOfferedLiens(
         LiensDbContext db,
         ICurrentRequestContext ctx,
+        ISellerOrganizationDisplayResolver sellerDisplayResolver,
         string? status = null,
         string? search = null,
         string? sort = null,
@@ -449,7 +450,7 @@ public static class SellingEndpoints
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var sources = await LoadBuyerOfferedLienSourcesAsync(db, ctx, ct);
-        var sellerDisplays = await ResolveSellerDisplaysAsync(db, tenantId, sources.Select(source => source.SellerOrgId), ct);
+        var sellerDisplays = await ResolveSellerDisplaysAsync(db, sellerDisplayResolver, tenantId, sources, ct);
         var providerNames = await ResolveProviderNamesAsync(db, tenantId, sources, ct);
 
         IEnumerable<BuyerOfferedLienRow> rows = sources
@@ -481,6 +482,7 @@ public static class SellingEndpoints
         Guid accessLinkId,
         LiensDbContext db,
         ICurrentRequestContext ctx,
+        ISellerOrganizationDisplayResolver sellerDisplayResolver,
         CancellationToken ct = default)
     {
         var (accessLink, error) = await ResolveBuyerOfferedLienAccessLinkAsync(accessLinkId, db, ctx, ct);
@@ -509,8 +511,12 @@ public static class SellingEndpoints
             .Where(contact => contact.TenantId == tenantId && contact.OrgId == accessLink.SellerOrgId && contact.IsActive)
             .ToListAsync(ct);
 
-        var sellerContact = SelectSellerContact(sellerContacts);
-        var sellerCompany = ResolveSellerCompany(sellerContact, sellerContacts);
+        var sellerDisplay = await sellerDisplayResolver.ResolveAsync(
+            tenantId,
+            accessLink.SellerOrgId,
+            sellerContacts,
+            fallbackEmail: null,
+            ct: ct);
         var providerName = await ResolveProviderNameAsync(db, tenantId, lien.FacilityId, ct);
         var documents = await ResolveBuyerOfferedLienDocumentsAsync(db, tenantId, accessLink.Id, lien, ct);
         var messages = await ResolveBuyerOfferedLienMessagesAsync(db, accessLink, ct);
@@ -518,8 +524,7 @@ public static class SellingEndpoints
         return Results.Ok(MapBuyerOfferedLienDetail(
             accessLink,
             lien,
-            sellerContact,
-            sellerCompany,
+            sellerDisplay,
             buyerContact,
             providerName,
             documents,
@@ -641,6 +646,7 @@ public static class SellingEndpoints
         IConfiguration configuration,
         LiensDbContext db,
         ICurrentRequestContext ctx,
+        ISellerOrganizationDisplayResolver sellerDisplayResolver,
         CancellationToken ct = default)
     {
         var (accessLink, error) = await ResolveBuyerOfferedLienAccessLinkAsync(accessLinkId, db, ctx, ct);
@@ -656,6 +662,7 @@ public static class SellingEndpoints
             accessLinks,
             loggerFactory,
             configuration,
+            sellerDisplayResolver,
             db,
             ct);
     }
@@ -668,6 +675,7 @@ public static class SellingEndpoints
         ILoggerFactory loggerFactory,
         LiensDbContext db,
         ICurrentRequestContext ctx,
+        ISellerOrganizationDisplayResolver sellerDisplayResolver,
         CancellationToken ct = default)
     {
         var (accessLink, error) = await ResolveBuyerOfferedLienAccessLinkAsync(accessLinkId, db, ctx, ct);
@@ -680,6 +688,7 @@ public static class SellingEndpoints
             httpContext,
             notifications,
             loggerFactory,
+            sellerDisplayResolver,
             db,
             ct);
     }
@@ -692,6 +701,7 @@ public static class SellingEndpoints
         ILoggerFactory loggerFactory,
         LiensDbContext db,
         ICurrentRequestContext ctx,
+        ISellerOrganizationDisplayResolver sellerDisplayResolver,
         CancellationToken ct = default)
     {
         var (accessLink, error) = await ResolveBuyerOfferedLienAccessLinkAsync(accessLinkId, db, ctx, ct);
@@ -704,6 +714,7 @@ public static class SellingEndpoints
             httpContext,
             notifications,
             loggerFactory,
+            sellerDisplayResolver,
             db,
             ct);
     }
@@ -854,33 +865,42 @@ public static class SellingEndpoints
         return buyerContactIds;
     }
 
-    private static async Task<Dictionary<Guid, SellerDisplay>> ResolveSellerDisplaysAsync(
+    private static async Task<Dictionary<Guid, SellerOrganizationDisplay>> ResolveSellerDisplaysAsync(
         LiensDbContext db,
+        ISellerOrganizationDisplayResolver sellerDisplayResolver,
         Guid tenantId,
-        IEnumerable<Guid> sellerOrgIds,
+        IEnumerable<BuyerOfferedLienSource> sources,
         CancellationToken ct)
     {
-        var orgIds = sellerOrgIds.Distinct().ToArray();
-        if (orgIds.Length == 0)
+        var sellerOrgIds = sources
+            .Select(source => source.SellerOrgId)
+            .Distinct()
+            .ToArray();
+        if (sellerOrgIds.Length == 0)
             return [];
 
-        var names = new Dictionary<Guid, SellerDisplay>();
-        foreach (var orgId in orgIds)
+        var names = new Dictionary<Guid, SellerOrganizationDisplay>();
+        var contactCache = new Dictionary<Guid, List<Contact>>();
+        foreach (var sellerOrgId in sellerOrgIds)
         {
-            var contacts = await db.Contacts
-                .AsNoTracking()
-                .Where(item =>
-                    item.TenantId == tenantId &&
-                    item.IsActive &&
-                    item.OrgId == orgId)
-                .ToListAsync(ct);
-            var contact = SelectSellerContact(contacts);
+            if (!contactCache.TryGetValue(sellerOrgId, out var contacts))
+            {
+                contacts = await db.Contacts
+                    .AsNoTracking()
+                    .Where(item =>
+                        item.TenantId == tenantId &&
+                        item.IsActive &&
+                        item.OrgId == sellerOrgId)
+                    .ToListAsync(ct);
+                contactCache[sellerOrgId] = contacts;
+            }
 
-            var company = ResolveSellerCompany(contact, contacts) ??
-                          "Seller company unavailable";
-            var name = FirstNonEmpty(new[] { contact?.DisplayName, company }) ??
-                       "Seller unavailable";
-            names[orgId] = new SellerDisplay(company, name);
+            names[sellerOrgId] = await sellerDisplayResolver.ResolveAsync(
+                tenantId,
+                sellerOrgId,
+                contacts,
+                fallbackEmail: null,
+                ct: ct);
         }
 
         return names;
@@ -1161,8 +1181,7 @@ public static class SellingEndpoints
     private static BuyerOfferedLienDetailResponse MapBuyerOfferedLienDetail(
         SellingBuyerAccessLink accessLink,
         Lien lien,
-        Contact? sellerContact,
-        string? sellerCompany,
+        SellerOrganizationDisplay sellerDisplay,
         Contact? buyerContact,
         string? providerName,
         IReadOnlyList<BuyerOfferedLienDocument> documents,
@@ -1171,9 +1190,9 @@ public static class SellingEndpoints
         var status = GetBuyerOfferedLienStatus(accessLink.ResponseStatus);
         var askAmount = lien.AskAmount ?? lien.OfferPrice;
         var submittedAtUtc = accessLink.NotificationSubmittedAtUtc ?? lien.SubmittedForSaleAtUtc ?? accessLink.CreatedAtUtc;
-        var sellerName = FirstNonEmpty(new[] { sellerContact?.DisplayName, "Seller unavailable" }) ?? "Seller unavailable";
-        var resolvedSellerCompany = FirstNonEmpty(new[] { sellerCompany, sellerContact?.Organization, sellerContact?.DisplayName });
-        var title = FirstNonEmpty(new[] { sellerContact?.DisplayName, ResolveLienSubjectName(lien), lien.LienNumber }) ?? lien.Id.ToString();
+        var sellerName = FirstNonEmpty(new[] { sellerDisplay.Name, sellerDisplay.Company, "Seller unavailable" }) ?? "Seller unavailable";
+        var resolvedSellerCompany = FirstNonEmpty(new[] { sellerDisplay.Company, sellerDisplay.Name });
+        var title = FirstNonEmpty(new[] { sellerName, ResolveLienSubjectName(lien), lien.LienNumber }) ?? lien.Id.ToString();
         var subtitle = FirstNonEmpty(new[] { resolvedSellerCompany, providerName, lien.LienNumber });
         var canRespond = status == BuyerOfferedLienStatuses.Pending &&
             IsBuyerResponseActionableOffer(lien.Status, lien.SellerStatus);
@@ -1190,7 +1209,7 @@ public static class SellingEndpoints
             new BuyerOfferedLienSellerDetail(
                 sellerName,
                 resolvedSellerCompany,
-                sellerContact?.Email),
+                sellerDisplay.Email),
             new BuyerOfferedLienBuyerDetail(
                 FirstNonEmpty(new[] { buyerContact?.DisplayName }),
                 FirstNonEmpty(new[] { buyerContact?.Organization }),
@@ -1249,7 +1268,7 @@ public static class SellingEndpoints
 
     private static BuyerOfferedLienRow MapBuyerOfferedLienRow(
         BuyerOfferedLienSource source,
-        IReadOnlyDictionary<Guid, SellerDisplay> sellerDisplays,
+        IReadOnlyDictionary<Guid, SellerOrganizationDisplay> sellerDisplays,
         IReadOnlyDictionary<Guid, string> providerNames)
     {
         var status = GetBuyerOfferedLienStatus(source.ResponseStatus);
@@ -1263,9 +1282,10 @@ public static class SellingEndpoints
             : new[] { "view" };
         var sellerDisplay = sellerDisplays.TryGetValue(source.SellerOrgId, out var resolvedSellerDisplay)
             ? resolvedSellerDisplay
-            : new SellerDisplay(
+            : new SellerOrganizationDisplay(
+                "Seller unavailable",
                 "Seller company unavailable",
-                "Seller unavailable");
+                null);
 
         return new BuyerOfferedLienRow(
             source.AccessLinkId,
@@ -1407,43 +1427,6 @@ public static class SellingEndpoints
 
     private static string? FirstNonEmpty(IEnumerable<string?> values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
-
-    private static Contact? SelectSellerContact(IReadOnlyList<Contact> contacts)
-    {
-        var orderedContacts = OrderSellerContacts(contacts);
-        return orderedContacts.FirstOrDefault(contact =>
-               string.Equals(contact.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
-               string.IsNullOrWhiteSpace(contact.ContactSubtype) &&
-               !string.IsNullOrWhiteSpace(contact.Email))
-           ?? orderedContacts.FirstOrDefault(contact => !string.IsNullOrWhiteSpace(contact.Email))
-           ?? orderedContacts.FirstOrDefault();
-    }
-
-    private static string? ResolveSellerCompany(Contact? sellerContact, IReadOnlyList<Contact> sellerContacts)
-    {
-        if (sellerContact is null)
-            return null;
-
-        var orderedContacts = OrderSellerContacts(sellerContacts);
-        return FirstNonEmpty(new[]
-        {
-            sellerContact.Organization,
-            orderedContacts.FirstOrDefault(contact =>
-                string.Equals(contact.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
-                string.IsNullOrWhiteSpace(contact.ContactSubtype) &&
-                !string.IsNullOrWhiteSpace(contact.Organization))?.Organization,
-            orderedContacts.FirstOrDefault(contact => !string.IsNullOrWhiteSpace(contact.Organization))?.Organization,
-            sellerContact.DisplayName,
-            sellerContact.Email,
-        });
-    }
-
-    private static IReadOnlyList<Contact> OrderSellerContacts(IReadOnlyList<Contact> contacts)
-        => contacts
-            .OrderBy(contact => contact.DisplayName)
-            .ThenBy(contact => contact.Email ?? string.Empty)
-            .ThenBy(contact => contact.Id)
-            .ToList();
 
     private static string? ResolveLienSubjectName(Lien lien)
         => FirstNonEmpty(new[]
@@ -1942,6 +1925,7 @@ public static class SellingEndpoints
     private static async Task<IResult> GetBuyerDashboard(
         LiensDbContext db,
         ICurrentRequestContext ctx,
+        ISellerOrganizationDisplayResolver sellerDisplayResolver,
         string? range = null,
         string? from = null,
         string? to = null,
@@ -1949,7 +1933,7 @@ public static class SellingEndpoints
     {
         var tenantId = RequireTenantId(ctx);
         var sources = await LoadBuyerOfferedLienSourcesAsync(db, ctx, ct);
-        var sellerDisplays = await ResolveSellerDisplaysAsync(db, tenantId, sources.Select(source => source.SellerOrgId), ct);
+        var sellerDisplays = await ResolveSellerDisplaysAsync(db, sellerDisplayResolver, tenantId, sources, ct);
         var providerNames = await ResolveProviderNamesAsync(db, tenantId, sources, ct);
 
         var offers = sources
@@ -2642,10 +2626,6 @@ public static class SellingEndpoints
     {
         public static BuyerDashboardWindow Empty { get; } = new(null, null, IsEmpty: true);
     }
-
-    private sealed record SellerDisplay(
-        string Company,
-        string Name);
 
     private sealed record BuyerOfferedLienSource(
         Guid AccessLinkId,
