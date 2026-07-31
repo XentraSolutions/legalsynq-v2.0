@@ -18,7 +18,10 @@ interface LienRowActionsMenuProps {
 const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
   "prepare-sale": { label: "Sell Lien", icon: "ri-hand-coin-line" },
   "confirm-sale": { label: "Continue Sale", icon: "ri-send-plane-line" },
-  "withdraw-sale": { label: "Withdraw from Sale", icon: "ri-arrow-go-back-line" },
+  "withdraw-sale": {
+    label: "Withdraw from Sale",
+    icon: "ri-arrow-go-back-line",
+  },
   archive: { label: "Archive", icon: "ri-archive-line" },
 };
 
@@ -56,7 +59,7 @@ export function LienRowActionsMenu({
   const handleAction = (action: string) => {
     setMenuOpen(false);
     if (action === "prepare-sale") {
-      setShowDecisionModal(true);
+      router.push(`/selling/portfolio/${lienId}/sell`);
       return;
     }
     if (action === "confirm-sale") {
@@ -72,15 +75,15 @@ export function LienRowActionsMenu({
   const keepAsInternalAsset = async () => {
     setKeepLoading(true);
     try {
-      await liensService.submitLien(lienId, { targetSellerStatus: "Internal" });
+      await liensService.submitLien(lienId, {
+        sellerStatus: "Internal",
+        listingVisibility: "Private",
+      });
       showToast("Lien kept as internal asset.", "success");
       setShowDecisionModal(false);
       onActionComplete();
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Action failed",
-        "error",
-      );
+      showToast(err instanceof Error ? err.message : "Action failed", "error");
     } finally {
       setKeepLoading(false);
     }
@@ -100,10 +103,7 @@ export function LienRowActionsMenu({
       setConfirmAction(null);
       onActionComplete();
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Action failed",
-        "error",
-      );
+      showToast(err instanceof Error ? err.message : "Action failed", "error");
     } finally {
       setActionLoading(false);
     }

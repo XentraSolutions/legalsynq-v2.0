@@ -65,7 +65,6 @@ export const liensService = {
 
   async getSellingDashboard(query: DashboardQuery = {}): Promise<any> {
     const { data } = await liensApi.getDashboard(query);
-    console.log(data);
     return data;
   },
 
@@ -88,12 +87,15 @@ export const liensService = {
     return data;
   },
 
-  async createLienInfo(request: LienInfoParams): Promise<LienDetail> {
-    const { data } = await liensApi.createLienInfo(request);
+  async createLienInfo(
+    lienId: string,
+    request: LienInfoParams,
+  ): Promise<LienDetail> {
+    const { data } = await liensApi.createLienInfo(lienId, request);
     return data;
   },
 
-  async createLienDraft(request: DraftLienParams): Promise<LienDetail> {
+  async createLienDraft(request: DraftLienParams): Promise<any> {
     const { data } = await liensApi.createLienDraft(request);
     return data;
   },

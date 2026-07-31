@@ -319,5 +319,6 @@ export interface ArchiveSellingLienRequest {
 }
 
 export interface SubmitSellingLienRequest {
-  targetSellerStatus: string;
+  sellerStatus: string;
+  listingVisibility: string;
 }

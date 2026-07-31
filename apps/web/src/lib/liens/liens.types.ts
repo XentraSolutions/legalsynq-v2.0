@@ -264,6 +264,7 @@ export interface DraftLienParams {
   source: string;
 }
 export interface LienInfoParams {
+  id?: string;
   sellerStatus: string;
   initialServiceDate: string;
   endServiceDate: string | null;

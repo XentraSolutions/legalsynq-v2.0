@@ -20,6 +20,8 @@ import UploadDocuments from "./forms/add-medical-lien/medical-upload-document";
 import { LienInfoParams } from "@/lib/liens/liens.types";
 import { liensService } from "@/lib/selling";
 import Link from "next/link";
+import { useToast } from "@/lib/toast-context";
+import { useRouter } from "next/navigation";
 export interface AddLienComponentProps {
   caseId?: string;
   caseInfo?: any;
@@ -52,70 +54,27 @@ function ProgressBar({ currentStep }: { currentStep: number }) {
             <div
               key={index}
               className={`h-1 flex-1 rounded-full transition-all duration-300 ease-in-out ${
-                isFilled ? "bg-blue-600" : "bg-gray-200"
+                isFilled ? "bg-[#EE7132]" : "bg-gray-200"
               }`}
             />
           );
         })}
       </div>
     </div>
-    // <div className="w-full mb-3 px-2">
-    //   <div className="relative w-full">
-    //     <div className="relative flex items-start">
-    //       {/* Track */}
-    //       {/* <div
-    //         className="absolute h-0.5 rounded-full"
-    //         style={{
-    //           width: `calc(100% - ${circleSize * 2}px)`,
-    //           top: `${circleSize / 2}px`,
-    //           left: `${circleSize}px`,
-    //           right: `calc(${circleSize}px / 2)`,
-    //           transform: "translateY(-50%)",
-    //           backgroundColor: "#7E7E7E",
-    //         }}
-    //       /> */}
-
-    //       {/* Progress */}
-    //       {/* <div
-    //         className="absolute h-0.5 rounded-full"
-    //         style={{
-    //           top: `${circleSize / 2}px`,
-    //           left: `${circleSize}px`,
-    //           width: `calc((100% - ${circleSize * 2}px) * ${progressPercent / 100})`,
-    //           transform: "translateY(-50%)",
-    //           backgroundColor: "#0D2A4A",
-    //         }}
-    //       /> */}
-
-    //       {steps.map((step, idx) => {
-    //         const done = currentStep > step.number;
-    //         const active = currentStep === step.number;
-    //         return (
-    //           <div key={step.number} className="flex flex-1 justify-center">
-    //             <div className="flex flex-col items-center">
-    //               <div
-    //                 className={`flex items-center justify-center rounded-full text-sm font-semibold transition-colors z-10 ${done ? "bg-[#184C87] text-white" : active ? "bg-white border-2 border-primary text-primary" : "bg-white border border-gray-200 text-gray-600"}`}
-    //                 style={{ width: 100, height: 10 }}
-    //                 aria-current={active ? "step" : undefined}
-    //               ></div>
-    //             </div>
-    //           </div>
-    //         );
-    //       })}
-    //     </div>
-    //   </div>
-    // </div>
   );
 }
 
 export default function AddLienComponent(props: AddLienComponentProps) {
-  const addToast = useLienStore((s) => s.addToast);
+  const { show: showToast } = useToast();
+  const router = useRouter();
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const { caseId, caseInfo, purchase, onClose } = props;
   const totalSteps = steps.length;
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
   const [forms, setForms] = useState<any[]>(Array(totalSteps).fill(null));
   // Step 4 (upload docs) is optional — there's nothing to invalidate, so it
   // starts valid instead of waiting for a signal from the child form.
@@ -131,28 +90,24 @@ export default function AddLienComponent(props: AddLienComponentProps) {
   }
 
   function startLoading() {
-    setLoading(true);
+    setSubmitting(true);
   }
   function stopLoading() {
-    setLoading(false);
+    setSubmitting(false);
   }
 
   const handleBackOrCancel = () => {
     if (currentStep > 1) {
       setCurrentStep((s) => s - 1);
     } else {
-      onClose?.();
+      router.back();
     }
   };
 
   const handleNextOrSubmit = async () => {
-    let hasLiens;
-    setCurrentStep((s) => s + 1);
-
     if (currentStep == 1) {
-      hasLiens = await createLienInfo(forms[0]);
+      return await createLienInfo(forms[0]);
     }
-    if (!hasLiens && currentStep == 1) return;
     if (currentStep == 4) {
       // save();
     }
@@ -168,6 +123,7 @@ export default function AddLienComponent(props: AddLienComponentProps) {
   };
 
   const createLienInfo = async (payload: LienInfoParams) => {
+    startLoading();
     try {
       const request: LienInfoParams = {
         sellerStatus: payload.sellerStatus,
@@ -176,185 +132,23 @@ export default function AddLienComponent(props: AddLienComponentProps) {
         listingVisibility: payload.listingVisibility,
         notes: payload.notes,
       };
-      const response = await liensService.createLienInfo(request);
-      // setLiensId(response.data);
-      addToast({
-        type: "success",
-        title: "Liens Created",
-        description: `Liens has been created.`,
+      const draft = await liensService.createLienDraft({
+        sellerStatus: "Draft",
+        source: "Single",
       });
-      setErrors({});
-      return true;
-    } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.isConflict) {
-          setErrors({ caseNumber: "A case with this number already exists" });
-        } else {
-          addToast({
-            type: "error",
-            title: "Create Failed",
-            description: err.message,
-          });
-        }
-      } else {
-        addToast({
-          type: "error",
-          title: "Create Failed",
-          description: "An unexpected error occurred",
-        });
-      }
-      return false;
-    }
-  };
-
-  const saveMedicalFacilityLiens = async (
-    payload: CreateMedicalFacilityDto,
-  ) => {
-    try {
-      const request: CreateMedicalFacilityDto = {
-        liensId: liensId,
-        facilityId: payload.facilityId,
-        facility: payload.facility,
-        facilityContactId: payload.facilityContactId,
-        facilityContact: payload.facilityContact,
-        email: payload.email,
-        medicalProviderId: payload.medicalProviderId,
-        medicalProvider: payload.medicalProvider,
-      };
-      await casesService.updateMedicalFacilityLiens(request);
-      addToast({
-        type: "success",
-        title: "Facility Created",
-        description: `Facility has been created.`,
-      });
+      await liensService.createLienInfo(draft, request);
+      showToast("Liens Created", "success");
       setErrors({});
     } catch (err) {
       if (err instanceof ApiError) {
-        addToast({
-          type: "error",
-          title: "Create Failed",
-          description: err.message,
-        });
+        console.log(err.message);
+        showToast(err.message, "error");
       } else {
-        addToast({
-          type: "error",
-          title: "Create Failed",
-          description: "An unexpected error occurred",
-        });
-      }
-    }
-  };
-
-  const createMedicalCodeLiens = async (payload: CreateMedicalCodeLiensDto) => {
-    startLoading();
-    try {
-      const request: CreateMedicalCodeLiensDto = {
-        id: payload.id,
-        liensId: liensId,
-        code: payload.code,
-        medicareCost: parseFloat(payload.medicareCost).toFixed(2),
-        billingAmount: parseFloat(payload.billingAmount).toFixed(2),
-        purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),
-        payee: payload.payee,
-        outboundCheckNumber: payload.outboundCheckNumber,
-      };
-      await casesService.createMedicalCodeLiens(request);
-      addToast({
-        type: "success",
-        title: "Medical Code Created",
-        description: `Medical Code has been created.`,
-      });
-      setErrors({});
-    } catch (err) {
-      if (err instanceof ApiError) {
-        addToast({
-          type: "error",
-          title: "Create Failed",
-          description: err.message,
-        });
-      } else {
-        addToast({
-          type: "error",
-          title: "Create Failed",
-          description: "An unexpected error occurred",
-        });
+        showToast("An unexpected error occurred", "error");
       }
     } finally {
       stopLoading();
     }
-  };
-  const saveMedicalPayee = async (payload: CreateMedicalPaymentDto) => {
-    try {
-      if (!liensId || !payload) return;
-
-      const request: CreateMedicalPaymentDto = {
-        id: null,
-        liensId: liensId,
-        payee: payload.payee,
-        outboundCheckNumber: payload.outboundCheckNumber,
-      };
-      await casesService.createMedicalPaymentLiens(request);
-      // addToast({
-      //   type: "success",
-      //   title: "Payee Updated",
-      //   description: `Payee has been updated.`,
-      // });
-      setErrors({});
-    } catch (err) {
-      if (err instanceof ApiError) {
-        addToast({
-          type: "error",
-          title: "Update Failed",
-          description: err.message,
-        });
-      } else {
-        addToast({
-          type: "error",
-          title: "Update Payee Failed",
-          description: "An unexpected error occurred",
-        });
-      }
-    }
-    // finally {
-    //   setSubmitting(false);
-    // }
-  };
-
-  const uploadDocuments = async (payload: any) => {
-    if (payload?.length == 0 || payload == null) return;
-    const formData = new FormData();
-    formData.append("File", payload.document ?? "");
-    formData.append("liensId", liensId);
-    formData.append("DocName", "Lien Document");
-    formData.append("DocDescription", "Legacy lien Document upload");
-    formData.append("DocFileTypeId", payload.documentType);
-
-    try {
-      await casesService.uploadLiensDocuments(formData);
-      // addToast({
-      //   type: "success",
-      //   title: "Document Uploaded",
-      //   description: `Document has been updated.`,
-      // });
-      setErrors({});
-    } catch (err: unknown) {
-      if (err instanceof ApiError) {
-        addToast({
-          type: "error",
-          title: "Update Document Failed",
-          description: err.message,
-        });
-      } else {
-        addToast({
-          type: "error",
-          title: "Update Failed",
-          description: "An unexpected error occurred",
-        });
-      }
-    }
-    // finally {
-    //   setSubmitting(false);
-    // }
   };
 
   function onFormValid(isValid: boolean, data?: any) {
@@ -366,32 +160,11 @@ export default function AddLienComponent(props: AddLienComponentProps) {
     });
   }
 
-  async function save() {
-    startLoading();
-    try {
-      // Implement save logic here (API call)
-      Promise.allSettled([
-        await saveMedicalFacilityLiens(forms[1]),
-        await saveMedicalPayee(forms[2]),
-        await uploadDocuments(forms[3]),
-        fetchDocument(),
-      ]);
-      addToast({
-        type: "success",
-        title: "Liens Added",
-        description: `Liens has been added to case.`,
-      });
-      closeModal();
-    } finally {
-      stopLoading();
-    }
-  }
-
   useEffect(() => {}, [liensId]);
 
   return (
-    <div>
-      <div className="flex items-center mb-6">
+    <div className="max-w-[700px] m-auto">
+      <div className="flex items-center mb-6 ">
         <nav>
           <Link
             href="/selling/portfolio"
@@ -403,10 +176,9 @@ export default function AddLienComponent(props: AddLienComponentProps) {
         <ProgressBar currentStep={currentStep} />
       </div>
       <p className={`mt-2 text-xs text-gray-600`}>
-        {" "}
         Step {currentStep}/ {steps.length}
       </p>
-      <div className="mt-5 position-relative">
+      <div className="mt-5 position-relative ">
         {loading && (
           <div
             className="loading-overlay d-flex justify-content-center align-items-center"
@@ -456,25 +228,22 @@ export default function AddLienComponent(props: AddLienComponentProps) {
         )}
 
         <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-end gap-2">
-          {" "}
-          <div className="flex justify-between w-full">
-            {/* LEFT BUTTON */}
-            <button
-              onClick={handleBackOrCancel}
-              className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
-            >
-              {currentStep === 0 ? "Cancel" : "Back"}
-            </button>
+          {/* LEFT BUTTON */}
+          <button
+            onClick={handleBackOrCancel}
+            className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+          >
+            {currentStep === 0 ? "Cancel" : "Back"}
+          </button>
 
-            {/* RIGHT BUTTON */}
-            <button
-              onClick={handleNextOrSubmit}
-              className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-primary/70"
-              disabled={notComplete || loading}
-            >
-              {isLastStep ? "Save" : "Continue"}
-            </button>
-          </div>
+          {/* RIGHT BUTTON */}
+          <button
+            onClick={handleNextOrSubmit}
+            className="text-sm px-4 py-2 bg-[#EE7132] text-white rounded-lg hover:bg-[#EE7132]/90 disabled:bg-[#EE7132]/70"
+            disabled={notComplete || submitting}
+          >
+            {isLastStep ? "Save" : "Continue"}
+          </button>
         </div>
       </div>
     </div>

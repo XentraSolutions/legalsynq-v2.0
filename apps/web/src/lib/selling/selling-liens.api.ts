@@ -66,7 +66,6 @@ export const liensApi = {
   },
 
   getDashboard(query: DashboardQuery = {}) {
-    console.log(query);
     return apiClient.get<LienResponseDto>(
       `${BASE}/dashboard${toQs(query as Record<string, unknown>)}`,
     );
@@ -91,8 +90,11 @@ export const liensApi = {
     return apiClient.post<any>(`${BASE}/bulk-imports/${id}/validate`, {});
   },
 
-  createLienInfo(request: LienInfoParams) {
-    return apiClient.post<any>(`${BASE}/liens/lien-information`, request);
+  createLienInfo(lienId: string, request: LienInfoParams) {
+    return apiClient.put<any>(
+      `${BASE}/liens/${lienId}/lien-information`,
+      request,
+    );
   },
 
   createLienDraft(request: DraftLienParams) {
@@ -166,8 +168,8 @@ export const liensApi = {
   },
 
   submitLien(lienId: string, request: SubmitSellingLienRequest) {
-    return apiClient.post<any>(
-      `${BASE}/liens/${lienId}/submit`,
+    return apiClient.put<any>(
+      `${BASE}/liens/${lienId}/lien-information`,
       request,
       idempotencyHeaders(),
     );
