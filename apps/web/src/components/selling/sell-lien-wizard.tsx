@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { liensService } from "@/lib/selling";
@@ -92,6 +92,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
   const [companyName, setCompanyName] = useState<string>("");
   const [contacts, setContacts] = useState<SellingLookupItem[]>([]);
   const [contactId, setContactId] = useState<string | null>(null);
+  const selectedCompanyRef = useRef<HTMLLabelElement | null>(null);
 
   // Step 2 — documents + message.
   const [messageToBuyer, setMessageToBuyer] = useState("");
@@ -174,6 +175,14 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
       cancelled = true;
     };
   }, [companyId]);
+
+  useEffect(() => {
+    if (!companyId || step !== 1) return;
+    selectedCompanyRef.current?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+  }, [companyId, step, companies]);
 
   const filteredCompanies = useMemo(() => {
     if (!companySearch.trim()) return companies;
@@ -364,6 +373,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
             {filteredCompanies.map((company) => (
               <label
                 key={company.id}
+                ref={companyId === company.id ? selectedCompanyRef : undefined}
                 className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50"
               >
                 <input
