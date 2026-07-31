@@ -48,7 +48,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     [Fact]
     public async Task Prepared_lien_confirm_sale_sets_offered_and_submitted_not_sold()
     {
-        var (buyerCompanyId, buyerContactId) = await SeedConfirmSaleContactsAsync(
+        var (_, buyerContactId) = await SeedConfirmSaleContactsAsync(
             "buyer.prepared-confirm@capital.test",
             "seller.prepared-confirm@smithlaw.test");
         var lienId = await CreateSellingLienAsync();
@@ -62,14 +62,13 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         });
         lienInfo.EnsureSuccessStatusCode();
 
-        var caseInfo = await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/case-information", new
+        using (var setupScope = _factory.Services.CreateScope())
         {
-            fundingCompanyId = buyerCompanyId,
-            fundingCompanyContactId = buyerContactId,
-            caseId = SeedHelper.CaseId,
-            createCaseIfMissing = false,
-        });
-        caseInfo.EnsureSuccessStatusCode();
+            var setupDb = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await setupDb.Liens.FindAsync(lienId);
+            lien!.AttachCase(SeedHelper.CaseId, SeedHelper.UserId);
+            await setupDb.SaveChangesAsync();
+        }
 
         var pricing = await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/medical-pricing", new
         {
@@ -89,7 +88,6 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         {
             Content = JsonContent.Create(new
             {
-                buyerFundingCompanyId = buyerCompanyId,
                 buyerContactId,
                 askAmount = 1250m,
                 listingVisibility = "Private",
@@ -109,8 +107,11 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         var persisted = await db.Liens.FindAsync(lienId);
+        var buyerContact = await db.Contacts.FindAsync(buyerContactId);
         persisted!.Status.Should().Be(LienStatus.Offered);
         persisted.SellerStatus.Should().Be(SellingLienStatus.SubmittedForSale);
+        persisted.FundingCompanyId.Should().Be(buyerContact!.OrgId);
+        persisted.FundingCompanyContactId.Should().Be(buyerContactId);
         persisted.OfferPrice.Should().Be(1250m);
         persisted.SoldAtUtc.Should().BeNull();
     }

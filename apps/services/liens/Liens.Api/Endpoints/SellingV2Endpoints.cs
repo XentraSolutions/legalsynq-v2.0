@@ -452,16 +452,14 @@ public static class SellingV2Endpoints
         if (!IntakeStatuses.Contains(lien.SellerStatus ?? string.Empty))
             return ValidationError("sellerStatus", "Only Pending or Internal liens can be prepared for sale.");
 
-        var buyerCompany = await GetFundingCompanyAsync(db, tenantId, request.BuyerFundingCompanyId, ct);
-        if (buyerCompany is null) return ValidationError("buyerFundingCompanyId", "Buyer funding company was not found in this tenant.");
         var buyerContact = await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c =>
             c.TenantId == tenantId && c.Id == request.BuyerContactId && c.IsActive, ct);
-        if (buyerContact is null || buyerContact.OrgId != buyerCompany.OrgId)
-            return ValidationError("buyerContactId", "Buyer contact must belong to the selected funding company.");
+        if (buyerContact is null)
+            return ValidationError("buyerContactId", "Buyer contact must be active and belong to this tenant.");
         var pricingRows = await db.ServicingItems.AnyAsync(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingMedicalPricingTaskType, ct);
         var documents = await db.ServicingItems.AnyAsync(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingDocumentTaskType, ct);
-        if (!Readiness(lien, lien.CaseId.HasValue, pricingRows ? 1 : 0, documents ? 1 : 0).ready)
-            return ValidationError("saleReadiness", "Initial service date, case, funding company, pricing, ask amount, and at least one document are required before preparing a sale.");
+        if (!Readiness(lien, lien.CaseId.HasValue, pricingRows ? 1 : 0, documents ? 1 : 0, requireFundingCompany: false).ready)
+            return ValidationError("saleReadiness", "Initial service date, case, pricing, ask amount, and at least one document are required before preparing a sale.");
         if (request.AskAmount is <= 0) return ValidationError("askAmount", "askAmount must be positive.");
         if (request.MessageToBuyer?.Trim().Length > 4000) return ValidationError("messageToBuyer", "messageToBuyer must not exceed 4000 characters.");
         var visibility = NormalizeVisibility(request.ListingVisibility);
@@ -474,10 +472,9 @@ public static class SellingV2Endpoints
         lien.UpdateSellingAnalyticsFields(userId,
             sellerStatus: SellingLienStatus.PreparedForSale,
             listingVisibility: visibility,
-            // FundingCompanyId participates in the existing confirm-sale buyer
-            // ownership check, so it deliberately holds the funding-company
-            // organization ID. The employee/contact identifier remains separate.
-            fundingCompanyId: buyerCompany.OrgId,
+            // Buyer organization is derived from the selected contact so callers
+            // do not need to select a separate funding-company record.
+            fundingCompanyId: buyerContact.OrgId,
             fundingCompanyContactId: buyerContact.Id,
             askAmount: request.AskAmount);
         lien.SetBuyerMessage(request.MessageToBuyer, userId);
@@ -1032,12 +1029,17 @@ public static class SellingV2Endpoints
     private static bool HasIdempotencyKey(HttpRequest request, out IResult? error) => HasIdempotencyKey(request, out error, out _);
     private static void AddActivity(LiensDbContext db, Lien lien, Guid userId, string description) => db.LienStatusHistories.Add(LienStatusHistory.Create(lien.TenantId, lien.Id, lien.CaseId, description, userId));
     private static string DisplayName(Contact contact) => string.IsNullOrWhiteSpace(contact.Organization) ? contact.DisplayName : contact.Organization;
-    private static (bool ready, string[] missing) Readiness(Lien lien, bool hasCase, int pricingRows, int documents)
+    private static (bool ready, string[] missing) Readiness(
+        Lien lien,
+        bool hasCase,
+        int pricingRows,
+        int documents,
+        bool requireFundingCompany = true)
     {
         var missing = new List<string>();
         if (!lien.InitialServiceDate.HasValue) missing.Add("initialServiceDate");
         if (!hasCase) missing.Add("caseInformation");
-        if (!lien.FundingCompanyId.HasValue) missing.Add("fundingCompany");
+        if (requireFundingCompany && !lien.FundingCompanyId.HasValue) missing.Add("fundingCompany");
         if (!lien.AskAmount.HasValue || lien.AskAmount.Value <= 0m) missing.Add("askAmount");
         if (pricingRows == 0) missing.Add("medicalPricing");
         if (documents == 0) missing.Add("documents");

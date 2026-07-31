@@ -79,7 +79,7 @@ new mutation (reuse it only to retry that exact request).
 | `POST` | `/api/liens/selling/liens` | Creates a lien directly in `Pending` or `Internal`; it does not create a seller draft. |
 | `GET` | `/api/liens/selling/liens/{lienId}` | Returns seller-scoped lien detail for the intake wizard, including funding-company contact person/email and case-manager/law-firm details when available. |
 | `PUT` | `/api/liens/selling/liens/{lienId}/lien-information`, `/case-information`, `/medical-pricing`, `/documents` | Saves the seller wizard sections. Existing document IDs are verified against the Documents service and must reference the seller-owned lien or case. |
-| `POST` | `/api/liens/selling/liens/{lienId}/prepare-sale` | Validates readiness and stores the selected buyer organisation/contact and buyer message without changing internal notes. |
+| `POST` | `/api/liens/selling/liens/{lienId}/prepare-sale` | Validates readiness and stores the selected buyer contact, deriving its buyer organization without requiring a separate funding-company selection. |
 | `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and sends buyer and seller `New Lien Offer` emails. |
 | `POST` | `/api/liens/selling/liens/{lienId}/withdraw-sale`, `/archive`, `/buyer-access-links` | Withdraws a submitted lien, archives an unsold lien, or creates a time-limited buyer capability link. Raw link tokens are returned only on first creation and are never persisted. |
 | `GET` | `/api/liens/selling/bulk-import-template` | Downloads the current CSV template for a staged selling-lien bulk import. |
