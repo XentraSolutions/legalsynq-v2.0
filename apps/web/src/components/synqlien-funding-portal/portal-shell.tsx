@@ -169,10 +169,6 @@ export function SynqLienFundingPortalShell({
                   Synq<span className="text-[#ee7132]">Lien</span>
                 </span>
               </Link>
-              <HeaderBreadcrumbs items={breadcrumbs} />
-              <span className="hidden h-[17px] w-4 items-center justify-center lg:flex">
-                <span className="h-full w-px bg-[#e5e5e5]" />
-              </span>
               <button
                 type="button"
                 onClick={toggleSidebar}
@@ -184,6 +180,10 @@ export function SynqLienFundingPortalShell({
               >
                 <PanelLeft className="h-4 w-4" aria-hidden="true" strokeWidth={2} />
               </button>
+              <span className="hidden h-[17px] w-4 items-center justify-center lg:flex">
+                <span className="h-full w-px bg-[#e5e5e5]" />
+              </span>
+              <HeaderBreadcrumbs items={breadcrumbs} />
               <nav className="ml-auto flex items-center gap-1 lg:hidden">
                 {NAV_ITEMS.map(item => {
                   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
