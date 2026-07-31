@@ -12,6 +12,7 @@ import { ConfirmDialog, Modal } from "@/components/lien/modal";
 import { LienInformationPanel } from "@/components/selling/lien-detail/lien-information-panel";
 import { FundingCompanyAndCaseInformationPanel } from "@/components/selling/lien-detail/funding-company-information-panel";
 import { MedicalCodesInformationPanel } from "@/components/selling/lien-detail/medical-codes-information-panel";
+import { EditMedicalPricingModal } from "@/components/selling/lien-detail/edit-medical-pricing-modal";
 import {
   sellingLookupsApi,
   type SellingLookupItem,
@@ -92,10 +93,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
   const [contacts, setContacts] = useState<SellingLookupItem[]>([]);
   const [contactId, setContactId] = useState<string | null>(null);
 
-  // Step 2 — documents + message. Pricing/ask amount are edited on the lien
-  // detail page (Medical Code & Marketplace Pricing panel), not here — this
-  // step only displays what's already been set, matching how the rest of
-  // this page treats those fields as read-only-until-explicitly-edited.
+  // Step 2 — documents + message.
   const [messageToBuyer, setMessageToBuyer] = useState("");
   const [docSlots, setDocSlots] =
     useState<Record<string, DocSlotState>>(emptyDocSlots());
@@ -106,6 +104,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [showEditPricing, setShowEditPricing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,6 +141,18 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lienId]);
+
+  const refreshLien = async () => {
+    try {
+      const detail = await liensService.getLienById(lienId);
+      setLien(detail);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Failed to load lien",
+        "error",
+      );
+    }
+  };
 
   useEffect(() => {
     if (!companyId) {
@@ -404,15 +415,8 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
             <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
               <i className="ri-alert-line text-amber-600 shrink-0" />
               <p className="text-xs text-amber-700">
-                This lien has no medical pricing or ask amount set yet. Go back
-                to{" "}
-                <Link
-                  href={`/selling/portfolio/${lienId}`}
-                  className="underline font-medium"
-                >
-                  the lien details page
-                </Link>{" "}
-                and edit &ldquo;Medical Code &amp; Marketplace Pricing&rdquo;
+                This lien has no medical pricing or ask amount set yet. Edit
+                &ldquo;Medical Code &amp; Marketplace Pricing&rdquo; below
                 before this lien can be sold.
               </p>
             </div>
@@ -450,7 +454,10 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
                 }
                 caseInformation={lien.caseInformation}
               />
-              <MedicalCodesInformationPanel lien={lien.medicalPricing.rows} />
+              <MedicalCodesInformationPanel
+                lien={lien.medicalPricing.rows}
+                onEdit={() => setShowEditPricing(true)}
+              />
             </div>
 
             <div className="space-y-4">
@@ -560,6 +567,19 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
           The buyer has been notified and can now begin the evaluation process.
         </p>
       </Modal>
+
+      {showEditPricing && (
+        <EditMedicalPricingModal
+          lienId={lienId}
+          rows={lien.medicalPricing.rows}
+          askAmount={lien.medicalPricing.askAmount}
+          onClose={() => setShowEditPricing(false)}
+          onSaved={() => {
+            setShowEditPricing(false);
+            refreshLien();
+          }}
+        />
+      )}
     </div>
   );
 }
