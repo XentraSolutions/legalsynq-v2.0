@@ -132,11 +132,8 @@ export default function AddLienComponent(props: AddLienComponentProps) {
         listingVisibility: payload.listingVisibility,
         notes: payload.notes,
       };
-      const draft = await liensService.createLienDraft({
-        sellerStatus: "Draft",
-        source: "Single",
-      });
-      await liensService.createLienInfo(draft, request);
+
+      await liensService.createLienInfo("", request);
       showToast("Liens Created", "success");
       setErrors({});
     } catch (err) {
