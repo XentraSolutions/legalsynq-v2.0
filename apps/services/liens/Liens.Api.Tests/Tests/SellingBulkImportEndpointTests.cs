@@ -185,7 +185,7 @@ public class SellingBulkImportEndpointTests : IClassFixture<LiensApiFactory>, IA
     [Fact]
     public async Task Confirm_bulk_import_rejects_rows_marked_invalid_by_validation()
     {
-        const string csv = "Case Code*,Initial Service Date*,Facility Name*,Medical Code & Description*,Billing Amount*\r\nCASE-10001,2026-07-19,Unknown Facility,45385 - Colonoscopy,250.00\r\n";
+        const string csv = "Case Code*,Initial Service Date*,Facility Name*,Medical Code & Description*,Billing Amount*\r\nCASE-10001,2026-07-19,,45385 - Colonoscopy,250.00\r\n";
         using var form = new MultipartFormDataContent();
         using var file = new ByteArrayContent(Encoding.UTF8.GetBytes(csv));
         file.Headers.ContentType = new MediaTypeHeaderValue("text/csv");
@@ -203,6 +203,36 @@ public class SellingBulkImportEndpointTests : IClassFixture<LiensApiFactory>, IA
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
         (await response.Content.ReadAsStringAsync()).Should().Contain("Correct invalid rows before confirming");
+    }
+
+    [Fact]
+    public async Task Confirm_bulk_import_preserves_unmatched_lookup_names()
+    {
+        const string csv = "Case Code*,Initial Service Date*,Funding Company,Facility Name*,Medical Provider Name,Medical Code & Description*,Billing Amount*\r\nCASE-10001,2026-07-31,Demo Funding Company,Demo Medical Facility,Demo Medical Provider,45385 - Colonoscopy,879.00\r\n";
+        using var form = new MultipartFormDataContent();
+        using var file = new ByteArrayContent(Encoding.UTF8.GetBytes(csv));
+        file.Headers.ContentType = new MediaTypeHeaderValue("text/csv");
+        form.Add(file, "file", "selling-lien-import.csv");
+        form.Add(new StringContent("SellingLienImport"), "templateType");
+        var upload = await _client.PostAsync("/api/liens/selling/bulk-imports", form);
+        upload.EnsureSuccessStatusCode();
+        using var uploadJson = JsonDocument.Parse(await upload.Content.ReadAsStringAsync());
+        var importId = uploadJson.RootElement.GetProperty("importId").GetGuid();
+
+        (await _client.PostAsync($"/api/liens/selling/bulk-imports/{importId}/validate", null)).EnsureSuccessStatusCode();
+        using var confirm = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/bulk-imports/{importId}/confirm");
+        confirm.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        var confirmed = await _client.SendAsync(confirm);
+        confirmed.StatusCode.Should().Be(HttpStatusCode.OK, await confirmed.Content.ReadAsStringAsync());
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var lien = db.Liens.Single(item => item.ExternalReference == "Demo Funding Company");
+        lien.FundingCompanyId.Should().BeNull();
+        lien.FacilityId.Should().BeNull();
+        db.ServicingItems.Should().Contain(item => item.LienId == lien.Id && item.TaskType == "SellingMedicalPricing" && item.Description == "45385");
+        db.ServicingItems.Should().Contain(item => item.LienId == lien.Id && item.TaskType == "LegacyMedicalFacilityInfo" &&
+            item.Notes!.Contains("facilityName=Demo Medical Facility") && item.Notes.Contains("medicalProvider=Demo Medical Provider"));
     }
 
     [Fact]

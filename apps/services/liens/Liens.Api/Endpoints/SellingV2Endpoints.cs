@@ -215,10 +215,10 @@ public static class SellingV2Endpoints
                 lawFirmId = lawFirm?.Id,
                 lawFirm = lawFirm is null ? null : DisplayName(lawFirm),
             },
-            fundingCompany = fundingCompany is null ? null : new
+            fundingCompany = fundingCompany is null && string.IsNullOrWhiteSpace(lien.ExternalReference) ? null : new
             {
-                fundingCompany.Id,
-                name = DisplayName(fundingCompany),
+                id = fundingCompany?.Id,
+                name = fundingCompany is null ? lien.ExternalReference : DisplayName(fundingCompany),
                 contactPerson = fundingContact?.DisplayName,
                 emailAddress = fundingContact?.Email,
                 contact = fundingContact is null ? null : new { fundingContact.Id, name = DisplayName(fundingContact) },
@@ -888,7 +888,7 @@ public static class SellingV2Endpoints
 
     private static async Task<IResult> ValidateBulkImport(Guid importId, LiensDbContext db, ICurrentRequestContext context, CancellationToken ct)
     {
-        var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
+        var (tenantId, _, userId) = RequireSellerContext(context);
         var batch = await GetSellingImportAsync(db, tenantId, importId, ct);
         if (batch is null) return Results.NotFound();
         if (batch.Status != "A") return Results.Conflict(new { error = new { code = "import_cancelled" } });
@@ -917,21 +917,10 @@ public static class SellingV2Endpoints
             }
 
             var rows = await db.BatchUploadDetails.Where(row => row.TenantId == tenantId && row.BatchUploadId == batch.Id && row.RecordStatus == "A").ToListAsync(ct);
-            var fundingCompanies = await db.Contacts.AsNoTracking()
-                .Where(contact => contact.TenantId == tenantId && contact.IsActive &&
-                    (contact.ContactType == ContactType.FundingCompany || contact.ContactType == ContactType.LienHolder))
-                .ToListAsync(ct);
-            var medicalProviders = await db.Contacts.AsNoTracking()
-                .Where(contact => contact.TenantId == tenantId && contact.IsActive && contact.ContactType == ContactType.Provider)
-                .ToListAsync(ct);
-            var facilities = await db.Facilities.AsNoTracking()
-                .Where(facility => facility.TenantId == tenantId && facility.OrgId == sellerOrgId && facility.IsActive)
-                .ToListAsync(ct);
             foreach (var row in rows)
             {
                 var values = JsonSerializer.Deserialize<Dictionary<string, string>>(row.DataJson) ?? [];
-                var reason = ValidateImportRow(values)
-                    ?? ValidateImportAssociation(values, fundingCompanies, medicalProviders, facilities);
+                var reason = ValidateImportRow(values);
                 row.SetResult(reason is null ? "VALID" : "INVALID", reason, userId);
             }
             batch.SetProcessStatus(rows.Any(row => row.Status == "INVALID") ? "VALIDATED_WITH_ERRORS" : "VALIDATED", userId);
@@ -1020,23 +1009,15 @@ public static class SellingV2Endpoints
                     var values = JsonSerializer.Deserialize<Dictionary<string, string>>(row.DataJson) ?? [];
                     var fundingCompanyName = GetImportValue(values, "Funding Company");
                     var fundingCompany = ResolveImportContactByName(fundingCompanies, fundingCompanyName);
-                    if (!string.IsNullOrWhiteSpace(fundingCompanyName) && fundingCompany is null)
-                        throw new InvalidOperationException($"Funding company '{fundingCompanyName}' was not found among active tenant funding companies.");
-
                     var facilityName = GetImportValue(values, "Facility Name*");
                     var facility = ResolveImportFacilityByName(facilities, facilityName);
-                    if (!string.IsNullOrWhiteSpace(facilityName) && facility is null)
-                        throw new InvalidOperationException($"Facility '{facilityName}' was not found among active seller facilities.");
-
                     var medicalProviderName = GetImportValue(values, "Medical Provider Name");
                     var medicalProvider = ResolveImportContactByName(medicalProviders, medicalProviderName);
-                    if (!string.IsNullOrWhiteSpace(medicalProviderName) && medicalProvider is null)
-                        throw new InvalidOperationException($"Medical provider '{medicalProviderName}' was not found among active tenant providers.");
 
                     var (medicalCode, medicalDescription) = ParseImportMedicalCode(GetImportValue(values, "Medical Code & Description*"));
                     lien = Lien.Create(tenantId, sellerOrgId, ResolveImportLienNumber(values), LienType.MedicalLien,
                         ParseImportDecimal(values, "Billing Amount*"), userId,
-                        externalReference: fundingCompany?.Id.ToString(),
+                        externalReference: fundingCompany?.Id.ToString() ?? fundingCompanyName,
                         facilityId: facility?.Id,
                         initialServiceDate: ParseImportDate(values, "Initial Service Date*"),
                         endServiceDate: ParseImportDate(values, "End Service Date"),
@@ -1298,58 +1279,18 @@ public static class SellingV2Endpoints
         if (!TryParseImportDecimal(values, "Billing Amount*", out var billing) || billing < 0m) return "Billing Amount* must be a non-negative decimal.";
         return null;
     }
-    private static string? ValidateImportAssociation(
-        IReadOnlyDictionary<string, string> values,
-        IEnumerable<Contact> fundingCompanies,
-        IEnumerable<Contact> medicalProviders,
-        IEnumerable<Facility> facilities)
-        => FindImportAssociationIssue(fundingCompanies, GetImportValue(values, "Funding Company"), "Funding company")
-            ?? FindImportAssociationIssue(facilities, GetImportValue(values, "Facility Name*"), "Facility")
-            ?? FindImportAssociationIssue(medicalProviders, GetImportValue(values, "Medical Provider Name"), "Medical provider");
-    private static string? FindImportAssociationIssue(IEnumerable<Contact> contacts, string? name, string label)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return null;
-        var matches = contacts.Count(contact => ImportContactNameMatches(contact, name));
-        return matches switch
-        {
-            0 => $"{label} '{name}' was not found among active tenant records.",
-            > 1 => $"{label} '{name}' is ambiguous because multiple active tenant records match it.",
-            _ => null,
-        };
-    }
-    private static string? FindImportAssociationIssue(IEnumerable<Facility> facilities, string? name, string label)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return null;
-        var matches = facilities.Count(facility => ImportFacilityNameMatches(facility, name));
-        return matches switch
-        {
-            0 => $"{label} '{name}' was not found among active seller facilities.",
-            > 1 => $"{label} '{name}' is ambiguous because multiple active seller facilities match it.",
-            _ => null,
-        };
-    }
     private static string ResolveImportLienNumber(IReadOnlyDictionary<string, string> values) => $"SL-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant();
     private static Contact? ResolveImportContactByName(IEnumerable<Contact> contacts, string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
         var matches = contacts.Where(contact => ImportContactNameMatches(contact, name)).Take(2).ToList();
-        return matches.Count switch
-        {
-            1 => matches[0],
-            0 => throw new InvalidOperationException($"No active tenant record matches '{name}'."),
-            _ => throw new InvalidOperationException($"Multiple active tenant records match '{name}'."),
-        };
+        return matches.Count == 1 ? matches[0] : null;
     }
     private static Facility? ResolveImportFacilityByName(IEnumerable<Facility> facilities, string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
         var matches = facilities.Where(facility => ImportFacilityNameMatches(facility, name)).Take(2).ToList();
-        return matches.Count switch
-        {
-            1 => matches[0],
-            0 => throw new InvalidOperationException($"No active seller facility matches '{name}'."),
-            _ => throw new InvalidOperationException($"Multiple active seller facilities match '{name}'."),
-        };
+        return matches.Count == 1 ? matches[0] : null;
     }
     private static bool ImportContactNameMatches(Contact contact, string name)
         => string.Equals(contact.Organization, name.Trim(), StringComparison.OrdinalIgnoreCase)
