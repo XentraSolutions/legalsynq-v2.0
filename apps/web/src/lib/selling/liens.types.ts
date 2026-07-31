@@ -299,7 +299,7 @@ export interface SaveSellingDocumentsRequest {
 
 export interface PrepareSellingLienRequest {
   buyerFundingCompanyId: string;
-  buyerContactId: string;
+  buyerContactId?: string;
   askAmount?: number;
   listingVisibility?: string;
   messageToBuyer?: string;

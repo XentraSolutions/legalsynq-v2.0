@@ -71,8 +71,11 @@ export function sellerStatusLabel(sellerStatus: string | null | undefined): stri
   return SELLER_STATUS_LABELS[sellerStatus] ?? sellerStatus;
 }
 
-export const REQUIRED_SALE_DOCUMENT_TYPES = ["LienAgreement", "MedicalBill"] as const;
-export const OPTIONAL_SALE_DOCUMENT_TYPES = ["MedicalRecord", "PoliceReport"] as const;
+// LienAgreement (LOP) temporarily moved to optional — the sell document API
+// currently only supports saving a single document, so requiring both
+// LienAgreement and MedicalBill would make the form impossible to submit.
+export const REQUIRED_SALE_DOCUMENT_TYPES = ["MedicalBill"] as const;
+export const OPTIONAL_SALE_DOCUMENT_TYPES = ["LienAgreement", "MedicalRecord", "PoliceReport"] as const;
 
 export const SALE_DOCUMENT_LABELS: Record<string, { title: string; description: string }> = {
   LienAgreement: {
