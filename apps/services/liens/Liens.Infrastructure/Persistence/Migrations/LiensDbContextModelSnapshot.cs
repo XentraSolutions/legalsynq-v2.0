@@ -1369,6 +1369,16 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("BuyerOrgId")
                         .HasColumnType("char(36)");
 
+                    b.Property<DateTime?>("AccountActivatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("AccountActivatedEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("varchar(320)");
+
+                    b.Property<Guid?>("AccountActivatedUserId")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 

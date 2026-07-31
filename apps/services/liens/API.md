@@ -736,8 +736,9 @@ rendering.
 The JSON payload is populated only from persisted lien, case, contact, buyer, seller, access-link, and servicing
 document metadata. It includes seller, buyer/funding company, lien summary, case, access-link expiry, and real
 supporting-document fields. It never inserts sample company names, sample people, sample files, `example.com`, or
-caller-provided CTA data. For buyer-purpose links, the `account` block indicates whether the token-scoped buyer email
-already belongs to an Identity account so the tenant portal can render `Log In` instead of `Activate Free Account`.
+caller-provided CTA data. For buyer-purpose links, the `account` block indicates whether the access link has already
+activated an account or whether the token-scoped buyer email already belongs to an Identity account, so the tenant portal
+can render `Log In` instead of `Activate Free Account`.
 
 ```json
 {
@@ -888,8 +889,10 @@ same token validation as the public `GET`, and is intended to be called by the t
 `/api/lien/api/liens/selling/public/{token}/activate-account`. Liens asks Identity to create or resolve a tenant-scoped
 `LIEN_OWNER` organization for the source Liens buyer organization id, then Identity grants `SYNQ_LIENS` product access
 and assigns `SYNQLIEN_BUYER` scoped to that Identity organization. Existing buyer contact values from the token win over
-editable request values; request values only fill missing contact data. Existing account emails return `409` and should
-be handled by prompting the buyer to log in with the existing account.
+editable request values; request values only fill missing contact data. On successful activation, Liens records the
+activated Identity user/email on the access link so later public `GET` requests continue to return
+`account.hasExistingAccount=true` even when the original buyer contact did not have an email. Existing account emails
+return `409` and should be handled by prompting the buyer to log in with the existing account.
 
 This account activation does not accept or decline the lien, create a Bill of Sale, mark a lien sold, or otherwise
 finalize sale. Seller-view tokens are read-only and return `403 read-only-link`.

@@ -937,6 +937,7 @@ public static class SellingPublicEndpoints
                 result.StatusCode.GetValueOrDefault(StatusCodes.Status503ServiceUnavailable));
         }
 
+        view.AccessLink.RecordAccountActivation(result.UserId!.Value, email);
         view.AccessLink.MarkAccessed();
         await db.SaveChangesAsync(ct);
 
@@ -1860,6 +1861,9 @@ public static class SellingPublicEndpoints
     {
         if (!IsBuyerResponseLink(view.AccessLink))
             return null;
+
+        if (view.AccessLink.AccountActivatedAtUtc.HasValue)
+            return new PublicBuyerAccountResponse(true, BuildSynqLienBuyerLoginUrl(view.AccessLink.TenantId));
 
         var email = view.BuyerContact?.Email?.Trim();
         if (string.IsNullOrWhiteSpace(email))

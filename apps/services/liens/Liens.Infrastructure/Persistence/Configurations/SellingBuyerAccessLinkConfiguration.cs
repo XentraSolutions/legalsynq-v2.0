@@ -57,6 +57,13 @@ public class SellingBuyerAccessLinkConfiguration : IEntityTypeConfiguration<Sell
         builder.Property(l => l.ResponseIdempotencyKey)
             .HasMaxLength(280);
 
+        builder.Property(l => l.AccountActivatedUserId);
+
+        builder.Property(l => l.AccountActivatedEmail)
+            .HasMaxLength(320);
+
+        builder.Property(l => l.AccountActivatedAtUtc);
+
         builder.Property(l => l.CreatedByUserId).IsRequired();
         builder.Property(l => l.UpdatedByUserId);
         builder.Property(l => l.CreatedAtUtc).IsRequired();

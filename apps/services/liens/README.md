@@ -165,9 +165,12 @@ uses the token-scoped buyer organization/contact data to ask Identity to create 
 `LIEN_OWNER` organization for the source Liens buyer org, then create an active user with
 `SYNQ_LIENS:SYNQLIEN_BUYER`. If the email already belongs to an Identity account, activation returns a `409`
 error so the buyer can log in with the existing account instead. It does not accept or decline the lien and does
-not finalize sale. The public `GET /api/liens/selling/public/{token}` response also includes an `account` block for
-buyer-purpose links; when Identity reports `hasExistingAccount=true`, the tenant portal replaces `Activate Free Account`
-with `Log In` and sends the buyer to `/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation&tenantId=<offer-tenant-id>`.
+not finalize sale. Successful activation records the activated Identity user/email on the access link, so later public
+page loads continue to show the login CTA even when the original buyer contact email was missing. The public
+`GET /api/liens/selling/public/{token}` response also includes an `account` block for buyer-purpose links; when the
+link has already activated an account or Identity reports `hasExistingAccount=true`, the tenant portal replaces
+`Activate Free Account` with `Log In` and sends the buyer to
+`/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation&tenantId=<offer-tenant-id>`.
 The `tenantId` query parameter keeps common-portal sign-in scoped to the tenant that issued the offer when the buyer email
 belongs to multiple funding organizations.
 When sending links through the tenant portal host, configure

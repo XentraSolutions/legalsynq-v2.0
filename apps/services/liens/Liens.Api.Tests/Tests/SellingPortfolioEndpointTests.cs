@@ -2350,6 +2350,108 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task PublicBuyerPortal_activate_account_marks_link_for_login_cta_when_contact_email_missing()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            originalAmount: 9875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.activate-missing-email@smithlaw.test",
+            buyerEmail: "buyer.activate-before-clear@capital.test");
+
+        var confirmResponse = await PostConfirmSaleAsync(
+            lienId,
+            $"confirm-sale-public-response-activate-missing-email-{Guid.NewGuid():N}");
+        confirmResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await confirmResponse.Content.ReadAsStringAsync()}");
+
+        var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        var token = ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!);
+        var createdUserId = new Guid("20000000-0000-0000-0000-000000000202");
+
+        using (var clearEmailScope = _factory.Services.CreateScope())
+        {
+            var db = clearEmailScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var contact = db.Contacts.Single(c => c.Id == buyerContactId);
+            contact.Update(
+                contact.FirstName,
+                contact.LastName,
+                contact.ContactType,
+                SeedHelper.UserId,
+                facilityId: contact.FacilityId,
+                lawFirmId: contact.LawFirmId,
+                contactSubtype: contact.ContactSubtype,
+                title: contact.Title,
+                organization: contact.Organization,
+                email: null,
+                phone: contact.Phone,
+                fax: contact.Fax,
+                website: contact.Website,
+                addressLine1: contact.AddressLine1,
+                city: contact.City,
+                state: contact.State,
+                postalCode: contact.PostalCode,
+                notes: contact.Notes);
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>()
+                .NextResult = PublicBuyerAccountProvisioningResult.Created(createdUserId, isNew: true);
+        }
+
+        var activationResponse = await PostPublicBuyerActivationAsync(
+            token,
+            new
+            {
+                companyName = "Capital Fund LLC",
+                email = "buyer.created-from-token@capital.test",
+                firstName = "Buyer",
+                lastName = "Reviewer",
+                password = "Password123!",
+            });
+
+        activationResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await activationResponse.Content.ReadAsStringAsync()}");
+
+        using (var verifyScope = _factory.Services.CreateScope())
+        {
+            var db = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var tokenHash = SellingBuyerAccessLink.ComputeTokenHash(token);
+            var link = db.SellingBuyerAccessLinks.Single(l => l.TokenHash == tokenHash);
+            link.AccountActivatedUserId.Should().Be(createdUserId);
+            link.AccountActivatedEmail.Should().Be("buyer.created-from-token@capital.test");
+            link.AccountActivatedAtUtc.Should().NotBeNull();
+
+            var provisioning = verifyScope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>();
+            provisioning.Requests.Should().ContainSingle();
+            provisioning.Requests.Single().Email.Should().Be("buyer.created-from-token@capital.test");
+        }
+
+        using var anonClient = _factory.CreateClient();
+        var publicResponse = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+
+        publicResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await publicResponse.Content.ReadAsStringAsync()}");
+        var json = await publicResponse.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("account").GetProperty("hasExistingAccount").GetBoolean().Should().BeTrue();
+        json.GetProperty("account").GetProperty("loginUrl").GetString()
+            .Should().Be($"/login?returnTo=%2Ffunding%2Fdashboard&reason=synqlien-buyer-activation&tenantId={SeedHelper.TenantId:D}");
+
+        using var statusScope = _factory.Services.CreateScope();
+        statusScope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>()
+            .StatusRequests.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task PublicBuyerPortal_activate_account_rejects_unknown_token_without_provisioning()
     {
         var response = await PostPublicBuyerActivationAsync(

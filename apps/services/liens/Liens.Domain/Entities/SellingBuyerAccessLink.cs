@@ -28,6 +28,9 @@ public class SellingBuyerAccessLink : AuditableEntity
     public string? ResponseNotes { get; private set; }
     public DateTime? RespondedAtUtc { get; private set; }
     public string? ResponseIdempotencyKey { get; private set; }
+    public Guid? AccountActivatedUserId { get; private set; }
+    public string? AccountActivatedEmail { get; private set; }
+    public DateTime? AccountActivatedAtUtc { get; private set; }
 
     private SellingBuyerAccessLink() { }
 
@@ -105,6 +108,18 @@ public class SellingBuyerAccessLink : AuditableEntity
     public void MarkAccessed()
     {
         LastAccessedAtUtc = DateTime.UtcNow;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void RecordAccountActivation(Guid userId, string email)
+    {
+        if (userId == Guid.Empty)
+            throw new ArgumentException("UserId is required.", nameof(userId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(email);
+
+        AccountActivatedUserId = userId;
+        AccountActivatedEmail = email.Trim();
+        AccountActivatedAtUtc = DateTime.UtcNow;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
