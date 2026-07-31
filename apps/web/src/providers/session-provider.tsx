@@ -52,7 +52,12 @@ const PERMISSION_SYNC_INTERVAL_MS = 60_000;
 const SESSION_BROADCAST_CHANNEL = "platform_session_sync";
 
 function shouldPreloadLookupCache(pathname: string | null): boolean {
-  return pathname === "/lien" || pathname?.startsWith("/lien/") === true;
+  return (
+    pathname === "/lien" ||
+    pathname?.startsWith("/lien/") === true ||
+    pathname === "/selling" ||
+    pathname?.startsWith("/selling/") === true
+  );
 }
 
 /**
