@@ -452,10 +452,14 @@ public static class SellingV2Endpoints
         if (!IntakeStatuses.Contains(lien.SellerStatus ?? string.Empty))
             return ValidationError("sellerStatus", "Only Pending or Internal liens can be prepared for sale.");
 
-        var buyerContact = await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c =>
-            c.TenantId == tenantId && c.Id == request.BuyerContactId && c.IsActive, ct);
-        if (buyerContact is null)
-            return ValidationError("buyerContactId", "Buyer contact must be active and belong to this tenant.");
+        Contact? buyerContact = null;
+        if (request.BuyerContactId is { } buyerContactId && buyerContactId != Guid.Empty)
+        {
+            buyerContact = await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c =>
+                c.TenantId == tenantId && c.Id == buyerContactId && c.IsActive, ct);
+            if (buyerContact is null)
+                return ValidationError("buyerContactId", "Buyer contact must be active and belong to this tenant.");
+        }
         var pricingRows = await db.ServicingItems.AnyAsync(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingMedicalPricingTaskType, ct);
         var documents = await db.ServicingItems.AnyAsync(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingDocumentTaskType, ct);
         if (!Readiness(lien, lien.CaseId.HasValue, pricingRows ? 1 : 0, documents ? 1 : 0, requireFundingCompany: false).ready)
@@ -472,10 +476,10 @@ public static class SellingV2Endpoints
         lien.UpdateSellingAnalyticsFields(userId,
             sellerStatus: SellingLienStatus.PreparedForSale,
             listingVisibility: visibility,
-            // Buyer organization is derived from the selected contact so callers
-            // do not need to select a separate funding-company record.
-            fundingCompanyId: buyerContact.OrgId,
-            fundingCompanyContactId: buyerContact.Id,
+            // A buyer is optional while preparing. When selected, its organization
+            // is derived from the contact rather than a separate company record.
+            fundingCompanyId: buyerContact?.OrgId,
+            fundingCompanyContactId: buyerContact?.Id,
             askAmount: request.AskAmount);
         lien.SetBuyerMessage(request.MessageToBuyer, userId);
         AddActivity(db, lien, userId, "Lien prepared for sale.");
@@ -884,20 +888,66 @@ public static class SellingV2Endpoints
 
     private static async Task<IResult> ValidateBulkImport(Guid importId, LiensDbContext db, ICurrentRequestContext context, CancellationToken ct)
     {
-        var (tenantId, _, userId) = RequireSellerContext(context);
+        var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
         var batch = await GetSellingImportAsync(db, tenantId, importId, ct);
         if (batch is null) return Results.NotFound();
         if (batch.Status != "A") return Results.Conflict(new { error = new { code = "import_cancelled" } });
-        var rows = await db.BatchUploadDetails.Where(row => row.TenantId == tenantId && row.BatchUploadId == batch.Id && row.RecordStatus == "A").ToListAsync(ct);
-        foreach (var row in rows)
+        if (batch.ProcessStatus is "CONFIRMED" or "PARTIAL")
+            return Results.Conflict(new { error = new { code = "import_already_confirmed" } });
+        var transitionGate = await SellingIdempotency.TryBeginAsync(
+            db, tenantId, "BulkImportTransition", importId, "/api/liens/selling/bulk-imports/{importId}/confirm-transition",
+            "BulkImport", importId.ToString(), "bulk-import-confirm-transition-v1", request: null, ct: ct);
+        if (transitionGate.Result is not null)
+            return Results.Conflict(new { error = new { code = "import_transition_in_progress", message = "This bulk import is currently being confirmed or cancelled. Retry shortly." } });
+
+        try
         {
-            var values = JsonSerializer.Deserialize<Dictionary<string, string>>(row.DataJson) ?? [];
-            var reason = ValidateImportRow(values);
-            row.SetResult(reason is null ? "VALID" : "INVALID", reason, userId);
+            await db.Entry(batch).ReloadAsync(ct);
+            if (batch.Status != "A")
+            {
+                db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+                await db.SaveChangesAsync(CancellationToken.None);
+                return Results.Conflict(new { error = new { code = "import_cancelled" } });
+            }
+            if (batch.ProcessStatus is "CONFIRMED" or "PARTIAL")
+            {
+                db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+                await db.SaveChangesAsync(CancellationToken.None);
+                return Results.Conflict(new { error = new { code = "import_already_confirmed" } });
+            }
+
+            var rows = await db.BatchUploadDetails.Where(row => row.TenantId == tenantId && row.BatchUploadId == batch.Id && row.RecordStatus == "A").ToListAsync(ct);
+            var fundingCompanies = await db.Contacts.AsNoTracking()
+                .Where(contact => contact.TenantId == tenantId && contact.IsActive &&
+                    (contact.ContactType == ContactType.FundingCompany || contact.ContactType == ContactType.LienHolder))
+                .ToListAsync(ct);
+            var medicalProviders = await db.Contacts.AsNoTracking()
+                .Where(contact => contact.TenantId == tenantId && contact.IsActive && contact.ContactType == ContactType.Provider)
+                .ToListAsync(ct);
+            var facilities = await db.Facilities.AsNoTracking()
+                .Where(facility => facility.TenantId == tenantId && facility.OrgId == sellerOrgId && facility.IsActive)
+                .ToListAsync(ct);
+            foreach (var row in rows)
+            {
+                var values = JsonSerializer.Deserialize<Dictionary<string, string>>(row.DataJson) ?? [];
+                var reason = ValidateImportRow(values)
+                    ?? ValidateImportAssociation(values, fundingCompanies, medicalProviders, facilities);
+                row.SetResult(reason is null ? "VALID" : "INVALID", reason, userId);
+            }
+            batch.SetProcessStatus(rows.Any(row => row.Status == "INVALID") ? "VALIDATED_WITH_ERRORS" : "VALIDATED", userId);
+            await db.SaveChangesAsync(ct);
+            var response = Results.Ok(new { importId, status = batch.ProcessStatus, validCount = rows.Count(row => row.Status == "VALID"), invalidCount = rows.Count(row => row.Status == "INVALID") });
+            db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+            await db.SaveChangesAsync(CancellationToken.None);
+            return response;
         }
-        batch.SetProcessStatus(rows.Any(row => row.Status == "INVALID") ? "VALIDATED_WITH_ERRORS" : "VALIDATED", userId);
-        await db.SaveChangesAsync(ct);
-        return Results.Ok(new { importId, status = batch.ProcessStatus, validCount = rows.Count(row => row.Status == "VALID"), invalidCount = rows.Count(row => row.Status == "INVALID") });
+        catch
+        {
+            db.ChangeTracker.Clear();
+            db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     private static async Task<IResult> ConfirmBulkImport(Guid importId, HttpRequest httpRequest, LiensDbContext db, ICurrentRequestContext context, CancellationToken ct)
@@ -910,35 +960,155 @@ public static class SellingV2Endpoints
         var batch = await GetSellingImportAsync(db, tenantId, importId, ct);
         if (batch is null) return Results.NotFound();
         if (batch.Status != "A") return Results.Conflict(new { error = new { code = "import_cancelled" } });
+        if (batch.ProcessStatus is "CONFIRMED" or "PARTIAL")
+            return Results.Conflict(new { error = new { code = "import_already_confirmed" } });
         var rows = await db.BatchUploadDetails.Where(row => row.TenantId == tenantId && row.BatchUploadId == batch.Id && row.RecordStatus == "A").ToListAsync(ct);
         if (rows.Any(row => row.Status == "PENDING")) return ValidationError("importId", "Validate the bulk import before confirming it.");
-        var started = await SellingIdempotency.TryBeginAsync(
-            db, tenantId, "User", userId, "/api/liens/selling/bulk-imports/{importId}/confirm", "BulkImport", importId.ToString(), idempotencyKey!, request: null, ct);
-        if (started.Result is not null) return started.Result;
-        var created = 0;
-        foreach (var row in rows.Where(row => row.Status == "VALID"))
+        if (rows.Any(row => row.Status == "INVALID")) return ValidationError("importId", "Correct invalid rows before confirming the bulk import.");
+        var fundingCompanies = await db.Contacts.AsNoTracking()
+            .Where(contact => contact.TenantId == tenantId && contact.IsActive &&
+                (contact.ContactType == ContactType.FundingCompany || contact.ContactType == ContactType.LienHolder))
+            .ToListAsync(ct);
+        var medicalProviders = await db.Contacts.AsNoTracking()
+            .Where(contact => contact.TenantId == tenantId && contact.IsActive && contact.ContactType == ContactType.Provider)
+            .ToListAsync(ct);
+        var facilities = await db.Facilities.AsNoTracking()
+            .Where(facility => facility.TenantId == tenantId && facility.OrgId == sellerOrgId && facility.IsActive)
+            .ToListAsync(ct);
+
+        // A user idempotency key protects one caller. This batch-level gate also
+        // prevents a second caller/key from creating the staged rows twice.
+        var transitionGate = await SellingIdempotency.TryBeginAsync(
+            db, tenantId, "BulkImportTransition", importId, "/api/liens/selling/bulk-imports/{importId}/confirm-transition",
+            "BulkImport", importId.ToString(), "bulk-import-confirm-transition-v1", request: null, ct: ct);
+        if (transitionGate.Result is not null)
+            return Results.Conflict(new { error = new { code = "import_confirmation_in_progress", message = "This bulk import is already being confirmed. Retry shortly." } });
+
+        await db.Entry(batch).ReloadAsync(ct);
+        if (batch.Status != "A")
         {
-            try
-            {
-                var values = JsonSerializer.Deserialize<Dictionary<string, string>>(row.DataJson) ?? [];
-                var lien = Lien.Create(tenantId, sellerOrgId, ResolveImportLienNumber(values), LienType.MedicalLien,
-                    ParseImportDecimal(values, "Billing Amount*"), userId, initialServiceDate: ParseImportDate(values, "Initial Service Date*"), endServiceDate: ParseImportDate(values, "End Service Date"), notes: GetImportValue(values, "Notes"));
-                lien.UpdateSellingAnalyticsFields(userId,
-                    sellerStatus: NormalizeIntakeStatus(GetImportValue(values, "Seller Status")) ?? SellingLienStatus.Pending,
-                    listingVisibility: NormalizeVisibility(GetImportValue(values, "Listing Visibility")) ?? SellingListingVisibility.Private);
-                db.Liens.Add(lien);
-                row.SetResult("CREATED", null, userId);
-                created++;
-            }
-            catch (Exception ex)
-            {
-                row.SetResult("FAILED", ex.Message, userId);
-            }
+            db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+            await db.SaveChangesAsync(CancellationToken.None);
+            return Results.Conflict(new { error = new { code = "import_cancelled" } });
         }
-        batch.SetProcessStatus(rows.Any(row => row.Status == "FAILED") ? "PARTIAL" : "CONFIRMED", userId);
-        await db.SaveChangesAsync(ct);
-        return await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status200OK,
-            new { importId, status = batch.ProcessStatus, createdCount = created, failedCount = rows.Count(row => row.Status == "FAILED") }, ct);
+        if (batch.ProcessStatus is "CONFIRMED" or "PARTIAL")
+        {
+            db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+            await db.SaveChangesAsync(CancellationToken.None);
+            return Results.Conflict(new { error = new { code = "import_already_confirmed" } });
+        }
+
+        SellingIdempotency.IdempotencyStart? started = null;
+        try
+        {
+            started = await SellingIdempotency.TryBeginAsync(
+                db, tenantId, "User", userId, "/api/liens/selling/bulk-imports/{importId}/confirm", "BulkImport", importId.ToString(), idempotencyKey!, request: null, ct);
+            if (started.Result is not null)
+            {
+                db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+                await db.SaveChangesAsync(CancellationToken.None);
+                return started.Result;
+            }
+
+            var created = 0;
+            foreach (var row in rows.Where(row => row.Status == "VALID"))
+            {
+                Lien? lien = null;
+                var rowEntities = new List<object>();
+                try
+                {
+                    var values = JsonSerializer.Deserialize<Dictionary<string, string>>(row.DataJson) ?? [];
+                    var fundingCompanyName = GetImportValue(values, "Funding Company");
+                    var fundingCompany = ResolveImportContactByName(fundingCompanies, fundingCompanyName);
+                    if (!string.IsNullOrWhiteSpace(fundingCompanyName) && fundingCompany is null)
+                        throw new InvalidOperationException($"Funding company '{fundingCompanyName}' was not found among active tenant funding companies.");
+
+                    var facilityName = GetImportValue(values, "Facility Name*");
+                    var facility = ResolveImportFacilityByName(facilities, facilityName);
+                    if (!string.IsNullOrWhiteSpace(facilityName) && facility is null)
+                        throw new InvalidOperationException($"Facility '{facilityName}' was not found among active seller facilities.");
+
+                    var medicalProviderName = GetImportValue(values, "Medical Provider Name");
+                    var medicalProvider = ResolveImportContactByName(medicalProviders, medicalProviderName);
+                    if (!string.IsNullOrWhiteSpace(medicalProviderName) && medicalProvider is null)
+                        throw new InvalidOperationException($"Medical provider '{medicalProviderName}' was not found among active tenant providers.");
+
+                    var (medicalCode, medicalDescription) = ParseImportMedicalCode(GetImportValue(values, "Medical Code & Description*"));
+                    lien = Lien.Create(tenantId, sellerOrgId, ResolveImportLienNumber(values), LienType.MedicalLien,
+                        ParseImportDecimal(values, "Billing Amount*"), userId,
+                        externalReference: fundingCompany?.Id.ToString(),
+                        facilityId: facility?.Id,
+                        initialServiceDate: ParseImportDate(values, "Initial Service Date*"),
+                        endServiceDate: ParseImportDate(values, "End Service Date"),
+                        notes: GetImportValue(values, "Notes"));
+                    lien.UpdateSellingAnalyticsFields(userId,
+                        sellerStatus: NormalizeIntakeStatus(GetImportValue(values, "Seller Status")) ?? SellingLienStatus.Pending,
+                        listingVisibility: NormalizeVisibility(GetImportValue(values, "Listing Visibility")) ?? SellingListingVisibility.Private,
+                        fundingCompanyId: fundingCompany?.Id);
+                    db.Liens.Add(lien);
+                    rowEntities.Add(lien);
+                    var pricing = ServicingItem.Create(
+                        tenantId, sellerOrgId, $"SMP-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
+                        SellingMedicalPricingTaskType, medicalCode, "Selling", userId,
+                        lienId: lien.Id,
+                        notes: JsonSerializer.Serialize(new
+                        {
+                            medicalCode,
+                            description = medicalDescription,
+                            billingAmount = ParseImportDecimal(values, "Billing Amount*"),
+                            medicareCost = ParseImportDecimal(values, "Medicare Cost"),
+                            targetSaleAmount = ParseImportDecimal(values, "Purchase Amount*"),
+                        }));
+                    db.ServicingItems.Add(pricing);
+                    rowEntities.Add(pricing);
+                    var legacyMedicalCode = ServicingItem.Create(
+                        tenantId, sellerOrgId, $"LMC-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
+                        "LegacyMedicalCode", $"Medical code {medicalCode}", "system", userId,
+                        lienId: lien.Id,
+                        notes: $"code={medicalCode}; description={medicalDescription}; medicareCost={GetImportValue(values, "Medicare Cost") ?? string.Empty}; billingAmount={GetImportValue(values, "Billing Amount*") ?? string.Empty}; purchaseAmount={GetImportValue(values, "Purchase Amount*") ?? string.Empty}; payee={GetImportValue(values, "Payee") ?? string.Empty}; outboundCheckNumber={GetImportValue(values, "Outbound Check Number") ?? string.Empty}");
+                    db.ServicingItems.Add(legacyMedicalCode);
+                    rowEntities.Add(legacyMedicalCode);
+                    var facilityInfo = ServicingItem.Create(
+                        tenantId, sellerOrgId, $"LMFI-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
+                        "LegacyMedicalFacilityInfo", "Legacy medical facility information", "system", userId,
+                        lienId: lien.Id,
+                        notes: $"facilityId={facility?.Id}; facilityName={facility?.Name ?? facilityName ?? string.Empty}; medicalProviderId={medicalProvider?.Id}; medicalProvider={medicalProvider?.Organization ?? medicalProvider?.DisplayName ?? medicalProviderName ?? string.Empty}");
+                    db.ServicingItems.Add(facilityInfo);
+                    rowEntities.Add(facilityInfo);
+                    row.SetResult("CREATED", null, userId);
+                    await db.SaveChangesAsync(ct);
+                    created++;
+                }
+                catch (OperationCanceledException)
+                {
+                    DetachImportRowEntities(db, rowEntities);
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    DetachImportRowEntities(db, rowEntities);
+                    row.SetResult("FAILED", TruncateImportFailureReason(ex.Message), userId);
+                }
+            }
+            batch.SetProcessStatus(rows.Any(row => row.Status == "FAILED") ? "PARTIAL" : "CONFIRMED", userId);
+            await db.SaveChangesAsync(ct);
+            var response = new { importId, status = batch.ProcessStatus, createdCount = created, failedCount = rows.Count(row => row.Status == "FAILED") };
+            var completed = await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status200OK, response, ct);
+            await SellingIdempotency.CompleteAsync(db, transitionGate.Record!, userId, StatusCodes.Status200OK, response, ct);
+            return completed;
+        }
+        catch
+        {
+            // A completed row is saved with its matching lien, so releasing this
+            // gate permits a safe retry after cancellation or an infrastructure
+            // failure without duplicating the rows that already succeeded.
+            db.ChangeTracker.Clear();
+            if (started?.Record is not null && started.Record.ProcessingState != SellingIdempotencyRecord.Completed)
+                db.SellingIdempotencyRecords.Remove(started.Record);
+            db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     private static async Task<IResult> CancelBulkImport(Guid importId, LiensDbContext db, ICurrentRequestContext context, CancellationToken ct)
@@ -947,10 +1117,42 @@ public static class SellingV2Endpoints
         var batch = await GetSellingImportAsync(db, tenantId, importId, ct);
         if (batch is null) return Results.NotFound();
         if (batch.ProcessStatus is "CONFIRMED" or "PARTIAL") return Results.Conflict(new { error = new { code = "import_already_confirmed" } });
-        batch.Deactivate(userId);
-        batch.SetProcessStatus("CANCELLED", userId);
-        await db.SaveChangesAsync(ct);
-        return Results.NoContent();
+        var transitionGate = await SellingIdempotency.TryBeginAsync(
+            db, tenantId, "BulkImportTransition", importId, "/api/liens/selling/bulk-imports/{importId}/confirm-transition",
+            "BulkImport", importId.ToString(), "bulk-import-confirm-transition-v1", request: null, ct: ct);
+        if (transitionGate.Result is not null)
+            return Results.Conflict(new { error = new { code = "import_confirmation_in_progress", message = "This bulk import is being confirmed and cannot be cancelled." } });
+
+        try
+        {
+            await db.Entry(batch).ReloadAsync(ct);
+            if (batch.ProcessStatus is "CONFIRMED" or "PARTIAL")
+            {
+                db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+                await db.SaveChangesAsync(CancellationToken.None);
+                return Results.Conflict(new { error = new { code = "import_already_confirmed" } });
+            }
+            if (batch.Status != "A")
+            {
+                db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+                await db.SaveChangesAsync(CancellationToken.None);
+                return Results.Conflict(new { error = new { code = "import_cancelled" } });
+            }
+
+            batch.Deactivate(userId);
+            batch.SetProcessStatus("CANCELLED", userId);
+            await db.SaveChangesAsync(ct);
+            await SellingIdempotency.CompleteAsync(db, transitionGate.Record!, userId, StatusCodes.Status200OK,
+                new { importId, status = "CANCELLED" }, ct);
+            return Results.NoContent();
+        }
+        catch
+        {
+            db.ChangeTracker.Clear();
+            db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     private static async Task<IResult> GetFundingCompanies(LiensDbContext db, ICurrentRequestContext context, CancellationToken ct)
@@ -1081,14 +1283,87 @@ public static class SellingV2Endpoints
     private static async Task<BatchUpload?> GetSellingImportAsync(LiensDbContext db, Guid tenantId, Guid id, CancellationToken ct) => await db.BatchUploads.FirstOrDefaultAsync(batch => batch.TenantId == tenantId && batch.Id == id && batch.Template == "SellingLienImport", ct);
     private static object MapBulkImport(BatchUpload batch) => new { importId = batch.Id, status = batch.ProcessStatus, batch.Rows, batch.FileName, batch.CreatedAtUtc, batch.CreatedByUserId, batch.UpdatedAtUtc };
     private static string NormalizeRowStatus(string status) => status.Trim().ToLowerInvariant() switch { "valid" => "VALID", "invalid" => "INVALID", "created" => "CREATED", "failed" => "FAILED", _ => status.Trim().ToUpperInvariant() };
+    private static string TruncateImportFailureReason(string message) => message.Length <= 4000 ? message : message[..4000];
+    private static void DetachImportRowEntities(LiensDbContext db, IEnumerable<object> entities)
+    {
+        foreach (var entity in entities)
+            db.Entry(entity).State = EntityState.Detached;
+    }
     private static string? ValidateImportRow(IReadOnlyDictionary<string, string> values)
     {
         if (string.IsNullOrWhiteSpace(GetImportValue(values, "Case Code*"))) return "Case Code* is required.";
         if (ParseImportDate(values, "Initial Service Date*") is null) return "Initial Service Date* must be a valid date.";
+        if (string.IsNullOrWhiteSpace(GetImportValue(values, "Facility Name*"))) return "Facility Name* is required.";
+        if (string.IsNullOrWhiteSpace(GetImportValue(values, "Medical Code & Description*"))) return "Medical Code & Description* is required.";
         if (!TryParseImportDecimal(values, "Billing Amount*", out var billing) || billing < 0m) return "Billing Amount* must be a non-negative decimal.";
         return null;
     }
+    private static string? ValidateImportAssociation(
+        IReadOnlyDictionary<string, string> values,
+        IEnumerable<Contact> fundingCompanies,
+        IEnumerable<Contact> medicalProviders,
+        IEnumerable<Facility> facilities)
+        => FindImportAssociationIssue(fundingCompanies, GetImportValue(values, "Funding Company"), "Funding company")
+            ?? FindImportAssociationIssue(facilities, GetImportValue(values, "Facility Name*"), "Facility")
+            ?? FindImportAssociationIssue(medicalProviders, GetImportValue(values, "Medical Provider Name"), "Medical provider");
+    private static string? FindImportAssociationIssue(IEnumerable<Contact> contacts, string? name, string label)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var matches = contacts.Count(contact => ImportContactNameMatches(contact, name));
+        return matches switch
+        {
+            0 => $"{label} '{name}' was not found among active tenant records.",
+            > 1 => $"{label} '{name}' is ambiguous because multiple active tenant records match it.",
+            _ => null,
+        };
+    }
+    private static string? FindImportAssociationIssue(IEnumerable<Facility> facilities, string? name, string label)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var matches = facilities.Count(facility => ImportFacilityNameMatches(facility, name));
+        return matches switch
+        {
+            0 => $"{label} '{name}' was not found among active seller facilities.",
+            > 1 => $"{label} '{name}' is ambiguous because multiple active seller facilities match it.",
+            _ => null,
+        };
+    }
     private static string ResolveImportLienNumber(IReadOnlyDictionary<string, string> values) => $"SL-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant();
+    private static Contact? ResolveImportContactByName(IEnumerable<Contact> contacts, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var matches = contacts.Where(contact => ImportContactNameMatches(contact, name)).Take(2).ToList();
+        return matches.Count switch
+        {
+            1 => matches[0],
+            0 => throw new InvalidOperationException($"No active tenant record matches '{name}'."),
+            _ => throw new InvalidOperationException($"Multiple active tenant records match '{name}'."),
+        };
+    }
+    private static Facility? ResolveImportFacilityByName(IEnumerable<Facility> facilities, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var matches = facilities.Where(facility => ImportFacilityNameMatches(facility, name)).Take(2).ToList();
+        return matches.Count switch
+        {
+            1 => matches[0],
+            0 => throw new InvalidOperationException($"No active seller facility matches '{name}'."),
+            _ => throw new InvalidOperationException($"Multiple active seller facilities match '{name}'."),
+        };
+    }
+    private static bool ImportContactNameMatches(Contact contact, string name)
+        => string.Equals(contact.Organization, name.Trim(), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(contact.DisplayName, name.Trim(), StringComparison.OrdinalIgnoreCase);
+    private static bool ImportFacilityNameMatches(Facility facility, string name)
+        => string.Equals(facility.Name, name.Trim(), StringComparison.OrdinalIgnoreCase);
+    private static (string Code, string Description) ParseImportMedicalCode(string? value)
+    {
+        var normalized = value?.Trim() ?? string.Empty;
+        var separator = normalized.IndexOf(" - ", StringComparison.Ordinal);
+        return separator > 0
+            ? (normalized[..separator].Trim(), normalized[(separator + 3)..].Trim())
+            : (normalized, string.Empty);
+    }
     private static string? GetImportValue(IReadOnlyDictionary<string, string> values, string key) => values.FirstOrDefault(pair => string.Equals(pair.Key.Trim(), key, StringComparison.OrdinalIgnoreCase)).Value?.Trim();
     private static bool TryParseImportDecimal(IReadOnlyDictionary<string, string> values, string key, out decimal value) => decimal.TryParse(GetImportValue(values, key), NumberStyles.Number, CultureInfo.InvariantCulture, out value);
     private static decimal ParseImportDecimal(IReadOnlyDictionary<string, string> values, string key) => TryParseImportDecimal(values, key, out var value) ? value : 0m;

@@ -117,6 +117,49 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Prepare_sale_does_not_require_buyer_contact()
+    {
+        var lienId = await CreateSellingLienAsync();
+
+        (await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/lien-information", new
+        {
+            sellerStatus = "Pending", initialServiceDate = "2026-07-19", listingVisibility = "Private",
+        })).EnsureSuccessStatusCode();
+
+        using (var setupScope = _factory.Services.CreateScope())
+        {
+            var setupDb = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await setupDb.Liens.FindAsync(lienId);
+            lien!.AttachCase(SeedHelper.CaseId, SeedHelper.UserId);
+            await setupDb.SaveChangesAsync();
+        }
+
+        (await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/medical-pricing", new
+        {
+            askAmount = 1250m, billingAmount = 1800m,
+            rows = new[] { new { medicalCode = "99213", billingAmount = 600m, medicareCost = 180m, targetSaleAmount = 350m } },
+        })).EnsureSuccessStatusCode();
+        (await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/documents", new
+        {
+            documents = new[] { new { documentId = Guid.CreateVersion7(), documentType = "MedicalBill", displayName = "bill.pdf" } },
+        })).EnsureSuccessStatusCode();
+
+        using var prepare = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/prepare-sale")
+        {
+            Content = JsonContent.Create(new { buyerContactId = Guid.Empty, askAmount = 1250m, listingVisibility = "Private" }),
+        };
+        prepare.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        (await _client.SendAsync(prepare)).EnsureSuccessStatusCode();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persisted = await db.Liens.FindAsync(lienId);
+        persisted!.SellerStatus.Should().Be(SellingLienStatus.PreparedForSale);
+        persisted.FundingCompanyId.Should().BeNull();
+        persisted.FundingCompanyContactId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Seller_lien_detail_does_not_cross_organization_boundary()
     {
         var lienId = await CreateSellingLienAsync();

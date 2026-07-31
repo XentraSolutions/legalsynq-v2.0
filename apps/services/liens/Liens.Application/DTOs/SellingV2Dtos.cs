@@ -57,7 +57,7 @@ public sealed class SellingDocumentReferenceRequest
 public sealed class PrepareSellingLienRequest
 {
     public Guid? BuyerFundingCompanyId { get; init; }
-    public Guid BuyerContactId { get; init; }
+    public Guid? BuyerContactId { get; init; }
     public decimal? AskAmount { get; init; }
     public string? ListingVisibility { get; init; }
     public string? MessageToBuyer { get; init; }
