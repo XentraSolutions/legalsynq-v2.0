@@ -93,6 +93,8 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
   const [companyName, setCompanyName] = useState<string>("");
   const [contacts, setContacts] = useState<SellingLookupItem[]>([]);
   const [contactId, setContactId] = useState<string | null>(null);
+  const [contactSearch, setContactSearch] = useState("");
+  const [loadingContacts, setLoadingContacts] = useState(false);
   const selectedCompanyRef = useRef<HTMLLabelElement | null>(null);
 
   // Step 2 — documents + message.
@@ -162,6 +164,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
       return;
     }
     let cancelled = false;
+    setLoadingContacts(true);
     liensService
       .getFundingCompanyContacts(companyId)
       .then((items) => {
@@ -171,6 +174,9 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
       })
       .catch(() => {
         if (!cancelled) setContacts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingContacts(false);
       });
     return () => {
       cancelled = true;
@@ -190,6 +196,17 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
     const q = companySearch.trim().toLowerCase();
     return companies.filter((c) => c.name.toLowerCase().includes(q));
   }, [companies, companySearch]);
+
+  // Cap the unfiltered render — the lookup has been observed to return
+  // thousands of rows for a single company (see the comment above the
+  // contact list JSX), so render nothing until the user searches.
+  const filteredContacts = useMemo(() => {
+    if (!contactSearch.trim()) return contacts.slice(0, 25);
+    const q = contactSearch.trim().toLowerCase();
+    return contacts
+      .filter((c) => c.name.toLowerCase().includes(q))
+      .slice(0, 50);
+  }, [contacts, contactSearch]);
 
   const askAmount = lien?.medicalPricing.askAmount ?? null;
   const pricingReady =
@@ -383,6 +400,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
                     setCompanyId(company.id);
                     setCompanyName(company.name);
                     setContactId(null);
+                    setContactSearch("");
                   }}
                   className="accent-[#EE7132]"
                 />
@@ -390,6 +408,66 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
               </label>
             ))}
           </div>
+
+          {companyId && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Contact Person
+              </label>
+              {loadingContacts ? (
+                <p className="text-xs text-gray-400">Loading contacts...</p>
+              ) : contacts.length === 0 ? (
+                <p className="text-xs text-gray-400">
+                  This funding company has no active contacts on file.
+                </p>
+              ) : (
+                <>
+                  {/* The funding-company-contacts lookup can return far more
+                      rows than belong to the selected company (seen live:
+                      thousands, spanning unrelated law firms/people) — a
+                      plain <select> would be unusable at that volume, so
+                      this is a searchable list instead of a native dropdown. */}
+                  <div className="relative">
+                    <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+                    <input
+                      type="text"
+                      placeholder="Search contacts..."
+                      value={contactSearch}
+                      onChange={(e) => setContactSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
+                  {contactId && (
+                    <p className="text-xs text-gray-500 mt-1.5">
+                      Selected: {contacts.find((c) => c.id === contactId)?.name}
+                    </p>
+                  )}
+                  <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto mt-2">
+                    {filteredContacts.length === 0 && (
+                      <p className="px-4 py-3 text-sm text-gray-400 text-center">
+                        No contacts match your search.
+                      </p>
+                    )}
+                    {filteredContacts.map((c) => (
+                      <label
+                        key={c.id}
+                        className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50"
+                      >
+                        <input
+                          type="radio"
+                          name="fundingContact"
+                          checked={contactId === c.id}
+                          onChange={() => setContactId(c.id)}
+                          className="accent-[#EE7132]"
+                        />
+                        <span className="text-sm text-gray-700">{c.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 pt-4">
             <Link
