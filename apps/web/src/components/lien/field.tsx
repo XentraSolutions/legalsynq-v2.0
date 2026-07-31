@@ -6,6 +6,7 @@ import {
 } from "../ui/base-select";
 import { DatePicker } from "../ui/date-picker";
 import { PhoneInput } from "../ui/phone-input";
+import { NumberInput } from "../ui/number-input";
 
 interface BaseFieldProps {
   label: string;
@@ -21,9 +22,15 @@ interface BaseFieldProps {
 }
 
 interface TextFieldProps {
-  type?: "text" | "textarea" | "number" | "email";
+  type?: "text" | "textarea" | "email";
   value?: string | null | number;
   onChange: (value: string) => void;
+}
+
+export interface NumberFieldProps {
+  type: "number";
+  value?: string | number | null;
+  onChange: (value: string) => void; // Emits the raw (unformatted) numeric string
 }
 
 interface DateFieldProps {
@@ -66,6 +73,7 @@ export type FieldProps<TOption extends BaseSelectOption = BaseSelectOption> =
   BaseFieldProps &
     (
       | TextFieldProps
+      | NumberFieldProps
       | CheckboxFieldProps
       | DateFieldProps
       | PhoneFieldProps
@@ -160,6 +168,16 @@ export default function Field<
           value={props.value}
           onValueChange={props.onChange}
           className="shadow-sm" // Optional styling overrides
+        />
+      ) : props.type === "number" ? (
+        <NumberInput
+          value={props.value}
+          onValueChange={props.onChange}
+          placeholder={placeholder}
+          disabled={disabled}
+          prefix={prefix}
+          suffix={suffix}
+          error={error}
         />
       ) : (
         <div className={hasAdornment ? "relative" : ""}>

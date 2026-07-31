@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { FormModal } from "@/components/lien/modal";
+import Field from "@/components/lien/field";
 import { liensService } from "@/lib/selling";
 import { useToast } from "@/lib/toast-context";
 import type { LienDetail } from "@/types/lien-selling";
@@ -65,53 +66,35 @@ export function EditLienInformationModal({
     >
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Initial Service Date
-            </label>
-            <input
-              type="date"
-              value={initialServiceDate}
-              onChange={(e) => setInitialServiceDate(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              End Service Date
-            </label>
-            <input
-              type="date"
-              value={endServiceDate}
-              onChange={(e) => setEndServiceDate(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Listing Visibility
-          </label>
-          <select
-            value={listingVisibility}
-            onChange={(e) => setListingVisibility(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          >
-            <option value="Private">Private</option>
-            <option value="Public">Public</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Lien Notes
-          </label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+          <Field
+            type="date"
+            label="Initial Service Date"
+            value={initialServiceDate}
+            onChange={setInitialServiceDate}
+          />
+          <Field
+            type="date"
+            label="End Service Date"
+            value={endServiceDate}
+            onChange={setEndServiceDate}
           />
         </div>
+        <Field
+          type="select"
+          label="Listing Visibility"
+          value={listingVisibility}
+          onChange={setListingVisibility}
+          options={[
+            { key: "Private", value: "Private", label: "Private" },
+            { key: "Public", value: "Public", label: "Public" },
+          ]}
+        />
+        <Field
+          type="textarea"
+          label="Lien Notes"
+          value={notes}
+          onChange={setNotes}
+        />
       </div>
     </FormModal>
   );

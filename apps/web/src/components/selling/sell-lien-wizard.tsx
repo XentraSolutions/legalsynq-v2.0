@@ -9,6 +9,7 @@ import { useSession } from "@/hooks/use-session";
 import { useSessionContext } from "@/providers/session-provider";
 import { useToast } from "@/lib/toast-context";
 import { ConfirmDialog, Modal } from "@/components/lien/modal";
+import Field from "@/components/lien/field";
 import { LienInformationPanel } from "@/components/selling/lien-detail/lien-information-panel";
 import { FundingCompanyAndCaseInformationPanel } from "@/components/selling/lien-detail/funding-company-information-panel";
 import { MedicalCodesInformationPanel } from "@/components/selling/lien-detail/medical-codes-information-panel";
@@ -353,16 +354,14 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
             and potential purchase.
           </p>
 
-          <div className="relative">
-            <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={companySearch}
-              onChange={(e) => setCompanySearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-            />
-          </div>
+          <Field
+            type="text"
+            label=""
+            placeholder="Search..."
+            value={companySearch}
+            onChange={setCompanySearch}
+            prefix={<i className="ri-search-line" />}
+          />
 
           <div className="border border-gray-200 rounded-lg max-h-96 overflow-y-auto">
             {filteredCompanies.length === 0 && (
@@ -582,7 +581,6 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
         <EditMedicalPricingModal
           lienId={lienId}
           rows={lien.medicalPricing.rows}
-          askAmount={lien.medicalPricing.askAmount}
           onClose={() => setShowEditPricing(false)}
           onSaved={() => {
             setShowEditPricing(false);

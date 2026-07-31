@@ -173,7 +173,6 @@ export function PortfolioDetailPanel({
         <EditMedicalPricingModal
           lienId={lien.lienId}
           rows={lien.medicalPricing.rows}
-          askAmount={lien.medicalPricing.askAmount}
           onClose={() => setEditModal(null)}
           onSaved={() => {
             setEditModal(null);

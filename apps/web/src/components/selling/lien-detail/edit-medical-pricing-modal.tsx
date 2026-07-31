@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { FormModal } from "@/components/lien/modal";
 import { BaseSelect } from "@/components/ui/base-select";
+import Field from "@/components/lien/field";
 import { liensService } from "@/lib/selling";
 import { useMedicareProcedureCodes, useMedicareCosts } from "@/hooks/use-case-liens";
 import { useToast } from "@/lib/toast-context";
@@ -61,34 +62,28 @@ function PricingRowFields({
           className="w-full"
         />
       </td>
-      <td className="py-2 px-3">
-        <input
+      <td className="py-2 px-3 w-20">
+        <Field
           type="number"
+          label=""
           value={row.billingAmount || ""}
-          onChange={(e) =>
-            onChange({ billingAmount: Number(e.target.value) || 0 })
-          }
-          className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right"
+          onChange={(v) => onChange({ billingAmount: Number(v) || 0 })}
         />
       </td>
-      <td className="py-2 px-3">
-        <input
+      <td className="py-2 px-3 w-20">
+        <Field
           type="number"
+          label=""
           value={row.medicareCost || ""}
-          onChange={(e) =>
-            onChange({ medicareCost: Number(e.target.value) || 0 })
-          }
-          className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right"
+          onChange={(v) => onChange({ medicareCost: Number(v) || 0 })}
         />
       </td>
-      <td className="py-2 px-3">
-        <input
+      <td className="py-2 px-3 w-20">
+        <Field
           type="number"
+          label=""
           value={row.targetSaleAmount || ""}
-          onChange={(e) =>
-            onChange({ targetSaleAmount: Number(e.target.value) || 0 })
-          }
-          className="w-20 border border-gray-200 rounded px-2 py-1 text-sm text-right"
+          onChange={(v) => onChange({ targetSaleAmount: Number(v) || 0 })}
         />
       </td>
       <td className="text-center">
@@ -108,7 +103,6 @@ function PricingRowFields({
 interface EditMedicalPricingModalProps {
   lienId: string;
   rows: MedicalPricingRowDetail[];
-  askAmount: number | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -116,7 +110,6 @@ interface EditMedicalPricingModalProps {
 export function EditMedicalPricingModal({
   lienId,
   rows: initialRows,
-  askAmount: initialAskAmount,
   onClose,
   onSaved,
 }: EditMedicalPricingModalProps) {
@@ -137,13 +130,14 @@ export function EditMedicalPricingModal({
         ]
       : [emptyRow()],
   );
-  const [askAmount, setAskAmount] = useState(
-    initialAskAmount ? String(initialAskAmount) : "",
-  );
   const [saving, setSaving] = useState(false);
 
   const totalBillingAmount = useMemo(
     () => rows.reduce((sum, r) => sum + (Number(r.billingAmount) || 0), 0),
+    [rows],
+  );
+  const askAmount = useMemo(
+    () => rows.reduce((sum, r) => sum + (Number(r.targetSaleAmount) || 0), 0),
     [rows],
   );
 
@@ -170,7 +164,7 @@ export function EditMedicalPricingModal({
     setSaving(true);
     try {
       await liensService.saveMedicalPricing(lienId, {
-        askAmount: Number(askAmount) || undefined,
+        askAmount: askAmount || undefined,
         billingAmount: totalBillingAmount || undefined,
         rows: rows
           .filter((r) => r.medicalCode.trim())
@@ -229,19 +223,16 @@ export function EditMedicalPricingModal({
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-end gap-3">
-          <label className="text-sm font-medium text-gray-700">
-            Total Ask Amount<span className="text-red-500 ml-0.5">*</span>
-          </label>
-          <div className="relative w-40">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-              $
-            </span>
-            <input
+        <div className="flex justify-end">
+          <div className="w-40">
+            <Field
               type="number"
+              label="Total Ask Amount"
+              required
+              disabled
+              prefix="$"
               value={askAmount}
-              onChange={(e) => setAskAmount(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              onChange={() => {}}
             />
           </div>
         </div>
