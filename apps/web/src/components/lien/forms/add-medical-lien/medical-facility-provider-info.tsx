@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import Field from "../../field";
 import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
+import Field from "../../field";
 
 export interface MedicalFacilityProviderInfoProps {
   caseId?: string;
