@@ -2,69 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { FormModal } from "@/components/lien/modal";
-import { BaseSelect, type BaseSelectOption } from "@/components/ui/base-select";
+import { BaseSelect } from "@/components/ui/base-select";
 import { liensService } from "@/lib/selling";
-import { lookupService } from "@/lib/lookup";
+import { useMedicareProcedureCodes, useMedicareCosts } from "@/hooks/use-case-liens";
 import { useToast } from "@/lib/toast-context";
 import { parsePricingRow } from "@/lib/selling/selling-detail.mapper";
 import type { MedicalPricingRowDetail } from "@/types/lien-selling";
 import type { SellingMedicalPricingRowRequest } from "@/lib/selling/liens.types";
-
-// Mirrors findMedicareCost/useMedicareCosts in use-case-liens.ts (add-medical-lien
-// wizard) — same lookup, used here to auto-fill Medicare Cost on code select.
-async function findMedicareCost(code: string): Promise<number> {
-  if (!code) return 0;
-  try {
-    const cost = await lookupService.getMedicalProcedureCosts(code);
-    return Number(cost?.total) || 0;
-  } catch {
-    return 0;
-  }
-}
-
-type MedicalCodeOption = BaseSelectOption & { description: string };
-
-// Server-side search, debounced — mirrors the pattern in
-// contact-entity-select.tsx (no shared useDebounce hook in this codebase).
-function useMedicalCodeOptions(search: string) {
-  const [debouncedSearch, setDebouncedSearch] = useState(search);
-  const [options, setOptions] = useState<MedicalCodeOption[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebouncedSearch(search), 300);
-    return () => clearTimeout(timeout);
-  }, [search]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setIsSearching(true);
-    liensService
-      .getMedicalCodes(debouncedSearch)
-      .then((items) => {
-        if (cancelled) return;
-        setOptions(
-          items.map((item) => ({
-            value: item.code,
-            // Matches the lien product's "Medical Code & Description" combined
-            // display (medical-codes-information-panel.tsx / add-medical-lien).
-            label: item.description
-              ? `${item.code} — ${item.description}`
-              : item.code,
-            description: item.description,
-          })),
-        );
-      })
-      .finally(() => {
-        if (!cancelled) setIsSearching(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [debouncedSearch]);
-
-  return { options, isSearching };
-}
 
 type PricingRow = SellingMedicalPricingRowRequest & { key: string };
 
@@ -89,28 +33,29 @@ function PricingRowFields({
   onChange: (patch: Partial<PricingRow>) => void;
   onRemove: () => void;
 }) {
-  const [search, setSearch] = useState(row.medicalCode);
-  const { options, isSearching } = useMedicalCodeOptions(search);
+  // Same lookup as the add-medical-lien wizard (useMedicareProcedureCodes /
+  // useMedicareCosts) — eager-loaded, client-filtered code list plus a
+  // reactive cost fetch keyed off the selected code.
+  const { data: medicalCodes } = useMedicareProcedureCodes();
+  const { data: medicareCost } = useMedicareCosts(row.medicalCode);
+
+  useEffect(() => {
+    if (row.medicalCode) onChange({ medicareCost: Number(medicareCost) || 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [medicareCost]);
 
   return (
     <tr>
       <td className="py-2 px-3 max-w-64">
         <BaseSelect
           value={row.medicalCode || null}
-          onChange={(_, option) => {
+          onChange={(v, option) => {
             onChange({
-              medicalCode: option.value,
-              description: option.description,
+              medicalCode: v,
+              description: option.label,
             });
-            findMedicareCost(option.value).then((medicareCost) =>
-              onChange({ medicareCost }),
-            );
           }}
-          options={options}
-          search={search}
-          onSearchChange={setSearch}
-          filterLocally={false}
-          isSearching={isSearching}
+          options={medicalCodes ?? []}
           placeholder="Select code"
           searchPlaceholder="Search codes..."
           className="w-full"
@@ -178,15 +123,18 @@ export function EditMedicalPricingModal({
   const { show: showToast } = useToast();
   const [rows, setRows] = useState<PricingRow[]>(() =>
     initialRows.length > 0
-      ? initialRows.map((row) => {
-          const data = parsePricingRow(row);
-          return {
-            key: row.id,
-            ...data,
-            description: data.description ?? undefined,
-            serviceDate: data.serviceDate ?? undefined,
-          };
-        })
+      ? [
+          ...initialRows.map((row) => {
+            const data = parsePricingRow(row);
+            return {
+              key: row.id,
+              ...data,
+              description: data.description ?? undefined,
+              serviceDate: data.serviceDate ?? undefined,
+            };
+          }),
+          emptyRow(),
+        ]
       : [emptyRow()],
   );
   const [askAmount, setAskAmount] = useState(
