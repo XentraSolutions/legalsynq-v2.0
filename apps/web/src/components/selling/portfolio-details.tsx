@@ -91,6 +91,7 @@ export function PortfolioDetailPanel({
               lienId={lien.lienId}
               availableActions={lien.availableActions}
               onActionComplete={onRefresh}
+              autoOpenDecision={sellerStatus === "Pending"}
               trigger={({ onClick }) => (
                 <button
                   onClick={onClick}

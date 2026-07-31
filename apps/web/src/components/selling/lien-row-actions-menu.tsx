@@ -13,6 +13,8 @@ interface LienRowActionsMenuProps {
   align?: "left" | "right";
   /** Custom trigger content; defaults to a bare ellipsis icon button. */
   trigger?: (props: { onClick: () => void }) => ReactNode;
+  /** Show the Keep/Sell decision modal automatically when this lien loads. */
+  autoOpenDecision?: boolean;
 }
 
 const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
@@ -31,11 +33,12 @@ export function LienRowActionsMenu({
   onActionComplete,
   align = "right",
   trigger,
+  autoOpenDecision = false,
 }: LienRowActionsMenuProps) {
   const router = useRouter();
   const { show: showToast } = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showDecisionModal, setShowDecisionModal] = useState(false);
+  const [showDecisionModal, setShowDecisionModal] = useState(autoOpenDecision);
   const [confirmAction, setConfirmAction] = useState<
     "withdraw-sale" | "archive" | null
   >(null);
