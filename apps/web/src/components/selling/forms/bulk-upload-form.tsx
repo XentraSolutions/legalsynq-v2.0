@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { FormModal } from "@/components/lien/modal";
+import { FormModal } from "@/components/selling/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { documentsService } from "@/lib/documents";
 import { liensService } from "@/lib/selling";
@@ -131,7 +131,8 @@ export function BulkUploadForm({
       open={open}
       onClose={resetAndClose}
       onSubmit={handleSubmit}
-      title="Upload Document"
+      title=""
+      hasHeader={false}
       submitLabel={uploading ? "Uploading..." : "Upload"}
     >
       <div className="space-y-4">
@@ -205,8 +206,9 @@ export function BulkUploadForm({
           onClick={() => {
             downloadTemplate();
           }}
+          className="text-xs cursor-pointer text-[#EE7132]"
         >
-          download template
+          Download template
         </button>
         {errors.file && <p className="text-xs text-red-500">{errors.file}</p>}
       </div>
