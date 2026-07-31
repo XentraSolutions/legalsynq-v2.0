@@ -2196,14 +2196,23 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             sellerEmail.Subject.Should().Be("New message on lien offer");
             sellerEmail.Body.Should().Contain("Buyer Reviewer sent a message");
             sellerEmail.Body.Should().Contain("Can you confirm the signed LOP is final?");
-            sellerEmail.Body.Should().NotContain("/selling/public/");
+            var sellerNotificationUrl = ExtractPublicPortalUrlFromEmailBody(sellerEmail.Body);
+            sellerNotificationUrl.Should().StartWith("https://app.legalsynq.test/selling/public/");
             sellerEmail.Metadata["recipientRole"].Should().Be("seller");
             sellerEmail.Metadata["senderType"].Should().Be("buyer");
             sellerEmail.Metadata["messageId"].Should().Be(buyerMessage.GetProperty("id").GetGuid().ToString());
             sellerEmail.Options.Should().NotBeNull();
             sellerEmail.Options!.DisableClickTracking.Should().BeTrue();
+            sellerEmail.Options.HtmlBody.Should().Contain("View Lien");
+            sellerEmail.Options.HtmlBody.Should().Contain($"href=\"{sellerNotificationUrl}\"");
             sellerEmail.Options.HtmlBody.Should().NotContain("View &amp; Reply");
             sellerEmail.Options.IdempotencyKey.Should().Contain(":seller");
+
+            var sellerNotificationView = await anonClient.GetAsync($"/api/liens/selling/public/{ExtractBuyerAccessToken(sellerNotificationUrl)}");
+            sellerNotificationView.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Body: {await sellerNotificationView.Content.ReadAsStringAsync()}");
+            var sellerNotificationJson = await sellerNotificationView.Content.ReadFromJsonAsync<JsonElement>();
+            sellerNotificationJson.GetProperty("audience").GetString().Should().Be("seller");
         }
 
         ClearCapturedEmails();
@@ -2242,10 +2251,21 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             buyerEmail.Subject.Should().Be("New message on lien offer");
             buyerEmail.Body.Should().Contain("Seller Operator sent a message");
             buyerEmail.Body.Should().Contain("The LOP is final and attached to the package.");
-            buyerEmail.Body.Should().NotContain("/selling/public/");
+            var buyerNotificationUrl = ExtractPublicPortalUrlFromEmailBody(buyerEmail.Body);
+            buyerNotificationUrl.Should().StartWith("https://app.legalsynq.test/selling/public/");
             buyerEmail.Metadata["recipientRole"].Should().Be("buyer");
             buyerEmail.Metadata["senderType"].Should().Be("seller");
             buyerEmail.Metadata["messageId"].Should().Be(sellerMessage.GetProperty("id").GetGuid().ToString());
+
+            buyerEmail.Options.Should().NotBeNull();
+            buyerEmail.Options!.HtmlBody.Should().Contain("View Lien");
+            buyerEmail.Options.HtmlBody.Should().Contain($"href=\"{buyerNotificationUrl}\"");
+
+            var buyerNotificationView = await anonClient.GetAsync($"/api/liens/selling/public/{ExtractBuyerAccessToken(buyerNotificationUrl)}");
+            buyerNotificationView.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Body: {await buyerNotificationView.Content.ReadAsStringAsync()}");
+            var buyerNotificationJson = await buyerNotificationView.Content.ReadFromJsonAsync<JsonElement>();
+            buyerNotificationJson.GetProperty("audience").GetString().Should().Be("buyer");
         }
     }
 
@@ -3475,5 +3495,14 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     {
         var uri = new Uri(buyerPortalUrl, UriKind.Absolute);
         return Uri.UnescapeDataString(uri.Segments.Last().Trim('/'));
+    }
+
+    private static string ExtractPublicPortalUrlFromEmailBody(string body)
+    {
+        const string prefix = "View Lien: ";
+        return body
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+            .Single(line => line.StartsWith(prefix, StringComparison.Ordinal))[prefix.Length..]
+            .Trim();
     }
 }

@@ -224,6 +224,7 @@ public static class SellingPublicEndpoints
         PublicPortalMessageRequest? request,
         HttpContext httpContext,
         INotificationPublisher notifications,
+        ISellingBuyerAccessLinkService accessLinks,
         ILoggerFactory loggerFactory,
         IConfiguration configuration,
         LiensDbContext db,
@@ -258,6 +259,7 @@ public static class SellingPublicEndpoints
             request,
             httpContext,
             notifications,
+            accessLinks,
             loggerFactory,
             configuration,
             db,
@@ -270,6 +272,7 @@ public static class SellingPublicEndpoints
         PublicPortalMessageRequest? request,
         HttpContext httpContext,
         INotificationPublisher notifications,
+        ISellingBuyerAccessLinkService accessLinks,
         ILoggerFactory loggerFactory,
         IConfiguration configuration,
         LiensDbContext db,
@@ -328,9 +331,9 @@ public static class SellingPublicEndpoints
             loggerFactory,
             configuration,
             httpContext,
-            db,
             view,
             publicMessage,
+            accessLinks,
             currentToken,
             ct);
 
@@ -1288,9 +1291,9 @@ public static class SellingPublicEndpoints
         ILoggerFactory loggerFactory,
         IConfiguration configuration,
         HttpContext httpContext,
-        LiensDbContext db,
         PublicPortalView view,
         SellingPortalMessage message,
+        ISellingBuyerAccessLinkService accessLinks,
         string? currentToken,
         CancellationToken ct)
     {
@@ -1312,12 +1315,34 @@ public static class SellingPublicEndpoints
             return;
         }
 
-        var recipientAccessLink = await ResolvePublicMessageRecipientAccessLinkAsync(db, view.AccessLink, recipientRole, ct);
-        var portalUrl = string.IsNullOrWhiteSpace(currentToken) ||
-                        recipientAccessLink is null ||
-                        recipientAccessLink.Id != view.AccessLink.Id
-            ? null
-            : BuildPublicPortalUrl(configuration, httpContext, currentToken);
+        string? portalUrl = null;
+        try
+        {
+            portalUrl = await BuildPublicMessageRecipientPortalUrlAsync(
+                accessLinks,
+                view.AccessLink,
+                recipientRole,
+                message,
+                ct);
+            if (string.IsNullOrWhiteSpace(portalUrl) &&
+                !string.IsNullOrWhiteSpace(currentToken) &&
+                string.Equals(ResolvePublicAudience(view.AccessLink), recipientRole, StringComparison.Ordinal))
+            {
+                portalUrl = BuildPublicPortalUrl(configuration, httpContext, currentToken);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            loggerFactory
+                .CreateLogger("Liens.Api.Endpoints.SellingPublicEndpoints")
+                .LogWarning(
+                    ex,
+                    "Public lien message notification link creation failed: Tenant={TenantId} MessageId={MessageId} Role={RecipientRole}",
+                    view.AccessLink.TenantId,
+                    message.Id,
+                    recipientRole);
+        }
+
         var lienCode = ResolveLienCode(view.Lien);
         var subject = "New message on lien offer";
         var body = BuildPublicMessageEmailBody(message, lienCode, portalUrl);
@@ -1380,32 +1405,56 @@ public static class SellingPublicEndpoints
         }
     }
 
-    private static Task<SellingBuyerAccessLink?> ResolvePublicMessageRecipientAccessLinkAsync(
-        LiensDbContext db,
+    private static Task<SellingBuyerAccessLinkResult> BuildPublicMessageRecipientAccessLinkAsync(
+        ISellingBuyerAccessLinkService accessLinks,
         SellingBuyerAccessLink currentAccessLink,
         string recipientRole,
+        SellingPortalMessage message,
         CancellationToken ct)
     {
-        var purpose = recipientRole == SellingPortalMessageSenderType.Seller
-            ? SellingAccessLinkPurposes.ConfirmSaleSellerView
-            : SellingAccessLinkPurposes.ConfirmSaleBuyerResponse;
+        var actingUserId = currentAccessLink.CreatedByUserId.GetValueOrDefault(currentAccessLink.BuyerContactId);
+        var idempotencyKey = BuildPublicMessageRecipientAccessLinkIdempotencyKey(message, recipientRole);
 
-        if (string.Equals(currentAccessLink.Purpose, purpose, StringComparison.Ordinal))
-            return Task.FromResult<SellingBuyerAccessLink?>(currentAccessLink);
+        return recipientRole == SellingPortalMessageSenderType.Seller
+            ? accessLinks.CreateOrGetForConfirmSaleSellerViewAsync(
+                currentAccessLink.TenantId,
+                currentAccessLink.LienId,
+                currentAccessLink.SellerOrgId,
+                currentAccessLink.BuyerOrgId,
+                currentAccessLink.BuyerContactId,
+                actingUserId,
+                idempotencyKey,
+                TimeSpan.FromDays(30),
+                ct)
+            : accessLinks.CreateOrGetForConfirmSaleAsync(
+                currentAccessLink.TenantId,
+                currentAccessLink.LienId,
+                currentAccessLink.SellerOrgId,
+                currentAccessLink.BuyerOrgId,
+                currentAccessLink.BuyerContactId,
+                actingUserId,
+                idempotencyKey,
+                TimeSpan.FromDays(30),
+                ct);
+    }
 
-        return db.SellingBuyerAccessLinks
-            .AsNoTracking()
-            .Where(link =>
-                link.TenantId == currentAccessLink.TenantId &&
-                link.LienId == currentAccessLink.LienId &&
-                link.SellerOrgId == currentAccessLink.SellerOrgId &&
-                link.BuyerOrgId == currentAccessLink.BuyerOrgId &&
-                link.BuyerContactId == currentAccessLink.BuyerContactId &&
-                link.Purpose == purpose &&
-                !link.RevokedAtUtc.HasValue &&
-                link.ExpiresAtUtc > DateTime.UtcNow)
-            .OrderByDescending(link => link.CreatedAtUtc)
-            .FirstOrDefaultAsync(ct);
+    private static async Task<string?> BuildPublicMessageRecipientPortalUrlAsync(
+        ISellingBuyerAccessLinkService accessLinks,
+        SellingBuyerAccessLink currentAccessLink,
+        string recipientRole,
+        SellingPortalMessage message,
+        CancellationToken ct)
+    {
+        var recipientAccessLink = await BuildPublicMessageRecipientAccessLinkAsync(
+            accessLinks,
+            currentAccessLink,
+            recipientRole,
+            message,
+            ct);
+
+        return string.IsNullOrWhiteSpace(recipientAccessLink.Token)
+            ? null
+            : recipientAccessLink.PublicPortalUrl;
     }
 
     private static (string Name, string? Email) ResolvePublicMessageSender(
@@ -1453,7 +1502,7 @@ public static class SellingPublicEndpoints
         if (!string.IsNullOrWhiteSpace(portalUrl))
         {
             body.Add(string.Empty);
-            body.Add($"View and reply: {portalUrl}");
+            body.Add($"View Lien: {portalUrl}");
         }
 
         return string.Join(Environment.NewLine, body);
@@ -1493,7 +1542,7 @@ public static class SellingPublicEndpoints
         {
             html.Append("<a href=\"")
                 .Append(Html(portalUrl))
-                .AppendLine("\" style=\"display:inline-block;background:#ee7132;color:#ffffff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;line-height:1.2;\">View &amp; Reply</a>");
+                .AppendLine("\" style=\"display:inline-block;background:#ee7132;color:#ffffff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;line-height:1.2;\">View Lien</a>");
         }
         html.AppendLine("</td></tr>");
         html.AppendLine("</table>");
@@ -1511,6 +1560,21 @@ public static class SellingPublicEndpoints
         var key = string.Join(":", new[]
         {
             "liens.public-message.email",
+            message.TenantId.ToString("N"),
+            message.Id.ToString("N"),
+            recipientRole.Trim().ToLowerInvariant(),
+        });
+
+        return key.Length > 280 ? key[..280] : key;
+    }
+
+    private static string BuildPublicMessageRecipientAccessLinkIdempotencyKey(
+        SellingPortalMessage message,
+        string recipientRole)
+    {
+        var key = string.Join(":", new[]
+        {
+            "liens.public-message.access-link",
             message.TenantId.ToString("N"),
             message.Id.ToString("N"),
             recipientRole.Trim().ToLowerInvariant(),
