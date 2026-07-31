@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
-import { Modal as ReactNativeModal, Pressable, Text, View } from 'react-native';
+import { Alert, Modal as ReactNativeModal, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NavigationProp } from '@react-navigation/native';
@@ -15,8 +15,11 @@ import { NoteItem } from '@/features/cases/components/NoteItem';
 import {
   useAddCaseNote,
   useCaseDetail,
+  useCases,
   useCaseNotes,
   useCaseUpdates,
+  useDeleteCase,
+  useMergeCase,
 } from '@/features/cases/hooks';
 import { parseCaseTrackingMetadata } from '@/features/cases/utils/caseTrackingMetadata';
 import type { MainStackParamList } from '@/navigation/types/navigation';
@@ -26,6 +29,8 @@ import { Button } from '@/shared/components/Button';
 import { EmptyState } from '@/shared/components/EmptyState';
 import { Input } from '@/shared/components/Input';
 import { Modal } from '@/shared/components/Modal';
+import { SelectOptionModal } from '@/shared/components/SelectOptionModal';
+import type { SelectOptionItem } from '@/shared/components/SelectOptionModal';
 import { Spinner } from '@/shared/components/Spinner';
 import { useToast } from '@/shared/hooks';
 import { cx, FIGMA_TEXT, SHADOWS } from '@/shared/styles';
@@ -335,13 +340,15 @@ function NotesTab({
 function ManageCaseModal({
   visible,
   onClose,
+  onDeleteCase,
+  onMergeCase,
   onPayoffQuote,
-  onComingSoon,
 }: {
   visible: boolean;
   onClose: () => void;
+  onDeleteCase: () => void;
+  onMergeCase: () => void;
   onPayoffQuote: () => void;
-  onComingSoon: (feature: string) => void;
 }) {
   const actions = [
     {
@@ -352,13 +359,13 @@ function ManageCaseModal({
     {
       icon: 'copy-outline' as const,
       label: 'Merge Case',
-      onPress: () => onComingSoon('Merge Case'),
+      onPress: onMergeCase,
     },
     {
       danger: true,
       icon: 'trash-outline' as const,
       label: 'Delete Case',
-      onPress: () => onComingSoon('Delete Case'),
+      onPress: onDeleteCase,
     },
   ];
 
@@ -427,6 +434,38 @@ function ManageCaseModal({
   );
 }
 
+function MergeCaseModal({
+  currentCaseId,
+  onClose,
+  onSelect,
+}: {
+  currentCaseId: string;
+  onClose: () => void;
+  onSelect: (option: SelectOptionItem) => void;
+}) {
+  const casesQuery = useCases();
+  const options = casesQuery.cases
+    .filter((caseItem) => caseItem.id !== currentCaseId)
+    .map((caseItem) => ({
+      label: `${caseItem.clientName} (${caseItem.caseNumber})`,
+      value: caseItem.id,
+    }));
+
+  return (
+    <SelectOptionModal
+      emptyMessage={
+        casesQuery.isLoading ? 'Loading cases…' : 'No other cases are available to merge.'
+      }
+      options={options}
+      searchThreshold={0}
+      title="Select Case to Merge"
+      visible
+      onClose={onClose}
+      onSelect={onSelect}
+    />
+  );
+}
+
 export function CaseDetailScreen() {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<DetailRoute>();
@@ -434,10 +473,13 @@ export function CaseDetailScreen() {
   const notesQuery = useCaseNotes(route.params.caseId);
   const updatesQuery = useCaseUpdates(route.params.caseId);
   const addNote = useAddCaseNote(route.params.caseId);
+  const mergeCase = useMergeCase(route.params.caseId);
+  const deleteCase = useDeleteCase(route.params.caseId);
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<CaseDetailTabId>('summary');
   const [noteVisible, setNoteVisible] = useState(false);
   const [manageVisible, setManageVisible] = useState(false);
+  const [mergeVisible, setMergeVisible] = useState(false);
   const [noteContent, setNoteContent] = useState('');
 
   async function submitNote() {
@@ -452,6 +494,57 @@ export function CaseDetailScreen() {
     } catch (error) {
       toast.showError(error instanceof Error ? error.message : 'Unable to post the note');
     }
+  }
+
+  function confirmMerge(option: SelectOptionItem) {
+    Alert.alert(
+      'Merge Cases',
+      `Merge ${option.label} into this case? The selected case will be removed after its information is transferred.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Merge',
+          style: 'destructive',
+          onPress: () => {
+            void mergeCase
+              .mutateAsync(option.value)
+              .then(() => {
+                setMergeVisible(false);
+                toast.showSuccess('Cases merged successfully');
+              })
+              .catch((error: unknown) => {
+                toast.showError(error instanceof Error ? error.message : 'Unable to merge cases');
+              });
+          },
+        },
+      ]
+    );
+  }
+
+  function confirmDelete() {
+    setManageVisible(false);
+    Alert.alert(
+      'Delete Case',
+      'Delete this case permanently? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void deleteCase
+              .mutateAsync()
+              .then(() => {
+                toast.showSuccess('Case deleted successfully');
+                navigation.goBack();
+              })
+              .catch((error: unknown) => {
+                toast.showError(error instanceof Error ? error.message : 'Unable to delete case');
+              });
+          },
+        },
+      ]
+    );
   }
 
   if (caseQuery.isLoading) {
@@ -537,15 +630,24 @@ export function CaseDetailScreen() {
       <ManageCaseModal
         visible={manageVisible}
         onClose={() => setManageVisible(false)}
+        onDeleteCase={confirmDelete}
+        onMergeCase={() => {
+          setManageVisible(false);
+          setMergeVisible(true);
+        }}
         onPayoffQuote={() => {
           setManageVisible(false);
           navigation.navigate('PayoffQuote', { caseId: route.params.caseId });
         }}
-        onComingSoon={(feature) => {
-          setManageVisible(false);
-          toast.showInfo(`${feature} is coming soon.`);
-        }}
       />
+
+      {mergeVisible ? (
+        <MergeCaseModal
+          currentCaseId={route.params.caseId}
+          onClose={() => setMergeVisible(false)}
+          onSelect={confirmMerge}
+        />
+      ) : null}
 
       <Modal
         footer={

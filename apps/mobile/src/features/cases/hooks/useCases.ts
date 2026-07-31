@@ -106,6 +106,36 @@ export function usePayoffQuote(caseId: string) {
   });
 }
 
+export function useMergeCase(caseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (mergedCaseId: string) => CasesApi.mergeCase(caseId, mergedCaseId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: caseFeatureKeys.detail(caseId) }),
+        queryClient.invalidateQueries({ queryKey: caseFeatureKeys.updates(caseId) }),
+        queryClient.invalidateQueries({ queryKey: caseFeatureKeys.all }),
+      ]);
+    },
+  });
+}
+
+export function useDeleteCase(caseId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => CasesApi.deleteCase(caseId),
+    onSuccess: async () => {
+      queryClient.removeQueries({ queryKey: caseFeatureKeys.detail(caseId) });
+      queryClient.removeQueries({ queryKey: caseFeatureKeys.notes(caseId) });
+      queryClient.removeQueries({ queryKey: caseFeatureKeys.updates(caseId) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [...caseFeatureKeys.all, 'list'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+      ]);
+    },
+  });
+}
+
 export function useCaseUpdates(caseId: string) {
   return useQuery({
     queryKey: caseFeatureKeys.updates(caseId),

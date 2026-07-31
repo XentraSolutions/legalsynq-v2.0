@@ -1,6 +1,7 @@
 import { apiClient } from '@/shared/api/client';
 
 import { BillOfSalesApi } from './BillOfSales';
+import { CasesApi } from './Cases';
 import { ContactsApi } from './Contacts';
 import { DocumentsApi } from './Documents';
 import { ReportsApi } from './Reports';
@@ -98,5 +99,59 @@ describe('mobile SynqLien process-flow endpoints', () => {
     expect(apiClient.post).toHaveBeenCalledWith(
       '/documents/documents/document-1/download-url'
     );
+  });
+
+  it('uses case-updates v3 for case detail recent updates', async () => {
+    apiClient.post = jest.fn(() =>
+      Promise.resolve({
+        data: {
+          data: [
+            {
+              id: 'update-1',
+              note: 'Case information updated.',
+              created: '07/31/2026 09:30 AM',
+              updated: '07/31/2026 10:00 AM',
+            },
+          ],
+        },
+      })
+    );
+
+    const updates = await CasesApi.getCaseUpdates('case-1');
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({
+      id: 'update-1',
+      note: 'Case information updated.',
+      createdAt: '07/31/2026 09:30 AM',
+      updatedAt: '07/31/2026 10:00 AM',
+    });
+    expect(apiClient.post).toHaveBeenCalledWith('/liens/api/liens/cases/case-updates/v3', {
+      caseId: 'case-1',
+      page: 1,
+      limit: 10,
+    });
+  });
+
+  it('uses the manage-case payoff quote, merge, and delete endpoints', async () => {
+    apiClient.get = jest.fn(() =>
+      Promise.resolve({ data: { url: 'https://documents.example/payoff-quote.pdf' } })
+    );
+
+    await expect(CasesApi.getPayoffQuote('case-1')).resolves.toEqual({
+      url: 'https://documents.example/payoff-quote.pdf',
+    });
+    expect(apiClient.get).toHaveBeenCalledWith(
+      '/api/lien/api/liens/cases/payoff-quote/case-1'
+    );
+
+    await CasesApi.mergeCase('case-1', 'case-2');
+    expect(apiClient.post).toHaveBeenCalledWith('/api/lien/api/liens/cases/mergecase', {
+      caseIdA: 'case-1',
+      caseIdB: 'case-2',
+    });
+
+    await CasesApi.deleteCase('case-1');
+    expect(apiClient.delete).toHaveBeenCalledWith('/api/lien/api/liens/cases/delete/case-1');
   });
 });
