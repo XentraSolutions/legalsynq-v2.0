@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import { LienTable } from "@/components/lien/lien-table";
@@ -45,12 +46,6 @@ function pickLienStatusOptions(
   return [openOrActive, settledOrClosed].filter((i): i is LiensStatusResponse =>
     Boolean(i),
   );
-}
-
-function cleanNumericInput(raw: string): string {
-  const cleaned = raw.replace(/[^\d.]/g, "");
-  const parts = cleaned.split(".");
-  return parts.length > 2 ? parts[0] + "." + parts[1] : cleaned;
 }
 
 interface AddPaymentFormProps {
@@ -490,34 +485,27 @@ export function AddPaymentForm({
           inputNumeric > (l.balance ?? 0) && inputNumeric > 0;
         return (
           <div className="flex flex-col items-end gap-0.5">
-            <div className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                $
-              </span>
-              <Input
-                type="text"
-                inputMode="decimal"
-                value={inputVal}
-                onChange={(e) => {
-                  const sanitized = cleanNumericInput(e.target.value);
-                  setLienPayments((prev) => ({ ...prev, [l.id]: sanitized }));
-                }}
-                onBlur={() => {
-                  const n = parseFloat(inputVal);
-                  if (!isNaN(n))
-                    setLienPayments((prev) => ({
-                      ...prev,
-                      [l.id]: n.toFixed(2),
-                    }));
-                }}
-                placeholder="0.00"
-                className={`w-28 pl-5 pr-2 py-1 text-right ${
-                  rowExceedsBilling
-                    ? "border-red-300 focus:border-red-400 focus:ring-red-100"
-                    : ""
-                }`}
-              />
-            </div>
+            <NumberInput
+              value={inputVal}
+              onValueChange={(v) =>
+                setLienPayments((prev) => ({ ...prev, [l.id]: v }))
+              }
+              onBlur={() => {
+                const n = parseFloat(inputVal);
+                if (!isNaN(n))
+                  setLienPayments((prev) => ({
+                    ...prev,
+                    [l.id]: n.toFixed(2),
+                  }));
+              }}
+              placeholder="0.00"
+              prefix="$"
+              className={`w-28 text-right ${
+                rowExceedsBilling
+                  ? "border-red-300 focus:border-red-400 focus:ring-red-100"
+                  : ""
+              }`}
+            />
             {rowExceedsBilling && (
               <span className="text-[10px] text-red-500 whitespace-nowrap">
                 Exceeds balance
@@ -641,29 +629,17 @@ export function AddPaymentForm({
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Check Amount <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                  $
-                </span>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={form.checkAmount}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      checkAmount: cleanNumericInput(e.target.value),
-                    })
-                  }
-                  onBlur={() => {
-                    const n = parseFloat(form.checkAmount);
-                    if (!isNaN(n) && n > 0)
-                      setForm({ ...form, checkAmount: n.toFixed(2) });
-                  }}
-                  placeholder="0.00"
-                  className="pl-6"
-                />
-              </div>
+              <NumberInput
+                value={form.checkAmount}
+                onValueChange={(v) => setForm({ ...form, checkAmount: v })}
+                onBlur={() => {
+                  const n = parseFloat(form.checkAmount);
+                  if (!isNaN(n) && n > 0)
+                    setForm({ ...form, checkAmount: n.toFixed(2) });
+                }}
+                placeholder="0.00"
+                prefix="$"
+              />
             </div>
 
             <Field

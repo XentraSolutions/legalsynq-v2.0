@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { useSession } from '@/hooks/use-session';
-import { ProductRole } from '@/types';
-import { lienApi } from '@/lib/lien-api';
-import { ApiError } from '@/lib/api-client';
-import { LienDetailPanel } from '@/components/lien/lien-detail-panel';
-import type { LienDetail } from '@/types/lien';
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { useSession } from "@/hooks/use-session";
+import { ProductRole } from "@/types";
+import { lienApi } from "@/lib/lien-api";
+import { ApiError } from "@/lib/api-client";
+import { LienDetailPanel } from "@/components/lien/lien-detail-panel";
+import type { LienDetail } from "@/types/lien";
 
 /**
  * /lien/portfolio/[id] — Held lien detail for buyers and holders.
@@ -23,31 +23,48 @@ export default function PortfolioLienDetailPage() {
   const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
 
-  const isBuyer  = session?.productRoles.includes(ProductRole.SynqLienBuyer)  ?? false;
-  const isHolder = session?.productRoles.includes(ProductRole.SynqLienHolder) ?? false;
+  const isBuyer =
+    session?.productRoles.includes(ProductRole.SynqLienBuyer) ?? false;
+  const isHolder =
+    session?.productRoles.includes(ProductRole.SynqLienHolder) ?? false;
 
-  const [lien,    setLien]    = useState<LienDetail | null>(null);
+  const [lien, setLien] = useState<LienDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (sessionLoading) return;
-    if (!session) { router.push('/login'); return; }
-    if (!isBuyer && !isHolder) { router.push('/dashboard'); return; }
+    if (!session) {
+      router.push("/login");
+      return;
+    }
+    if (!isBuyer && !isHolder) {
+      router.push("/dashboard");
+      return;
+    }
 
     async function load() {
       setLoading(true);
       try {
-        const { data } = await lienApi.liens.getById(params?.id ?? '');
+        const { data } = await lienApi.liens.getById(params?.id ?? "");
         setLien(data);
       } catch (err) {
         if (err instanceof ApiError) {
-          if (err.isUnauthorized) { router.push('/login'); return; }
-          if (err.isNotFound)     { setError('Lien not found in your portfolio.'); return; }
-          if (err.isForbidden)    { setError('You do not have access to this lien.'); return; }
+          if (err.isUnauthorized) {
+            router.push("/login");
+            return;
+          }
+          if (err.isNotFound) {
+            setError("Lien not found in your portfolio.");
+            return;
+          }
+          if (err.isForbidden) {
+            setError("You do not have access to this lien.");
+            return;
+          }
           setError(err.message);
         } else {
-          setError('Failed to load lien.');
+          setError("Failed to load lien.");
         }
       } finally {
         setLoading(false);
@@ -55,22 +72,16 @@ export default function PortfolioLienDetailPage() {
     }
 
     load();
-  }, [params?.id ?? '', session, sessionLoading, isBuyer, isHolder, router]);
-
-  if (sessionLoading || loading) {
-    return (
-      <div className="space-y-4 animate-pulse">
-        <div className="h-6 w-32 bg-gray-100 rounded" />
-        <div className="h-48 bg-gray-100 rounded" />
-      </div>
-    );
-  }
+  }, [params?.id ?? "", session, sessionLoading, isBuyer, isHolder, router]);
 
   if (error) {
     return (
       <div className="space-y-4">
         <nav>
-          <Link href="/lien/portfolio" className="text-sm text-gray-500 hover:text-gray-800">
+          <Link
+            href="/lien/portfolio"
+            className="text-sm text-gray-500 hover:text-gray-800"
+          >
             ← Back to Portfolio
           </Link>
         </nav>
@@ -86,7 +97,10 @@ export default function PortfolioLienDetailPage() {
   return (
     <div className="space-y-4">
       <nav>
-        <Link href="/lien/portfolio" className="text-sm text-gray-500 hover:text-gray-800">
+        <Link
+          href="/lien/portfolio"
+          className="text-sm text-gray-500 hover:text-gray-800"
+        >
           ← Back to Portfolio
         </Link>
       </nav>

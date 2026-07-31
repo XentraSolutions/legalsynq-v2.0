@@ -1,0 +1,156 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { FormModal } from "@/components/lien/modal";
+import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
+import { contactsService } from "@/lib/contacts";
+import { liensService } from "@/lib/selling";
+import { useToast } from "@/lib/toast-context";
+import type { LienCaseDetail, LienFundingCompanyDetail } from "@/types/lien-selling";
+
+const FUNDING_CONTACT_SUBTYPE = "FundingCompanyContactPerson";
+
+interface EditCaseInformationModalProps {
+  lienId: string;
+  fundingCompany: LienFundingCompanyDetail | null;
+  caseInformation: LienCaseDetail | null;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+export function EditCaseInformationModal({
+  lienId,
+  fundingCompany,
+  caseInformation,
+  onClose,
+  onSaved,
+}: EditCaseInformationModalProps) {
+  const { show: showToast } = useToast();
+  const [fundingCompanyId, setFundingCompanyId] = useState(
+    fundingCompany?.id ?? "",
+  );
+  const [fundingCompanyContactId, setFundingCompanyContactId] = useState(
+    fundingCompany?.contact?.id ?? "",
+  );
+  const [lawFirmId, setLawFirmId] = useState(caseInformation?.lawFirmId ?? "");
+  const [caseManagerId, setCaseManagerId] = useState(
+    caseInformation?.caseManagerId ?? "",
+  );
+  const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<string>();
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    contactsService.getCaseManagerRoleCode().then(setCaseManagerRoleCode);
+  }, []);
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    try {
+      await liensService.saveCaseInformation(lienId, {
+        fundingCompanyId: fundingCompanyId || undefined,
+        fundingCompanyContactId: fundingCompanyContactId || undefined,
+        handlingLawFirmId: lawFirmId || undefined,
+        caseManagerId: caseManagerId || undefined,
+        caseId: caseInformation?.id,
+        createCaseIfMissing: !caseInformation?.id,
+      });
+      showToast("Funding company & case information updated.", "success");
+      onSaved();
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Failed to save case information",
+        "error",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <FormModal
+      open
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      title="Edit Funding Company & Case Information"
+      submitLabel={saving ? "Saving..." : "Save"}
+      loading={saving}
+    >
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Funding Company
+          </label>
+          <SellingEntitySelect
+            entityType="FundingCompany"
+            value={fundingCompanyId}
+            onChange={(v) => {
+              setFundingCompanyId(v);
+              setFundingCompanyContactId("");
+            }}
+            placeholder="Select funding company..."
+            searchPlaceholder="Search funding companies..."
+            allowCreate
+            createLabel="Add Funding Company"
+            createContactType="FundingCompany"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Contact Person
+          </label>
+          <SellingEntitySelect
+            entityType="FundingCompanyContact"
+            fundingCompanyId={fundingCompanyId}
+            requireParent
+            parentHint="Select a funding company first"
+            value={fundingCompanyContactId}
+            onChange={(v) => setFundingCompanyContactId(v)}
+            placeholder="Select contact person..."
+            searchPlaceholder="Search contacts..."
+            allowCreate
+            createLabel="Add New Contact Person"
+            createContactType="FundingCompany"
+            createContactSubtype={FUNDING_CONTACT_SUBTYPE}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Handling Law Firm
+          </label>
+          <SellingEntitySelect
+            entityType="LawFirm"
+            value={lawFirmId}
+            onChange={(v) => {
+              setLawFirmId(v);
+              setCaseManagerId("");
+            }}
+            placeholder="Select law firm..."
+            searchPlaceholder="Search law firms..."
+            allowCreate
+            createLabel="Add New Law Firm"
+            createContactType="LawFirm"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Case Manager
+          </label>
+          <SellingEntitySelect
+            entityType="CaseManager"
+            lawFirmId={lawFirmId}
+            requireParent
+            parentHint="Select a law firm first"
+            value={caseManagerId}
+            onChange={(v) => setCaseManagerId(v)}
+            placeholder="Select case manager..."
+            searchPlaceholder="Search case managers..."
+            allowCreate
+            createLabel="Add Case Manager"
+            createContactType="LawFirm"
+            createContactSubtype={caseManagerRoleCode}
+          />
+        </div>
+      </div>
+    </FormModal>
+  );
+}

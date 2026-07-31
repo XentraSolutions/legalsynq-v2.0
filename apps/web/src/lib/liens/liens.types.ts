@@ -258,3 +258,49 @@ export interface PaginationMeta {
   totalCount: number;
   totalPages: number;
 }
+
+export interface DraftLienParams {
+  sellerStatus: string;
+  source: string;
+}
+export interface LienInfoParams {
+  sellerStatus: string;
+  initialServiceDate: string;
+  endServiceDate: string | null;
+  listingVisibility: string;
+  notes: string;
+}
+
+export interface LienFundingCompanyParams {
+  fundingCompanyId: string;
+  fundingCompanyContactId: string;
+  handlingLawFirmId: string;
+  caseManagerId: string;
+  caseId: string;
+  createCaseIfMissing: boolean;
+}
+
+export interface LienMedicalCodesParams {
+  askAmount: number;
+  billingAmount: number;
+  rows: [
+    {
+      medicalCode: string;
+      description: string;
+      serviceDate: string;
+      billingAmount: number;
+      medicareCost: number;
+      targetSaleAmount: number;
+    },
+  ];
+}
+
+export interface LienUploadDocumentsParams {
+  documents: [
+    {
+      documentId: string;
+      documentType: string;
+      displayName: string;
+    },
+  ];
+}

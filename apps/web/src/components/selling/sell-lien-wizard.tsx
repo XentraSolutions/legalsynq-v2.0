@@ -1,0 +1,647 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { liensService } from "@/lib/selling";
+import { documentsService } from "@/lib/documents";
+import { useSession } from "@/hooks/use-session";
+import { useSessionContext } from "@/providers/session-provider";
+import { useToast } from "@/lib/toast-context";
+import { ConfirmDialog, Modal } from "@/components/lien/modal";
+import Field from "@/components/lien/field";
+import { LienInformationPanel } from "@/components/selling/lien-detail/lien-information-panel";
+import { FundingCompanyAndCaseInformationPanel } from "@/components/selling/lien-detail/funding-company-information-panel";
+import { MedicalCodesInformationPanel } from "@/components/selling/lien-detail/medical-codes-information-panel";
+import { EditMedicalPricingModal } from "@/components/selling/lien-detail/edit-medical-pricing-modal";
+import {
+  sellingLookupsApi,
+  type SellingLookupItem,
+} from "@/lib/selling/lookup.api";
+import type { LienDetailsResult } from "@/types/lien-selling";
+import {
+  REQUIRED_SALE_DOCUMENT_TYPES,
+  OPTIONAL_SALE_DOCUMENT_TYPES,
+  SALE_DOCUMENT_LABELS,
+  SALE_DOCUMENT_TYPE_TO_CATEGORY_CODE,
+  SALE_DOCUMENT_TYPE_TO_SELLING_TYPE,
+  parseDocumentReference,
+} from "@/lib/selling/selling-detail.mapper";
+
+interface DocSlotState {
+  uploading: boolean;
+  documentId: string | null;
+  displayName: string | null;
+}
+
+function emptyDocSlots(): Record<string, DocSlotState> {
+  const slots: Record<string, DocSlotState> = {};
+  for (const type of [
+    ...REQUIRED_SALE_DOCUMENT_TYPES,
+    ...OPTIONAL_SALE_DOCUMENT_TYPES,
+  ]) {
+    slots[type] = { uploading: false, documentId: null, displayName: null };
+  }
+  return slots;
+}
+
+// Reverse of SALE_DOCUMENT_TYPE_TO_SELLING_TYPE — used to repopulate docSlots
+// from documents already saved on the lien (lien.documents). "Other" is
+// ambiguous (both the PoliceReport slot and a true "Other" upload save as
+// "Other"), but PoliceReport is the only wizard slot that maps to it, so it's
+// the correct slot to restore into.
+const SELLING_TYPE_TO_SALE_DOCUMENT_TYPE: Record<string, string> = {
+  LienAgreement: "LienAgreement",
+  MedicalBill: "MedicalBill",
+  MedicalRecord: "MedicalRecord",
+  Other: "PoliceReport",
+};
+
+function docSlotsFromLien(
+  documents: LienDetailsResult["documents"],
+): Record<string, DocSlotState> {
+  const slots = emptyDocSlots();
+  for (const doc of documents) {
+    const data = parseDocumentReference(doc);
+    if (!data.documentId) continue;
+    const slotType = SELLING_TYPE_TO_SALE_DOCUMENT_TYPE[data.documentType];
+    if (!slotType || !slots[slotType]) continue;
+    slots[slotType] = {
+      uploading: false,
+      documentId: data.documentId,
+      displayName: data.displayName,
+    };
+  }
+  return slots;
+}
+
+export function SellLienWizard({ lienId }: { lienId: string }) {
+  const router = useRouter();
+  const { session } = useSession();
+  const { lookup } = useSessionContext();
+  const { show: showToast } = useToast();
+  const documentCategories = lookup?.DocumentCategory ?? [];
+
+  const [loading, setLoading] = useState(true);
+  const [lien, setLien] = useState<LienDetailsResult | null>(null);
+  const [step, setStep] = useState<1 | 2>(1);
+
+  // Step 1 — buyer selection
+  const [companies, setCompanies] = useState<SellingLookupItem[]>([]);
+  const [companySearch, setCompanySearch] = useState("");
+  const [companyId, setCompanyId] = useState<string | null>(null);
+  const [companyName, setCompanyName] = useState<string>("");
+  const [contacts, setContacts] = useState<SellingLookupItem[]>([]);
+  const [contactId, setContactId] = useState<string | null>(null);
+  const selectedCompanyRef = useRef<HTMLLabelElement | null>(null);
+
+  // Step 2 — documents + message.
+  const [messageToBuyer, setMessageToBuyer] = useState("");
+  const [docSlots, setDocSlots] =
+    useState<Record<string, DocSlotState>>(emptyDocSlots());
+  const [sellingDocumentTypes, setSellingDocumentTypes] = useState<string[]>(
+    [],
+  );
+
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [showEditPricing, setShowEditPricing] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [detail, companyList, documentTypesRes] = await Promise.all([
+          liensService.getLienById(lienId),
+          liensService.getFundingCompanies(),
+          sellingLookupsApi.documentTypes(),
+        ]);
+        if (cancelled) return;
+        setLien(detail);
+        setCompanies(companyList);
+        setSellingDocumentTypes(documentTypesRes.data.items);
+        setDocSlots(docSlotsFromLien(detail.documents));
+        if (detail.fundingCompany) {
+          setCompanyId(detail.fundingCompany.id);
+          setCompanyName(detail.fundingCompany.name);
+          if (detail.fundingCompany.contact) {
+            setContactId(detail.fundingCompany.contact.id);
+          }
+        }
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : "Failed to load lien",
+          "error",
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lienId]);
+
+  const refreshLien = async () => {
+    try {
+      const detail = await liensService.getLienById(lienId);
+      setLien(detail);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Failed to load lien",
+        "error",
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (!companyId) {
+      setContacts([]);
+      return;
+    }
+    let cancelled = false;
+    liensService
+      .getFundingCompanyContacts(companyId)
+      .then((items) => {
+        if (cancelled) return;
+        setContacts(items);
+        if (items.length === 1) setContactId(items[0].id);
+      })
+      .catch(() => {
+        if (!cancelled) setContacts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+
+  useEffect(() => {
+    if (!companyId || step !== 1) return;
+    selectedCompanyRef.current?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+  }, [companyId, step, companies]);
+
+  const filteredCompanies = useMemo(() => {
+    if (!companySearch.trim()) return companies;
+    const q = companySearch.trim().toLowerCase();
+    return companies.filter((c) => c.name.toLowerCase().includes(q));
+  }, [companies, companySearch]);
+
+  const askAmount = lien?.medicalPricing.askAmount ?? null;
+  const pricingReady =
+    (lien?.medicalPricing.rows.length ?? 0) > 0 && (askAmount ?? 0) > 0;
+  const requiredDocsReady = REQUIRED_SALE_DOCUMENT_TYPES.every(
+    (type) => docSlots[type]?.documentId,
+  );
+  const canAuthorize = !!companyId && pricingReady && requiredDocsReady;
+
+  const handleFileSelect = async (documentType: string, file: File) => {
+    setDocSlots((prev) => ({
+      ...prev,
+      [documentType]: { ...prev[documentType], uploading: true },
+    }));
+    try {
+      const categoryCode = SALE_DOCUMENT_TYPE_TO_CATEGORY_CODE[documentType];
+      const documentTypeId = documentCategories.find(
+        (c) => c.code === categoryCode,
+      )?.id;
+      if (!documentTypeId) {
+        throw new Error(
+          "Document type list is still loading. Please try again.",
+        );
+      }
+      const uploaded = await documentsService.upload({
+        file,
+        tenantId: session?.tenantId ?? "",
+        productId: "SYNQ_LIENS",
+        referenceType: "Lien",
+        referenceId: lienId,
+        documentTypeId,
+        title: file.name,
+      });
+      const nextSlots = {
+        ...docSlots,
+        [documentType]: {
+          uploading: false,
+          documentId: uploaded.id,
+          displayName: file.name,
+        },
+      };
+      setDocSlots(nextSlots);
+      // Persist the reference immediately so it survives navigating away —
+      // otherwise it only lives in this component's state until "Save for
+      // Later" or "Authorize & Send" is clicked.
+      await liensService.saveDocuments(lienId, {
+        documents: uploadedDocumentRefs(nextSlots),
+      });
+    } catch (err) {
+      setDocSlots((prev) => ({
+        ...prev,
+        [documentType]: { ...prev[documentType], uploading: false },
+      }));
+      showToast(
+        err instanceof Error ? err.message : "Document upload failed",
+        "error",
+      );
+    }
+  };
+
+  const uploadedDocumentRefs = (slots: Record<string, DocSlotState> = docSlots) =>
+    Object.entries(slots)
+      .filter(([, slot]) => slot.documentId)
+      .map(([documentType, slot]) => {
+        const sellingType =
+          SALE_DOCUMENT_TYPE_TO_SELLING_TYPE[documentType] ?? documentType;
+        return {
+          documentId: slot.documentId!,
+          documentType: sellingDocumentTypes.includes(sellingType)
+            ? sellingType
+            : "Other",
+          displayName: slot.displayName ?? undefined,
+        };
+      });
+
+  const saveForLater = async () => {
+    setSubmitting(true);
+    try {
+      const documents = uploadedDocumentRefs();
+      if (documents.length > 0) {
+        await liensService.saveDocuments(lienId, { documents });
+      }
+      showToast("Progress saved.", "success");
+      router.push(`/selling/portfolio/${lienId}`);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Failed to save progress",
+        "error",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const confirmSell = async () => {
+    if (!companyId || askAmount === null) return;
+    setSubmitting(true);
+    try {
+      await liensService.saveDocuments(lienId, {
+        documents: uploadedDocumentRefs(),
+      });
+      await liensService.prepareSale(lienId, {
+        buyerFundingCompanyId: companyId,
+        buyerContactId: contactId || undefined,
+        askAmount,
+        listingVisibility: "Private",
+        messageToBuyer: messageToBuyer || undefined,
+      });
+      await liensService.confirmSale(lienId, {
+        confirmationAccepted: true,
+        sendBuyerNotification: true,
+      });
+      setShowConfirm(false);
+      setShowSuccess(true);
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Failed to submit lien for sale",
+        "error",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-10 text-center">
+        <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!lien) return null;
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6 pb-10">
+      <div className="flex items-center gap-4">
+        <Link
+          href={`/selling/portfolio/${lienId}`}
+          className="text-gray-400 hover:text-gray-600"
+        >
+          <i className="ri-arrow-left-line text-xl" />
+        </Link>
+        <div className="flex-1 flex gap-2">
+          <div
+            className={`h-1 flex-1 rounded-full ${step >= 1 ? "bg-[#EE7132]" : "bg-gray-200"}`}
+          />
+          <div
+            className={`h-1 flex-1 rounded-full ${step >= 2 ? "bg-[#EE7132]" : "bg-gray-200"}`}
+          />
+        </div>
+      </div>
+
+      {step === 1 && (
+        <div className="space-y-4">
+          <p className="text-xs text-gray-400">Step 1/2</p>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Select a Funding Company
+          </h1>
+          <p className="text-sm text-gray-500">
+            Choose the funding company that will receive this lien for review
+            and potential purchase.
+          </p>
+
+          <Field
+            type="text"
+            label=""
+            placeholder="Search..."
+            value={companySearch}
+            onChange={setCompanySearch}
+            prefix={<i className="ri-search-line" />}
+          />
+
+          <div className="border border-gray-200 rounded-lg max-h-96 overflow-y-auto">
+            {filteredCompanies.length === 0 && (
+              <p className="px-4 py-6 text-sm text-gray-400 text-center">
+                No funding companies found.
+              </p>
+            )}
+            {filteredCompanies.map((company) => (
+              <label
+                key={company.id}
+                ref={companyId === company.id ? selectedCompanyRef : undefined}
+                className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50"
+              >
+                <input
+                  type="radio"
+                  name="fundingCompany"
+                  checked={companyId === company.id}
+                  onChange={() => {
+                    setCompanyId(company.id);
+                    setCompanyName(company.name);
+                    setContactId(null);
+                  }}
+                  className="accent-[#EE7132]"
+                />
+                <span className="text-sm text-gray-700">{company.name}</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Link
+              href={`/selling/portfolio/${lienId}`}
+              className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+            >
+              Cancel
+            </Link>
+            <button
+              disabled={!companyId}
+              onClick={() => setStep(2)}
+              className="text-sm px-6 py-2 bg-[#EE7132] hover:bg-[#EE7132]/90 text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="space-y-4">
+          <p className="text-xs text-gray-400">Step 2/2</p>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Prepare Your Lien for Sale
+          </h1>
+          <p className="text-sm text-gray-500">
+            Review the lien information and complete all required documents
+            before submitting it to the selected funding company.
+          </p>
+
+          {!pricingReady && (
+            <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <i className="ri-alert-line text-amber-600 shrink-0" />
+              <p className="text-xs text-amber-700">
+                This lien has no medical pricing or ask amount set yet. Edit
+                &ldquo;Medical Code &amp; Marketplace Pricing&rdquo; below
+                before this lien can be sold.
+              </p>
+            </div>
+          )}
+
+          {!requiredDocsReady && (
+            <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <i className="ri-alert-line text-amber-600 shrink-0" />
+              <p className="text-xs text-amber-700">
+                Upload all required documents below before this lien can be
+                authorized and sent.
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            <div className="space-y-4">
+              <LienInformationPanel lien={lien.lienInformation} />
+              <FundingCompanyAndCaseInformationPanel
+                fundingCompany={
+                  companyId
+                    ? {
+                        id: companyId,
+                        name: companyName,
+                        contact: contactId
+                          ? {
+                              id: contactId,
+                              name:
+                                contacts.find((c) => c.id === contactId)
+                                  ?.name ?? "",
+                            }
+                          : null,
+                      }
+                    : null
+                }
+                caseInformation={lien.caseInformation}
+              />
+              <MedicalCodesInformationPanel
+                lien={lien.medicalPricing.rows}
+                onEdit={() => setShowEditPricing(true)}
+              />
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-4">
+                <h3 className="text-md font-semibold">Required Documents</h3>
+                {REQUIRED_SALE_DOCUMENT_TYPES.map((type) => (
+                  <DocumentSlot
+                    key={type}
+                    type={type}
+                    required
+                    slot={docSlots[type]}
+                    onSelect={(file) => handleFileSelect(type, file)}
+                  />
+                ))}
+              </div>
+              <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-4">
+                <h3 className="text-md font-semibold">
+                  Optional Supporting Documents
+                </h3>
+                {OPTIONAL_SALE_DOCUMENT_TYPES.map((type) => (
+                  <DocumentSlot
+                    key={type}
+                    type={type}
+                    slot={docSlots[type]}
+                    onSelect={(file) => handleFileSelect(type, file)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center pt-4">
+            <button
+              onClick={() => setStep(1)}
+              className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+            >
+              Back
+            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={saveForLater}
+                disabled={submitting}
+                className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
+              >
+                Save for Later
+              </button>
+              <button
+                disabled={!canAuthorize || submitting}
+                onClick={() => setShowConfirm(true)}
+                className="text-sm px-6 py-2 bg-[#EE7132] hover:bg-[#EE7132]/90 text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Authorize &amp; Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={showConfirm}
+        onClose={() => setShowConfirm(false)}
+        onConfirm={confirmSell}
+        loading={submitting}
+        title="Sell This Lien?"
+        description={
+          <div className="space-y-3">
+            <p>
+              You&apos;re about to sell lien{" "}
+              <strong>{lien.lienInformation.lienNumber}</strong> to{" "}
+              <strong>{companyName}</strong> for purchase consideration. Are you
+              sure you want to continue?
+            </p>
+            {/* <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Message to Buyer (optional)
+              </label>
+              <textarea
+                value={messageToBuyer}
+                onChange={(e) => setMessageToBuyer(e.target.value)}
+                rows={2}
+                placeholder="Optional note included with the buyer notification..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+            </div> */}
+          </div>
+        }
+        confirmLabel="Yes, Sell"
+      />
+
+      <Modal
+        open={showSuccess}
+        onClose={() => router.push(`/selling/portfolio/${lienId}`)}
+        title="Lien Submitted Successfully"
+        size="sm"
+        footer={
+          <button
+            onClick={() => router.push(`/selling/portfolio/${lienId}`)}
+            className="text-sm px-4 py-2 bg-[#EE7132] hover:bg-[#EE7132]/90 text-white rounded-lg"
+          >
+            Done
+          </button>
+        }
+      >
+        <p className="text-sm text-gray-600">
+          Lien <strong>{lien.lienInformation.lienNumber}</strong> has been
+          successfully submitted to <strong>{companyName}</strong> for review.
+          The buyer has been notified and can now begin the evaluation process.
+        </p>
+      </Modal>
+
+      {showEditPricing && (
+        <EditMedicalPricingModal
+          lienId={lienId}
+          rows={lien.medicalPricing.rows}
+          onClose={() => setShowEditPricing(false)}
+          onSaved={() => {
+            setShowEditPricing(false);
+            refreshLien();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DocumentSlot({
+  type,
+  required,
+  slot,
+  onSelect,
+}: {
+  type: string;
+  required?: boolean;
+  slot: DocSlotState;
+  onSelect: (file: File) => void;
+}) {
+  const meta = SALE_DOCUMENT_LABELS[type];
+  const inputId = `doc-slot-${type}`;
+  return (
+    <div className="flex items-center justify-between gap-3 border border-gray-100 rounded-lg px-3 py-2.5">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-gray-800">
+          {meta?.title ?? type}
+          {required && <span className="text-red-500 ml-0.5">*</span>}
+        </p>
+        <p className="text-xs text-gray-400 truncate">
+          {slot.documentId
+            ? slot.displayName
+            : (meta?.description ?? "(Optional)")}
+        </p>
+      </div>
+      <label
+        htmlFor={inputId}
+        className={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border cursor-pointer ${
+          slot.documentId
+            ? "border-green-200 text-green-700 bg-green-50"
+            : "border-gray-200 text-gray-600 hover:bg-gray-50"
+        }`}
+      >
+        {slot.uploading
+          ? "Uploading..."
+          : slot.documentId
+            ? "Replace File"
+            : "Choose File"}
+      </label>
+      <input
+        id={inputId}
+        type="file"
+        className="hidden"
+        disabled={slot.uploading}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onSelect(file);
+        }}
+      />
+    </div>
+  );
+}
