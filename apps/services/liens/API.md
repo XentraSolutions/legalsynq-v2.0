@@ -461,7 +461,8 @@ first and then by `providerName`.
       "id": "access-link-guid",
       "lienNumber": "LIEN-001",
       "providerName": "Sunrise Clinic",
-      "sellerName": "Smith & Associates LLP",
+      "sellerCompany": "Smith & Associates LLP",
+      "sellerName": "Seller Operator",
       "offeredAmount": 2500.00,
       "receivedAtUtc": "2026-07-28T12:00:00Z",
       "responseDueAtUtc": "2026-08-27T12:00:00Z",
@@ -525,7 +526,7 @@ which supports accounts provisioned from public buyer activation.
       "id": "access-link-guid",
       "lienNumber": "LIEN-001",
       "providerName": "Sunrise Clinic",
-      "sellerName": "Smith & Associates LLP",
+      "sellerName": "Seller Operator",
       "initialServiceDate": "2026-05-01",
       "serviceDate": "2026-05-01",
       "billingAmount": 9000.00,
@@ -602,6 +603,8 @@ email-based source buyer organization fallback used by the list endpoint.
       "category": "Lien Document",
       "sizeOrType": "PDF",
       "url": "/documents/document-guid",
+      "viewUrl": "/api/lien/api/liens/selling/buyer/liens/{access-link-guid}/documents/{document-guid}/view",
+      "downloadUrl": "/api/lien/api/liens/selling/buyer/liens/{access-link-guid}/documents/{document-guid}/download",
       "createdAtUtc": "2026-07-28T12:00:00Z"
     }
   ],
@@ -630,7 +633,33 @@ email-based source buyer organization fallback used by the list endpoint.
 
 `documents`, `messages`, and `activity` are returned only from persisted records. They are empty arrays when no matching
 servicing documents, portal messages, or buyer response activity exist. `allowedActions` exposes `accept` and `decline`
-only when the access link has not recorded a response and the lien itself is still actionable.
+only when the access link has not recorded a response and the lien itself is still actionable. `viewUrl` and
+`downloadUrl` are same-origin tenant-portal BFF paths for authenticated funding-portal document access. They are `null`
+when the servicing item does not contain a resolvable Documents-service id.
+
+### GET `/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view`
+
+Issues a short-lived Documents view access token for a document attached to an authenticated offered lien, then
+redirects to the Documents access route. The endpoint validates the same buyer organization access link as the detail
+endpoint before minting the Documents token. Documents not attached to the offered lien return
+`404 document_not_found`.
+
+**Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
+
+**Response:** `302 Found`
+
+`Location` points to `/documents/access/{accessToken}` when called through the gateway. The tenant portal BFF path
+`/api/lien/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view` rewrites that redirect to
+`/api/lien/documents/access/{accessToken}` for same-origin browser access.
+
+### GET `/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/download`
+
+Same validation and ownership checks as the authenticated offered-lien document view endpoint, but requests a Documents
+download access token.
+
+**Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
+
+**Response:** `302 Found`
 
 ### POST `/api/liens/selling/buyer/liens/{accessLinkId}/messages`
 

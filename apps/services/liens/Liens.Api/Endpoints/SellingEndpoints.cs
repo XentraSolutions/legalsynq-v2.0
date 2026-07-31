@@ -1,3 +1,4 @@
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
@@ -17,6 +18,7 @@ using NPOI.HSSF.UserModel;
 using NPOI.SS.UserModel;
 using NPOI.XSSF.UserModel;
 using System.Globalization;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -27,6 +29,7 @@ public static class SellingEndpoints
 {
     private const long SellingImportMaxBytes = 50L * 1024 * 1024;
     private const string SellingPatientDetailsTemplate = "SELLING_PATIENT_DETAILS_REPORT";
+    private const string DocumentsServiceAudience = "documents-service";
     private static readonly HashSet<string> AllowedSellingImportExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".xls",
@@ -129,6 +132,12 @@ public static class SellingEndpoints
             .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
 
         buyerGroup.MapGet("/liens/{accessLinkId:guid}", GetBuyerOfferedLien)
+            .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
+
+        buyerGroup.MapGet("/liens/{accessLinkId:guid}/documents/{documentId:guid}/view", ViewBuyerOfferedLienDocument)
+            .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
+
+        buyerGroup.MapGet("/liens/{accessLinkId:guid}/documents/{documentId:guid}/download", DownloadBuyerOfferedLienDocument)
             .RequirePermission(LiensPermissions.LienBrowse, ProductRoleCodes.SynqLienBuyer);
 
         buyerGroup.MapPost("/liens/{accessLinkId:guid}/messages", PostBuyerOfferedLienMessage)
@@ -440,11 +449,11 @@ public static class SellingEndpoints
         pageSize = Math.Clamp(pageSize, 1, 100);
 
         var sources = await LoadBuyerOfferedLienSourcesAsync(db, ctx, ct);
-        var sellerNames = await ResolveSellerNamesAsync(db, tenantId, sources.Select(source => source.SellerOrgId), ct);
+        var sellerDisplays = await ResolveSellerDisplaysAsync(db, tenantId, sources.Select(source => source.SellerOrgId), ct);
         var providerNames = await ResolveProviderNamesAsync(db, tenantId, sources, ct);
 
         IEnumerable<BuyerOfferedLienRow> rows = sources
-            .Select(source => MapBuyerOfferedLienRow(source, sellerNames, providerNames));
+            .Select(source => MapBuyerOfferedLienRow(source, sellerDisplays, providerNames));
 
         var statusFilter = NormalizeBuyerOfferedLienStatusFilter(status);
         if (!string.IsNullOrWhiteSpace(statusFilter))
@@ -487,12 +496,6 @@ public static class SellingEndpoints
         if (lien is null)
             return Results.NotFound(new { error = new { code = "not_found", message = $"Offered lien '{accessLinkId}' not found." } });
 
-        var caseEntity = lien.CaseId.HasValue
-            ? await db.Cases
-                .AsNoTracking()
-                .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == lien.CaseId.Value, ct)
-            : null;
-
         var buyerContact = await db.Contacts
             .AsNoTracking()
             .FirstOrDefaultAsync(contact =>
@@ -508,7 +511,7 @@ public static class SellingEndpoints
 
         var sellerContact = SelectSellerContact(sellerContacts);
         var providerName = await ResolveProviderNameAsync(db, tenantId, lien.FacilityId, ct);
-        var documents = await ResolveBuyerOfferedLienDocumentsAsync(db, tenantId, lien, caseEntity, ct);
+        var documents = await ResolveBuyerOfferedLienDocumentsAsync(db, tenantId, accessLink.Id, lien, ct);
         var messages = await ResolveBuyerOfferedLienMessagesAsync(db, accessLink, ct);
 
         return Results.Ok(MapBuyerOfferedLienDetail(
@@ -519,6 +522,111 @@ public static class SellingEndpoints
             providerName,
             documents,
             messages));
+    }
+
+    private static Task<IResult> ViewBuyerOfferedLienDocument(
+        Guid accessLinkId,
+        Guid documentId,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct = default)
+        => RedirectBuyerOfferedLienDocument(
+            accessLinkId,
+            documentId,
+            "view",
+            db,
+            ctx,
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            ct);
+
+    private static Task<IResult> DownloadBuyerOfferedLienDocument(
+        Guid accessLinkId,
+        Guid documentId,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct = default)
+        => RedirectBuyerOfferedLienDocument(
+            accessLinkId,
+            documentId,
+            "download",
+            db,
+            ctx,
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            ct);
+
+    private static async Task<IResult> RedirectBuyerOfferedLienDocument(
+        Guid accessLinkId,
+        Guid documentId,
+        string accessType,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        if (documentId == Guid.Empty)
+        {
+            return Results.BadRequest(new
+            {
+                error = new
+                {
+                    code = "document_required",
+                    message = "A valid document id is required.",
+                },
+            });
+        }
+
+        var (accessLink, error) = await ResolveBuyerOfferedLienAccessLinkAsync(accessLinkId, db, ctx, ct);
+        if (error is not null)
+            return error;
+
+        var documentReference = await ResolveBuyerOfferedLienDocumentReferenceAsync(
+            db,
+            accessLink!.TenantId,
+            accessLink.LienId,
+            documentId,
+            ct);
+        if (documentReference is null)
+        {
+            return Results.NotFound(new
+            {
+                error = new
+                {
+                    code = "document_not_found",
+                    message = "This document is not attached to the offered lien.",
+                },
+            });
+        }
+
+        var redeemUrl = await IssueBuyerOfferedLienDocumentAccessUrlAsync(
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            accessLink,
+            documentReference.Value,
+            accessType,
+            RequireUserId(ctx),
+            ct);
+        if (string.IsNullOrWhiteSpace(redeemUrl))
+        {
+            return Results.Problem(
+                title: "Document unavailable",
+                detail: "The document could not be opened right now.",
+                statusCode: StatusCodes.Status502BadGateway);
+        }
+
+        return Results.Redirect(redeemUrl, permanent: false, preserveMethod: false);
     }
 
     private static async Task<IResult> PostBuyerOfferedLienMessage(
@@ -755,7 +863,7 @@ public static class SellingEndpoints
         return buyerOrgIds;
     }
 
-    private static async Task<Dictionary<Guid, string>> ResolveSellerNamesAsync(
+    private static async Task<Dictionary<Guid, SellerDisplay>> ResolveSellerDisplaysAsync(
         LiensDbContext db,
         Guid tenantId,
         IEnumerable<Guid> sellerOrgIds,
@@ -765,10 +873,10 @@ public static class SellingEndpoints
         if (orgIds.Length == 0)
             return [];
 
-        var names = new Dictionary<Guid, string>();
+        var names = new Dictionary<Guid, SellerDisplay>();
         foreach (var orgId in orgIds)
         {
-            var contact = await db.Contacts
+            var contacts = await db.Contacts
                 .AsNoTracking()
                 .Where(item =>
                     item.TenantId == tenantId &&
@@ -776,15 +884,14 @@ public static class SellingEndpoints
                     item.OrgId == orgId &&
                     item.ContactType == ContactType.LawFirm)
                 .OrderBy(item => item.CreatedAtUtc)
-                .Select(item => new ContactDisplay(
-                    item.Id,
-                    item.OrgId,
-                    item.Organization,
-                    item.DisplayName))
-                .FirstOrDefaultAsync(ct);
+                .ToListAsync(ct);
+            var contact = SelectSellerContact(contacts);
 
-            names[orgId] = FirstNonEmpty(new[] { contact?.Organization, contact?.DisplayName }) ??
-                           "Seller unavailable";
+            var company = FirstNonEmpty(new[] { contact?.Organization, contact?.DisplayName }) ??
+                          "Seller company unavailable";
+            var name = FirstNonEmpty(new[] { contact?.DisplayName, contact?.Organization }) ??
+                       "Seller unavailable";
+            names[orgId] = new SellerDisplay(company, name);
         }
 
         return names;
@@ -843,8 +950,8 @@ public static class SellingEndpoints
     private static async Task<IReadOnlyList<BuyerOfferedLienDocument>> ResolveBuyerOfferedLienDocumentsAsync(
         LiensDbContext db,
         Guid tenantId,
+        Guid accessLinkId,
         Lien lien,
-        Case? caseEntity,
         CancellationToken ct)
     {
         var query = db.ServicingItems
@@ -858,13 +965,13 @@ public static class SellingEndpoints
 
         return items
             .Where(item => SellingDocumentTaskTypes.Contains(item.TaskType, StringComparer.Ordinal))
-            .Select(MapBuyerOfferedLienDocument)
+            .Select(item => MapBuyerOfferedLienDocument(item, accessLinkId))
             .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
             .DistinctBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    private static BuyerOfferedLienDocument MapBuyerOfferedLienDocument(ServicingItem item)
+    private static BuyerOfferedLienDocument MapBuyerOfferedLienDocument(ServicingItem item, Guid accessLinkId)
     {
         var fields = ParseLegacyNoteFields(item.Notes);
         var fileName = FirstNonEmpty(new[]
@@ -890,6 +997,9 @@ public static class SellingEndpoints
             fields.GetValueOrDefault("contentLength"),
             ResolveFileExtension(fileName),
         });
+        var documentId = TryResolveDocumentId(fields, out var resolvedDocumentId)
+            ? resolvedDocumentId
+            : (Guid?)null;
 
         return new BuyerOfferedLienDocument(
             item.Id,
@@ -899,9 +1009,148 @@ public static class SellingEndpoints
             FirstNonEmpty(new[]
             {
                 fields.GetValueOrDefault("url"),
-                TryResolveDocumentId(fields, out var documentId) ? $"/documents/{documentId:D}" : null,
+                documentId.HasValue ? $"/documents/{documentId.Value:D}" : null,
             }),
+            BuildBuyerOfferedLienDocumentActionUrl(accessLinkId, documentId, "view"),
+            BuildBuyerOfferedLienDocumentActionUrl(accessLinkId, documentId, "download"),
             item.CreatedAtUtc);
+    }
+
+    private static async Task<Guid?> ResolveBuyerOfferedLienDocumentReferenceAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid lienId,
+        Guid documentId,
+        CancellationToken ct)
+    {
+        var items = await db.ServicingItems
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.LienId == lienId)
+            .Select(item => new { item.TaskType, item.Notes })
+            .ToListAsync(ct);
+
+        foreach (var item in items.Where(item => SellingDocumentTaskTypes.Contains(item.TaskType, StringComparer.Ordinal)))
+        {
+            var fields = ParseLegacyNoteFields(item.Notes);
+            if (TryResolveDocumentId(fields, out var resolvedDocumentId) &&
+                resolvedDocumentId == documentId)
+            {
+                return resolvedDocumentId;
+            }
+        }
+
+        return null;
+    }
+
+    private static async Task<string?> IssueBuyerOfferedLienDocumentAccessUrlAsync(
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        SellingBuyerAccessLink accessLink,
+        Guid documentId,
+        string accessType,
+        Guid actorUserId,
+        CancellationToken ct)
+    {
+        var normalizedAccessType = string.Equals(accessType, "download", StringComparison.OrdinalIgnoreCase)
+            ? "download"
+            : "view";
+        var path = normalizedAccessType == "download"
+            ? $"/documents/{documentId:D}/download-url"
+            : $"/documents/{documentId:D}/view-url";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, path);
+        ApplyBuyerOfferedLienDocumentAuthorization(
+            request,
+            serviceTokenIssuer,
+            loggerFactory,
+            accessLink.TenantId,
+            actorUserId);
+        request.Headers.TryAddWithoutValidation("X-Organization-Id", accessLink.SellerOrgId.ToString());
+
+        try
+        {
+            var client = httpClientFactory.CreateClient("DocumentsService");
+            using var response = await client.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(ct));
+            var data = body.RootElement.TryGetProperty("data", out var dataElement)
+                ? dataElement
+                : body.RootElement;
+
+            if (data.TryGetProperty("redeemUrl", out var redeemUrl) &&
+                !string.IsNullOrWhiteSpace(redeemUrl.GetString()))
+            {
+                return NormalizeBuyerOfferedLienDocumentsRedeemUrl(redeemUrl.GetString()!);
+            }
+
+            if (data.TryGetProperty("accessToken", out var accessToken) &&
+                !string.IsNullOrWhiteSpace(accessToken.GetString()))
+            {
+                return $"/documents/access/{Uri.EscapeDataString(accessToken.GetString()!)}";
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            loggerFactory
+                .CreateLogger(nameof(SellingEndpoints))
+                .LogWarning(ex, "Documents access token request failed for buyer offered lien document {DocumentId}", documentId);
+        }
+        catch (JsonException ex)
+        {
+            loggerFactory
+                .CreateLogger(nameof(SellingEndpoints))
+                .LogWarning(ex, "Documents access token response was invalid for buyer offered lien document {DocumentId}", documentId);
+        }
+
+        return null;
+    }
+
+    private static void ApplyBuyerOfferedLienDocumentAuthorization(
+        HttpRequestMessage request,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        Guid tenantId,
+        Guid actorUserId)
+    {
+        if (!serviceTokenIssuer.IsConfigured)
+            return;
+
+        try
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue(
+                "Bearer",
+                serviceTokenIssuer.IssueToken(tenantId.ToString(), actorUserId.ToString(), DocumentsServiceAudience));
+        }
+        catch (Exception ex)
+        {
+            loggerFactory
+                .CreateLogger(nameof(SellingEndpoints))
+                .LogWarning(ex, "Unable to mint Documents service token for tenant {TenantId}", tenantId);
+        }
+    }
+
+    private static string NormalizeBuyerOfferedLienDocumentsRedeemUrl(string redeemUrl)
+    {
+        var trimmed = redeemUrl.Trim();
+        if (trimmed.StartsWith("/documents/access/", StringComparison.OrdinalIgnoreCase))
+            return trimmed;
+        if (trimmed.StartsWith("/access/", StringComparison.OrdinalIgnoreCase))
+            return $"/documents{trimmed}";
+        return trimmed;
+    }
+
+    private static string? BuildBuyerOfferedLienDocumentActionUrl(Guid accessLinkId, Guid? documentId, string action)
+    {
+        if (!documentId.HasValue)
+            return null;
+
+        var normalizedAction = string.Equals(action, "download", StringComparison.OrdinalIgnoreCase)
+            ? "download"
+            : "view";
+        return $"/api/lien/api/liens/selling/buyer/liens/{accessLinkId:D}/documents/{documentId.Value:D}/{normalizedAction}";
     }
 
     private static async Task<IReadOnlyList<SellingPortalMessage>> ResolveBuyerOfferedLienMessagesAsync(
@@ -1010,7 +1259,7 @@ public static class SellingEndpoints
 
     private static BuyerOfferedLienRow MapBuyerOfferedLienRow(
         BuyerOfferedLienSource source,
-        IReadOnlyDictionary<Guid, string> sellerNames,
+        IReadOnlyDictionary<Guid, SellerDisplay> sellerDisplays,
         IReadOnlyDictionary<Guid, string> providerNames)
     {
         var status = GetBuyerOfferedLienStatus(source.ResponseStatus);
@@ -1022,6 +1271,11 @@ public static class SellingEndpoints
         IReadOnlyList<string> allowedActions = canRespond
             ? ["view", "accept", "decline"]
             : new[] { "view" };
+        var sellerDisplay = sellerDisplays.TryGetValue(source.SellerOrgId, out var resolvedSellerDisplay)
+            ? resolvedSellerDisplay
+            : new SellerDisplay(
+                "Seller company unavailable",
+                "Seller unavailable");
 
         return new BuyerOfferedLienRow(
             source.AccessLinkId,
@@ -1029,9 +1283,7 @@ public static class SellingEndpoints
             source.FacilityId.HasValue && providerNames.TryGetValue(source.FacilityId.Value, out var providerName)
                 ? providerName
                 : "Provider unavailable",
-            sellerNames.TryGetValue(source.SellerOrgId, out var sellerName)
-                ? sellerName
-                : "Seller unavailable",
+            sellerDisplay.Name,
             source.InitialServiceDate,
             source.InitialServiceDate,
             source.OriginalAmount,
@@ -1045,6 +1297,8 @@ public static class SellingEndpoints
             source.ExpiresAtUtc,
             allowedActions,
             $"/funding/offered-liens/{source.AccessLinkId}",
+            sellerDisplay.Company,
+            sellerDisplay.Name,
             BuildSearchText(source));
     }
 
@@ -1680,13 +1934,13 @@ public static class SellingEndpoints
     {
         var tenantId = RequireTenantId(ctx);
         var sources = await LoadBuyerOfferedLienSourcesAsync(db, ctx, ct);
-        var sellerNames = await ResolveSellerNamesAsync(db, tenantId, sources.Select(source => source.SellerOrgId), ct);
+        var sellerDisplays = await ResolveSellerDisplaysAsync(db, tenantId, sources.Select(source => source.SellerOrgId), ct);
         var providerNames = await ResolveProviderNamesAsync(db, tenantId, sources, ct);
 
         var offers = sources
             .Select(source => new BuyerDashboardOffer(
                 source,
-                MapBuyerOfferedLienRow(source, sellerNames, providerNames)))
+                MapBuyerOfferedLienRow(source, sellerDisplays, providerNames)))
             .OrderByDescending(offer => offer.Row.ReceivedAtUtc)
             .ThenBy(offer => offer.Row.LienNumber, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -1726,7 +1980,8 @@ public static class SellingEndpoints
                     offer.Row.Id,
                     offer.Row.LienNumber,
                     offer.Row.ProviderName,
-                    offer.Row.SellerName,
+                    offer.Row.SellerCompany,
+                    offer.Row.SellerContactName,
                     offer.Row.OfferedAmount,
                     offer.Row.ReceivedAtUtc,
                     offer.Row.ResponseDueAtUtc,
@@ -2333,6 +2588,7 @@ public static class SellingEndpoints
         Guid Id,
         string LienNumber,
         string ProviderName,
+        string SellerCompany,
         string SellerName,
         decimal OfferedAmount,
         DateTime ReceivedAtUtc,
@@ -2377,11 +2633,9 @@ public static class SellingEndpoints
         Guid OrgId,
         string ContactType);
 
-    private sealed record ContactDisplay(
-        Guid Id,
-        Guid OrgId,
-        string? Organization,
-        string DisplayName);
+    private sealed record SellerDisplay(
+        string Company,
+        string Name);
 
     private sealed record BuyerOfferedLienSource(
         Guid AccessLinkId,
@@ -2431,6 +2685,8 @@ public static class SellingEndpoints
         DateTime? ResponseDueAtUtc,
         IReadOnlyList<string> AllowedActions,
         string DetailHref,
+        [property: JsonIgnore] string SellerCompany,
+        [property: JsonIgnore] string SellerContactName,
         [property: JsonIgnore] string SearchText);
 
     private sealed record BuyerOfferedLienDetailResponse(
@@ -2477,6 +2733,8 @@ public static class SellingEndpoints
         string? Category,
         string SizeOrType,
         string? Url,
+        string? ViewUrl,
+        string? DownloadUrl,
         DateTime CreatedAtUtc);
 
     private sealed record BuyerOfferedLienMessage(

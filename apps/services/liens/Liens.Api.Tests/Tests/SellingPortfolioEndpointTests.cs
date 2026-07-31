@@ -1295,7 +1295,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         pageOneRows.Should().HaveCount(2);
         pageOneRows.Select(row => row.GetProperty("lienNumber").GetString())
             .Should().Equal("ALPHA-100", "BETA-200");
-        pageOneRows[0].GetProperty("sellerName").GetString().Should().Be("Smith & Associates LLP");
+        pageOneRows[0].GetProperty("sellerName").GetString().Should().Be("Seller Operator");
         pageOneRows[0].GetProperty("status").GetString().Should().Be("Pending");
         pageOneRows[0].GetProperty("billingAmount").GetDecimal().Should().Be(9000m);
         pageOneRows[0].GetProperty("askAmount").GetDecimal().Should().Be(2500m);
@@ -1431,6 +1431,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         var pendingOffer = json.GetProperty("pendingOffers").EnumerateArray().Single();
         pendingOffer.GetProperty("lienNumber").GetString().Should().Be("DASH-ALPHA-100");
+        pendingOffer.GetProperty("sellerCompany").GetString().Should().Be("Smith & Associates LLP");
+        pendingOffer.GetProperty("sellerName").GetString().Should().Be("Seller Operator");
         pendingOffer.GetProperty("status").GetString().Should().Be("Pending");
         pendingOffer.GetProperty("offeredAmount").GetDecimal().Should().Be(2500m);
         pendingOffer.GetProperty("detailHref").GetString()
@@ -1627,7 +1629,29 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         documents[0].GetProperty("fileName").GetString().Should().Be("signed-lien-detail.pdf");
         documents[0].GetProperty("category").GetString().Should().Be("Lien Document");
         documents[0].GetProperty("sizeOrType").GetString().Should().Be("PDF");
-        documents[0].GetProperty("url").GetString().Should().StartWith("/documents/");
+        var documentUrl = documents[0].GetProperty("url").GetString();
+        documentUrl.Should().StartWith("/documents/");
+        var documentId = Guid.Parse(documentUrl!.TrimEnd('/').Split('/').Last());
+        documents[0].GetProperty("viewUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/buyer/liens/{accessLinkId:D}/documents/{documentId:D}/view");
+        documents[0].GetProperty("downloadUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/buyer/liens/{accessLinkId:D}/documents/{documentId:D}/download");
+
+        using var noRedirectBuyerClient = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+        });
+        noRedirectBuyerClient.DefaultRequestHeaders.Authorization = buyerClient.DefaultRequestHeaders.Authorization;
+        var viewDocumentResponse = await noRedirectBuyerClient.GetAsync(
+            $"/api/liens/selling/buyer/liens/{accessLinkId:D}/documents/{documentId:D}/view");
+        viewDocumentResponse.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        viewDocumentResponse.Headers.Location!.OriginalString.Should()
+            .Be("/documents/access/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        var downloadDocumentResponse = await noRedirectBuyerClient.GetAsync(
+            $"/api/liens/selling/buyer/liens/{accessLinkId:D}/documents/{documentId:D}/download");
+        downloadDocumentResponse.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        downloadDocumentResponse.Headers.Location!.OriginalString.Should()
+            .Be("/documents/access/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
         var messages = detail.GetProperty("messages").EnumerateArray().ToList();
         messages.Should().ContainSingle();

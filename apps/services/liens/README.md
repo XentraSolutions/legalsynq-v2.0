@@ -124,7 +124,10 @@ otherwise non-actionable rows return `view` only. Row `detailHref` values point 
 `/funding/offered-liens/{accessLinkId}`. The portal backs that route with
 `GET /api/liens/selling/buyer/liens/{accessLinkId}`, which returns persisted seller/lien fields plus real servicing
 documents, portal messages, and response activity for the funding company. Missing documents, messages, or activity are
-returned as empty arrays for the frontend empty states. The authenticated detail page posts messages through
+returned as empty arrays for the frontend empty states. Detail documents include same-origin tenant-portal `viewUrl` and
+`downloadUrl` BFF paths when a Documents-service id can be resolved; those paths call
+`GET /api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view` or `/download`, enforce the same buyer
+scope, and redirect to a short-lived Documents access URL. The authenticated detail page posts messages through
 `POST /api/liens/selling/buyer/liens/{accessLinkId}/messages` and records responses through
 `POST /api/liens/selling/buyer/liens/{accessLinkId}/accept` or
 `POST /api/liens/selling/buyer/liens/{accessLinkId}/decline`; these endpoints enforce the same buyer scoping and then

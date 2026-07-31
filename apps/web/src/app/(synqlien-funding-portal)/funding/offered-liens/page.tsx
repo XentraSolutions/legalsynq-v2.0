@@ -135,7 +135,7 @@ function OfferedLiensTable({
   const emptyCopy = getOfferedLiensEmptyStateCopy(hasFilters);
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-[1120px] w-full border-collapse">
+      <table className="min-w-[980px] w-full border-collapse">
         <thead className="bg-[#f5f5f5]">
           <tr>
             <SortableHeaderCell query={query} sortKey="lienNumber">Lien ID</SortableHeaderCell>
@@ -143,7 +143,6 @@ function OfferedLiensTable({
             <SortableHeaderCell query={query} sortKey="initialServiceDate">Initial Service Date</SortableHeaderCell>
             <SortableHeaderCell query={query} sortKey="billingAmount">Billing Amount</SortableHeaderCell>
             <SortableHeaderCell query={query} sortKey="askAmount">Ask Amount</SortableHeaderCell>
-            <SortableHeaderCell query={query} sortKey="highestBidAmount">Highest Bid</SortableHeaderCell>
             <SortableHeaderCell query={query} sortKey="status">Status</SortableHeaderCell>
             <th aria-label="Actions" className="h-10 w-12 px-4" />
           </tr>
@@ -151,7 +150,7 @@ function OfferedLiensTable({
         <tbody>
           {result.rows.length === 0 ? (
             <tr>
-              <td colSpan={8} className="px-5 py-14">
+              <td colSpan={7} className="px-5 py-14">
                 <EmptyState
                   title={emptyCopy.title}
                   description={emptyCopy.description}
@@ -213,7 +212,6 @@ function OfferedLienTableRow({ row }: { row: OfferedLienRow }) {
   const initialServiceDate = row.initialServiceDate ?? row.serviceDate ?? null;
   const billingAmount = row.billingAmount ?? row.originalAmount ?? null;
   const askAmount = row.askAmount ?? row.offeredAmount;
-  const highestBidAmount = row.highestBidAmount ?? row.highestBid ?? null;
 
   return (
     <tr className="border-b border-[#e5e5e5] last:border-b-0">
@@ -230,7 +228,6 @@ function OfferedLienTableRow({ row }: { row: OfferedLienRow }) {
       <BodyCell>{formatOptionalDate(initialServiceDate)}</BodyCell>
       <BodyCell>{formatOptionalCurrency(billingAmount)}</BodyCell>
       <BodyCell>{formatOptionalCurrency(askAmount)}</BodyCell>
-      <BodyCell>{formatOptionalCurrency(highestBidAmount)}</BodyCell>
       <td className="h-[53px] px-4 text-[14px] font-normal leading-[1.6] text-[#0a0a0a]">
         <span className={`inline-flex rounded-full px-3 py-1 text-[14px] font-medium leading-[1.6] ring-1 ${statusBadgeClass(row.status)}`}>
           {row.status}
@@ -404,7 +401,6 @@ function normalizeSort(value?: string): OfferedLiensSortKey | undefined {
     case "initialServiceDate":
     case "billingAmount":
     case "askAmount":
-    case "highestBidAmount":
     case "status":
       return value;
     default:

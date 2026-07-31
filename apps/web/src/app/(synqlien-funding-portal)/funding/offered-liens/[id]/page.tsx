@@ -243,7 +243,8 @@ function DocumentRow({
   withBottomBorder: boolean;
 }) {
   const detail = [document.category, document.sizeOrType].filter(Boolean).join("  •  ");
-  const url = safeHref(document.url);
+  const viewUrl = safeHref(document.viewUrl ?? document.url);
+  const downloadUrl = safeHref(document.downloadUrl);
 
   return (
     <div
@@ -267,18 +268,63 @@ function DocumentRow({
           {detail || "Document"}
         </p>
       </div>
-      {url ? (
-        <a
-          href={url}
-          target={isExternalHref(url) ? "_blank" : undefined}
-          rel={isExternalHref(url) ? "noreferrer" : undefined}
-          aria-label={`Open ${document.fileName}`}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[#e5e5e5] bg-white text-[#ee7132] shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:border-[#f4a076] hover:bg-[#fdf1eb]"
-        >
-          <i className="ri-eye-line text-[16px]" />
-        </a>
-      ) : null}
+      <div className="flex shrink-0 items-center gap-2">
+        <DocumentActionLink
+          href={viewUrl}
+          label={`View ${document.fileName}`}
+          icon="ri-eye-line"
+          openInNewTab
+        />
+        <DocumentActionLink
+          href={downloadUrl}
+          label={`Download ${document.fileName}`}
+          icon="ri-download-line"
+        />
+      </div>
     </div>
+  );
+}
+
+function DocumentActionLink({
+  href,
+  label,
+  icon,
+  openInNewTab = false,
+}: {
+  href?: string | null;
+  label: string;
+  icon: string;
+  openInNewTab?: boolean;
+}) {
+  const url = safeHref(href);
+  const className =
+    "flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-[#e5e5e5] bg-white text-[#ee7132] shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132]";
+
+  if (!url) {
+    return (
+      <span
+        aria-label={label}
+        aria-disabled="true"
+        className={`${className} cursor-not-allowed opacity-50`}
+        role="button"
+      >
+        <i className={`${icon} text-[16px]`} />
+      </span>
+    );
+  }
+
+  const opensInNewTab = openInNewTab || isExternalHref(url);
+
+  return (
+    <a
+      href={url}
+      target={opensInNewTab ? "_blank" : undefined}
+      rel={opensInNewTab ? "noopener noreferrer" : undefined}
+      aria-label={label}
+      className={`${className} hover:border-[#f4a076] hover:bg-[#fdf1eb]`}
+    >
+      <i className={`${icon} text-[16px]`} />
+    </a>
   );
 }
 

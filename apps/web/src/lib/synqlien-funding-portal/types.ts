@@ -28,6 +28,7 @@ export interface PendingFundingOfferRow {
   id: string;
   lienNumber: string;
   providerName: string;
+  sellerCompany?: string | null;
   sellerName: string;
   offeredAmount: number;
   receivedAtUtc: string;
@@ -136,6 +137,8 @@ export interface OfferedLienDocument {
   category?: string | null;
   sizeOrType?: string | null;
   url?: string | null;
+  viewUrl?: string | null;
+  downloadUrl?: string | null;
   createdAtUtc: string;
 }
 

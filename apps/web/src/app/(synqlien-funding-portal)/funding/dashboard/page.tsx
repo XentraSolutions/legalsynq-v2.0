@@ -13,7 +13,6 @@ import {
   type FundingMetricKey,
   type FundingMetricTrend,
   type PendingFundingOfferRow,
-  type ProviderPerformanceRow,
   type SynqLienFundingDashboard,
 } from "@/lib/synqlien-funding-portal";
 
@@ -82,8 +81,6 @@ export default async function SynqLienFundingDashboardPage({
           stages={dashboard.pipelineStages}
         />
       </div>
-
-      <ProviderPerformanceCard rows={dashboard.providerPerformance} />
 
       <OfferInboxCard />
     </div>
@@ -224,27 +221,32 @@ function PendingOffersCard({ rows }: { rows: PendingFundingOfferRow[] }) {
         <EmptyState icon="ri-inbox-line" title="No pending offers" />
       ) : (
         <ul className="divide-y divide-[#e5e5e5] px-6">
-          {visibleRows.map(row => (
-            <li key={row.id} className="flex min-h-[86px] items-center justify-between gap-5 py-3">
-              <div className="min-w-0">
-                <StatusBadge status={row.status} size="sm" />
-                <p className="mt-2 truncate text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
-                  {row.providerName}
-                </p>
-                <p className="truncate text-[12px] font-normal leading-[1.6] text-[#737373]">
-                  {row.sellerName}
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
-                  {formatFundingCurrency(row.offeredAmount)}
-                </p>
-                <p className="mt-1 text-[12px] font-normal leading-[1.6] text-[#737373]">
-                  {formatFundingDateTime(row.receivedAtUtc)}
-                </p>
-              </div>
-            </li>
-          ))}
+          {visibleRows.map(row => {
+            const sellerCompany = row.sellerCompany?.trim() || row.sellerName || "Seller company unavailable";
+            const sellerName = row.sellerName?.trim() || "Seller unavailable";
+
+            return (
+              <li key={row.id} className="flex min-h-[86px] items-center justify-between gap-5 py-3">
+                <div className="min-w-0">
+                  <StatusBadge status={row.status} size="sm" />
+                  <p className="mt-2 truncate text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
+                    {sellerCompany}
+                  </p>
+                  <p className="truncate text-[12px] font-normal leading-[1.6] text-[#737373]">
+                    {sellerName}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
+                    {formatFundingCurrency(row.offeredAmount)}
+                  </p>
+                  <p className="mt-1 text-[12px] font-normal leading-[1.6] text-[#737373]">
+                    {formatFundingDateTime(row.receivedAtUtc)}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
@@ -378,65 +380,6 @@ function PipelineStageRow({
   );
 }
 
-function ProviderPerformanceCard({ rows }: { rows: ProviderPerformanceRow[] }) {
-  const visibleRows = rows.slice(0, 5);
-
-  return (
-    <section className="overflow-hidden rounded-[16px] border border-[#e5e5e5] bg-white shadow-[0_1px_1.5px_rgba(0,0,0,0.08)]">
-      <div className="flex min-h-[53px] items-center border-b border-[#e5e5e5]">
-        <div className="flex w-11 shrink-0 items-center justify-center">
-          <i className="ri-draggable text-[14px] text-[#737373]" />
-        </div>
-        <h2 className="text-[16px] font-semibold leading-[1.6] text-[#0a0a0a]">
-          Provider Performance
-        </h2>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse">
-          <thead className="bg-[#f5f5f5]">
-            <tr>
-              <ProviderHeaderCell>Providers</ProviderHeaderCell>
-              <ProviderHeaderCell>Offered Liens</ProviderHeaderCell>
-              <ProviderHeaderCell>Acceptance</ProviderHeaderCell>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="py-10">
-                  <EmptyState icon="ri-hospital-line" title="No provider performance data" compact />
-                </td>
-              </tr>
-            ) : visibleRows.map(row => (
-              <tr key={row.providerId} className="border-b border-[#e5e5e5] last:border-b-0">
-                <ProviderBodyCell>{row.providerName}</ProviderBodyCell>
-                <ProviderBodyCell>{formatFundingNumber(row.lienCount)}</ProviderBodyCell>
-                <ProviderBodyCell>{formatAcceptance(row)}</ProviderBodyCell>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function ProviderHeaderCell({ children }: { children: React.ReactNode }) {
-  return (
-    <th className="h-10 px-4 text-left text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
-      {children}
-    </th>
-  );
-}
-
-function ProviderBodyCell({ children }: { children: React.ReactNode }) {
-  return (
-    <td className="h-[53px] px-4 text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
-      {children}
-    </td>
-  );
-}
-
 function OfferInboxCard() {
   return (
     <Link
@@ -491,11 +434,6 @@ function StatusBadge({
       {status}
     </span>
   );
-}
-
-function formatAcceptance(row: ProviderPerformanceRow): string {
-  if (row.offeredAmount <= 0) return "-";
-  return formatFundingPercent((row.acceptedAmount / row.offeredAmount) * 100);
 }
 
 function formatTrendPercent(trend: FundingMetricTrend): string {
