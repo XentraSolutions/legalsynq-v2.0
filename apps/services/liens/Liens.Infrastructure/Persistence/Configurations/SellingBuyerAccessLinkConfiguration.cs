@@ -20,6 +20,7 @@ public class SellingBuyerAccessLinkConfiguration : IEntityTypeConfiguration<Sell
         builder.Property(l => l.BuyerContactId).IsRequired();
 
         builder.Property(l => l.TokenHash)
+            .IsRequired(false)
             .HasMaxLength(64);
 
         builder.Property(l => l.Purpose)
@@ -27,6 +28,7 @@ public class SellingBuyerAccessLinkConfiguration : IEntityTypeConfiguration<Sell
             .HasMaxLength(100);
 
         builder.Property(l => l.Route)
+            .IsRequired(false)
             .HasMaxLength(180);
 
         builder.Property(l => l.IdempotencyKey)

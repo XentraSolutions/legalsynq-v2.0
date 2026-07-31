@@ -1043,12 +1043,12 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("AskAmount")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<Guid?>("BuyingOrgId")
-                        .HasColumnType("char(36)");
-
                     b.Property<string>("BuyerMessage")
                         .HasMaxLength(4000)
                         .HasColumnType("varchar(4000)");
+
+                    b.Property<Guid?>("BuyingOrgId")
+                        .HasColumnType("char(36)");
 
                     b.Property<Guid?>("CaseId")
                         .HasColumnType("char(36)");
@@ -1146,11 +1146,11 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("PayoffAmount")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<decimal?>("PurchasePrice")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<DateOnly?>("PurchaseDate")
                         .HasColumnType("date");
+
+                    b.Property<decimal?>("PurchasePrice")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("SellerStatus")
                         .HasMaxLength(50)
@@ -1207,15 +1207,15 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CreatedAtUtc")
                         .HasDatabaseName("IX_Liens_TenantId_CreatedAtUtc");
 
-                    b.HasIndex("TenantId", "PurchaseDate")
-                        .HasDatabaseName("IX_Liens_TenantId_PurchaseDate");
-
                     b.HasIndex("TenantId", "LienNumber")
                         .IsUnique()
                         .HasDatabaseName("UX_Liens_TenantId_LienNumber");
 
                     b.HasIndex("TenantId", "LienType")
                         .HasDatabaseName("IX_Liens_TenantId_LienType");
+
+                    b.HasIndex("TenantId", "PurchaseDate")
+                        .HasDatabaseName("IX_Liens_TenantId_PurchaseDate");
 
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("IX_Liens_TenantId_Status");
@@ -1367,16 +1367,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasColumnType("char(36)");
 
                     b.Property<Guid>("BuyerOrgId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime?>("AccountActivatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("AccountActivatedEmail")
-                        .HasMaxLength(320)
-                        .HasColumnType("varchar(320)");
-
-                    b.Property<Guid?>("AccountActivatedUserId")
                         .HasColumnType("char(36)");
 
                     b.Property<DateTime>("CreatedAtUtc")
@@ -2201,6 +2191,16 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<DateTime?>("AccountActivatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("AccountActivatedEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("varchar(320)");
+
+                    b.Property<Guid?>("AccountActivatedUserId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid>("BuyerContactId")
                         .HasColumnType("char(36)");
 
@@ -2422,6 +2422,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasMaxLength(400)
                         .HasColumnType("varchar(400)");
 
+                    b.Property<Guid>("SellerOrgId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("SenderEmail")
                         .HasMaxLength(320)
                         .HasColumnType("varchar(320)");
@@ -2435,9 +2438,6 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
-
-                    b.Property<Guid>("SellerOrgId")
-                        .HasColumnType("char(36)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("char(36)");

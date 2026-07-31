@@ -157,22 +157,16 @@ function DocumentsTab({ documents }: { documents: OfferedLienDocument[] }) {
   const documentRows = chunkDocuments(documents, 2);
 
   return (
-    <section className="min-h-[420px] rounded-[16px] border border-[#e5e5e5] bg-white px-6 py-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)]">
+    <section className="rounded-[16px] border border-[#e5e5e5] bg-white px-6 py-5 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)]">
       {documents.length > 0 ? (
-        <div aria-label="Attached documents">
-          {documentRows.map((row, index) => (
+        <div aria-label="Attached documents" className="divide-y divide-[#e5e5e5]">
+          {documentRows.map(row => (
             <div
               key={row.map(document => document.id).join("-")}
-              className={`grid grid-cols-1 lg:grid-cols-2 ${
-                index < documentRows.length - 1 ? "border-b border-[#e5e5e5]" : ""
-              }`}
+              className="grid grid-cols-1 divide-y divide-[#e5e5e5] md:grid-cols-2 md:divide-x md:divide-y-0"
             >
-              {row.map((document, columnIndex) => (
-                <DocumentRow
-                  key={document.id}
-                  document={document}
-                  hasTrailingDivider={columnIndex === 0 && row.length > 1}
-                />
+              {row.map(document => (
+                <DocumentRow key={document.id} document={document} />
               ))}
             </div>
           ))}
@@ -245,19 +239,15 @@ function formatActivityLabel(value: string): string {
 
 function DocumentRow({
   document,
-  hasTrailingDivider = false,
 }: {
   document: OfferedLienDocument;
-  hasTrailingDivider?: boolean;
 }) {
   const detail = [document.category, document.sizeOrType].filter(Boolean).join("  •  ");
   const viewUrl = safeHref(document.viewUrl ?? document.url);
   const downloadUrl = safeHref(document.downloadUrl);
 
   return (
-    <div className={`flex min-h-[88px] min-w-0 items-center gap-4 py-4 lg:px-6 lg:first:pl-0 ${
-      hasTrailingDivider ? "border-b border-[#e5e5e5] lg:border-b-0 lg:border-r" : ""
-    }`}>
+    <div className="flex min-h-[84px] min-w-0 items-center gap-4 py-4 md:px-5 md:first:pl-0 md:last:pr-0 xl:px-6">
       <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[12px] bg-[#f5f5f5] text-[#0a0a0a]">
         <i className="ri-file-text-line text-[28px]" />
       </span>
