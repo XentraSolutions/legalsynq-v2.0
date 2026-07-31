@@ -28,8 +28,8 @@ export const sellingLookupsApi = {
     );
   },
   medicalCodes(search: string) {
-    return apiClient.get<{ items: SellingMedicalCodeLookupItem[] }>(
-      `${BASE}/medical-codes?search=${encodeURIComponent(search)}`,
+    return apiClient.get<{ data: SellingMedicalCodeLookupItem[] }>(
+      `/lien/lookup/medical/procedure/codes`,
     );
   },
   documentTypes() {

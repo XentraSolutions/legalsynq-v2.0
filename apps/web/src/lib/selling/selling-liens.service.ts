@@ -189,7 +189,7 @@ export const liensService = {
     search: string,
   ): Promise<SellingMedicalCodeLookupItem[]> {
     const { data } = await sellingLookupsApi.medicalCodes(search);
-    return data.items;
+    return data.data;
   },
 
   async getFacilities(): Promise<SellingLookupItem[]> {
