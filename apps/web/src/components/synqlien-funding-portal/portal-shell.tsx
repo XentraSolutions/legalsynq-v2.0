@@ -152,8 +152,8 @@ export function SynqLienFundingPortalShell({
           "--synqlien-sidebar-offset": `${sidebarWidth}px`,
         } as React.CSSProperties}
       >
-        <header className="sticky top-0 z-30 border-b border-[#e5e5e5] bg-white">
-          <div className="flex min-h-[81px] items-center justify-between gap-3 px-4 py-5 sm:px-6">
+        <header className="sticky top-0 z-30 h-[81px] border-b border-[#e5e5e5] bg-white">
+          <div className="flex h-full items-center justify-between gap-3 px-4 sm:px-6">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <Link href="/funding/dashboard" className="flex shrink-0 items-center gap-[9.5px] lg:hidden">
                 <Image
