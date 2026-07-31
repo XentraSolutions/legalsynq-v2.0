@@ -21,10 +21,12 @@ import type {
   WithdrawSellingLienRequest,
   ArchiveSellingLienRequest,
   SubmitSellingLienRequest,
+  LienListItem,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import { DraftLienParams, LienInfoParams } from "../liens/liens.types";
 import { LienDetailsResult } from "@/types/lien-selling";
+import { LienListResult } from "./selling-liens.service";
 
 const BASE = "/selling/api/liens/selling";
 
@@ -54,7 +56,7 @@ function toQs(params: Record<string, unknown>): string {
 
 export const liensApi = {
   list(query: LiensQuery = {}) {
-    return apiClient.get<PaginatedResultDto<any>>(
+    return apiClient.get<PaginatedResultDto<LienListItem>>(
       `${BASE}/liens${toQs(query as Record<string, unknown>)}`,
     );
   },
@@ -97,16 +99,34 @@ export const liensApi = {
     return apiClient.post<any>(`${BASE}/drafts`, request);
   },
 
-  saveLienInformation(lienId: string, request: SaveSellingLienInformationRequest) {
-    return apiClient.put<any>(`${BASE}/liens/${lienId}/lien-information`, request);
+  saveLienInformation(
+    lienId: string,
+    request: SaveSellingLienInformationRequest,
+  ) {
+    return apiClient.put<any>(
+      `${BASE}/liens/${lienId}/lien-information`,
+      request,
+    );
   },
 
-  saveCaseInformation(lienId: string, request: SaveSellingCaseInformationRequest) {
-    return apiClient.put<any>(`${BASE}/liens/${lienId}/case-information`, request);
+  saveCaseInformation(
+    lienId: string,
+    request: SaveSellingCaseInformationRequest,
+  ) {
+    return apiClient.put<any>(
+      `${BASE}/liens/${lienId}/case-information`,
+      request,
+    );
   },
 
-  saveMedicalPricing(lienId: string, request: SaveSellingMedicalPricingRequest) {
-    return apiClient.put<any>(`${BASE}/liens/${lienId}/medical-pricing`, request);
+  saveMedicalPricing(
+    lienId: string,
+    request: SaveSellingMedicalPricingRequest,
+  ) {
+    return apiClient.put<any>(
+      `${BASE}/liens/${lienId}/medical-pricing`,
+      request,
+    );
   },
 
   saveDocuments(lienId: string, request: SaveSellingDocumentsRequest) {

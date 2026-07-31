@@ -1,3 +1,4 @@
+import { LienDetailsResult } from "@/types/lien-selling";
 import { formatLegacyDateOnly } from "../format-date";
 import type {
   LienResponseDto,
@@ -65,6 +66,20 @@ export function mapDtoToUpdateRequest(
     subjectLastName: dto.subjectLastName ?? undefined,
     incidentDate: dto.incidentDate ?? undefined,
     description: dto.description ?? undefined,
+  };
+}
+
+export function mapLienItem(dto: LienListItem): LienListItem {
+  return {
+    ...dto,
+    askAmount:
+      typeof dto.askAmount == null || typeof dto.askAmount == "object"
+        ? 0
+        : dto.askAmount,
+    billingAmount:
+      typeof dto.billingAmount == null || typeof dto.billingAmount == "object"
+        ? 0
+        : dto.billingAmount,
   };
 }
 

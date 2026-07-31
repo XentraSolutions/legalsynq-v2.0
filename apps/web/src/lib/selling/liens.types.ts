@@ -170,12 +170,24 @@ export interface LienListItem {
   lienNumber: string;
   fundingCompany: string;
   initialServiceDate: string;
-  billingAmount: string;
-  askAmount: string;
+  billingAmount: number;
+  askAmount: number;
   highestBid: string;
   status: string;
   sellerStatus: string;
   availableActions: string[];
+
+  caseId: string;
+  caseNumber: string;
+  fundingCompanyId: string;
+  lawFirmId: string;
+  lawFirm: string;
+  caseManagerId: null | string;
+  caseManager: null | string;
+  facilityId: null | string;
+  facility: null | string;
+  highestBidAmount: 0;
+  purchasePrice: null;
 }
 
 export interface AgingListItem {

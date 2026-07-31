@@ -45,7 +45,6 @@ export function PortfolioTable({
   onRowSelect,
   onActionComplete,
 }: PortfolioTableProps) {
-  const router = useRouter();
   const columns = useMemo<ColumnDef<LienListItem, any>[]>(
     () => [
       {
@@ -85,7 +84,7 @@ export function PortfolioTable({
         accessorKey: "billingAmount",
         cell: ({ row }) => (
           <span className="text-sm text-gray-700">
-            {row.original.billingAmount || "—"}
+            {formatCurrency(row.original.billingAmount) || "—"}
           </span>
         ),
       },
@@ -95,7 +94,7 @@ export function PortfolioTable({
         accessorKey: "askAmount",
         cell: ({ row }) => (
           <span className="text-sm text-gray-700">
-            {row.original.askAmount || "—"}
+            {formatCurrency(row.original.askAmount) || "—"}
           </span>
         ),
       },

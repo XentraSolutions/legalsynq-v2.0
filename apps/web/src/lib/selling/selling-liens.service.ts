@@ -4,7 +4,7 @@ import {
   type SellingLookupItem,
   type SellingMedicalCodeLookupItem,
 } from "./lookup.api";
-import { mapOfferToItem, mapPagination } from "./liens.mapper";
+import { mapLienItem, mapOfferToItem, mapPagination } from "./liens.mapper";
 import type {
   LiensQuery,
   LienListItem,
@@ -53,7 +53,7 @@ export const liensService = {
   async getLiens(query: LiensQuery = {}): Promise<LienListResult> {
     const { data } = await liensApi.list(query);
     return {
-      items: data.items,
+      items: data.items.map((item) => mapLienItem(item)),
       pagination: mapPagination(data),
     };
   },

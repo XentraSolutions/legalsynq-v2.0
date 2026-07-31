@@ -62,7 +62,10 @@ type TabKey = (typeof TABS)[number]["key"];
 
 type EditModalKey = "lien-information" | "case-information" | "medical-pricing";
 
-export function PortfolioDetailPanel({ lien, onRefresh }: LienDetailPanelProps) {
+export function PortfolioDetailPanel({
+  lien,
+  onRefresh,
+}: LienDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("details");
   const [editModal, setEditModal] = useState<EditModalKey | null>(null);
 
@@ -121,12 +124,16 @@ export function PortfolioDetailPanel({ lien, onRefresh }: LienDetailPanelProps) 
         <>
           <LienInformationPanel
             lien={lien.lienInformation}
-            onEdit={canEdit ? () => setEditModal("lien-information") : undefined}
+            onEdit={
+              canEdit ? () => setEditModal("lien-information") : undefined
+            }
           />
           <FundingCompanyAndCaseInformationPanel
             fundingCompany={lien.fundingCompany}
             caseInformation={lien.caseInformation}
-            onEdit={canEdit ? () => setEditModal("case-information") : undefined}
+            onEdit={
+              canEdit ? () => setEditModal("case-information") : undefined
+            }
           />
           <MedicalCodesInformationPanel
             lien={lien.medicalPricing.rows}

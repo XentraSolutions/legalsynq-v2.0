@@ -74,7 +74,7 @@ export interface LienDetailsResult {
   caseInformation: LienCaseDetail | null;
   fundingCompany: LienFundingCompanyDetail | null;
   medicalPricing: {
-    askAmount: number | null;
+    askAmount: number;
     billingAmount: number;
     rows: MedicalPricingRowDetail[];
   };
