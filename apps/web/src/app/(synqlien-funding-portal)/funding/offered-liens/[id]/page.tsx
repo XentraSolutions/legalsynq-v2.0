@@ -157,14 +157,9 @@ function DocumentsTab({ documents }: { documents: OfferedLienDocument[] }) {
   return (
     <section className="min-h-[420px] rounded-[16px] border border-[#e5e5e5] bg-white px-6 pb-4 pt-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)]">
       {documents.length > 0 ? (
-        <div className="grid gap-x-6 md:grid-cols-2">
-          {documents.map((document, index) => (
-            <DocumentRow
-              key={document.id}
-              document={document}
-              withRightDivider={index % 2 === 0 && index !== documents.length - 1}
-              withBottomBorder={index < documents.length - (documents.length % 2 === 0 ? 2 : 1)}
-            />
+        <div className="divide-y divide-[#e5e5e5]" aria-label="Attached documents">
+          {documents.map(document => (
+            <DocumentRow key={document.id} document={document} />
           ))}
         </div>
       ) : (
@@ -235,32 +230,24 @@ function formatActivityLabel(value: string): string {
 
 function DocumentRow({
   document,
-  withRightDivider,
-  withBottomBorder,
 }: {
   document: OfferedLienDocument;
-  withRightDivider: boolean;
-  withBottomBorder: boolean;
 }) {
   const detail = [document.category, document.sizeOrType].filter(Boolean).join("  •  ");
   const viewUrl = safeHref(document.viewUrl ?? document.url);
   const downloadUrl = safeHref(document.downloadUrl);
 
   return (
-    <div
-      className={`flex items-start gap-3 py-4 md:min-h-[84px] ${
-        withRightDivider ? "md:border-r md:border-[#e5e5e5] md:pr-6" : "md:pl-6"
-      } ${withBottomBorder ? "border-b border-[#e5e5e5]" : ""}`}
-    >
+    <div className="flex min-h-[96px] items-center gap-4 py-4 first:pt-0 last:pb-0">
       <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[12px] bg-[#f5f5f5] text-[#0a0a0a]">
         <i className="ri-file-text-line text-[32px]" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <p className="min-w-0 truncate text-[16px] font-semibold capitalize leading-5 text-[#0a0a0a]">
+        <div className="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+          <p className="min-w-0 break-words text-[16px] font-semibold leading-5 text-[#0a0a0a]">
             {document.fileName}
           </p>
-          <p className="shrink-0 text-[14px] font-normal leading-[1.6] text-[#737373]">
+          <p className="shrink-0 whitespace-nowrap text-[14px] font-normal leading-[1.6] text-[#737373]">
             {formatDateTimeParts(document.createdAtUtc)}
           </p>
         </div>
@@ -268,7 +255,7 @@ function DocumentRow({
           {detail || "Document"}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2 self-start pt-1">
         <DocumentActionLink
           href={viewUrl}
           label={`View ${document.fileName}`}
