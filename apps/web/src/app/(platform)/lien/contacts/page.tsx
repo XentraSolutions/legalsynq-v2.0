@@ -359,16 +359,6 @@ export default function ContactsPage() {
         },
       },
       {
-        id: "type",
-        header: "Type",
-        cell: ({ row }) => (
-          <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium bg-gray-50 text-gray-600 border-gray-200">
-            {contactTypeMap[row.original.contactType] ??
-              row.original.contactType}
-          </span>
-        ),
-      },
-      {
         id: "email",
         header: "Email",
         cell: ({ row }) => (
@@ -661,10 +651,6 @@ export default function ContactsPage() {
       >
         {previewContact && (
           <div className="space-y-4">
-            <span className="inline-flex items-center rounded-full border px-2.5 py-1 text-sm font-medium bg-gray-50 text-gray-600 border-gray-200">
-              {contactTypeMap[previewContact.contactType] ??
-                previewContact.contactType}
-            </span>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <p className="text-xs text-gray-400">Email</p>
