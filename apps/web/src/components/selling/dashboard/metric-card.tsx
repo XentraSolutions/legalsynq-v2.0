@@ -27,13 +27,15 @@ export function MetricCard({
       className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)]"
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm leading-5 text-neutral-500">{label}</p>
+        <p className="text-sm leading-5 text-neutral-500 break-words">
+          {label}
+        </p>
         {trend && (
           <span
             className={
               trend === "up"
-                ? "inline-flex items-center gap-1 rounded-full bg-[#17c964]/15 px-2 py-0.5 text-xs font-medium text-[#15803d]"
-                : "inline-flex items-center gap-1 rounded-full bg-[#ef4444]/10 px-2 py-0.5 text-xs font-medium text-[#dc2626]"
+                ? "inline-flex items-center gap-1 rounded-full bg-[#17c964]/15 px-2 py-0.5 text-xs font-medium text-[#15803d] break-words"
+                : "inline-flex items-center gap-1 rounded-full bg-[#ef4444]/10 px-2 py-0.5 text-xs font-medium text-[#dc2626] break-words"
             }
           >
             <i
@@ -48,7 +50,9 @@ export function MetricCard({
           </span>
         )}
       </div>
-      <p className="mt-3 text-2xl font-bold leading-8">{displayValue}</p>
+      <p className="mt-3 text-2xl font-bold leading-8 break-words">
+        {displayValue}
+      </p>
       <p className="mt-5 text-xs font-bold text-neutral-950">
         {trendDescription ?? ""}
         {trend && (
