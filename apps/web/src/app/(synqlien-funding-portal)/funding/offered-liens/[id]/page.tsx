@@ -163,10 +163,14 @@ function DocumentsTab({ documents }: { documents: OfferedLienDocument[] }) {
           {documentRows.map(row => (
             <div
               key={row.map(document => document.id).join("-")}
-              className="grid grid-cols-1 divide-y divide-[#e5e5e5] md:grid-cols-2 md:divide-x md:divide-y-0"
+              className="grid grid-cols-1 divide-y divide-[#e5e5e5] lg:grid-cols-2 lg:divide-y-0"
             >
-              {row.map(document => (
-                <DocumentRow key={document.id} document={document} />
+              {row.map((document, columnIndex) => (
+                <DocumentRow
+                  key={document.id}
+                  document={document}
+                  isLeftColumn={columnIndex === 0}
+                />
               ))}
             </div>
           ))}
@@ -239,32 +243,34 @@ function formatActivityLabel(value: string): string {
 
 function DocumentRow({
   document,
+  isLeftColumn = false,
 }: {
   document: OfferedLienDocument;
+  isLeftColumn?: boolean;
 }) {
   const detail = [document.category, document.sizeOrType].filter(Boolean).join("  •  ");
   const viewUrl = safeHref(document.viewUrl ?? document.url);
   const downloadUrl = safeHref(document.downloadUrl);
 
   return (
-    <div className="flex min-h-[84px] min-w-0 items-center gap-4 py-4 md:px-5 md:first:pl-0 md:last:pr-0 xl:px-6">
-      <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[12px] bg-[#f5f5f5] text-[#0a0a0a]">
+    <div className={`grid min-h-[84px] min-w-0 grid-cols-[56px_minmax(0,1fr)] items-center gap-x-4 gap-y-1 py-4 md:px-5 lg:px-6 xl:grid-cols-[56px_minmax(0,1fr)_190px_88px] ${
+      isLeftColumn ? "lg:border-r lg:border-[#e5e5e5] lg:pl-0" : "lg:pr-0"
+    }`}>
+      <span className="row-span-3 flex h-14 w-14 shrink-0 items-center justify-center rounded-[12px] bg-[#f5f5f5] text-[#0a0a0a] xl:row-span-1">
         <i className="ri-file-text-line text-[28px]" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="grid min-w-0 gap-1 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
-          <p className="min-w-0 break-words text-[16px] font-semibold leading-5 text-[#0a0a0a]">
-            {document.fileName}
-          </p>
-          <p className="shrink-0 whitespace-nowrap text-[14px] font-normal leading-[1.6] text-[#737373] xl:pl-4">
-            {formatDateTimeParts(document.createdAtUtc)}
-          </p>
-        </div>
-        <p className="mt-1 text-[16px] font-normal leading-[1.6] text-[#737373]">
+        <p className="truncate text-[16px] font-semibold leading-5 text-[#0a0a0a]">
+          {document.fileName}
+        </p>
+        <p className="mt-1 truncate text-[16px] font-normal leading-[1.6] text-[#737373]">
           {detail || "Document"}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2 self-start pt-1">
+      <p className="col-start-2 whitespace-nowrap text-[14px] font-normal leading-[1.6] text-[#737373] xl:col-start-auto xl:self-start xl:pt-1">
+        {formatDateTimeParts(document.createdAtUtc)}
+      </p>
+      <div className="col-start-2 flex shrink-0 items-center gap-2 self-start pt-1 xl:col-start-auto xl:w-[88px] xl:justify-end">
         <DocumentActionLink
           href={viewUrl}
           label={`View ${document.fileName}`}
