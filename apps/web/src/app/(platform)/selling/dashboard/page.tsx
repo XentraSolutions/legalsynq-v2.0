@@ -39,7 +39,7 @@ import { MetricCard } from "@/components/selling/dashboard/metric-card";
 import { Card } from "@/components/ui/dashboard-card";
 import { BaseTable } from "@/components/ui/base-table";
 import { ColumnDef, SortingState } from "@tanstack/react-table";
-import { LienListItem, liensService } from "@/lib/selling";
+import { liensService } from "@/lib/selling";
 import { PaginationMeta } from "@/lib/contacts";
 import { AgingListItem } from "@/lib/selling/liens.types";
 import { Tabs } from "@/components/ui/tabs";
@@ -71,6 +71,31 @@ const DATE_FILTERS = [
   { key: "Month", label: "Month" },
   { key: "Year  ", label: "Year " },
 ];
+
+interface LienListItem {
+  lienId: string;
+  lienSeller?: number;
+  activeLiens?: number;
+  lienBalance?: number;
+  total?: number;
+  lienNumber: string;
+  caseId?: null | string;
+  caseNumber?: null | string;
+  fundingCompanyId?: null | string;
+  fundingCompany?: null | string;
+  lawFirmId?: null | string;
+  lawFirm?: null | string;
+  caseManagerId?: null | string;
+  caseManager?: null | string;
+  facilityId?: null | string;
+  facility?: null | string;
+  initialServiceDate: string;
+  billingAmount: number;
+  askAmount: null | number;
+  highestBidAmount?: number;
+  purchasePrice: null | number;
+  status: string;
+}
 
 export default function LienDashboardPage() {
   const servicing = useLienStore((s) => s.servicing);
@@ -333,7 +358,7 @@ export default function LienDashboardPage() {
         cell: ({ row }) => {
           const status = row.original.status?.toLowerCase();
 
-          const config = {
+          const config: any = {
             high: {
               icon: "ri-menu-line",
               color: "text-red-600",
@@ -487,7 +512,7 @@ export default function LienDashboardPage() {
       <div>
         <Card title="Aging by Lien Seller" className="px-3">
           <BaseTable
-            data={liens}
+            data={[]}
             columns={agingColumns}
             getRowId={(l) => l.lienId}
             enableSorting={false}
