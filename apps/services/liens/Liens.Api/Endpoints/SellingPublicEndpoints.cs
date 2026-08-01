@@ -1856,7 +1856,8 @@ public static class SellingPublicEndpoints
             accessLink.TenantId,
             accessLink.SellerOrgId,
             sellerContacts,
-            fallbackEmail: null,
+            fallbackEmail: sellerContact?.Email,
+            includeIdentityOwnerEmailFallback: true,
             ct: ct);
         var handlingLawFirmContact = await ResolveHandlingLawFirmContactAsync(db, accessLink.TenantId, caseEntity, ct);
         var caseManager = await ResolveCaseManagerAsync(db, accessLink.TenantId, caseEntity, ct);
@@ -2238,7 +2239,7 @@ public static class SellingPublicEndpoints
             new PublicBuyerSellerResponse(
                 view.SellerDisplay.Name,
                 view.SellerDisplay.Company,
-                view.SellerDisplay.Email),
+                null),
             new PublicBuyerOrganizationResponse(
                 view.BuyerContact?.DisplayName,
                 view.BuyerContact?.Organization,

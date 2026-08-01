@@ -2150,6 +2150,58 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task BuyerOfferedLien_message_post_notifies_identity_tenant_owner_when_seller_contact_email_is_missing()
+    {
+        var buyerOrgId = Guid.CreateVersion7();
+        var (_, token) = await CreatePublicLienOfferAsync(
+            "buyer-auth-message-identity-owner",
+            lienNumber: "AUTH-MSG-OWNER-100",
+            buyerOrgId: buyerOrgId);
+
+        using (var setupScope = _factory.Services.CreateScope())
+        {
+            var setupDb = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            foreach (var contact in setupDb.Contacts.Where(contact =>
+                         contact.TenantId == SeedHelper.TenantId &&
+                         contact.OrgId == SeedHelper.OrgId &&
+                         contact.Email != null &&
+                         contact.IsActive))
+            {
+                contact.Deactivate(SeedHelper.UserId);
+            }
+
+            await setupDb.SaveChangesAsync();
+        }
+
+        using var buyerClient = CreateBuyerClient(buyerOrgId);
+        var accessLinkId = await GetBuyerOfferedLienAccessLinkIdAsync(buyerClient, "AUTH-MSG-OWNER-100");
+        ClearCapturedEmails();
+
+        var response = await buyerClient.PostAsJsonAsync(
+            $"/api/liens/selling/buyer/liens/{accessLinkId}/messages",
+            new { message = "Please confirm seller-side receipt." });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var anonClient = _factory.CreateClient();
+        var publicView = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+        publicView.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await publicView.Content.ReadAsStringAsync()}");
+        var publicJson = await publicView.Content.ReadFromJsonAsync<JsonElement>();
+        publicJson.GetProperty("seller").GetProperty("email").ValueKind.Should().Be(JsonValueKind.Null);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().ContainSingle();
+        var sellerEmail = publisher.Emails.Single();
+        sellerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferMessageCreated);
+        sellerEmail.RecipientEmail.Should().Be("tenant.owner@rl-liens.test");
+        sellerEmail.Body.Should().Contain("Buyer Reviewer sent a message");
+        sellerEmail.Body.Should().Contain("Please confirm seller-side receipt.");
+    }
+
+    [Fact]
     public async Task BuyerOfferedLien_accept_records_shared_public_response_for_authenticated_buyer()
     {
         var buyerOrgId = Guid.CreateVersion7();
@@ -2521,6 +2573,53 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             var buyerNotificationJson = await buyerNotificationView.Content.ReadFromJsonAsync<JsonElement>();
             buyerNotificationJson.GetProperty("audience").GetString().Should().Be("buyer");
         }
+    }
+
+    [Fact]
+    public async Task PublicBuyerPortal_message_post_notifies_identity_tenant_owner_when_seller_contact_email_is_missing()
+    {
+        var (_, token) = await CreatePublicLienOfferAsync(
+            "public-message-identity-owner",
+            lienNumber: "PUBLIC-MSG-OWNER-100");
+
+        using (var setupScope = _factory.Services.CreateScope())
+        {
+            var setupDb = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            foreach (var contact in setupDb.Contacts.Where(contact =>
+                         contact.TenantId == SeedHelper.TenantId &&
+                         contact.OrgId == SeedHelper.OrgId &&
+                         contact.Email != null &&
+                         contact.IsActive))
+            {
+                contact.Deactivate(SeedHelper.UserId);
+            }
+
+            await setupDb.SaveChangesAsync();
+        }
+
+        ClearCapturedEmails();
+        using var anonClient = _factory.CreateClient();
+        var response = await anonClient.PostAsJsonAsync(
+            $"/api/liens/selling/public/{token}/messages",
+            new { message = "Public buyer link message needs seller notification." });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var publicView = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+        publicView.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await publicView.Content.ReadAsStringAsync()}");
+        var publicJson = await publicView.Content.ReadFromJsonAsync<JsonElement>();
+        publicJson.GetProperty("seller").GetProperty("email").ValueKind.Should().Be(JsonValueKind.Null);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().ContainSingle();
+        var sellerEmail = publisher.Emails.Single();
+        sellerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferMessageCreated);
+        sellerEmail.RecipientEmail.Should().Be("tenant.owner@rl-liens.test");
+        sellerEmail.Body.Should().Contain("Buyer Reviewer sent a message");
+        sellerEmail.Body.Should().Contain("Public buyer link message needs seller notification.");
     }
 
     [Fact]

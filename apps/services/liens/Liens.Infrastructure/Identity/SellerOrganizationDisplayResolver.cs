@@ -29,6 +29,7 @@ public sealed class SellerOrganizationDisplayResolver : ISellerOrganizationDispl
         Guid sellerOrgId,
         IReadOnlyList<Contact> sellerContacts,
         string? fallbackEmail = null,
+        bool includeIdentityOwnerEmailFallback = false,
         CancellationToken ct = default)
     {
         var identityOwnerDisplay = await ResolveIdentityTenantOwnerDisplayAsync(tenantId, sellerOrgId, ct);
@@ -46,7 +47,9 @@ public sealed class SellerOrganizationDisplayResolver : ISellerOrganizationDispl
             identityOrganizationName,
             localOrganizationName,
             "Seller unavailable")!;
-        var email = FirstNonEmpty(fallbackEmail);
+        var email = FirstNonEmpty(
+            fallbackEmail,
+            includeIdentityOwnerEmailFallback ? identityOwnerDisplay?.Email : null);
 
         return new SellerOrganizationDisplay(name, company, email);
     }
@@ -241,6 +244,9 @@ public sealed class SellerOrganizationDisplayResolver : ISellerOrganizationDispl
     {
         [JsonPropertyName("found")]
         public bool Found { get; init; }
+
+        [JsonPropertyName("email")]
+        public string? Email { get; init; }
 
         [JsonPropertyName("firstName")]
         public string? FirstName { get; init; }

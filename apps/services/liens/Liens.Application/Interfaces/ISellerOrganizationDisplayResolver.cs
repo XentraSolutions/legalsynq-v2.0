@@ -9,6 +9,7 @@ public interface ISellerOrganizationDisplayResolver
         Guid sellerOrgId,
         IReadOnlyList<Contact> sellerContacts,
         string? fallbackEmail = null,
+        bool includeIdentityOwnerEmailFallback = false,
         CancellationToken ct = default);
 }
 
