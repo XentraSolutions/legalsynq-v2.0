@@ -987,6 +987,18 @@ public static class SellingV2Endpoints
             return Results.Conflict(new { error = new { code = "import_already_confirmed" } });
         }
 
+        var caseNumbers = rows.Where(row => row.Status == "VALID")
+            .Select(row => GetImportValue(JsonSerializer.Deserialize<Dictionary<string, string>>(row.DataJson) ?? [], "Case Code*"))
+            .Where(caseNumber => !string.IsNullOrWhiteSpace(caseNumber))
+            .Select(caseNumber => caseNumber!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var casesByNumber = (await db.Cases.Where(caseEntity =>
+                caseEntity.TenantId == tenantId && caseEntity.OrgId == sellerOrgId && caseNumbers.Contains(caseEntity.CaseNumber))
+            .ToListAsync(ct))
+            .GroupBy(caseEntity => caseEntity.CaseNumber, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
         SellingIdempotency.IdempotencyStart? started = null;
         try
         {
@@ -1003,10 +1015,22 @@ public static class SellingV2Endpoints
             foreach (var row in rows.Where(row => row.Status == "VALID"))
             {
                 Lien? lien = null;
+                Case? createdCase = null;
+                string? caseNumber = null;
                 var rowEntities = new List<object>();
                 try
                 {
                     var values = JsonSerializer.Deserialize<Dictionary<string, string>>(row.DataJson) ?? [];
+                    caseNumber = GetImportValue(values, "Case Code*")!;
+                    if (!casesByNumber.TryGetValue(caseNumber, out var caseEntity))
+                    {
+                        createdCase = Case.Create(tenantId, sellerOrgId, caseNumber, "Pending", "Lien", userId,
+                            externalReference: caseNumber, title: caseNumber);
+                        db.Cases.Add(createdCase);
+                        rowEntities.Add(createdCase);
+                        caseEntity = createdCase;
+                        casesByNumber[caseNumber] = caseEntity;
+                    }
                     var fundingCompanyName = GetImportValue(values, "Funding Company");
                     var fundingCompany = ResolveImportContactByName(fundingCompanies, fundingCompanyName);
                     var facilityName = GetImportValue(values, "Facility Name*");
@@ -1022,6 +1046,7 @@ public static class SellingV2Endpoints
                         initialServiceDate: ParseImportDate(values, "Initial Service Date*"),
                         endServiceDate: ParseImportDate(values, "End Service Date"),
                         notes: GetImportValue(values, "Notes"));
+                    lien.AttachCase(caseEntity.Id, userId);
                     lien.UpdateSellingAnalyticsFields(userId,
                         sellerStatus: NormalizeIntakeStatus(GetImportValue(values, "Seller Status")) ?? SellingLienStatus.Pending,
                         listingVisibility: NormalizeVisibility(GetImportValue(values, "Listing Visibility")) ?? SellingListingVisibility.Private,
@@ -1031,7 +1056,7 @@ public static class SellingV2Endpoints
                     var pricing = ServicingItem.Create(
                         tenantId, sellerOrgId, $"SMP-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
                         SellingMedicalPricingTaskType, medicalCode, "Selling", userId,
-                        lienId: lien.Id,
+                        caseId: caseEntity.Id, lienId: lien.Id,
                         notes: JsonSerializer.Serialize(new
                         {
                             medicalCode,
@@ -1045,14 +1070,14 @@ public static class SellingV2Endpoints
                     var legacyMedicalCode = ServicingItem.Create(
                         tenantId, sellerOrgId, $"LMC-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
                         "LegacyMedicalCode", $"Medical code {medicalCode}", "system", userId,
-                        lienId: lien.Id,
+                        caseId: caseEntity.Id, lienId: lien.Id,
                         notes: $"code={medicalCode}; description={medicalDescription}; medicareCost={GetImportValue(values, "Medicare Cost") ?? string.Empty}; billingAmount={GetImportValue(values, "Billing Amount*") ?? string.Empty}; purchaseAmount={GetImportValue(values, "Purchase Amount*") ?? string.Empty}; payee={GetImportValue(values, "Payee") ?? string.Empty}; outboundCheckNumber={GetImportValue(values, "Outbound Check Number") ?? string.Empty}");
                     db.ServicingItems.Add(legacyMedicalCode);
                     rowEntities.Add(legacyMedicalCode);
                     var facilityInfo = ServicingItem.Create(
                         tenantId, sellerOrgId, $"LMFI-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
                         "LegacyMedicalFacilityInfo", "Legacy medical facility information", "system", userId,
-                        lienId: lien.Id,
+                        caseId: caseEntity.Id, lienId: lien.Id,
                         notes: $"facilityId={facility?.Id}; facilityName={facility?.Name ?? facilityName ?? string.Empty}; medicalProviderId={medicalProvider?.Id}; medicalProvider={medicalProvider?.Organization ?? medicalProvider?.DisplayName ?? medicalProviderName ?? string.Empty}");
                     db.ServicingItems.Add(facilityInfo);
                     rowEntities.Add(facilityInfo);
@@ -1063,11 +1088,13 @@ public static class SellingV2Endpoints
                 catch (OperationCanceledException)
                 {
                     DetachImportRowEntities(db, rowEntities);
+                    if (createdCase is not null && caseNumber is not null) casesByNumber.Remove(caseNumber);
                     throw;
                 }
                 catch (Exception ex)
                 {
                     DetachImportRowEntities(db, rowEntities);
+                    if (createdCase is not null && caseNumber is not null) casesByNumber.Remove(caseNumber);
                     row.SetResult("FAILED", TruncateImportFailureReason(ex.Message), userId);
                 }
             }
