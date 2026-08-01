@@ -893,13 +893,14 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     {
         var buyerContactId = Guid.CreateVersion7();
         var caseManagerId = Guid.CreateVersion7();
+        var handlingLawFirmContactId = Guid.CreateVersion7();
         var (_, lienId) = await SeedExternalCaseAndLienAsync(
             caseExternalId: $"case-{Guid.NewGuid():N}",
             lienExternalId: $"lien-{Guid.NewGuid():N}",
             lienNumber: $"LIEN-{Guid.NewGuid():N}",
             dateOfIncident: new DateOnly(2026, 3, 12),
             initialServiceDate: new DateOnly(2026, 6, 1),
-            caseNotes: $"caseManagerId={caseManagerId}",
+            caseNotes: $"caseManagerId={caseManagerId}; lawFirmId={handlingLawFirmContactId}",
             originalAmount: 3875m);
 
         await PrepareConfirmSaleDataAsync(
@@ -909,7 +910,12 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             buyerEmail: "buyer.reviewer@capital.test",
             caseManagerId: caseManagerId,
             documentFileName: "signed-lien-real.pdf",
-            buyerMessage: "Please review this lien offer.");
+            buyerPhone: "3105551212",
+            buyerMessage: "Please review this lien offer.",
+            handlingLawFirmContactId: handlingLawFirmContactId,
+            handlingLawFirmFirstName: "Handling",
+            handlingLawFirmLastName: "Counsel",
+            handlingLawFirmEmail: "handling.counsel@smithlaw.test");
 
         var response = await PostConfirmSaleAsync(lienId, "confirm-sale-success");
 
@@ -955,6 +961,13 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         buyerSellerInformation.Should().Contain("RL Liens1");
         buyerSellerInformation.Should().NotContain("Seller Operator");
         buyerSellerInformation.Should().NotContain("Smith & Associates LLP");
+        var buyerAssetOverview = ExtractSection(email.Body, "Asset Overview", "Supporting Documents");
+        buyerAssetOverview.Should().Contain("Contact Person: Handling Counsel");
+        buyerAssetOverview.Should().Contain("Email Address: handling.counsel@smithlaw.test");
+        buyerAssetOverview.Should().Contain("Handling Law Firm: Smith & Associates LLP");
+        buyerAssetOverview.Should().NotContain("Contact Person: Seller Operator");
+        buyerAssetOverview.Should().NotContain("Email Address: seller.operations@smithlaw.test");
+        buyerAssetOverview.Should().NotContain("Contact Person: Tenant Owner");
         email.Body.Should().Contain("Case Manager");
         email.Body.Should().Contain("Lien Document: signed-lien-real.pdf");
         email.Body.Should().Contain("signed-lien-real.pdf");
@@ -973,6 +986,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         email.Options!.IdempotencyKey.Should().Be(
             $"liens.confirm-sale.email:{SeedHelper.TenantId:N}:{lienId:N}:{buyerContactId:N}");
         email.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
+        email.Options.TemplateData!["contactPerson"].Should().Be("Handling Counsel");
+        email.Options.TemplateData!["emailAddress"].Should().Be("handling.counsel@smithlaw.test");
         email.Options.TextBody.Should().Be(email.Body);
         email.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
         email.Options.DisableClickTracking.Should().BeTrue();
@@ -1008,14 +1023,22 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         html.Should().Contain("$3,875.00");
         html.Should().Contain("06/01/2026");
         html.Should().Contain("Tenant Owner");
+        html.Should().Contain("Handling Counsel");
         html.Should().Contain("RL Liens1");
         html.Should().Contain("Smith &amp; Associates LLP");
+        var buyerAssetOverviewHtml = ExtractSection(html, "Asset Overview", "Supporting Documents");
+        buyerAssetOverviewHtml.Should().Contain("Handling Counsel");
+        buyerAssetOverviewHtml.Should().Contain("handling.counsel@smithlaw.test");
+        buyerAssetOverviewHtml.Should().Contain("Smith &amp; Associates LLP");
+        buyerAssetOverviewHtml.Should().NotContain("Seller Operator");
+        buyerAssetOverviewHtml.Should().NotContain("seller.operations@smithlaw.test");
+        buyerAssetOverviewHtml.Should().NotContain("Tenant Owner");
         html.Should().Contain("Case Manager");
         html.Should().Contain("Lien Document");
         html.Should().Contain("signed-lien-real.pdf");
         html.Should().NotContain("Seller Message");
         html.Should().NotContain("Please review this lien offer.");
-        html.Should().Contain("href=\"mailto:seller.operations@smithlaw.test\" style=\"color:#111111 !important;text-decoration:none;\"");
+        html.Should().Contain("href=\"mailto:handling.counsel@smithlaw.test\" style=\"color:#111111 !important;text-decoration:none;\"");
         html.Should().Contain("href=\"mailto:seller.operations@smithlaw.test\" style=\"color:#f26a2e !important;text-decoration:underline;\"");
         html.Should().Contain("href=\"https://app.legalsynq.test/selling/public/");
         html.Should().NotContain("John Doe");
@@ -1055,6 +1078,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var sellerBuyerInformation = ExtractSection(sellerEmail.Body, "Buyer Information", "Asset Overview");
         sellerBuyerInformation.Should().Contain("Buyer Reviewer");
         sellerBuyerInformation.Should().Contain("Capital Fund LLC");
+        sellerBuyerInformation.Should().NotContain("Phone Number");
+        sellerBuyerInformation.Should().NotContain("3105551212");
         sellerBuyerInformation.Should().NotContain("Email Address");
         sellerBuyerInformation.Should().NotContain("buyer.reviewer@capital.test");
         sellerEmail.Body.Should().Contain("View Lien Details");
@@ -1075,6 +1100,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerEmail.Options!.IdempotencyKey.Should().Be(
             $"liens.confirm-sale.seller-email:{SeedHelper.TenantId:N}:{lienId:N}:{Guid.Parse(sellerEmail.Metadata["sellerContactId"]):N}:{buyerContactId:N}");
         sellerEmail.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
+        sellerEmail.Options.TemplateData.Should().NotContainKey("buyerPhone");
         sellerEmail.Options.TextBody.Should().Be(sellerEmail.Body);
         sellerEmail.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
         sellerEmail.Options.HtmlBody.Should().Contain("Offered");
@@ -1089,6 +1115,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var sellerBuyerInformationHtml = ExtractSection(sellerEmail.Options.HtmlBody!, "Buyer Information", "Asset Overview");
         sellerBuyerInformationHtml.Should().Contain("Buyer Reviewer");
         sellerBuyerInformationHtml.Should().Contain("Capital Fund LLC");
+        sellerBuyerInformationHtml.Should().NotContain("Phone Number");
+        sellerBuyerInformationHtml.Should().NotContain("3105551212");
         sellerBuyerInformationHtml.Should().NotContain("Email Address");
         sellerBuyerInformationHtml.Should().NotContain("buyer.reviewer@capital.test");
         sellerEmail.Options.HtmlBody.Should().NotContain("Accept Lien");
@@ -1100,12 +1128,13 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task ConfirmSale_uses_contact_organization_for_handling_law_firm()
+    public async Task ConfirmSale_uses_handling_law_firm_contact_for_buyer_asset_contact_fields()
     {
         var buyerContactId = Guid.CreateVersion7();
         var lawFirmContactId = Guid.CreateVersion7();
         const string handlingLawFirmOrganization = "Anderson & Ashworth Law Firm LLC";
         const string handlingLawFirmDisplayName = "Anderson Contact";
+        const string handlingLawFirmEmail = "anderson.contact@ashworthlaw.test";
         var (_, lienId) = await SeedExternalCaseAndLienAsync(
             caseExternalId: $"case-{Guid.NewGuid():N}",
             lienExternalId: $"lien-{Guid.NewGuid():N}",
@@ -1119,10 +1148,12 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             buyerContactId,
             sellerEmail: "lawfirm.organization@smithlaw.test",
             buyerEmail: "buyer.organization@capital.test",
-            sellerOrganization: handlingLawFirmOrganization,
-            sellerContactId: lawFirmContactId,
-            sellerFirstName: "Anderson",
-            sellerLastName: "Contact");
+            sellerOrganization: "Smith Seller Firm",
+            handlingLawFirmContactId: lawFirmContactId,
+            handlingLawFirmFirstName: "Anderson",
+            handlingLawFirmLastName: "Contact",
+            handlingLawFirmOrganization: handlingLawFirmOrganization,
+            handlingLawFirmEmail: handlingLawFirmEmail);
 
         var response = await PostConfirmSaleAsync(lienId, "confirm-sale-handling-law-firm-organization");
 
@@ -1135,9 +1166,14 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
         publisher.Emails.Should().HaveCount(2);
         var buyerEmail = publisher.Emails.Single(captured => captured.RecipientEmail == "buyer.organization@capital.test");
+        buyerEmail.Body.Should().Contain($"Contact Person: {handlingLawFirmDisplayName}");
+        buyerEmail.Body.Should().Contain($"Email Address: {handlingLawFirmEmail}");
         buyerEmail.Body.Should().Contain($"Handling Law Firm: {handlingLawFirmOrganization}");
-        buyerEmail.Body.Should().NotContain($"Handling Law Firm: {handlingLawFirmDisplayName}");
+        buyerEmail.Body.Should().NotContain("Contact Person: Seller Operator");
+        buyerEmail.Body.Should().NotContain("Email Address: lawfirm.organization@smithlaw.test");
         buyerEmail.Options.Should().NotBeNull();
+        buyerEmail.Options!.TemplateData!["contactPerson"].Should().Be(handlingLawFirmDisplayName);
+        buyerEmail.Options.TemplateData!["emailAddress"].Should().Be(handlingLawFirmEmail);
         buyerEmail.Options!.TemplateData!["handlingLawFirm"].Should().Be(handlingLawFirmOrganization);
         buyerEmail.Options.HtmlBody.Should().Contain("Anderson &amp; Ashworth Law Firm LLC");
 
@@ -1150,6 +1186,10 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var publicJson = await publicResponse.Content.ReadFromJsonAsync<JsonElement>();
         publicJson.GetProperty("case").GetProperty("handlingLawFirm").GetString()
             .Should().Be(handlingLawFirmOrganization);
+        publicJson.GetProperty("case").GetProperty("handlingLawFirmContactName").GetString()
+            .Should().Be(handlingLawFirmDisplayName);
+        publicJson.GetProperty("case").GetProperty("handlingLawFirmEmail").GetString()
+            .Should().Be(handlingLawFirmEmail);
     }
 
     [Fact]
@@ -1307,6 +1347,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         json.GetProperty("buyer").GetProperty("phone").ValueKind.Should().Be(JsonValueKind.Null);
         json.GetProperty("case").GetProperty("caseManager").GetString().Should().Be("Case Manager");
         json.GetProperty("case").GetProperty("handlingLawFirm").GetString().Should().Be("Smith & Associates LLP");
+        json.GetProperty("case").GetProperty("handlingLawFirmContactName").GetString().Should().Be("Smith Associates");
+        json.GetProperty("case").GetProperty("handlingLawFirmEmail").ValueKind.Should().Be(JsonValueKind.Null);
         json.GetProperty("accessLink").GetProperty("expiresAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
         json.GetProperty("account").GetProperty("hasExistingAccount").GetBoolean().Should().BeFalse();
         json.GetProperty("account").GetProperty("loginUrl").GetString()
@@ -3610,7 +3652,12 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         string? fallbackSellerOrganization = null,
         Guid? sellerContactId = null,
         string sellerFirstName = "Seller",
-        string sellerLastName = "Operator")
+        string sellerLastName = "Operator",
+        Guid? handlingLawFirmContactId = null,
+        string handlingLawFirmFirstName = "Smith",
+        string handlingLawFirmLastName = "Associates",
+        string? handlingLawFirmOrganization = "Smith & Associates LLP",
+        string? handlingLawFirmEmail = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -3662,6 +3709,21 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
                     SeedHelper.UserId,
                     organization: fallbackSellerOrganization));
             }
+        }
+
+        if (handlingLawFirmContactId.HasValue)
+        {
+            var handlingLawFirmContact = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.LawFirm,
+                handlingLawFirmFirstName,
+                handlingLawFirmLastName,
+                SeedHelper.UserId,
+                organization: handlingLawFirmOrganization,
+                email: handlingLawFirmEmail);
+            SetId(handlingLawFirmContact, handlingLawFirmContactId.Value);
+            db.Contacts.Add(handlingLawFirmContact);
         }
 
         var buyerContact = Contact.Create(

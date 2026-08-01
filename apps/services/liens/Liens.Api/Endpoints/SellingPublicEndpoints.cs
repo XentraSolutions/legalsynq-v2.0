@@ -1858,7 +1858,7 @@ public static class SellingPublicEndpoints
             sellerContacts,
             fallbackEmail: null,
             ct: ct);
-        var handlingLawFirm = await ResolveHandlingLawFirmAsync(db, accessLink.TenantId, caseEntity, ct);
+        var handlingLawFirmContact = await ResolveHandlingLawFirmContactAsync(db, accessLink.TenantId, caseEntity, ct);
         var caseManager = await ResolveCaseManagerAsync(db, accessLink.TenantId, caseEntity, ct);
         var documents = await ResolveDocumentsAsync(db, accessLink.TenantId, lien, ct);
         var messages = await ResolveMessagesAsync(db, accessLink, ct);
@@ -1871,7 +1871,7 @@ public static class SellingPublicEndpoints
             buyerContact,
             sellerContact,
             sellerDisplay,
-            handlingLawFirm,
+            handlingLawFirmContact,
             caseManager,
             documents,
             messages,
@@ -1956,7 +1956,7 @@ public static class SellingPublicEndpoints
             .FirstOrDefaultAsync(ct);
     }
 
-    private static async Task<string?> ResolveHandlingLawFirmAsync(
+    private static async Task<Contact?> ResolveHandlingLawFirmContactAsync(
         LiensDbContext db,
         Guid tenantId,
         Case? caseEntity,
@@ -1971,11 +1971,11 @@ public static class SellingPublicEndpoints
             var lawFirm = await db.Contacts
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == lawFirmId, ct);
-            if (!string.IsNullOrWhiteSpace(lawFirm?.Organization))
-                return lawFirm.Organization.Trim();
+            if (lawFirm is not null)
+                return lawFirm;
         }
 
-        var defaultLawFirm = await db.Contacts
+        return await db.Contacts
             .AsNoTracking()
             .Where(c =>
                 c.TenantId == tenantId &&
@@ -1985,8 +1985,6 @@ public static class SellingPublicEndpoints
                 c.ContactSubtype == null)
             .OrderBy(c => c.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
-
-        return FirstNonEmpty(defaultLawFirm?.Organization);
     }
 
     private static async Task<string?> ResolveCaseManagerAsync(
@@ -2247,7 +2245,9 @@ public static class SellingPublicEndpoints
                 view.BuyerContact?.Email,
                 view.BuyerContact?.Phone),
             new PublicBuyerCaseResponse(
-                view.HandlingLawFirm,
+                FirstNonEmpty(view.HandlingLawFirmContact?.Organization),
+                FirstNonEmpty(view.HandlingLawFirmContact?.DisplayName),
+                FirstNonEmpty(view.HandlingLawFirmContact?.Email),
                 view.CaseManager),
             view.Documents
                 .Select(document => new PublicBuyerDocumentResponse(
@@ -2517,7 +2517,7 @@ public static class SellingPublicEndpoints
         Contact? BuyerContact,
         Contact? SellerContact,
         SellerOrganizationDisplay SellerDisplay,
-        string? HandlingLawFirm,
+        Contact? HandlingLawFirmContact,
         string? CaseManager,
         IReadOnlyList<PublicDocumentView> Documents,
         IReadOnlyList<SellingPortalMessage> Messages,
@@ -2576,6 +2576,8 @@ public static class SellingPublicEndpoints
 
     private sealed record PublicBuyerCaseResponse(
         string? HandlingLawFirm,
+        string? HandlingLawFirmContactName,
+        string? HandlingLawFirmEmail,
         string? CaseManager);
 
     private sealed record PublicBuyerDocumentResponse(

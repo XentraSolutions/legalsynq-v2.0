@@ -59,7 +59,9 @@ const buyerPortalData: PublicBuyerPortalData = {
     phone: "3105551212",
   },
   case: {
-    handlingLawFirm: "RL Liens1",
+    handlingLawFirm: "Anderson & Ashworth Law Firm LLC",
+    handlingLawFirmContactName: "Anderson Contact",
+    handlingLawFirmEmail: "anderson.contact@ashworthlaw.test",
     caseManager: "Case Manager",
   },
   documents: [
@@ -144,6 +146,12 @@ describe("PublicBuyerPortalPage", () => {
     expect(screen.getByText("Seller Information")).toBeInTheDocument();
     expect(screen.getAllByText("RL Liens1").length).toBeGreaterThan(0);
     expect(screen.getByText("Funding Company & Case Information")).toBeInTheDocument();
+    expect(screen.getByText("Anderson & Ashworth Law Firm LLC")).toBeInTheDocument();
+    expect(screen.getByText("Anderson Contact")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "anderson.contact@ashworthlaw.test" })).toHaveAttribute(
+      "href",
+      "mailto:anderson.contact@ashworthlaw.test",
+    );
     expect(screen.getByText("signed-lien-real.pdf")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View signed-lien-real.pdf" })).toHaveAttribute(
       "href",

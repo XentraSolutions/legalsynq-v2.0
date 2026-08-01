@@ -158,12 +158,14 @@ function LienSummaryCard({ data }: { data: PublicBuyerPortalData }) {
   const fundingRows: FieldRow[] = [
     { label: "Funding Company", value: data.buyer.company },
     { label: "Handling Law Firm", value: data.case.handlingLawFirm },
-    { label: "Contact Person", value: data.seller.name },
+    { label: "Contact Person", value: data.case.handlingLawFirmContactName },
     { label: "Case Manager", value: data.case.caseManager },
     {
       label: "Email Address",
-      value: data.seller.email,
-      href: data.seller.email ? `mailto:${data.seller.email}` : undefined,
+      value: data.case.handlingLawFirmEmail,
+      href: data.case.handlingLawFirmEmail
+        ? `mailto:${data.case.handlingLawFirmEmail}`
+        : undefined,
     },
   ];
   const caseRows: FieldRow[] = [

@@ -70,6 +70,8 @@ export interface PublicBuyerPortalData {
   };
   case: {
     handlingLawFirm: string | null;
+    handlingLawFirmContactName?: string | null;
+    handlingLawFirmEmail?: string | null;
     caseManager: string | null;
   };
   documents: PublicBuyerPortalDocument[];
