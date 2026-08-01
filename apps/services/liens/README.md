@@ -96,9 +96,9 @@ organization (`sellerOrgId`) through Identity, with fallback only to non-law-fir
 seller organization. Handling law firm and case manager remain case/asset details. The public-link JSON and
 authenticated funding-company dashboard, offered-liens list, and detail views use the same tenant-owner and seller
 organization resolver, so the email CTA and logged-in views do not select different seller information for the same
-offer. In the buyer notification's Asset Overview, Contact Person, Email Address, and Handling Law Firm all come from
-the selected handling law-firm contact: `liens_Contacts.FirstName` + `LastName`, `liens_Contacts.Email`, and
-`liens_Contacts.Organization`. The seller notification's Buyer Information section omits buyer phone number.
+offer. In buyer and seller notification Asset Overview sections, Contact Person, Email Address, and Handling Law Firm
+all come from the selected handling law-firm contact: `liens_Contacts.FirstName` + `LastName`,
+`liens_Contacts.Email`, and `liens_Contacts.Organization`. The seller notification's Buyer Information section omits buyer phone number.
 Supporting document names are pulled from existing legacy
 lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
 email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark

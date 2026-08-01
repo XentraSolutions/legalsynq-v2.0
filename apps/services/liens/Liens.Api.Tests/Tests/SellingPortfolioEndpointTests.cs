@@ -1082,6 +1082,12 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerBuyerInformation.Should().NotContain("3105551212");
         sellerBuyerInformation.Should().NotContain("Email Address");
         sellerBuyerInformation.Should().NotContain("buyer.reviewer@capital.test");
+        var sellerAssetOverview = ExtractSection(sellerEmail.Body, "Asset Overview", "Supporting Documents");
+        sellerAssetOverview.Should().Contain("Contact Person: Handling Counsel");
+        sellerAssetOverview.Should().Contain("Email Address: handling.counsel@smithlaw.test");
+        sellerAssetOverview.Should().Contain("Handling Law Firm: Smith & Associates LLP");
+        sellerAssetOverview.Should().NotContain("Contact Person: Buyer Reviewer");
+        sellerAssetOverview.Should().NotContain("Email Address: buyer.reviewer@capital.test");
         sellerEmail.Body.Should().Contain("View Lien Details");
         sellerEmail.Body.Should().Contain("$3,875.00");
         sellerEmail.Body.Should().Contain("06/01/2026");
@@ -1100,6 +1106,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerEmail.Options!.IdempotencyKey.Should().Be(
             $"liens.confirm-sale.seller-email:{SeedHelper.TenantId:N}:{lienId:N}:{Guid.Parse(sellerEmail.Metadata["sellerContactId"]):N}:{buyerContactId:N}");
         sellerEmail.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
+        sellerEmail.Options.TemplateData!["contactPerson"].Should().Be("Handling Counsel");
+        sellerEmail.Options.TemplateData!["emailAddress"].Should().Be("handling.counsel@smithlaw.test");
         sellerEmail.Options.TemplateData.Should().NotContainKey("buyerPhone");
         sellerEmail.Options.TextBody.Should().Be(sellerEmail.Body);
         sellerEmail.Options.HtmlBody.Should().NotBeNullOrWhiteSpace();
@@ -1119,6 +1127,12 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerBuyerInformationHtml.Should().NotContain("3105551212");
         sellerBuyerInformationHtml.Should().NotContain("Email Address");
         sellerBuyerInformationHtml.Should().NotContain("buyer.reviewer@capital.test");
+        var sellerAssetOverviewHtml = ExtractSection(sellerEmail.Options.HtmlBody!, "Asset Overview", "Supporting Documents");
+        sellerAssetOverviewHtml.Should().Contain("Handling Counsel");
+        sellerAssetOverviewHtml.Should().Contain("handling.counsel@smithlaw.test");
+        sellerAssetOverviewHtml.Should().Contain("Smith &amp; Associates LLP");
+        sellerAssetOverviewHtml.Should().NotContain("Buyer Reviewer");
+        sellerAssetOverviewHtml.Should().NotContain("buyer.reviewer@capital.test");
         sellerEmail.Options.HtmlBody.Should().NotContain("Accept Lien");
         sellerEmail.Options.HtmlBody.Should().NotContain("Decline Lien");
         sellerEmail.Options.HtmlBody.Should().NotContain("Sent to Funding Company");

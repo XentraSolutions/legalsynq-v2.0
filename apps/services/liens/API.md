@@ -319,10 +319,10 @@ organization display, seller notification email, and handling law firm data. Buy
 Seller company represents the selling organization (`sellerOrgId`) resolved from Identity, with fallback only to
 non-law-firm and non-case-manager contacts in that seller organization. Handling law firm and case manager names stay in
 the asset/case fields and are not used as the seller display. Handling law firm is the selected law-firm contact's
-`liens_Contacts.Organization` value. In the buyer notification's Asset Overview, Contact Person, Email Address, and
-Handling Law Firm all come from the selected handling law-firm contact: `liens_Contacts.FirstName` +
-`liens_Contacts.LastName`, `liens_Contacts.Email`, and `liens_Contacts.Organization`. The seller
-notification's Buyer Information section omits buyer phone number. The public-link JSON and authenticated funding-company
+`liens_Contacts.Organization` value. In buyer and seller notification Asset Overview sections, Contact Person, Email
+Address, and Handling Law Firm all come from the selected handling law-firm contact:
+`liens_Contacts.FirstName` + `liens_Contacts.LastName`, `liens_Contacts.Email`, and `liens_Contacts.Organization`.
+The seller notification's Buyer Information section omits buyer phone number. The public-link JSON and authenticated funding-company
 views use the same tenant-owner and seller organization resolver. The API creates a 30-day buyer response access link and a separate
 30-day seller-view access link from
 `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide CTA URLs. If the explicit base URL is absent, the API

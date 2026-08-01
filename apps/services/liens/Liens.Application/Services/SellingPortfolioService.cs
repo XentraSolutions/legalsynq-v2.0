@@ -1289,8 +1289,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             ? "A medical lien has been sent to the funding company for review. Review the buyer and asset details below."
             : "A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.";
         var informationSectionTitle = isSellerView ? "Buyer Information" : "Seller Information";
-        var contactPerson = isSellerView ? buyerName : handlingLawFirmContactName;
-        var contactEmail = isSellerView ? buyerEmail : handlingLawFirmContactEmail;
+        var contactPerson = handlingLawFirmContactName;
+        var contactEmail = handlingLawFirmContactEmail;
         var ctaLabel = isSellerView ? "View Lien Details" : "View Lien for Sale";
         var footerCompany = isSellerView
             ? FirstNonEmpty(buyerCompany, buyerName, "the funding company")!

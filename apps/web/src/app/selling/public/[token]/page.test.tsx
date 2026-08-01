@@ -244,6 +244,8 @@ describe("PublicBuyerPortalPage", () => {
         },
         case: {
           handlingLawFirm: "Smith & Associates LLP",
+          handlingLawFirmContactName: "Sarah Mitchell",
+          handlingLawFirmEmail: "s.mitchell@crestfield.com",
           caseManager: "Case Manager",
         },
         documents: [],
@@ -263,6 +265,13 @@ describe("PublicBuyerPortalPage", () => {
     expect(screen.getByText("Buyer Information")).toBeInTheDocument();
     expect(screen.getByText("Buyer Reviewer")).toBeInTheDocument();
     expect(screen.getAllByText("Capital Fund LLC").length).toBeGreaterThan(0);
+    expect(screen.getByText("Case Information")).toBeInTheDocument();
+    expect(screen.getByText("Smith & Associates LLP")).toBeInTheDocument();
+    expect(screen.getByText("Sarah Mitchell")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "s.mitchell@crestfield.com" })).toHaveAttribute(
+      "href",
+      "mailto:s.mitchell@crestfield.com",
+    );
     expect(screen.queryByRole("link", { name: "Activate Free Account" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Accept Lien" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Decline Lien" })).not.toBeInTheDocument();

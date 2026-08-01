@@ -129,6 +129,12 @@ describe("PublicBuyerPortalInteractiveContent", () => {
       "href",
       "mailto:buyer@example.test",
     );
+    expect(screen.getByText("Case Information")).toBeInTheDocument();
+    expect(screen.getByText("Anderson Contact")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "anderson.contact@ashworthlaw.test" })).toHaveAttribute(
+      "href",
+      "mailto:anderson.contact@ashworthlaw.test",
+    );
     expect(submitPublicBuyerPortalResponseMock).not.toHaveBeenCalled();
   });
 
