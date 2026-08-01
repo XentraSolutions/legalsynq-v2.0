@@ -98,6 +98,8 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
                 .ConfigurePrimaryHttpMessageHandler(() => new StubMedicareProcedureLookupHandler());
             services.AddHttpClient("Identity")
                 .ConfigurePrimaryHttpMessageHandler(() => new StubIdentityHandler());
+            services.AddHttpClient("IdentityService")
+                .ConfigurePrimaryHttpMessageHandler(() => new StubIdentityServiceHandler());
             services.AddHttpClient("DocumentsService")
                 .ConfigurePrimaryHttpMessageHandler(() => new StubDocumentsServiceHandler());
         });
@@ -205,6 +207,73 @@ internal sealed class StubIdentityHandler : HttpMessageHandler
                 "application/json"),
         });
     }
+}
+
+internal sealed class StubIdentityServiceHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+        var expectedOrganizationPath = $"/api/admin/organizations/{SeedHelper.OrgId:D}";
+        var expectedTenantOwnerDisplayPath = "/api/internal/users/tenant-owner/display";
+        var expectedUserDisplayPath = $"/api/internal/users/{SeedHelper.UserId:D}/display";
+        if (string.Equals(path, expectedTenantOwnerDisplayPath, StringComparison.OrdinalIgnoreCase))
+        {
+            request.RequestUri?.Query.Should().Contain($"organizationId={SeedHelper.OrgId:D}");
+            request.RequestUri?.Query.Should().Contain($"tenantId={SeedHelper.TenantId:D}");
+            return Task.FromResult(JsonResponse($$"""
+                {
+                  "found": true,
+                  "tenantId": "{{SeedHelper.TenantId:D}}",
+                  "organizationId": "{{SeedHelper.OrgId:D}}",
+                  "userId": "{{SeedHelper.UserId:D}}",
+                  "email": "tenant.owner@rl-liens.test",
+                  "firstName": "Tenant",
+                  "lastName": "Owner",
+                  "displayName": "Tenant Owner",
+                  "organizationName": "RL Liens1",
+                  "organizationDisplayName": "RL Liens1"
+                }
+                """));
+        }
+
+        if (string.Equals(path, expectedUserDisplayPath, StringComparison.OrdinalIgnoreCase))
+        {
+            request.RequestUri?.Query.Should().Contain($"tenantId={SeedHelper.TenantId:D}");
+            return Task.FromResult(JsonResponse($$"""
+                {
+                  "found": true,
+                  "userId": "{{SeedHelper.UserId:D}}",
+                  "tenantId": "{{SeedHelper.TenantId:D}}",
+                  "email": "seller.processor@rl-liens.test",
+                  "firstName": "Seller",
+                  "lastName": "Processor",
+                  "displayName": "Seller Processor"
+                }
+                """));
+        }
+
+        if (!string.Equals(path, expectedOrganizationPath, StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        return Task.FromResult(JsonResponse($$"""
+            {
+              "id": "{{SeedHelper.OrgId:D}}",
+              "tenantId": "{{SeedHelper.TenantId:D}}",
+              "name": "RL Liens1",
+              "orgType": "Seller",
+              "isActive": true
+            }
+            """));
+    }
+
+    private static HttpResponseMessage JsonResponse(string json)
+        => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+        };
 }
 
 /// <summary>No-op stub — returns (null, null) for every case lookup.</summary>

@@ -157,6 +157,119 @@ public class PortalAccessStatusTests
     }
 
     [Fact]
+    public async Task UserDisplay_ReturnsTenantScopedFirstAndLastName()
+    {
+        using var factory = BuildFactory();
+        Guid tenantId;
+        Guid otherTenantId;
+        Guid userId;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+
+            var tenant = Tenant.Create("Seller Tenant", $"seller-{Guid.CreateVersion7():N}");
+            var otherTenant = Tenant.Create("Other Tenant", $"other-{Guid.CreateVersion7():N}");
+            db.Tenants.AddRange(tenant, otherTenant);
+
+            var user = User.Create(
+                tenant.Id,
+                "processor@example.test",
+                "password-hash",
+                "Seller",
+                "Processor");
+            db.Users.Add(user);
+            db.UserTenants.Add(UserTenant.Create(user.Id, tenant.Id));
+
+            await db.SaveChangesAsync();
+
+            tenantId = tenant.Id;
+            otherTenantId = otherTenant.Id;
+            userId = user.Id;
+        }
+
+        var client = factory.CreateClient();
+        var response = await client.GetAsync(
+            $"/api/internal/users/{userId:D}/display?tenantId={tenantId:D}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<UserDisplayResponse>();
+        Assert.NotNull(body);
+        Assert.True(body.Found);
+        Assert.Equal(userId, body.UserId);
+        Assert.Equal(tenantId, body.TenantId);
+        Assert.Equal("Seller", body.FirstName);
+        Assert.Equal("Processor", body.LastName);
+        Assert.Equal("Seller Processor", body.DisplayName);
+
+        var otherTenantResponse = await client.GetAsync(
+            $"/api/internal/users/{userId:D}/display?tenantId={otherTenantId:D}");
+        Assert.Equal(HttpStatusCode.OK, otherTenantResponse.StatusCode);
+        var otherTenantBody = await otherTenantResponse.Content.ReadFromJsonAsync<UserDisplayResponse>();
+        Assert.NotNull(otherTenantBody);
+        Assert.False(otherTenantBody.Found);
+        Assert.Equal(userId, otherTenantBody.UserId);
+        Assert.Equal(otherTenantId, otherTenantBody.TenantId);
+    }
+
+    [Fact]
+    public async Task TenantOwnerDisplay_ReturnsTenantOwnerNameAndOrganizationDisplay()
+    {
+        using var factory = BuildFactory();
+        Guid tenantId;
+        Guid ownerUserId;
+        Guid organizationId;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+
+            var tenant = Tenant.Create("Seller Tenant", $"seller-{Guid.CreateVersion7():N}");
+            db.Tenants.Add(tenant);
+
+            var owner = User.Create(
+                tenant.Id,
+                "owner@example.test",
+                "password-hash",
+                "Tenant",
+                "Owner");
+            db.Users.Add(owner);
+            db.UserTenants.Add(UserTenant.Create(owner.Id, tenant.Id));
+            tenant.SetOwner(owner.Id);
+
+            var organization = Organization.Create(
+                tenant.Id,
+                "RL Liens1",
+                OrgType.Provider,
+                displayName: "RL Liens1");
+            db.Organizations.Add(organization);
+
+            await db.SaveChangesAsync();
+
+            tenantId = tenant.Id;
+            ownerUserId = owner.Id;
+            organizationId = organization.Id;
+        }
+
+        var client = factory.CreateClient();
+        var response = await client.GetAsync(
+            $"/api/internal/users/tenant-owner/display?organizationId={organizationId:D}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<TenantOwnerDisplayResponse>();
+        Assert.NotNull(body);
+        Assert.True(body.Found);
+        Assert.Equal(tenantId, body.TenantId);
+        Assert.Equal(organizationId, body.OrganizationId);
+        Assert.Equal(ownerUserId, body.UserId);
+        Assert.Equal("Tenant", body.FirstName);
+        Assert.Equal("Owner", body.LastName);
+        Assert.Equal("Tenant Owner", body.DisplayName);
+        Assert.Equal("RL Liens1", body.OrganizationName);
+        Assert.Equal("RL Liens1", body.OrganizationDisplayName);
+    }
+
+    [Fact]
     public async Task SelfRegister_LinksExistingUserByNormalizedEmail_WithoutCreatingDuplicateUser()
     {
         using var factory = BuildFactory();
@@ -574,6 +687,27 @@ public class PortalAccessStatusTests
     private sealed record PortalAccessStatusResponse(string? Status);
 
     private sealed record AccountExistsResponse(bool Exists, Guid? TenantId);
+
+    private sealed record UserDisplayResponse(
+        bool Found,
+        Guid UserId,
+        Guid TenantId,
+        string? Email,
+        string? FirstName,
+        string? LastName,
+        string? DisplayName);
+
+    private sealed record TenantOwnerDisplayResponse(
+        bool Found,
+        Guid? TenantId,
+        Guid? OrganizationId,
+        Guid? UserId,
+        string? Email,
+        string? FirstName,
+        string? LastName,
+        string? DisplayName,
+        string? OrganizationName,
+        string? OrganizationDisplayName);
 
     private sealed record SelfRegisterResponse(Guid UserId, bool IsNew);
 

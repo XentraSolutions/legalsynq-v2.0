@@ -109,6 +109,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showEditPricing, setShowEditPricing] = useState(false);
+  const [savingBuyerSelection, setSavingBuyerSelection] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -282,12 +283,45 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
         };
       });
 
+  // Persists the buyer selection so it survives a refresh or a return visit —
+  // otherwise it only lives in this component's state until "Authorize & Send"
+  // calls prepareSale, which is the only other place buyer fields are saved.
+  const saveBuyerSelection = async () => {
+    if (!companyId) return;
+    await liensService.saveCaseInformation(lienId, {
+      fundingCompanyId: companyId,
+      fundingCompanyContactId: contactId || undefined,
+      caseId: lien?.caseInformation?.id,
+      createCaseIfMissing: !lien?.caseInformation?.id,
+    });
+  };
+
+  const handleContinue = async () => {
+    setSavingBuyerSelection(true);
+    try {
+      await saveBuyerSelection();
+      setStep(2);
+    } catch (err) {
+      showToast(
+        err instanceof Error
+          ? err.message
+          : "Failed to save funding company selection",
+        "error",
+      );
+    } finally {
+      setSavingBuyerSelection(false);
+    }
+  };
+
   const saveForLater = async () => {
     setSubmitting(true);
     try {
       const documents = uploadedDocumentRefs();
       if (documents.length > 0) {
         await liensService.saveDocuments(lienId, { documents });
+      }
+      if (companyId) {
+        await saveBuyerSelection();
       }
       showToast("Progress saved.", "success");
       router.push(`/selling/portfolio/${lienId}`);
@@ -477,11 +511,11 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
               Cancel
             </Link>
             <button
-              disabled={!companyId}
-              onClick={() => setStep(2)}
+              disabled={!companyId || savingBuyerSelection}
+              onClick={handleContinue}
               className="text-sm px-6 py-2 bg-[#EE7132] hover:bg-[#EE7132]/90 text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Continue
+              {savingBuyerSelection ? "Saving..." : "Continue"}
             </button>
           </div>
         </div>

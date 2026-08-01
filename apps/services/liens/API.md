@@ -314,9 +314,16 @@ Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared li
 
 Notification delivery is mandatory and cannot be opted out through request payload. The lien must have real
 `FundingCompanyId`, `FundingCompanyContactId`, `InitialServiceDate`, `AskAmount`, buyer email, seller
-name/email, a seller display company/label resolved from the seller organization contacts, and handling law firm data.
-The selected seller email contact does not have to carry its own company when another active contact in the same seller
-organization supplies it; otherwise the seller display name is used. The API creates a 30-day buyer response access link and a separate
+organization display, seller notification email, and handling law firm data. Buyer-facing seller name is the
+`idt_Users.FirstName` + `LastName` display name for the selling tenant owner (`idt_Tenants.OwnerUserId`).
+Seller company represents the selling organization (`sellerOrgId`) resolved from Identity, with fallback only to
+non-law-firm and non-case-manager contacts in that seller organization. Handling law firm and case manager names stay in
+the asset/case fields and are not used as the seller display. Handling law firm is the selected law-firm contact's
+`liens_Contacts.Organization` value. In buyer and seller notification Asset Overview sections, Contact Person, Email
+Address, and Handling Law Firm all come from the selected handling law-firm contact:
+`liens_Contacts.FirstName` + `liens_Contacts.LastName`, `liens_Contacts.Email`, and `liens_Contacts.Organization`.
+The seller notification's Buyer Information section omits buyer phone number. The public-link JSON and authenticated funding-company
+views use the same tenant-owner and seller organization resolver. The API creates a 30-day buyer response access link and a separate
 30-day seller-view access link from
 `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide CTA URLs. If the explicit base URL is absent, the API
 derives it from `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
@@ -379,7 +386,7 @@ Liens__Selling__BuyerPortalBaseUrl=http://synqlien-demo.localhost:3000/selling/p
     "expiresAtUtc": "2026-08-21T00:00:00Z",
     "sellerContactId": "guid",
     "sellerOrgId": "guid",
-    "sellerEmail": "<seller-contact-email>"
+    "sellerEmail": "<seller-notification-email>"
   }
 }
 ```
@@ -392,8 +399,9 @@ transition or buyer notification.
 
 ### GET `/api/liens/selling/buyer/dashboard`
 
-Returns the authenticated funding-company dashboard used by `/funding/dashboard`. The endpoint scopes data to the
-current buyer organization, including the email-based source buyer organization fallback used by the offered-liens list.
+Returns the authenticated funding-company dashboard used by `/funding/dashboard`. The endpoint scopes data to active
+tenant buyer contacts whose email matches the authenticated user and whose contact type is `FundingCompany` or
+`LienHolder`, then includes only access links where `BuyerContactId` matches one of those contacts.
 
 Summary metrics are buyer-scoped totals across the selected dashboard range:
 
@@ -461,8 +469,8 @@ first and then by `providerName`.
       "id": "access-link-guid",
       "lienNumber": "LIEN-001",
       "providerName": "Sunrise Clinic",
-      "sellerCompany": "Smith & Associates LLP",
-      "sellerName": "Seller Operator",
+      "sellerCompany": "RL Liens1",
+      "sellerName": "Tenant Owner",
       "offeredAmount": 2500.00,
       "receivedAtUtc": "2026-07-28T12:00:00Z",
       "responseDueAtUtc": "2026-08-27T12:00:00Z",
@@ -500,9 +508,10 @@ first and then by `providerName`.
 ### GET `/api/liens/selling/buyer/liens`
 
 Returns offered-liens rows for the authenticated SynqLien buyer/funding company. The endpoint reads confirmed buyer
-access links created by seller confirm-sale notifications and scopes results to the current organization. It also
-includes source buyer organizations for active funding-company contacts whose email matches the authenticated user,
-which supports accounts provisioned from public buyer activation.
+access links created by seller confirm-sale notifications and scopes results to active tenant buyer contacts whose email
+matches the authenticated user and whose contact type is `FundingCompany` or `LienHolder`. Only access links where
+`BuyerContactId` matches one of those contacts are returned, which supports accounts provisioned from public buyer
+activation without exposing another contact's offers from the same buyer organization.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 
@@ -526,7 +535,7 @@ which supports accounts provisioned from public buyer activation.
       "id": "access-link-guid",
       "lienNumber": "LIEN-001",
       "providerName": "Sunrise Clinic",
-      "sellerName": "Seller Operator",
+      "sellerName": "Tenant Owner",
       "initialServiceDate": "2026-05-01",
       "serviceDate": "2026-05-01",
       "billingAmount": 9000.00,
@@ -556,8 +565,8 @@ non-actionable rows expose `view` only.
 ### GET `/api/liens/selling/buyer/liens/{accessLinkId}`
 
 Returns the authenticated funding-company detail view for one offered lien. The `{accessLinkId}` is the `id` returned
-by `GET /api/liens/selling/buyer/liens`; access is scoped to the current buyer organization, including the same
-email-based source buyer organization fallback used by the list endpoint.
+by `GET /api/liens/selling/buyer/liens`; access is scoped to the authenticated buyer contact matched by email, using the
+same `BuyerContactId` filtering as the list endpoint.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 
@@ -568,12 +577,12 @@ email-based source buyer organization fallback used by the list endpoint.
   "id": "access-link-guid",
   "lienId": "lien-guid",
   "lienNumber": "LIEN-001",
-  "title": "Seller Operator",
-  "subtitle": "Smith & Associates LLP",
+  "title": "Tenant Owner",
+  "subtitle": "RL Liens1",
   "seller": {
-    "name": "Seller Operator",
-    "company": "Smith & Associates LLP",
-    "email": "seller@smithlaw.test"
+    "name": "Tenant Owner",
+    "company": "RL Liens1",
+    "email": null
   },
   "buyer": {
     "contactName": "Buyer Reviewer",
@@ -640,7 +649,7 @@ when the servicing item does not contain a resolvable Documents-service id.
 ### GET `/api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view`
 
 Issues a short-lived Documents view access token for a document attached to an authenticated offered lien, then
-redirects to the Documents access route. The endpoint validates the same buyer organization access link as the detail
+redirects to the Documents access route. The endpoint validates the same buyer-contact-scoped access link as the detail
 endpoint before minting the Documents token. Documents not attached to the offered lien return
 `404 document_not_found`.
 
@@ -664,10 +673,9 @@ download access token.
 ### POST `/api/liens/selling/buyer/liens/{accessLinkId}/messages`
 
 Posts a message from the authenticated funding-company detail page into the same persisted offer thread used by
-`POST /api/liens/selling/public/{token}/messages`. The endpoint first resolves `{accessLinkId}` with the same buyer
-organization and email fallback scoping as the detail `GET`, then delegates to the public-link message workflow so both
-the public email link and `/funding/offered-liens/{accessLinkId}?tab=messages` show the same messages and notification
-behavior.
+`POST /api/liens/selling/public/{token}/messages`. The endpoint first resolves `{accessLinkId}` with the same
+buyer-contact scoping as the detail `GET`, then delegates to the public-link message workflow so both the public email
+link and `/funding/offered-liens/{accessLinkId}?tab=messages` show the same messages and notification behavior.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 
@@ -736,7 +744,11 @@ rendering.
 The JSON payload is populated only from persisted lien, case, contact, buyer, seller, access-link, and servicing
 document metadata. It includes seller, buyer/funding company, lien summary, case, access-link expiry, and real
 supporting-document fields. It never inserts sample company names, sample people, sample files, `example.com`, or
-caller-provided CTA data. For buyer-purpose links, the `account` block indicates whether the access link has already
+caller-provided CTA data. Seller name is resolved from the Identity tenant owner
+(`idt_Tenants.OwnerUserId` -> `idt_Users.FirstName` + `LastName`); seller company is resolved from the selling
+organization (`sellerOrgId`) with the same resolver used by the confirm-sale email and authenticated funding-company
+views. Handling law firm is the selected law-firm contact's `liens_Contacts.Organization` value. Law-firm and case-manager
+contacts remain case/asset metadata and are not used as the buyer-facing seller identity. For buyer-purpose links, the `account` block indicates whether the access link has already
 activated an account or whether the token-scoped buyer email already belongs to an Identity account, so the tenant portal
 can render `Log In` instead of `Activate Free Account`.
 
@@ -768,9 +780,9 @@ can render `Log In` instead of `Activate Free Account`.
     "notes": "Persisted lien notes"
   },
   "seller": {
-    "name": "Seller display name",
-    "company": "Seller company",
-    "email": "seller@company.test"
+    "name": "Tenant Owner",
+    "company": "RL Liens1",
+    "email": null
   },
   "buyer": {
     "contactName": "Buyer contact",
@@ -780,6 +792,8 @@ can render `Log In` instead of `Activate Free Account`.
   },
   "case": {
     "handlingLawFirm": "Handling law firm",
+    "handlingLawFirmContactName": "Law firm contact",
+    "handlingLawFirmEmail": "lawfirm@example.test",
     "caseManager": "Case manager"
   },
   "documents": [

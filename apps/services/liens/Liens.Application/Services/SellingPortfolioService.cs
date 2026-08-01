@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using BuildingBlocks.Exceptions;
+using BuildingBlocks.Context;
 using BuildingBlocks.Notifications;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
@@ -27,6 +28,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private readonly INotificationPublisher _notifications;
     private readonly ISellingBuyerAccessLinkService _buyerAccessLinks;
     private readonly ILienEligibilityValidator _eligibilityValidator;
+    private readonly ISellerOrganizationDisplayResolver _sellerOrganizationDisplayResolver;
+    private readonly ICurrentRequestContext _currentRequestContext;
     private readonly ILogger<SellingPortfolioService> _logger;
 
     public SellingPortfolioService(
@@ -42,6 +45,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         INotificationPublisher notifications,
         ISellingBuyerAccessLinkService buyerAccessLinks,
         ILienEligibilityValidator eligibilityValidator,
+        ISellerOrganizationDisplayResolver sellerOrganizationDisplayResolver,
+        ICurrentRequestContext currentRequestContext,
         ILogger<SellingPortfolioService> logger)
     {
         _portfolioRepo = portfolioRepo;
@@ -56,6 +61,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         _notifications = notifications;
         _buyerAccessLinks = buyerAccessLinks;
         _eligibilityValidator = eligibilityValidator;
+        _sellerOrganizationDisplayResolver = sellerOrganizationDisplayResolver;
+        _currentRequestContext = currentRequestContext;
         _logger = logger;
     }
 
@@ -956,27 +963,31 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         if (string.IsNullOrWhiteSpace(buyerContact.Email))
             errors["fundingCompanyContactId"] = ["Buyer contact must have an email address."];
 
+        var caseEntity = lien.CaseId.HasValue
+            ? await _caseRepo.GetByIdAsync(tenantId, lien.CaseId.Value, ct)
+            : null;
+        var handlingLawFirmContact = await ResolveHandlingLawFirmContactAsync(tenantId, caseEntity, ct);
+        var handlingLawFirm = FirstNonEmpty(handlingLawFirmContact?.Organization);
+        if (string.IsNullOrWhiteSpace(handlingLawFirm))
+            errors["handlingLawFirm"] = ["A real handling law firm is required before sending the buyer notification."];
+
         var sellerContacts = await _contactRepo.GetByOrgIdAsync(tenantId, sellerOrgId, isActive: true, ct);
-        var sellerContact = SelectSellerContact(sellerContacts);
-        var sellerCompany = sellerContact is null ? null : ResolveSellerCompany(sellerContact, sellerContacts);
+        var sellerContact = SelectSellerContact(sellerContacts, handlingLawFirmContact?.Id)
+            ?? SelectSellerContact(sellerContacts);
+        var sellerDisplay = await _sellerOrganizationDisplayResolver.ResolveAsync(
+            tenantId,
+            sellerOrgId,
+            sellerContacts,
+            fallbackEmail: _currentRequestContext.Email,
+            ct: ct);
+        var sellerEmail = FirstNonEmpty(sellerDisplay.Email, sellerContact?.Email);
         if (sellerContact is null)
             errors["sellerContact"] = ["An active seller contact is required before sending the buyer notification."];
         else
         {
-            if (string.IsNullOrWhiteSpace(sellerContact.DisplayName))
-                errors["sellerContact"] = ["Seller contact must have a display name."];
-            if (string.IsNullOrWhiteSpace(sellerCompany))
-                errors["sellerCompany"] = ["Seller contact must have a company, display name, or email address."];
-            if (string.IsNullOrWhiteSpace(sellerContact.Email))
-                errors["sellerEmail"] = ["Seller contact must have an email address."];
+            if (string.IsNullOrWhiteSpace(sellerEmail))
+                errors["sellerEmail"] = ["A seller email address is required before sending the buyer notification."];
         }
-
-        var caseEntity = lien.CaseId.HasValue
-            ? await _caseRepo.GetByIdAsync(tenantId, lien.CaseId.Value, ct)
-            : null;
-        var handlingLawFirm = await ResolveHandlingLawFirmAsync(tenantId, caseEntity, ct);
-        if (string.IsNullOrWhiteSpace(handlingLawFirm))
-            errors["handlingLawFirm"] = ["A real handling law firm is required before sending the buyer notification."];
 
         if (errors.Count > 0)
             throw new ValidationException("One or more required fields are missing or invalid.", errors);
@@ -987,9 +998,10 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         return new ConfirmSaleNotificationContext(
             buyerContact,
             sellerContact!,
-            sellerCompany!,
+            sellerDisplay,
+            sellerEmail!,
             caseEntity,
-            handlingLawFirm!,
+            handlingLawFirmContact!,
             caseManager,
             documents);
     }
@@ -1133,7 +1145,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 ExpiresAtUtc = sellerAccessLink.ExpiresAtUtc,
                 SellerContactId = context.SellerContact.Id,
                 SellerOrgId = context.SellerContact.OrgId,
-                SellerEmail = context.SellerContact.Email!.Trim(),
+                SellerEmail = context.SellerEmail,
             };
         }
 
@@ -1159,7 +1171,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             var notificationResult = await _notifications.SendEmailAsync(
                 NotificationTaxonomy.Liens.Events.SellingLienSubmitted,
                 tenantId,
-                context.SellerContact.Email!.Trim(),
+                context.SellerEmail,
                 email.Subject,
                 email.TextBody,
                 metadata,
@@ -1198,7 +1210,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 ExpiresAtUtc = sellerAccessLink.ExpiresAtUtc,
                 SellerContactId = context.SellerContact.Id,
                 SellerOrgId = context.SellerContact.OrgId,
-                SellerEmail = context.SellerContact.Email.Trim(),
+                SellerEmail = context.SellerEmail,
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -1225,7 +1237,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 ExpiresAtUtc = sellerAccessLink.ExpiresAtUtc,
                 SellerContactId = context.SellerContact.Id,
                 SellerOrgId = context.SellerContact.OrgId,
-                SellerEmail = context.SellerContact.Email!.Trim(),
+                SellerEmail = context.SellerEmail,
             };
         }
     }
@@ -1253,14 +1265,16 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         var lienCode = ResolveLienCode(lien);
         var billingAmount = lien.OriginalAmount.ToString("C", CultureInfo.GetCultureInfo("en-US"));
         var initialServiceDate = lien.InitialServiceDate!.Value.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
-        var sellerName = context.SellerContact.DisplayName.Trim();
-        var sellerCompany = context.SellerCompany.Trim();
-        var sellerEmail = context.SellerContact.Email!.Trim();
+        var sellerName = context.SellerDisplay.Name.Trim();
+        var sellerCompany = context.SellerDisplay.Company.Trim();
+        var sellerEmail = context.SellerEmail.Trim();
         var buyerName = context.BuyerContact.DisplayName.Trim();
         var buyerCompany = context.BuyerContact.Organization?.Trim();
         var buyerEmail = context.BuyerContact.Email!.Trim();
         var buyerPhone = context.BuyerContact.Phone?.Trim();
-        var handlingLawFirm = context.HandlingLawFirm.Trim();
+        var handlingLawFirm = context.HandlingLawFirmContact.Organization!.Trim();
+        var handlingLawFirmContactName = ResolveContactPersonName(context.HandlingLawFirmContact);
+        var handlingLawFirmContactEmail = context.HandlingLawFirmContact.Email?.Trim() ?? string.Empty;
         var caseManager = context.CaseManager?.Trim();
         var documents = context.Documents
             .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
@@ -1275,8 +1289,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             ? "A medical lien has been sent to the funding company for review. Review the buyer and asset details below."
             : "A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.";
         var informationSectionTitle = isSellerView ? "Buyer Information" : "Seller Information";
-        var contactPerson = isSellerView ? buyerName : sellerName;
-        var contactEmail = isSellerView ? buyerEmail : sellerEmail;
+        var contactPerson = handlingLawFirmContactName;
+        var contactEmail = handlingLawFirmContactEmail;
         var ctaLabel = isSellerView ? "View Lien Details" : "View Lien for Sale";
         var footerCompany = isSellerView
             ? FirstNonEmpty(buyerCompany, buyerName, "the funding company")!
@@ -1307,7 +1321,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
         if (!string.IsNullOrWhiteSpace(buyerCompany))
             templateData["buyerCompany"] = buyerCompany;
-        if (!string.IsNullOrWhiteSpace(buyerPhone))
+        if (!isSellerView && !string.IsNullOrWhiteSpace(buyerPhone))
             templateData["buyerPhone"] = buyerPhone;
         if (!string.IsNullOrWhiteSpace(caseManager))
             templateData["caseManager"] = caseManager;
@@ -1325,7 +1339,6 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         {
             ("Buyer Name", buyerName),
             ("Funding Company", buyerCompany),
-            ("Phone Number", buyerPhone),
         };
 
         var informationRows = isSellerView ? buyerRows : sellerRows;
@@ -1661,7 +1674,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         body.AppendLine();
     }
 
-    private async Task<string?> ResolveHandlingLawFirmAsync(
+    private async Task<Contact?> ResolveHandlingLawFirmContactAsync(
         Guid tenantId,
         Case? caseEntity,
         CancellationToken ct)
@@ -1673,17 +1686,14 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         if (Guid.TryParse(metadata.GetValueOrDefault("lawFirmId"), out var lawFirmId))
         {
             var lawFirm = await _contactRepo.GetByIdAsync(tenantId, lawFirmId, ct);
-            var name = FirstNonEmpty(lawFirm?.Organization, lawFirm?.DisplayName);
-            if (!string.IsNullOrWhiteSpace(name))
-                return name;
+            if (!string.IsNullOrWhiteSpace(lawFirm?.Organization))
+                return lawFirm;
         }
 
         var contacts = await _contactRepo.GetByOrgIdAsync(tenantId, caseEntity.OrgId, isActive: true, ct);
-        var defaultLawFirm = contacts.FirstOrDefault(c =>
+        return contacts.FirstOrDefault(c =>
             string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
             string.IsNullOrWhiteSpace(c.ContactSubtype));
-
-        return FirstNonEmpty(defaultLawFirm?.Organization, defaultLawFirm?.DisplayName);
     }
 
     private async Task<string?> ResolveCaseManagerAsync(
@@ -1797,24 +1807,32 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         return label.ToString();
     }
 
-    private static Contact? SelectSellerContact(IReadOnlyList<Contact> contacts)
+    private static Contact? SelectSellerContact(IReadOnlyList<Contact> contacts, Guid? excludedContactId = null)
+    {
+        var orderedContacts = OrderSellerContacts(contacts);
+        var preferredContacts = excludedContactId.HasValue
+            ? orderedContacts.Where(contact => contact.Id != excludedContactId.Value).ToList()
+            : orderedContacts;
+
+        return SelectSellerContactWithEmail(preferredContacts)
+           ?? (excludedContactId.HasValue ? SelectSellerContactWithEmail(orderedContacts) : null)
+           ?? preferredContacts.FirstOrDefault()
+           ?? orderedContacts.FirstOrDefault();
+    }
+
+    private static Contact? SelectSellerContactWithEmail(IReadOnlyList<Contact> contacts)
         => contacts.FirstOrDefault(c =>
                string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
                string.IsNullOrWhiteSpace(c.ContactSubtype) &&
                !string.IsNullOrWhiteSpace(c.Email))
-           ?? contacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email))
-           ?? contacts.FirstOrDefault();
+           ?? contacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email));
 
-    private static string? ResolveSellerCompany(Contact sellerContact, IReadOnlyList<Contact> sellerContacts)
-        => FirstNonEmpty(
-            sellerContact.Organization,
-            sellerContacts.FirstOrDefault(c =>
-                string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
-                string.IsNullOrWhiteSpace(c.ContactSubtype) &&
-                !string.IsNullOrWhiteSpace(c.Organization))?.Organization,
-            sellerContacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Organization))?.Organization,
-            sellerContact.DisplayName,
-            sellerContact.Email);
+    private static IReadOnlyList<Contact> OrderSellerContacts(IReadOnlyList<Contact> contacts)
+        => contacts
+            .OrderBy(c => c.DisplayName)
+            .ThenBy(c => c.Email ?? string.Empty)
+            .ThenBy(c => c.Id)
+            .ToList();
 
     private static ConfirmSellingLienSaleResponse MapConfirmSaleResponse(
         Lien lien,
@@ -1924,15 +1942,21 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private static string? FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 
+    private static string ResolveContactPersonName(Contact contact)
+        => string.Join(' ', new[] { contact.FirstName, contact.LastName }
+            .Where(part => !string.IsNullOrWhiteSpace(part)))
+            .Trim();
+
     private static string Html(string value)
         => WebUtility.HtmlEncode(value);
 
     private sealed record ConfirmSaleNotificationContext(
         Contact BuyerContact,
         Contact SellerContact,
-        string SellerCompany,
+        SellerOrganizationDisplay SellerDisplay,
+        string SellerEmail,
         Case? Case,
-        string HandlingLawFirm,
+        Contact HandlingLawFirmContact,
         string? CaseManager,
         IReadOnlyList<ConfirmSaleDocument> Documents);
 

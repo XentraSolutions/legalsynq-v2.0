@@ -90,8 +90,15 @@ seller acceptance; notification delivery is mandatory and cannot be opted out th
 confirmation, the service validates real buyer/seller contact data, creates a 30-day buyer response link and a separate
 30-day seller-view link, then requests both buyer and seller emails through Notifications with idempotency keys. The
 seller email uses matching branded copy with buyer/funding-company information and a `View Lien Details` link. The
-seller display company is resolved from the selected seller contact, another active contact in the same seller
-organization, or finally the seller display name.
+buyer-facing seller name is resolved from the Identity tenant owner
+(`idt_Tenants.OwnerUserId` -> `idt_Users.FirstName` + `LastName`). Seller company is resolved from the selling
+organization (`sellerOrgId`) through Identity, with fallback only to non-law-firm and non-case-manager contacts in that
+seller organization. Handling law firm and case manager remain case/asset details. The public-link JSON and
+authenticated funding-company dashboard, offered-liens list, and detail views use the same tenant-owner and seller
+organization resolver, so the email CTA and logged-in views do not select different seller information for the same
+offer. In buyer and seller notification Asset Overview sections, Contact Person, Email Address, and Handling Law Firm
+all come from the selected handling law-firm contact: `liens_Contacts.FirstName` + `LastName`,
+`liens_Contacts.Email`, and `liens_Contacts.Organization`. The seller notification's Buyer Information section omits buyer phone number.
 Supporting document names are pulled from existing legacy
 lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
 email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark
@@ -116,8 +123,9 @@ received timestamp for pending, accepted, and declined rows; custom ranges requi
 return empty dashboard data. Dashboard preview lists are capped to five rows; provider performance is ordered by highest
 offered-lien count. The same buyer scoping also drives
 `GET /api/liens/selling/buyer/liens`. That endpoint projects buyer response access links into table rows scoped to the
-current buyer organization, with an email-based source buyer organization fallback for accounts created from public
-activation. It supports `status=Pending|Accepted|Declined`, free-text `search`, `page`, `pageSize`, `sort`, and
+authenticated buyer contact matched by email. Matching contacts must be active, belong to the tenant, and use the
+`FundingCompany` or `LienHolder` contact type; access links are filtered by `BuyerContactId`. It supports
+`status=Pending|Accepted|Declined`, free-text `search`, `page`, `pageSize`, `sort`, and
 `direction` query parameters for the `/funding/offered-liens` page. Pending rows return `view`, `accept`, and `decline`
 actions only while the underlying lien remains actionable by the public buyer-response rules; accepted, declined, or
 otherwise non-actionable rows return `view` only. Row `detailHref` values point to the authenticated tenant portal route
@@ -136,7 +144,9 @@ status, activity, and notification behavior.
 
 The temporary public portal endpoints are anonymous and token-scoped. `GET /api/liens/selling/public/{token}` returns
 JSON from persisted lien, case, contact, access-link, response, and servicing document metadata only, including
-`audience=buyer|seller`, and sets `Referrer-Policy: no-referrer`. It does not render HTML; the tenant portal route `/selling/public/{token}` in `apps/web`
+`audience=buyer|seller`, handling law-firm organization, handling law-firm contact name, handling law-firm email, and
+case manager when available, and sets `Referrer-Policy: no-referrer`. It does not render HTML; the tenant portal route
+`/selling/public/{token}` in `apps/web`
 fetches this JSON through the gateway and renders either the funding-company response page or the seller details page.
 Both buyer-purpose and seller-purpose links can view and post public messages on the offer thread with
 `POST /api/liens/selling/public/{token}/messages`; Liens derives the sender from the token purpose, stores the message,

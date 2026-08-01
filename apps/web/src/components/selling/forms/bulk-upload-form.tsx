@@ -79,14 +79,14 @@ export function BulkUploadForm({
         );
       }
 
-      if (confirmed.status == "CONFIRMED") {
+      if (confirmed.status == "CONFIRMED" || confirmed.status == "PARTIAL") {
         showToast(
-          "Lien has been successfully added to the Portfolio.",
+          `${confirmed.createdCount} ${confirmed.createdCount > 1 ? "liens" : "lien"} s has been successfully added to the Portfolio.`,
           "success",
         );
         onUploaded?.();
+        resetAndClose();
       }
-      resetAndClose();
     } catch (err) {
       if (err instanceof ApiError) {
         showToast(err?.message ?? "Unexpected error", "error");
