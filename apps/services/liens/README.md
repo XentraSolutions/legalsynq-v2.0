@@ -90,14 +90,15 @@ seller acceptance; notification delivery is mandatory and cannot be opted out th
 confirmation, the service validates real buyer/seller contact data, creates a 30-day buyer response link and a separate
 30-day seller-view link, then requests both buyer and seller emails through Notifications with idempotency keys. The
 seller email uses matching branded copy with buyer/funding-company information and a `View Lien Details` link. The
-buyer-facing seller name is resolved from the Identity tenant owner
-(`idt_Tenants.OwnerUserId` -> `idt_Users.FirstName` + `LastName`). Seller company is resolved from the selling
-organization (`sellerOrgId`) through Identity, with fallback only to non-law-firm and non-case-manager contacts in that
-seller organization. Handling law firm and case manager remain case/asset details. The public-link JSON and
-authenticated funding-company dashboard, offered-liens list, and detail views use the same tenant-owner and seller
-organization resolver, so the email CTA and logged-in views do not select different seller information for the same
-offer. In buyer and seller notification Asset Overview sections, Contact Person, Email Address, and Handling Law Firm
-all come from the selected handling law-firm contact: `liens_Contacts.FirstName` + `LastName`,
+buyer-facing seller name is resolved from the Identity user who confirmed/submitted the offer
+(`SellingBuyerAccessLinks.CreatedByUserId` / confirm-sale acting user -> `idt_Users.FirstName` + `LastName`), scoped to
+the seller organization when Identity validates membership. Seller
+company is resolved from the selling organization (`sellerOrgId`) through Identity, with fallback only to non-law-firm
+and non-case-manager contacts in that seller organization. Handling law firm and case manager remain case/asset details.
+The public-link JSON and authenticated funding-company dashboard, offered-liens list, and detail views use the same
+seller-user and seller-organization resolver, so the email CTA and logged-in views do not select different seller
+information for the same offer. In buyer and seller notification Asset Overview sections, Contact Person, Email Address,
+and Handling Law Firm all come from the selected handling law-firm contact: `liens_Contacts.FirstName` + `LastName`,
 `liens_Contacts.Email`, and `liens_Contacts.Organization`. The seller notification's Buyer Information section omits buyer phone number.
 Supporting document names are pulled from existing legacy
 lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
@@ -150,9 +151,12 @@ case manager when available, and sets `Referrer-Policy: no-referrer`. It does no
 fetches this JSON through the gateway and renders either the funding-company response page or the seller details page.
 Both buyer-purpose and seller-purpose links can view and post public messages on the offer thread with
 `POST /api/liens/selling/public/{token}/messages`; Liens derives the sender from the token purpose, stores the message,
-and emails the other party with an idempotent message notification. Because access-link raw tokens are only returned on
-first creation and are not persisted, message notification emails omit a reply URL when the recipient's raw token is no
-longer available. Buyer-purpose links record buyer responses with
+and emails the other party with an idempotent message notification. Buyer-to-seller messages use the seller account
+email resolved from Identity; seller-to-buyer replies use the activated or authenticated buyer account email, not
+law-firm/contact email. Accept/decline outcome emails use the same account-recipient rule for the seller, and the
+authenticated/activated buyer account email for the buyer when available. Because access-link raw tokens are only
+returned on first creation and are not persisted, message notification emails omit a reply URL when the recipient's raw token is no longer available. Buyer-purpose links record
+buyer responses with
 `POST /api/liens/selling/public/{token}/accept` and `POST /api/liens/selling/public/{token}/decline`; accepting records
 the current ask amount and moves the lien to `Status=Accepted` / `SellerStatus=Accepted`; declining records an optional
 reason and moves the lien to `Status=Declined` / `SellerStatus=Declined`. `POST
@@ -189,9 +193,11 @@ When sending links through the tenant portal host, configure
 `platform_session` cookie while fetching Liens data through the gateway. The confirm-sale email disables SendGrid click tracking for this
 CTA so recipients see and open the LegalSynq portal URL directly.
 
-Public buyer activation requires the Liens service to reach Identity. Configure `IdentityService:BaseUrl` (or the
-existing fallback `ExternalServices:Identity:BaseUrl`) and, outside local development, set
-`IdentityService:ProvisioningToken` to match Identity's `TenantService:ProvisioningSecret`.
+Public buyer activation and buyer-facing seller display require the Liens service to reach Identity. Configure
+`IdentityService:BaseUrl` (or the existing fallback `ExternalServices:Identity:BaseUrl`) and, outside local development,
+set `IdentityService:ProvisioningToken` to match Identity's `TenantService:ProvisioningSecret`. If
+`IdentityService:ProvisioningToken` is empty, Liens falls back to `TenantService:ProvisioningToken`, which is the token
+used by the existing development and production startup scripts.
 
 Local SynqLien demo portal example:
 

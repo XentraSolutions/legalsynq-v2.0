@@ -315,15 +315,17 @@ Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared li
 Notification delivery is mandatory and cannot be opted out through request payload. The lien must have real
 `FundingCompanyId`, `FundingCompanyContactId`, `InitialServiceDate`, `AskAmount`, buyer email, seller
 organization display, seller notification email, and handling law firm data. Buyer-facing seller name is the
-`idt_Users.FirstName` + `LastName` display name for the selling tenant owner (`idt_Tenants.OwnerUserId`).
-Seller company represents the selling organization (`sellerOrgId`) resolved from Identity, with fallback only to
+`idt_Users.FirstName` + `LastName` display name for the seller user who confirms/submits the offer
+(`SellingBuyerAccessLinks.CreatedByUserId` / confirm-sale acting user), scoped to the seller organization when Identity
+validates membership. Seller company represents the selling
+organization (`sellerOrgId`) resolved from Identity, with fallback only to
 non-law-firm and non-case-manager contacts in that seller organization. Handling law firm and case manager names stay in
 the asset/case fields and are not used as the seller display. Handling law firm is the selected law-firm contact's
 `liens_Contacts.Organization` value. In buyer and seller notification Asset Overview sections, Contact Person, Email
 Address, and Handling Law Firm all come from the selected handling law-firm contact:
 `liens_Contacts.FirstName` + `liens_Contacts.LastName`, `liens_Contacts.Email`, and `liens_Contacts.Organization`.
 The seller notification's Buyer Information section omits buyer phone number. The public-link JSON and authenticated funding-company
-views use the same tenant-owner and seller organization resolver. The API creates a 30-day buyer response access link and a separate
+views use the same seller-user and seller organization resolver. The API creates a 30-day buyer response access link and a separate
 30-day seller-view access link from
 `Liens:Selling:BuyerPortalBaseUrl`; callers do not provide CTA URLs. If the explicit base URL is absent, the API
 derives it from `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
@@ -470,7 +472,7 @@ first and then by `providerName`.
       "lienNumber": "LIEN-001",
       "providerName": "Sunrise Clinic",
       "sellerCompany": "RL Liens1",
-      "sellerName": "Tenant Owner",
+      "sellerName": "Seller Processor",
       "offeredAmount": 2500.00,
       "receivedAtUtc": "2026-07-28T12:00:00Z",
       "responseDueAtUtc": "2026-08-27T12:00:00Z",
@@ -535,7 +537,7 @@ activation without exposing another contact's offers from the same buyer organiz
       "id": "access-link-guid",
       "lienNumber": "LIEN-001",
       "providerName": "Sunrise Clinic",
-      "sellerName": "Tenant Owner",
+      "sellerName": "Seller Processor",
       "initialServiceDate": "2026-05-01",
       "serviceDate": "2026-05-01",
       "billingAmount": 9000.00,
@@ -577,10 +579,10 @@ same `BuyerContactId` filtering as the list endpoint.
   "id": "access-link-guid",
   "lienId": "lien-guid",
   "lienNumber": "LIEN-001",
-  "title": "Tenant Owner",
+  "title": "Seller Processor",
   "subtitle": "RL Liens1",
   "seller": {
-    "name": "Tenant Owner",
+    "name": "Seller Processor",
     "company": "RL Liens1",
     "email": null
   },
@@ -744,10 +746,12 @@ rendering.
 The JSON payload is populated only from persisted lien, case, contact, buyer, seller, access-link, and servicing
 document metadata. It includes seller, buyer/funding company, lien summary, case, access-link expiry, and real
 supporting-document fields. It never inserts sample company names, sample people, sample files, `example.com`, or
-caller-provided CTA data. Seller name is resolved from the Identity tenant owner
-(`idt_Tenants.OwnerUserId` -> `idt_Users.FirstName` + `LastName`); seller company is resolved from the selling
-organization (`sellerOrgId`) with the same resolver used by the confirm-sale email and authenticated funding-company
-views. Handling law firm is the selected law-firm contact's `liens_Contacts.Organization` value. Law-firm and case-manager
+caller-provided CTA data. Seller name is resolved from the Identity user who confirmed/submitted the offer
+(`SellingBuyerAccessLinks.CreatedByUserId` / confirm-sale acting user -> `idt_Users.FirstName` + `LastName`), scoped to
+the seller organization when Identity validates membership;
+seller company is resolved from the selling organization (`sellerOrgId`) with the same resolver used by the confirm-sale
+email and authenticated funding-company views. Handling law firm is the selected law-firm contact's
+`liens_Contacts.Organization` value. Law-firm and case-manager
 contacts remain case/asset metadata and are not used as the buyer-facing seller identity. For buyer-purpose links, the `account` block indicates whether the access link has already
 activated an account or whether the token-scoped buyer email already belongs to an Identity account, so the tenant portal
 can render `Log In` instead of `Activate Free Account`.
@@ -780,7 +784,7 @@ can render `Log In` instead of `Activate Free Account`.
     "notes": "Persisted lien notes"
   },
   "seller": {
-    "name": "Tenant Owner",
+    "name": "Seller Processor",
     "company": "RL Liens1",
     "email": null
   },
@@ -868,8 +872,11 @@ the public `GET`. Liens derives the sender from the access-link purpose (`buyer`
 seller-view links); callers do not provide or override `senderType`. The message is persisted for the exact tenant,
 lien, seller organization, buyer organization, and buyer contact represented by the token, so both public links see the
 same chronological thread. After the message is saved, Liens emails the other party with that party's public link using
-`lien.offer.message.created` and a message/recipient-specific idempotency key. Notification failures are logged and do
-not roll back the saved message.
+`lien.offer.message.created` and a message/recipient-specific idempotency key. Buyer-to-seller message notifications
+use the seller account email resolved from Identity; seller-to-buyer replies use the activated or authenticated buyer
+account email, not law-firm/contact email. Accept/decline outcome emails use the same account-recipient rule for the
+seller, and the authenticated/activated buyer account email for the buyer when available. Notification failures are
+logged and do not roll back the saved message or response.
 
 **Authentication:** None.
 

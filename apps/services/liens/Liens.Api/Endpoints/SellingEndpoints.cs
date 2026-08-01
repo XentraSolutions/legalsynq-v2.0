@@ -515,6 +515,7 @@ public static class SellingEndpoints
             tenantId,
             accessLink.SellerOrgId,
             sellerContacts,
+            sellerUserId: accessLink.CreatedByUserId,
             fallbackEmail: null,
             ct: ct);
         var providerName = await ResolveProviderNameAsync(db, tenantId, lien.FacilityId, ct);
@@ -664,7 +665,8 @@ public static class SellingEndpoints
             configuration,
             sellerDisplayResolver,
             db,
-            ct);
+            ct,
+            currentBuyerAccountEmail: ctx.Email);
     }
 
     private static async Task<IResult> AcceptBuyerOfferedLien(
@@ -690,7 +692,8 @@ public static class SellingEndpoints
             loggerFactory,
             sellerDisplayResolver,
             db,
-            ct);
+            ct,
+            currentBuyerAccountEmail: ctx.Email);
     }
 
     private static async Task<IResult> DeclineBuyerOfferedLien(
@@ -716,7 +719,8 @@ public static class SellingEndpoints
             loggerFactory,
             sellerDisplayResolver,
             db,
-            ct);
+            ct,
+            currentBuyerAccountEmail: ctx.Email);
     }
 
     private static async Task<(SellingBuyerAccessLink? AccessLink, IResult? Error)> ResolveBuyerOfferedLienAccessLinkAsync(
@@ -779,6 +783,7 @@ public static class SellingEndpoints
                     link.Id,
                     lien.Id,
                     link.SellerOrgId,
+                    link.CreatedByUserId,
                     lien.FacilityId,
                     lien.LienNumber,
                     lien.Status,
@@ -865,40 +870,41 @@ public static class SellingEndpoints
         return buyerContactIds;
     }
 
-    private static async Task<Dictionary<Guid, SellerOrganizationDisplay>> ResolveSellerDisplaysAsync(
+    private static async Task<Dictionary<SellerDisplayKey, SellerOrganizationDisplay>> ResolveSellerDisplaysAsync(
         LiensDbContext db,
         ISellerOrganizationDisplayResolver sellerDisplayResolver,
         Guid tenantId,
         IEnumerable<BuyerOfferedLienSource> sources,
         CancellationToken ct)
     {
-        var sellerOrgIds = sources
-            .Select(source => source.SellerOrgId)
+        var sellerKeys = sources
+            .Select(source => new SellerDisplayKey(source.SellerOrgId, source.SellerUserId))
             .Distinct()
             .ToArray();
-        if (sellerOrgIds.Length == 0)
+        if (sellerKeys.Length == 0)
             return [];
 
-        var names = new Dictionary<Guid, SellerOrganizationDisplay>();
+        var names = new Dictionary<SellerDisplayKey, SellerOrganizationDisplay>();
         var contactCache = new Dictionary<Guid, List<Contact>>();
-        foreach (var sellerOrgId in sellerOrgIds)
+        foreach (var sellerKey in sellerKeys)
         {
-            if (!contactCache.TryGetValue(sellerOrgId, out var contacts))
+            if (!contactCache.TryGetValue(sellerKey.SellerOrgId, out var contacts))
             {
                 contacts = await db.Contacts
                     .AsNoTracking()
                     .Where(item =>
                         item.TenantId == tenantId &&
                         item.IsActive &&
-                        item.OrgId == sellerOrgId)
+                        item.OrgId == sellerKey.SellerOrgId)
                     .ToListAsync(ct);
-                contactCache[sellerOrgId] = contacts;
+                contactCache[sellerKey.SellerOrgId] = contacts;
             }
 
-            names[sellerOrgId] = await sellerDisplayResolver.ResolveAsync(
+            names[sellerKey] = await sellerDisplayResolver.ResolveAsync(
                 tenantId,
-                sellerOrgId,
+                sellerKey.SellerOrgId,
                 contacts,
+                sellerUserId: sellerKey.SellerUserId,
                 fallbackEmail: null,
                 ct: ct);
         }
@@ -1268,7 +1274,7 @@ public static class SellingEndpoints
 
     private static BuyerOfferedLienRow MapBuyerOfferedLienRow(
         BuyerOfferedLienSource source,
-        IReadOnlyDictionary<Guid, SellerOrganizationDisplay> sellerDisplays,
+        IReadOnlyDictionary<SellerDisplayKey, SellerOrganizationDisplay> sellerDisplays,
         IReadOnlyDictionary<Guid, string> providerNames)
     {
         var status = GetBuyerOfferedLienStatus(source.ResponseStatus);
@@ -1280,7 +1286,7 @@ public static class SellingEndpoints
         IReadOnlyList<string> allowedActions = canRespond
             ? ["view", "accept", "decline"]
             : new[] { "view" };
-        var sellerDisplay = sellerDisplays.TryGetValue(source.SellerOrgId, out var resolvedSellerDisplay)
+        var sellerDisplay = sellerDisplays.TryGetValue(new SellerDisplayKey(source.SellerOrgId, source.SellerUserId), out var resolvedSellerDisplay)
             ? resolvedSellerDisplay
             : new SellerOrganizationDisplay(
                 "Seller unavailable",
@@ -2627,10 +2633,13 @@ public static class SellingEndpoints
         public static BuyerDashboardWindow Empty { get; } = new(null, null, IsEmpty: true);
     }
 
+    private readonly record struct SellerDisplayKey(Guid SellerOrgId, Guid? SellerUserId);
+
     private sealed record BuyerOfferedLienSource(
         Guid AccessLinkId,
         Guid LienId,
         Guid SellerOrgId,
+        Guid? SellerUserId,
         Guid? FacilityId,
         string LienNumber,
         string LienStatus,

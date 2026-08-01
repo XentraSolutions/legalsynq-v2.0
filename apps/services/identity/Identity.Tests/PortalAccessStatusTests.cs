@@ -213,6 +213,69 @@ public class PortalAccessStatusTests
     }
 
     [Fact]
+    public async Task UserDisplay_ReturnsFirstAndLastName_WhenUserHasActiveOrganizationMembership()
+    {
+        using var factory = BuildFactory();
+        Guid tenantId;
+        Guid organizationId;
+        Guid userId;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+
+            var tenant = Tenant.Create("Seller Tenant", $"seller-{Guid.CreateVersion7():N}");
+            db.Tenants.Add(tenant);
+
+            var organization = Organization.Create(
+                tenant.Id,
+                "RL Liens1",
+                OrgType.Provider,
+                displayName: "RL Liens1");
+            db.Organizations.Add(organization);
+
+            var user = User.Create(
+                tenant.Id,
+                "org.processor@example.test",
+                "password-hash",
+                "Organization",
+                "Processor");
+            db.Users.Add(user);
+
+            var membership = UserOrganizationMembership.Create(user.Id, organization.Id, MemberRole.Member);
+            membership.SetPrimary();
+            db.UserOrganizationMemberships.Add(membership);
+
+            await db.SaveChangesAsync();
+
+            tenantId = tenant.Id;
+            organizationId = organization.Id;
+            userId = user.Id;
+        }
+
+        var client = factory.CreateClient();
+        var response = await client.GetAsync(
+            $"/api/internal/users/{userId:D}/display?tenantId={tenantId:D}&organizationId={organizationId:D}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<UserDisplayResponse>();
+        Assert.NotNull(body);
+        Assert.True(body.Found);
+        Assert.Equal(userId, body.UserId);
+        Assert.Equal(tenantId, body.TenantId);
+        Assert.Equal("Organization", body.FirstName);
+        Assert.Equal("Processor", body.LastName);
+        Assert.Equal("Organization Processor", body.DisplayName);
+
+        var withoutOrganizationResponse = await client.GetAsync(
+            $"/api/internal/users/{userId:D}/display?tenantId={tenantId:D}");
+        Assert.Equal(HttpStatusCode.OK, withoutOrganizationResponse.StatusCode);
+        var withoutOrganizationBody = await withoutOrganizationResponse.Content.ReadFromJsonAsync<UserDisplayResponse>();
+        Assert.NotNull(withoutOrganizationBody);
+        Assert.False(withoutOrganizationBody.Found);
+    }
+
+    [Fact]
     public async Task TenantOwnerDisplay_ReturnsTenantOwnerNameAndOrganizationDisplay()
     {
         using var factory = BuildFactory();

@@ -28,10 +28,12 @@ public sealed class SellerOrganizationDisplayResolver : ISellerOrganizationDispl
         Guid tenantId,
         Guid sellerOrgId,
         IReadOnlyList<Contact> sellerContacts,
+        Guid? sellerUserId = null,
         string? fallbackEmail = null,
         bool includeIdentityOwnerEmailFallback = false,
         CancellationToken ct = default)
     {
+        var identityUserDisplay = await ResolveIdentityUserDisplayAsync(tenantId, sellerOrgId, sellerUserId, ct);
         var identityOwnerDisplay = await ResolveIdentityTenantOwnerDisplayAsync(tenantId, sellerOrgId, ct);
         var identityOrganizationName = FirstNonEmpty(
             identityOwnerDisplay?.OrganizationDisplayName,
@@ -43,15 +45,67 @@ public sealed class SellerOrganizationDisplayResolver : ISellerOrganizationDispl
             localOrganizationName,
             "Seller company unavailable")!;
         var name = FirstNonEmpty(
-            ResolveDisplayName(identityOwnerDisplay?.DisplayName, identityOwnerDisplay?.FirstName, identityOwnerDisplay?.LastName),
+            ResolvePersonName(identityUserDisplay?.FirstName, identityUserDisplay?.LastName),
+            identityUserDisplay?.DisplayName,
+            ResolvePersonName(identityOwnerDisplay?.FirstName, identityOwnerDisplay?.LastName),
+            identityOwnerDisplay?.DisplayName,
             identityOrganizationName,
             localOrganizationName,
             "Seller unavailable")!;
         var email = FirstNonEmpty(
             fallbackEmail,
+            identityUserDisplay?.Email,
             includeIdentityOwnerEmailFallback ? identityOwnerDisplay?.Email : null);
 
         return new SellerOrganizationDisplay(name, company, email);
+    }
+
+    private async Task<IdentityUserDisplayResponse?> ResolveIdentityUserDisplayAsync(
+        Guid tenantId,
+        Guid sellerOrgId,
+        Guid? sellerUserId,
+        CancellationToken ct)
+    {
+        if (!sellerUserId.HasValue || tenantId == Guid.Empty || sellerUserId.Value == Guid.Empty)
+            return null;
+
+        if (string.IsNullOrWhiteSpace(_options.BaseUrl))
+            return null;
+
+        try
+        {
+            using var client = BuildIdentityClient();
+            using var response = await client.GetAsync(
+                $"api/internal/users/{sellerUserId.Value:D}/display?tenantId={tenantId:D}&organizationId={sellerOrgId:D}",
+                ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Identity user display lookup returned HTTP {StatusCode} for seller user {SellerUserId}.",
+                    (int)response.StatusCode,
+                    sellerUserId.Value);
+                return null;
+            }
+
+            var user = await response.Content.ReadFromJsonAsync<IdentityUserDisplayResponse>(
+                cancellationToken: ct);
+            return user?.Found == true ? user : null;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                "Identity user display lookup timed out for seller user {SellerUserId}.",
+                sellerUserId.Value);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Identity user display lookup failed for seller user {SellerUserId}.",
+                sellerUserId.Value);
+            return null;
+        }
     }
 
     private async Task<IdentityTenantOwnerDisplayResponse?> ResolveIdentityTenantOwnerDisplayAsync(
@@ -225,9 +279,8 @@ public sealed class SellerOrganizationDisplayResolver : ISellerOrganizationDispl
     private static string? FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 
-    private static string? ResolveDisplayName(string? displayName, string? firstName, string? lastName)
+    private static string? ResolvePersonName(string? firstName, string? lastName)
         => FirstNonEmpty(
-            displayName,
             string.Join(' ', new[] { firstName, lastName }
                 .Where(part => !string.IsNullOrWhiteSpace(part))));
 
@@ -235,6 +288,24 @@ public sealed class SellerOrganizationDisplayResolver : ISellerOrganizationDispl
     {
         [JsonPropertyName("name")]
         public string? Name { get; init; }
+
+        [JsonPropertyName("displayName")]
+        public string? DisplayName { get; init; }
+    }
+
+    private sealed class IdentityUserDisplayResponse
+    {
+        [JsonPropertyName("found")]
+        public bool Found { get; init; }
+
+        [JsonPropertyName("email")]
+        public string? Email { get; init; }
+
+        [JsonPropertyName("firstName")]
+        public string? FirstName { get; init; }
+
+        [JsonPropertyName("lastName")]
+        public string? LastName { get; init; }
 
         [JsonPropertyName("displayName")]
         public string? DisplayName { get; init; }

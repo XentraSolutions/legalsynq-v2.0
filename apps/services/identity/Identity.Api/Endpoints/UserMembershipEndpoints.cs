@@ -14,7 +14,7 @@ namespace Identity.Api.Endpoints;
 ///
 /// POST /api/internal/users/assign-tenant  — assign user to tenant + optional roles
 /// POST /api/internal/users/assign-roles   — assign roles to a user (idempotent)
-/// GET  /api/internal/users/{userId}/display — tenant-scoped user display name
+/// GET  /api/internal/users/{userId}/display — tenant/org-scoped user display name
 /// GET  /api/internal/users/tenant-owner/display — tenant owner display name
 /// GET  /api/internal/users/portal-access  — tenant-scoped CareConnect portal access status
 ///
@@ -179,7 +179,9 @@ public static class UserMembershipEndpoints
         //
         // Internal display lookup for trusted product services that store only
         // actor ids but need the tenant account's idt_Users name for historical
-        // records and cross-service notifications.
+        // records and cross-service notifications. Optional organizationId lets
+        // product services validate users through an active org membership when
+        // a legacy/local row is missing from idt_UserTenants.
         //
         // Auth: X-Provisioning-Token (same pattern as other internal endpoints).
 
@@ -187,6 +189,7 @@ public static class UserMembershipEndpoints
             HttpContext       httpContext,
             Guid              userId,
             Guid?             tenantId,
+            Guid?             organizationId,
             IdentityDbContext db,
             IConfiguration    configuration,
             ILoggerFactory    loggerFactory,
@@ -220,6 +223,22 @@ public static class UserMembershipEndpoints
             var belongsToTenant = await db.UserTenants
                 .AsNoTracking()
                 .AnyAsync(ut => ut.UserId == userId && ut.TenantId == tenantId.Value, ct);
+
+            if (!belongsToTenant && organizationId.HasValue && organizationId.Value != Guid.Empty)
+            {
+                belongsToTenant = await db.UserOrganizationMemberships
+                    .AsNoTracking()
+                    .Where(m =>
+                        m.UserId == userId &&
+                        m.OrganizationId == organizationId.Value &&
+                        m.IsActive)
+                    .Join(
+                        db.Organizations.AsNoTracking().Where(o => o.IsActive),
+                        m => m.OrganizationId,
+                        o => o.Id,
+                        (_, o) => o)
+                    .AnyAsync(o => o.TenantId == tenantId.Value, ct);
+            }
 
             if (!belongsToTenant)
                 return CreateUserDisplayResult(false, userId, tenantId.Value);

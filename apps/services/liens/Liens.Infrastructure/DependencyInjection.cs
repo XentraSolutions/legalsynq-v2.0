@@ -106,7 +106,10 @@ public static class DependencyInjection
         services.Configure<IdentityServiceOptions>(options =>
         {
             configuration.GetSection(IdentityServiceOptions.SectionName).Bind(options);
-            options.BaseUrl ??= configuration["ExternalServices:Identity:BaseUrl"];
+            if (string.IsNullOrWhiteSpace(options.BaseUrl))
+                options.BaseUrl = configuration["ExternalServices:Identity:BaseUrl"];
+            if (string.IsNullOrWhiteSpace(options.ProvisioningToken))
+                options.ProvisioningToken = configuration["TenantService:ProvisioningToken"];
         });
         services.AddHttpClient("IdentityService");
         services.AddScoped<IPublicBuyerAccountProvisioningService, IdentityBuyerAccountProvisioningService>();

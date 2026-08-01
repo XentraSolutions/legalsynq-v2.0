@@ -42,7 +42,7 @@ Identity.Api.Tests/      Integration and unit tests
 | `GET` | `/api/users` | List users (tenant-scoped) |
 | `POST` | `/api/internal/tenant-provisioning/provision` | Internal: full tenant provision |
 | `GET` | `/api/internal/users/account-exists` | Internal: trusted product services can check whether an email already belongs to an Identity account |
-| `GET` | `/api/internal/users/{userId}/display` | Internal: trusted product services can resolve a tenant-scoped user's first/last display name from `idt_Users` |
+| `GET` | `/api/internal/users/{userId}/display` | Internal: trusted product services can resolve a tenant-scoped user's first/last display name from `idt_Users`; optional `organizationId` also accepts active org membership in that tenant |
 | `GET` | `/api/internal/users/tenant-owner/display` | Internal: trusted product services can resolve the tenant owner's first/last display name from `idt_Tenants.OwnerUserId` and `idt_Users` |
 | `POST` | `/api/admin/products/{code}/provision` | Enable/disable product for tenant |
 | `POST` | `/api/admin/organizations/synqlien-buyer` | Internal: create/resolve a tenant-scoped `LIEN_OWNER` org for SynqLien public buyer activation |

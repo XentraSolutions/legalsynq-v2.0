@@ -978,9 +978,10 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             tenantId,
             sellerOrgId,
             sellerContacts,
+            sellerUserId: actingUserId,
             fallbackEmail: _currentRequestContext.Email,
             ct: ct);
-        var sellerEmail = FirstNonEmpty(sellerDisplay.Email, sellerContact?.Email);
+        var sellerEmail = FirstNonEmpty(sellerDisplay.Email);
         if (sellerContact is null)
             errors["sellerContact"] = ["An active seller contact is required before sending the buyer notification."];
         else

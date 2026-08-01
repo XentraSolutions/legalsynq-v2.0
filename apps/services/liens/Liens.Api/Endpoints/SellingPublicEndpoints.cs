@@ -280,7 +280,8 @@ public static class SellingPublicEndpoints
         IConfiguration configuration,
         ISellerOrganizationDisplayResolver sellerDisplayResolver,
         LiensDbContext db,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? currentBuyerAccountEmail = null)
     {
         var messageText = request?.Message?.Trim() ?? string.Empty;
         if (messageText.Length == 0)
@@ -301,7 +302,12 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status400BadRequest);
         }
 
-        var view = await BuildPublicViewAsync(db, sellerDisplayResolver, accessLink, ct);
+        var view = await BuildPublicViewAsync(
+            db,
+            sellerDisplayResolver,
+            accessLink,
+            ct,
+            currentBuyerAccountEmail: currentBuyerAccountEmail);
         if (view is null)
         {
             return PublicLinkState(
@@ -386,7 +392,8 @@ public static class SellingPublicEndpoints
         ILoggerFactory loggerFactory,
         ISellerOrganizationDisplayResolver sellerDisplayResolver,
         LiensDbContext db,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? currentBuyerAccountEmail = null)
     {
         SetNoReferrerHeader(httpContext.Response);
         if (!SellingIdempotency.TryGetKey(httpContext.Request, out var idempotencyKey, out var idempotencyError))
@@ -415,10 +422,16 @@ public static class SellingPublicEndpoints
                 loggerFactory,
                 sellerDisplayResolver,
                 db,
-                ct) is { } existingResponse)
+                ct,
+                currentBuyerAccountEmail: currentBuyerAccountEmail) is { } existingResponse)
             return existingResponse;
 
-        var view = await BuildPublicViewAsync(db, sellerDisplayResolver, accessLink, ct);
+        var view = await BuildPublicViewAsync(
+            db,
+            sellerDisplayResolver,
+            accessLink,
+            ct,
+            currentBuyerAccountEmail: currentBuyerAccountEmail);
         if (view is null)
         {
             return PublicLinkState(
@@ -522,7 +535,13 @@ public static class SellingPublicEndpoints
         // Accepted links are intentionally no longer actionable, so the public
         // projection builder returns null. Use the post-transition lien for the
         // immediate response rather than leaking the stale Offered state.
-        var updatedView = await BuildPublicViewAsync(db, sellerDisplayResolver, view.AccessLink, ct) ?? view with { Lien = persistedLien };
+        var updatedView = await BuildPublicViewAsync(
+                              db,
+                              sellerDisplayResolver,
+                              view.AccessLink,
+                              ct,
+                              currentBuyerAccountEmail: currentBuyerAccountEmail)
+                          ?? view with { Lien = persistedLien };
         await SendPublicResponseNotificationsAsync(
             notifications,
             loggerFactory,
@@ -590,7 +609,8 @@ public static class SellingPublicEndpoints
         ILoggerFactory loggerFactory,
         ISellerOrganizationDisplayResolver sellerDisplayResolver,
         LiensDbContext db,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? currentBuyerAccountEmail = null)
     {
         SetNoReferrerHeader(httpContext.Response);
         if (!SellingIdempotency.TryGetKey(httpContext.Request, out var idempotencyKey, out var idempotencyError))
@@ -619,10 +639,16 @@ public static class SellingPublicEndpoints
                 loggerFactory,
                 sellerDisplayResolver,
                 db,
-                ct) is { } existingResponse)
+                ct,
+                currentBuyerAccountEmail: currentBuyerAccountEmail) is { } existingResponse)
             return existingResponse;
 
-        var view = await BuildPublicViewAsync(db, sellerDisplayResolver, accessLink, ct);
+        var view = await BuildPublicViewAsync(
+            db,
+            sellerDisplayResolver,
+            accessLink,
+            ct,
+            currentBuyerAccountEmail: currentBuyerAccountEmail);
         if (view is null)
         {
             return PublicLinkState(
@@ -685,7 +711,13 @@ public static class SellingPublicEndpoints
         var persistedLien = await db.Liens.AsNoTracking().FirstAsync(
             lien => lien.TenantId == view.AccessLink.TenantId && lien.Id == view.Lien.Id,
             ct);
-        var updatedView = await BuildPublicViewAsync(db, sellerDisplayResolver, view.AccessLink, ct) ?? view with { Lien = persistedLien };
+        var updatedView = await BuildPublicViewAsync(
+                              db,
+                              sellerDisplayResolver,
+                              view.AccessLink,
+                              ct,
+                              currentBuyerAccountEmail: currentBuyerAccountEmail)
+                          ?? view with { Lien = persistedLien };
         await SendPublicResponseNotificationsAsync(
             notifications,
             loggerFactory,
@@ -1034,7 +1066,8 @@ public static class SellingPublicEndpoints
         ILoggerFactory loggerFactory,
         ISellerOrganizationDisplayResolver sellerDisplayResolver,
         LiensDbContext db,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? currentBuyerAccountEmail = null)
     {
         if (string.IsNullOrWhiteSpace(accessLink.ResponseStatus))
             return null;
@@ -1048,7 +1081,13 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status409Conflict);
         }
 
-        var view = await BuildPublicViewAsync(db, sellerDisplayResolver, accessLink, ct, requireActionable: false);
+        var view = await BuildPublicViewAsync(
+            db,
+            sellerDisplayResolver,
+            accessLink,
+            ct,
+            requireActionable: false,
+            currentBuyerAccountEmail: currentBuyerAccountEmail);
         if (view is null)
         {
             return PublicLinkState(
@@ -1181,7 +1220,7 @@ public static class SellingPublicEndpoints
             loggerFactory,
             eventKey,
             view.AccessLink.TenantId,
-            FirstNonEmpty(view.BuyerContact?.Email),
+            FirstNonEmpty(view.BuyerAccountEmail, view.BuyerContact?.Email),
             subject,
             BuildPublicResponseEmailBody(
                 recipientRole: "buyer",
@@ -1211,7 +1250,7 @@ public static class SellingPublicEndpoints
             loggerFactory,
             eventKey,
             view.AccessLink.TenantId,
-            FirstNonEmpty(view.SellerContact?.Email, view.SellerDisplay.Email),
+            FirstNonEmpty(view.SellerDisplay.Email),
             subject,
             BuildPublicResponseEmailBody(
                 recipientRole: "seller",
@@ -1479,22 +1518,32 @@ public static class SellingPublicEndpoints
         string senderType)
         => senderType == SellingPortalMessageSenderType.Seller
             ? (
-                FirstNonEmpty(view.SellerDisplay.Name, view.SellerDisplay.Company, view.SellerContact?.Email, "Seller")!,
-                FirstNonEmpty(view.SellerContact?.Email, view.SellerDisplay.Email))
+                FirstNonEmpty(view.SellerDisplay.Name, view.SellerDisplay.Company, "Seller")!,
+                FirstNonEmpty(view.SellerDisplay.Email))
             : (
-                FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Email, view.BuyerContact?.Organization, "Buyer")!,
-                FirstNonEmpty(view.BuyerContact?.Email));
+                FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Organization, view.BuyerAccountEmail, "Buyer")!,
+                FirstNonEmpty(view.BuyerAccountEmail));
 
     private static (string Name, string? Email) ResolvePublicMessageRecipient(
         PublicPortalView view,
         string recipientRole)
         => recipientRole == SellingPortalMessageSenderType.Seller
             ? (
-                FirstNonEmpty(view.SellerDisplay.Name, view.SellerDisplay.Company, view.SellerContact?.Email, "Seller")!,
-                FirstNonEmpty(view.SellerContact?.Email, view.SellerDisplay.Email))
+                FirstNonEmpty(view.SellerDisplay.Name, view.SellerDisplay.Company, "Seller")!,
+                FirstNonEmpty(view.SellerDisplay.Email))
             : (
-                FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Email, view.BuyerContact?.Organization, "Buyer")!,
-                FirstNonEmpty(view.BuyerContact?.Email));
+                FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Organization, view.BuyerAccountEmail, "Buyer")!,
+                FirstNonEmpty(view.BuyerAccountEmail, ResolveLatestBuyerMessageSenderEmail(view.Messages)));
+
+    private static string? ResolveLatestBuyerMessageSenderEmail(IReadOnlyList<SellingPortalMessage> messages)
+        => messages
+            .Where(message =>
+                string.Equals(message.SenderType, SellingPortalMessageSenderType.Buyer, StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(message.SenderEmail))
+            .OrderByDescending(message => message.CreatedAtUtc)
+            .ThenByDescending(message => message.Id)
+            .Select(message => message.SenderEmail)
+            .FirstOrDefault();
 
     private static Guid ResolvePublicMessageActorId(SellingBuyerAccessLink accessLink, string senderType)
         => senderType == SellingPortalMessageSenderType.Buyer
@@ -1820,7 +1869,8 @@ public static class SellingPublicEndpoints
         ISellerOrganizationDisplayResolver sellerDisplayResolver,
         SellingBuyerAccessLink accessLink,
         CancellationToken ct,
-        bool requireActionable = true)
+        bool requireActionable = true,
+        string? currentBuyerAccountEmail = null)
     {
         var lien = await db.Liens
             .AsNoTracking()
@@ -1856,7 +1906,8 @@ public static class SellingPublicEndpoints
             accessLink.TenantId,
             accessLink.SellerOrgId,
             sellerContacts,
-            fallbackEmail: sellerContact?.Email,
+            sellerUserId: accessLink.CreatedByUserId,
+            fallbackEmail: null,
             includeIdentityOwnerEmailFallback: true,
             ct: ct);
         var handlingLawFirmContact = await ResolveHandlingLawFirmContactAsync(db, accessLink.TenantId, caseEntity, ct);
@@ -1864,6 +1915,7 @@ public static class SellingPublicEndpoints
         var documents = await ResolveDocumentsAsync(db, accessLink.TenantId, lien, ct);
         var messages = await ResolveMessagesAsync(db, accessLink, ct);
         var buyerResponseAccessLink = await ResolveBuyerResponseAccessLinkAsync(db, accessLink, ct);
+        var buyerAccountEmail = FirstNonEmpty(currentBuyerAccountEmail, accessLink.AccountActivatedEmail);
 
         return new PublicPortalView(
             accessLink,
@@ -1876,7 +1928,8 @@ public static class SellingPublicEndpoints
             caseManager,
             documents,
             messages,
-            buyerResponseAccessLink);
+            buyerResponseAccessLink,
+            buyerAccountEmail);
     }
 
     private static async Task<PublicBuyerAccountResponse?> ResolvePublicBuyerAccountAsync(
@@ -2522,7 +2575,8 @@ public static class SellingPublicEndpoints
         string? CaseManager,
         IReadOnlyList<PublicDocumentView> Documents,
         IReadOnlyList<SellingPortalMessage> Messages,
-        SellingBuyerAccessLink? BuyerResponseAccessLink);
+        SellingBuyerAccessLink? BuyerResponseAccessLink,
+        string? BuyerAccountEmail);
 
     private sealed record PublicDocumentView(Guid? DocumentId, string FileName, string? Category, string SizeOrType);
 

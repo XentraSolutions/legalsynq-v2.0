@@ -41,6 +41,8 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Services__CommerceUrl",      "http://localhost:19994/");
         Environment.SetEnvironmentVariable("Liens__Selling__BuyerPortalBaseUrl",
             "https://app.legalsynq.test/selling/public");
+        Environment.SetEnvironmentVariable("TenantService__ProvisioningToken",
+            StubIdentityServiceHandler.ExpectedProvisioningToken);
 
         // Service token issuer requires a signing key.
         Environment.SetEnvironmentVariable("ServiceTokens__liens-service__SigningKey",
@@ -211,6 +213,8 @@ internal sealed class StubIdentityHandler : HttpMessageHandler
 
 internal sealed class StubIdentityServiceHandler : HttpMessageHandler
 {
+    public const string ExpectedProvisioningToken = "liens-test-provisioning-token";
+
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken)
@@ -221,6 +225,7 @@ internal sealed class StubIdentityServiceHandler : HttpMessageHandler
         var expectedUserDisplayPath = $"/api/internal/users/{SeedHelper.UserId:D}/display";
         if (string.Equals(path, expectedTenantOwnerDisplayPath, StringComparison.OrdinalIgnoreCase))
         {
+            AssertProvisioningToken(request);
             request.RequestUri?.Query.Should().Contain($"organizationId={SeedHelper.OrgId:D}");
             request.RequestUri?.Query.Should().Contain($"tenantId={SeedHelper.TenantId:D}");
             return Task.FromResult(JsonResponse($$"""
@@ -241,7 +246,9 @@ internal sealed class StubIdentityServiceHandler : HttpMessageHandler
 
         if (string.Equals(path, expectedUserDisplayPath, StringComparison.OrdinalIgnoreCase))
         {
+            AssertProvisioningToken(request);
             request.RequestUri?.Query.Should().Contain($"tenantId={SeedHelper.TenantId:D}");
+            request.RequestUri?.Query.Should().Contain($"organizationId={SeedHelper.OrgId:D}");
             return Task.FromResult(JsonResponse($$"""
                 {
                   "found": true,
@@ -258,6 +265,7 @@ internal sealed class StubIdentityServiceHandler : HttpMessageHandler
         if (!string.Equals(path, expectedOrganizationPath, StringComparison.OrdinalIgnoreCase))
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
 
+        AssertProvisioningToken(request);
         return Task.FromResult(JsonResponse($$"""
             {
               "id": "{{SeedHelper.OrgId:D}}",
@@ -274,6 +282,12 @@ internal sealed class StubIdentityServiceHandler : HttpMessageHandler
         {
             Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
         };
+
+    private static void AssertProvisioningToken(HttpRequestMessage request)
+    {
+        request.Headers.TryGetValues("X-Provisioning-Token", out var values).Should().BeTrue();
+        values.Should().Contain(ExpectedProvisioningToken);
+    }
 }
 
 /// <summary>No-op stub — returns (null, null) for every case lookup.</summary>
