@@ -141,7 +141,7 @@ export default function PortfolioClient() {
 
   useEffect(() => {
     refetchLiens();
-  }, [currentQuery]);
+  }, [currentQuery, refetchLiens]);
 
   useEffect(() => {
     setPagination({
