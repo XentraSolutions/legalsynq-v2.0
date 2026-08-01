@@ -236,6 +236,39 @@ public class SellingBulkImportEndpointTests : IClassFixture<LiensApiFactory>, IA
     }
 
     [Fact]
+    public async Task Confirm_bulk_import_creates_every_valid_csv_row()
+    {
+        const string csv = "Case Code*,Initial Service Date*,Funding Company,Facility Name*,Medical Provider Name,Medical Code & Description*,Billing Amount*\r\nCASE-10002,1/6/26,Example Funding Co.,Example Medical Center,Example Medical Center,99213 - Office visit,305\r\nCASE-10002,1/7/26,Nae Funding,Example Medical Center,Example Medical Center,99213 - Office visit,300\r\nCASE-10002,1/6/26,Example Funding Co.,Example Medical Center,Example Medical Center,99213 - Office visit,250\r\n";
+        using var form = new MultipartFormDataContent();
+        using var file = new ByteArrayContent(Encoding.UTF8.GetBytes(csv));
+        file.Headers.ContentType = new MediaTypeHeaderValue("text/csv");
+        form.Add(file, "file", "selling-lien-import.csv");
+        form.Add(new StringContent("SellingLienImport"), "templateType");
+        var upload = await _client.PostAsync("/api/liens/selling/bulk-imports", form);
+        upload.EnsureSuccessStatusCode();
+        using var uploadJson = JsonDocument.Parse(await upload.Content.ReadAsStringAsync());
+        var importId = uploadJson.RootElement.GetProperty("importId").GetGuid();
+
+        (await _client.PostAsync($"/api/liens/selling/bulk-imports/{importId}/validate", null)).EnsureSuccessStatusCode();
+        using var confirm = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/bulk-imports/{importId}/confirm");
+        confirm.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        var confirmed = await _client.SendAsync(confirm);
+        confirmed.StatusCode.Should().Be(HttpStatusCode.OK, await confirmed.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await confirmed.Content.ReadAsStringAsync());
+        json.RootElement.GetProperty("status").GetString().Should().Be("CONFIRMED");
+        json.RootElement.GetProperty("createdCount").GetInt32().Should().Be(3);
+        json.RootElement.GetProperty("failedCount").GetInt32().Should().Be(0);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.BatchUploadDetails.Count(row => row.BatchUploadId == importId && row.Status == "CREATED").Should().Be(3);
+        var importedCase = db.Cases.Single(caseEntity => caseEntity.CaseNumber == "CASE-10002");
+        var liens = db.Liens.Where(lien => lien.CaseId == importedCase.Id).ToList();
+        liens.Should().HaveCount(3);
+        liens.Select(lien => lien.CaseId).Distinct().Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task Confirm_bulk_import_rejects_a_second_confirmation_while_the_batch_transition_is_in_progress()
     {
         const string csv = "Case Code*,Initial Service Date*,Facility Name*,Medical Code & Description*,Billing Amount*\r\nCASE-10001,2026-07-19,Sunrise Clinic,45385 - Colonoscopy,250.00\r\n";
