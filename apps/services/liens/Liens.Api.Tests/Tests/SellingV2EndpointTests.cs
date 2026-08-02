@@ -218,6 +218,54 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Handling_law_firm_lookup_and_save_accept_only_standalone_law_firms()
+    {
+        var lawFirmContactId = Guid.CreateVersion7();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lawFirmContact = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.LawFirm,
+                "Alex",
+                "Attorney",
+                SeedHelper.UserId,
+                lawFirmId: SeedHelper.LawFirmId,
+                contactSubtype: ContactSubtype.LawFirmAttorney,
+                organization: "Smith & Associates LLP");
+            SetId(lawFirmContact, lawFirmContactId);
+            db.Contacts.Add(lawFirmContact);
+            await db.SaveChangesAsync();
+        }
+
+        var lookupResponse = await _client.GetAsync("/api/liens/selling/lookups/law-firms");
+        lookupResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            await lookupResponse.Content.ReadAsStringAsync());
+        using var lookupJson = JsonDocument.Parse(await lookupResponse.Content.ReadAsStringAsync());
+        var lawFirmIds = lookupJson.RootElement.GetProperty("items")
+            .EnumerateArray()
+            .Select(item => item.GetProperty("id").GetGuid())
+            .ToList();
+        lawFirmIds.Should().Contain(SeedHelper.LawFirmId);
+        lawFirmIds.Should().NotContain(lawFirmContactId);
+
+        var lienId = await CreateSellingLienAsync();
+        var saveResponse = await _client.PutAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/case-information",
+            new
+            {
+                fundingCompanyId = SeedHelper.FundingCompanyId,
+                handlingLawFirmId = lawFirmContactId,
+                caseId = SeedHelper.CaseId,
+                createCaseIfMissing = false,
+            });
+
+        saveResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            await saveResponse.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Confirm_sale_notification_uses_buyer_organization_and_never_persists_portal_capability_in_idempotency_replay()
     {
         var buyerOrgId = Guid.CreateVersion7();

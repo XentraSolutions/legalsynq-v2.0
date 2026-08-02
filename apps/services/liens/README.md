@@ -44,15 +44,19 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `POST` | `/api/liens/cases/dashboard/total-case-report-export/v3` | Returns all legacy-eligible cases with full-result status counts; the legacy V3 request has no date filter |
 | `POST` | `/api/liens/cases/dashboard/lawfirm-case-report-export/v3` | Returns case/law-firm allocation and filters cases by the purchase date of any linked lien |
 | `POST` | `/api/liens/cases/dashboard/medical-provider-report-export/v3` | Returns lien/facility allocation filtered by lien purchase date |
-| `POST` | `/api/liens/cases/dashboard/deployed` | Sums lien purchase amounts by persisted `PurchaseDate` |
-| `POST` | `/api/liens/cases/dashboard/cash-received` | Sums non-deleted lien settlements by persisted `SettlementDate` |
+| `POST` | `/api/liens/cases/dashboard/deployed` | Sums lien purchase amounts with a persisted `PurchaseDate`; undated liens are excluded |
+| `POST` | `/api/liens/cases/dashboard/cash-received` | Sums non-deleted lien settlement amounts with a persisted `SettlementDate`; undated settlements are excluded |
 
-All four V3 report endpoints return paginated rows plus full-result summaries.
+All four V3 report endpoints return paginated rows plus full-result summaries. When paging is
+missing or invalid, JSON requests default to `page: 1` and return all matching rows; positive
+`page` and `limit` values are honored for the returned `items` array.
 Set `isCsv: true` or `isCsv: "yes"` for an uncapped Base64-encoded CSV export.
 
-DIY reports treat `isBulk: "N"` as non-bulk for legacy `N`, canonical `No`, and unset lien values, so a newly created ordinary lien is included in its report.
+DIY reports treat the legacy UI sentinel `isBulk: "N"` as no bulk filter, matching the legacy report SQL. Explicit `Y`/`Yes` selects bulk liens, while canonical `No`/`False`/`0` selects non-bulk and unset liens. Legacy relationship filters for law firm, attorney, funding company, medical facility, case manager, and medical provider are applied before pagination and summary calculation. Lien-status filter values may be either status codes or IDs from the lien-status lookup category.
 
-DIY report billing and purchase columns aggregate `billingAmount` and `purchaseAmount` from linked legacy medical-code records, falling back to lien-level amounts when none exist.
+The DIY `ALL` status view includes every non-deleted lifecycle state, including rejected and cancelled liens; `CLOSED` includes settled liens and `REJECTED` includes declined, withdrawn, and cancelled liens. Report previews honor `page` and `limit`, while `/api/liens/reports/diy/export` exports every row that matches the filters.
+
+DIY report billing and purchase columns aggregate `billingAmount` and `purchaseAmount` from linked legacy medical-code records, falling back to lien-level amounts when none exist. For LIENS compatibility responses, `summaryTotals.totalBillingAmt` retains the legacy card behavior and contains outstanding billing (`gross billing - returned`); `summaryTotals.grossBillingAmt` exposes gross billing, and `summaryTotals.totalAmtToSettle` contains the same outstanding value. Settlement, reduction, returned-amount, gross-profit, and ROI fields use imported legacy settlement metadata when it is available, matching the legacy DIY report formulas.
 
 `POST /api/liens/settlement/create` preserves its settlement-detail status and,
 when that status is `Open` or `Closed`, also updates the linked lien to `Active`
@@ -98,8 +102,10 @@ and non-case-manager contacts in that seller organization. Handling law firm and
 The public-link JSON and authenticated funding-company dashboard, offered-liens list, and detail views use the same
 seller-user and seller-organization resolver, so the email CTA and logged-in views do not select different seller
 information for the same offer. In buyer and seller notification Asset Overview sections, Contact Person, Email Address,
-and Handling Law Firm all come from the selected handling law-firm contact: `liens_Contacts.FirstName` + `LastName`,
-`liens_Contacts.Email`, and `liens_Contacts.Organization`. The seller notification's Buyer Information section omits buyer phone number.
+and Handling Law Firm all come from the selected standalone handling law-firm contact: `liens_Contacts.FirstName` +
+`LastName`, `liens_Contacts.Email`, and `liens_Contacts.Organization` with `DisplayName` as the fallback for legacy
+or incomplete firm records. Creating a standalone law firm without a separate organization value persists its display
+name as the organization. The seller notification's Buyer Information section omits buyer phone number.
 Supporting document names are pulled from existing legacy
 lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
 email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark
@@ -275,7 +281,9 @@ The complete SQL procedure requires migration
 Cash Received metric, and excludes source rows marked deleted (`CASE_IS_DELETED
 = 'Y'`, `LM_IS_DELETED = 'Y'`, or `SLSPD_IS_DELETED = 'Y'`). Medical-code
 amounts and servicing rows are imported only when `LMC_STATUS = 'A'`, matching
-the legacy dashboard calculations.
+the legacy dashboard calculations. Cash Received excludes settlement headers
+whose persisted `SettlementDate` is empty, whether or not a date range is
+supplied.
 
 ## Workflow Engine (Flow)
 

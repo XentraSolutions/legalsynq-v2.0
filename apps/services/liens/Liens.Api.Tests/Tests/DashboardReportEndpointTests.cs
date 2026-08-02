@@ -109,6 +109,78 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         amounts.GetProperty("Open").GetProperty("billing").GetDecimal().Should().Be(150m);
     }
 
+    [Theory]
+    [InlineData("/api/liens/cases/dashboard/total-lien-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/total-case-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/lawfirm-case-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/medical-provider-report-export/v3")]
+    public async Task Dashboard_report_v3_honors_page_and_limit(string endpoint)
+    {
+        var firstResponse = await _client.PostAsJsonAsync(endpoint, new { page = 1, limit = 1 });
+        firstResponse.StatusCode.Should().Be(HttpStatusCode.OK, await firstResponse.Content.ReadAsStringAsync());
+
+        var secondResponse = await _client.PostAsJsonAsync(endpoint, new { page = 2, limit = 1 });
+        secondResponse.StatusCode.Should().Be(HttpStatusCode.OK, await secondResponse.Content.ReadAsStringAsync());
+
+        using var firstPayload = JsonDocument.Parse(await firstResponse.Content.ReadAsStringAsync());
+        using var secondPayload = JsonDocument.Parse(await secondResponse.Content.ReadAsStringAsync());
+
+        firstPayload.RootElement.GetProperty("page").GetInt32().Should().Be(1);
+        firstPayload.RootElement.GetProperty("pageSize").GetInt32().Should().Be(1);
+        firstPayload.RootElement.GetProperty("items").GetArrayLength().Should().Be(1);
+        secondPayload.RootElement.GetProperty("page").GetInt32().Should().Be(2);
+        secondPayload.RootElement.GetProperty("pageSize").GetInt32().Should().Be(1);
+        secondPayload.RootElement.GetProperty("items").GetArrayLength().Should().Be(1);
+
+        var firstIds = firstPayload.RootElement.GetProperty("items").EnumerateArray()
+            .Select(item => item.GetProperty("id").GetString())
+            .ToHashSet(StringComparer.Ordinal);
+        var secondIds = secondPayload.RootElement.GetProperty("items").EnumerateArray()
+            .Select(item => item.GetProperty("id").GetString())
+            .ToHashSet(StringComparer.Ordinal);
+        firstIds.Intersect(secondIds).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("/api/liens/cases/dashboard/total-lien-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/total-case-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/lawfirm-case-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/medical-provider-report-export/v3")]
+    public async Task Dashboard_report_v3_defaults_missing_or_invalid_paging_to_page_one_and_all_rows(string endpoint)
+    {
+        var responses = new[]
+        {
+            await _client.PostAsJsonAsync(endpoint, new { }),
+            await _client.PostAsJsonAsync(endpoint, new { page = 0, limit = 0 }),
+        };
+
+        foreach (var response in responses)
+        {
+            response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var totalCount = payload.RootElement.GetProperty("totalCount").GetInt32();
+            payload.RootElement.GetProperty("page").GetInt32().Should().Be(1);
+            payload.RootElement.GetProperty("pageSize").GetInt32().Should().Be(totalCount);
+            payload.RootElement.GetProperty("items").GetArrayLength().Should().Be(totalCount);
+        }
+    }
+
+    [Fact]
+    public async Task Dashboard_report_v3_honors_limit_above_former_five_hundred_row_cap()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/total-lien-report-export/v3",
+            new { page = 1, limit = 1_000 });
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("page").GetInt32().Should().Be(1);
+        payload.RootElement.GetProperty("pageSize").GetInt32().Should().Be(1_000);
+        payload.RootElement.GetProperty("items").GetArrayLength().Should().Be(
+            payload.RootElement.GetProperty("totalCount").GetInt32());
+    }
+
     [Fact]
     public async Task TotalLienReportV3_resolves_facility_id_from_contact_facility_name()
     {
@@ -236,6 +308,38 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         using var received = JsonDocument.Parse(await receivedResponse.Content.ReadAsStringAsync());
         received.RootElement.GetProperty("data").GetProperty("totalAmount").GetString()
             .Should().Be("250.00");
+    }
+
+    [Fact]
+    public async Task Dashboard_metrics_without_date_range_include_all_history_and_undated_settlements()
+    {
+        var deployedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/deployed",
+            new { });
+        deployedResponse.StatusCode.Should().Be(
+            HttpStatusCode.OK,
+            await deployedResponse.Content.ReadAsStringAsync());
+
+        using var deployed = JsonDocument.Parse(await deployedResponse.Content.ReadAsStringAsync());
+        var deployedData = deployed.RootElement.GetProperty("data");
+        deployedData.GetProperty("periodStart").GetString().Should().BeEmpty();
+        deployedData.GetProperty("periodEnd").GetString().Should().BeEmpty();
+        deployedData.GetProperty("totalAmount").GetString().Should().Be("100.00");
+        deployedData.GetProperty("totalCount").GetInt32().Should().Be(1);
+
+        var receivedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/cash-received",
+            new { });
+        receivedResponse.StatusCode.Should().Be(
+            HttpStatusCode.OK,
+            await receivedResponse.Content.ReadAsStringAsync());
+
+        using var received = JsonDocument.Parse(await receivedResponse.Content.ReadAsStringAsync());
+        var receivedData = received.RootElement.GetProperty("data");
+        receivedData.GetProperty("periodStart").GetString().Should().BeEmpty();
+        receivedData.GetProperty("periodEnd").GetString().Should().BeEmpty();
+        receivedData.GetProperty("totalAmount").GetString().Should().Be("4750.00");
+        receivedData.GetProperty("totalCount").GetInt32().Should().Be(2);
     }
 
     [Fact]

@@ -320,10 +320,12 @@ organization display, seller notification email, and handling law firm data. Buy
 validates membership. Seller company represents the selling
 organization (`sellerOrgId`) resolved from Identity, with fallback only to
 non-law-firm and non-case-manager contacts in that seller organization. Handling law firm and case manager names stay in
-the asset/case fields and are not used as the seller display. Handling law firm is the selected law-firm contact's
-`liens_Contacts.Organization` value. In buyer and seller notification Asset Overview sections, Contact Person, Email
-Address, and Handling Law Firm all come from the selected handling law-firm contact:
-`liens_Contacts.FirstName` + `liens_Contacts.LastName`, `liens_Contacts.Email`, and `liens_Contacts.Organization`.
+the asset/case fields and are not used as the seller display. Handling law firm is the selected standalone law-firm
+contact's `liens_Contacts.Organization` value, falling back to `DisplayName` for legacy or incomplete firm records. In
+buyer and seller notification Asset Overview sections, Contact Person, Email Address, and Handling Law Firm all come
+from that selected contact: `liens_Contacts.FirstName` + `liens_Contacts.LastName`, `liens_Contacts.Email`, and the
+organization/display-name value. Creating a standalone law firm without a separate organization value persists its
+display name as the organization.
 The seller notification's Buyer Information section omits buyer phone number. The public-link JSON and authenticated funding-company
 views use the same seller-user and seller organization resolver. The API creates a 30-day buyer response access link and a separate
 30-day seller-view access link from
@@ -750,8 +752,8 @@ caller-provided CTA data. Seller name is resolved from the Identity user who con
 (`SellingBuyerAccessLinks.CreatedByUserId` / confirm-sale acting user -> `idt_Users.FirstName` + `LastName`), scoped to
 the seller organization when Identity validates membership;
 seller company is resolved from the selling organization (`sellerOrgId`) with the same resolver used by the confirm-sale
-email and authenticated funding-company views. Handling law firm is the selected law-firm contact's
-`liens_Contacts.Organization` value. Law-firm and case-manager
+email and authenticated funding-company views. Handling law firm is the selected standalone law-firm contact's
+`liens_Contacts.Organization` value, falling back to its `DisplayName` when organization is absent. Law-firm and case-manager
 contacts remain case/asset metadata and are not used as the buyer-facing seller identity. For buyer-purpose links, the `account` block indicates whether the access link has already
 activated an account or whether the token-scoped buyer email already belongs to an Identity account, so the tenant portal
 can render `Log In` instead of `Activate Free Account`.
@@ -1194,7 +1196,7 @@ The response uses the legacy envelope `{ isSuccess, message, data }`. `data` is 
 
 ### POST `/api/liens/cases/dashboard/deployed` and `/api/liens/cases/dashboard/cash-received`
 
-Return dashboard totals for deployed liens and cash received. Supplying both `startDate` and `endDate` filters the metric to that inclusive range. When neither date is supplied, the metric includes all available tenant history; `periodStart` and `periodEnd` are returned as empty strings to indicate the all-time result.
+Return dashboard totals for deployed liens and cash received. Supplying both `startDate` and `endDate` filters the metric to that inclusive range. When neither date is supplied, the metric includes all dated tenant history; `periodStart` and `periodEnd` are returned as empty strings to indicate the all-time result. Deployed always excludes liens without a persisted `PurchaseDate`, and Cash Received always excludes settlement headers without a persisted `SettlementDate`.
 
 The dashboard Total Lien Report, including its status chart and totals, excludes `Rejected` and `Cancelled` liens before aggregation and pagination.
 

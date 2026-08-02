@@ -233,19 +233,19 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("New", CaseStatus.PreDemand)]
-    [InlineData("Processing", CaseStatus.PreDemand)]
+    [InlineData("New", "New")]
+    [InlineData("Processing", "Processing")]
     [InlineData("Pre-demand", CaseStatus.PreDemand)]
     [InlineData("Demand Sent", CaseStatus.DemandSent)]
     [InlineData("Negotiations", CaseStatus.InNegotiation)]
     [InlineData("Litigation", "Litigation")]
-    [InlineData("Litigation(Pending)", "Litigation(Pending)")]
+    [InlineData("Litigation(Pending)", "Litigation (Pending)")]
     [InlineData("Litigation (Pending)", "Litigation (Pending)")]
-    [InlineData("Litigation(Open)", "Litigation(Open)")]
+    [InlineData("Litigation(Open)", "Litigation (Open)")]
     [InlineData("Litigation (Open)", "Litigation (Open)")]
-    [InlineData("Litigation(Close)", "Litigation(Close)")]
-    [InlineData("Litigation (Close)", "Litigation (Close)")]
-    [InlineData("Litigation(Closed)", "Litigation(Closed)")]
+    [InlineData("Litigation(Close)", "Litigation (Closed)")]
+    [InlineData("Litigation (Close)", "Litigation (Closed)")]
+    [InlineData("Litigation(Closed)", "Litigation (Closed)")]
     [InlineData("Litigation (Closed)", "Litigation (Closed)")]
     [InlineData("Case Settled", CaseStatus.CaseSettled)]
     [InlineData("Closed", CaseStatus.Closed)]
@@ -277,10 +277,12 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("Litigation(Pending)")]
-    [InlineData("Litigation(Open)")]
-    [InlineData("Litigation(Closed)")]
-    public async Task LegacyCreateCase_preserves_litigation_variant_as_status_label(string legacyStatus)
+    [InlineData("Litigation(Pending)", "Litigation (Pending)")]
+    [InlineData("Litigation(Open)", "Litigation (Open)")]
+    [InlineData("Litigation(Closed)", "Litigation (Closed)")]
+    public async Task LegacyCreateCase_normalizes_litigation_variant_status_label(
+        string legacyStatus,
+        string expectedStatus)
     {
         var create = await _client.PostAsJsonAsync("/api/liens/cases/create", new
         {
@@ -302,8 +304,8 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
             $"Body: {await detail.Content.ReadAsStringAsync()}");
 
         var detailBody = await detail.Content.ReadFromJsonAsync<JsonDocument>();
-        detailBody!.RootElement.GetProperty("status").GetString().Should().Be(legacyStatus);
-        detailBody.RootElement.GetProperty("statusLabel").GetString().Should().Be(legacyStatus);
+        detailBody!.RootElement.GetProperty("status").GetString().Should().Be(expectedStatus);
+        detailBody.RootElement.GetProperty("statusLabel").GetString().Should().Be(expectedStatus);
     }
 
     [Fact]

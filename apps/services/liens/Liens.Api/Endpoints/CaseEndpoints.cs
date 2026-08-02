@@ -6072,7 +6072,7 @@ public static class CaseEndpoints
     private sealed class ReportFilterRequest
     {
         public int    Page          { get; init; } = 1;
-        public int    Limit         { get; init; } = 20;
+        public int    Limit         { get; init; }
         public string? FilterType   { get; init; }
         public string? FilterId     { get; init; }
         public string? startDate    { get; init; }
@@ -6192,12 +6192,8 @@ public static class CaseEndpoints
 
         if (!hasStart && !hasEnd)
         {
-            var firstDayOfCurrentMonth = new DateTime(
-                DateTime.UtcNow.Year,
-                DateTime.UtcNow.Month,
-                1);
-            periodStart = firstDayOfCurrentMonth.AddMonths(-1);
-            periodEnd = firstDayOfCurrentMonth.AddDays(-1);
+            periodStart = default;
+            periodEnd = default;
             return true;
         }
 
@@ -7037,14 +7033,12 @@ public static class CaseEndpoints
     private static (int Page, int Limit) NormalizeDashboardReportPaging(ReportFilterRequest? request)
     {
         var page = request?.Page ?? 1;
-        var limit = request?.Limit ?? 20;
+        var limit = request?.Limit ?? 0;
 
         if (page < 1)
             page = 1;
         if (limit < 1)
-            limit = 20;
-        if (limit > 500)
-            limit = 500;
+            return (1, 0);
 
         return (page, limit);
     }
@@ -7078,13 +7072,21 @@ public static class CaseEndpoints
                 .GroupBy(row => NormalizeDashboardSummaryKey(allocationSelector(row)), StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
 
+        var pageSize = limit > 0 ? limit : rows.Count;
+        var items = rows;
+        if (!includeAllItems && limit > 0)
+        {
+            var skip = (long)(page - 1) * limit;
+            items = skip >= rows.Count
+                ? []
+                : rows.Skip((int)skip).Take(limit).ToList();
+        }
+
         return new DashboardReportResult<T>
         {
-            Items = includeAllItems
-                ? rows
-                : rows.Skip((page - 1) * limit).Take(limit).ToList(),
+            Items = items,
             Page = page,
-            PageSize = limit,
+            PageSize = pageSize,
             TotalCount = rows.Count,
             TotalPurchaseAmount = purchaseSelector is null ? 0m : rows.Sum(purchaseSelector),
             TotalBillingAmount = billingSelector is null ? 0m : rows.Sum(billingSelector),

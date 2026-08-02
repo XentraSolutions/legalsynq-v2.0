@@ -967,7 +967,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             ? await _caseRepo.GetByIdAsync(tenantId, lien.CaseId.Value, ct)
             : null;
         var handlingLawFirmContact = await ResolveHandlingLawFirmContactAsync(tenantId, caseEntity, ct);
-        var handlingLawFirm = FirstNonEmpty(handlingLawFirmContact?.Organization);
+        var handlingLawFirm = ResolveHandlingLawFirmName(handlingLawFirmContact);
         if (string.IsNullOrWhiteSpace(handlingLawFirm))
             errors["handlingLawFirm"] = ["A real handling law firm is required before sending the buyer notification."];
 
@@ -1273,7 +1273,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         var buyerCompany = context.BuyerContact.Organization?.Trim();
         var buyerEmail = context.BuyerContact.Email!.Trim();
         var buyerPhone = context.BuyerContact.Phone?.Trim();
-        var handlingLawFirm = context.HandlingLawFirmContact.Organization!.Trim();
+        var handlingLawFirm = ResolveHandlingLawFirmName(context.HandlingLawFirmContact)!.Trim();
         var handlingLawFirmContactName = ResolveContactPersonName(context.HandlingLawFirmContact);
         var handlingLawFirmContactEmail = context.HandlingLawFirmContact.Email?.Trim() ?? string.Empty;
         var caseManager = context.CaseManager?.Trim();
@@ -1687,15 +1687,25 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         if (Guid.TryParse(metadata.GetValueOrDefault("lawFirmId"), out var lawFirmId))
         {
             var lawFirm = await _contactRepo.GetByIdAsync(tenantId, lawFirmId, ct);
-            if (!string.IsNullOrWhiteSpace(lawFirm?.Organization))
+            if (IsActiveStandaloneLawFirm(lawFirm))
                 return lawFirm;
         }
 
         var contacts = await _contactRepo.GetByOrgIdAsync(tenantId, caseEntity.OrgId, isActive: true, ct);
         return contacts.FirstOrDefault(c =>
             string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
-            string.IsNullOrWhiteSpace(c.ContactSubtype));
+            string.IsNullOrWhiteSpace(c.ContactSubtype) &&
+            !c.LawFirmId.HasValue);
     }
+
+    private static bool IsActiveStandaloneLawFirm(Contact? contact)
+        => contact is { IsActive: true } &&
+           string.Equals(contact.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
+           string.IsNullOrWhiteSpace(contact.ContactSubtype) &&
+           !contact.LawFirmId.HasValue;
+
+    private static string? ResolveHandlingLawFirmName(Contact? contact)
+        => FirstNonEmpty(contact?.Organization, contact?.DisplayName);
 
     private async Task<string?> ResolveCaseManagerAsync(
         Guid tenantId,

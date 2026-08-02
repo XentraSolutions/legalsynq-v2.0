@@ -1207,6 +1207,56 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task ConfirmSale_uses_standalone_law_firm_display_name_when_organization_is_missing()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var lawFirmContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 7, 15),
+            caseNotes: $"lawFirmId={lawFirmContactId}",
+            originalAmount: 18000m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.organization@smithlaw.test",
+            buyerEmail: "buyer.organization@capital.test",
+            handlingLawFirmContactId: lawFirmContactId,
+            handlingLawFirmFirstName: "Monarch",
+            handlingLawFirmLastName: "Legal",
+            handlingLawFirmOrganization: null,
+            handlingLawFirmEmail: "offers@monarchlegal.test");
+
+        var response = await PostConfirmSaleAsync(
+            lienId,
+            "confirm-sale-handling-law-firm-display-name");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var confirmBody = await response.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        confirmBody.Should().NotBeNull();
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var publisher = verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        var buyerEmail = publisher.Emails.Single(captured =>
+            captured.RecipientEmail == "buyer.organization@capital.test");
+        buyerEmail.Options!.TemplateData!["handlingLawFirm"].Should().Be("Monarch Legal");
+        buyerEmail.Body.Should().Contain("Handling Law Firm: Monarch Legal");
+
+        var token = ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!);
+        using var anonClient = _factory.CreateClient();
+        var publicResponse = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+        publicResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await publicResponse.Content.ReadAsStringAsync()}");
+        var publicJson = await publicResponse.Content.ReadFromJsonAsync<JsonElement>();
+        publicJson.GetProperty("case").GetProperty("handlingLawFirm").GetString()
+            .Should().Be("Monarch Legal");
+    }
+
+    [Fact]
     public async Task ConfirmSale_uses_seller_org_display_when_notification_contact_has_no_company()
     {
         var buyerContactId = Guid.CreateVersion7();

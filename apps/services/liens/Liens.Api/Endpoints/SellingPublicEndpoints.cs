@@ -2025,7 +2025,10 @@ public static class SellingPublicEndpoints
             var lawFirm = await db.Contacts
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == lawFirmId, ct);
-            if (lawFirm is not null)
+            if (lawFirm is not null &&
+                lawFirm.ContactType == ContactType.LawFirm &&
+                string.IsNullOrWhiteSpace(lawFirm.ContactSubtype) &&
+                !lawFirm.LawFirmId.HasValue)
                 return lawFirm;
         }
 
@@ -2036,7 +2039,8 @@ public static class SellingPublicEndpoints
                 c.OrgId == caseEntity.OrgId &&
                 c.IsActive &&
                 c.ContactType == ContactType.LawFirm &&
-                c.ContactSubtype == null)
+                (c.ContactSubtype == null || c.ContactSubtype == string.Empty) &&
+                !c.LawFirmId.HasValue)
             .OrderBy(c => c.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
     }
@@ -2299,7 +2303,9 @@ public static class SellingPublicEndpoints
                 view.BuyerContact?.Email,
                 view.BuyerContact?.Phone),
             new PublicBuyerCaseResponse(
-                FirstNonEmpty(view.HandlingLawFirmContact?.Organization),
+                FirstNonEmpty(
+                    view.HandlingLawFirmContact?.Organization,
+                    view.HandlingLawFirmContact?.DisplayName),
                 FirstNonEmpty(view.HandlingLawFirmContact?.DisplayName),
                 FirstNonEmpty(view.HandlingLawFirmContact?.Email),
                 view.CaseManager),

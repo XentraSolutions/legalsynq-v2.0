@@ -331,7 +331,7 @@ public static class SellingV2Endpoints
             return ValidationError("caseId", "caseId is required unless createCaseIfMissing is true.");
         }
 
-        if (request.HandlingLawFirmId.HasValue && !await IsActiveContactAsync(db, tenantId, request.HandlingLawFirmId.Value, ContactType.LawFirm, ct))
+        if (request.HandlingLawFirmId.HasValue && !await IsActiveStandaloneLawFirmAsync(db, tenantId, request.HandlingLawFirmId.Value, ct))
             return ValidationError("handlingLawFirmId", "Handling law firm was not found in this tenant.");
         if (request.CaseManagerId.HasValue && !await IsActiveContactAsync(db, tenantId, request.CaseManagerId.Value, ContactType.CaseManager, ct))
             return ValidationError("caseManagerId", "Case manager was not found in this tenant.");
@@ -1179,7 +1179,22 @@ public static class SellingV2Endpoints
         return Results.Ok(new { items });
     }
 
-    private static async Task<IResult> GetLawFirms(LiensDbContext db, ICurrentRequestContext context, CancellationToken ct) => await GetContactsByType(db, context, ContactType.LawFirm, null, ct);
+    private static async Task<IResult> GetLawFirms(LiensDbContext db, ICurrentRequestContext context, CancellationToken ct)
+    {
+        var (tenantId, _, _) = RequireSellerContext(context);
+        var items = await db.Contacts
+            .AsNoTracking()
+            .Where(c =>
+                c.TenantId == tenantId &&
+                c.ContactType == ContactType.LawFirm &&
+                c.IsActive &&
+                (c.ContactSubtype == null || c.ContactSubtype == string.Empty) &&
+                !c.LawFirmId.HasValue)
+            .OrderBy(c => c.DisplayName)
+            .Select(c => new { c.Id, name = DisplayName(c), c.OrgId })
+            .ToListAsync(ct);
+        return Results.Ok(new { items });
+    }
     private static async Task<IResult> GetCaseManagers(Guid? lawFirmId, LiensDbContext db, ICurrentRequestContext context, CancellationToken ct) => await GetContactsByType(db, context, ContactType.CaseManager, lawFirmId, ct);
     private static async Task<IResult> GetContactsByType(LiensDbContext db, ICurrentRequestContext context, string type, Guid? lawFirmId, CancellationToken ct)
     {
@@ -1221,6 +1236,14 @@ public static class SellingV2Endpoints
     private static bool IsActiveOffer(LienOffer offer) => offer.Status is not OfferStatus.Rejected and not OfferStatus.Withdrawn and not OfferStatus.Expired && !offer.IsExpired;
     private static async Task<Contact?> GetFundingCompanyAsync(LiensDbContext db, Guid tenantId, Guid id, CancellationToken ct) => await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == id && c.IsActive && (c.ContactType == ContactType.FundingCompany || c.ContactType == ContactType.LienHolder), ct);
     private static async Task<bool> IsActiveContactAsync(LiensDbContext db, Guid tenantId, Guid id, string type, CancellationToken ct) => await db.Contacts.AsNoTracking().AnyAsync(c => c.TenantId == tenantId && c.Id == id && c.IsActive && c.ContactType == type, ct);
+    private static async Task<bool> IsActiveStandaloneLawFirmAsync(LiensDbContext db, Guid tenantId, Guid id, CancellationToken ct) => await db.Contacts.AsNoTracking().AnyAsync(c =>
+        c.TenantId == tenantId &&
+        c.Id == id &&
+        c.IsActive &&
+        c.ContactType == ContactType.LawFirm &&
+        (c.ContactSubtype == null || c.ContactSubtype == string.Empty) &&
+        !c.LawFirmId.HasValue,
+        ct);
     private static (Guid TenantId, Guid OrgId, Guid UserId) RequireSellerContext(ICurrentRequestContext context) => (context.TenantId ?? throw new UnauthorizedAccessException("Tenant context is required."), context.OrgId ?? throw new UnauthorizedAccessException("Organization context is required."), context.UserId ?? throw new UnauthorizedAccessException("User context is required."));
     private static (Guid TenantId, Guid OrgId, Guid UserId) RequireBuyerContext(ICurrentRequestContext context) => RequireSellerContext(context);
     private static string? NormalizeIntakeStatus(string? status) => IntakeStatuses.FirstOrDefault(candidate => string.Equals(candidate, status?.Trim(), StringComparison.OrdinalIgnoreCase));

@@ -123,6 +123,7 @@ public class LienRepository : ILienRepository
         DateOnly? purchaseDateTo,
         DateTime? closedDateFrom,
         DateTime? closedDateTo,
+        bool useSettlementDateForClosedFilter,
         string? isBulk,
         IReadOnlyCollection<Guid> caseIds,
         int page,
@@ -130,14 +131,6 @@ public class LienRepository : ILienRepository
         CancellationToken ct = default)
     {
         var q = _db.Liens.Where(l => l.TenantId == tenantId);
-
-        // DIY reports are operational views and must never include liens that
-        // were rejected or cancelled, even when a saved filter requests them.
-        q = q.Where(l =>
-            l.Status != LienStatus.Declined &&
-            l.Status != LienStatus.Withdrawn &&
-            l.Status != LienStatus.Cancelled &&
-            l.Status != "Rejected");
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -173,11 +166,51 @@ public class LienRepository : ILienRepository
         if (purchaseDateTo.HasValue)
             q = q.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value <= purchaseDateTo.Value);
 
-        if (closedDateFrom.HasValue)
-            q = q.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value >= closedDateFrom.Value);
+        if (closedDateFrom.HasValue || closedDateTo.HasValue)
+        {
+            if (useSettlementDateForClosedFilter)
+            {
+                q = q.Where(l => _db.LienSettlements.Any(settlement =>
+                    settlement.TenantId == tenantId &&
+                    settlement.LienId == l.Id &&
+                    !settlement.IsDeleted &&
+                    settlement.SettlementDate.HasValue));
 
-        if (closedDateTo.HasValue)
-            q = q.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value <= closedDateTo.Value);
+                if (closedDateFrom.HasValue)
+                {
+                    var closedFrom = DateOnly.FromDateTime(closedDateFrom.Value);
+                    q = q.Where(l => _db.LienSettlements.Any(settlement =>
+                        settlement.TenantId == tenantId &&
+                        settlement.LienId == l.Id &&
+                        !settlement.IsDeleted &&
+                        settlement.SettlementDate.HasValue &&
+                        settlement.SettlementDate.Value >= closedFrom));
+                }
+
+                if (closedDateTo.HasValue)
+                {
+                    var closedTo = DateOnly.FromDateTime(closedDateTo.Value);
+                    q = q.Where(l => !_db.LienSettlements.Any(settlement =>
+                        settlement.TenantId == tenantId &&
+                        settlement.LienId == l.Id &&
+                        !settlement.IsDeleted &&
+                        settlement.SettlementDate.HasValue &&
+                        settlement.SettlementDate.Value > closedTo));
+                }
+            }
+            else
+            {
+                q = q.Where(l =>
+                    l.Status == LienStatus.Settled &&
+                    l.ClosedAtUtc.HasValue);
+
+                if (closedDateFrom.HasValue)
+                    q = q.Where(l => l.ClosedAtUtc!.Value >= closedDateFrom.Value);
+
+                if (closedDateTo.HasValue)
+                    q = q.Where(l => l.ClosedAtUtc!.Value <= closedDateTo.Value);
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(isBulk))
         {

@@ -117,7 +117,10 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_cases;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_settlements;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_amounts;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sle_case_managers;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sle_law_firms;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_contacts;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sle_lf_parents;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_at_lookups;
         IF v_tz_changed THEN SET @@session.time_zone = v_orig_tz; END IF;
         IF v_contact_locked = 1 THEN DO RELEASE_LOCK(v_contact_lock); END IF;
@@ -420,6 +423,29 @@ BEGIN
             SET MESSAGE_TEXT = 'LSLTE-013 contact phone number exceeds the 30-character target limit';
     END IF;
 
+    -- MySQL cannot reopen the same temporary table twice in one statement.
+    -- Cases need both the type-1 law-firm and type-6 case-manager projections,
+    -- so materialize each projection separately before building case staging.
+    DROP TEMPORARY TABLE IF EXISTS tmp_sle_law_firms;
+    CREATE TEMPORARY TABLE tmp_sle_law_firms AS
+    SELECT LegacyContactId, TargetContactId
+    FROM tmp_sle_contacts
+    WHERE TargetContactType = 'LawFirm'
+      AND TargetContactSubtype IS NULL;
+
+    ALTER TABLE tmp_sle_law_firms
+        ADD PRIMARY KEY (LegacyContactId);
+
+    DROP TEMPORARY TABLE IF EXISTS tmp_sle_case_managers;
+    CREATE TEMPORARY TABLE tmp_sle_case_managers AS
+    SELECT LegacyContactId, TargetContactId
+    FROM tmp_sle_contacts
+    WHERE TargetContactType = 'LawFirm'
+      AND TargetContactSubtype = 'CaseManager';
+
+    ALTER TABLE tmp_sle_case_managers
+        ADD PRIMARY KEY (LegacyContactId);
+
     -- -------------------------------------------------------------------------
     -- 8. Amount aggregates per lien (SUM over all LMC rows for that LM_ID)
     -- -------------------------------------------------------------------------
@@ -556,15 +582,11 @@ BEGIN
                        c.CASE_NOTE, c.CASE_CREATED, c.CASE_UPDATED, v_fingerprint), 256) AS SourceHash
     FROM `SL-CORE`.`SL_CASE` c
     -- Resolve law-firm contact UUID (CASE_LAW_FIRM → type-1 LawFirm contact)
-    LEFT JOIN tmp_sle_contacts lf
-      ON lf.LegacyContactId   = NULLIF(c.CASE_LAW_FIRM, 0)
-     AND lf.TargetContactType = 'LawFirm'
-     AND lf.TargetContactSubtype IS NULL
+    LEFT JOIN tmp_sle_law_firms lf
+      ON lf.LegacyContactId = NULLIF(c.CASE_LAW_FIRM, 0)
     -- Resolve case-manager contact UUID (CASE_MANAGER → type-6 CaseManager)
-    LEFT JOIN tmp_sle_contacts mgr
-      ON mgr.LegacyContactId    = NULLIF(c.CASE_MANAGER, 0)
-     AND mgr.TargetContactType  = 'LawFirm'
-     AND mgr.TargetContactSubtype = 'CaseManager'
+    LEFT JOIN tmp_sle_case_managers mgr
+      ON mgr.LegacyContactId = NULLIF(c.CASE_MANAGER, 0)
     -- Resolve accident-type lookup (MatchCount=1 guard applied when building Notes)
     LEFT JOIN tmp_sle_at_lookups at_lv
       ON at_lv.LegacyAtId = NULLIF(c.CASE_ACCIDENT_TYPE, 0)
@@ -1100,6 +1122,13 @@ BEGIN
                AND CAST(src.RawAmount AS DECIMAL(30,8))
                    BETWEEN -99999999999999.9999 AND 99999999999999.9999
           THEN CAST(src.RawAmount AS DECIMAL(18,4))
+          -- Legacy JavaScript arithmetic can leave a negative-exponent residue
+          -- after the final payment (for example, 4.547473508864641e-13).
+          -- Normalize only values that round to zero at the target precision;
+          -- other scientific-notation values remain blocked by LSLTE-036.
+          WHEN src.RawAmount REGEXP '^-?[0-9]+(\\.[0-9]+)?[eE]-[0-9]+$'
+               AND ABS(CAST(src.RawAmount AS DOUBLE)) < 0.00005
+          THEN CAST(0 AS DECIMAL(18,4))
           ELSE NULL
         END AS Amount,
         CASE
@@ -1187,6 +1216,8 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_cases;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_settlements;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_amounts;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sle_case_managers;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sle_law_firms;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_contacts;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_at_lookups;
         SET @@session.time_zone = v_orig_tz; SET v_tz_changed = FALSE;
@@ -1656,6 +1687,8 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_cases;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_settlements;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_amounts;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sle_case_managers;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sle_law_firms;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_contacts;
         DROP TEMPORARY TABLE IF EXISTS tmp_sle_at_lookups;
         SET @@session.time_zone = v_orig_tz; SET v_tz_changed = FALSE;

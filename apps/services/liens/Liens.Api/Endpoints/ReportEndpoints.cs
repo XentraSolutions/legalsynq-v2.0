@@ -166,7 +166,11 @@ public static class ReportEndpoints
     {
         var tenantId = CaseEndpoints.RequireTenantId(ctx);
         var effectiveRequest = await ResolveSavedReportRequestAsync(request, svc, tenantId, ct);
-        var result = await svc.RunReportAsync(tenantId, effectiveRequest, ct);
+        var result = await svc.RunReportAsync(
+            tenantId,
+            effectiveRequest,
+            includeAllItems: false,
+            ct: ct);
         return Results.Ok(ToLegacyRunResponse(result, effectiveRequest));
     }
 
@@ -178,7 +182,11 @@ public static class ReportEndpoints
     {
         var tenantId = CaseEndpoints.RequireTenantId(ctx);
         var effectiveRequest = await ResolveSavedReportRequestAsync(request, svc, tenantId, ct);
-        var result = await svc.RunReportAsync(tenantId, effectiveRequest, ct);
+        var result = await svc.RunReportAsync(
+            tenantId,
+            effectiveRequest,
+            includeAllItems: true,
+            ct: ct);
         var rows = BuildLegacyReportRows(result, effectiveRequest);
         var csvBytes = BuildLegacyReportCsv(rows);
         var filename = $"diy_report_{DateTime.UtcNow:yyyyMMddHHmmss}.csv";
@@ -346,6 +354,32 @@ public static class ReportEndpoints
         DIYReportRunRequest request)
     {
         var rows = BuildLegacyReportRows(result, request);
+        var legacyBillingAmount = string.Equals(
+            result.ReportType,
+            "LIENS",
+            StringComparison.OrdinalIgnoreCase)
+                ? result.SummaryTotals.TotalAmtToSettle
+                : result.SummaryTotals.TotalBillingAmt;
+        var summaryTotals = new Dictionary<string, object?>
+        {
+            ["totalCases"] = result.SummaryTotals.TotalCases,
+            ["totalLiens"] = result.SummaryTotals.TotalLiens,
+            ["totalPurchaseAmt"] = result.SummaryTotals.TotalPurchaseAmt,
+            // The legacy LIENS card labels the outstanding balance as billing.
+            // Preserve gross billing separately so API consumers do not lose it.
+            ["totalBillingAmt"] = legacyBillingAmount,
+            ["grossBillingAmt"] = result.SummaryTotals.TotalBillingAmt,
+            ["totalAmtToSettle"] = result.SummaryTotals.TotalAmtToSettle,
+            ["totalReturnedAmt"] = result.SummaryTotals.TotalReturnedAmt,
+            ["totalGrossProfit"] = result.SummaryTotals.TotalGrossProfit,
+            ["avgRoi"] = result.SummaryTotals.AvgRoi,
+            ["totalOpenCases"] = result.SummaryTotals.TotalOpenCases,
+            ["totalClosedCases"] = result.SummaryTotals.TotalClosedCases,
+            ["totalOpenLiens"] = result.SummaryTotals.TotalOpenLiens,
+            ["totalClosedLiens"] = result.SummaryTotals.TotalClosedLiens,
+        };
+        if (TryGetReportBoolean(request, "isBoldReady"))
+            summaryTotals["_bold"] = true;
 
         var message = result.ReportType.ToUpperInvariant() switch
         {
@@ -358,21 +392,7 @@ public static class ReportEndpoints
         {
             isSuccess = true,
             message,
-            summaryTotals = new
-            {
-                totalCases = result.SummaryTotals.TotalCases,
-                totalLiens = result.SummaryTotals.TotalLiens,
-                totalPurchaseAmt = result.SummaryTotals.TotalPurchaseAmt,
-                totalBillingAmt = result.SummaryTotals.TotalBillingAmt,
-                totalAmtToSettle = result.SummaryTotals.TotalAmtToSettle,
-                totalReturnedAmt = result.SummaryTotals.TotalReturnedAmt,
-                totalGrossProfit = result.SummaryTotals.TotalGrossProfit,
-                avgRoi = result.SummaryTotals.AvgRoi,
-                totalOpenCases = result.SummaryTotals.TotalOpenCases,
-                totalClosedCases = result.SummaryTotals.TotalClosedCases,
-                totalOpenLiens = result.SummaryTotals.TotalOpenLiens,
-                totalClosedLiens = result.SummaryTotals.TotalClosedLiens,
-            },
+            summaryTotals,
             data = rows,
             page = result.Page,
             limit = result.PageSize,
@@ -422,24 +442,28 @@ public static class ReportEndpoints
             ["case_id"] = r.CaseNumber,
             ["lien_id"] = r.LienNumber,
             ["purchase_date"] = FormatLegacyDate(r.PurchaseDate),
-            ["days_since_purchase"] = string.Empty,
+            ["days_since_purchase"] = r.DaysSincePurchase?.ToString(CultureInfo.InvariantCulture),
             ["purchase_amt"] = FormatLegacyMoney(r.PurchaseAmount),
             ["billing_amt"] = FormatLegacyMoney(r.BillingAmount),
-            ["expected_settlement_amount"] = FormatLegacyMoney(r.ToSettleAmount),
-            ["reduction_percentage"] = string.Empty,
+            ["remaining_billing_amt"] = FormatLegacyMoney(r.RemainingBillingAmount),
+            ["expected_settlement_amount"] = FormatLegacyMoney(r.RemainingBillingAmount),
+            ["reduction_percentage"] = FormatLegacyMoney(r.ReductionPercentage),
             ["capital_providers"] = string.Empty,
-            ["first_purchase_date"] = string.Empty,
-            ["last_purchase_date"] = string.Empty,
+            ["first_purchase_date"] = FormatLegacyDate(r.FirstPurchaseDate),
+            ["last_purchase_date"] = FormatLegacyDate(r.LastPurchaseDate),
+            ["earliest_purchase_date"] = FormatLegacyDate(r.FirstPurchaseDate),
+            ["latest_purchase_date"] = FormatLegacyDate(r.LastPurchaseDate),
             ["date_closed"] = FormatLegacyDate(r.DateClosed),
-            ["reduction"] = string.Empty,
+            ["latest_date_closed"] = FormatLegacyDate(r.DateClosed),
+            ["reduction"] = FormatLegacyMoney(r.ReductionAmount),
             ["amt_to_settle"] = FormatLegacyMoney(r.ToSettleAmount),
             ["returned_amount"] = FormatLegacyMoney(r.ReturnedAmount),
-            ["gross_profit"] = FormatLegacyMoney((r.ReturnedAmount ?? 0m) - (r.PurchaseAmount ?? 0m)),
-            ["roi"] = string.Empty,
-            ["annualized_roi"] = string.Empty,
+            ["gross_profit"] = FormatLegacyMoney(r.GrossProfit),
+            ["roi"] = FormatLegacyMoney(r.Roi),
+            ["annualized_roi"] = FormatLegacyMoney(r.AnnualizedRoi),
             ["returned_amt"] = FormatLegacyMoney(r.ReturnedAmount),
             ["initial_service_date"] = FormatLegacyDate(r.InitialServiceDate),
-            ["end_service_date"] = string.Empty,
+            ["end_service_date"] = FormatLegacyDate(r.EndServiceDate),
             ["medical_provider"] = string.Empty,
             ["medical_facility_contact"] = string.Empty,
             ["medical_facility"] = r.MedicalFacility,
@@ -449,6 +473,7 @@ public static class ReportEndpoints
             ["medical_facility_zip_code"] = string.Empty,
             ["medical_codes"] = string.Empty,
             ["notes"] = string.Empty,
+            ["lien_status"] = r.Status ?? string.Empty,
             ["attorney"] = string.Empty,
             ["attorney_phone"] = string.Empty,
             ["attorney_email"] = string.Empty,
@@ -462,10 +487,12 @@ public static class ReportEndpoints
             ["case_manager"] = r.CaseManager,
             ["case_manager_email"] = string.Empty,
             ["state_of_incident"] = string.Empty,
-            ["settlement_date"] = string.Empty,
-            ["reduction_date"] = string.Empty,
-            ["days_since_reduction_approval"] = r.DaysSinceReductionApproval?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
-            ["days_to_return"] = string.Empty,
+            ["settlement_date"] = FormatLegacyDate(r.SettlementDate),
+            ["settle_date"] = FormatLegacyDate(r.SettlementDate),
+            ["returned_date"] = FormatLegacyDate(r.DateClosed),
+            ["reduction_date"] = FormatLegacyDate(r.ReductionDate),
+            ["days_since_reduction_approval"] = r.DaysSinceReductionApproval?.ToString(CultureInfo.InvariantCulture),
+            ["days_to_return"] = GetLegacyDaysBetween(r.PurchaseDate, r.DateClosed),
             ["lawfirm_email"] = string.Empty,
             ["number_of_liens"] = r.NumberOfLiens,
             ["case_status"] = FormatLegacyStatus(r.CaseStatus),
@@ -553,20 +580,55 @@ public static class ReportEndpoints
         return false;
     }
 
-    private static string FormatLegacyDate(DateOnly? value) =>
+    private static bool TryGetReportBoolean(DIYReportRunRequest request, string propertyName)
+    {
+        if (!TryGetReportProperty(request, propertyName, out var value))
+            return false;
+
+        if (value.ValueKind == JsonValueKind.True)
+            return true;
+
+        if (value.ValueKind == JsonValueKind.Number &&
+            value.TryGetInt32(out var number))
+        {
+            return number != 0;
+        }
+
+        if (value.ValueKind != JsonValueKind.String)
+            return false;
+
+        var text = value.GetString()?.Trim();
+        return bool.TryParse(text, out var parsed)
+            ? parsed
+            : text is not null &&
+              (text.Equals("Y", StringComparison.OrdinalIgnoreCase) ||
+               text.Equals("YES", StringComparison.OrdinalIgnoreCase) ||
+               text == "1");
+    }
+
+    private static string? GetLegacyDaysBetween(DateOnly? from, DateTime? to)
+    {
+        if (!from.HasValue || !to.HasValue)
+            return null;
+
+        var days = DateOnly.FromDateTime(to.Value).DayNumber - from.Value.DayNumber;
+        return Math.Max(days, 0).ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string? FormatLegacyDate(DateOnly? value) =>
         value.HasValue
             ? value.Value.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture)
-            : string.Empty;
+            : null;
 
-    private static string FormatLegacyDate(DateTime? value) =>
+    private static string? FormatLegacyDate(DateTime? value) =>
         value.HasValue
             ? value.Value.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture)
-            : string.Empty;
+            : null;
 
-    private static string FormatLegacyMoney(decimal? value) =>
+    private static string? FormatLegacyMoney(decimal? value) =>
         value.HasValue
             ? value.Value.ToString("#,0.00", System.Globalization.CultureInfo.InvariantCulture)
-            : "0.00";
+            : null;
 
     private static string FormatLegacyStatus(string? value)
     {

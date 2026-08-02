@@ -457,11 +457,32 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
-    public async Task LegacyDashboardMetric_routes_without_date_range_default_to_previous_calendar_month()
+    public async Task LegacyDashboardMetric_routes_without_date_range_return_only_dated_history()
     {
-        var firstDayOfCurrentMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
-        var expectedStart = firstDayOfCurrentMonth.AddMonths(-1).ToString("MM/dd/yyyy");
-        var expectedEnd = firstDayOfCurrentMonth.AddDays(-1).ToString("MM/dd/yyyy");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var datedLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-DATED-DASHBOARD",
+                LienType.MedicalLien,
+                750m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                purchaseDate: new DateOnly(2025, 2, 1));
+
+            db.Liens.Add(datedLien);
+            db.LienSettlements.Add(LienSettlement.Create(
+                SeedHelper.TenantId,
+                SeedHelper.CaseId,
+                datedLien.Id,
+                2,
+                750m,
+                SeedHelper.UserId,
+                settlementDate: new DateOnly(2025, 2, 1)));
+            await db.SaveChangesAsync();
+        }
 
         var deployedResponse = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/deployed", new
         {
@@ -472,9 +493,9 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
             $"Body: {await deployedResponse.Content.ReadAsStringAsync()}");
 
         var deployed = JsonNode.Parse(await deployedResponse.Content.ReadAsStringAsync())!["data"]!;
-        deployed["periodStart"]!.GetValue<string>().Should().Be(expectedStart);
-        deployed["periodEnd"]!.GetValue<string>().Should().Be(expectedEnd);
-        deployed["totalCount"]!.GetValue<int>().Should().BeGreaterThanOrEqualTo(0);
+        deployed["periodStart"]!.GetValue<string>().Should().BeEmpty();
+        deployed["periodEnd"]!.GetValue<string>().Should().BeEmpty();
+        deployed["totalCount"]!.GetValue<int>().Should().Be(1);
 
         var cashReceivedResponse = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/cash-received", new
         {
@@ -485,8 +506,9 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
             $"Body: {await cashReceivedResponse.Content.ReadAsStringAsync()}");
 
         var cashReceived = JsonNode.Parse(await cashReceivedResponse.Content.ReadAsStringAsync())!["data"]!;
-        cashReceived["periodStart"]!.GetValue<string>().Should().Be(expectedStart);
-        cashReceived["periodEnd"]!.GetValue<string>().Should().Be(expectedEnd);
-        cashReceived["totalCount"]!.GetValue<int>().Should().BeGreaterThanOrEqualTo(0);
+        cashReceived["periodStart"]!.GetValue<string>().Should().BeEmpty();
+        cashReceived["periodEnd"]!.GetValue<string>().Should().BeEmpty();
+        cashReceived["totalAmount"]!.GetValue<string>().Should().Be("750.00");
+        cashReceived["totalCount"]!.GetValue<int>().Should().Be(1);
     }
 }
