@@ -88,6 +88,7 @@ export default function CreateUpdateReport({
   const [checkedAvailable, setCheckedAvailable] = useState<any>([]);
   const [checkedSelected, setCheckedSelected] = useState<any>([]);
   const [isValid, setIsValid] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const addToast = useLienStore((s) => s.addToast);
 
@@ -288,7 +289,7 @@ export default function CreateUpdateReport({
             { key: "LIENS", value: "LIENS", label: "LIENS" },
             { key: "CASE", value: "CASE", label: "CASE" },
           ],
-          statusView: "",
+          statusView: [],
           lawfirm: [],
           plaintiff: [],
           attorney: [],
@@ -303,7 +304,7 @@ export default function CreateUpdateReport({
             { key: "LIENS", value: "LIENS", label: "LIENS" },
             { key: "CASE", value: "CASE", label: "CASE" },
           ],
-          statusView: "",
+          statusView: [],
           lawfirm: [],
           plaintiff: [],
           attorney: [],
@@ -408,8 +409,13 @@ export default function CreateUpdateReport({
       const valid = !!form.name;
       setIsValid(valid);
     }
+
     if (currentStep == 1) {
-      const valid = !!form.reportType;
+      const valid =
+        form.reportType.length > 0 && form.reportType == "CASE"
+          ? typeof form.statusView === "string"
+          : typeof form.lienStatusIds === "string";
+
       setIsValid(valid);
     }
   }, [currentStep, form]);
@@ -573,8 +579,19 @@ export default function CreateUpdateReport({
       setCurrentStep((s) => s + 1);
       return;
     }
+    setSubmitting(true);
+
     const reportData = await createReportTemplate();
+    resetTemplateData();
     onSaved(reportData);
+  };
+  const resetTemplateData = () => {
+    setForm(INITIAL_FORM);
+    setIsValid(false);
+    setSelectedCols([]);
+    setAvailable([]);
+    setCols([]);
+    setFilteredSelectedCols([]);
   };
 
   const createReportTemplate = async () => {
@@ -584,7 +601,7 @@ export default function CreateUpdateReport({
         viewBy: form.reportType,
         reportType: form.reportType,
         statusView: form.statusView ?? "",
-        lienStatusIds: form.lienStatusIds ?? [],
+        lienStatusIds: form.lienStatusIds ?? "",
         purchaseDateFrom: form.purchaseDateFrom ?? [],
         purchaseDateTo: form.purchaseDateTo ?? null,
         closedDateFrom: form.closedDateFrom ?? null,
@@ -647,6 +664,8 @@ export default function CreateUpdateReport({
       const message =
         err instanceof ApiError ? err.message : "Failed to save report";
       addToast({ type: "error", title: "Save Failed", description: message });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -701,7 +720,6 @@ export default function CreateUpdateReport({
 
     setSelectedCols(filtered);
   };
-  useEffect(() => {}, []);
   return (
     <Modal
       open={true}
@@ -721,11 +739,11 @@ export default function CreateUpdateReport({
 
           {/* RIGHT BUTTON */}
           <button
-            disabled={!isValid}
+            disabled={!isValid || submitting}
             onClick={handleNextOrSubmit}
             className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-primary/70"
           >
-            {isLastStep ? "Save" : "Next"}
+            {submitting ? "Saving..." : isLastStep ? "Save" : "Next"}
           </button>
         </div>
       }
@@ -807,8 +825,8 @@ export default function CreateUpdateReport({
                   setForm({
                     ...form,
                     reportType: v,
-                    lienStatusIds: [],
-                    statusView: [],
+                    lienStatusIds: "",
+                    statusView: "",
                   });
                 }}
                 type="select"
