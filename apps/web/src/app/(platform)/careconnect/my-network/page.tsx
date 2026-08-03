@@ -5,7 +5,7 @@ import { MyNetworkClient }         from '@/components/careconnect/my-network-cli
 import { PublicNetworkAccessCodePanel } from '@/components/careconnect/public-network-access-code-panel';
 import { tenantServerApi }         from '@/lib/tenant-api';
 import type { CareConnectAccessCodeMetadata } from '@/lib/tenant-api';
-import type { NetworkDetail }      from '@/types/careconnect';
+import type { NetworkDetail, SpecialtyOption } from '@/types/careconnect';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +23,7 @@ export default async function MyNetworkPage() {
   let network: NetworkDetail | null = null;
   let fetchError: string | null = null;
   let accessCodeStatus: CareConnectAccessCodeMetadata | null = null;
+  let specialtyOptions: SpecialtyOption[] = [];
 
   try {
     const networks = await careConnectServerApi.networks.list();
@@ -35,6 +36,12 @@ export default async function MyNetworkPage() {
     } else if (!(err instanceof ServerApiError)) {
       fetchError = 'Unable to load your network. Please try again.';
     }
+  }
+
+  try {
+    specialtyOptions = await careConnectServerApi.specialties.list();
+  } catch {
+    specialtyOptions = [];
   }
 
   if (canManageAccessCode) {
@@ -50,7 +57,7 @@ export default async function MyNetworkPage() {
       {canManageAccessCode && accessCodeStatus && (
         <PublicNetworkAccessCodePanel initialStatus={accessCodeStatus} />
       )}
-      <MyNetworkClient initialNetwork={network} fetchError={fetchError} />
+      <MyNetworkClient initialNetwork={network} fetchError={fetchError} specialtyOptions={specialtyOptions} />
     </div>
   );
 }

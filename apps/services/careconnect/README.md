@@ -7,6 +7,7 @@ Healthcare provider directory, referral management, and appointment scheduling.
 ## Responsibilities
 
 - Provider network management (create, activate, search, geo-discovery)
+- Global provider specialty catalog and provider-to-specialty assignment
 - Referral lifecycle (Draft → Submitted → Accepted → Completed)
 - Appointment scheduling against provider availability slots
 - Attachment management for referrals and appointments
@@ -18,7 +19,7 @@ Healthcare provider directory, referral management, and appointment scheduling.
 ```
 CareConnect.Api/           Endpoints, middleware, Program.cs (port 5003)
 CareConnect.Application/   Interfaces, DTOs, services
-CareConnect.Domain/        Provider, Referral, Appointment, Availability, Attachment
+CareConnect.Domain/        Provider, Specialty, Referral, Appointment, Availability, Attachment
 CareConnect.Infrastructure/ DbContext, repositories, EF migrations
 CareConnect.Tests/         Tests
 ```
@@ -29,6 +30,10 @@ CareConnect.Tests/         Tests
 |---|---|---|---|
 | `GET` | `/api/careconnect/providers` | Bearer | Search providers |
 | `GET` | `/api/careconnect/providers/{id}` | Bearer | Provider detail |
+| `GET` | `/api/specialties` | Bearer | List configured CareConnect specialties |
+| `POST` | `/api/specialties` | PlatformAdmin | Create a global specialty |
+| `PUT` | `/api/specialties/{id}` | PlatformAdmin | Update a global specialty |
+| `DELETE` | `/api/specialties/{id}` | PlatformAdmin | Deactivate a global specialty |
 | `POST` | `/api/careconnect/referrals` | Bearer | Create referral |
 | `GET` | `/api/careconnect/referrals` | Bearer | List referrals with queue and participant filters |
 | `GET` | `/api/assistant-tools/referrals/search` | Bearer | Assistant-only referral search surface |
@@ -40,6 +45,38 @@ CareConnect.Tests/         Tests
 | `GET` | `/api/careconnect/appointments` | Bearer | List appointments |
 | `POST` | `/api/careconnect/appointments` | Bearer | Book appointment |
 | `GET` | `/api/public/careconnect/network` | Anonymous | Public provider network |
+| `PUT` | `/api/networks/{networkId}/providers/{providerId}` | Bearer | Edit a provider from a tenant network after membership validation |
+
+### Provider specialties
+
+CareConnect has a global Specialty catalog that is separate from legacy provider categories. Categories remain in the
+API for compatibility, but new provider setup and provider search behavior should use specialties.
+
+- Default active specialties are seeded for Pain, Spine, Physical Therapy, Neuro, Imaging, and Chiropractor.
+- Providers must have at least one active specialty when they are created or edited through the provider APIs or the tenant network provider setup flow.
+- Provider setup accepts an optional professional title (for example, `Dr.`) alongside first and last name; the single `Name` field remains a computed display string for existing consumers.
+- Public provider enrollment prefills and submits that same optional title to Identity self-registration, where it is stored on `idt_Users.Title`.
+- Multiple specialties are supported. The first selected specialty is treated as the primary specialty for list/detail display.
+- Existing provider specialties are backfilled from provider categories when the category code/name maps to one of the seeded specialty values.
+- Public network detail responses include active specialty options plus each provider's assigned specialties so public pages do not need a separate anonymous specialty lookup.
+
+Platform administrators can configure the global catalog with `POST /api/specialties`, `PUT /api/specialties/{id}`,
+and `DELETE /api/specialties/{id}`. `GET /api/specialties` returns active options by default and supports
+`includeInactive=true` for administrative views.
+
+### Provider search and distance
+
+Authenticated provider search accepts `specialtyCode` plus ZIP-backed geospatial filters:
+
+- `specialtyCode` filters providers by assigned specialty code.
+- `lat`, `lng`, and `radius` filter providers by location. The repository narrows by bounding box, calculates exact Haversine distance in miles, filters by the requested radius, and sorts matching results by distance.
+- Tenant portal ZIP controls geocode ZIP/address input through `/api/geocode/address?loose=1`, then send the derived `lat`, `lng`, and `radius` query params to provider search.
+
+Selected-network public/common pages (`/careconnect/browse-networks/{id}` and `/careconnect/network`) filter the
+already-selected network client-side by ZIP and specialty. ZIP search geocodes the entered ZIP/address, displays a
+search-location map pin, filters providers without usable coordinates when a search center is active, calculates and
+displays miles from the search point, and sorts provider cards and map markers by distance. Users can clear or change
+ZIP and specialty filters without reloading the page.
 
 ### Referral list and lookup filters
 

@@ -75,6 +75,7 @@ public class ReferralThreadService : IReferralThreadService
             Notes = referral.Notes,
             DateOfAccident = referral.DateOfAccident?.ToString("yyyy-MM-dd"),
             ProviderName = providerName,
+            ProviderTitle = referral.Provider?.Title,
             ProviderFirstName = referral.Provider?.FirstName,
             ProviderLastName = referral.Provider?.LastName,
             ProviderEmail = referral.Provider?.Email ?? string.Empty,

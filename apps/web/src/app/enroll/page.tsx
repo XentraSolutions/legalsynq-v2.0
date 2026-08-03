@@ -69,6 +69,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
   // tokens issued before the split existed.
   let refFirst = (claims?.contactFirstName ?? '').trim();
   let refLast  = (claims?.contactLastName ?? '').trim();
+  const refTitle = claims?.title?.trim() ?? '';
   const legacyContactMatchesFirm =
     !!claims?.contact &&
     !!claims?.firm &&
@@ -84,6 +85,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
           companyName:  existingEnrollmentPrefill.companyName || claims.firm || '',
           email:        existingEnrollmentPrefill.email,
           phone:        existingEnrollmentPrefill.phone || claims.phone || '',
+          title:        existingEnrollmentPrefill.title || refTitle,
           firstName:    coalesceName(existingEnrollmentPrefill.firstName, refFirst),
           lastName:     coalesceName(existingEnrollmentPrefill.lastName, refLast),
           addressLine1: existingEnrollmentPrefill.addressLine1,
@@ -95,6 +97,7 @@ export default async function EnrollPage({ searchParams }: PageProps) {
           companyName:  claims.firm  ?? '',
           email:        claims.email ?? '',
           phone:        claims.phone ?? '',
+          title:        refTitle,
           firstName:    refFirst,
           lastName:     refLast,
           addressLine1: '',

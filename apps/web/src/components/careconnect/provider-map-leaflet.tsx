@@ -135,6 +135,11 @@ export function ProviderMapLeaflet({
       popupEl.innerHTML = `
         <p style="font-weight:600;font-size:14px;margin:0 0 2px;color:#111827">${esc(m.displayLabel)}</p>
         <p style="font-size:12px;color:#6b7280;margin:0 0 6px">${esc(m.markerSubtitle)}</p>
+        ${typeof m.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 6px">${m.distanceMiles.toFixed(1)} mi away</p>` : ''}
+        ${(m.specialties ?? []).length > 0
+          ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 6px">${esc(m.specialties.map(s => s.name).join(', '))}</p>`
+          : ''
+        }
         ${m.acceptingReferrals
           ? `<span style="font-size:11px;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:8px">Accepting referrals</span>`
           : `<span style="font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:8px">Not accepting referrals</span>`

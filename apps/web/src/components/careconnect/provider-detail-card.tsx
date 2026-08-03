@@ -48,6 +48,23 @@ export function ProviderDetailCard({ provider }: ProviderDetailCardProps) {
           <Field label="Address"  value={provider.city ? `${provider.city}, ${provider.state} ${provider.postalCode}` : undefined} />
 
           <Field
+            label="Specialties"
+            value={
+              provider.specialties?.length > 0 ? (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {provider.specialties.map(s => (
+                    <span key={s.id} className="inline-flex items-center rounded px-1.5 py-0.5 text-xs bg-blue-50 text-blue-700">
+                      {s.name}
+                    </span>
+                  ))}
+                </div>
+              ) : '—'
+            }
+          />
+
+          <Field label="Primary specialty" value={provider.primarySpecialty} />
+
+          <Field
             label="Categories"
             value={
               provider.categories.length > 0 ? (

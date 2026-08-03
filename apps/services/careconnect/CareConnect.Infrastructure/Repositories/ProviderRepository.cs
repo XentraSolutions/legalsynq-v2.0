@@ -26,9 +26,29 @@ public class ProviderRepository : IProviderRepository
         _db = db;
     }
 
-    public async Task<(List<Provider> Items, int TotalCount)> SearchAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
+    public async Task<(List<ProviderSearchRow> Items, int TotalCount)> SearchAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
     {
         var baseQuery = BuildBaseQuery(tenantId, query);
+
+        if (HasRadiusSearch(query))
+        {
+            var candidates = await IncludeProviderLookups(baseQuery)
+                .ToListAsync(ct);
+
+            var distanceRows = candidates
+                .Select(p => new ProviderSearchRow(p, CalculateDistanceMiles(query.Latitude!.Value, query.Longitude!.Value, p.Latitude!.Value, p.Longitude!.Value)))
+                .Where(row => row.DistanceMiles.HasValue && row.DistanceMiles.Value <= query.RadiusMiles!.Value)
+                .OrderBy(row => row.DistanceMiles!.Value)
+                .ThenBy(row => row.Provider.Name)
+                .ToList();
+
+            return (
+                distanceRows
+                    .Skip((query.Page - 1) * query.PageSize)
+                    .Take(query.PageSize)
+                    .ToList(),
+                distanceRows.Count);
+        }
 
         var totalCount = await baseQuery.CountAsync(ct);
 
@@ -40,21 +60,32 @@ public class ProviderRepository : IProviderRepository
             .ToListAsync(ct);
 
         // BLK-PERF-01: AsNoTracking — provider list is read-only; no change tracking needed.
-        var items = await _db.Providers
-            .AsNoTracking()
+        var items = await IncludeProviderLookups(_db.Providers.AsNoTracking())
             .Where(p => ids.Contains(p.Id))
-            .Include(p => p.ProviderCategories)
-                .ThenInclude(pc => pc.Category)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
 
-        return (items, totalCount);
+        return (items.Select(p => new ProviderSearchRow(p, null)).ToList(), totalCount);
     }
 
-    public async Task<List<Provider>> GetMarkersAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
+    public async Task<List<ProviderSearchRow>> GetMarkersAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
     {
         var baseQuery = BuildBaseQuery(tenantId, query)
             .Where(p => p.Latitude != null && p.Longitude != null);
+
+        if (HasRadiusSearch(query))
+        {
+            var candidates = await IncludeProviderLookups(baseQuery)
+                .ToListAsync(ct);
+
+            return candidates
+                .Select(p => new ProviderSearchRow(p, CalculateDistanceMiles(query.Latitude!.Value, query.Longitude!.Value, p.Latitude!.Value, p.Longitude!.Value)))
+                .Where(row => row.DistanceMiles.HasValue && row.DistanceMiles.Value <= query.RadiusMiles!.Value)
+                .OrderBy(row => row.DistanceMiles!.Value)
+                .ThenBy(row => row.Provider.Name)
+                .Take(ProviderGeoHelper.MarkerLimit)
+                .ToList();
+        }
 
         var ids = await baseQuery
             .OrderBy(p => p.Name)
@@ -63,13 +94,12 @@ public class ProviderRepository : IProviderRepository
             .ToListAsync(ct);
 
         // BLK-PERF-01: AsNoTracking — marker data is read-only.
-        return await _db.Providers
-            .AsNoTracking()
+        var items = await IncludeProviderLookups(_db.Providers.AsNoTracking())
             .Where(p => ids.Contains(p.Id))
-            .Include(p => p.ProviderCategories)
-                .ThenInclude(pc => pc.Category)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
+
+        return items.Select(p => new ProviderSearchRow(p, null)).ToList();
     }
 
     public async Task<Provider?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -80,6 +110,8 @@ public class ProviderRepository : IProviderRepository
             .Where(p => p.TenantId == tenantId && p.Id == id)
             .Include(p => p.ProviderCategories)
                 .ThenInclude(pc => pc.Category)
+            .Include(p => p.ProviderSpecialties)
+                .ThenInclude(ps => ps.Specialty)
             .FirstOrDefaultAsync(ct);
     }
 
@@ -116,6 +148,29 @@ public class ProviderRepository : IProviderRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task SyncSpecialtiesAsync(Guid providerId, List<Guid> specialtyIds, CancellationToken ct = default)
+    {
+        var existing = await _db.ProviderSpecialties
+            .Where(ps => ps.ProviderId == providerId)
+            .ToListAsync(ct);
+
+        _db.ProviderSpecialties.RemoveRange(existing);
+
+        var distinct = specialtyIds.Distinct().ToList();
+        if (distinct.Count > 0)
+        {
+            var newLinks = distinct.Select((sid, index) => new ProviderSpecialty
+                {
+                    ProviderId = providerId,
+                    SpecialtyId = sid,
+                    IsPrimary = index == 0
+                });
+            await _db.ProviderSpecialties.AddRangeAsync(newLinks, ct);
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
+
     public async Task<Provider?> GetByIdCrossAsync(Guid id, CancellationToken ct = default)
     {
         // BLK-PERF-01: AsNoTracking — cross-tenant read used for public referral validation; read-only.
@@ -124,6 +179,8 @@ public class ProviderRepository : IProviderRepository
             .Where(p => p.Id == id)
             .Include(p => p.ProviderCategories)
                 .ThenInclude(pc => pc.Category)
+            .Include(p => p.ProviderSpecialties)
+                .ThenInclude(ps => ps.Specialty)
             .FirstOrDefaultAsync(ct);
     }
 
@@ -151,6 +208,13 @@ public class ProviderRepository : IProviderRepository
         if (!string.IsNullOrWhiteSpace(query.CategoryCode))
             q = q.Where(p => p.ProviderCategories
                 .Any(pc => pc.Category != null && pc.Category.Code == query.CategoryCode));
+
+        if (!string.IsNullOrWhiteSpace(query.SpecialtyCode))
+        {
+            var specialtyCode = Specialty.NormalizeCode(query.SpecialtyCode);
+            q = q.Where(p => p.ProviderSpecialties
+                .Any(ps => ps.Specialty != null && ps.Specialty.Code == specialtyCode));
+        }
 
         if (!string.IsNullOrWhiteSpace(query.City))
             q = q.Where(p => p.City == query.City);
@@ -190,6 +254,35 @@ public class ProviderRepository : IProviderRepository
 
         return q;
     }
+
+    private static IQueryable<Provider> IncludeProviderLookups(IQueryable<Provider> query) =>
+        query
+            .Include(p => p.ProviderCategories)
+                .ThenInclude(pc => pc.Category)
+            .Include(p => p.ProviderSpecialties)
+                .ThenInclude(ps => ps.Specialty);
+
+    private static bool HasRadiusSearch(GetProvidersQuery query) =>
+        query.Latitude.HasValue && query.Longitude.HasValue && query.RadiusMiles.HasValue;
+
+    private static double CalculateDistanceMiles(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double earthRadiusMiles = 3958.7613;
+        var dLat = ToRadians(lat2 - lat1);
+        var dLon = ToRadians(lon2 - lon1);
+        var rLat1 = ToRadians(lat1);
+        var rLat2 = ToRadians(lat2);
+
+        var a =
+            Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
+            Math.Cos(rLat1) * Math.Cos(rLat2) *
+            Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
+
+        var clamped = Math.Min(1.0, Math.Max(0.0, a));
+        return earthRadiusMiles * 2 * Math.Atan2(Math.Sqrt(clamped), Math.Sqrt(1 - clamped));
+    }
+
+    private static double ToRadians(double degrees) => degrees * Math.PI / 180.0;
 
     private static IReadOnlyList<string> BuildSearchTokens(string? value)
     {

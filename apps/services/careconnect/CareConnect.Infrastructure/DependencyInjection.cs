@@ -86,6 +86,7 @@ public static class DependencyInjection
         services.AddScoped<IReferralRepository, ReferralRepository>();
         services.AddScoped<IReferralCommentRepository, ReferralCommentRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
+        services.AddScoped<ISpecialtyRepository, SpecialtyRepository>();
         services.AddScoped<IFacilityRepository, FacilityRepository>();
         services.AddScoped<IServiceOfferingRepository, ServiceOfferingRepository>();
         services.AddScoped<IAvailabilityTemplateRepository, AvailabilityTemplateRepository>();
@@ -105,6 +106,7 @@ public static class DependencyInjection
         services.AddScoped<IReferralService, ReferralService>();
         services.AddScoped<IReferralThreadService, ReferralThreadService>();
         services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<ISpecialtyService, SpecialtyService>();
         services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<IServiceOfferingService, ServiceOfferingService>();
         services.AddScoped<IAvailabilityTemplateService, AvailabilityTemplateService>();

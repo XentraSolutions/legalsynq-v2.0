@@ -403,6 +403,7 @@ public static class UserMembershipEndpoints
         //   "companyName": "Acme Law",
         //   "email": "lawyer@example.com",
         //   "phone": "+15551234567",
+        //   "title": "Dr.",
         //   "firstName": "Jane",
         //   "lastName": "Lawyer",
         //   "addressLine1": "123 Main St",
@@ -439,6 +440,7 @@ public static class UserMembershipEndpoints
                     u.Id,
                     u.Email,
                     u.Phone,
+                    u.Title,
                     u.FirstName,
                     u.LastName,
                 })
@@ -482,6 +484,7 @@ public static class UserMembershipEndpoints
                 companyName = organization?.Name         ?? string.Empty,
                 email       = user.Email,
                 phone       = user.Phone ?? string.Empty,
+                title       = user.Title ?? string.Empty,
                 firstName   = user.FirstName,
                 lastName    = user.LastName,
                 addressLine1 = organization?.AddressLine1 ?? string.Empty,

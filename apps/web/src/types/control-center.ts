@@ -54,6 +54,7 @@ export interface TenantProductEntitlementSummary {
 export interface TenantUserSummary {
   id:          string;
   email:       string;
+  title?:      string | null;
   firstName:   string;
   lastName:    string;
   isActive:    boolean;

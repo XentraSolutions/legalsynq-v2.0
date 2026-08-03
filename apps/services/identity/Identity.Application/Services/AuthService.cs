@@ -476,7 +476,8 @@ public class AuthService : IAuthService
             roleNames,
             org?.Id,
             orgTypeForResponse,
-            productRolesFlat);
+            productRolesFlat,
+            Title: userWithRoles.Title);
 
         // Canonical audit: fire-and-observe — never throw, never gate login on audit success.
         var now = DateTimeOffset.UtcNow;

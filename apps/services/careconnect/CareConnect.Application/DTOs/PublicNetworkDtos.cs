@@ -21,6 +21,7 @@ public sealed record PublicNetworkSummary(
 public sealed record PublicProviderItem(
     Guid    Id,
     string  Name,
+    string? Title,
     string? OrganizationName,
     string  Phone,
     string  City,
@@ -29,7 +30,11 @@ public sealed record PublicProviderItem(
     bool    IsActive,
     bool    AcceptingReferrals,
     string  AccessStage,
-    string? PrimaryCategory);
+    string? PrimaryCategory,
+    List<SpecialtyResponse> Specialties,
+    Guid? PrimarySpecialtyId,
+    string? PrimarySpecialty,
+    double? DistanceMiles = null);
 
 /// <summary>
 /// Public-facing map marker for a provider in a network.
@@ -38,12 +43,17 @@ public sealed record PublicProviderItem(
 public sealed record PublicProviderMarker(
     Guid    Id,
     string  Name,
+    string? Title,
     string? OrganizationName,
     string  City,
     string  State,
     bool    AcceptingReferrals,
     double  Latitude,
-    double  Longitude);
+    double  Longitude,
+    List<SpecialtyResponse> Specialties,
+    Guid? PrimarySpecialtyId,
+    string? PrimarySpecialty,
+    double? DistanceMiles = null);
 
 /// <summary>
 /// Resolved public network surface returned when the tenant has a single network.
@@ -54,7 +64,8 @@ public sealed record PublicNetworkDetail(
     string NetworkName,
     string NetworkDescription,
     List<PublicProviderItem>   Providers,
-    List<PublicProviderMarker> Markers);
+    List<PublicProviderMarker> Markers,
+    List<SpecialtyResponse> Specialties);
 
 /// <summary>
 /// Stage-based redirect instruction returned when the network surface detects

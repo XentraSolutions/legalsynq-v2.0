@@ -14,17 +14,20 @@ public class ProviderService : IProviderService
     private readonly IProviderRepository _providers;
     private readonly IReferralRepository _referrals;
     private readonly IAppointmentSlotRepository _slots;
+    private readonly ISpecialtyRepository _specialties;
     private readonly ILogger<ProviderService> _logger;
 
     public ProviderService(
         IProviderRepository providers,
         IReferralRepository referrals,
         IAppointmentSlotRepository slots,
+        ISpecialtyRepository specialties,
         ILogger<ProviderService> logger)
     {
         _providers = providers;
         _referrals = referrals;
         _slots     = slots;
+        _specialties = specialties;
         _logger    = logger;
     }
 
@@ -37,7 +40,7 @@ public class ProviderService : IProviderService
 
         return new PagedResponse<ProviderResponse>
         {
-            Items      = items.Select(ToResponse).ToList(),
+            Items      = items.Select(row => ToResponse(row.Provider, row.DistanceMiles)).ToList(),
             Page       = query.Page,
             PageSize   = query.PageSize,
             TotalCount = totalCount
@@ -49,7 +52,7 @@ public class ProviderService : IProviderService
         ValidateSearchGeo(query);
 
         var items = await _providers.GetMarkersAsync(tenantId, query, ct);
-        return items.Select(ToMarker).ToList();
+        return items.Select(row => ToMarker(row.Provider, row.DistanceMiles)).ToList();
     }
 
     public async Task<ProviderResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -62,8 +65,9 @@ public class ProviderService : IProviderService
 
     public async Task<ProviderResponse> CreateAsync(Guid tenantId, Guid? userId, CreateProviderRequest request, CancellationToken ct = default)
     {
-        ValidateFields(request.Name, request.Email, request.Phone, request.AddressLine1, request.City, request.State, request.PostalCode);
+        ValidateFields(request.Name, request.Email, request.Phone, request.AddressLine1, request.City, request.State, request.PostalCode, request.Title);
         ValidateGeoFields(request.Latitude, request.Longitude, request.GeoPointSource);
+        var specialtyIds = await ValidateSpecialtyIdsAsync(request.SpecialtyIds, ct);
 
         var provider = Provider.Create(
             tenantId,
@@ -80,7 +84,8 @@ public class ProviderService : IProviderService
             userId,
             request.Latitude,
             request.Longitude,
-            request.GeoPointSource);
+            request.GeoPointSource,
+            title: request.Title);
 
         // Phase D / Step 6: link to Identity Organization before persisting so that
         // the OrganizationId is captured in the initial INSERT, eliminating the
@@ -107,6 +112,7 @@ public class ProviderService : IProviderService
 
         if (request.CategoryIds.Count > 0)
             await _providers.SyncCategoriesAsync(provider.Id, request.CategoryIds, ct);
+        await _providers.SyncSpecialtiesAsync(provider.Id, specialtyIds, ct);
 
         var loaded = await _providers.GetByIdAsync(tenantId, provider.Id, ct);
         return ToResponse(loaded!);
@@ -117,8 +123,9 @@ public class ProviderService : IProviderService
         var provider = await _providers.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Provider '{id}' was not found.");
 
-        ValidateFields(request.Name, request.Email, request.Phone, request.AddressLine1, request.City, request.State, request.PostalCode);
+        ValidateFields(request.Name, request.Email, request.Phone, request.AddressLine1, request.City, request.State, request.PostalCode, request.Title);
         ValidateGeoFields(request.Latitude, request.Longitude, request.GeoPointSource);
+        var specialtyIds = await ValidateSpecialtyIdsAsync(request.SpecialtyIds, ct);
 
         provider.Update(
             request.Name,
@@ -134,7 +141,8 @@ public class ProviderService : IProviderService
             userId,
             request.Latitude,
             request.Longitude,
-            request.GeoPointSource);
+            request.GeoPointSource,
+            title: request.Title);
 
         // Phase D: link to Identity Organization if supplied.
         if (request.OrganizationId.HasValue)
@@ -147,6 +155,7 @@ public class ProviderService : IProviderService
 
         await _providers.UpdateAsync(provider, ct);
         await _providers.SyncCategoriesAsync(provider.Id, request.CategoryIds, ct);
+        await _providers.SyncSpecialtiesAsync(provider.Id, specialtyIds, ct);
 
         var loaded = await _providers.GetByIdAsync(tenantId, provider.Id, ct);
         return ToResponse(loaded!);
@@ -254,7 +263,7 @@ public class ProviderService : IProviderService
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
 
-    private static void ValidateFields(string name, string email, string phone, string addressLine1, string city, string state, string postalCode)
+    private static void ValidateFields(string name, string email, string phone, string addressLine1, string city, string state, string postalCode, string? title)
     {
         var errors = new Dictionary<string, string[]>();
 
@@ -287,11 +296,29 @@ public class ProviderService : IProviderService
         if (string.IsNullOrWhiteSpace(postalCode))
             errors["postalCode"] = new[] { "PostalCode is required." };
 
+        if (title?.Trim().Length > 50)
+            errors["title"] = new[] { "Title must not exceed 50 characters." };
+
         if (errors.Count > 0)
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
 
-    private static ProviderResponse ToResponse(Provider p)
+    private async Task<List<Guid>> ValidateSpecialtyIdsAsync(List<Guid> specialtyIds, CancellationToken ct)
+    {
+        var distinct = specialtyIds.Distinct().ToList();
+        if (distinct.Count == 0)
+            throw new ValidationException("Validation failed.",
+                new() { ["specialtyIds"] = ["Select at least one specialty."] });
+
+        var active = await _specialties.GetActiveByIdsAsync(distinct, ct);
+        if (active.Count != distinct.Count)
+            throw new ValidationException("Validation failed.",
+                new() { ["specialtyIds"] = ["One or more selected specialties are inactive or invalid."] });
+
+        return distinct;
+    }
+
+    private static ProviderResponse ToResponse(Provider p, double? distanceMiles = null)
     {
         var categories = p.ProviderCategories
             .Where(pc => pc.Category != null)
@@ -299,15 +326,18 @@ public class ProviderService : IProviderService
             .OrderBy(n => n)
             .ToList();
 
+        var specialties = MapSpecialties(p.ProviderSpecialties);
         var primary  = categories.FirstOrDefault();
+        var primarySpecialty = specialties.FirstOrDefault();
         var label    = p.OrganizationName ?? p.Name;
-        var subtitle = BuildSubtitle(p.City, p.State, primary);
+        var subtitle = BuildSubtitle(p.City, p.State, primarySpecialty?.Name ?? primary);
 
         return new ProviderResponse
         {
             Id               = p.Id,
             TenantId         = p.TenantId,
             Name             = p.Name,
+            Title            = p.Title,
             OrganizationName = p.OrganizationName,
             OrganizationId   = p.OrganizationId,
             Email            = p.Email,
@@ -319,12 +349,17 @@ public class ProviderService : IProviderService
             IsActive         = p.IsActive,
             AcceptingReferrals = p.AcceptingReferrals,
             Categories       = categories,
+            Specialties      = specialties,
+            SpecialtyIds     = specialties.Select(s => s.Id).ToList(),
             Latitude         = p.Latitude,
             Longitude        = p.Longitude,
             GeoPointSource   = p.GeoPointSource,
             GeoUpdatedAtUtc  = p.GeoUpdatedAtUtc,
             HasGeoLocation   = p.Latitude.HasValue && p.Longitude.HasValue,
             PrimaryCategory  = primary,
+            PrimarySpecialty = primarySpecialty?.Name,
+            PrimarySpecialtyId = primarySpecialty?.Id,
+            DistanceMiles    = distanceMiles,
             DisplayLabel     = label,
             MarkerSubtitle   = subtitle,
             // CC2-INT-B06-02
@@ -335,7 +370,7 @@ public class ProviderService : IProviderService
         };
     }
 
-    private static ProviderMarkerResponse ToMarker(Provider p)
+    private static ProviderMarkerResponse ToMarker(Provider p, double? distanceMiles = null)
     {
         var categories = p.ProviderCategories
             .Where(pc => pc.Category != null)
@@ -343,14 +378,17 @@ public class ProviderService : IProviderService
             .OrderBy(n => n)
             .ToList();
 
+        var specialties = MapSpecialties(p.ProviderSpecialties);
         var primary  = categories.FirstOrDefault();
+        var primarySpecialty = specialties.FirstOrDefault();
         var label    = p.OrganizationName ?? p.Name;
-        var subtitle = BuildSubtitle(p.City, p.State, primary);
+        var subtitle = BuildSubtitle(p.City, p.State, primarySpecialty?.Name ?? primary);
 
         return new ProviderMarkerResponse
         {
             Id               = p.Id,
             Name             = p.Name,
+            Title            = p.Title,
             OrganizationName = p.OrganizationName,
             DisplayLabel     = label,
             MarkerSubtitle   = subtitle,
@@ -366,8 +404,22 @@ public class ProviderService : IProviderService
             Longitude        = p.Longitude!.Value,
             GeoPointSource   = p.GeoPointSource,
             PrimaryCategory  = primary,
-            Categories       = categories
+            Categories       = categories,
+            Specialties      = specialties,
+            PrimarySpecialty = primarySpecialty?.Name,
+            PrimarySpecialtyId = primarySpecialty?.Id,
+            DistanceMiles    = distanceMiles
         };
+    }
+
+    private static List<SpecialtyResponse> MapSpecialties(IEnumerable<ProviderSpecialty> providerSpecialties)
+    {
+        return providerSpecialties
+            .Where(ps => ps.Specialty != null)
+            .OrderByDescending(ps => ps.IsPrimary)
+            .ThenBy(ps => ps.Specialty!.Name)
+            .Select(ps => SpecialtyService.ToResponse(ps.Specialty!))
+            .ToList();
     }
 
     // LSCC-002: Admin org-link backfill — explicit, idempotent, admin-only operation.
@@ -412,7 +464,7 @@ public class ProviderService : IProviderService
         CancellationToken ct = default)
     {
         var unlinked = await _providers.GetUnlinkedAsync(tenantId, ct);
-        return unlinked.Select(ToResponse).ToList();
+        return unlinked.Select(p => ToResponse(p)).ToList();
     }
 
     // LSCC-002-01: Bulk org-link — processes each item independently; never auto-guesses mappings.

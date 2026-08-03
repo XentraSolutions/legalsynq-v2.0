@@ -108,9 +108,10 @@ public static class PublicNetworkEndpoints
                     var providers = await repo.GetNetworkProvidersAsync(tenantId.Value, id, ct);
                     return providers
                         .Select(p => new PublicProviderItem(
-                            p.Id, p.Name, p.OrganizationName,
+                            p.Id, p.Name, p.Title, p.OrganizationName,
                             p.Phone, p.City, p.State, p.PostalCode,
-                            p.IsActive, p.AcceptingReferrals, p.AccessStage, null))
+                            p.IsActive, p.AcceptingReferrals, p.AccessStage, null,
+                            MapSpecialties(p), PrimarySpecialtyId(p), PrimarySpecialtyName(p)))
                         .ToList();
                 });
 
@@ -149,9 +150,10 @@ public static class PublicNetworkEndpoints
                     // "needs geocoding" to the client-side geocoder).
                     return providers
                         .Select(p => new PublicProviderMarker(
-                            p.Id, p.Name, p.OrganizationName,
+                            p.Id, p.Name, p.Title, p.OrganizationName,
                             p.City, p.State, p.AcceptingReferrals,
-                            p.Latitude ?? 0.0, p.Longitude ?? 0.0))
+                            p.Latitude ?? 0.0, p.Longitude ?? 0.0,
+                            MapSpecialties(p), PrimarySpecialtyId(p), PrimarySpecialtyName(p)))
                         .ToList();
                 });
 
@@ -164,6 +166,7 @@ public static class PublicNetworkEndpoints
             HttpContext         http,
             IConfiguration      config,
             INetworkRepository  repo,
+            ISpecialtyService   specialtyService,
             IMemoryCache        cache,
             CancellationToken   ct) =>
         {
@@ -184,6 +187,7 @@ public static class PublicNetworkEndpoints
 
                     var network = await repo.GetWithProvidersAsync(tenantId.Value, id, ct);
                     if (network == null) return null;
+                    var specialtyOptions = await specialtyService.GetAllAsync(includeInactive: false, ct);
 
                     // BLK-PERF-01: Providers already loaded via Include — no extra round-trip.
                     var providers = network.NetworkProviders
@@ -194,20 +198,22 @@ public static class PublicNetworkEndpoints
 
                     var items = providers
                         .Select(p => new PublicProviderItem(
-                            p.Id, p.Name, p.OrganizationName,
+                            p.Id, p.Name, p.Title, p.OrganizationName,
                             p.Phone, p.City, p.State, p.PostalCode,
-                            p.IsActive, p.AcceptingReferrals, p.AccessStage, null))
+                            p.IsActive, p.AcceptingReferrals, p.AccessStage, null,
+                            MapSpecialties(p), PrimarySpecialtyId(p), PrimarySpecialtyName(p)))
                         .ToList();
 
                     // Include every provider (0.0 lat/lng = needs client-side geocoding).
                     var markers = providers
                         .Select(p => new PublicProviderMarker(
-                            p.Id, p.Name, p.OrganizationName,
+                            p.Id, p.Name, p.Title, p.OrganizationName,
                             p.City, p.State, p.AcceptingReferrals,
-                            p.Latitude ?? 0.0, p.Longitude ?? 0.0))
+                            p.Latitude ?? 0.0, p.Longitude ?? 0.0,
+                            MapSpecialties(p), PrimarySpecialtyId(p), PrimarySpecialtyName(p)))
                         .ToList();
 
-                    return new PublicNetworkDetail(network.Id, network.Name, network.Description, items, markers);
+                    return new PublicNetworkDetail(network.Id, network.Name, network.Description, items, markers, specialtyOptions);
                 });
 
             return detail == null ? Results.NotFound() : Results.Ok(detail);
@@ -834,6 +840,29 @@ public static class PublicNetworkEndpoints
         try { _ = new MailAddress(email.Trim()); return true; }
         catch { return false; }
     }
+
+    private static List<SpecialtyResponse> MapSpecialties(Provider provider)
+    {
+        return provider.ProviderSpecialties
+            .Where(ps => ps.Specialty != null)
+            .OrderByDescending(ps => ps.IsPrimary)
+            .ThenBy(ps => ps.Specialty!.Name)
+            .Select(ps => new SpecialtyResponse
+            {
+                Id = ps.Specialty!.Id,
+                Name = ps.Specialty.Name,
+                Code = ps.Specialty.Code,
+                Description = ps.Specialty.Description,
+                IsActive = ps.Specialty.IsActive
+            })
+            .ToList();
+    }
+
+    private static Guid? PrimarySpecialtyId(Provider provider) =>
+        MapSpecialties(provider).FirstOrDefault()?.Id;
+
+    private static string? PrimarySpecialtyName(Provider provider) =>
+        MapSpecialties(provider).FirstOrDefault()?.Name;
 
     // ── BLK-COMP-01: Trust boundary rejection audit ───────────────────────────
     // Emits security.trust_boundary.rejected to the Audit Service for every failed

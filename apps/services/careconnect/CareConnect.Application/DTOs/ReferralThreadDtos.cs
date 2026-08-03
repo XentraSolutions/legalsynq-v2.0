@@ -53,6 +53,7 @@ public class PublicReferralThreadResponse
     public string? Urgency { get; init; }
     public string? Notes { get; init; }
     public string ProviderName { get; init; } = string.Empty;
+    public string? ProviderTitle { get; init; }
     public string? ProviderFirstName { get; init; }
     public string? ProviderLastName { get; init; }
     public string ProviderEmail { get; init; } = string.Empty;

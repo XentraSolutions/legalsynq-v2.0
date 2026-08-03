@@ -1,7 +1,9 @@
 'use client';
 
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { careConnectApi } from '@/lib/careconnect-api';
+import type { SpecialtyOption } from '@/types/careconnect';
 
 /**
  * Provider search filter bar — client component.
@@ -24,8 +26,10 @@ export function ProviderSearchFilters() {
   const [name,               setName]               = useState(searchParams?.get('name')               ?? '');
   const [city,               setCity]               = useState(searchParams?.get('city')               ?? '');
   const [state,              setState]              = useState(searchParams?.get('state')              ?? '');
-  const [categoryCode,       setCategoryCode]       = useState(searchParams?.get('categoryCode')       ?? '');
+  const [specialtyCode,      setSpecialtyCode]      = useState(searchParams?.get('specialtyCode')      ?? '');
+  const [zipCode,            setZipCode]            = useState(searchParams?.get('zip')                ?? '');
   const [acceptingReferrals, setAcceptingReferrals] = useState(searchParams?.get('acceptingReferrals') === 'true');
+  const [specialties,        setSpecialties]        = useState<SpecialtyOption[]>([]);
 
   const [radiusMiles, setRadiusMiles] = useState(
     searchParams?.get('radius') ? Math.min(100, Math.max(5, parseInt(searchParams?.get('radius')!))) : 25,
@@ -35,24 +39,63 @@ export function ProviderSearchFilters() {
 
   const hasGeo = !!(searchParams?.get('lat') && searchParams?.get('lng'));
 
-  const applyFilters = useCallback(() => {
+  useEffect(() => {
+    let cancelled = false;
+    careConnectApi.specialties.list()
+      .then(({ data }) => { if (!cancelled) setSpecialties(data ?? []); })
+      .catch(() => { if (!cancelled) setSpecialties([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const applyFilters = useCallback(async () => {
     const params = new URLSearchParams(searchParams?.toString() ?? '');
     if (name)               params.set('name',               name);         else params.delete('name');
     if (city)               params.set('city',               city);         else params.delete('city');
     if (state)              params.set('state',              state);        else params.delete('state');
-    if (categoryCode)       params.set('categoryCode',       categoryCode); else params.delete('categoryCode');
+    if (specialtyCode)      params.set('specialtyCode',      specialtyCode); else params.delete('specialtyCode');
+    params.delete('categoryCode');
     if (acceptingReferrals) params.set('acceptingReferrals', 'true');       else params.delete('acceptingReferrals');
     params.delete('page');
     params.delete('nLat'); params.delete('sLat');
     params.delete('eLng'); params.delete('wLng');
+
+    const trimmedZip = zipCode.trim();
+    if (trimmedZip) {
+      setGeoLoading(true);
+      setGeoError(null);
+      try {
+        const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(trimmedZip)}&loose=1`);
+        if (!res.ok) throw new Error('Unable to geocode ZIP.');
+        const suggestions = await res.json() as Array<{ latitude: number; longitude: number }>;
+        if (suggestions.length === 0) throw new Error('No matching ZIP code was found.');
+        params.set('lat', suggestions[0].latitude.toFixed(6));
+        params.set('lng', suggestions[0].longitude.toFixed(6));
+        params.set('radius', String(radiusMiles));
+        params.set('zip', trimmedZip);
+      } catch (err) {
+        setGeoError(err instanceof Error ? err.message : 'Unable to geocode ZIP.');
+        setGeoLoading(false);
+        return;
+      }
+      setGeoLoading(false);
+    } else {
+      params.delete('zip');
+      if (searchParams?.get('zip')) {
+        params.delete('lat');
+        params.delete('lng');
+        params.delete('radius');
+      }
+    }
+
     router.push(`${pathname}?${params.toString()}`);
-  }, [name, city, state, categoryCode, acceptingReferrals, searchParams, pathname, router]);
+  }, [name, city, state, specialtyCode, acceptingReferrals, zipCode, radiusMiles, searchParams, pathname, router]);
 
   const clearFilters = useCallback(() => {
     setName('');
     setCity('');
     setState('');
-    setCategoryCode('');
+    setSpecialtyCode('');
+    setZipCode('');
     setAcceptingReferrals(false);
     router.push(pathname ?? '/');
   }, [router, pathname]);
@@ -71,6 +114,7 @@ export function ProviderSearchFilters() {
         params.set('lat',    pos.coords.latitude.toFixed(6));
         params.set('lng',    pos.coords.longitude.toFixed(6));
         params.set('radius', String(radiusMiles));
+        params.delete('zip');
         params.delete('nLat'); params.delete('sLat');
         params.delete('eLng'); params.delete('wLng');
         params.set('view', 'map');
@@ -90,6 +134,8 @@ export function ProviderSearchFilters() {
     params.delete('lat');
     params.delete('lng');
     params.delete('radius');
+    params.delete('zip');
+    setZipCode('');
     router.push(`${pathname}?${params.toString()}`);
   }, [searchParams, pathname, router]);
 
@@ -106,14 +152,14 @@ export function ProviderSearchFilters() {
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
       {/* Row 1: text filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
           <input
             type="text"
             value={name}
             onChange={e => setName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && applyFilters()}
+            onKeyDown={e => e.key === 'Enter' && void applyFilters()}
             placeholder="Search providers…"
             className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
@@ -125,7 +171,7 @@ export function ProviderSearchFilters() {
             type="text"
             value={city}
             onChange={e => setCity(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && applyFilters()}
+            onKeyDown={e => e.key === 'Enter' && void applyFilters()}
             placeholder="e.g. Chicago"
             className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
@@ -137,7 +183,7 @@ export function ProviderSearchFilters() {
             type="text"
             value={state}
             onChange={e => setState(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && applyFilters()}
+            onKeyDown={e => e.key === 'Enter' && void applyFilters()}
             placeholder="e.g. IL"
             maxLength={2}
             className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -145,13 +191,27 @@ export function ProviderSearchFilters() {
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Category</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Specialty</label>
+          <select
+            value={specialtyCode}
+            onChange={e => setSpecialtyCode(e.target.value)}
+            className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="">All specialties</option>
+            {specialties.map(s => (
+              <option key={s.id} value={s.code}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">ZIP</label>
           <input
             type="text"
-            value={categoryCode}
-            onChange={e => setCategoryCode(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && applyFilters()}
-            placeholder="Category code…"
+            value={zipCode}
+            onChange={e => setZipCode(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && void applyFilters()}
+            placeholder="e.g. 60601"
             className="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
@@ -174,8 +234,8 @@ export function ProviderSearchFilters() {
           {/* Geo controls */}
           {hasGeo ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5">
-                📍 Near me
+                <span className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-full px-2.5 py-0.5">
+                {searchParams?.get('zip') ? `Near ${searchParams.get('zip')}` : '📍 Near me'}
               </span>
               <input
                 type="number"
@@ -215,7 +275,7 @@ export function ProviderSearchFilters() {
             Clear
           </button>
           <button
-            onClick={applyFilters}
+            onClick={() => void applyFilters()}
             className="bg-primary text-white text-sm font-medium px-4 py-1.5 rounded-md hover:opacity-90 transition-opacity"
           >
             Search

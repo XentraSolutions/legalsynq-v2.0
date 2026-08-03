@@ -46,6 +46,29 @@ interface PublicNetworkViewProps {
 
 type ViewMode = 'split' | 'list' | 'map';
 
+interface SearchLocation {
+  latitude:  number;
+  longitude: number;
+  label:     string;
+}
+
+type ProviderWithDistance = PublicProviderItem & { distanceMiles?: number | null };
+
+function distanceMilesBetween(a: SearchLocation, b: { latitude: number; longitude: number }): number {
+  const toRad = (deg: number) => deg * Math.PI / 180;
+  const radiusMiles = 3958.7613;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const clamped = Math.min(1, Math.max(0, h));
+  return 2 * radiusMiles * Math.atan2(Math.sqrt(clamped), Math.sqrt(1 - clamped));
+}
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export function PublicNetworkView({
@@ -57,6 +80,11 @@ export function PublicNetworkView({
   prefillLawFirm,
 }: PublicNetworkViewProps) {
   const [search,      setSearch]      = useState('');
+  const [zipInput,    setZipInput]    = useState('');
+  const [selectedSpecialtyCode, setSelectedSpecialtyCode] = useState('');
+  const [searchLocation, setSearchLocation] = useState<SearchLocation | null>(null);
+  const [zipLoading,  setZipLoading]  = useState(false);
+  const [zipError,    setZipError]    = useState<string | null>(null);
   const [viewMode,    setViewMode]    = useState<ViewMode>('split');
   const [showAll,     setShowAll]     = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -103,6 +131,10 @@ export function PublicNetworkView({
               id: p.id, name: p.name, organizationName: p.organizationName,
               city: p.city, state: p.state, acceptingReferrals: p.acceptingReferrals,
               latitude, longitude,
+              specialties: p.specialties ?? [],
+              primarySpecialtyId: p.primarySpecialtyId ?? null,
+              primarySpecialty: p.primarySpecialty ?? null,
+              distanceMiles: null,
             });
           } catch { /* ignore */ }
         }),
@@ -120,18 +152,39 @@ export function PublicNetworkView({
     return m;
   }, [markers]);
 
-  const filtered = useMemo(() => {
-    let list = detail.providers;
+  const filtered = useMemo<ProviderWithDistance[]>(() => {
+    let list: ProviderWithDistance[] = detail.providers;
     if (!showAll) list = list.filter(p => p.acceptingReferrals);
     const q = search.trim().toLowerCase();
     if (q) list = list.filter(p =>
       p.name.toLowerCase().includes(q) ||
       (p.organizationName?.toLowerCase().includes(q) ?? false) ||
       p.city.toLowerCase().includes(q) ||
-      p.state.toLowerCase().includes(q),
+      p.state.toLowerCase().includes(q) ||
+      (p.primarySpecialty?.toLowerCase().includes(q) ?? false) ||
+      (p.specialties ?? []).some(s => s.name.toLowerCase().includes(q)),
     );
+    if (selectedSpecialtyCode) {
+      list = list.filter(p => (p.specialties ?? []).some(s => s.code === selectedSpecialtyCode));
+    }
+    if (searchLocation) {
+      const withDistances: ProviderWithDistance[] = [];
+      for (const p of list) {
+        const mk = markerById[p.id];
+        if (!mk || (mk.latitude === 0 && mk.longitude === 0)) continue;
+        withDistances.push({
+          ...p,
+          distanceMiles: distanceMilesBetween(searchLocation, {
+            latitude: mk.latitude,
+            longitude: mk.longitude,
+          }),
+        });
+      }
+      list = withDistances.sort((a, b) =>
+        (a.distanceMiles ?? Number.POSITIVE_INFINITY) - (b.distanceMiles ?? Number.POSITIVE_INFINITY));
+    }
     return list;
-  }, [detail.providers, search, showAll]);
+  }, [detail.providers, search, showAll, selectedSpecialtyCode, searchLocation, markerById]);
 
   const displayedMarkers = useMemo<NumberedMarker[]>(() => {
     const result: NumberedMarker[] = [];
@@ -139,7 +192,7 @@ export function PublicNetworkView({
     for (const p of filtered) {
       const mk = markerById[p.id];
       if (mk && (mk.latitude !== 0 || mk.longitude !== 0)) {
-        result.push({ ...mk, index: idx++ });
+        result.push({ ...mk, distanceMiles: p.distanceMiles ?? mk.distanceMiles, index: idx++ });
       }
     }
     return result;
@@ -147,6 +200,41 @@ export function PublicNetworkView({
 
   const indexFor = (id: string) =>
     displayedMarkers.find(m => m.id === id)?.index ?? null;
+
+  async function applyZipFilter() {
+    const value = zipInput.trim();
+    if (!value) {
+      setSearchLocation(null);
+      setZipError(null);
+      return;
+    }
+    setZipLoading(true);
+    setZipError(null);
+    try {
+      const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(value)}&loose=1`);
+      if (!res.ok) throw new Error('Unable to geocode ZIP code.');
+      const suggestions = await res.json() as Array<{ latitude: number; longitude: number }>;
+      if (suggestions.length === 0) throw new Error('No matching ZIP code was found.');
+      setSearchLocation({
+        latitude: suggestions[0].latitude,
+        longitude: suggestions[0].longitude,
+        label: value,
+      });
+    } catch (err) {
+      setSearchLocation(null);
+      setZipError(err instanceof Error ? err.message : 'Unable to geocode ZIP code.');
+    } finally {
+      setZipLoading(false);
+    }
+  }
+
+  function clearFilters() {
+    setSearch('');
+    setZipInput('');
+    setSelectedSpecialtyCode('');
+    setSearchLocation(null);
+    setZipError(null);
+  }
 
   function toggleSelect(id: string) {
     setSelectedIds(prev => {
@@ -166,7 +254,7 @@ export function PublicNetworkView({
   }
 
   const selectedProviders = detail.providers.filter(p => selectedIds.has(p.id));
-  const hasMarkers        = markers.some(m => m.latitude !== 0 || m.longitude !== 0);
+  const hasMarkers        = displayedMarkers.length > 0 || !!searchLocation;
   const shownCount        = filtered.length;
 
   return (
@@ -232,6 +320,41 @@ export function PublicNetworkView({
             />
           </div>
 
+          <input
+            type="text"
+            aria-label="ZIP code"
+            value={zipInput}
+            onChange={e => setZipInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && void applyZipFilter()}
+            placeholder="ZIP"
+            className="w-24 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+                       focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-900/30
+                       placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white flex-shrink-0"
+          />
+
+          <button
+            onClick={() => void applyZipFilter()}
+            disabled={zipLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg flex-shrink-0 transition-colors
+                       bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 disabled:opacity-50"
+          >
+            {zipLoading ? 'Finding…' : 'Apply ZIP'}
+          </button>
+
+          <select
+            aria-label="Specialty"
+            value={selectedSpecialtyCode}
+            onChange={e => setSelectedSpecialtyCode(e.target.value)}
+            className="w-40 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+                       focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-900/30
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white flex-shrink-0"
+          >
+            <option value="">All specialties</option>
+            {(detail.specialties ?? []).map(s => (
+              <option key={s.id} value={s.code}>{s.name}</option>
+            ))}
+          </select>
+
           {/* Filter */}
           <button
             onClick={() => setShowAll(v => !v)}
@@ -246,6 +369,13 @@ export function PublicNetworkView({
             {showAll ? 'All providers' : 'Accepting only'}
           </button>
 
+          <button
+            onClick={clearFilters}
+            className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0"
+          >
+            Clear
+          </button>
+
           <span className="text-xs text-gray-400 font-medium flex-shrink-0">
             {shownCount} of {detail.providers.length}
           </span>
@@ -257,6 +387,9 @@ export function PublicNetworkView({
             </span>
           )}
         </div>
+        {zipError && (
+          <p className="px-5 pb-2 text-xs text-red-600 dark:text-red-400">{zipError}</p>
+        )}
       </header>
 
       {/* ── Body: left content + right panel ───────────────────────────────── */}
@@ -273,7 +406,7 @@ export function PublicNetworkView({
                 {filtered.length === 0 ? (
                   <div className="p-6 text-center">
                     <i className="ri-map-pin-line text-2xl text-gray-300 dark:text-gray-600 mb-2 block" />
-                    <p className="text-sm text-gray-400">No providers match your search</p>
+                    <p className="text-sm text-gray-400">No providers found.</p>
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -304,6 +437,7 @@ export function PublicNetworkView({
                     selectedId={hoveredId}
                     zoomToId={zoomToId}
                     onZoomed={() => setZoomToId(null)}
+                    searchLocation={searchLocation}
                     onSelect={handleMapSelect}
                     onRequestReferral={handleMapReferral}
                   />
@@ -322,7 +456,7 @@ export function PublicNetworkView({
               {filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <i className="ri-map-pin-line text-3xl text-gray-300 dark:text-gray-600 mb-3 block" />
-                  <p className="text-sm text-gray-400">No providers match your search</p>
+                  <p className="text-sm text-gray-400">No providers found.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
@@ -352,6 +486,7 @@ export function PublicNetworkView({
                 <PublicNetworkMap
                   markers={displayedMarkers}
                   selectedId={hoveredId}
+                  searchLocation={searchLocation}
                   onSelect={handleMapSelect}
                   onRequestReferral={handleMapReferral}
                 />
@@ -436,6 +571,11 @@ const ProviderCard = forwardRef<
             {provider.city}, {provider.state}
             {!compact && provider.postalCode ? ` ${provider.postalCode}` : ''}
           </p>
+          {typeof provider.distanceMiles === 'number' && (
+            <p className={['text-blue-600 dark:text-blue-400 mt-0.5 font-medium', compact ? 'text-xs' : 'text-sm'].join(' ')}>
+              {provider.distanceMiles.toFixed(1)} mi away
+            </p>
+          )}
           {provider.phone && !compact && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5">
               <i className="ri-phone-line text-gray-400 dark:text-gray-500 text-xs" />
@@ -446,13 +586,8 @@ const ProviderCard = forwardRef<
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{provider.phone}</p>
           )}
 
-          {/* Badges */}
+          {/* Status */}
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {provider.primaryCategory && (
-              <span className={['bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full font-medium', compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5'].join(' ')}>
-                {provider.primaryCategory}
-              </span>
-            )}
             <span className={[
               'rounded-full font-medium flex items-center gap-1',
               compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5',
@@ -468,11 +603,25 @@ const ProviderCard = forwardRef<
             </span>
           </div>
 
+          {/* Specialties */}
+          {(provider.specialties ?? []).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {(provider.specialties ?? []).map(s => (
+                <span key={s.id} className={['bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full font-medium', compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5'].join(' ')}>
+                  {s.name}
+                </span>
+              ))}
+            </div>
+          )}
+
         </div>
 
         {/* Select button */}
         <button
-          onClick={() => onToggle(provider.id)}
+          onClick={e => {
+            e.stopPropagation();
+            onToggle(provider.id);
+          }}
           className={[
             'flex-shrink-0 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1',
             compact ? 'px-2 py-1' : 'px-3 py-1.5',

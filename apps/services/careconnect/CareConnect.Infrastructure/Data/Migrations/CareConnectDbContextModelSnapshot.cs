@@ -694,6 +694,99 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("CareConnect.Domain.Specialty", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("cc_Specialties", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000001"),
+                            Code = "PAIN",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Pain",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000007"),
+                            Code = "SPINE",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Spine",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000004"),
+                            Code = "PHYSICAL_THERAPY",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Physical Therapy",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000006"),
+                            Code = "NEURO",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Neuro",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000005"),
+                            Code = "IMAGING",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Imaging",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000002"),
+                            Code = "CHIROPRACTOR",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Chiropractor",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
+                });
+
             modelBuilder.Entity("CareConnect.Domain.Facility", b =>
                 {
                     b.Property<Guid>("Id")
@@ -991,6 +1084,10 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<string>("Title")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
                     b.Property<string>("Npi")
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
@@ -1223,6 +1320,28 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("CategoryId");
 
                     b.ToTable("cc_ProviderCategories", (string)null);
+                });
+
+            modelBuilder.Entity("CareConnect.Domain.ProviderSpecialty", b =>
+                {
+                    b.Property<Guid>("ProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("SpecialtyId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("tinyint(1)");
+
+                    b.HasKey("ProviderId", "SpecialtyId");
+
+                    b.HasIndex("SpecialtyId")
+                        .HasDatabaseName("IX_cc_ProviderSpecialties_SpecialtyId");
+
+                    b.HasIndex("ProviderId", "IsPrimary")
+                        .HasDatabaseName("IX_cc_ProviderSpecialties_ProviderId_IsPrimary");
+
+                    b.ToTable("cc_ProviderSpecialties", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ProviderFacility", b =>
@@ -1981,6 +2100,25 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Navigation("Provider");
                 });
 
+            modelBuilder.Entity("CareConnect.Domain.ProviderSpecialty", b =>
+                {
+                    b.HasOne("CareConnect.Domain.Provider", "Provider")
+                        .WithMany("ProviderSpecialties")
+                        .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CareConnect.Domain.Specialty", "Specialty")
+                        .WithMany("ProviderSpecialties")
+                        .HasForeignKey("SpecialtyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Provider");
+
+                    b.Navigation("Specialty");
+                });
+
             modelBuilder.Entity("CareConnect.Domain.ProviderFacility", b =>
                 {
                     b.HasOne("CareConnect.Domain.Facility", "Facility")
@@ -2113,6 +2251,8 @@ namespace CareConnect.Infrastructure.Data.Migrations
             modelBuilder.Entity("CareConnect.Domain.Provider", b =>
                 {
                     b.Navigation("ProviderCategories");
+
+                    b.Navigation("ProviderSpecialties");
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ProviderNetwork", b =>
@@ -2123,6 +2263,11 @@ namespace CareConnect.Infrastructure.Data.Migrations
             modelBuilder.Entity("CareConnect.Domain.ReferralComment", b =>
                 {
                     b.Navigation("Attachments");
+                });
+
+            modelBuilder.Entity("CareConnect.Domain.Specialty", b =>
+                {
+                    b.Navigation("ProviderSpecialties");
                 });
 #pragma warning restore 612, 618
         }

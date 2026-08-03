@@ -35,7 +35,13 @@ public class UserService : IUserService
             throw new InvalidOperationException("A user with this email already exists in this tenant.");
 
         var passwordHash = _passwordHasher.Hash(request.Password);
-        var user = User.Create(request.TenantId, request.Email, passwordHash, request.FirstName, request.LastName);
+        var user = User.Create(
+            request.TenantId,
+            request.Email,
+            passwordHash,
+            request.FirstName,
+            request.LastName,
+            title: request.Title);
 
         var roleIds = (request.RoleIds ?? []).AsReadOnly();
         await _userRepository.AddAsync(user, request.TenantId, roleIds, ct);
@@ -75,5 +81,6 @@ public class UserService : IUserService
             .Where(s => s.IsActive && s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global)
             .Select(s => s.Role.Name)
             .ToList(),
-        AvatarDocumentId: user.AvatarDocumentId);
+        AvatarDocumentId: user.AvatarDocumentId,
+        Title: user.Title);
 }

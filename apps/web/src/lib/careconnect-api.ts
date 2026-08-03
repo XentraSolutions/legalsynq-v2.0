@@ -31,6 +31,8 @@ import type {
   NetworkProviderMarker,
   ProviderSearchResult,
   AddProviderToNetworkRequest,
+  UpdateNetworkProviderRequest,
+  SpecialtyOption,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,6 +50,11 @@ function toQs(params: Record<string, unknown>): string {
 // Calls /api/careconnect/* which routes through the BFF proxy → gateway.
 
 export const careConnectApi = {
+  specialties: {
+    list: () =>
+      apiClient.get<SpecialtyOption[]>(`/careconnect/api/specialties`),
+  },
+
   providers: {
     search: (params: ProviderSearchParams = {}) =>
       apiClient.get<PagedResponse<ProviderSummary>>(
@@ -262,6 +269,10 @@ export const careConnectApi = {
      */
     addProvider: (networkId: string, request: AddProviderToNetworkRequest) =>
       apiClient.post<NetworkProviderItem>(`/careconnect/api/networks/${networkId}/providers`, request),
+
+    /** PUT /api/networks/{id}/providers/{providerId} — edit shared provider through this network */
+    updateProvider: (networkId: string, providerId: string, request: UpdateNetworkProviderRequest) =>
+      apiClient.put<NetworkProviderItem>(`/careconnect/api/networks/${networkId}/providers/${providerId}`, request),
 
     /** DELETE /api/networks/{id}/providers/{providerId} — removes association only */
     removeProvider: (networkId: string, providerId: string) =>

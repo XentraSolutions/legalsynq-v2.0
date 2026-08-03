@@ -22,6 +22,15 @@ const DETAIL: PublicNetworkDetail = {
   networkId: 'network-1',
   networkName: 'CareConnect Network',
   networkDescription: 'Public provider network',
+  specialties: [
+    {
+      id: 'specialty-1',
+      name: 'Physical Therapy',
+      code: 'PHYSICAL_THERAPY',
+      description: null,
+      isActive: true,
+    },
+  ],
   providers: [
     {
       id: 'provider-1',
@@ -35,6 +44,18 @@ const DETAIL: PublicNetworkDetail = {
       acceptingReferrals: true,
       accessStage: 'PUBLIC',
       primaryCategory: 'Physical Therapy',
+      specialties: [
+        {
+          id: 'specialty-1',
+          name: 'Physical Therapy',
+          code: 'PHYSICAL_THERAPY',
+          description: null,
+          isActive: true,
+        },
+      ],
+      primarySpecialtyId: 'specialty-1',
+      primarySpecialty: 'Physical Therapy',
+      distanceMiles: null,
     },
   ],
   markers: [
@@ -47,6 +68,68 @@ const DETAIL: PublicNetworkDetail = {
       acceptingReferrals: true,
       latitude: 30.2672,
       longitude: -97.7431,
+      specialties: [
+        {
+          id: 'specialty-1',
+          name: 'Physical Therapy',
+          code: 'PHYSICAL_THERAPY',
+          description: null,
+          isActive: true,
+        },
+      ],
+      primarySpecialtyId: 'specialty-1',
+      primarySpecialty: 'Physical Therapy',
+      distanceMiles: null,
+    },
+  ],
+};
+
+const CHIRO_SPECIALTY = {
+  id: 'specialty-2',
+  name: 'Chiropractors',
+  code: 'CHIROPRACTORS',
+  description: null,
+  isActive: true,
+};
+
+const MULTI_PROVIDER_DETAIL: PublicNetworkDetail = {
+  ...DETAIL,
+  specialties: [...DETAIL.specialties, CHIRO_SPECIALTY],
+  providers: [
+    ...DETAIL.providers,
+    {
+      id: 'provider-2',
+      name: 'Bright Spine',
+      organizationName: 'Bright Spine Clinic',
+      phone: '555-987-6543',
+      city: 'Los Angeles',
+      state: 'CA',
+      postalCode: '90012',
+      isActive: true,
+      acceptingReferrals: true,
+      accessStage: 'PUBLIC',
+      primaryCategory: null,
+      specialties: [CHIRO_SPECIALTY],
+      primarySpecialtyId: CHIRO_SPECIALTY.id,
+      primarySpecialty: CHIRO_SPECIALTY.name,
+      distanceMiles: null,
+    },
+  ],
+  markers: [
+    ...DETAIL.markers,
+    {
+      id: 'provider-2',
+      name: 'Bright Spine',
+      organizationName: 'Bright Spine Clinic',
+      city: 'Los Angeles',
+      state: 'CA',
+      acceptingReferrals: true,
+      latitude: 34.0522,
+      longitude: -118.2437,
+      specialties: [CHIRO_SPECIALTY],
+      primarySpecialtyId: CHIRO_SPECIALTY.id,
+      primarySpecialty: CHIRO_SPECIALTY.name,
+      distanceMiles: null,
     },
   ],
 };
@@ -106,11 +189,11 @@ describe('PublicNetworkView', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select provider' }));
 
-    await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
-    await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
-    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
-    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
-    const phoneInputs = screen.getAllByPlaceholderText('(555) 555-5555');
+    await user.type(screen.getByPlaceholderText('Enter firm name'), 'Acme Injury Law');
+    await user.type(screen.getAllByPlaceholderText('Enter email address')[0], 'intake@firm.example');
+    await user.type(screen.getByPlaceholderText('Enter patient first name'), 'Jane');
+    await user.type(screen.getByPlaceholderText('Enter patient last name'), 'Doe');
+    const phoneInputs = screen.getAllByPlaceholderText('Enter 10-digit phone number');
     expect(phoneInputs).toHaveLength(2);
 
     await user.type(phoneInputs[1], '5555555555');
@@ -166,11 +249,11 @@ describe('PublicNetworkView', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select provider' }));
 
-    await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
-    await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
-    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
-    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
-    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
+    await user.type(screen.getByPlaceholderText('Enter firm name'), 'Acme Injury Law');
+    await user.type(screen.getAllByPlaceholderText('Enter email address')[0], 'intake@firm.example');
+    await user.type(screen.getByPlaceholderText('Enter patient first name'), 'Jane');
+    await user.type(screen.getByPlaceholderText('Enter patient last name'), 'Doe');
+    await user.type(screen.getAllByPlaceholderText('Enter 10-digit phone number')[1], '5555555555');
 
     const dateInputs = container.querySelectorAll('input[type="date"]');
     expect(dateInputs).toHaveLength(2);
@@ -226,13 +309,13 @@ describe('PublicNetworkView', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select provider' }));
 
-    await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
-    await user.type(screen.getByPlaceholderText('John'), 'Pat');
-    await user.type(screen.getAllByPlaceholderText('Doe')[0], 'Paralegal');
-    await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
-    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
-    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
-    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
+    await user.type(screen.getByPlaceholderText('Enter firm name'), 'Acme Injury Law');
+    await user.type(screen.getByPlaceholderText('Enter first name'), 'Pat');
+    await user.type(screen.getByPlaceholderText('Enter last name'), 'Paralegal');
+    await user.type(screen.getAllByPlaceholderText('Enter email address')[0], 'intake@firm.example');
+    await user.type(screen.getByPlaceholderText('Enter patient first name'), 'Jane');
+    await user.type(screen.getByPlaceholderText('Enter patient last name'), 'Doe');
+    await user.type(screen.getAllByPlaceholderText('Enter 10-digit phone number')[1], '5555555555');
 
     const dateInputs = container.querySelectorAll('input[type="date"]');
     fireEvent.change(dateInputs[0], { target: { value: '1990-01-01' } });
@@ -288,11 +371,11 @@ describe('PublicNetworkView', () => {
     await user.click(screen.getByRole('button', { name: 'Select provider' }));
 
     // Contact first/last name left blank — senderFirstName should fall back to the firm name.
-    await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
-    await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
-    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
-    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Doe');
-    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
+    await user.type(screen.getByPlaceholderText('Enter firm name'), 'Acme Injury Law');
+    await user.type(screen.getAllByPlaceholderText('Enter email address')[0], 'intake@firm.example');
+    await user.type(screen.getByPlaceholderText('Enter patient first name'), 'Jane');
+    await user.type(screen.getByPlaceholderText('Enter patient last name'), 'Doe');
+    await user.type(screen.getAllByPlaceholderText('Enter 10-digit phone number')[1], '5555555555');
 
     const dateInputs = container.querySelectorAll('input[type="date"]');
     fireEvent.change(dateInputs[0], { target: { value: '1990-01-01' } });
@@ -347,11 +430,11 @@ describe('PublicNetworkView', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select provider' }));
 
-    await user.type(screen.getByPlaceholderText('Acme Injury Law'), 'Acme Injury Law');
-    await user.type(screen.getByPlaceholderText('intake@firm.example'), 'intake@firm.example');
-    await user.type(screen.getByPlaceholderText('Jane'), 'Prince');
-    await user.type(screen.getAllByPlaceholderText('Doe')[1], 'Rogers');
-    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[1], '5555555555');
+    await user.type(screen.getByPlaceholderText('Enter firm name'), 'Acme Injury Law');
+    await user.type(screen.getAllByPlaceholderText('Enter email address')[0], 'intake@firm.example');
+    await user.type(screen.getByPlaceholderText('Enter patient first name'), 'Prince');
+    await user.type(screen.getByPlaceholderText('Enter patient last name'), 'Rogers');
+    await user.type(screen.getAllByPlaceholderText('Enter 10-digit phone number')[1], '5555555555');
 
     const dateInputs = container.querySelectorAll('input[type="date"]');
     expect(dateInputs).toHaveLength(2);
@@ -409,9 +492,9 @@ describe('PublicNetworkView', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Select provider' }));
-    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
-    await user.type(screen.getByPlaceholderText('Doe'), 'Doe');
-    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[0], '5555555555');
+    await user.type(screen.getByPlaceholderText('Enter patient first name'), 'Jane');
+    await user.type(screen.getByPlaceholderText('Enter patient last name'), 'Doe');
+    await user.type(screen.getByPlaceholderText('Enter 10-digit phone number'), '5555555555');
 
     const dateInputs = container.querySelectorAll('input[type="date"]');
     expect(dateInputs).toHaveLength(2);
@@ -469,9 +552,9 @@ describe('PublicNetworkView', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'Select provider' }));
-    await user.type(screen.getByPlaceholderText('Jane'), 'Jane');
-    await user.type(screen.getByPlaceholderText('Doe'), 'Doe');
-    await user.type(screen.getAllByPlaceholderText('(555) 555-5555')[0], '5555555555');
+    await user.type(screen.getByPlaceholderText('Enter patient first name'), 'Jane');
+    await user.type(screen.getByPlaceholderText('Enter patient last name'), 'Doe');
+    await user.type(screen.getByPlaceholderText('Enter 10-digit phone number'), '5555555555');
 
     const dateInputs = container.querySelectorAll('input[type="date"]');
     fireEvent.change(dateInputs[0], { target: { value: '1990-01-01' } });
@@ -491,5 +574,89 @@ describe('PublicNetworkView', () => {
       expect.stringContaining('/api/careconnect/api/referrals/ref-42/attachments/upload'),
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+
+  test('filters provider cards by specialty without reloading the page', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <PublicNetworkView
+        detail={MULTI_PROVIDER_DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    expect(screen.getByText('Atlas Rehab')).toBeInTheDocument();
+    expect(screen.getByText('Bright Spine')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Specialty'), 'CHIROPRACTORS');
+
+    expect(screen.queryByText('Atlas Rehab')).not.toBeInTheDocument();
+    expect(screen.getByText('Bright Spine')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Specialty'), '');
+
+    expect(screen.getByText('Atlas Rehab')).toBeInTheDocument();
+    expect(screen.getByText('Bright Spine')).toBeInTheDocument();
+  });
+
+  test('geocodes ZIP, sorts by distance, displays miles, and clears filters', async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/geocode/address')) {
+        return jsonResponse([{ latitude: 34.0522, longitude: -118.2437 }]);
+      }
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    }) as typeof fetch;
+
+    render(
+      <PublicNetworkView
+        detail={MULTI_PROVIDER_DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.type(screen.getByLabelText('ZIP code'), '90012');
+    await user.click(screen.getByRole('button', { name: 'Apply ZIP' }));
+
+    await waitFor(() => expect(screen.getByText('0.0 mi away')).toBeInTheDocument());
+
+    const bright = screen.getByText('Bright Spine');
+    const atlas = screen.getByText('Atlas Rehab');
+    expect(bright.compareDocumentPosition(atlas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.selectOptions(screen.getByLabelText('Specialty'), 'CHIROPRACTORS');
+    expect(screen.queryByText('Atlas Rehab')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.getByLabelText('ZIP code')).toHaveValue('');
+    expect(screen.getByLabelText('Specialty')).toHaveValue('');
+    expect(screen.getByText('Atlas Rehab')).toBeInTheDocument();
+  });
+
+  test('shows the no-results state when no provider matches specialty and text filters', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <PublicNetworkView
+        detail={MULTI_PROVIDER_DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.selectOptions(screen.getByLabelText('Specialty'), 'CHIROPRACTORS');
+    await user.type(screen.getByPlaceholderText('Search by name, location, or specialty…'), 'atlas');
+
+    expect(screen.getByText('No providers found.')).toBeInTheDocument();
   });
 });

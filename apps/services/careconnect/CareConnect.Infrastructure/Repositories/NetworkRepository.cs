@@ -64,6 +64,8 @@ public class NetworkRepository : INetworkRepository
             .AsNoTracking()
             .Include(n => n.NetworkProviders)
                 .ThenInclude(np => np.Provider)
+                    .ThenInclude(p => p.ProviderSpecialties)
+                        .ThenInclude(ps => ps.Specialty)
             .FirstOrDefaultAsync(n => n.TenantId == tenantId && n.Id == id && !n.IsDeleted, ct);
     }
 
@@ -103,6 +105,8 @@ public class NetworkRepository : INetworkRepository
             .AsNoTracking()
             .Where(np => np.ProviderNetworkId == networkId && np.TenantId == tenantId)
             .Include(np => np.Provider)
+                .ThenInclude(p => p.ProviderSpecialties)
+                    .ThenInclude(ps => ps.Specialty)
             .Select(np => np.Provider)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
@@ -152,7 +156,7 @@ public class NetworkRepository : INetworkRepository
             }
         }
 
-        return await q
+        return await IncludeProviderLookups(q)
             .OrderBy(p => p.Name)
             .Take(limit)
             .ToListAsync(ct);
@@ -160,25 +164,33 @@ public class NetworkRepository : INetworkRepository
 
     public async Task<Provider?> GetProviderByIdGlobalAsync(Guid id, CancellationToken ct = default)
     {
-        return await _db.Providers.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct);
+        return await IncludeProviderLookups(_db.Providers.AsNoTracking())
+            .FirstOrDefaultAsync(p => p.Id == id, ct);
     }
 
     public async Task<Provider?> GetProviderByNpiAsync(string npi, CancellationToken ct = default)
     {
         var trimmed = npi.Trim();
-        return await _db.Providers.AsNoTracking().FirstOrDefaultAsync(p => p.Npi == trimmed, ct);
+        return await IncludeProviderLookups(_db.Providers.AsNoTracking())
+            .FirstOrDefaultAsync(p => p.Npi == trimmed, ct);
     }
 
     public async Task<Provider?> GetProviderByTenantEmailAsync(Guid tenantId, string email, CancellationToken ct = default)
     {
         var trimmed = email.Trim().ToLowerInvariant();
-        return await _db.Providers.AsNoTracking()
+        return await IncludeProviderLookups(_db.Providers.AsNoTracking())
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Email == trimmed, ct);
     }
 
     public async Task AddProviderToRegistryAsync(Provider provider, CancellationToken ct = default)
     {
         await _db.Providers.AddAsync(provider, ct);
+    }
+
+    public Task UpdateProviderInRegistryAsync(Provider provider, CancellationToken ct = default)
+    {
+        _db.Providers.Update(provider);
+        return Task.CompletedTask;
     }
 
     public async Task<Dictionary<string, Provider>> GetProvidersByNpisAsync(IEnumerable<string> npis, CancellationToken ct = default)
@@ -193,6 +205,8 @@ public class NetworkRepository : INetworkRepository
 
         var providers = await _db.Providers.AsNoTracking()
             .Where(p => p.Npi != null && normalized.Contains(p.Npi))
+            .Include(p => p.ProviderSpecialties)
+                .ThenInclude(ps => ps.Specialty)
             .ToListAsync(ct);
 
         return providers
@@ -213,6 +227,8 @@ public class NetworkRepository : INetworkRepository
 
         var providers = await _db.Providers.AsNoTracking()
             .Where(p => p.TenantId == tenantId && normalized.Contains(p.Email))
+            .Include(p => p.ProviderSpecialties)
+                .ThenInclude(ps => ps.Specialty)
             .ToListAsync(ct);
 
         return providers
@@ -264,4 +280,28 @@ public class NetworkRepository : INetworkRepository
             });
         }
     }
+
+    public async Task SyncProviderSpecialtiesAsync(Guid providerId, List<Guid> specialtyIds, CancellationToken ct = default)
+    {
+        var existing = await _db.ProviderSpecialties
+            .Where(ps => ps.ProviderId == providerId)
+            .ToListAsync(ct);
+
+        _db.ProviderSpecialties.RemoveRange(existing);
+
+        foreach (var item in specialtyIds.Distinct().Select((id, index) => new { Id = id, Index = index }))
+        {
+            _db.ProviderSpecialties.Add(new ProviderSpecialty
+            {
+                ProviderId = providerId,
+                SpecialtyId = item.Id,
+                IsPrimary = item.Index == 0
+            });
+        }
+    }
+
+    private static IQueryable<Provider> IncludeProviderLookups(IQueryable<Provider> query) =>
+        query
+            .Include(p => p.ProviderSpecialties)
+                .ThenInclude(ps => ps.Specialty);
 }

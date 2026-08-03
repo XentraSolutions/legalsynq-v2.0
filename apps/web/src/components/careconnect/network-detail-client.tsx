@@ -12,6 +12,7 @@ import type {
   NetworkProviderMarker,
   ProviderMarker,
   ProviderSearchResult,
+  SpecialtyOption,
 } from '@/types/careconnect';
 
 const ProviderMap = dynamic(
@@ -26,36 +27,29 @@ function toProviderMarker(m: NetworkProviderMarker): ProviderMarker {
     markerSubtitle:  `${m.city}, ${m.state}`,
     primaryCategory: undefined,
     categories:      [],
+    specialties:     m.specialties ?? [],
+    primarySpecialty: m.primarySpecialty,
+    primarySpecialtyId: m.primarySpecialtyId,
+    distanceMiles:   m.distanceMiles,
   };
 }
 
 interface NetworkDetailClientProps {
   network:        NetworkDetail;
   initialMarkers: NetworkProviderMarker[];
+  specialtyOptions: SpecialtyOption[];
 }
 
 type AddMode = 'search' | 'create';
 
-// Provider types matching the CareConnect category seed data
-const PROVIDER_TYPES = [
-  { code: 'IMG',     label: 'Imaging',          color: '#3B82F6' },
-  { code: 'PAIN',    label: 'Pain Management',   color: '#22C55E' },
-  { code: 'EXTREM',  label: 'Extremities',       color: '#8B5CF6' },
-  { code: 'SPINE',   label: 'Spine Surgeon',     color: '#F97316' },
-  { code: 'PT',      label: 'Physical Therapy',  color: '#EAB308' },
-  { code: 'NEURO',   label: 'Neurology',         color: '#EC4899' },
-  { code: 'SURGERY', label: 'Surgery Center',    color: '#EF4444' },
-] as const;
-
 const EMPTY_FORM = {
-  firstName: '', lastName: '', organizationName: '', email: '', phone: '',
+  title: '', firstName: '', lastName: '', organizationName: '', email: '', phone: '',
   addressLine1: '', city: '', state: '', postalCode: '',
   npi: '', isActive: true, acceptingReferrals: true,
-  categoryCodes: [] as string[],
-  primaryCategoryCode: '',
+  specialtyIds: [] as string[],
 };
 
-export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailClientProps) {
+export function NetworkDetailClient({ network, initialMarkers, specialtyOptions }: NetworkDetailClientProps) {
   const [providers, setProviders] = useState<NetworkProviderItem[]>(network.providers);
   const [markers, setMarkers] = useState<NetworkProviderMarker[]>(initialMarkers);
   const [activeTab, setActiveTab] = useState<'providers' | 'map'>('providers');
@@ -82,6 +76,11 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
 
   const hasInvalidPhone = newForm.phone.trim().length > 0 && !isValidPhone(newForm.phone);
   const hasInvalidPostalCode = newForm.postalCode.trim().length > 0 && !isValidUsZipCode(newForm.postalCode);
+  const hasNoSpecialty = newForm.specialtyIds.length === 0;
+  const selectedSpecialtyCodes = () => {
+    const selected = new Set(newForm.specialtyIds);
+    return specialtyOptions.filter(s => selected.has(s.id)).map(s => s.code);
+  };
 
   // ── Search ──────────────────────────────────────────────────────────────────
 
@@ -134,12 +133,22 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (hasNoSpecialty) {
+      setCreateError('Select at least one specialty.');
+      return;
+    }
     if (hasInvalidPhone || hasInvalidPostalCode) return;
+    const specialtyCodes = selectedSpecialtyCodes();
+    if (specialtyCodes.length === 0) {
+      setCreateError('Select at least one specialty.');
+      return;
+    }
     setCreating(true);
     setCreateError(null);
     try {
       const { data } = await careConnectApi.networks.addProvider(network.id, {
         newProvider: {
+          title:               newForm.title.trim() || undefined,
           firstName:           newForm.firstName.trim(),
           lastName:            newForm.lastName.trim(),
           organizationName:    newForm.organizationName.trim() || undefined,
@@ -152,8 +161,8 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
           isActive:            newForm.isActive,
           acceptingReferrals:  newForm.acceptingReferrals,
           npi:                 newForm.npi.trim() || undefined,
-          categoryCodes:       newForm.categoryCodes.length > 0 ? newForm.categoryCodes : undefined,
-          primaryCategoryCode: newForm.primaryCategoryCode || undefined,
+          specialtyCodes,
+          primarySpecialtyCode: specialtyCodes[0],
         },
       });
       if (data && !providers.find(p => p.id === data.id)) {
@@ -297,6 +306,15 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
                               {p.city}, {p.state}
                               {p.npi && <span className="ml-2 font-mono">NPI: {p.npi}</span>}
                             </p>
+                            {p.specialties?.length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {p.specialties.map(s => (
+                                  <span key={s.id} className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 border border-blue-200">
+                                    {s.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
                           <div className="ml-3 flex-shrink-0">
                             {inNetwork ? (
@@ -330,6 +348,16 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
               Fill in the provider details. The NPI field is strongly recommended — it prevents duplicate records in the shared registry.
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                <input
+                  value={newForm.title}
+                  onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))}
+                  className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                  placeholder="Dr."
+                  maxLength={50}
+                />
+              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">First name *</label>
                 <input
@@ -448,15 +476,21 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
                 </div>
               </div>
             </div>
-            {/* ── Provider Types ── */}
+            {/* ── Specialty ── */}
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-2">Provider Types</label>
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4">
-                {PROVIDER_TYPES.map(pt => {
-                  const checked = newForm.categoryCodes.includes(pt.code);
+              <label className="block text-xs font-medium text-gray-600 mb-2">Specialty *</label>
+              <div className={`grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 rounded-md border p-2 ${
+                hasNoSpecialty && createError === 'Select at least one specialty.'
+                  ? 'border-red-300 bg-red-50'
+                  : 'border-gray-200 bg-white'
+              }`}>
+                {specialtyOptions.length === 0 ? (
+                  <p className="col-span-full text-xs text-gray-400">No active specialties are configured.</p>
+                ) : specialtyOptions.map(s => {
+                  const checked = newForm.specialtyIds.includes(s.id);
                   return (
                     <label
-                      key={pt.code}
+                      key={s.id}
                       className={`flex items-center gap-2 cursor-pointer rounded-md border px-2.5 py-2 text-xs transition-colors ${
                         checked
                           ? 'border-blue-300 bg-blue-50 text-blue-800'
@@ -465,67 +499,27 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
                     >
                       <input
                         type="checkbox"
-                        className="sr-only"
                         checked={checked}
                         onChange={e => {
-                          setNewForm(f => {
-                            const next = e.target.checked
-                              ? [...f.categoryCodes, pt.code]
-                              : f.categoryCodes.filter(c => c !== pt.code);
-                            return {
-                              ...f,
-                              categoryCodes: next,
-                              primaryCategoryCode:
-                                f.primaryCategoryCode === pt.code && !e.target.checked
-                                  ? (next[0] ?? '')
-                                  : f.primaryCategoryCode,
-                            };
-                          });
+                          setNewForm(f => ({
+                            ...f,
+                            specialtyIds: e.target.checked
+                              ? [...f.specialtyIds, s.id]
+                              : f.specialtyIds.filter(id => id !== s.id),
+                          }));
+                          if (createError === 'Select at least one specialty.') {
+                            setCreateError(null);
+                          }
                         }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
-                      <span
-                        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: pt.color }}
-                      />
-                      {pt.label}
+                      {s.name}
                     </label>
                   );
                 })}
               </div>
-
-              {/* Default / Primary type */}
-              {newForm.categoryCodes.length > 0 && (
-                <div className="mt-3">
-                  <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                    Default Type <span className="text-gray-400 font-normal">(shown first on profile)</span>
-                  </label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {newForm.categoryCodes.map(code => {
-                      const pt = PROVIDER_TYPES.find(t => t.code === code);
-                      if (!pt) return null;
-                      const isPrimary = newForm.primaryCategoryCode === code;
-                      return (
-                        <button
-                          key={code}
-                          type="button"
-                          onClick={() => setNewForm(f => ({ ...f, primaryCategoryCode: code }))}
-                          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all ${
-                            isPrimary
-                              ? 'border-blue-500 bg-blue-600 text-white shadow-sm'
-                              : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
-                          }`}
-                        >
-                          <span
-                            className="w-2 h-2 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: isPrimary ? '#fff' : pt.color }}
-                          />
-                          {pt.label}
-                          {isPrimary && <span className="ml-0.5 opacity-80">✓</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              {hasNoSpecialty && createError === 'Select at least one specialty.' && (
+                <p className="text-xs text-red-500 mt-1">Select at least one specialty.</p>
               )}
             </div>
 
@@ -605,6 +599,15 @@ export function NetworkDetailClient({ network, initialMarkers }: NetworkDetailCl
                   <p className="font-medium text-gray-900 truncate">{provider.name}</p>
                   {provider.organizationName && (
                     <p className="text-sm text-gray-500 truncate">{provider.organizationName}</p>
+                  )}
+                  {provider.specialties?.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {provider.specialties.map(s => (
+                        <span key={s.id} className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 border border-blue-200">
+                          {s.name}
+                        </span>
+                      ))}
+                    </div>
                   )}
                   <p className="text-xs text-gray-400">
                     {provider.city}, {provider.state} · {provider.email}

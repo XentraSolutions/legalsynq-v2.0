@@ -28,6 +28,7 @@ public interface INetworkRepository
     Task<Provider?> GetProviderByNpiAsync(string npi, CancellationToken ct = default);
     Task<Provider?> GetProviderByTenantEmailAsync(Guid tenantId, string email, CancellationToken ct = default);
     Task AddProviderToRegistryAsync(Provider provider, CancellationToken ct = default);
+    Task UpdateProviderInRegistryAsync(Provider provider, CancellationToken ct = default);
     Task<Dictionary<string, Provider>> GetProvidersByNpisAsync(IEnumerable<string> npis, CancellationToken ct = default);
     Task<Dictionary<string, Provider>> GetProvidersByTenantEmailsAsync(Guid tenantId, IEnumerable<string> emails, CancellationToken ct = default);
     Task<HashSet<Guid>> GetNetworkProviderIdsAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
@@ -38,6 +39,7 @@ public interface INetworkRepository
     /// Does NOT call SaveChanges — caller is responsible.
     /// </summary>
     Task SyncProviderCategoriesAsync(Guid providerId, List<Guid> categoryIds, CancellationToken ct = default);
+    Task SyncProviderSpecialtiesAsync(Guid providerId, List<Guid> specialtyIds, CancellationToken ct = default);
 
     /// <summary>
     /// Returns true when the provider is a member of at least one network that belongs to the given tenant.

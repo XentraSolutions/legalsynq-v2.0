@@ -46,12 +46,16 @@ Identity.Api.Tests/      Integration and unit tests
 | `GET` | `/api/internal/users/tenant-owner/display` | Internal: trusted product services can resolve the tenant owner's first/last display name from `idt_Tenants.OwnerUserId` and `idt_Users` |
 | `POST` | `/api/admin/products/{code}/provision` | Enable/disable product for tenant |
 | `POST` | `/api/admin/organizations/synqlien-buyer` | Internal: create/resolve a tenant-scoped `LIEN_OWNER` org for SynqLien public buyer activation |
+| `POST` | `/api/admin/organizations/{id}/self-register` | Internal: CareConnect self-enrollment creates or links an active Identity user; accepts optional user `title` |
 | `POST` | `/api/admin/organizations/{id}/synqlien-buyer-self-register` | Internal: create a SynqLien buyer user and grant `SYNQ_LIENS:SYNQLIEN_BUYER`; returns `409 ACCOUNT_ALREADY_EXISTS` for existing emails |
 | `GET` | `/api/tenants/current/branding` | Anonymous branding by tenant code |
 
 ## Database
 
 `IdentityDb` (MySQL) — all tables prefixed `idt_`.
+
+`idt_Users` includes an optional `Title` column (`varchar(50)`) for professional titles captured during
+CareConnect portal enrollment and exposed on user DTOs. Existing rows may leave it `NULL`.
 
 `20260728000001_SeedSynqLienSellWorkflowPermission` maps
 `SYNQ_LIENS.lien:sell` to `SYNQLIEN_SELLER`. This is the explicit Flow

@@ -42,6 +42,7 @@ interface PublicThreadData {
   clientName:    string;
   service:       string;
   providerName:  string;
+  providerTitle?: string | null;
   providerFirstName?: string | null;
   providerLastName?:  string | null;
   providerEmail?: string;
@@ -102,6 +103,7 @@ function toEnrollmentPrefill(data: PublicThreadData, fallbackCompanyName?: strin
     companyType: 'Provider',
     email: data.providerEmail ?? '',
     phone: data.providerPhone ?? '',
+    title: data.providerTitle?.trim() ?? '',
     firstName: providerContact.firstName,
     lastName: providerContact.lastName,
     addressLine1: data.providerAddressLine1 ?? '',

@@ -58,9 +58,18 @@ export interface PublicNetworkSummary {
   providerCount: number;
 }
 
+export interface PublicSpecialtyOption {
+  id:          string;
+  name:        string;
+  code:        string;
+  description?: string | null;
+  isActive:    boolean;
+}
+
 export interface PublicProviderItem {
   id:               string;
   name:             string;
+  title?:           string | null;
   organizationName: string | null;
   phone:            string;
   city:             string;
@@ -70,17 +79,26 @@ export interface PublicProviderItem {
   acceptingReferrals: boolean;
   accessStage:      string;
   primaryCategory:  string | null;
+  specialties:      PublicSpecialtyOption[];
+  primarySpecialtyId: string | null;
+  primarySpecialty: string | null;
+  distanceMiles?:   number | null;
 }
 
 export interface PublicProviderMarker {
   id:               string;
   name:             string;
+  title?:           string | null;
   organizationName: string | null;
   city:             string;
   state:            string;
   acceptingReferrals: boolean;
   latitude:         number;
   longitude:        number;
+  specialties:      PublicSpecialtyOption[];
+  primarySpecialtyId: string | null;
+  primarySpecialty: string | null;
+  distanceMiles?:   number | null;
 }
 
 export interface PublicNetworkDetail {
@@ -89,6 +107,7 @@ export interface PublicNetworkDetail {
   networkDescription: string;
   providers:          PublicProviderItem[];
   markers:            PublicProviderMarker[];
+  specialties:        PublicSpecialtyOption[];
 }
 
 export interface ResolvedTenant {

@@ -48,7 +48,7 @@ public class NetworkImportTests
         networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
+        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), Mock.Of<ISpecialtyRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
 
         await using var stream = new MemoryStream();
         var result = await sut.ImportProvidersAsync(networkId, stream, "providers.csv", dryRun: false, userId, CancellationToken.None);
@@ -88,7 +88,7 @@ public class NetworkImportTests
         networks.Setup(r => r.GetNetworkProviderIdsAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
+        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), Mock.Of<ISpecialtyRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
 
         await using var stream = new MemoryStream();
         var result = await sut.ImportProvidersAsync(networkId, stream, "providers.csv", dryRun: true, userId: null, CancellationToken.None);
@@ -139,7 +139,7 @@ public class NetworkImportTests
         networks.Setup(r => r.GetNetworkProviderIdsAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([existingProvider.Id]);
 
-        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
+        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), Mock.Of<ISpecialtyRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
 
         await using var stream = new MemoryStream();
         var result = await sut.ImportProvidersAsync(networkId, stream, "providers.csv", dryRun: false, userId: null, CancellationToken.None);
@@ -172,7 +172,7 @@ public class NetworkImportTests
         networks.Setup(r => r.GetNetworkProviderIdsAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
-        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
+        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), Mock.Of<ISpecialtyRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
 
         await using var stream = new MemoryStream();
         var result = await sut.ImportProvidersAsync(networkId, stream, "providers.csv", dryRun: false, userId: null, CancellationToken.None);
@@ -191,7 +191,7 @@ public class NetworkImportTests
         networks.Setup(r => r.GetByIdGlobalAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((ProviderNetwork?)null);
 
-        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
+        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), Mock.Of<ISpecialtyRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
 
         await using var stream = new MemoryStream();
         await Assert.ThrowsAsync<NotFoundException>(() =>

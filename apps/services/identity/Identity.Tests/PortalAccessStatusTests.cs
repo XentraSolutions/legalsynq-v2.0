@@ -552,7 +552,8 @@ public class PortalAccessStatusTests
                 Password: "SingleName123!",
                 FirstName: "Prince",
                 LastName: null,
-                Phone: "+15550123456"),
+                Phone: "+15550123456",
+                Title: "Dr."),
             invokeDb,
             invokePasswordHasher,
             provisioningEngine,
@@ -572,6 +573,7 @@ public class PortalAccessStatusTests
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
 
         var savedUser = await verifyDb.Users.SingleAsync(u => u.Id == body.UserId);
+        Assert.Equal("Dr.", savedUser.Title);
         Assert.Equal("Prince", savedUser.FirstName);
         Assert.Equal(string.Empty, savedUser.LastName);
         Assert.Equal("+15550123456", savedUser.Phone);

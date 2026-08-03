@@ -25,20 +25,27 @@ public sealed record NetworkDetailResponse(
 public sealed record NetworkProviderItem(
     Guid   Id,
     string Name,
+    string? Title,
     string? OrganizationName,
     string Email,
     string Phone,
     string City,
     string State,
+    string AddressLine1,
+    string PostalCode,
     bool   IsActive,
     bool   AcceptingReferrals,
-    string AccessStage);
+    string AccessStage,
+    List<SpecialtyResponse> Specialties,
+    Guid? PrimarySpecialtyId,
+    string? PrimarySpecialty);
 
 // ── Map markers ───────────────────────────────────────────────────────────────
 
 public sealed record NetworkProviderMarker(
     Guid   Id,
     string Name,
+    string? Title,
     string? OrganizationName,
     string City,
     string State,
@@ -50,7 +57,10 @@ public sealed record NetworkProviderMarker(
     bool   IsActive,
     double Latitude,
     double Longitude,
-    string? GeoPointSource);
+    string? GeoPointSource,
+    List<SpecialtyResponse> Specialties,
+    Guid? PrimarySpecialtyId,
+    string? PrimarySpecialty);
 
 // ── Shared provider search ────────────────────────────────────────────────────
 
@@ -58,6 +68,7 @@ public sealed record NetworkProviderMarker(
 public sealed record ProviderSearchResult(
     Guid    Id,
     string  Name,
+    string? Title,
     string? OrganizationName,
     string  Email,
     string  Phone,
@@ -68,7 +79,10 @@ public sealed record ProviderSearchResult(
     string? Npi,
     bool    IsActive,
     bool    AcceptingReferrals,
-    string  AccessStage);
+    string  AccessStage,
+    List<SpecialtyResponse> Specialties,
+    Guid? PrimarySpecialtyId,
+    string? PrimarySpecialty);
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
@@ -106,7 +120,33 @@ public sealed record NewProviderData(
     /// <summary>Category codes (e.g. "IMG", "PAIN"). The primary category code should be first.</summary>
     List<string>? CategoryCodes = null,
     /// <summary>The code of the default/primary provider type (must be present in CategoryCodes).</summary>
-    string? PrimaryCategoryCode = null);
+    string? PrimaryCategoryCode = null,
+    /// <summary>Specialty codes (e.g. "PHYSICAL_THERAPY"). The primary specialty code should be first.</summary>
+    List<string>? SpecialtyCodes = null,
+    /// <summary>The code of the default/primary specialty (must be present in SpecialtyCodes).</summary>
+    string? PrimarySpecialtyCode = null,
+    double? Latitude = null,
+    double? Longitude = null,
+    string? GeoPointSource = null,
+    string? Title = null);
+
+public sealed record UpdateNetworkProviderRequest(
+    string  FirstName,
+    string  LastName,
+    string? OrganizationName,
+    string  Email,
+    string  Phone,
+    string  AddressLine1,
+    string  City,
+    string  State,
+    string  PostalCode,
+    bool    IsActive,
+    bool    AcceptingReferrals,
+    List<Guid> SpecialtyIds,
+    double? Latitude = null,
+    double? Longitude = null,
+    string? GeoPointSource = null,
+    string? Title = null);
 
 // ── Provider import ──────────────────────────────────────────────────────────
 

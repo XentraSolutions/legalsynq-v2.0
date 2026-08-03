@@ -15,6 +15,7 @@ public class ProviderConfiguration : IEntityTypeConfiguration<Provider>
         builder.Property(p => p.Id).IsRequired();
         builder.Property(p => p.TenantId).IsRequired();
         builder.Property(p => p.Name).IsRequired().HasMaxLength(200);
+        builder.Property(p => p.Title).HasMaxLength(50);
         builder.Property(p => p.OrganizationName).HasMaxLength(300);
         builder.Property(p => p.Email).IsRequired().HasMaxLength(320);
         builder.Property(p => p.Phone).IsRequired().HasMaxLength(50);
@@ -89,6 +90,11 @@ public class ProviderConfiguration : IEntityTypeConfiguration<Provider>
         builder.HasMany(p => p.ProviderCategories)
                .WithOne(pc => pc.Provider)
                .HasForeignKey(pc => pc.ProviderId)
+               .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(p => p.ProviderSpecialties)
+               .WithOne(ps => ps.Provider)
+               .HasForeignKey(ps => ps.ProviderId)
                .OnDelete(DeleteBehavior.Cascade);
     }
 }

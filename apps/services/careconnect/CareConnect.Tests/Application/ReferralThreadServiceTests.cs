@@ -102,6 +102,9 @@ public class ReferralThreadServiceTests
         var provider = new ProviderStub
         {
             Name = "Dr. Gray",
+            Title = "Dr.",
+            FirstName = "Graham",
+            LastName = "Gray",
             OrganizationName = "Gray Clinic",
             Email = "intake@gray.example",
             AccessStage = ProviderAccessStage.Url,
@@ -127,6 +130,9 @@ public class ReferralThreadServiceTests
         Assert.NotNull(result.Data);
         Assert.Equal(provider.Id, result.Data!.ProviderId);
         Assert.Equal("Gray Clinic", result.Data.ProviderName);
+        Assert.Equal("Dr.", result.Data.ProviderTitle);
+        Assert.Equal("Graham", result.Data.ProviderFirstName);
+        Assert.Equal("Gray", result.Data.ProviderLastName);
         Assert.Equal("intake@gray.example", result.Data.ProviderEmail);
         Assert.Equal("555-0101", result.Data.ProviderPhone);
         Assert.Equal("123 Main", result.Data.ProviderAddressLine1);
@@ -753,6 +759,9 @@ public class ReferralThreadServiceTests
     private sealed class ProviderStub
     {
         public string Name { get; init; } = string.Empty;
+        public string? Title { get; init; }
+        public string? FirstName { get; init; }
+        public string? LastName { get; init; }
         public string OrganizationName { get; init; } = string.Empty;
         public string Email { get; init; } = string.Empty;
         public string AccessStage { get; init; } = ProviderAccessStage.CommonPortal;
@@ -771,7 +780,10 @@ public class ReferralThreadServiceTests
                 "89101",
                 isActive: true,
                 acceptingReferrals: true,
-                createdByUserId: null);
+                createdByUserId: null,
+                firstName: FirstName,
+                lastName: LastName,
+                title: Title);
 
             if (organizationId.HasValue)
                 provider.LinkOrganization(organizationId.Value);

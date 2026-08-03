@@ -72,12 +72,25 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string; bor
   InProgress: { label: 'In Progress',               color: '#5b21b6', bg: '#f5f3ff', border: '#c4b5fd' },
 };
 
-function formatDate(iso: string, timezone: string) {
+export function formatDate(iso: string, timezone: string) {
   try {
-    return new Date(iso).toLocaleString('en-US', {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return iso;
+
+    const parts = new Intl.DateTimeFormat('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: 'numeric', minute: '2-digit', hour12: true, timeZone: timezone,
-    });
+    }).formatToParts(date);
+    const get = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value;
+    const month = get('month');
+    const day = get('day');
+    const year = get('year');
+    const hour = get('hour');
+    const minute = get('minute');
+    const dayPeriod = get('dayPeriod');
+    if (!month || !day || !year || !hour || !minute || !dayPeriod) return iso;
+
+    return `${month} ${day}, ${year}, ${hour}:${minute} ${dayPeriod}`;
   } catch { return iso; }
 }
 

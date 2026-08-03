@@ -4,6 +4,7 @@ public class ProviderMarkerResponse
 {
     public Guid    Id               { get; set; }
     public string  Name             { get; set; } = string.Empty;
+    public string? Title            { get; set; }
     public string? OrganizationName { get; set; }
     public string  DisplayLabel     { get; set; } = string.Empty;
     public string  MarkerSubtitle   { get; set; } = string.Empty;
@@ -20,4 +21,8 @@ public class ProviderMarkerResponse
     public string? GeoPointSource   { get; set; }
     public string? PrimaryCategory  { get; set; }
     public List<string> Categories  { get; set; } = new();
+    public List<SpecialtyResponse> Specialties { get; set; } = new();
+    public string? PrimarySpecialty { get; set; }
+    public Guid? PrimarySpecialtyId { get; set; }
+    public double? DistanceMiles { get; set; }
 }

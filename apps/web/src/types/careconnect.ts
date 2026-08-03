@@ -1,8 +1,17 @@
 // ── Provider ──────────────────────────────────────────────────────────────────
 
+export interface SpecialtyOption {
+  id:          string;
+  name:        string;
+  code:        string;
+  description?: string | null;
+  isActive:    boolean;
+}
+
 export interface ProviderSummary {
   id:                 string;
   name:               string;
+  title?:             string | null;
   organizationName?:  string;
   email:              string;
   phone:              string;
@@ -13,6 +22,11 @@ export interface ProviderSummary {
   acceptingReferrals: boolean;
   categories:         string[];
   primaryCategory?:   string;
+  specialties:        SpecialtyOption[];
+  specialtyIds:       string[];
+  primarySpecialty?:  string | null;
+  primarySpecialtyId?: string | null;
+  distanceMiles?:     number | null;
   displayLabel:       string;
   markerSubtitle:     string;
   hasGeoLocation:     boolean;
@@ -26,6 +40,7 @@ export type ProviderDetail = ProviderSummary;
 export interface ProviderSearchParams {
   name?:               string;
   categoryCode?:       string;
+  specialtyCode?:      string;
   city?:               string;
   state?:              string;
   acceptingReferrals?: boolean;
@@ -44,6 +59,7 @@ export interface ProviderSearchParams {
 export interface ProviderMarker {
   id:                 string;
   name:               string;
+  title?:             string | null;
   organizationName?:  string;
   displayLabel:       string;
   markerSubtitle:     string;
@@ -60,6 +76,10 @@ export interface ProviderMarker {
   geoPointSource?:    string;
   primaryCategory?:   string;
   categories:         string[];
+  specialties:        SpecialtyOption[];
+  primarySpecialty?:  string | null;
+  primarySpecialtyId?: string | null;
+  distanceMiles?:     number | null;
 }
 
 // ── Referral history ─────────────────────────────────────────────────────────
@@ -635,6 +655,7 @@ export interface ReferralPerformanceResult {
 export interface ProviderSearchResult {
   id:                string;
   name:              string;
+  title?:            string | null;
   organizationName?: string;
   email:             string;
   phone:             string;
@@ -646,12 +667,17 @@ export interface ProviderSearchResult {
   isActive:          boolean;
   acceptingReferrals: boolean;
   accessStage:       string;
+  specialties:       SpecialtyOption[];
+  primarySpecialtyId?: string | null;
+  primarySpecialty?: string | null;
+  distanceMiles?:    number | null;
 }
 
 /** Body for POST /api/networks/{id}/providers — match-or-create */
 export interface AddProviderToNetworkRequest {
   existingProviderId?: string;
   newProvider?: {
+    title?:              string;
     firstName:           string;
     lastName:            string;
     organizationName?:   string;
@@ -666,7 +692,32 @@ export interface AddProviderToNetworkRequest {
     npi?:                string;
     categoryCodes?:      string[];
     primaryCategoryCode?: string;
+    specialtyCodes?:     string[];
+    primarySpecialtyCode?: string;
+    latitude?:           number | null;
+    longitude?:          number | null;
+    geoPointSource?:     string | null;
   };
+}
+
+/** Body for PUT /api/networks/{networkId}/providers/{providerId}. */
+export interface UpdateNetworkProviderRequest {
+  title?:              string | null;
+  firstName:           string;
+  lastName:            string;
+  organizationName?:   string | null;
+  email:               string;
+  phone:               string;
+  addressLine1:        string;
+  city:                string;
+  state:               string;
+  postalCode:          string;
+  isActive:            boolean;
+  acceptingReferrals:  boolean;
+  specialtyIds:        string[];
+  latitude?:           number | null;
+  longitude?:          number | null;
+  geoPointSource?:     string | null;
 }
 
 export interface NetworkSummary {
@@ -689,14 +740,21 @@ export type ProviderAccessStageValue = typeof ProviderAccessStage[keyof typeof P
 export interface NetworkProviderItem {
   id:                string;
   name:              string;
+  title?:            string | null;
   organizationName?: string;
   email:             string;
   phone:             string;
   city:              string;
   state:             string;
+  addressLine1:      string;
+  postalCode:        string;
   isActive:          boolean;
   acceptingReferrals: boolean;
   accessStage:       string;
+  specialties:       SpecialtyOption[];
+  primarySpecialtyId?: string | null;
+  primarySpecialty?: string | null;
+  distanceMiles?:    number | null;
 }
 
 export interface NetworkDetail {
@@ -711,6 +769,7 @@ export interface NetworkDetail {
 export interface NetworkProviderMarker {
   id:                string;
   name:              string;
+  title?:            string | null;
   organizationName?: string;
   city:              string;
   state:             string;
@@ -723,6 +782,10 @@ export interface NetworkProviderMarker {
   latitude:          number;
   longitude:         number;
   geoPointSource?:   string;
+  specialties:       SpecialtyOption[];
+  primarySpecialtyId?: string | null;
+  primarySpecialty?: string | null;
+  distanceMiles?:    number | null;
 }
 
 export interface CreateNetworkRequest {

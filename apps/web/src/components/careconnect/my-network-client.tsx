@@ -12,6 +12,8 @@ import type {
   NetworkProviderItem,
   NetworkProviderMarker,
   ProviderSearchResult,
+  SpecialtyOption,
+  UpdateNetworkProviderRequest,
 } from '@/types/careconnect';
 
 const MyNetworkMap = dynamic(
@@ -32,18 +34,34 @@ interface AddressSuggestion {
 interface MyNetworkClientProps {
   initialNetwork: NetworkDetail | null;
   fetchError:     string | null;
+  specialtyOptions: SpecialtyOption[];
 }
 
-type PanelMode = 'closed' | 'search' | 'confirm' | 'create';
+type PanelMode = 'closed' | 'search' | 'confirm' | 'create' | 'edit';
 type ViewMode  = 'list' | 'cards' | 'map';
 
-const EMPTY_NEW_FORM = {
-  firstName: '', lastName: '', organizationName: '', email: '', phone: '',
-  addressLine1: '', city: '', state: '', postalCode: '',
-  npi: '', isActive: true, acceptingReferrals: true,
+const GEOCODED_POINT_SOURCE = 'Geocoded';
+const KNOWN_PROVIDER_TITLES: Record<string, string> = {
+  dr: 'Dr.',
+  'dr.': 'Dr.',
+  mr: 'Mr.',
+  'mr.': 'Mr.',
+  mrs: 'Mrs.',
+  'mrs.': 'Mrs.',
+  ms: 'Ms.',
+  'ms.': 'Ms.',
+  prof: 'Prof.',
+  'prof.': 'Prof.',
 };
 
-export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientProps) {
+const EMPTY_NEW_FORM = {
+  title: '', firstName: '', lastName: '', organizationName: '', email: '', phone: '',
+  addressLine1: '', city: '', state: '', postalCode: '',
+  npi: '', isActive: true, acceptingReferrals: true,
+  specialtyIds: [] as string[],
+};
+
+export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }: MyNetworkClientProps) {
   const [network,   setNetwork]   = useState<NetworkDetail | null>(initialNetwork);
   const [providers, setProviders] = useState<NetworkProviderItem[]>(initialNetwork?.providers ?? []);
   const [creating,  setCreating]  = useState(false);
@@ -65,6 +83,8 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
   const [addingId,     setAddingId]     = useState<string | null>(null);
   const [newForm,      setNewForm]      = useState(EMPTY_NEW_FORM);
   const [createError,  setCreateError]  = useState<string | null>(null);
+  const [editingProvider, setEditingProvider] = useState<NetworkProviderItem | null>(null);
+  const [savingEdit,      setSavingEdit]      = useState(false);
   const [removingId,   setRemovingId]   = useState<string | null>(null);
   const [toast,        setToast]        = useState<string | null>(null);
   const [networkUrl,   setNetworkUrl]   = useState<string>('');
@@ -83,6 +103,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
   const hasInvalidPostalCode = newForm.postalCode.trim().length > 0 && !isValidUsZipCode(newForm.postalCode);
   const hasZipMismatch = !!selectedPostalCode &&
     newForm.postalCode.trim().slice(0, 5) !== selectedPostalCode.slice(0, 5);
+  const hasNoSpecialty = newForm.specialtyIds.length === 0;
 
   useEffect(() => {
     setNetworkUrl(window.location.origin + '/careconnect/network');
@@ -220,6 +241,40 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     setAddrOpen(false);
   }
 
+  function toggleSpecialty(id: string) {
+    setNewForm(f => ({
+      ...f,
+      specialtyIds: f.specialtyIds.includes(id)
+        ? f.specialtyIds.filter(existing => existing !== id)
+        : [...f.specialtyIds, id],
+    }));
+    if (createError === 'Select at least one specialty.') {
+      setCreateError(null);
+    }
+  }
+
+  function selectedSpecialtyCodes(): string[] {
+    const selected = new Set(newForm.specialtyIds);
+    return specialtyOptions
+      .filter(s => selected.has(s.id))
+      .map(s => s.code);
+  }
+
+  function splitProviderName(name: string): { title: string; firstName: string; lastName: string } {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    const title = parts.length > 0 ? KNOWN_PROVIDER_TITLES[parts[0].toLowerCase()] ?? '' : '';
+    if (title) parts.shift();
+    if (parts.length <= 1) return { title, firstName: parts[0] ?? '', lastName: '' };
+    return { title, firstName: parts.slice(0, -1).join(' '), lastName: parts[parts.length - 1] ?? '' };
+  }
+
+  function providerDisplayName(form: typeof EMPTY_NEW_FORM): string {
+    return [form.title, form.firstName, form.lastName]
+      .map(v => v.trim())
+      .filter(Boolean)
+      .join(' ');
+  }
+
   // ── Add panel open/close ──────────────────────────────────────────────────
 
   function openAddPanel() {
@@ -229,6 +284,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     setConfirmTarget(null);
     setNewForm(EMPTY_NEW_FORM);
     setCreateError(null);
+    setEditingProvider(null);
     setGeoLat(null);
     setGeoLng(null);
     setSelectedPostalCode(null);
@@ -241,9 +297,39 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     setConfirmTarget(null);
     setCreateError(null);
     setSearchError(null);
+    setEditingProvider(null);
     setGeoLat(null);
     setGeoLng(null);
     setSelectedPostalCode(null);
+  }
+
+  function openEditPanel(provider: NetworkProviderItem) {
+    const { title, firstName, lastName } = splitProviderName(provider.name);
+    setSearchResults(null);
+    setSearchError(null);
+    setConfirmTarget(null);
+    setEditingProvider(provider);
+    setCreateError(null);
+    setGeoLat(null);
+    setGeoLng(null);
+    setSelectedPostalCode(null);
+    setNewForm({
+      title: provider.title?.trim() || title,
+      firstName,
+      lastName,
+      organizationName: provider.organizationName ?? '',
+      email: provider.email ?? '',
+      phone: formatPhoneInput(provider.phone ?? ''),
+      addressLine1: provider.addressLine1 ?? '',
+      city: provider.city ?? '',
+      state: provider.state ?? '',
+      postalCode: provider.postalCode ?? '',
+      npi: '',
+      isActive: provider.isActive,
+      acceptingReferrals: provider.acceptingReferrals,
+      specialtyIds: provider.specialties?.map(s => s.id) ?? [],
+    });
+    setPanelMode('edit');
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -287,6 +373,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
       if (data && !providers.find(p => p.id === data.id)) {
         setProviders(prev => [...prev, data]);
       }
+      setMarkersLoaded(false);
       showToast(`${confirmTarget.name} added to your network.`);
       closeAddPanel();
     } catch {
@@ -303,12 +390,22 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!network) return;
+    if (hasNoSpecialty) {
+      setCreateError('Select at least one specialty.');
+      return;
+    }
     if (hasInvalidPhone || hasInvalidPostalCode || hasZipMismatch) return;
+    const specialtyCodes = selectedSpecialtyCodes();
+    if (specialtyCodes.length === 0) {
+      setCreateError('Select at least one specialty.');
+      return;
+    }
     setCreating(true);
     setCreateError(null);
     try {
       const { data } = await careConnectApi.networks.addProvider(network.id, {
         newProvider: {
+          title:              newForm.title.trim() || undefined,
           firstName:          newForm.firstName.trim(),
           lastName:           newForm.lastName.trim(),
           organizationName:   newForm.organizationName.trim() || undefined,
@@ -321,20 +418,66 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
           isActive:           newForm.isActive,
           acceptingReferrals: newForm.acceptingReferrals,
           npi:                newForm.npi.trim() || undefined,
+          specialtyCodes,
+          primarySpecialtyCode: specialtyCodes[0],
           ...(geoLat !== null && geoLng !== null
-            ? { latitude: geoLat, longitude: geoLng, geoPointSource: 'nominatim' }
+            ? { latitude: geoLat, longitude: geoLng, geoPointSource: GEOCODED_POINT_SOURCE }
             : {}),
         },
       });
       if (data && !providers.find(p => p.id === data.id)) {
         setProviders(prev => [...prev, data]);
       }
-      showToast(`${newForm.firstName} ${newForm.lastName}`.trim() + ' added to the registry and your network.');
+      setMarkersLoaded(false);
+      showToast(`${providerDisplayName(newForm)} added to the registry and your network.`);
       closeAddPanel();
     } catch (err: unknown) {
       setCreateError(err instanceof Error ? err.message : 'Failed to add provider. Please try again.');
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function handleUpdate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!network || !editingProvider) return;
+    if (hasNoSpecialty) {
+      setCreateError('Select at least one specialty.');
+      return;
+    }
+    if (hasInvalidPhone || hasInvalidPostalCode || hasZipMismatch) return;
+
+    const payload: UpdateNetworkProviderRequest = {
+      title:              newForm.title.trim() || null,
+      firstName:          newForm.firstName.trim(),
+      lastName:           newForm.lastName.trim(),
+      organizationName:   newForm.organizationName.trim() || null,
+      email:              newForm.email.trim(),
+      phone:              stripPhone(newForm.phone),
+      addressLine1:       newForm.addressLine1.trim(),
+      city:               newForm.city.trim(),
+      state:              newForm.state.trim().toUpperCase(),
+      postalCode:         newForm.postalCode.trim(),
+      isActive:           newForm.isActive,
+      acceptingReferrals: newForm.acceptingReferrals,
+      specialtyIds:       newForm.specialtyIds,
+      ...(geoLat !== null && geoLng !== null
+        ? { latitude: geoLat, longitude: geoLng, geoPointSource: GEOCODED_POINT_SOURCE }
+        : {}),
+    };
+
+    setSavingEdit(true);
+    setCreateError(null);
+    try {
+      const { data } = await careConnectApi.networks.updateProvider(network.id, editingProvider.id, payload);
+      setProviders(prev => prev.map(p => p.id === data.id ? data : p));
+      setMarkersLoaded(false);
+      showToast(`${data.name} updated.`);
+      closeAddPanel();
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to update provider. Please try again.');
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -347,6 +490,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
     try {
       await careConnectApi.networks.removeProvider(network.id, providerId);
       setProviders(prev => prev.filter(p => p.id !== providerId));
+      setMarkersLoaded(false);
       showToast(`${providerName} removed from your network.`);
     } catch {
       showToast('Failed to remove provider. Please try again.');
@@ -464,7 +608,9 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
           {/* Panel header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-gray-900">Add Provider</h2>
+              <h2 className="text-sm font-semibold text-gray-900">
+                {panelMode === 'edit' ? 'Edit Provider' : 'Add Provider'}
+              </h2>
               {panelMode === 'confirm' && (
                 <span className="text-xs text-blue-700 bg-blue-100 border border-blue-200 rounded-full px-2 py-0.5">
                   Confirm Match
@@ -473,6 +619,11 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
               {panelMode === 'create' && (
                 <span className="text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-0.5">
                   New Provider
+                </span>
+              )}
+              {panelMode === 'edit' && (
+                <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+                  Provider Setup
                 </span>
               )}
             </div>
@@ -618,6 +769,15 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                                   {p.npi && <span className="ml-2 font-mono">NPI: {p.npi}</span>}
                                   <span className="ml-2">{formatPhoneDisplay(p.phone)}</span>
                                 </p>
+                                {p.specialties?.length > 0 && (
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {p.specialties.map(s => (
+                                      <span key={s.id} className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 border border-blue-200">
+                                        {s.name}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                               <div className="ml-3 shrink-0">
                                 {inNetwork ? (
@@ -676,6 +836,16 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                   {confirmTarget.npi && (
                     <div><span className="font-medium text-gray-500">NPI:</span> <span className="font-mono">{confirmTarget.npi}</span></div>
                   )}
+                  {confirmTarget.specialties?.length > 0 && (
+                    <div className="col-span-2 flex flex-wrap items-center gap-1">
+                      <span className="font-medium text-gray-500 mr-1">Specialties:</span>
+                      {confirmTarget.specialties.map(s => (
+                        <span key={s.id} className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 border border-blue-200">
+                          {s.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div>
                     <span className="font-medium text-gray-500">Referrals:</span>{' '}
                     <span className={confirmTarget.acceptingReferrals ? 'text-green-600 font-medium' : 'text-gray-400'}>
@@ -708,14 +878,26 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
           )}
 
           {/* ── Create mode ── */}
-          {panelMode === 'create' && (
+          {(panelMode === 'create' || panelMode === 'edit') && (
             <div className="space-y-3">
               <p className="text-xs text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
                 <i className="ri-information-line mr-1" />
-                This provider will be added to the shared platform registry and linked to your network. The NPI number is strongly recommended to prevent duplicates.
+                {panelMode === 'edit'
+                  ? 'Update provider setup details for this network member. Specialty is required before saving changes.'
+                  : 'This provider will be added to the shared platform registry and linked to your network. The NPI number is strongly recommended to prevent duplicates.'}
               </p>
-              <form onSubmit={handleCreate} className="space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <form onSubmit={panelMode === 'edit' ? handleUpdate : handleCreate} className="space-y-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                    <input
+                      value={newForm.title}
+                      onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))}
+                      placeholder="Dr."
+                      maxLength={50}
+                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">First name *</label>
                     <input
@@ -736,6 +918,9 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                       className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Organization / Practice</label>
                     <input
@@ -745,15 +930,66 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                       className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">NPI Number</label>
-                    <input
-                      value={newForm.npi}
-                      onChange={e => setNewForm(f => ({ ...f, npi: e.target.value }))}
-                      placeholder="1234567890"
-                      maxLength={10}
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-mono focus:border-blue-500 focus:outline-none"
-                    />
+                  {panelMode === 'create' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">NPI Number</label>
+                      <input
+                        value={newForm.npi}
+                        onChange={e => setNewForm(f => ({ ...f, npi: e.target.value }))}
+                        placeholder="1234567890"
+                        maxLength={10}
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-mono focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                  )}
+                  <div className={`${panelMode === 'edit' ? 'sm:col-span-1' : 'sm:col-span-2'} flex items-center gap-5`}>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={newForm.isActive}
+                        onChange={e => setNewForm(f => ({ ...f, isActive: e.target.checked }))}
+                        className="rounded border-gray-300 text-blue-600"
+                      />
+                      <span className="text-xs text-gray-700">Active</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={newForm.acceptingReferrals}
+                        onChange={e => setNewForm(f => ({ ...f, acceptingReferrals: e.target.checked }))}
+                        className="rounded border-gray-300 text-blue-600"
+                      />
+                      <span className="text-xs text-gray-700">Accepting referrals</span>
+                    </label>
+                  </div>
+                  <div className={panelMode === 'edit' ? 'sm:col-span-1' : 'sm:col-span-2'}>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Specialty *</label>
+                    <div className={`rounded-md border bg-white p-2 ${
+                      hasNoSpecialty && createError === 'Select at least one specialty.'
+                        ? 'border-red-300'
+                        : 'border-gray-300'
+                    }`}>
+                      {specialtyOptions.length === 0 ? (
+                        <p className="text-xs text-gray-400">No active specialties are configured.</p>
+                      ) : (
+                        <div className="grid gap-1 sm:grid-cols-2">
+                          {specialtyOptions.map(s => (
+                            <label key={s.id} className="flex items-center gap-2 rounded px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
+                              <input
+                                type="checkbox"
+                                checked={newForm.specialtyIds.includes(s.id)}
+                                onChange={() => toggleSpecialty(s.id)}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span>{s.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {hasNoSpecialty && createError === 'Select at least one specialty.' && (
+                      <p className="text-xs text-red-500 mt-1">Select at least one specialty.</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
@@ -861,44 +1097,23 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                   </div>
                 </div>
 
-                <div className="flex items-center gap-5">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={newForm.isActive}
-                      onChange={e => setNewForm(f => ({ ...f, isActive: e.target.checked }))}
-                      className="rounded border-gray-300 text-blue-600"
-                    />
-                    <span className="text-xs text-gray-700">Active</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={newForm.acceptingReferrals}
-                      onChange={e => setNewForm(f => ({ ...f, acceptingReferrals: e.target.checked }))}
-                      className="rounded border-gray-300 text-blue-600"
-                    />
-                    <span className="text-xs text-gray-700">Accepting referrals</span>
-                  </label>
-                </div>
-
                 {createError && <p className="text-xs text-red-600">{createError}</p>}
 
                 <div className="flex items-center gap-2">
                   <button
                     type="submit"
-                    disabled={creating}
+                    disabled={creating || savingEdit}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
                   >
-                    {creating ? (
-                      <><span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />Adding…</>
+                    {creating || savingEdit ? (
+                      <><span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />{panelMode === 'edit' ? 'Saving…' : 'Adding…'}</>
                     ) : (
-                      <><i className="ri-user-add-line" />Add to Registry & My Network</>
+                      <><i className={panelMode === 'edit' ? 'ri-save-line' : 'ri-user-add-line'} />{panelMode === 'edit' ? 'Save Provider' : 'Add to Registry & My Network'}</>
                     )}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPanelMode('search')}
+                    onClick={() => panelMode === 'edit' ? closeAddPanel() : setPanelMode('search')}
                     className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
                   >
                     Cancel
@@ -954,6 +1169,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Provider</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Specialties</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Contact</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Location</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
@@ -968,6 +1184,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
                     key={p.id}
                     provider={p}
                     removing={removingId === p.id}
+                    onEdit={() => openEditPanel(p)}
                     onRemove={() => handleRemove(p.id, p.name)}
                   />
                 ))}
@@ -985,6 +1202,7 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
               key={p.id}
               provider={p}
               removing={removingId === p.id}
+              onEdit={() => openEditPanel(p)}
               onRemove={() => handleRemove(p.id, p.name)}
             />
           ))}
@@ -1029,10 +1247,12 @@ export function MyNetworkClient({ initialNetwork, fetchError }: MyNetworkClientP
 function ProviderCard({
   provider,
   removing,
+  onEdit,
   onRemove,
 }: {
   provider: NetworkProviderItem;
   removing: boolean;
+  onEdit: () => void;
   onRemove: () => void;
 }) {
   return (
@@ -1050,14 +1270,23 @@ function ProviderCard({
             )}
           </div>
         </div>
-        <button
-          onClick={onRemove}
-          disabled={removing}
-          title="Remove from network"
-          className="p-1.5 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors shrink-0"
-        >
-          <i className={`text-base ${removing ? 'ri-loader-4-line animate-spin' : 'ri-close-circle-line'}`} />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={onEdit}
+            title="Edit provider"
+            className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+          >
+            <i className="ri-pencil-line text-base" />
+          </button>
+          <button
+            onClick={onRemove}
+            disabled={removing}
+            title="Remove from network"
+            className="p-1.5 rounded-md text-gray-300 hover:text-red-500 hover:bg-red-50 disabled:opacity-40 transition-colors"
+          >
+            <i className={`text-base ${removing ? 'ri-loader-4-line animate-spin' : 'ri-close-circle-line'}`} />
+          </button>
+        </div>
       </div>
 
       {/* Contact + location */}
@@ -1079,7 +1308,7 @@ function ProviderCard({
         )}
       </div>
 
-      {/* Badges */}
+      {/* Status */}
       <div className="flex flex-wrap gap-1.5 pt-1 border-t border-gray-100">
         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
           provider.isActive
@@ -1097,6 +1326,17 @@ function ProviderCard({
         </span>
         <AccessStageBadge stage={provider.accessStage} />
       </div>
+
+      {/* Specialties */}
+      {provider.specialties?.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {provider.specialties.map(s => (
+            <span key={s.id} className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 border border-blue-200">
+              {s.name}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1106,10 +1346,12 @@ function ProviderCard({
 function ProviderRow({
   provider,
   removing,
+  onEdit,
   onRemove,
 }: {
   provider: NetworkProviderItem;
   removing: boolean;
+  onEdit: () => void;
   onRemove: () => void;
 }) {
   return (
@@ -1120,16 +1362,25 @@ function ProviderRow({
           <p className="text-xs text-gray-500 mt-0.5 leading-tight">{provider.organizationName}</p>
         )}
       </td>
+      <td className="px-4 py-3">
+        {provider.specialties?.length ? (
+          <div className="flex flex-wrap gap-1">
+            {provider.specialties.map(s => (
+              <span key={s.id} className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 border border-blue-200">
+                {s.name}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-gray-400">—</span>
+        )}
+      </td>
       <td className="px-4 py-3 text-gray-600 text-xs space-y-0.5">
         <p>{provider.email}</p>
         <p>{formatPhoneDisplay(provider.phone)}</p>
       </td>
       <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
         {provider.city}, {provider.state}
-      </td>
-      <td className="px-4 py-3 text-xs font-mono text-gray-500">
-        {/* NetworkProviderItem doesn't carry NPI — show dash */}
-        —
       </td>
       <td className="px-4 py-3">
         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
@@ -1153,14 +1404,23 @@ function ProviderRow({
         <AccessStageBadge stage={provider.accessStage} />
       </td>
       <td className="px-4 py-3 text-right">
-        <button
-          onClick={onRemove}
-          disabled={removing}
-          title="Remove from network"
-          className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
-        >
-          <i className={`text-base ${removing ? 'ri-loader-4-line animate-spin' : 'ri-close-circle-line'}`} />
-        </button>
+        <div className="flex justify-end gap-1">
+          <button
+            onClick={onEdit}
+            title="Edit provider"
+            className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+          >
+            <i className="ri-pencil-line text-base" />
+          </button>
+          <button
+            onClick={onRemove}
+            disabled={removing}
+            title="Remove from network"
+            className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
+          >
+            <i className={`text-base ${removing ? 'ri-loader-4-line animate-spin' : 'ri-close-circle-line'}`} />
+          </button>
+        </div>
       </td>
     </tr>
   );

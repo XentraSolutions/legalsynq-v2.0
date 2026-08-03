@@ -8,11 +8,18 @@ interface NumberedMarker extends PublicProviderMarker {
   index: number;
 }
 
+interface SearchLocationMarker {
+  latitude:  number;
+  longitude: number;
+  label:     string;
+}
+
 interface PublicNetworkMapProps {
   markers:           NumberedMarker[];
   selectedId:        string | null;
   zoomToId?:         string | null;
   onZoomed?:         () => void;
+  searchLocation?:   SearchLocationMarker | null;
   onSelect:          (id: string) => void;
   onRequestReferral: (m: PublicProviderMarker) => void;
 }
@@ -34,6 +41,10 @@ function makePinHtml(index: number, accepting: boolean, selected: boolean): stri
   return `<div style="width:${size}px;height:${size}px;background:${bg};border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:${font}px;font-family:system-ui,sans-serif;border:2px solid #fff;${ring}box-shadow:0 2px 6px rgba(0,0,0,.35);transition:all .15s;">${index}</div>`;
 }
 
+function makeSearchPinHtml(): string {
+  return '<div style="width:30px;height:30px;background:#2563eb;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center"><div style="width:9px;height:9px;background:#fff;border-radius:50%"></div></div>';
+}
+
 function buildPopupEl(m: NumberedMarker, onReferral: (m: NumberedMarker) => void): HTMLDivElement {
   const el = document.createElement('div');
   el.style.fontFamily = 'system-ui,sans-serif';
@@ -45,6 +56,8 @@ function buildPopupEl(m: NumberedMarker, onReferral: (m: NumberedMarker) => void
     </div>
     ${m.organizationName ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${esc(m.organizationName)}</p>` : ''}
     <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${esc(m.city)}, ${esc(m.state)}</p>
+    ${typeof m.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 8px;font-weight:600">${m.distanceMiles.toFixed(1)} mi away</p>` : ''}
+    ${(m.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 8px">${esc(m.specialties.map(s => s.name).join(', '))}</p>` : ''}
     ${m.acceptingReferrals
       ? `<span style="font-size:11px;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:10px">Accepting referrals</span>`
       : `<span style="font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:10px">Not accepting referrals</span>`
@@ -58,7 +71,7 @@ function buildPopupEl(m: NumberedMarker, onReferral: (m: NumberedMarker) => void
   return el;
 }
 
-export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoomed, onSelect, onRequestReferral }: PublicNetworkMapProps) {
+export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoomed, searchLocation, onSelect, onRequestReferral }: PublicNetworkMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<import('leaflet').Map | null>(null);
   const layerRef     = useRef<import('leaflet').LayerGroup | null>(null);
@@ -121,6 +134,20 @@ export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoome
 
       layer.clearLayers();
 
+    if (searchLocation) {
+      const icon = Leaflet.divIcon({
+        className: '',
+        iconSize: [30, 30] as [number, number],
+        iconAnchor: [15, 30] as [number, number],
+        popupAnchor: [0, -30] as [number, number],
+        html: makeSearchPinHtml(),
+      });
+      Leaflet
+        .marker([searchLocation.latitude, searchLocation.longitude], { icon, zIndexOffset: 2000 })
+        .bindPopup(`<p style="font-weight:700;font-size:13px;margin:0;color:#111827">Search location</p><p style="font-size:12px;color:#6b7280;margin:2px 0 0">${esc(searchLocation.label)}</p>`, { closeButton: false })
+        .addTo(layer);
+    }
+
     for (const m of markers) {
       const sel  = m.id === selectedId;
       const size = sel ? 34 : 28;
@@ -143,18 +170,22 @@ export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoome
     }
 
     // Re-fit bounds only when the actual marker set changes, not on selectedId changes.
-    const newIds = markers.map(m => m.id).join(',');
+    const newIds = `${searchLocation?.label ?? ''}:${markers.map(m => m.id).join(',')}`;
     if (newIds !== prevMarkerIdsRef.current) {
       prevMarkerIdsRef.current = newIds;
-      if (markers.length === 1) {
+      if (markers.length === 0 && searchLocation) {
+        map.setView([searchLocation.latitude, searchLocation.longitude], 11);
+      } else if (markers.length === 1 && !searchLocation) {
         map.setView([markers[0].latitude, markers[0].longitude], 12);
-      } else if (markers.length > 1) {
+      } else if (markers.length > 0) {
+        const points = markers.map(mk => [mk.latitude, mk.longitude] as [number, number]);
+        if (searchLocation) points.push([searchLocation.latitude, searchLocation.longitude]);
         map.fitBounds(
-          Leaflet.latLngBounds(markers.map(mk => [mk.latitude, mk.longitude] as [number, number])),
+          Leaflet.latLngBounds(points),
           { padding: [40, 40] },
         );
       }
-    }    })();  }, [markers, selectedId]);
+    }    })();  }, [markers, selectedId, searchLocation]);
 
   // ── Zoom to an externally commanded provider (e.g. card click in split view) ─
   useEffect(() => {

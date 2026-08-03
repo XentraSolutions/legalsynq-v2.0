@@ -5,11 +5,13 @@ import { useGoogleMapsScript } from '@/lib/use-google-maps-script';
 import type { PublicProviderMarker } from '@/lib/public-network-api';
 
 interface NumberedMarker extends PublicProviderMarker { index: number; }
+interface SearchLocationMarker { latitude: number; longitude: number; label: string; }
 interface PublicNetworkMapProps {
   markers: NumberedMarker[];
   selectedId: string | null;
   zoomToId?: string | null;
   onZoomed?: () => void;
+  searchLocation?: SearchLocationMarker | null;
   onSelect: (id: string) => void;
   onRequestReferral: (m: PublicProviderMarker) => void;
 }
@@ -29,13 +31,20 @@ function numberedPinUrl(index: number, accepting: boolean, selected: boolean): s
   )}`;
 }
 
-export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed, onSelect, onRequestReferral }: PublicNetworkMapProps) {
+function searchPinUrl(): string {
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 34 34"><path d="M17 2c-5.2 0-9.5 4.2-9.5 9.5 0 7.1 9.5 20.5 9.5 20.5s9.5-13.4 9.5-20.5C26.5 6.2 22.2 2 17 2z" fill="#2563eb" stroke="white" stroke-width="2"/><circle cx="17" cy="11.5" r="3.5" fill="white"/></svg>',
+  )}`;
+}
+
+export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed, searchLocation, onSelect, onRequestReferral }: PublicNetworkMapProps) {
   const isLoaded     = useGoogleMapsScript();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<google.maps.Map | null>(null);
   const markerRefs   = useRef<Map<string, google.maps.Marker>>(new Map());
+  const searchMarkerRef = useRef<google.maps.Marker | null>(null);
   const infoRef      = useRef<google.maps.InfoWindow | null>(null);
-  const prevCount    = useRef(0);
+  const prevBoundsKey = useRef('');
 
   useEffect(() => {
     if (!isLoaded || !containerRef.current || mapRef.current) return;
@@ -53,17 +62,44 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
     if (!map || !isLoaded) return;
 
     // Fit bounds or center on single marker
-    const cur = markers.length;
-    if (cur > 0 && cur !== prevCount.current) {
-      prevCount.current = cur;
-      if (cur === 1) {
+    const boundsKey = `${searchLocation?.label ?? ''}:${markers.map(m => m.id).join(',')}`;
+    if (boundsKey !== prevBoundsKey.current) {
+      prevBoundsKey.current = boundsKey;
+      if (markers.length === 0 && searchLocation) {
+        map.setCenter({ lat: searchLocation.latitude, lng: searchLocation.longitude });
+        map.setZoom(11);
+      } else if (markers.length === 1 && !searchLocation) {
         map.setCenter({ lat: markers[0].latitude, lng: markers[0].longitude });
         map.setZoom(12);
-      } else {
+      } else if (markers.length > 0) {
         const bounds = new window.google.maps.LatLngBounds();
         markers.forEach(m => bounds.extend({ lat: m.latitude, lng: m.longitude }));
+        if (searchLocation) bounds.extend({ lat: searchLocation.latitude, lng: searchLocation.longitude });
         map.fitBounds(bounds, 40);
       }
+    }
+
+    if (searchLocation) {
+      const icon = {
+        url: searchPinUrl(),
+        scaledSize: new window.google.maps.Size(34, 34),
+        anchor: new window.google.maps.Point(17, 34),
+      };
+      if (!searchMarkerRef.current) {
+        searchMarkerRef.current = new window.google.maps.Marker({
+          position: { lat: searchLocation.latitude, lng: searchLocation.longitude },
+          map,
+          icon,
+          zIndex: 2000,
+        });
+      } else {
+        searchMarkerRef.current.setPosition({ lat: searchLocation.latitude, lng: searchLocation.longitude });
+        searchMarkerRef.current.setMap(map);
+        searchMarkerRef.current.setIcon(icon);
+      }
+      searchMarkerRef.current.setTitle(`Search location: ${searchLocation.label}`);
+    } else if (searchMarkerRef.current) {
+      searchMarkerRef.current.setMap(null);
     }
 
     // Animate to provider if zoomToId is set (e.g. left panel click)
@@ -86,6 +122,12 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
       const icon = { url: numberedPinUrl(m.index, m.acceptingReferrals, selected), scaledSize: new window.google.maps.Size(size, size), anchor: new window.google.maps.Point(size / 2, size / 2) };
 
       let marker = markerRefs.current.get(m.id);
+      if (marker) {
+        window.google.maps.event.clearInstanceListeners(marker);
+        marker.setMap(null);
+        markerRefs.current.delete(m.id);
+        marker = undefined;
+      }
       if (!marker) {
         marker = new window.google.maps.Marker({ position: { lat: m.latitude, lng: m.longitude }, map, icon, zIndex: selected ? 1000 : m.index });
         const captured = { ...m };
@@ -102,6 +144,8 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
               </div>
               ${captured.organizationName ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${captured.organizationName}</p>` : ''}
               <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${captured.city}, ${captured.state}</p>
+              ${typeof captured.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 8px;font-weight:600">${captured.distanceMiles.toFixed(1)} mi away</p>` : ''}
+              ${(captured.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 8px">${captured.specialties.map(s => s.name).join(', ')}</p>` : ''}
               ${captured.acceptingReferrals
                 ? `<span style="font-size:11px;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:10px">Accepting referrals</span>`
                 : `<span style="font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:10px">Not accepting referrals</span>`}
@@ -117,9 +161,6 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
           });
         });
         markerRefs.current.set(m.id, marker);
-      } else {
-        marker.setIcon(icon);
-        marker.setZIndex(selected ? 1000 : m.index);
       }
     }
 
@@ -127,11 +168,12 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
       if (!seen.has(id)) { marker.setMap(null); markerRefs.current.delete(id); }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markers, selectedId, isLoaded, zoomToId]);
+  }, [markers, selectedId, isLoaded, zoomToId, searchLocation]);
 
   useEffect(() => () => {
     for (const m of markerRefs.current.values()) m.setMap(null);
     markerRefs.current.clear();
+    searchMarkerRef.current?.setMap(null);
     infoRef.current?.close();
   }, []);
 

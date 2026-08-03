@@ -193,6 +193,28 @@ public static class NetworkEndpoints
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
 
+        // ── Edit a provider through a tenant-owned network ────────────────────
+        // The shared provider record may only be changed here after verifying the
+        // provider is a member of the caller's network.
+        group.MapPut("/{id:guid}/providers/{providerId:guid}", async (
+            Guid id,
+            Guid providerId,
+            [FromBody] UpdateNetworkProviderRequest request,
+            INetworkService service,
+            ICurrentRequestContext ctx,
+            IMemoryCache cache,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var provider = await service.UpdateProviderAsync(tenantId, id, providerId, request, ctx.UserId, ct);
+
+            foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
+                cache.Remove(key);
+
+            return Results.Ok(provider);
+        })
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+
         // ── Remove provider from network ───────────────────────────────────────
         group.MapDelete("/{id:guid}/providers/{providerId:guid}", async (
             Guid id,

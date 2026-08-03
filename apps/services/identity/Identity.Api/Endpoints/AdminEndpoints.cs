@@ -8546,6 +8546,8 @@ public static partial class AdminEndpointsLscc010
             return Results.BadRequest(new { error = "password is required." });
         if (string.IsNullOrWhiteSpace(body.FirstName))
             return Results.BadRequest(new { error = "firstName is required." });
+        if (body.Title?.Trim().Length > 50)
+            return Results.BadRequest(new { error = "title must be 50 characters or fewer." });
 
         var org = await db.Organizations
             .AsNoTracking()
@@ -8600,6 +8602,8 @@ public static partial class AdminEndpointsLscc010
 
         if (existingUser is not null)
         {
+            if (!string.IsNullOrWhiteSpace(body.Title))
+                existingUser.SetTitle(body.Title);
             existingUser.SetPhone(normalisedPhone);
 
             // Check if already in the target tenant (via UserTenants row).
@@ -8683,7 +8687,13 @@ public static partial class AdminEndpointsLscc010
         // ── New user: standard self-registration path ─────────────────────────
         var lastName = body.LastName?.Trim() ?? string.Empty;
         var hash     = passwordHasher.Hash(body.Password);
-        var user     = User.Create(targetTenantId.Value, emailLower, hash, body.FirstName.Trim(), lastName);
+        var user     = User.Create(
+            targetTenantId.Value,
+            emailLower,
+            hash,
+            body.FirstName.Trim(),
+            lastName,
+            title: body.Title?.Trim());
         user.SetPhone(normalisedPhone);
         // User.Create produces an active user by default — no Deactivate() call here.
         db.Users.Add(user);
@@ -9074,7 +9084,8 @@ public static partial class AdminEndpointsLscc010
         string  Password,
         string  FirstName,
         string? LastName = null,
-        string? Phone = null);
+        string? Phone = null,
+        string? Title = null);
 
     public record SelfRegisterUserResponse(
         Guid UserId,

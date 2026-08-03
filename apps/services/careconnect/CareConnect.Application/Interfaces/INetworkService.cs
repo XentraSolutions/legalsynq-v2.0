@@ -20,6 +20,7 @@ public interface INetworkService
 
     Task RemoveProviderAsync(Guid tenantId, Guid networkId, Guid providerId, CancellationToken ct = default);
     Task<List<NetworkProviderMarker>> GetMarkersAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
+    Task<NetworkProviderItem> UpdateProviderAsync(Guid tenantId, Guid networkId, Guid providerId, UpdateNetworkProviderRequest request, Guid? userId, CancellationToken ct = default);
 
     /// <summary>CC2-INT-B06-01: Search the shared global provider registry.</summary>
     Task<List<ProviderSearchResult>> SearchProvidersAsync(string? name, string? phone, string? npi, string? city, CancellationToken ct = default);

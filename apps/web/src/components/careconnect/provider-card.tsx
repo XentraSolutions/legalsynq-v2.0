@@ -43,6 +43,9 @@ export function ProviderCard({
                 <p className="text-sm text-gray-500 truncate">{provider.organizationName}</p>
               )}
               <p className="text-sm text-gray-500 mt-0.5">{provider.markerSubtitle}</p>
+              {typeof provider.distanceMiles === 'number' && (
+                <p className="text-xs text-blue-600 mt-1">{provider.distanceMiles.toFixed(1)} mi away</p>
+              )}
             </div>
 
             {/* Accepting referrals badge */}
@@ -57,22 +60,17 @@ export function ProviderCard({
             </span>
           </div>
 
-          {/* Categories */}
-          {provider.categories.length > 0 && (
+          {/* Specialties */}
+          {provider.specialties?.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {provider.categories.slice(0, 4).map(cat => (
+              {provider.specialties.map(s => (
                 <span
-                  key={cat}
-                  className="inline-flex items-center rounded px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600"
+                  key={s.id}
+                  className="inline-flex items-center rounded px-1.5 py-0.5 text-xs bg-blue-50 text-blue-700"
                 >
-                  {cat}
+                  {s.name}
                 </span>
               ))}
-              {provider.categories.length > 4 && (
-                <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs text-gray-400">
-                  +{provider.categories.length - 4} more
-                </span>
-              )}
             </div>
           )}
 

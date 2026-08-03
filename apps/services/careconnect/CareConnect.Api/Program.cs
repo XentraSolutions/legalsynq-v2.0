@@ -335,6 +335,7 @@ app.MapAssistantToolEndpoints();
 app.MapProviderEndpoints();
 app.MapReferralEndpoints();
 app.MapCategoryEndpoints();
+app.MapSpecialtyEndpoints();
 app.MapFacilityEndpoints();
 app.MapServiceOfferingEndpoints();
 app.MapAvailabilityTemplateEndpoints();
@@ -536,6 +537,11 @@ static async Task EnsureSchemaObjectsAsync(
         if (await Exec("ALTER TABLE `cc_Providers` ADD COLUMN `TenantProvisionedAtUtc` datetime(6) NULL",
             "cc_Providers.TenantProvisionedAtUtc")) applied++;
 
+    // ── 20260803010000_AddProviderTitle ─────────────────────────────────────
+    if (!await ColumnExists("cc_Providers", "Title"))
+        if (await Exec("ALTER TABLE `cc_Providers` ADD COLUMN `Title` varchar(50) NULL",
+            "cc_Providers.Title")) applied++;
+
     // ── 20260429120000_AddReferralComments ──────────────────────────────────
     if (!await TableExists("cc_ReferralComments"))
         if (await Exec("""
@@ -566,6 +572,141 @@ static async Task EnsureSchemaObjectsAsync(
         if (!await IndexExists("cc_ReferralAttachments", "IX_cc_ReferralAttachments_ReferralComment"))
             if (await Exec("CREATE INDEX `IX_cc_ReferralAttachments_ReferralComment` ON `cc_ReferralAttachments` (`TenantId`, `ReferralId`, `ReferralCommentId`, `CreatedAtUtc`)",
                 "cc_ReferralAttachments referral-comment index")) applied++;
+    }
+
+    // ── 20260803000000_AddProviderSpecialties ──────────────────────────────
+    if (!await MigrationApplied("20260803000000_AddProviderSpecialties"))
+    {
+        logger.LogInformation(
+            "EnsureSchemaObjects: skipping AddProviderSpecialties repair because migration is not yet recorded in migration history.");
+    }
+    else
+    {
+        if (!await TableExists("cc_Specialties"))
+        {
+            if (await Exec("""
+                CREATE TABLE `cc_Specialties` (
+                    `Id`           char(36)      NOT NULL,
+                    `Name`         varchar(200)  NOT NULL,
+                    `Code`         varchar(50)   NOT NULL,
+                    `Description`  varchar(1000) NULL,
+                    `IsActive`     tinyint(1)    NOT NULL DEFAULT 1,
+                    `CreatedAtUtc` datetime(6)   NOT NULL,
+                    `UpdatedAtUtc` datetime(6)   NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    UNIQUE KEY `IX_cc_Specialties_Code` (`Code`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """, "cc_Specialties")) applied++;
+        }
+
+        if (await TableExists("cc_Specialties"))
+        {
+            if (!await IndexExists("cc_Specialties", "IX_cc_Specialties_Code"))
+                if (await Exec("CREATE UNIQUE INDEX `IX_cc_Specialties_Code` ON `cc_Specialties` (`Code`)",
+                    "cc_Specialties.Code index")) applied++;
+
+            if (await Exec("""
+                INSERT IGNORE INTO `cc_Specialties`
+                    (`Id`, `Name`, `Code`, `Description`, `IsActive`, `CreatedAtUtc`, `UpdatedAtUtc`)
+                VALUES
+                    ('41000000-0000-0000-0000-000000000001', 'Pain',             'PAIN',             NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000007', 'Spine',            'SPINE',            NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000004', 'Physical Therapy', 'PHYSICAL_THERAPY', NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000006', 'Neuro',            'NEURO',            NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000005', 'Imaging',          'IMAGING',          NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000002', 'Chiropractor',     'CHIROPRACTOR',     NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00')
+                """, "cc_Specialties seed data")) applied++;
+
+            if (await Exec("""
+                UPDATE `cc_Specialties`
+                SET `Name` = CASE `Id`
+                        WHEN '41000000-0000-0000-0000-000000000001' THEN 'Pain'
+                        WHEN '41000000-0000-0000-0000-000000000002' THEN 'Chiropractor'
+                        WHEN '41000000-0000-0000-0000-000000000006' THEN 'Neuro'
+                        ELSE `Name`
+                    END,
+                    `Code` = CASE `Id`
+                        WHEN '41000000-0000-0000-0000-000000000001' THEN 'PAIN'
+                        WHEN '41000000-0000-0000-0000-000000000002' THEN 'CHIROPRACTOR'
+                        WHEN '41000000-0000-0000-0000-000000000006' THEN 'NEURO'
+                        ELSE `Code`
+                    END,
+                    `UpdatedAtUtc` = '2024-01-01 00:00:00'
+                WHERE (`Id` = '41000000-0000-0000-0000-000000000001' AND `Name` = 'Pain Doctors' AND `Code` = 'PAIN_DOCTORS')
+                   OR (`Id` = '41000000-0000-0000-0000-000000000002' AND `Name` = 'Chiropractors' AND `Code` = 'CHIROPRACTORS')
+                   OR (`Id` = '41000000-0000-0000-0000-000000000006' AND `Name` = 'Neurology' AND `Code` = 'NEUROLOGY')
+                """, "cc_Specialties renamed defaults repair")) applied++;
+
+            if (await Exec("""
+                UPDATE `cc_Specialties`
+                SET `IsActive` = 0,
+                    `UpdatedAtUtc` = '2024-01-01 00:00:00'
+                WHERE ((`Id` = '41000000-0000-0000-0000-000000000003' AND `Name` = 'Orthopedics' AND `Code` = 'ORTHOPEDICS')
+                    OR (`Id` = '41000000-0000-0000-0000-000000000008' AND `Name` = 'Surgery Center' AND `Code` = 'SURGERY_CENTER'))
+                  AND `UpdatedAtUtc` = '2024-01-01 00:00:00'
+                """, "cc_Specialties removed defaults deactivation")) applied++;
+        }
+
+        if (!await TableExists("cc_ProviderSpecialties"))
+        {
+            if (await Exec("""
+                CREATE TABLE `cc_ProviderSpecialties` (
+                    `ProviderId`  char(36)   NOT NULL,
+                    `SpecialtyId` char(36)   NOT NULL,
+                    `IsPrimary`   tinyint(1) NOT NULL DEFAULT 0,
+                    PRIMARY KEY (`ProviderId`, `SpecialtyId`),
+                    KEY `IX_cc_ProviderSpecialties_SpecialtyId` (`SpecialtyId`),
+                    KEY `IX_cc_ProviderSpecialties_ProviderId_IsPrimary` (`ProviderId`, `IsPrimary`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """, "cc_ProviderSpecialties")) applied++;
+        }
+
+        if (await TableExists("cc_ProviderSpecialties"))
+        {
+            if (!await ColumnExists("cc_ProviderSpecialties", "IsPrimary"))
+                if (await Exec("ALTER TABLE `cc_ProviderSpecialties` ADD COLUMN `IsPrimary` tinyint(1) NOT NULL DEFAULT 0",
+                    "cc_ProviderSpecialties.IsPrimary")) applied++;
+
+            if (!await IndexExists("cc_ProviderSpecialties", "IX_cc_ProviderSpecialties_SpecialtyId"))
+                if (await Exec("CREATE INDEX `IX_cc_ProviderSpecialties_SpecialtyId` ON `cc_ProviderSpecialties` (`SpecialtyId`)",
+                    "cc_ProviderSpecialties.SpecialtyId index")) applied++;
+
+            if (!await IndexExists("cc_ProviderSpecialties", "IX_cc_ProviderSpecialties_ProviderId_IsPrimary"))
+                if (await Exec("CREATE INDEX `IX_cc_ProviderSpecialties_ProviderId_IsPrimary` ON `cc_ProviderSpecialties` (`ProviderId`, `IsPrimary`)",
+                    "cc_ProviderSpecialties.ProviderId.IsPrimary index")) applied++;
+
+            if (await TableExists("cc_ProviderCategories") && await TableExists("cc_Categories") && await TableExists("cc_Specialties"))
+            {
+                if (await Exec("""
+                    INSERT IGNORE INTO `cc_ProviderSpecialties`
+                        (`ProviderId`, `SpecialtyId`, `IsPrimary`)
+                    SELECT
+                        pc.`ProviderId`,
+                        CASE c.`Code`
+                            WHEN 'PAIN' THEN '41000000-0000-0000-0000-000000000001'
+                            WHEN 'PT' THEN '41000000-0000-0000-0000-000000000004'
+                            WHEN 'IMG' THEN '41000000-0000-0000-0000-000000000005'
+                            WHEN 'NEURO' THEN '41000000-0000-0000-0000-000000000006'
+                            WHEN 'SPINE' THEN '41000000-0000-0000-0000-000000000007'
+                            WHEN 'CHIRO' THEN '41000000-0000-0000-0000-000000000002'
+                        END AS `SpecialtyId`,
+                        0
+                    FROM `cc_ProviderCategories` pc
+                    INNER JOIN `cc_Categories` c ON c.`Id` = pc.`CategoryId`
+                    WHERE c.`Code` IN ('PAIN', 'CHIRO', 'PT', 'IMG', 'NEURO', 'SPINE')
+                    """, "cc_ProviderSpecialties category backfill")) applied++;
+
+                if (await Exec("""
+                    UPDATE `cc_ProviderSpecialties` ps
+                    INNER JOIN (
+                        SELECT `ProviderId`, MIN(`SpecialtyId`) AS `PrimarySpecialtyId`
+                        FROM `cc_ProviderSpecialties`
+                        GROUP BY `ProviderId`
+                    ) selected ON selected.`ProviderId` = ps.`ProviderId`
+                    SET ps.`IsPrimary` = CASE WHEN ps.`SpecialtyId` = selected.`PrimarySpecialtyId` THEN 1 ELSE 0 END
+                    """, "cc_ProviderSpecialties primary backfill")) applied++;
+            }
+        }
     }
 
     // ── 20260429130000_AddTreatmentTypes ────────────────────────────────────

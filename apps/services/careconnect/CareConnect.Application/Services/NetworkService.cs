@@ -1,5 +1,6 @@
 using BuildingBlocks.Exceptions;
 using CareConnect.Application.DTOs;
+using CareConnect.Application.Helpers;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
@@ -12,17 +13,20 @@ public class NetworkService : INetworkService
 {
     private readonly INetworkRepository _networks;
     private readonly ICategoryRepository _categories;
+    private readonly ISpecialtyRepository _specialties;
     private readonly IProviderImportParser _providerImportParser;
     private readonly ILogger<NetworkService> _logger;
 
     public NetworkService(
         INetworkRepository networks,
         ICategoryRepository categories,
+        ISpecialtyRepository specialties,
         IProviderImportParser providerImportParser,
         ILogger<NetworkService> logger)
     {
         _networks = networks;
         _categories = categories;
+        _specialties = specialties;
         _providerImportParser = providerImportParser;
         _logger = logger;
     }
@@ -298,6 +302,7 @@ public class NetworkService : INetworkService
         else if (request.NewProvider is { } np)
         {
             ValidateNewProvider(np);
+            ValidateGeoFields(np.Latitude, np.Longitude, np.GeoPointSource);
             provider = await ResolveProviderForAddAsync(tenantId, np, userId, ct);
         }
         else
@@ -343,22 +348,88 @@ public class NetworkService : INetworkService
         var providers = await _networks.GetNetworkProvidersAsync(tenantId, networkId, ct);
 
         return providers
-            .Select(p => new NetworkProviderMarker(
-                p.Id,
-                p.Name,
-                p.OrganizationName,
-                p.City,
-                p.State,
-                p.AddressLine1,
-                p.PostalCode,
-                p.Email,
-                p.Phone,
-                p.AcceptingReferrals,
-                p.IsActive,
-                p.Latitude ?? 0.0,
-                p.Longitude ?? 0.0,
-                p.GeoPointSource))
+            .Select(p =>
+            {
+                var specialties = MapSpecialties(p.ProviderSpecialties);
+                var primarySpecialty = specialties.FirstOrDefault();
+                return new NetworkProviderMarker(
+                    p.Id,
+                    p.Name,
+                    p.Title,
+                    p.OrganizationName,
+                    p.City,
+                    p.State,
+                    p.AddressLine1,
+                    p.PostalCode,
+                    p.Email,
+                    p.Phone,
+                    p.AcceptingReferrals,
+                    p.IsActive,
+                    p.Latitude ?? 0.0,
+                    p.Longitude ?? 0.0,
+                    p.GeoPointSource,
+                    specialties,
+                    primarySpecialty?.Id,
+                    primarySpecialty?.Name);
+            })
             .ToList();
+    }
+
+    public async Task<NetworkProviderItem> UpdateProviderAsync(
+        Guid tenantId,
+        Guid networkId,
+        Guid providerId,
+        UpdateNetworkProviderRequest request,
+        Guid? userId,
+        CancellationToken ct = default)
+    {
+        _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
+            ?? throw new NotFoundException($"Network {networkId} not found.");
+
+        _ = await _networks.GetMembershipAsync(networkId, providerId, ct)
+            ?? throw new NotFoundException($"Provider {providerId} is not a member of network {networkId}.");
+
+        ValidateNetworkProviderFields(
+            request.FirstName,
+            request.LastName,
+            request.Email,
+            request.Phone,
+            request.AddressLine1,
+            request.City,
+            request.State,
+            request.PostalCode,
+            request.Title);
+        ValidateGeoFields(request.Latitude, request.Longitude, request.GeoPointSource);
+        var specialtyIds = await ValidateSpecialtyIdsAsync(request.SpecialtyIds, ct);
+
+        var provider = await _networks.GetProviderByIdGlobalAsync(providerId, ct)
+            ?? throw new NotFoundException($"Provider {providerId} not found in the shared registry.");
+
+        provider.Update(
+            name: BuildProviderDisplayName(request.Title, request.FirstName, request.LastName),
+            organizationName: request.OrganizationName,
+            email: request.Email.Trim().ToLowerInvariant(),
+            phone: request.Phone,
+            addressLine1: request.AddressLine1,
+            city: request.City,
+            state: request.State.Trim().ToUpperInvariant(),
+            postalCode: request.PostalCode,
+            isActive: request.IsActive,
+            acceptingReferrals: request.AcceptingReferrals,
+            updatedByUserId: userId,
+            latitude: request.Latitude ?? provider.Latitude,
+            longitude: request.Longitude ?? provider.Longitude,
+            geoPointSource: request.Latitude.HasValue ? request.GeoPointSource : provider.GeoPointSource,
+            firstName: request.FirstName,
+            lastName: request.LastName,
+            title: request.Title);
+
+        await _networks.UpdateProviderInRegistryAsync(provider, ct);
+        await _networks.SyncProviderSpecialtiesAsync(provider.Id, specialtyIds, ct);
+        await _networks.SaveChangesAsync(ct);
+
+        var loaded = await _networks.GetProviderByIdGlobalAsync(providerId, ct);
+        return ToProviderItem(loaded ?? provider);
     }
 
     // ── Mapping helpers ───────────────────────────────────────────────────────
@@ -375,13 +446,27 @@ public class NetworkService : INetworkService
             n.CreatedAtUtc,
             n.UpdatedAtUtc);
 
-    private static NetworkProviderItem ToProviderItem(Provider p) =>
-        new(p.Id, p.Name, p.OrganizationName, p.Email, p.Phone, p.City, p.State,
-            p.IsActive, p.AcceptingReferrals, p.AccessStage);
+    private static NetworkProviderItem ToProviderItem(Provider p)
+    {
+        var specialties = MapSpecialties(p.ProviderSpecialties);
+        var primarySpecialty = specialties.FirstOrDefault();
+        return new(p.Id, p.Name, p.Title, p.OrganizationName, p.Email, p.Phone, p.City, p.State,
+            p.AddressLine1, p.PostalCode, p.IsActive, p.AcceptingReferrals, p.AccessStage,
+            specialties,
+            primarySpecialty?.Id,
+            primarySpecialty?.Name);
+    }
 
-    private static ProviderSearchResult ToSearchResult(Provider p) =>
-        new(p.Id, p.Name, p.OrganizationName, p.Email, p.Phone, p.City, p.State,
-            p.AddressLine1, p.PostalCode, p.Npi, p.IsActive, p.AcceptingReferrals, p.AccessStage);
+    private static ProviderSearchResult ToSearchResult(Provider p)
+    {
+        var specialties = MapSpecialties(p.ProviderSpecialties);
+        var primarySpecialty = specialties.FirstOrDefault();
+        return new(p.Id, p.Name, p.Title, p.OrganizationName, p.Email, p.Phone, p.City, p.State,
+            p.AddressLine1, p.PostalCode, p.Npi, p.IsActive, p.AcceptingReferrals, p.AccessStage,
+            specialties,
+            primarySpecialty?.Id,
+            primarySpecialty?.Name);
+    }
 
     private async Task<Provider> ResolveProviderForAddAsync(
         Guid tenantId,
@@ -412,9 +497,10 @@ public class NetworkService : INetworkService
 
         var provider = Provider.Create(
             tenantId: tenantId,
-            name: $"{np.FirstName} {np.LastName}".Trim(),
+            name: BuildProviderDisplayName(np.Title, np.FirstName, np.LastName),
             firstName: np.FirstName,
             lastName: np.LastName,
+            title: np.Title,
             organizationName: np.OrganizationName,
             email: np.Email.Trim().ToLowerInvariant(),
             phone: np.Phone,
@@ -425,6 +511,9 @@ public class NetworkService : INetworkService
             isActive: np.IsActive,
             acceptingReferrals: np.AcceptingReferrals,
             createdByUserId: userId,
+            latitude: np.Latitude,
+            longitude: np.Longitude,
+            geoPointSource: np.GeoPointSource,
             npi: NormalizeOptional(np.Npi));
 
         await _networks.AddProviderToRegistryAsync(provider, ct);
@@ -448,6 +537,13 @@ public class NetworkService : INetworkService
             if (orderedIds.Count > 0)
                 await _networks.SyncProviderCategoriesAsync(provider.Id, orderedIds, ct);
         }
+
+        var specialtyIds = await ResolveSpecialtyIdsByCodesAsync(
+            np.SpecialtyCodes,
+            np.PrimarySpecialtyCode,
+            requireAtLeastOne: true,
+            ct);
+        await _networks.SyncProviderSpecialtiesAsync(provider.Id, specialtyIds, ct);
 
         _logger.LogInformation(
             "New provider {ProviderId} ({Name}) registered in shared registry by tenant {TenantId}.",
@@ -597,6 +693,12 @@ public class NetworkService : INetworkService
         return normalized?.ToLowerInvariant();
     }
 
+    private static string BuildProviderDisplayName(string? title, string firstName, string lastName)
+    {
+        return string.Join(" ", new[] { NormalizeOptional(title), NormalizeOptional(firstName), NormalizeOptional(lastName) }
+            .Where(p => !string.IsNullOrWhiteSpace(p)));
+    }
+
     private static bool TryParseOptionalBoolean(
         string? raw,
         bool defaultValue,
@@ -663,8 +765,113 @@ public class NetworkService : INetworkService
             errors["state"] = ["State is required."];
         if (string.IsNullOrWhiteSpace(np.PostalCode))
             errors["postalCode"] = ["Postal code is required."];
+        if (np.Title?.Trim().Length > 50)
+            errors["title"] = ["Title must be 50 characters or fewer."];
+        if (np.SpecialtyCodes is null || np.SpecialtyCodes.Count == 0)
+            errors["specialtyCodes"] = ["Select at least one specialty."];
         if (errors.Count > 0)
             throw new ValidationException("Validation failed.", errors);
+    }
+
+    private static void ValidateNetworkProviderFields(
+        string firstName,
+        string lastName,
+        string email,
+        string phone,
+        string addressLine1,
+        string city,
+        string state,
+        string postalCode,
+        string? title)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(firstName))
+            errors["firstName"] = ["Provider first name is required."];
+        if (string.IsNullOrWhiteSpace(lastName))
+            errors["lastName"] = ["Provider last name is required."];
+        if (string.IsNullOrWhiteSpace(email))
+            errors["email"] = ["Provider email is required."];
+        if (string.IsNullOrWhiteSpace(phone))
+            errors["phone"] = ["Provider phone is required."];
+        if (string.IsNullOrWhiteSpace(addressLine1))
+            errors["addressLine1"] = ["Address is required."];
+        if (string.IsNullOrWhiteSpace(city))
+            errors["city"] = ["City is required."];
+        if (string.IsNullOrWhiteSpace(state))
+            errors["state"] = ["State is required."];
+        if (string.IsNullOrWhiteSpace(postalCode))
+            errors["postalCode"] = ["Postal code is required."];
+        if (title?.Trim().Length > 50)
+            errors["title"] = ["Title must be 50 characters or fewer."];
+        if (errors.Count > 0)
+            throw new ValidationException("Validation failed.", errors);
+    }
+
+    private static void ValidateGeoFields(double? latitude, double? longitude, string? geoPointSource)
+    {
+        var errors = new Dictionary<string, string[]>();
+        ProviderGeoHelper.ValidateGeoFields(latitude, longitude, geoPointSource, errors);
+        if (errors.Count > 0)
+            throw new ValidationException("Validation failed.", errors);
+    }
+
+    private async Task<List<Guid>> ValidateSpecialtyIdsAsync(List<Guid> specialtyIds, CancellationToken ct)
+    {
+        var distinct = specialtyIds.Distinct().ToList();
+        if (distinct.Count == 0)
+            throw new ValidationException("Validation failed.",
+                new() { ["specialtyIds"] = ["Select at least one specialty."] });
+
+        var active = await _specialties.GetActiveByIdsAsync(distinct, ct);
+        if (active.Count != distinct.Count)
+            throw new ValidationException("Validation failed.",
+                new() { ["specialtyIds"] = ["One or more selected specialties are inactive or invalid."] });
+
+        return distinct;
+    }
+
+    private async Task<List<Guid>> ResolveSpecialtyIdsByCodesAsync(
+        List<string>? specialtyCodes,
+        string? primarySpecialtyCode,
+        bool requireAtLeastOne,
+        CancellationToken ct)
+    {
+        if (specialtyCodes is null || specialtyCodes.Count == 0)
+        {
+            if (!requireAtLeastOne) return [];
+            throw new ValidationException("Validation failed.",
+                new() { ["specialtyCodes"] = ["Select at least one specialty."] });
+        }
+
+        var specialtyEntities = await _specialties.GetActiveByCodesAsync(specialtyCodes, ct);
+        if (specialtyEntities.Count != specialtyCodes.Where(c => !string.IsNullOrWhiteSpace(c)).Select(Specialty.NormalizeCode).Distinct().Count())
+            throw new ValidationException("Validation failed.",
+                new() { ["specialtyCodes"] = ["One or more selected specialties are inactive or invalid."] });
+
+        var orderedIds = new List<Guid>();
+        if (!string.IsNullOrWhiteSpace(primarySpecialtyCode))
+        {
+            var primary = specialtyEntities.FirstOrDefault(
+                s => string.Equals(s.Code, Specialty.NormalizeCode(primarySpecialtyCode), StringComparison.Ordinal));
+            if (primary is not null) orderedIds.Add(primary.Id);
+        }
+
+        orderedIds.AddRange(specialtyEntities
+            .Where(s => !orderedIds.Contains(s.Id))
+            .OrderBy(s => s.Name)
+            .Select(s => s.Id));
+
+        return orderedIds;
+    }
+
+    private static List<SpecialtyResponse> MapSpecialties(IEnumerable<ProviderSpecialty> providerSpecialties)
+    {
+        return providerSpecialties
+            .Where(ps => ps.Specialty != null)
+            .OrderByDescending(ps => ps.IsPrimary)
+            .ThenBy(ps => ps.Specialty!.Name)
+            .Select(ps => SpecialtyService.ToResponse(ps.Specialty!))
+            .ToList();
     }
 
     private sealed record ImportProviderResolution(

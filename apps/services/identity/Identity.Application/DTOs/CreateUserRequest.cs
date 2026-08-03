@@ -6,4 +6,5 @@ public record CreateUserRequest(
     string Password,
     string FirstName,
     string LastName,
+    string? Title = null,
     List<Guid>? RoleIds = null);

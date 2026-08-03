@@ -83,6 +83,7 @@ describe('EnrollPage', () => {
       tenantId: 'tenant-1',
       email: 'diane@example.com',
       firm: 'Fight For You Company',
+      title: 'Dr.',
       contactFirstName: 'Diane',
       contactLastName: 'Galano',
       exp: 9999999999,
@@ -94,6 +95,44 @@ describe('EnrollPage', () => {
     expect(enrollmentFormMock).toHaveBeenCalledWith(expect.objectContaining({
         referralPrefill: expect.objectContaining({
           companyName: 'Fight For You Company',
+          title: 'Dr.',
+          firstName: 'Diane',
+          lastName: 'Galano',
+        }),
+        isFirmEnrollment: true,
+      }), expect.anything());
+  });
+
+  test('prefers existing Identity title over token title when both are available', async () => {
+    decodeEnrollmentTokenMock.mockResolvedValue({
+      tenantId: 'tenant-1',
+      email: 'diane@example.com',
+      firm: 'Fight For You Company',
+      title: 'Ms.',
+      contactFirstName: 'Diane',
+      contactLastName: 'Galano',
+      exp: 9999999999,
+    });
+    fetchExistingEnrollmentPrefillMock.mockResolvedValue({
+      found: true,
+      companyName: 'Fight For You Company',
+      email: 'diane@example.com',
+      phone: '5550102',
+      title: 'Dr.',
+      firstName: 'Diane',
+      lastName: 'Galano',
+      addressLine1: '123 Main',
+      city: 'Las Vegas',
+      state: 'NV',
+      postalCode: '89101',
+    });
+
+    const result = await EnrollPage({ searchParams: Promise.resolve({ token: 'signed-token' }) });
+    render(result);
+
+    expect(enrollmentFormMock).toHaveBeenCalledWith(expect.objectContaining({
+        referralPrefill: expect.objectContaining({
+          title: 'Dr.',
           firstName: 'Diane',
           lastName: 'Galano',
         }),
