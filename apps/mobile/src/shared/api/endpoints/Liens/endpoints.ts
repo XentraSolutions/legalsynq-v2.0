@@ -107,7 +107,9 @@ export const LiensApi = {
     return response.data;
   },
 
-  async listAllManagementLiens(): Promise<ManagementLien[]> {
+  async listAllManagementLiens(
+    filters: Omit<ManagementLienQueryParams, 'page' | 'pageSize'> = {}
+  ): Promise<ManagementLien[]> {
     const items: ManagementLien[] = [];
     const pageSize = 200;
     let page = 1;
@@ -115,8 +117,29 @@ export const LiensApi = {
 
     while (items.length < totalCount) {
       const response = await apiClient.get<PagedResult<ManagementLien>>(LIENS_BASE_PATH, {
-        params: { page, pageSize },
+        params: { ...filters, page, pageSize },
       });
+      const result = response.data;
+      items.push(...result.items);
+      totalCount = result.totalCount;
+      if (result.items.length === 0) break;
+      page += 1;
+    }
+
+    return items;
+  },
+
+  async listAllCaseLiens(caseId: string): Promise<ManagementLien[]> {
+    const items: ManagementLien[] = [];
+    const limit = 200;
+    let page = 1;
+    let totalCount = Number.POSITIVE_INFINITY;
+
+    while (items.length < totalCount) {
+      const response = await apiClient.post<PagedResult<ManagementLien>>(
+        `${CASE_LIENS_BASE_PATH}/${caseId}`,
+        { page, limit }
+      );
       const result = response.data;
       items.push(...result.items);
       totalCount = result.totalCount;

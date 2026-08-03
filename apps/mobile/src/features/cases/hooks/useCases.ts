@@ -29,6 +29,7 @@ export const caseFeatureKeys = {
   detail: (id: string) => [...caseFeatureKeys.all, 'detail', id] as const,
   notes: (id: string) => [...caseFeatureKeys.all, 'notes', id] as const,
   updates: (id: string) => [...caseFeatureKeys.all, 'updates', id] as const,
+  lienUpdates: (id: string) => [...caseFeatureKeys.all, 'lien-updates', id] as const,
   payoffQuote: (id: string) => [...caseFeatureKeys.all, 'payoff-quote', id] as const,
   trackingOptions: () => [...caseFeatureKeys.all, 'tracking-options'] as const,
 };
@@ -140,6 +141,13 @@ export function useCaseUpdates(caseId: string) {
   return useQuery({
     queryKey: caseFeatureKeys.updates(caseId),
     queryFn: () => CasesApi.getCaseUpdates(caseId),
+  });
+}
+
+export function useCaseLienUpdates(caseId: string) {
+  return useQuery({
+    queryKey: caseFeatureKeys.lienUpdates(caseId),
+    queryFn: () => CasesApi.getLienUpdates(caseId),
   });
 }
 

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useCases } from '@/features/cases/hooks';
+import type { CaseListItem } from '@/features/cases/types/types';
 import {
   buildLienFilterOptions,
   filterManagementLiens,
@@ -16,15 +17,97 @@ import type {
 } from '@/features/liens/types/types';
 import { LiensApi } from '@/shared/api/endpoints/Liens';
 import type { LienDocumentType, LienExportFilter } from '@/shared/api/endpoints/Liens';
+import type { CaseDetailResponse } from '@/shared/api/endpoints/Cases';
 import { DocumentsApi } from '@/shared/api/endpoints/Documents';
 
 export const managementLienKeys = {
   all: ['management-liens'] as const,
   list: () => [...managementLienKeys.all, 'list'] as const,
+  caseList: (caseId: string) => [...managementLienKeys.all, 'case-list', caseId] as const,
   facilities: () => [...managementLienKeys.all, 'facilities'] as const,
   documentTypes: () => [...managementLienKeys.all, 'document-types'] as const,
   detail: (id: string) => [...managementLienKeys.all, 'detail', id] as const,
 };
+
+function caseListItem(caseItem: CaseDetailResponse): CaseListItem {
+  return {
+    accidentType: caseItem.accidentType ?? '',
+    accidentTypeId: '',
+    caseManager: caseItem.caseManager ?? '',
+    caseManagerId: '',
+    caseNumber: caseItem.caseNumber,
+    clientName: caseItem.clientDisplayName,
+    dateOfLoss: caseItem.dateOfIncident ?? '',
+    id: caseItem.id,
+    lawFirm: caseItem.lawFirm ?? '',
+    lawFirmId: '',
+    status: caseItem.status,
+    updatedAt: caseItem.updatedAtUtc,
+  };
+}
+
+export function useCaseManagementLiens(
+  caseItem: CaseDetailResponse,
+  search: string,
+  filters: LienManagementFilters
+) {
+  const liensQuery = useQuery({
+    queryKey: managementLienKeys.caseList(caseItem.id),
+    queryFn: async () => {
+      const liens = await LiensApi.listAllCaseLiens(caseItem.id);
+      const details = await Promise.all(
+        liens.map(async (lien) => {
+          try {
+            return [lien.id, await LiensApi.getManagementLienDetails(lien.id)] as const;
+          } catch {
+            return [lien.id, undefined] as const;
+          }
+        })
+      );
+      return { liens, details: new Map(details) };
+    },
+  });
+  const facilitiesQuery = useQuery({
+    queryKey: managementLienKeys.facilities(),
+    queryFn: () => LiensApi.listFacilities(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const allLiens = useMemo(() => {
+    const mapped = mapManagementLiens(
+      liensQuery.data?.liens ?? [],
+      [caseListItem(caseItem)],
+      facilitiesQuery.data ?? []
+    );
+    return mapped.map((lien) => {
+      const details = liensQuery.data?.details.get(lien.id);
+      return {
+        ...lien,
+        initialServiceDate: details?.medicalList[0]?.initialServiceDate ?? '',
+        billingAmount:
+          details?.codeList.reduce(
+            (total, code) => total + Number(code.billingAmount || 0),
+            0
+          ) ?? 0,
+      };
+    });
+  }, [caseItem, facilitiesQuery.data, liensQuery.data]);
+  const liens = useMemo(
+    () => filterManagementLiens(allLiens, search, filters),
+    [allLiens, filters, search]
+  );
+
+  return {
+    ...liensQuery,
+    liens,
+    totalCount: allLiens.length,
+    filterOptions: buildLienFilterOptions(allLiens),
+    isRefetching: liensQuery.isRefetching || facilitiesQuery.isRefetching,
+    refetchAll: async () => {
+      await Promise.all([liensQuery.refetch(), facilitiesQuery.refetch()]);
+    },
+  };
+}
 
 export class LienRelatedSaveError extends Error {
   lienId: string;

@@ -7,6 +7,7 @@ import type { NavigationProp } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { CaseDetailHeader } from '@/features/cases/components/CaseDetailHeader';
+import { CaseLiensTab } from '@/features/cases/components/CaseLiensTab';
 import { CaseDetailPlaceholderPage } from '@/features/cases/components/CaseDetailPlaceholderPage';
 import { CaseDetailTabBar } from '@/features/cases/components/CaseDetailTabBar';
 import { CaseDetailTabPage } from '@/features/cases/components/CaseDetailTabPage';
@@ -15,6 +16,7 @@ import { NoteItem } from '@/features/cases/components/NoteItem';
 import {
   useAddCaseNote,
   useCaseDetail,
+  useCaseLienUpdates,
   useCases,
   useCaseNotes,
   useCaseUpdates,
@@ -472,6 +474,7 @@ export function CaseDetailScreen() {
   const caseQuery = useCaseDetail(route.params.caseId);
   const notesQuery = useCaseNotes(route.params.caseId);
   const updatesQuery = useCaseUpdates(route.params.caseId);
+  const lienUpdatesQuery = useCaseLienUpdates(route.params.caseId);
   const addNote = useAddCaseNote(route.params.caseId);
   const mergeCase = useMergeCase(route.params.caseId);
   const deleteCase = useDeleteCase(route.params.caseId);
@@ -615,7 +618,17 @@ export function CaseDetailScreen() {
           }
         />
       ) : null}
-      {activeTab === 'liens' ? <CaseDetailPlaceholderPage title="Liens" /> : null}
+      {activeTab === 'liens' ? (
+        <CaseLiensTab
+          caseItem={caseItem}
+          updates={lienUpdatesQuery.data ?? []}
+          updatesLoading={lienUpdatesQuery.isLoading}
+          onCreate={() =>
+            navigation.navigate('CreateLien', { caseId: route.params.caseId })
+          }
+          onView={(lienId) => navigation.navigate('ManagementLienDetail', { lienId })}
+        />
+      ) : null}
       {activeTab === 'documents' ? <CaseDetailPlaceholderPage title="Documents" /> : null}
       {activeTab === 'servicing' ? <CaseDetailPlaceholderPage title="Servicing" /> : null}
       {activeTab === 'notes' ? (

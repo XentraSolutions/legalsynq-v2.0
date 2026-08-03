@@ -63,6 +63,8 @@ export function mapManagementLiens(
       caseId: lien.caseId ?? '',
       purchaseDate: lien.incidentDate ?? '',
       closedDate: lien.closedAtUtc ?? '',
+      initialServiceDate: '',
+      billingAmount: 0,
     };
   });
 }

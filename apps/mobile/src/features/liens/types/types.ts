@@ -65,6 +65,8 @@ export interface ManagementLienListItem {
   caseId: string;
   purchaseDate: string;
   closedDate: string;
+  initialServiceDate: string;
+  billingAmount: number;
 }
 
 export interface LienMedicalCodeFormValue {

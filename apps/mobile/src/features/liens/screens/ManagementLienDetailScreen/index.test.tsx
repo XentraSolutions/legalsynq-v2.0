@@ -144,4 +144,17 @@ describe('ManagementLienDetailScreen', () => {
     expect(upload.documentType.id).toBe('document-type-1');
     expect(upload.file.name).toBe('medical-record.pdf');
   });
+
+  it('keeps document type selection open when file selection is cancelled', async () => {
+    mockPickDocument.mockResolvedValueOnce({ canceled: true, assets: [] });
+    const screen = render(<ManagementLienDetailScreen />);
+
+    fireEvent.press(screen.getByText('Upload More'));
+    fireEvent.press(screen.getByTestId('document-type-document-type-1'));
+
+    await waitFor(() => expect(mockPickDocument).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Select the document type before uploading your file.')).toBeTruthy();
+    expect(screen.getByTestId('document-type-document-type-1')).toBeTruthy();
+    expect(screen.queryByText('Upload Document?')).toBeNull();
+  });
 });

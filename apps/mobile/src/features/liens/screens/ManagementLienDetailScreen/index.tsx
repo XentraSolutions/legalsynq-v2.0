@@ -185,7 +185,6 @@ export function ManagementLienDetailScreen() {
 
   async function selectDocumentType(documentTypeId: string) {
     const documentType = documentTypesQuery.data?.find((item) => item.id === documentTypeId);
-    setDocumentTypeVisible(false);
     if (!documentType) {
       toast.showError('Select a valid document type.');
       return;
@@ -197,6 +196,7 @@ export function ManagementLienDetailScreen() {
         multiple: false,
       });
       if (!result.canceled && result.assets[0]) {
+        setDocumentTypeVisible(false);
         setPendingDocument({ documentType, file: result.assets[0] });
       }
     } catch (error) {

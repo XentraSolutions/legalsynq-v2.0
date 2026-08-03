@@ -24,6 +24,19 @@ describe('LiensApi management endpoints', () => {
     );
   });
 
+  it('requests every lien page from the selected case endpoint', async () => {
+    apiClient.post = jest.fn(() =>
+      Promise.resolve({ data: { items: [], totalCount: 0 } })
+    );
+
+    await LiensApi.listAllCaseLiens('case-1');
+
+    expect(apiClient.post).toHaveBeenCalledWith(
+      '/liens/api/liens/cases/liens/case-1',
+      { page: 1, limit: 200 }
+    );
+  });
+
   it('uses existing endpoints for confirmed create and update orchestration', async () => {
     await LiensApi.createMedicalInfo({ id: 'lien-1', caseId: 'case-1' });
     expect(apiClient.post).toHaveBeenCalledWith(
