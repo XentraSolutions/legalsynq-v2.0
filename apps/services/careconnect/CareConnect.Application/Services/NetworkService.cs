@@ -1,3 +1,4 @@
+using System.Globalization;
 using BuildingBlocks.Exceptions;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Helpers;
@@ -187,7 +188,13 @@ public class NetworkService : INetworkService
                     continue;
                 }
 
-                var resolution = ResolveImportProvider(networkTenantId, userId, normalized, providersByNpi, providersByEmail);
+                var resolution = await ResolveImportProviderAsync(
+                    networkTenantId,
+                    userId,
+                    normalized,
+                    providersByNpi,
+                    providersByEmail,
+                    ct);
                 var provider = resolution.Provider;
                 var status = resolution.Status;
                 var message = resolution.Message;
@@ -210,7 +217,12 @@ public class NetworkService : INetworkService
                 if (!dryRun)
                 {
                     if (status == "created")
+                    {
                         await _networks.AddProviderToRegistryAsync(provider, ct);
+                        if (resolution.CategoryIds.Count > 0)
+                            await _networks.SyncProviderCategoriesAsync(provider.Id, resolution.CategoryIds, ct);
+                        await _networks.SyncProviderSpecialtiesAsync(provider.Id, resolution.SpecialtyIds, ct);
+                    }
 
                     await _networks.AddProviderAsync(NetworkProvider.Create(networkTenantId, networkId, provider.Id), ct);
                     await _networks.SaveChangesAsync(ct);
@@ -241,6 +253,25 @@ public class NetworkService : INetworkService
                     message,
                     normalized,
                     []));
+            }
+            catch (ValidationException ex)
+            {
+                _networks.ClearTracking();
+                failedRows++;
+                var rowErrors = ex.Errors.Values.SelectMany(v => v).ToList();
+                _logger.LogWarning(
+                    ex,
+                    "Provider import row validation failed: TenantId={TenantId} NetworkId={NetworkId} FileName={FileName} RowNumber={RowNumber}",
+                    networkTenantId, networkId, fileName, parsedRow.RowNumber);
+
+                rows.Add(new ProviderImportRowResult(
+                    parsedRow.RowNumber,
+                    parsedRow.SourceKey,
+                    "failed",
+                    null,
+                    "Row validation failed.",
+                    normalized,
+                    rowErrors.Count == 0 ? [ex.Message] : rowErrors));
             }
             catch (Exception ex)
             {
@@ -552,12 +583,13 @@ public class NetworkService : INetworkService
         return provider;
     }
 
-    private ImportProviderResolution ResolveImportProvider(
+    private async Task<ImportProviderResolution> ResolveImportProviderAsync(
         Guid tenantId,
         Guid? userId,
         ProviderImportNormalizedRow normalized,
         Dictionary<string, Provider> providersByNpi,
-        Dictionary<string, Provider> providersByEmail)
+        Dictionary<string, Provider> providersByEmail,
+        CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(normalized.Npi) &&
             providersByNpi.TryGetValue(normalized.Npi, out var byNpi))
@@ -565,7 +597,9 @@ public class NetworkService : INetworkService
             return new ImportProviderResolution(
                 byNpi,
                 "reused_npi",
-                "Matched existing provider by NPI.");
+                "Matched existing provider by NPI.",
+                [],
+                []);
         }
 
         if (providersByEmail.TryGetValue(normalized.Email, out var byEmail))
@@ -573,14 +607,27 @@ public class NetworkService : INetworkService
             return new ImportProviderResolution(
                 byEmail,
                 "reused_email",
-                "Matched existing provider by tenant email.");
+                "Matched existing provider by tenant email.",
+                [],
+                []);
         }
+
+        var specialtyIds = await ResolveSpecialtyIdsByCodesAsync(
+            normalized.SpecialtyCodes,
+            normalized.PrimarySpecialtyCode,
+            requireAtLeastOne: true,
+            ct);
+        var categoryIds = await ResolveCategoryIdsByCodesAsync(
+            normalized.CategoryCodes,
+            normalized.PrimaryCategoryCode,
+            ct);
 
         var provider = Provider.Create(
             tenantId: tenantId,
-            name: $"{normalized.FirstName} {normalized.LastName}".Trim(),
+            name: BuildProviderDisplayName(normalized.Title, normalized.FirstName, normalized.LastName),
             firstName: normalized.FirstName,
             lastName: normalized.LastName,
+            title: normalized.Title,
             organizationName: normalized.OrganizationName,
             email: normalized.Email,
             phone: normalized.Phone,
@@ -591,12 +638,17 @@ public class NetworkService : INetworkService
             isActive: normalized.IsActive,
             acceptingReferrals: normalized.AcceptingReferrals,
             createdByUserId: userId,
+            latitude: normalized.Latitude,
+            longitude: normalized.Longitude,
+            geoPointSource: normalized.GeoPointSource,
             npi: normalized.Npi);
 
         return new ImportProviderResolution(
             provider,
             "created",
-            "Provider will be created and linked to the network.");
+            "Provider will be created and linked to the network.",
+            categoryIds,
+            specialtyIds);
     }
 
     private static void CacheResolvedProvider(
@@ -626,12 +678,30 @@ public class NetworkService : INetworkService
         var city = NormalizeRequired(parsedRow.City, "City is required.", errors);
         var state = NormalizeRequired(parsedRow.State, "State is required.", errors, v => v.Trim().ToUpperInvariant());
         var postalCode = NormalizeRequired(parsedRow.PostalCode, "Postal code is required.", errors);
+        var title = NormalizeOptional(parsedRow.Title);
+        var categoryCodes = NormalizeCodeList(parsedRow.CategoryCodesRaw);
+        var specialtyCodes = NormalizeCodeList(parsedRow.SpecialtyCodesRaw);
+        if (specialtyCodes.Count == 0 && categoryCodes.Count > 0)
+            specialtyCodes = [.. categoryCodes];
+        var primaryCategoryCode = NormalizeOptional(parsedRow.PrimaryCategoryCode) ?? categoryCodes.FirstOrDefault();
+        var primarySpecialtyCode = NormalizeOptional(parsedRow.PrimarySpecialtyCode) ?? specialtyCodes.FirstOrDefault();
 
         if (!TryParseOptionalBoolean(parsedRow.IsActiveRaw, defaultValue: true, out var isActive, out var isActiveError))
             errors.Add(isActiveError);
 
         if (!TryParseOptionalBoolean(parsedRow.AcceptingReferralsRaw, defaultValue: true, out var acceptingReferrals, out var acceptingError))
             errors.Add(acceptingError);
+
+        if (title?.Length > 50)
+            errors.Add("Title must be 50 characters or fewer.");
+
+        var latitude = ParseOptionalDouble(parsedRow.LatitudeRaw, "Latitude", errors);
+        var longitude = ParseOptionalDouble(parsedRow.LongitudeRaw, "Longitude", errors);
+        var geoPointSource = NormalizeGeoPointSource(parsedRow.GeoPointSource, latitude.HasValue || longitude.HasValue);
+
+        var geoErrors = new Dictionary<string, string[]>();
+        ProviderGeoHelper.ValidateGeoFields(latitude, longitude, geoPointSource, geoErrors);
+        errors.AddRange(geoErrors.Values.SelectMany(v => v));
 
         if (errors.Count > 0)
         {
@@ -641,6 +711,7 @@ public class NetworkService : INetworkService
 
         normalized = new ProviderImportNormalizedRow(
             TenantId: tenantId!.Value,
+            Title: title,
             FirstName: firstName!,
             LastName: lastName!,
             OrganizationName: NormalizeOptional(parsedRow.OrganizationName),
@@ -652,7 +723,14 @@ public class NetworkService : INetworkService
             State: state!,
             PostalCode: postalCode!,
             IsActive: isActive,
-            AcceptingReferrals: acceptingReferrals);
+            AcceptingReferrals: acceptingReferrals,
+            CategoryCodes: categoryCodes,
+            PrimaryCategoryCode: primaryCategoryCode,
+            SpecialtyCodes: specialtyCodes,
+            PrimarySpecialtyCode: primarySpecialtyCode,
+            Latitude: latitude,
+            Longitude: longitude,
+            GeoPointSource: geoPointSource);
 
         return true;
     }
@@ -691,6 +769,52 @@ public class NetworkService : INetworkService
     {
         var normalized = NormalizeOptional(value);
         return normalized?.ToLowerInvariant();
+    }
+
+    private static List<string> NormalizeCodeList(string? raw)
+    {
+        var normalized = NormalizeOptional(raw);
+        if (normalized is null) return [];
+
+        return normalized
+            .Split([',', ';', '|', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(Specialty.NormalizeCode)
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static double? ParseOptionalDouble(string? raw, string fieldName, List<string> errors)
+    {
+        var normalized = NormalizeOptional(raw);
+        if (normalized is null) return null;
+
+        if (double.TryParse(normalized, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+            return value;
+
+        errors.Add($"{fieldName} must be a valid number.");
+        return null;
+    }
+
+    private static string? NormalizeGeoPointSource(string? raw, bool hasCoordinates)
+    {
+        var normalized = NormalizeOptional(raw);
+        if (normalized is null)
+            return hasCoordinates ? GeoPointSource.Imported : null;
+
+        var key = normalized.Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .ToLowerInvariant();
+
+        return key switch
+        {
+            "manual" => GeoPointSource.Manual,
+            "geocoded" or "geocode" or "nominatim" or "google" or "googlemaps" or "googleplaces" => GeoPointSource.Geocoded,
+            "imported" or "import" or "csv" or "migration" or "migrated" => GeoPointSource.Imported,
+            _ when GeoPointSource.All.Contains(normalized) => normalized,
+            _ => normalized
+        };
     }
 
     private static string BuildProviderDisplayName(string? title, string firstName, string lastName)
@@ -830,6 +954,39 @@ public class NetworkService : INetworkService
         return distinct;
     }
 
+    private async Task<List<Guid>> ResolveCategoryIdsByCodesAsync(
+        List<string> categoryCodes,
+        string? primaryCategoryCode,
+        CancellationToken ct)
+    {
+        if (categoryCodes.Count == 0) return [];
+
+        var categoryEntities = await _categories.GetByCodesAsync(categoryCodes, ct);
+        var expectedCount = categoryCodes
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(Specialty.NormalizeCode)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        if (categoryEntities.Count != expectedCount)
+            throw new ValidationException("Validation failed.",
+                new() { ["categoryCodes"] = ["One or more selected categories are inactive or invalid."] });
+
+        var orderedIds = new List<Guid>();
+        if (!string.IsNullOrWhiteSpace(primaryCategoryCode))
+        {
+            var primary = categoryEntities.FirstOrDefault(
+                c => string.Equals(c.Code, Specialty.NormalizeCode(primaryCategoryCode), StringComparison.Ordinal));
+            if (primary is not null) orderedIds.Add(primary.Id);
+        }
+
+        orderedIds.AddRange(categoryEntities
+            .Where(c => !orderedIds.Contains(c.Id))
+            .OrderBy(c => c.Name)
+            .Select(c => c.Id));
+
+        return orderedIds;
+    }
+
     private async Task<List<Guid>> ResolveSpecialtyIdsByCodesAsync(
         List<string>? specialtyCodes,
         string? primarySpecialtyCode,
@@ -877,5 +1034,7 @@ public class NetworkService : INetworkService
     private sealed record ImportProviderResolution(
         Provider Provider,
         string Status,
-        string Message);
+        string Message,
+        List<Guid> CategoryIds,
+        List<Guid> SpecialtyIds);
 }

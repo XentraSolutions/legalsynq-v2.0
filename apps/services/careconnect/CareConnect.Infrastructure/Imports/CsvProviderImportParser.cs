@@ -13,6 +13,8 @@ public sealed class CsvProviderImportParser : IProviderImportParser
     private static readonly Dictionary<string, string> HeaderAliases = new(StringComparer.OrdinalIgnoreCase)
     {
         ["tenantid"] = "tenantId",
+        ["title"] = "title",
+        ["providertitle"] = "title",
         ["firstname"] = "firstName",
         ["lastname"] = "lastName",
         ["organizationname"] = "organizationName",
@@ -30,6 +32,31 @@ public sealed class CsvProviderImportParser : IProviderImportParser
         ["zipcode"] = "postalCode",
         ["isactive"] = "isActive",
         ["acceptingreferrals"] = "acceptingReferrals",
+        ["category"] = "categoryCodes",
+        ["categories"] = "categoryCodes",
+        ["categorycode"] = "categoryCodes",
+        ["categorycodes"] = "categoryCodes",
+        ["providertype"] = "categoryCodes",
+        ["providertypes"] = "categoryCodes",
+        ["primarycategory"] = "primaryCategoryCode",
+        ["primarycategorycode"] = "primaryCategoryCode",
+        ["primaryprovidertype"] = "primaryCategoryCode",
+        ["specialty"] = "specialtyCodes",
+        ["specialties"] = "specialtyCodes",
+        ["specialtycode"] = "specialtyCodes",
+        ["specialtycodes"] = "specialtyCodes",
+        ["providerspecialty"] = "specialtyCodes",
+        ["providerspecialties"] = "specialtyCodes",
+        ["primaryspecialty"] = "primarySpecialtyCode",
+        ["primaryspecialtycode"] = "primarySpecialtyCode",
+        ["latitude"] = "latitude",
+        ["lat"] = "latitude",
+        ["longitude"] = "longitude",
+        ["lng"] = "longitude",
+        ["lon"] = "longitude",
+        ["geopointsource"] = "geoPointSource",
+        ["geosource"] = "geoPointSource",
+        ["coordinatesource"] = "geoPointSource",
     };
 
     private static readonly string[] RequiredHeaders =
@@ -108,6 +135,7 @@ public sealed class CsvProviderImportParser : IProviderImportParser
                 RowNumber: rowNumber,
                 SourceKey: $"row-{rowNumber}",
                 TenantId: GetField("tenantId"),
+                Title: GetField("title"),
                 FirstName: GetField("firstName"),
                 LastName: GetField("lastName"),
                 OrganizationName: GetField("organizationName"),
@@ -119,7 +147,14 @@ public sealed class CsvProviderImportParser : IProviderImportParser
                 State: GetField("state"),
                 PostalCode: GetField("postalCode"),
                 IsActiveRaw: GetField("isActive"),
-                AcceptingReferralsRaw: GetField("acceptingReferrals")));
+                AcceptingReferralsRaw: GetField("acceptingReferrals"),
+                CategoryCodesRaw: GetField("categoryCodes"),
+                PrimaryCategoryCode: GetField("primaryCategoryCode"),
+                SpecialtyCodesRaw: GetField("specialtyCodes"),
+                PrimarySpecialtyCode: GetField("primarySpecialtyCode"),
+                LatitudeRaw: GetField("latitude"),
+                LongitudeRaw: GetField("longitude"),
+                GeoPointSource: GetField("geoPointSource")));
 
             string? GetField(string canonicalHeader)
             {

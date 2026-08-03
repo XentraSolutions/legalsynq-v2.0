@@ -154,6 +154,7 @@ public sealed record ProviderImportParsedRow(
     int     RowNumber,
     string  SourceKey,
     string? TenantId,
+    string? Title,
     string? FirstName,
     string? LastName,
     string? OrganizationName,
@@ -165,10 +166,18 @@ public sealed record ProviderImportParsedRow(
     string? State,
     string? PostalCode,
     string? IsActiveRaw,
-    string? AcceptingReferralsRaw);
+    string? AcceptingReferralsRaw,
+    string? CategoryCodesRaw = null,
+    string? PrimaryCategoryCode = null,
+    string? SpecialtyCodesRaw = null,
+    string? PrimarySpecialtyCode = null,
+    string? LatitudeRaw = null,
+    string? LongitudeRaw = null,
+    string? GeoPointSource = null);
 
 public sealed record ProviderImportNormalizedRow(
     Guid    TenantId,
+    string? Title,
     string  FirstName,
     string  LastName,
     string? OrganizationName,
@@ -180,7 +189,14 @@ public sealed record ProviderImportNormalizedRow(
     string  State,
     string  PostalCode,
     bool    IsActive,
-    bool    AcceptingReferrals);
+    bool    AcceptingReferrals,
+    List<string> CategoryCodes,
+    string? PrimaryCategoryCode,
+    List<string> SpecialtyCodes,
+    string? PrimarySpecialtyCode,
+    double? Latitude,
+    double? Longitude,
+    string? GeoPointSource);
 
 public sealed record ProviderImportParseResult(
     string FileName,

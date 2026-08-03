@@ -46,6 +46,7 @@ CareConnect.Tests/         Tests
 | `POST` | `/api/careconnect/appointments` | Bearer | Book appointment |
 | `GET` | `/api/public/careconnect/network` | Anonymous | Public provider network |
 | `PUT` | `/api/networks/{networkId}/providers/{providerId}` | Bearer | Edit a provider from a tenant network after membership validation |
+| `POST` | `/api/networks/{networkId}/providers/import` | Development-only | CSV provider migration/import into a tenant network |
 
 ### Provider specialties
 
@@ -63,6 +64,20 @@ API for compatibility, but new provider setup and provider search behavior shoul
 Platform administrators can configure the global catalog with `POST /api/specialties`, `PUT /api/specialties/{id}`,
 and `DELETE /api/specialties/{id}`. `GET /api/specialties` returns active options by default and supports
 `includeInactive=true` for administrative views.
+
+### Provider import
+
+The development-only provider import endpoint accepts CSV uploads at `POST /api/networks/{networkId}/providers/import`.
+Required columns remain `tenantId`, `firstName`, `lastName`, `email`, `phone`, `addressLine1`, `city`, `state`, and
+`postalCode`. New-provider rows must now include at least one active specialty through `specialty`,
+`specialties`, `specialtyCode`, or `specialtyCodes`; values may be codes or names such as `Chiropractor` or
+`Physical Therapy`. Category/provider-type columns are still accepted for compatibility and are used as a specialty
+fallback when no specialty column is supplied.
+
+Optional import columns include `title`, `categoryCodes`, `primaryCategoryCode`, `primarySpecialtyCode`, `latitude`,
+`longitude`, and `geoPointSource`. `geoPointSource` is normalized to the supported values `Manual`, `Geocoded`, or
+`Imported`; common geocoder labels such as `nominatim` are treated as `Geocoded`, and coordinate rows with no source
+default to `Imported`.
 
 ### Provider search and distance
 
