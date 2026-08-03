@@ -174,6 +174,24 @@ describe('PublicNetworkView', () => {
     global.fetch = originalFetch;
   });
 
+  test('shows the organization name above the provider name in provider cards', () => {
+    render(
+      <PublicNetworkView
+        detail={DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    const organizationName = screen.getByText('Atlas Health');
+    const providerName = screen.getByText('Atlas Rehab');
+
+    expect(
+      organizationName.compareDocumentPosition(providerName) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   test('uses the provided loginUrl for the existing-portal-access success CTA', async () => {
     const user = userEvent.setup();
     const loginUrl = 'https://demo.careconnect.example.com/login?redirect=%2Freferrals';

@@ -37,6 +37,22 @@ function searchPinUrl(): string {
   )}`;
 }
 
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function getProviderIdentity(provider: { name: string; organizationName?: string | null }) {
+  const providerName = provider.name.trim();
+  const organizationName = provider.organizationName?.trim() ?? '';
+  const hasDistinctOrganization =
+    organizationName.length > 0 && organizationName.toLowerCase() !== providerName.toLowerCase();
+
+  return {
+    primary: organizationName || providerName,
+    secondary: hasDistinctOrganization ? providerName : null,
+  };
+}
+
 export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed, searchLocation, onSelect, onRequestReferral }: PublicNetworkMapProps) {
   const isLoaded     = useGoogleMapsScript();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -136,16 +152,17 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
           const currentZoom = map.getZoom() ?? 0;
           if (currentZoom < 13) map.setZoom(13);
           onSelect(captured.id);
+          const identity = getProviderIdentity(captured);
           const content = `
             <div style="font-family:system-ui,sans-serif;min-width:200px">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
                 <span style="width:22px;height:22px;border-radius:50%;background:${captured.acceptingReferrals ? '#dc2626' : '#6b7280'};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${captured.index}</span>
-                <p style="font-weight:700;font-size:14px;color:#111827;margin:0">${captured.name}</p>
+                <p style="font-weight:700;font-size:14px;color:#111827;margin:0">${esc(identity.primary)}</p>
               </div>
-              ${captured.organizationName ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${captured.organizationName}</p>` : ''}
-              <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${captured.city}, ${captured.state}</p>
+              ${identity.secondary ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${esc(identity.secondary)}</p>` : ''}
+              <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${esc(captured.city)}, ${esc(captured.state)}</p>
               ${typeof captured.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 8px;font-weight:600">${captured.distanceMiles.toFixed(1)} mi away</p>` : ''}
-              ${(captured.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 8px">${captured.specialties.map(s => s.name).join(', ')}</p>` : ''}
+              ${(captured.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 8px">${captured.specialties.map(s => esc(s.name)).join(', ')}</p>` : ''}
               ${captured.acceptingReferrals
                 ? `<span style="font-size:11px;color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:10px">Accepting referrals</span>`
                 : `<span style="font-size:11px;color:#6b7280;background:#f9fafb;border:1px solid #e5e7eb;border-radius:9999px;padding:2px 8px;display:inline-block;margin-bottom:10px">Not accepting referrals</span>`}

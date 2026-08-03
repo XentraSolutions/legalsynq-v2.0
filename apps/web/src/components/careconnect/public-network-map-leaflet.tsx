@@ -33,6 +33,18 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function getProviderIdentity(provider: { name: string; organizationName?: string | null }) {
+  const providerName = provider.name.trim();
+  const organizationName = provider.organizationName?.trim() ?? '';
+  const hasDistinctOrganization =
+    organizationName.length > 0 && organizationName.toLowerCase() !== providerName.toLowerCase();
+
+  return {
+    primary: organizationName || providerName,
+    secondary: hasDistinctOrganization ? providerName : null,
+  };
+}
+
 function makePinHtml(index: number, accepting: boolean, selected: boolean): string {
   const bg   = selected ? '#1d4ed8' : accepting ? '#dc2626' : '#6b7280';
   const size = selected ? 34 : 28;
@@ -47,14 +59,15 @@ function makeSearchPinHtml(): string {
 
 function buildPopupEl(m: NumberedMarker, onReferral: (m: NumberedMarker) => void): HTMLDivElement {
   const el = document.createElement('div');
+  const identity = getProviderIdentity(m);
   el.style.fontFamily = 'system-ui,sans-serif';
   el.style.minWidth   = '220px';
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
       <span style="width:22px;height:22px;border-radius:50%;background:${m.acceptingReferrals ? '#dc2626' : '#6b7280'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${m.index}</span>
-      <p style="font-weight:700;font-size:14px;color:#111827;margin:0">${esc(m.name)}</p>
+      <p style="font-weight:700;font-size:14px;color:#111827;margin:0">${esc(identity.primary)}</p>
     </div>
-    ${m.organizationName ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${esc(m.organizationName)}</p>` : ''}
+    ${identity.secondary ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${esc(identity.secondary)}</p>` : ''}
     <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${esc(m.city)}, ${esc(m.state)}</p>
     ${typeof m.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 8px;font-weight:600">${m.distanceMiles.toFixed(1)} mi away</p>` : ''}
     ${(m.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 8px">${esc(m.specialties.map(s => s.name).join(', '))}</p>` : ''}

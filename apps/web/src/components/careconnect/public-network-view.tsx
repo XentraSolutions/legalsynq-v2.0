@@ -69,6 +69,18 @@ function distanceMilesBetween(a: SearchLocation, b: { latitude: number; longitud
   return 2 * radiusMiles * Math.atan2(Math.sqrt(clamped), Math.sqrt(1 - clamped));
 }
 
+function getProviderIdentity(provider: { name: string; organizationName?: string | null }) {
+  const providerName = provider.name.trim();
+  const organizationName = provider.organizationName?.trim() ?? '';
+  const hasDistinctOrganization =
+    organizationName.length > 0 && organizationName.toLowerCase() !== providerName.toLowerCase();
+
+  return {
+    primary: organizationName || providerName,
+    secondary: hasDistinctOrganization ? providerName : null,
+  };
+}
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export function PublicNetworkView({
@@ -529,6 +541,8 @@ const ProviderCard = forwardRef<
     onClick?: () => void;
   }
 >(function ProviderCard({ provider, number, selected, hovered, compact, tenantId, onHover, onToggle, onClick }, ref) {
+  const identity = getProviderIdentity(provider);
+
   return (
     <div
       ref={ref}
@@ -560,11 +574,11 @@ const ProviderCard = forwardRef<
         {/* Info */}
         <div className="flex-1 min-w-0">
           <p className={['font-semibold text-gray-900 dark:text-white leading-tight', compact ? 'text-sm' : 'text-base'].join(' ')}>
-            {provider.name}
+            {identity.primary}
           </p>
-          {provider.organizationName && (
+          {identity.secondary && (
             <p className={['text-gray-500 dark:text-gray-400 mt-0.5 truncate', compact ? 'text-xs' : 'text-sm'].join(' ')}>
-              {provider.organizationName}
+              {identity.secondary}
             </p>
           )}
           <p className={['text-gray-400 dark:text-gray-500 mt-0.5', compact ? 'text-xs' : 'text-sm'].join(' ')}>
