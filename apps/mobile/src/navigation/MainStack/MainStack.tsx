@@ -8,7 +8,14 @@ import {
   PayoffQuoteScreen,
 } from '@/features/cases';
 import { DashboardReportDetailScreen } from '@/features/dashboard';
-import { LienDetailScreen, MyLiensScreen, SellLienScreen } from '@/features/liens';
+import {
+  CreateLienScreen,
+  EditLienScreen,
+  LienDetailScreen,
+  ManagementLienDetailScreen,
+  MyLiensScreen,
+  SellLienScreen,
+} from '@/features/liens';
 import { OfferDetailScreen } from '@/features/offers';
 import { PlaceholderScreen } from '@/features/placeholders';
 import { SettingsScreen } from '@/features/profile';
@@ -24,6 +31,9 @@ export function MainStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen component={BottomTabNavigator} name="Tabs" />
       <Stack.Screen component={LienDetailScreen} name="LienDetail" />
+      <Stack.Screen component={ManagementLienDetailScreen} name="ManagementLienDetail" />
+      <Stack.Screen component={CreateLienScreen} name="CreateLien" />
+      <Stack.Screen component={EditLienScreen} name="EditLien" />
       <Stack.Screen component={SellLienScreen} name="SellLien" />
       <Stack.Screen component={MyLiensScreen} name="MyLiens" />
       <Stack.Screen component={OfferDetailScreen} name="OfferDetail" />

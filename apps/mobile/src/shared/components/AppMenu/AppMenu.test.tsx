@@ -34,6 +34,18 @@ describe('AppMenu', () => {
     ]);
   });
 
+  it('routes Liens to the all-liens list in both account modes', () => {
+    const visibility = { ...DEFAULT_MENU_VISIBILITY, liens: true, selling: true };
+
+    for (const mode of ['selling', 'buying'] as const) {
+      const liensItem = getVisibleMenuSections(mode, visibility)
+        .flatMap((section) => section.children)
+        .find((child) => child.label === 'Liens');
+
+      expect(liensItem?.route).toBe('MyLiens');
+    }
+  });
+
   it('defines the same parent-child hierarchy shown in settings', () => {
     expect(
       MENU_VISIBILITY_HIERARCHY.map((item) => ({

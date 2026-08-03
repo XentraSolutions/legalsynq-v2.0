@@ -113,7 +113,7 @@ const MENU_SECTIONS: Record<AccountMode, MenuSection[]> = {
           visibilityKey: 'taskManager',
         },
         { label: 'Cases', route: 'Cases', visibilityKey: 'cases' },
-        { label: 'Liens', route: 'Marketplace', visibilityKey: 'liens' },
+        { label: 'Liens', route: 'MyLiens', visibilityKey: 'liens' },
         {
           label: 'Bill of Sales',
           subtitle: 'Bill of sale management will be added in a future pass.',
