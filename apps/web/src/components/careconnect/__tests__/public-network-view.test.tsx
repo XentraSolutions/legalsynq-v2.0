@@ -620,7 +620,7 @@ describe('PublicNetworkView', () => {
     expect(screen.getByText('Bright Spine')).toBeInTheDocument();
   });
 
-  test('geocodes ZIP, sorts by distance, displays miles, and clears filters', async () => {
+  test('geocodes ZIP, rearranges provider cards from closest to farthest, displays miles, and clears filters', async () => {
     const user = userEvent.setup();
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -642,13 +642,19 @@ describe('PublicNetworkView', () => {
       />,
     );
 
+    const atlasBeforeZip = screen.getByText('Atlas Health');
+    const brightBeforeZip = screen.getByText('Bright Spine Clinic');
+    expect(
+      atlasBeforeZip.compareDocumentPosition(brightBeforeZip) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
     await user.type(screen.getByLabelText('ZIP code'), '90012');
     await user.click(screen.getByRole('button', { name: 'Apply ZIP' }));
 
     await waitFor(() => expect(screen.getByText('0.0 mi away')).toBeInTheDocument());
 
-    const bright = screen.getByText('Bright Spine');
-    const atlas = screen.getByText('Atlas Rehab');
+    const bright = screen.getByText('Bright Spine Clinic');
+    const atlas = screen.getByText('Atlas Health');
     expect(bright.compareDocumentPosition(atlas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     await user.selectOptions(screen.getByLabelText('Specialty'), 'CHIROPRACTORS');

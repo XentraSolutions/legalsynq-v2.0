@@ -54,6 +54,14 @@ interface SearchLocation {
 
 type ProviderWithDistance = PublicProviderItem & { distanceMiles?: number | null };
 
+function usableCoordinates(point: { latitude: number; longitude: number }): { latitude: number; longitude: number } | null {
+  const latitude = Number(point.latitude);
+  const longitude = Number(point.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude === 0 && longitude === 0) return null;
+  return { latitude, longitude };
+}
+
 function distanceMilesBetween(a: SearchLocation, b: { latitude: number; longitude: number }): number {
   const toRad = (deg: number) => deg * Math.PI / 180;
   const radiusMiles = 3958.7613;
@@ -79,6 +87,18 @@ function getProviderIdentity(provider: { name: string; organizationName?: string
     primary: organizationName || providerName,
     secondary: hasDistinctOrganization ? providerName : null,
   };
+}
+
+function compareProvidersByDistance(a: ProviderWithDistance, b: ProviderWithDistance): number {
+  const aDistance = typeof a.distanceMiles === 'number' && Number.isFinite(a.distanceMiles)
+    ? a.distanceMiles
+    : Number.POSITIVE_INFINITY;
+  const bDistance = typeof b.distanceMiles === 'number' && Number.isFinite(b.distanceMiles)
+    ? b.distanceMiles
+    : Number.POSITIVE_INFINITY;
+
+  if (aDistance !== bDistance) return aDistance - bDistance;
+  return getProviderIdentity(a).primary.localeCompare(getProviderIdentity(b).primary);
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
@@ -122,7 +142,7 @@ export function PublicNetworkView({
     if (detail.providers.length === 0) return;
     const missing = detail.providers.filter(p => {
       const m = detail.markers.find(mk => mk.id === p.id);
-      return !m || (m.latitude === 0 && m.longitude === 0);
+      return !m || !usableCoordinates(m);
     });
     if (missing.length === 0) return;
 
@@ -183,17 +203,15 @@ export function PublicNetworkView({
       const withDistances: ProviderWithDistance[] = [];
       for (const p of list) {
         const mk = markerById[p.id];
-        if (!mk || (mk.latitude === 0 && mk.longitude === 0)) continue;
+        if (!mk) continue;
+        const coordinates = usableCoordinates(mk);
+        if (!coordinates) continue;
         withDistances.push({
           ...p,
-          distanceMiles: distanceMilesBetween(searchLocation, {
-            latitude: mk.latitude,
-            longitude: mk.longitude,
-          }),
+          distanceMiles: distanceMilesBetween(searchLocation, coordinates),
         });
       }
-      list = withDistances.sort((a, b) =>
-        (a.distanceMiles ?? Number.POSITIVE_INFINITY) - (b.distanceMiles ?? Number.POSITIVE_INFINITY));
+      list = withDistances.sort(compareProvidersByDistance);
     }
     return list;
   }, [detail.providers, search, showAll, selectedSpecialtyCode, searchLocation, markerById]);
@@ -203,8 +221,9 @@ export function PublicNetworkView({
     let idx = 1;
     for (const p of filtered) {
       const mk = markerById[p.id];
-      if (mk && (mk.latitude !== 0 || mk.longitude !== 0)) {
-        result.push({ ...mk, distanceMiles: p.distanceMiles ?? mk.distanceMiles, index: idx++ });
+      const coordinates = mk ? usableCoordinates(mk) : null;
+      if (mk && coordinates) {
+        result.push({ ...mk, ...coordinates, distanceMiles: p.distanceMiles ?? mk.distanceMiles, index: idx++ });
       }
     }
     return result;
@@ -585,7 +604,7 @@ const ProviderCard = forwardRef<
             {provider.city}, {provider.state}
             {!compact && provider.postalCode ? ` ${provider.postalCode}` : ''}
           </p>
-          {typeof provider.distanceMiles === 'number' && (
+          {typeof provider.distanceMiles === 'number' && Number.isFinite(provider.distanceMiles) && (
             <p className={['text-blue-600 dark:text-blue-400 mt-0.5 font-medium', compact ? 'text-xs' : 'text-sm'].join(' ')}>
               {provider.distanceMiles.toFixed(1)} mi away
             </p>
