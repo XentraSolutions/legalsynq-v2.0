@@ -1,9 +1,8 @@
 "use client";
 
-import { StatusBadge } from "@/components/careconnect/status-badge";
-import { KpiCard } from "@/components/lien/kpi-card";
 import { ConfirmDialog } from "@/components/lien/modal";
 import { BaseTable } from "@/components/ui/base-table";
+import { useFetchReportColumns } from "@/hooks/use-report";
 import { ApiError } from "@/lib/api-client";
 import { CaseListItem } from "@/lib/cases";
 import { PaginationMeta } from "@/lib/contacts";
@@ -28,12 +27,22 @@ interface ReportDisplayProps {
     ExportReportRequest &
     CreateReports;
   onBack: () => void;
-  onEdit: () => void;
-  onSaved: () => void;
+  onEdit?: () => void;
+  onSaved?: () => void;
   onPaginate?: (pagination: PaginationMeta) => void;
   loadingData?: boolean;
 }
 
+function formatCurrency(amount: number | null): string {
+  if (amount === null || amount === undefined || isNaN(Number(amount)))
+    return "";
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2, // Forces decimals like .00 if needed
+  }).format(Number(amount));
+}
 export default function ReportDisplay({
   report,
   onBack,
@@ -43,6 +52,12 @@ export default function ReportDisplay({
   loadingData,
 }: ReportDisplayProps) {
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const { defaultColumns, isColumnsLoading } = useFetchReportColumns(
+    report.reportType,
+    report,
+  );
+
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [columns, setColumns] = useState<any>();
   const addToast = useLienStore((s) => s.addToast);
@@ -54,7 +69,6 @@ export default function ReportDisplay({
     totalPages: report?.totalPages ?? 1,
   };
   const viewBy = report?.reportType.toLowerCase() ?? "case"; // 'cases' | 'liens'
-  report;
   const metrics =
     viewBy === "case"
       ? [
@@ -110,42 +124,8 @@ export default function ReportDisplay({
           },
         ];
 
-  const onSave = async () => {
-    try {
-      const response = await lienReportsService.createReports({
-        name: report.name,
-        description: report.description ?? report.reportDescription,
-        config: { columns: report.config?.columns ?? report.columns },
-        attorneyIds: report.attorneyIds,
-        caseManagerIds: report.caseManagerIds,
-        closedDateFrom: null,
-        closedDateTo: null,
-        fundingCompanyIds: report.fundingCompanyIds,
-        isBulk: report.isBulk,
-        lawFirmIds: report.lawFirmIds,
-        lienStatusIds: report.lienStatusIds,
-        medicalFacilityIds: report.medicalFacilityIds,
-        medicalProviderIds: report.medicalProviderIds,
-        plaintiffCaseIds: report.plaintiffCaseIds,
-        purchaseDateFrom: report.purchaseDateFrom,
-        purchaseDateTo: report.purchaseDateTo,
-        reportType: report.reportType,
-        statusView: report.statusView,
-      });
-      if (response) {
-        addToast({
-          type: "success",
-          title: "Report Saved",
-        });
-        onSaved();
-      }
-    } catch (err) {
-      const message =
-        err instanceof ApiError ? err.message : "Failed to save report";
-      addToast({ type: "error", title: "Save Failed", description: message });
-    }
-  };
   const onExport = async () => {
+    setExporting(true);
     const response = await lienReportsService.exportReports({
       ...report.reportConfig,
       reportId: report.reportId,
@@ -158,6 +138,8 @@ export default function ReportDisplay({
     link.download = response.data[0]?.filename;
     link.click();
     link.remove();
+
+    setExporting(false);
   };
 
   const handleConfirmAction = () => {
@@ -183,122 +165,86 @@ export default function ReportDisplay({
   };
 
   const fetchColumns = useCallback(async () => {
-    const colsResponse = await lienReportsService.getColumns(report.reportType);
-    const { ...columnGroups } = colsResponse;
-
-    const excludedKeys = new Set([
-      "isSuccess",
-      "message",
-      "reportType",
-      "data",
-      "defaultColumn",
-    ]);
-
-    const groupedCols: ColumnGroup[] = Object.entries(
-      columnGroups as Record<string, unknown>,
-    )
-      .filter(([key]) => !excludedKeys.has(key))
-      .filter(([_, value]) => Array.isArray(value))
-      .map(([key, value]) => ({
-        key,
-        value: value as ReportColumnOption[],
-      }));
-
     if (!report.config?.columns) {
-      const cols = groupedCols
+      const cols = defaultColumns
         .flatMap((config: any) => config.value)
         .map((item) => {
+          const isCurrencyField = /amt|amount|price|cost|fee|total/i.test(
+            item.key,
+          );
+
           return {
             id: item.key,
             header: item.label,
             accessorFn: (row: any) => row[item.key],
-            cell: ({ row }: any) => (
-              <span className="text-xs font-mono text-gray-700">
-                {row.original[item.key]}
-              </span>
-            ),
+            cell: ({ row }: any) => {
+              const value = row.original[item.key];
+              let formattedValue = value;
+
+              if (isCurrencyField && value !== null && value !== undefined) {
+                // Remove everything except numbers, periods, and minus signs
+                const cleanString = String(value).replace(/[^0-9.-]+/g, "");
+                const numericValue = parseFloat(cleanString);
+
+                // Format if it successfully parsed into a valid number
+                if (!isNaN(numericValue)) {
+                  formattedValue = formatCurrency(numericValue);
+                }
+              }
+
+              return (
+                <span className="text-sm text-gray-700">{formattedValue}</span>
+              );
+            },
           };
         });
 
       setColumns(cols);
       setCases(report.data ?? []);
     } else {
-      let sortOrder = 1;
-      let selected;
+      const tableColumns = defaultColumns.map((item) => {
+        // Define keywords that identify an amount or numeric column
+        const isCurrencyField = /amt|amount|price|cost|fee|total/i.test(
+          item.key,
+        );
 
-      const globallyOrderedItems = groupedCols
-        .flatMap((section) =>
-          (section.value || []).map((item) => ({
-            ...item,
-            sectionKey: section.key,
-          })),
-        )
-        .filter((item) => report.config?.columns.includes(item.key))
-        .sort((a, b) => {
-          const rawResponse = report.config?.columns;
+        return {
+          id: item.key,
+          header: item.label,
+          accessorFn: (row: any) => row[item.key],
+          cell: ({ row }: any) => {
+            const value = row.original[item.key];
 
-          const defaultColsArray = Array.isArray(rawResponse)
-            ? (rawResponse as string[])
-            : [];
+            let formattedValue = value;
 
-          const indexA = defaultColsArray.indexOf(a.key);
-          const indexB = defaultColsArray.indexOf(b.key);
-          return (
-            (indexA === -1 ? Infinity : indexA) -
-            (indexB === -1 ? Infinity : indexB)
-          );
-        })
-        .map((item) => ({
-          ...item,
-          sortOrder: sortOrder++,
-        }));
+            if (isCurrencyField && value !== null && value !== undefined) {
+              // 1. Remove everything except numbers, periods, and minus signs (e.g., "$1,200.50" -> "1200.50")
+              const cleanString = String(value).replace(/[^0-9.-]+/g, "");
+              const numericValue = parseFloat(cleanString);
 
-      // Step 2: Re-group them back into the original format based on the original groupedCols order
-      selected = groupedCols
-        .map((section) => {
-          // Pull out only the items that belong to this specific section
-          const sectionItems = globallyOrderedItems.filter(
-            (item) => item.sectionKey === section.key,
-          );
+              // 2. Format if it successfully parsed into a valid number
+              if (!isNaN(numericValue)) {
+                formattedValue = formatCurrency(numericValue);
+              }
+            }
 
-          return {
-            key: section.key,
-            value: sectionItems,
-          };
-        })
-        // Filter out any sections that ended up with 0 items
-        .filter((section) => section.value.length > 0);
+            return (
+              <span className="text-sm text-gray-700">{formattedValue}</span>
+            );
+          },
+        };
+      });
 
-      const selectedValues = selected
-        .flatMap((section) =>
-          section.value.map((item: any) => ({
-            ...item,
-            sectionKey: section.key,
-          })),
-        )
-        .sort((a, b) => a.sortOrder - b.sortOrder);
-      const tableColumns = selectedValues.map((item) => ({
-        id: item.key,
-        header: item.label,
-        accessorFn: (row: any) => row[item.key],
-        cell: ({ row }: any) => (
-          <span className="text-xs font-mono text-gray-700">
-            {row.original[item.key]}
-          </span>
-        ),
-      }));
       setColumns(tableColumns);
       setCases(report.data ?? []);
     }
 
     setLoading(false);
-  }, [report]);
+  }, [isColumnsLoading]);
 
   useEffect(() => {
     fetchColumns();
-  }, [report.data, report.columns]);
-
-  useEffect(() => {}, []);
+  }, [isColumnsLoading]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
@@ -360,37 +306,6 @@ export default function ReportDisplay({
                 }}
                 className="bg-white border-gray-200 rounded-xl"
               />
-
-              {/* <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50/80 border-b border-gray-100">
-                    {columns &&
-                      columns.map((col: any) => (
-                        <th
-                          key={col.key}
-                          className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide"
-                        >
-                          {col.label}
-                        </th>
-                      ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {cases.map((c: any, index) => (
-                    <tr
-                      key={index}
-                      className="hover:bg-gray-50/80 transition-colors cursor-pointer"
-                    >
-                      {columns &&
-                        columns.map((col: any) => (
-                          <td key={col.key} className="px-3 py-2.5">
-                            {c[col.key]}
-                          </td>
-                        ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table> */}
             </div>
           </>
         )}
@@ -408,10 +323,11 @@ export default function ReportDisplay({
           {/* RIGHT */}
           <div className="flex flex-wrap gap-2 sm:gap-2 sm:flex-row sm:items-center sm:justify-end">
             <button
+              disabled={exporting}
               onClick={onExport}
               className="px-3 py-2 border border-gray-200 text-blue-500 rounded-lg text-sm hover:shadow-sm"
             >
-              Export CSV
+              {exporting ? "Exporting..." : "Export CSV"}
             </button>
           </div>
         </div>
