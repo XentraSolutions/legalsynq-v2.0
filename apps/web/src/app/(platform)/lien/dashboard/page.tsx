@@ -191,7 +191,7 @@ export default function LienDashboardPage() {
     "liens" | "cases" | "lawFirm" | "facility",
     (request: {
       page: number;
-      limit: number;
+      limit?: number;
       startDate?: string;
       endDate?: string;
     }) => ReturnType<typeof casesService.exportTotalLienReport>
@@ -208,7 +208,6 @@ export default function LienDashboardPage() {
     try {
       const response = await reportExporters[activeReport]({
         page: 1,
-        limit: 500,
         startDate: dashboardRange.from,
         endDate: dashboardRange.to,
       });
