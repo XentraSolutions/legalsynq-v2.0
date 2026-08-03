@@ -133,6 +133,35 @@ describe('mobile SynqLien process-flow endpoints', () => {
     });
   });
 
+  it('uses liens-updates v3 for the selected case lien activity', async () => {
+    apiClient.post = jest.fn(() =>
+      Promise.resolve({
+        data: {
+          data: [
+            {
+              id: 'update-1',
+              action: 'LienStatus',
+              description: 'Lien status updated to Open.',
+              timestamp: '08/04/2026 10:30 AM',
+            },
+          ],
+        },
+      })
+    );
+
+    const updates = await CasesApi.getLienUpdates('case-1');
+
+    expect(updates[0]).toMatchObject({
+      title: 'LienStatus',
+      updatedAt: '08/04/2026 10:30 AM',
+    });
+    expect(apiClient.post).toHaveBeenCalledWith('/liens/api/liens/cases/liens-updates/v3', {
+      caseId: 'case-1',
+      page: 1,
+      limit: 100,
+    });
+  });
+
   it('uses the manage-case payoff quote, merge, and delete endpoints', async () => {
     apiClient.get = jest.fn(() =>
       Promise.resolve({ data: { url: 'https://documents.example/payoff-quote.pdf' } })

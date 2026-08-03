@@ -1,5 +1,6 @@
 export * from './CaseCard';
 export * from './CaseDetailHeader';
+export * from './CaseLiensTab';
 export * from './CaseDetailPlaceholderPage';
 export * from './CaseDetailTabBar';
 export * from './CaseDetailTabPage';

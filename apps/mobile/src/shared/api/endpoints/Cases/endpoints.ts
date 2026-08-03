@@ -210,6 +210,22 @@ export const CasesApi = {
     }));
   },
 
+  async getLienUpdates(caseId: string): Promise<CaseUpdate[]> {
+    const response = await apiClient.post<unknown>(`${CASES_BASE_PATH}/liens-updates/v3`, {
+      caseId,
+      page: 1,
+      limit: 100,
+    });
+
+    return normalizeArray<CaseUpdate>(response.data).map((update) => ({
+      ...update,
+      title: update.title ?? update.action ?? 'Lien Update',
+      updatedAt:
+        update.updatedAt ??
+        (typeof update.timestamp === 'string' ? update.timestamp : undefined),
+    }));
+  },
+
   async createCase(body: CreateCaseRequest): Promise<CaseDetailResponse> {
     const response = await apiClient.post<CaseDetailResponse>(CASES_BASE_PATH, body);
     return response.data;

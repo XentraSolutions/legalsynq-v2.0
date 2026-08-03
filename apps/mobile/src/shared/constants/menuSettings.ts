@@ -5,7 +5,7 @@ export const MENU_VISIBILITY_OPTIONS = [
   { key: 'selling', label: 'Selling', defaultVisible: false },
   { key: 'taskManager', label: 'Task Manager', defaultVisible: false },
   { key: 'cases', label: 'Cases', defaultVisible: true },
-  { key: 'liens', label: 'Liens', defaultVisible: false },
+  { key: 'liens', label: 'Liens', defaultVisible: true },
   { key: 'billOfSales', label: 'Bill of Sales', defaultVisible: false },
   { key: 'servicing', label: 'Servicing', defaultVisible: false },
   { key: 'contacts', label: 'Contacts', defaultVisible: false },

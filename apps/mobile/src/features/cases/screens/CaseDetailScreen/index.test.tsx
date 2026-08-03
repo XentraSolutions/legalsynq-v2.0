@@ -10,6 +10,24 @@ const mockDeleteCase = jest.fn(() => Promise.resolve());
 const mockMergeCase = jest.fn(() => Promise.resolve());
 const mockUseCaseDetail = jest.fn();
 const mockAlert = jest.fn();
+const mockCaseLiens = Array.from({ length: 6 }, (_, index) => ({
+  id: `lien-${index + 1}`,
+  lienNumber: `26-41823-0${index + 1}`,
+  patientName: 'Marcus Delgado',
+  status: 'Open',
+  purchaseAmount: 9750 + index,
+  billingAmount: 21300 + index,
+  initialServiceDate: '2025-01-22',
+  purchaseDate: '2025-02-05',
+  medicalFacility: `Case Facility ${index + 1}`,
+  medicalFacilityId: `facility-${index + 1}`,
+  lawFirm: 'Aaron Law Group',
+  lawFirmId: 'firm-1',
+  caseManager: 'Aaron Law Group',
+  caseManagerId: 'manager-1',
+  caseId: 'case-1',
+  closedDate: '',
+}));
 
 Alert.alert = mockAlert;
 
@@ -53,6 +71,7 @@ jest.mock('@react-navigation/native', () => ({
 jest.mock('@/features/cases/hooks', () => ({
   useAddCaseNote: () => ({ isPending: false, mutateAsync: mockMutateAsync }),
   useCaseDetail: () => mockUseCaseDetail(),
+  useCaseLienUpdates: () => ({ data: [], isLoading: false }),
   useCases: () => ({
     cases: [
       {
@@ -67,6 +86,23 @@ jest.mock('@/features/cases/hooks', () => ({
   useCaseUpdates: () => ({ data: [], isLoading: false }),
   useDeleteCase: () => ({ isPending: false, mutateAsync: mockDeleteCase }),
   useMergeCase: () => ({ isPending: false, mutateAsync: mockMergeCase }),
+}));
+
+jest.mock('@/features/liens/hooks', () => ({
+  useCaseManagementLiens: () => ({
+    liens: mockCaseLiens,
+    totalCount: mockCaseLiens.length,
+    filterOptions: {
+      lawFirmId: [],
+      medicalFacilityId: [],
+      caseManagerId: [],
+      statusId: [],
+    },
+    isLoading: false,
+    isError: false,
+    isRefetching: false,
+    refetchAll: jest.fn(),
+  }),
 }));
 
 jest.mock('@/shared/hooks', () => ({
@@ -153,6 +189,27 @@ describe('CaseDetailScreen', () => {
 
     fireEvent.press(getByText('Payoff Quote'));
     expect(mockNavigate).toHaveBeenCalledWith('PayoffQuote', { caseId: 'case-1' });
+  });
+
+  it('lists only the selected case liens and opens case-scoped lien routes', () => {
+    const screen = render(<CaseDetailScreen />);
+
+    fireEvent.press(screen.getByText('Liens'));
+
+    expect(screen.getByTestId('case-liens-page')).toBeTruthy();
+    expect(screen.getByText('Case Facility 1')).toBeTruthy();
+    expect(screen.queryByText('Case Facility 6')).toBeNull();
+    expect(screen.getByText('5 of 6 entries')).toBeTruthy();
+    expect(screen.getByText('No Recent Updates')).toBeTruthy();
+
+    fireEvent.press(screen.getAllByText('View Lien')[0]);
+    expect(mockNavigate).toHaveBeenCalledWith('ManagementLienDetail', { lienId: 'lien-1' });
+
+    fireEvent.press(screen.getByLabelText('Add case lien'));
+    expect(mockNavigate).toHaveBeenCalledWith('CreateLien', { caseId: 'case-1' });
+
+    fireEvent.press(screen.getByLabelText('Next page'));
+    expect(screen.getByText('Case Facility 6')).toBeTruthy();
   });
 
   it('requires confirmation before merging or deleting a case', async () => {

@@ -9,7 +9,7 @@ export const documentSchema = z.object({
   documentTypeId: z.string(),
   title: z.string(),
   description: z.string().nullable().optional(),
-  status: z.string(),
+  status: z.string().optional().default('ACTIVE'),
   mimeType: z.string(),
   fileSizeBytes: z.number(),
   currentVersionId: z.string().nullable().optional(),
