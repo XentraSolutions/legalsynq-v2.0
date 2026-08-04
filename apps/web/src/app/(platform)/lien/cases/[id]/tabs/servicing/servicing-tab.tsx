@@ -6,7 +6,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLienStore } from "@/stores/lien-store";
 import { useTimezone } from "@/lib/use-timezone";
 import { useSessionContext } from "@/providers/session-provider";
-import { useCaseLiens, CASE_PAYMENTS_QUERY_KEY } from "@/hooks/use-case-liens";
+import {
+  useCaseLiens,
+  CASE_PAYMENTS_QUERY_KEY,
+  SETTLEMENT_PAYMENT_DETAILS_QUERY_KEY,
+} from "@/hooks/use-case-liens";
 import { useSettlementHistory } from "@/hooks/use-settlement-history";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
 import type {
@@ -50,7 +54,7 @@ export function ServicingTab({
   liensLoadedAt: Date | null;
   onRefreshLiens: () => void;
   isLiensFetching: boolean;
-  payments: import("@/lib/settlement/settlement.types").CasePayment[];
+  payments: import("@/lib/settlement/settlement.types").LegacyCasePayment[];
   paymentsLoadedAt: Date | null;
   onRefreshPayments: () => void;
   isPaymentsFetching: boolean;
@@ -98,6 +102,9 @@ export function ServicingTab({
     });
     historyQueryClient.invalidateQueries({
       queryKey: CASE_PAYMENTS_QUERY_KEY(caseDetail.id),
+    });
+    historyQueryClient.invalidateQueries({
+      queryKey: SETTLEMENT_PAYMENT_DETAILS_QUERY_KEY(caseDetail.id),
     });
   };
 

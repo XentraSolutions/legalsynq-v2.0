@@ -5,8 +5,15 @@ import { LienTableToolbar } from "@/components/lien/lien-table";
 import { useLienStore } from "@/stores/lien-store";
 import { settlementService } from "@/lib/settlement";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
+import type { LegacyCasePayment } from "@/lib/settlement/settlement.types";
 import { CollapsibleSection } from "../components/collapsible-section";
 import { formatCurrency } from "../utils/case-detail-utils";
+
+function toAmount(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isNaN(n) ? null : n;
+}
 
 export function PaymentHistoryWidget({
   payments,
@@ -15,7 +22,7 @@ export function PaymentHistoryWidget({
   onRefreshPayments,
   isPaymentsFetching,
 }: {
-  payments: import("@/lib/settlement/settlement.types").CasePayment[];
+  payments: LegacyCasePayment[];
   liens: (CaseLienItem & CaseLienItemMetadata)[];
   paymentsLoadedAt: Date | null;
   onRefreshPayments: () => void;
@@ -48,10 +55,7 @@ export function PaymentHistoryWidget({
     }
   };
 
-  const paymentColumns: ColumnDef<
-    import("@/lib/settlement/settlement.types").CasePayment,
-    any
-  >[] = [
+  const paymentColumns: ColumnDef<LegacyCasePayment, any>[] = [
     {
       id: "paymentNumber",
       header: "Payment ID",
@@ -68,8 +72,9 @@ export function PaymentHistoryWidget({
       header: "Lien ID",
       cell: ({ row }) => (
         <span className="text-xs font-mono text-primary whitespace-nowrap">
-          {lienById.get(row.original.lienId)?.lienNumber ??
-            row.original.lienId ??
+          {row.original.lienCode ||
+            lienById.get(row.original.lienId)?.lienNumber ||
+            row.original.lienId ||
             "—"}
         </span>
       ),
@@ -79,17 +84,38 @@ export function PaymentHistoryWidget({
       header: "Lien Status",
       cell: ({ row }) => (
         <span className="text-xs text-gray-600 whitespace-nowrap">
-          {lienById.get(row.original.lienId)?.status ?? "—"}
+          {row.original.lienStatus ||
+            lienById.get(row.original.lienId)?.status ||
+            "—"}
         </span>
       ),
     },
     {
-      id: "amount",
-      header: "Amount",
+      id: "amountToSettle",
+      header: "Amount to Settle",
       meta: { align: "right" },
       cell: ({ row }) => (
         <span className="text-sm text-gray-700 font-medium tabular-nums whitespace-nowrap">
-          {formatCurrency(row.original.amount)}
+          {formatCurrency(toAmount(row.original.amountToSettle))}
+        </span>
+      ),
+    },
+    {
+      id: "checkAmount",
+      header: "Check Amount",
+      meta: { align: "right" },
+      cell: ({ row }) => (
+        <span className="text-sm text-gray-700 font-medium tabular-nums whitespace-nowrap">
+          {formatCurrency(toAmount(row.original.checkAmount))}
+        </span>
+      ),
+    },
+    {
+      id: "checkReceived",
+      header: "Check Received",
+      cell: ({ row }) => (
+        <span className="text-xs text-gray-500 whitespace-nowrap">
+          {row.original.checkDate || "—"}
         </span>
       ),
     },
@@ -98,24 +124,26 @@ export function PaymentHistoryWidget({
       header: "Check Number",
       cell: ({ row }) => (
         <span className="text-xs font-mono text-gray-500 whitespace-nowrap">
-          {row.original.checkNumber ?? "—"}
+          {row.original.checkNumber || "—"}
         </span>
       ),
     },
     {
-      id: "payee",
-      header: "Payee",
+      id: "settlementType",
+      header: "Settlement Type",
       cell: ({ row }) => (
         <span className="text-xs text-gray-600 whitespace-nowrap">
-          {row.original.payee ?? "—"}
+          {row.original.type || "—"}
         </span>
       ),
     },
     {
-      id: "note",
-      header: "Note",
+      id: "settlementStatus",
+      header: "Settlement Status",
       cell: ({ row }) => (
-        <span className="text-xs text-gray-600">{row.original.note ?? "—"}</span>
+        <span className="text-xs text-gray-600 whitespace-nowrap">
+          {row.original.status || "—"}
+        </span>
       ),
     },
     {
@@ -123,7 +151,7 @@ export function PaymentHistoryWidget({
       header: "Date",
       cell: ({ row }) => (
         <span className="text-xs text-gray-500 whitespace-nowrap">
-          {row.original.paymentDate ?? "—"}
+          {row.original.date || "—"}
         </span>
       ),
     },
