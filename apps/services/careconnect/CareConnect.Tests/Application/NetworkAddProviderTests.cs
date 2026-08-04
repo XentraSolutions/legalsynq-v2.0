@@ -130,6 +130,85 @@ public class NetworkAddProviderTests
     }
 
     [Fact]
+    public async Task AddProviderAsync_NewProvider_ReturnsSpecialtiesImmediately()
+    {
+        // Regression: SyncProviderSpecialtiesAsync only sets the ProviderSpecialty.SpecialtyId
+        // FK — it never wires up the .Specialty navigation on the in-memory `provider` object
+        // built earlier in AddProviderAsync. MapSpecialties silently drops entries with a null
+        // .Specialty, so the response must come from a freshly reloaded, fully-included
+        // membership (GetMembershipAsync's Include chain), not that stale local `provider`.
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var specialty = Specialty.Create("Pain Doctors", "PAIN", null);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
+        networks.Setup(r => r.GetProviderByTenantEmailAsync(tenantId, "jane@example.com", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Provider?)null);
+        networks.Setup(r => r.AddProviderToRegistryAsync(It.IsAny<Provider>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SyncProviderSpecialtiesAsync(It.IsAny<Guid>(), It.IsAny<List<Guid>>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.FindFacilityAsync(tenantId, It.IsAny<string>(), "123 Main St", "Chicago", "IL", "60601", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Facility?)null);
+        networks.Setup(r => r.AddFacilityAsync(It.IsAny<Facility>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.GetProviderFacilityAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProviderFacility?)null);
+        networks.Setup(r => r.AddProviderFacilityAsync(It.IsAny<ProviderFacility>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.AddProviderAsync(It.IsAny<NetworkProvider>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        // First call: "does this membership already exist" check, before creation — none yet.
+        // Second call: the post-save reload used to build the response — simulates the fixed
+        // repository method returning a fully-included Provider/Facility.
+        networks.SetupSequence(r => r.GetMembershipAsync(networkId, It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NetworkProvider?)null)
+            .ReturnsAsync(() =>
+            {
+                var reloadedProvider = Provider.Create(
+                    tenantId, "Dr. Jane Smith", "Smith Family Practice", "jane@example.com", "555-0100",
+                    "123 Main St", "Chicago", "IL", "60601", true, true, null,
+                    firstName: "Jane", lastName: "Smith", title: "Dr.");
+                reloadedProvider.ProviderSpecialties.Add(new ProviderSpecialty
+                {
+                    ProviderId = reloadedProvider.Id,
+                    SpecialtyId = specialty.Id,
+                    Specialty = specialty,
+                    IsPrimary = true,
+                });
+                var reloadedFacility = Facility.Create(
+                    tenantId, "Smith Family Practice", "123 Main St", "Chicago", "IL", "60601", "555-0100",
+                    true, null, "jane@example.com");
+                var reloadedMembership = NetworkProvider.Create(
+                    tenantId, networkId, reloadedProvider.Id, reloadedFacility.Id, true, true);
+                SetNavigation(reloadedMembership, nameof(NetworkProvider.Provider), reloadedProvider);
+                SetNavigation(reloadedMembership, nameof(NetworkProvider.Facility), reloadedFacility);
+                return reloadedMembership;
+            });
+
+        var specialties = new Mock<ISpecialtyRepository>();
+        specialties.Setup(r => r.GetActiveByCodesAsync(It.Is<IEnumerable<string>>(codes => codes.Contains("PAIN")), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([specialty]);
+
+        var sut = new NetworkService(
+            networks.Object,
+            Mock.Of<ICategoryRepository>(),
+            specialties.Object,
+            Mock.Of<IProviderImportParser>(),
+            NullLogger<NetworkService>.Instance);
+
+        var result = await sut.AddProviderAsync(tenantId, networkId, NewProviderRequest(), null);
+
+        Assert.Single(result.Specialties);
+        Assert.Equal("Pain Doctors", result.PrimarySpecialty);
+    }
+
+    [Fact]
     public async Task SearchProvidersAsync_ReturnsOneResultPerFacility()
     {
         var tenantId = Guid.CreateVersion7();
