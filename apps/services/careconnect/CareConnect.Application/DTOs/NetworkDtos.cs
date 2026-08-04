@@ -42,7 +42,16 @@ public sealed record NetworkProviderItem(
     string AccessStage,
     List<SpecialtyResponse> Specialties,
     Guid? PrimarySpecialtyId,
-    string? PrimarySpecialty);
+    string? PrimarySpecialty,
+    /// <summary>
+    /// Whether the underlying cc_Facilities row is active. Distinct from IsActive above
+    /// (the NetworkProvider membership's own active/inactive toggle — an existing,
+    /// independent feature): FacilityIsActive is false only when the location itself was
+    /// soft-deleted (RemoveProviderAsync cascades to Facility.Deactivate when it was the
+    /// last active membership referencing it). A membership can be manually toggled
+    /// IsActive=false while FacilityIsActive stays true, and vice versa is not possible.
+    /// </summary>
+    bool   FacilityIsActive = true);
 
 // ── Map markers ───────────────────────────────────────────────────────────────
 

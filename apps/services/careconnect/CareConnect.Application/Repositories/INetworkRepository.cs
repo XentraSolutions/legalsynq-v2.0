@@ -40,6 +40,14 @@ public interface INetworkRepository
     Task<Facility?> FindFacilityAsync(Guid tenantId, string name, string addressLine1, string city, string state, string postalCode, CancellationToken ct = default);
     Task AddFacilityAsync(Facility facility, CancellationToken ct = default);
     Task UpdateFacilityAsync(Facility facility, CancellationToken ct = default);
+
+    /// <summary>
+    /// True when a Facility is still referenced by another active NetworkProvider membership
+    /// (any network, this tenant), other than the one being excluded. A Facility row can be shared
+    /// across multiple provider memberships (deduplicated by tenant+name+address in EnsureFacilityAsync),
+    /// so this must be checked before cascading a soft-delete's inactive flag onto the Facility itself.
+    /// </summary>
+    Task<bool> HasOtherActiveNetworkProviderForFacilityAsync(Guid tenantId, Guid facilityId, Guid excludeNetworkProviderId, CancellationToken ct = default);
     Task<ProviderFacility?> GetProviderFacilityAsync(Guid providerId, Guid facilityId, CancellationToken ct = default);
     Task<ProviderFacility?> GetPrimaryProviderFacilityAsync(Guid providerId, CancellationToken ct = default);
     Task AddProviderFacilityAsync(ProviderFacility providerFacility, CancellationToken ct = default);
