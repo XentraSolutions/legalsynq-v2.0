@@ -11,6 +11,7 @@ import {
   type SelectedCareConnectMessageFile,
 } from '@/lib/careconnect-message-attachments';
 import type { ReferralMessageAttachment } from '@/types/careconnect';
+import { formatReferralLocation } from '@/lib/referral-location';
 
 interface Comment {
   id:         string;
@@ -45,6 +46,13 @@ interface ThreadData {
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
   providerName:       string;
+  // Referral location — the specific facility this referral was routed to, falling back
+  // to the provider's own address for legacy/single-location referrals.
+  facilityName?:          string | null;
+  locationAddressLine1?:  string;
+  locationCity?:          string;
+  locationState?:         string;
+  locationPostalCode?:    string;
   // Law firm / referrer
   referrerFirmName?:   string | null;
   referrerName:        string | null;
@@ -178,6 +186,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
   const [attError,   setAttError]   = useState<Record<string, string | null>>({});
 
   const [liveTreatmentName] = useState<string | undefined>(data.treatmentTypeName);
+  const location = formatReferralLocation(data);
 
   // Decline notes state
   const [showDeclineForm, setShowDeclineForm] = useState(false);
@@ -376,6 +385,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
             {data.caseNumber && <FieldBlock label="Case #" value={data.caseNumber} />}
             <FieldBlock label="Type of Treatment" value={liveTreatmentName ?? '—'} />
             <FieldBlock label="Date of Accident" value={data.dateOfAccident ?? '—'} />
+            {location && <FieldBlock label="Provider Location" value={location} />}
           </div>
 
           {/* Notes */}

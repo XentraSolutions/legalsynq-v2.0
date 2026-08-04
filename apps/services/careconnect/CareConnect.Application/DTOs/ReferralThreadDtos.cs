@@ -58,10 +58,13 @@ public class PublicReferralThreadResponse
     public string? ProviderLastName { get; init; }
     public string ProviderEmail { get; init; } = string.Empty;
     public string ProviderPhone { get; init; } = string.Empty;
-    public string ProviderAddressLine1 { get; init; } = string.Empty;
-    public string ProviderCity { get; init; } = string.Empty;
-    public string ProviderState { get; init; } = string.Empty;
-    public string ProviderPostalCode { get; init; } = string.Empty;
+    // Referral location — the specific facility this referral was routed to, falling back
+    // to the provider's own address for legacy/single-location referrals. See ReferralLocationResolver.
+    public string? FacilityName { get; init; }
+    public string LocationAddressLine1 { get; init; } = string.Empty;
+    public string LocationCity { get; init; } = string.Empty;
+    public string LocationState { get; init; } = string.Empty;
+    public string LocationPostalCode { get; init; } = string.Empty;
     public string? ReferrerFirmName { get; init; }
     public string? ReferrerPhone { get; init; }
     public string? ReferrerName { get; init; }

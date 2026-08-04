@@ -152,6 +152,14 @@ export interface ReferralSummary {
   tenantId:         string;
   providerId:       string;
   providerName:     string;
+  // Referral location — the specific facility this referral was routed to, falling back
+  // to the provider's own address for legacy/single-location referrals.
+  facilityId?:            string | null;
+  facilityName?:           string | null;
+  locationAddressLine1?:   string;
+  locationCity?:           string;
+  locationState?:          string;
+  locationPostalCode?:     string;
   clientFirstName:  string;
   clientLastName:   string;
   clientDob?:       string;
