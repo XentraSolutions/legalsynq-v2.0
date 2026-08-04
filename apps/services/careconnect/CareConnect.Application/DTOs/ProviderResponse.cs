@@ -3,6 +3,7 @@ namespace CareConnect.Application.DTOs;
 public class ProviderResponse
 {
     public Guid    Id                { get; set; }
+    public Guid?   FacilityId        { get; set; }
     public Guid    TenantId          { get; set; }
     public string  Name              { get; set; } = string.Empty;
     public string? Title             { get; set; }

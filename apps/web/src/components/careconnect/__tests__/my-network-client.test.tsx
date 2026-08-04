@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { MyNetworkClient } from '../my-network-client';
 import { careConnectApi } from '@/lib/careconnect-api';
-import type { NetworkDetail, NetworkProviderItem, SpecialtyOption } from '@/types/careconnect';
+import type { NetworkDetail, NetworkProviderItem, ProviderSearchResult, SpecialtyOption } from '@/types/careconnect';
 
 vi.mock('next/dynamic', () => ({
   default: () => {
@@ -64,10 +64,14 @@ const MULTI_SPECIALTIES: SpecialtyOption[] = [
 ];
 
 const BASE_PROVIDER: NetworkProviderItem = {
-  id: 'provider-1',
+  id: 'network-provider-1',
+  networkProviderId: 'network-provider-1',
+  providerId: 'provider-1',
+  facilityId: 'facility-1',
   name: 'Atlas Rehab',
   title: null,
   organizationName: 'Atlas Health',
+  facilityName: 'Atlas Health',
   email: 'atlas@example.com',
   phone: '5551234567',
   addressLine1: '123 Main St',
@@ -80,6 +84,28 @@ const BASE_PROVIDER: NetworkProviderItem = {
   specialties: [],
   primarySpecialtyId: null,
   primarySpecialty: null,
+  distanceMiles: null,
+};
+
+const BASE_SEARCH_RESULT: ProviderSearchResult = {
+  id: 'provider-existing',
+  facilityId: 'facility-existing',
+  name: 'Dr. Jane Smith',
+  title: 'Dr.',
+  organizationName: 'Smith Family Practice',
+  email: 'jane@example.com',
+  phone: '5551234567',
+  addressLine1: '123 Main St',
+  city: 'Chicago',
+  state: 'IL',
+  postalCode: '60601',
+  npi: '1234567890',
+  isActive: true,
+  acceptingReferrals: true,
+  accessStage: 'PUBLIC',
+  specialties: [SPECIALTIES[0]],
+  primarySpecialtyId: SPECIALTIES[0].id,
+  primarySpecialty: SPECIALTIES[0].name,
   distanceMiles: null,
 };
 
@@ -136,7 +162,10 @@ describe('MyNetworkClient', () => {
     const user = userEvent.setup();
     vi.mocked(careConnectApi.networks.addProvider).mockResolvedValue(ok({
       ...BASE_PROVIDER,
-      id: 'provider-new',
+      id: 'network-provider-new',
+      networkProviderId: 'network-provider-new',
+      providerId: 'provider-new',
+      facilityId: 'facility-new',
       name: 'Jane Smith',
       specialties: [SPECIALTIES[0]],
       primarySpecialtyId: SPECIALTIES[0].id,
@@ -187,6 +216,81 @@ describe('MyNetworkClient', () => {
     );
   });
 
+  test('adds a new location for an existing provider through the explicit search flow', async () => {
+    const user = userEvent.setup();
+    vi.mocked(careConnectApi.networks.searchProviders).mockResolvedValue(ok([BASE_SEARCH_RESULT]));
+    vi.mocked(careConnectApi.networks.addProvider).mockResolvedValue(ok({
+      ...BASE_PROVIDER,
+      id: 'network-provider-location',
+      networkProviderId: 'network-provider-location',
+      providerId: BASE_SEARCH_RESULT.id,
+      facilityId: 'facility-north',
+      name: BASE_SEARCH_RESULT.name,
+      title: BASE_SEARCH_RESULT.title,
+      organizationName: BASE_SEARCH_RESULT.organizationName,
+      facilityName: 'Smith Family Practice - North',
+      email: 'north@example.com',
+      phone: '5552223333',
+      addressLine1: '456 Oak Ave',
+      city: 'Naperville',
+      state: 'IL',
+      postalCode: '60540',
+      specialties: BASE_SEARCH_RESULT.specialties,
+      primarySpecialtyId: BASE_SEARCH_RESULT.primarySpecialtyId,
+      primarySpecialty: BASE_SEARCH_RESULT.primarySpecialty,
+    }));
+
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork()}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Add Provider/i }));
+    await user.type(inputFor('Name or organization'), 'Jane Smith');
+    await user.click(screen.getByRole('button', { name: /Search Registry/i }));
+
+    expect(await screen.findByText('Dr. Jane Smith')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Add new location/i }));
+
+    const locationInput = inputFor('Location / Facility name *');
+    await user.clear(locationInput);
+    await user.type(locationInput, 'Smith Family Practice - North');
+    await user.clear(screen.getByPlaceholderText('jane@example.com'));
+    await user.type(screen.getByPlaceholderText('jane@example.com'), 'north@example.com');
+    await user.clear(screen.getByPlaceholderText('(555) 555-5555'));
+    await user.type(screen.getByPlaceholderText('(555) 555-5555'), '5552223333');
+    await user.type(screen.getByPlaceholderText('123 Main St'), '456 Oak Ave');
+    await user.type(inputFor('City *'), 'Naperville');
+    await user.type(screen.getByPlaceholderText('IL'), 'IL');
+    await user.type(screen.getByPlaceholderText('60601'), '60540');
+    await user.click(screen.getByRole('button', { name: /Add Location to My Network/i }));
+
+    await waitFor(() => expect(careConnectApi.networks.addProvider).toHaveBeenCalledTimes(1));
+    expect(careConnectApi.networks.addProvider).toHaveBeenCalledWith(
+      'network-1',
+      expect.objectContaining({
+        existingProviderId: BASE_SEARCH_RESULT.id,
+        newProvider: expect.objectContaining({
+          organizationName: 'Smith Family Practice - North',
+          email: 'north@example.com',
+          phone: '5552223333',
+          addressLine1: '456 Oak Ave',
+          city: 'Naperville',
+          state: 'IL',
+          postalCode: '60540',
+        }),
+      }),
+    );
+    const request = vi.mocked(careConnectApi.networks.addProvider).mock.calls[0]?.[1];
+    expect(request).toBeDefined();
+    expect(request?.existingFacilityId).toBeUndefined();
+    expect(request?.newProvider?.specialtyCodes).toBeUndefined();
+    expect(request?.newProvider?.npi).toBeUndefined();
+  });
+
   test('requires a specialty before editing a provider and submits selected specialty ids', async () => {
     const user = userEvent.setup();
     vi.mocked(careConnectApi.networks.updateProvider).mockResolvedValue(ok({
@@ -219,7 +323,7 @@ describe('MyNetworkClient', () => {
     await waitFor(() => expect(careConnectApi.networks.updateProvider).toHaveBeenCalledTimes(1));
     expect(careConnectApi.networks.updateProvider).toHaveBeenCalledWith(
       'network-1',
-      'provider-1',
+      'network-provider-1',
       expect.objectContaining({
         title: 'Dr.',
         specialtyIds: ['specialty-2'],
@@ -246,7 +350,10 @@ describe('MyNetworkClient', () => {
     vi.stubGlobal('fetch', fetchMock);
     vi.mocked(careConnectApi.networks.addProvider).mockResolvedValue(ok({
       ...BASE_PROVIDER,
-      id: 'provider-new',
+      id: 'network-provider-new',
+      networkProviderId: 'network-provider-new',
+      providerId: 'provider-new',
+      facilityId: 'facility-new',
       name: 'Dr. Test Test',
       specialties: [SPECIALTIES[0]],
       primarySpecialtyId: SPECIALTIES[0].id,

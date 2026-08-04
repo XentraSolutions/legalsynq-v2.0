@@ -9,6 +9,8 @@ public class CreateReferralRequest
     public Guid? TenantId { get; set; }
 
     public Guid ProviderId { get; set; }
+    public Guid? FacilityId { get; set; }
+    public Guid? NetworkProviderId { get; set; }
     public string ClientFirstName { get; set; } = string.Empty;
     public string ClientLastName { get; set; } = string.Empty;
     public DateTime? ClientDob { get; set; }

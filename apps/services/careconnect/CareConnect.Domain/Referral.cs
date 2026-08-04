@@ -69,6 +69,7 @@ public class Referral : AuditableEntity
 
     // ── Provider routing ─────────────────────────────────────────────────
     public Guid ProviderId { get; private set; }
+    public Guid? FacilityId { get; private set; }
 
     // Phase 5: explicit relationship context linking referrer ↔ receiver orgs
     public Guid? OrganizationRelationshipId { get; private set; }
@@ -106,6 +107,7 @@ public class Referral : AuditableEntity
     public int TokenVersion { get; private set; } = 1;
 
     public Provider? Provider { get; private set; }
+    public Facility? Facility { get; private set; }
     public Party? SubjectParty { get; private set; }
 
     private Referral() { }
@@ -142,7 +144,8 @@ public class Referral : AuditableEntity
         string? referrerFirmName = null,
         string? referrerPhone = null,
         Guid? treatmentTypeId = null,
-        DateOnly? dateOfAccident = null)
+        DateOnly? dateOfAccident = null,
+        Guid? facilityId = null)
     {
         var now = DateTime.UtcNow;
 
@@ -163,6 +166,7 @@ public class Referral : AuditableEntity
             ReferringOrganizationId    = referringOrganizationId,
             ReceivingOrganizationId    = receivingOrganizationId,
             ProviderId                 = providerId,
+            FacilityId                 = facilityId,
             OrganizationRelationshipId = organizationRelationshipId,
             SubjectPartyId             = subjectPartyId,
             SubjectNameSnapshot        = subjectNameSnapshot?.Trim(),

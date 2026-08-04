@@ -24,9 +24,13 @@ public sealed record NetworkDetailResponse(
 
 public sealed record NetworkProviderItem(
     Guid   Id,
+    Guid   NetworkProviderId,
+    Guid   ProviderId,
+    Guid   FacilityId,
     string Name,
     string? Title,
     string? OrganizationName,
+    string FacilityName,
     string Email,
     string Phone,
     string City,
@@ -44,9 +48,13 @@ public sealed record NetworkProviderItem(
 
 public sealed record NetworkProviderMarker(
     Guid   Id,
+    Guid   NetworkProviderId,
+    Guid   ProviderId,
+    Guid   FacilityId,
     string Name,
     string? Title,
     string? OrganizationName,
+    string FacilityName,
     string City,
     string State,
     string AddressLine1,
@@ -67,6 +75,7 @@ public sealed record NetworkProviderMarker(
 /// <summary>Returned by GET /api/networks/{id}/providers/search</summary>
 public sealed record ProviderSearchResult(
     Guid    Id,
+    Guid?   FacilityId,
     string  Name,
     string? Title,
     string? OrganizationName,
@@ -96,12 +105,13 @@ public sealed record UpdateNetworkRequest(
 
 /// <summary>
 /// CC2-INT-B06-01: Add a provider to a network.
-/// Exactly one of ExistingProviderId or NewProvider must be set.
-/// - ExistingProviderId → associate existing shared provider (no new record)
-/// - NewProvider        → create in shared registry then associate
+/// - ExistingProviderId + ExistingFacilityId → associate an existing shared provider location.
+/// - ExistingProviderId + NewProvider        → create a new location for an existing shared provider.
+/// - NewProvider only                        → create a new provider identity and first location.
 /// </summary>
 public sealed record AddProviderToNetworkRequest(
     Guid?                  ExistingProviderId,
+    Guid?                  ExistingFacilityId,
     NewProviderData?       NewProvider);
 
 public sealed record NewProviderData(
@@ -155,6 +165,8 @@ public sealed record ProviderImportParsedRow(
     string  SourceKey,
     string? TenantId,
     string? Title,
+    string? ProviderName,
+    string? FacilityName,
     string? FirstName,
     string? LastName,
     string? OrganizationName,
@@ -181,6 +193,7 @@ public sealed record ProviderImportNormalizedRow(
     string  FirstName,
     string  LastName,
     string? OrganizationName,
+    string  FacilityName,
     string? Npi,
     string  Email,
     string  Phone,
@@ -208,6 +221,8 @@ public sealed record ProviderImportRowResult(
     string                       SourceKey,
     string                       Status,
     Guid?                        ProviderId,
+    Guid?                        FacilityId,
+    Guid?                        NetworkProviderId,
     string                       Message,
     ProviderImportNormalizedRow? NormalizedProvider,
     List<string>                 Errors);
@@ -221,8 +236,10 @@ public sealed record ProviderImportSummaryResponse(
     int                           ValidRows,
     int                           ProcessedRows,
     int                           CreatedProviders,
+    int                           CreatedFacilities,
     int                           ReusedByNpi,
     int                           ReusedByEmail,
+    int                           LinkedLocations,
     int                           AlreadyInNetwork,
     int                           FailedRows,
     List<ProviderImportRowResult> Rows);

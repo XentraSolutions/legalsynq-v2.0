@@ -24,6 +24,7 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
 
         // Provider routing
         builder.Property(r => r.ProviderId).IsRequired();
+        builder.Property(r => r.FacilityId);
 
         // Phase 5: organization relationship context (nullable; set when both orgs are linked)
         builder.Property(r => r.OrganizationRelationshipId);
@@ -58,6 +59,8 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
             .HasDatabaseName("IX_Referrals_TenantId_Status");
         builder.HasIndex(r => new { r.TenantId, r.ProviderId })
             .HasDatabaseName("IX_Referrals_TenantId_ProviderId");
+        builder.HasIndex(r => new { r.TenantId, r.FacilityId })
+            .HasDatabaseName("IX_Referrals_TenantId_FacilityId");
         builder.HasIndex(r => new { r.TenantId, r.CreatedAtUtc })
             .HasDatabaseName("IX_Referrals_TenantId_CreatedAtUtc");
         // BLK-PERF-01: Composite for admin dashboard / analytics queries that filter on
@@ -75,6 +78,11 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         builder.HasOne(r => r.Provider)
                .WithMany()
                .HasForeignKey(r => r.ProviderId)
+               .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(r => r.Facility)
+               .WithMany()
+               .HasForeignKey(r => r.FacilityId)
                .OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(r => r.SubjectParty)

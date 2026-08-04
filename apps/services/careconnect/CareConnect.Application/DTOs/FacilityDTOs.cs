@@ -7,8 +7,12 @@ public class CreateFacilityRequest
     public string City { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;
     public string PostalCode { get; set; } = string.Empty;
+    public string? Email { get; set; }
     public string? Phone { get; set; }
     public bool IsActive { get; set; } = true;
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
+    public string? GeoPointSource { get; set; }
 
     // Phase 4: optional Identity Organization linkage.
     // When supplied, the service calls Facility.LinkOrganization so the
@@ -23,8 +27,12 @@ public class UpdateFacilityRequest
     public string City { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;
     public string PostalCode { get; set; } = string.Empty;
+    public string? Email { get; set; }
     public string? Phone { get; set; }
     public bool IsActive { get; set; }
+    public double? Latitude { get; set; }
+    public double? Longitude { get; set; }
+    public string? GeoPointSource { get; set; }
 
     // Phase 4: optional Identity Organization linkage.
     // Allows backfilling OrganizationId via an update call without recreating the facility.
@@ -40,8 +48,13 @@ public class FacilityResponse
     public string City { get; init; } = string.Empty;
     public string State { get; init; } = string.Empty;
     public string PostalCode { get; init; } = string.Empty;
+    public string? Email { get; init; }
     public string? Phone { get; init; }
     public bool IsActive { get; init; }
+    public double? Latitude { get; init; }
+    public double? Longitude { get; init; }
+    public string? GeoPointSource { get; init; }
+    public DateTime? GeoUpdatedAtUtc { get; init; }
 
     // Phase 4: canonical Identity Organization FK. Null for legacy facilities
     // that predate the org-alignment migration.

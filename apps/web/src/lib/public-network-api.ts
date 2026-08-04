@@ -68,9 +68,14 @@ export interface PublicSpecialtyOption {
 
 export interface PublicProviderItem {
   id:               string;
+  networkProviderId: string;
+  providerId:      string;
+  facilityId:      string;
   name:             string;
   title?:           string | null;
   organizationName: string | null;
+  facilityName:    string;
+  addressLine1:    string;
   phone:            string;
   city:             string;
   state:            string;
@@ -87,9 +92,13 @@ export interface PublicProviderItem {
 
 export interface PublicProviderMarker {
   id:               string;
+  networkProviderId: string;
+  providerId:      string;
+  facilityId:      string;
   name:             string;
   title?:           string | null;
   organizationName: string | null;
+  facilityName:    string;
   city:             string;
   state:            string;
   acceptingReferrals: boolean;
@@ -268,6 +277,7 @@ export async function fetchPublicNetworkDetail(
 
 export interface PublicReferralRequest {
   providerId:            string;
+  networkProviderId?:    string | null;
   senderFirstName:       string;
   senderLastName?:       string;
   senderEmail:           string;
@@ -289,6 +299,8 @@ export interface PublicReferralRequest {
 export interface PublicReferralResponse {
   referralId:    string;
   providerId:    string;
+  facilityId?:   string | null;
+  networkProviderId?: string | null;
   providerName:  string;
   providerStage: string;
   message:       string;

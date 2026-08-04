@@ -1,5 +1,6 @@
 using BuildingBlocks.Exceptions;
 using CareConnect.Application.DTOs;
+using CareConnect.Application.Helpers;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
@@ -27,6 +28,7 @@ public class FacilityService : IFacilityService
     public async Task<FacilityResponse> CreateAsync(Guid tenantId, Guid? userId, CreateFacilityRequest request, CancellationToken ct = default)
     {
         Validate(request.Name, request.AddressLine1, request.City, request.State, request.PostalCode, request.Phone);
+        ValidateGeoFields(request.Latitude, request.Longitude, request.GeoPointSource);
 
         var facility = Facility.Create(
             tenantId,
@@ -37,7 +39,11 @@ public class FacilityService : IFacilityService
             request.PostalCode,
             request.Phone,
             request.IsActive,
-            userId);
+            userId,
+            request.Email,
+            request.Latitude,
+            request.Longitude,
+            request.GeoPointSource);
 
         // Phase 4: link to Identity Organization when provided.
         if (request.OrganizationId.HasValue)
@@ -68,8 +74,21 @@ public class FacilityService : IFacilityService
             ?? throw new NotFoundException($"Facility '{id}' was not found.");
 
         Validate(request.Name, request.AddressLine1, request.City, request.State, request.PostalCode, request.Phone);
+        ValidateGeoFields(request.Latitude, request.Longitude, request.GeoPointSource);
 
-        facility.Update(request.Name, request.AddressLine1, request.City, request.State, request.PostalCode, request.Phone, request.IsActive, userId);
+        facility.Update(
+            request.Name,
+            request.AddressLine1,
+            request.City,
+            request.State,
+            request.PostalCode,
+            request.Phone,
+            request.IsActive,
+            userId,
+            request.Email,
+            request.Latitude,
+            request.Longitude,
+            request.GeoPointSource);
 
         // Phase 4: apply org linkage when provided (supports backfill via update).
         if (request.OrganizationId.HasValue)
@@ -112,6 +131,14 @@ public class FacilityService : IFacilityService
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
 
+    private static void ValidateGeoFields(double? latitude, double? longitude, string? geoPointSource)
+    {
+        var errors = new Dictionary<string, string[]>();
+        ProviderGeoHelper.ValidateGeoFields(latitude, longitude, geoPointSource, errors);
+        if (errors.Count > 0)
+            throw new ValidationException("One or more validation errors occurred.", errors);
+    }
+
     private static FacilityResponse ToResponse(Facility f) => new()
     {
         Id = f.Id,
@@ -121,8 +148,13 @@ public class FacilityService : IFacilityService
         City = f.City,
         State = f.State,
         PostalCode = f.PostalCode,
+        Email = f.Email,
         Phone = f.Phone,
         IsActive = f.IsActive,
+        Latitude = f.Latitude,
+        Longitude = f.Longitude,
+        GeoPointSource = f.GeoPointSource,
+        GeoUpdatedAtUtc = f.GeoUpdatedAtUtc,
         OrganizationId = f.OrganizationId
     };
 }

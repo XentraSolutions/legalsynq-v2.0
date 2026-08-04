@@ -13,8 +13,9 @@ public interface INetworkService
 
     /// <summary>
     /// CC2-INT-B06-01: Match-or-create flow.
-    /// If ExistingProviderId is set → associate that shared provider.
-    /// If NewProvider is set → create in shared registry (dedup by NPI) then associate.
+    /// If ExistingProviderId + ExistingFacilityId are set → associate that shared provider location.
+    /// If ExistingProviderId + NewProvider are set → create a new location for that shared provider.
+    /// If NewProvider is set alone → create a new shared provider identity and first location.
     /// </summary>
     Task<NetworkProviderItem> AddProviderAsync(Guid tenantId, Guid networkId, AddProviderToNetworkRequest request, Guid? userId, CancellationToken ct = default);
 

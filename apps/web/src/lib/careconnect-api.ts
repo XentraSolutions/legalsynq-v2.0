@@ -264,8 +264,9 @@ export const careConnectApi = {
     },
 
     /**
-     * CC2-INT-B06-01: Add a provider to a network (match-or-create).
-     * POST /api/networks/{id}/providers — body: { existingProviderId } | { newProvider: {...} }
+     * CC2-INT-B06-01: Add a provider/location to a network.
+     * POST /api/networks/{id}/providers — body: { existingProviderId, existingFacilityId } |
+     * { existingProviderId, newProvider: {...location fields...} } | { newProvider: {...new provider...} }
      */
     addProvider: (networkId: string, request: AddProviderToNetworkRequest) =>
       apiClient.post<NetworkProviderItem>(`/careconnect/api/networks/${networkId}/providers`, request),

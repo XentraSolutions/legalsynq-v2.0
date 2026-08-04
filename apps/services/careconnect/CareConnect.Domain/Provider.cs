@@ -138,6 +138,7 @@ public class Provider : AuditableEntity
 
     public List<ProviderCategory> ProviderCategories { get; private set; } = new();
     public List<ProviderSpecialty> ProviderSpecialties { get; private set; } = new();
+    public List<ProviderFacility> ProviderFacilities { get; private set; } = new();
 
     /// <summary>
     /// Phase 5: link this provider record to the corresponding Identity Organization.

@@ -23,6 +23,8 @@ public class NetworkProviderEditTests
             .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
         networks.Setup(r => r.GetMembershipAsync(networkId, providerId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((NetworkProvider?)null);
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, providerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((NetworkProvider?)null);
 
         var sut = BuildSut(networks.Object, Mock.Of<ISpecialtyRepository>());
 
@@ -53,16 +55,36 @@ public class NetworkProviderEditTests
             true,
             null);
         var providerId = provider.Id;
+        var facility = Facility.Create(
+            tenantId,
+            "Jane Practice",
+            "123 Main St",
+            "Austin",
+            "TX",
+            "78701",
+            "555-0100",
+            true,
+            null,
+            "jane@example.com");
+        var membership = NetworkProvider.Create(tenantId, networkId, providerId, facility.Id, true, true);
+        SetNavigation(membership, nameof(NetworkProvider.Provider), provider);
+        SetNavigation(membership, nameof(NetworkProvider.Facility), facility);
 
         var networks = new Mock<INetworkRepository>();
         networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
-        networks.Setup(r => r.GetMembershipAsync(networkId, providerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(NetworkProvider.Create(tenantId, networkId, providerId));
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, providerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
         networks.SetupSequence(r => r.GetProviderByIdGlobalAsync(providerId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(provider)
             .ReturnsAsync(provider);
         networks.Setup(r => r.UpdateProviderInRegistryAsync(provider, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.GetFacilityByIdAsync(tenantId, facility.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(facility);
+        networks.Setup(r => r.UpdateFacilityAsync(facility, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         networks.Setup(r => r.SyncProviderSpecialtiesAsync(provider.Id, It.Is<List<Guid>>(ids => ids.SequenceEqual(new[] { specialtyId })), It.IsAny<CancellationToken>()))
             .Callback<Guid, List<Guid>, CancellationToken>((_, _, _) =>
@@ -119,4 +141,11 @@ public class NetworkProviderEditTests
         AcceptingReferrals: true,
         SpecialtyIds: specialtyIds,
         Title: "Dr.");
+
+    private static void SetNavigation<T>(object target, string propertyName, T value)
+    {
+        var property = target.GetType().GetProperty(propertyName)
+            ?? throw new InvalidOperationException($"Property {propertyName} was not found.");
+        property.SetValue(target, value);
+    }
 }

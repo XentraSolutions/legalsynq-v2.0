@@ -66,6 +66,8 @@ public class NetworkRepository : INetworkRepository
                 .ThenInclude(np => np.Provider)
                     .ThenInclude(p => p.ProviderSpecialties)
                         .ThenInclude(ps => ps.Specialty)
+            .Include(n => n.NetworkProviders)
+                .ThenInclude(np => np.Facility)
             .FirstOrDefaultAsync(n => n.TenantId == tenantId && n.Id == id && !n.IsDeleted, ct);
     }
 
@@ -93,6 +95,30 @@ public class NetworkRepository : INetworkRepository
             .FirstOrDefaultAsync(np => np.ProviderNetworkId == networkId && np.ProviderId == providerId, ct);
     }
 
+    public async Task<NetworkProvider?> GetMembershipAsync(Guid networkId, Guid providerId, Guid facilityId, CancellationToken ct = default)
+    {
+        return await _db.NetworkProviders
+            .FirstOrDefaultAsync(np =>
+                np.ProviderNetworkId == networkId &&
+                np.ProviderId == providerId &&
+                np.FacilityId == facilityId,
+                ct);
+    }
+
+    public async Task<NetworkProvider?> GetMembershipByIdOrProviderAsync(Guid networkId, Guid idOrProviderId, CancellationToken ct = default)
+    {
+        return await _db.NetworkProviders
+            .Include(np => np.Provider)
+                .ThenInclude(p => p.ProviderSpecialties)
+                    .ThenInclude(ps => ps.Specialty)
+            .Include(np => np.Facility)
+            .Where(np => np.ProviderNetworkId == networkId && (np.Id == idOrProviderId || np.ProviderId == idOrProviderId))
+            .OrderByDescending(np => np.Id == idOrProviderId)
+            .ThenByDescending(np => np.FacilityId != Guid.Empty)
+            .ThenBy(np => np.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public Task RemoveProviderAsync(NetworkProvider entry, CancellationToken ct = default)
     {
         _db.NetworkProviders.Remove(entry);
@@ -109,6 +135,21 @@ public class NetworkRepository : INetworkRepository
                     .ThenInclude(ps => ps.Specialty)
             .Select(np => np.Provider)
             .OrderBy(p => p.Name)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<NetworkProvider>> GetNetworkProviderMembershipsAsync(Guid tenantId, Guid networkId, CancellationToken ct = default)
+    {
+        return await _db.NetworkProviders
+            .AsNoTracking()
+            .Where(np => np.ProviderNetworkId == networkId && np.TenantId == tenantId)
+            .Include(np => np.Provider)
+                .ThenInclude(p => p.ProviderSpecialties)
+                    .ThenInclude(ps => ps.Specialty)
+            .Include(np => np.Facility)
+            .OrderBy(np => np.Provider.OrganizationName ?? np.Provider.Name)
+            .ThenBy(np => np.Facility.Name)
+            .ThenBy(np => np.Facility.City)
             .ToListAsync(ct);
     }
 
@@ -138,21 +179,24 @@ public class NetworkRepository : INetworkRepository
             {
                 var nameTrimmed = name.Trim();
                 q = q.Where(p => p.Name.Contains(nameTrimmed) ||
-                                 (p.OrganizationName != null && p.OrganizationName.Contains(nameTrimmed)));
+                                 (p.OrganizationName != null && p.OrganizationName.Contains(nameTrimmed)) ||
+                                 p.ProviderFacilities.Any(pf => pf.Facility != null && pf.Facility.Name.Contains(nameTrimmed)));
             }
 
             // Phone: strip non-digits client-side, match normalized
             if (!string.IsNullOrWhiteSpace(phone))
             {
                 var phoneTrimmed = phone.Trim();
-                q = q.Where(p => p.Phone.Contains(phoneTrimmed));
+                q = q.Where(p => p.Phone.Contains(phoneTrimmed) ||
+                                 p.ProviderFacilities.Any(pf => pf.Facility != null && pf.Facility.Phone != null && pf.Facility.Phone.Contains(phoneTrimmed)));
             }
 
             // City
             if (!string.IsNullOrWhiteSpace(city))
             {
                 var cityTrimmed = city.Trim();
-                q = q.Where(p => p.City.Contains(cityTrimmed));
+                q = q.Where(p => p.City.Contains(cityTrimmed) ||
+                                 p.ProviderFacilities.Any(pf => pf.Facility != null && pf.Facility.City.Contains(cityTrimmed)));
             }
         }
 
@@ -207,6 +251,8 @@ public class NetworkRepository : INetworkRepository
             .Where(p => p.Npi != null && normalized.Contains(p.Npi))
             .Include(p => p.ProviderSpecialties)
                 .ThenInclude(ps => ps.Specialty)
+            .Include(p => p.ProviderFacilities)
+                .ThenInclude(pf => pf.Facility)
             .ToListAsync(ct);
 
         return providers
@@ -229,6 +275,8 @@ public class NetworkRepository : INetworkRepository
             .Where(p => p.TenantId == tenantId && normalized.Contains(p.Email))
             .Include(p => p.ProviderSpecialties)
                 .ThenInclude(ps => ps.Specialty)
+            .Include(p => p.ProviderFacilities)
+                .ThenInclude(pf => pf.Facility)
             .ToListAsync(ct);
 
         return providers
@@ -247,6 +295,81 @@ public class NetworkRepository : INetworkRepository
         return providerIds.ToHashSet();
     }
 
+    public async Task<HashSet<string>> GetNetworkProviderLocationKeysAsync(Guid tenantId, Guid networkId, CancellationToken ct = default)
+    {
+        var keys = await _db.NetworkProviders
+            .AsNoTracking()
+            .Where(np => np.TenantId == tenantId && np.ProviderNetworkId == networkId)
+            .Select(np => np.ProviderId.ToString() + "|" + np.FacilityId.ToString())
+            .ToListAsync(ct);
+
+        return keys.ToHashSet(StringComparer.Ordinal);
+    }
+
+    public async Task<Facility?> GetFacilityByIdAsync(Guid tenantId, Guid facilityId, CancellationToken ct = default)
+    {
+        return await _db.Facilities
+            .FirstOrDefaultAsync(f => f.TenantId == tenantId && f.Id == facilityId, ct);
+    }
+
+    public async Task<Facility?> FindFacilityAsync(
+        Guid tenantId,
+        string name,
+        string addressLine1,
+        string city,
+        string state,
+        string postalCode,
+        CancellationToken ct = default)
+    {
+        var normalizedName = name.Trim();
+        var normalizedAddress = addressLine1.Trim();
+        var normalizedCity = city.Trim();
+        var normalizedState = state.Trim().ToUpperInvariant();
+        var normalizedPostal = postalCode.Trim();
+
+        return await _db.Facilities
+            .FirstOrDefaultAsync(f =>
+                f.TenantId == tenantId &&
+                f.Name == normalizedName &&
+                f.AddressLine1 == normalizedAddress &&
+                f.City == normalizedCity &&
+                f.State == normalizedState &&
+                f.PostalCode == normalizedPostal,
+                ct);
+    }
+
+    public async Task AddFacilityAsync(Facility facility, CancellationToken ct = default)
+    {
+        await _db.Facilities.AddAsync(facility, ct);
+    }
+
+    public Task UpdateFacilityAsync(Facility facility, CancellationToken ct = default)
+    {
+        _db.Facilities.Update(facility);
+        return Task.CompletedTask;
+    }
+
+    public async Task<ProviderFacility?> GetProviderFacilityAsync(Guid providerId, Guid facilityId, CancellationToken ct = default)
+    {
+        return await _db.ProviderFacilities
+            .FirstOrDefaultAsync(pf => pf.ProviderId == providerId && pf.FacilityId == facilityId, ct);
+    }
+
+    public async Task<ProviderFacility?> GetPrimaryProviderFacilityAsync(Guid providerId, CancellationToken ct = default)
+    {
+        return await _db.ProviderFacilities
+            .Include(pf => pf.Facility)
+            .Where(pf => pf.ProviderId == providerId)
+            .OrderByDescending(pf => pf.IsPrimary)
+            .ThenBy(pf => pf.Facility!.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task AddProviderFacilityAsync(ProviderFacility providerFacility, CancellationToken ct = default)
+    {
+        await _db.ProviderFacilities.AddAsync(providerFacility, ct);
+    }
+
     public async Task<bool> IsProviderInTenantNetworkAsync(Guid tenantId, Guid providerId, CancellationToken ct = default)
     {
         return await _db.NetworkProviders
@@ -256,6 +379,15 @@ public class NetworkRepository : INetworkRepository
                 np.TenantId   == tenantId   &&
                 _db.ProviderNetworks.Any(n => n.Id == np.ProviderNetworkId && n.TenantId == tenantId && !n.IsDeleted),
                 ct);
+    }
+
+    public async Task<NetworkProvider?> GetTenantNetworkMembershipAsync(Guid tenantId, Guid networkProviderId, CancellationToken ct = default)
+    {
+        return await _db.NetworkProviders
+            .AsNoTracking()
+            .Include(np => np.Provider)
+            .Include(np => np.Facility)
+            .FirstOrDefaultAsync(np => np.Id == networkProviderId && np.TenantId == tenantId, ct);
     }
 
     public void ClearTracking()
@@ -303,5 +435,7 @@ public class NetworkRepository : INetworkRepository
     private static IQueryable<Provider> IncludeProviderLookups(IQueryable<Provider> query) =>
         query
             .Include(p => p.ProviderSpecialties)
-                .ThenInclude(ps => ps.Specialty);
+                .ThenInclude(ps => ps.Specialty)
+            .Include(p => p.ProviderFacilities)
+                .ThenInclude(pf => pf.Facility);
 }

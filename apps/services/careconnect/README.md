@@ -53,7 +53,7 @@ CareConnect.Tests/         Tests
 CareConnect has a global Specialty catalog that is separate from legacy provider categories. Categories remain in the
 API for compatibility, but new provider setup and provider search behavior should use specialties.
 
-- Default active specialties are seeded for Pain, Spine, Physical Therapy, Neuro, Imaging, and Chiropractor.
+- Default active specialties are seeded for Pain, Spine, Physical Therapy, Neuro, Imaging, Chiropractor, and Extremities.
 - Providers must have at least one active specialty when they are created or edited through the provider APIs or the tenant network provider setup flow.
 - Provider setup accepts an optional professional title (for example, `Dr.`) alongside first and last name; the single `Name` field remains a computed display string for existing consumers.
 - Public provider enrollment prefills and submits that same optional title to Identity self-registration, where it is stored on `idt_Users.Title`.
@@ -65,33 +65,59 @@ Platform administrators can configure the global catalog with `POST /api/special
 and `DELETE /api/specialties/{id}`. `GET /api/specialties` returns active options by default and supports
 `includeInactive=true` for administrative views.
 
+### Provider locations
+
+CareConnect treats `Provider` as the shared identity/profile record and `Facility` as the canonical location record.
+NPI identifies the provider identity and remains unique when present. A provider with multiple locations should have
+one provider row, one facility row per address, and one `ProviderFacility` link per provider-location pair.
+
+Network membership is location-scoped through `cc_NetworkProviders.FacilityId`. The tenant network, public network,
+and referral flows return one row/card/marker per provider-location membership and expose `networkProviderId`,
+`providerId`, and `facilityId`. Frontend selection and public/authenticated referral submission should use
+`networkProviderId`; the backend validates that the selected membership belongs to the tenant network and stores
+`FacilityId` on the referral.
+
+Tenant network provider setup rejects duplicate provider creation by NPI or tenant email. Administrators should
+search the shared registry first; if the provider already exists, the supported path for another address is the
+explicit Add new location flow, which creates or reuses a `Facility` and adds a provider-location network membership
+without creating another `Provider` row.
+
 ### Provider import
 
 The development-only provider import endpoint accepts CSV uploads at `POST /api/networks/{networkId}/providers/import`.
-Required columns remain `tenantId`, `firstName`, `lastName`, `email`, `phone`, `addressLine1`, `city`, `state`, and
-`postalCode`. New-provider rows must now include at least one active specialty through `specialty`,
-`specialties`, `specialtyCode`, or `specialtyCodes`; values may be codes or names such as `Chiropractor` or
-`Physical Therapy`. Category/provider-type columns are still accepted for compatibility and are used as a specialty
-fallback when no specialty column is supplied.
+Each valid row creates or reuses a provider identity, creates or reuses a facility location, links the provider to
+that facility, and links that provider-location pair to the network. Matching uses exact NPI first. Blank NPI rows
+fall back to tenant email plus provider/facility context. Same NPI plus a different address creates another facility
+and another network membership, not another provider.
+
+The import accepts canonical headers and workbook-style headers. Required usable location fields are `tenantId`,
+`email`, `phone`, address, city, state, and ZIP. `Medical Provider` maps to provider title/name parsing. If
+`Medical Provider` is blank, `Medical Facility` becomes the organization-level provider identity. `Medical Facility`
+maps to `Facility.Name` and provider organization name. Address columns map to `Facility`, while `NPI` maps only to
+`Provider.Npi`.
+
+Specialty values may be codes or names such as `Pain`, `Spine`, `Physical Therapy`, `Neuro`, `Imaging`,
+`Chiropractor`, and `Extremities`; `Chiro` is normalized to `Chiropractor`. Category/provider-type columns are still
+accepted for compatibility and are used as a specialty fallback when no specialty column is supplied.
 
 Optional import columns include `title`, `categoryCodes`, `primaryCategoryCode`, `primarySpecialtyCode`, `latitude`,
 `longitude`, and `geoPointSource`. `geoPointSource` is normalized to the supported values `Manual`, `Geocoded`, or
 `Imported`; common geocoder labels such as `nominatim` are treated as `Geocoded`, and coordinate rows with no source
-default to `Imported`.
+default to `Imported`. The current sample is `artifacts/postman/careconnect-provider-import.sample.csv`.
 
 ### Provider search and distance
 
 Authenticated provider search accepts `specialtyCode` plus ZIP-backed geospatial filters:
 
 - `specialtyCode` filters providers by assigned specialty code.
-- `lat`, `lng`, and `radius` filter providers by location. The repository narrows by bounding box, calculates exact Haversine distance in miles, filters by the requested radius, and sorts matching results by distance.
+- `lat`, `lng`, and `radius` filter provider locations by `Facility.Latitude`/`Facility.Longitude` when available, with provider coordinates kept as a compatibility fallback. The repository narrows by bounding box, calculates exact Haversine distance in miles, filters by the requested radius, and sorts matching results by distance.
 - Tenant portal ZIP controls geocode ZIP/address input through `/api/geocode/address?loose=1`, then send the derived `lat`, `lng`, and `radius` query params to provider search.
 
 Selected-network public/common pages (`/careconnect/browse-networks/{id}` and `/careconnect/network`) filter the
 already-selected network client-side by ZIP and specialty. ZIP search geocodes the entered ZIP/address, displays a
-search-location map pin, filters providers without usable coordinates when a search center is active, calculates and
-displays miles from the search point, and sorts provider cards and map markers by distance. Users can clear or change
-ZIP and specialty filters without reloading the page.
+search-location map pin, filters provider-location rows without usable coordinates when a search center is active,
+calculates and displays miles from the search point, and sorts provider cards and map markers nearest to farthest.
+Users can clear or change ZIP and specialty filters without reloading the page.
 
 ### Referral list and lookup filters
 

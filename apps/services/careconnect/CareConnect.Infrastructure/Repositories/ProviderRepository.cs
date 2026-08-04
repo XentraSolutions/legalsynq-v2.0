@@ -36,10 +36,11 @@ public class ProviderRepository : IProviderRepository
                 .ToListAsync(ct);
 
             var distanceRows = candidates
-                .Select(p => new ProviderSearchRow(p, CalculateDistanceMiles(query.Latitude!.Value, query.Longitude!.Value, p.Latitude!.Value, p.Longitude!.Value)))
+                .SelectMany(p => ExpandLocationRows(p, query.Latitude!.Value, query.Longitude!.Value))
                 .Where(row => row.DistanceMiles.HasValue && row.DistanceMiles.Value <= query.RadiusMiles!.Value)
                 .OrderBy(row => row.DistanceMiles!.Value)
                 .ThenBy(row => row.Provider.Name)
+                .ThenBy(row => row.Facility?.Name)
                 .ToList();
 
             return (
@@ -65,13 +66,15 @@ public class ProviderRepository : IProviderRepository
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
 
-        return (items.Select(p => new ProviderSearchRow(p, null)).ToList(), totalCount);
+        return (items.Select(p => new ProviderSearchRow(p, null, PrimaryFacility(p))).ToList(), totalCount);
     }
 
     public async Task<List<ProviderSearchRow>> GetMarkersAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default)
     {
         var baseQuery = BuildBaseQuery(tenantId, query)
-            .Where(p => p.Latitude != null && p.Longitude != null);
+            .Where(p =>
+                (p.Latitude != null && p.Longitude != null) ||
+                p.ProviderFacilities.Any(pf => pf.Facility != null && pf.Facility.Latitude != null && pf.Facility.Longitude != null));
 
         if (HasRadiusSearch(query))
         {
@@ -79,10 +82,11 @@ public class ProviderRepository : IProviderRepository
                 .ToListAsync(ct);
 
             return candidates
-                .Select(p => new ProviderSearchRow(p, CalculateDistanceMiles(query.Latitude!.Value, query.Longitude!.Value, p.Latitude!.Value, p.Longitude!.Value)))
+                .SelectMany(p => ExpandLocationRows(p, query.Latitude!.Value, query.Longitude!.Value))
                 .Where(row => row.DistanceMiles.HasValue && row.DistanceMiles.Value <= query.RadiusMiles!.Value)
                 .OrderBy(row => row.DistanceMiles!.Value)
                 .ThenBy(row => row.Provider.Name)
+                .ThenBy(row => row.Facility?.Name)
                 .Take(ProviderGeoHelper.MarkerLimit)
                 .ToList();
         }
@@ -99,7 +103,7 @@ public class ProviderRepository : IProviderRepository
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
 
-        return items.Select(p => new ProviderSearchRow(p, null)).ToList();
+        return items.Select(p => new ProviderSearchRow(p, null, PrimaryFacility(p))).ToList();
     }
 
     public async Task<Provider?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -217,10 +221,18 @@ public class ProviderRepository : IProviderRepository
         }
 
         if (!string.IsNullOrWhiteSpace(query.City))
-            q = q.Where(p => p.City == query.City);
+        {
+            var city = query.City.Trim();
+            q = q.Where(p => p.City == city ||
+                p.ProviderFacilities.Any(pf => pf.Facility != null && pf.Facility.City == city));
+        }
 
         if (!string.IsNullOrWhiteSpace(query.State))
-            q = q.Where(p => p.State == query.State);
+        {
+            var state = query.State.Trim().ToUpperInvariant();
+            q = q.Where(p => p.State == state ||
+                p.ProviderFacilities.Any(pf => pf.Facility != null && pf.Facility.State == state));
+        }
 
         if (query.AcceptingReferrals.HasValue)
             q = q.Where(p => p.AcceptingReferrals == query.AcceptingReferrals.Value);
@@ -238,18 +250,28 @@ public class ProviderRepository : IProviderRepository
                 query.Latitude.Value, query.Longitude.Value, query.RadiusMiles.Value);
 
             q = q.Where(p =>
-                p.Latitude  != null && p.Longitude != null &&
-                p.Latitude  >= minLat && p.Latitude  <= maxLat &&
-                p.Longitude >= minLon && p.Longitude <= maxLon);
+                (p.Latitude  != null && p.Longitude != null &&
+                 p.Latitude  >= minLat && p.Latitude  <= maxLat &&
+                 p.Longitude >= minLon && p.Longitude <= maxLon) ||
+                p.ProviderFacilities.Any(pf =>
+                    pf.Facility != null &&
+                    pf.Facility.Latitude != null && pf.Facility.Longitude != null &&
+                    pf.Facility.Latitude >= minLat && pf.Facility.Latitude <= maxLat &&
+                    pf.Facility.Longitude >= minLon && pf.Facility.Longitude <= maxLon));
         }
 
         if (query.NorthLat.HasValue && query.SouthLat.HasValue &&
             query.EastLng.HasValue  && query.WestLng.HasValue)
         {
             q = q.Where(p =>
-                p.Latitude  != null && p.Longitude != null &&
-                p.Latitude  >= query.SouthLat.Value && p.Latitude  <= query.NorthLat.Value &&
-                p.Longitude >= query.WestLng.Value  && p.Longitude <= query.EastLng.Value);
+                (p.Latitude  != null && p.Longitude != null &&
+                 p.Latitude  >= query.SouthLat.Value && p.Latitude  <= query.NorthLat.Value &&
+                 p.Longitude >= query.WestLng.Value  && p.Longitude <= query.EastLng.Value) ||
+                p.ProviderFacilities.Any(pf =>
+                    pf.Facility != null &&
+                    pf.Facility.Latitude != null && pf.Facility.Longitude != null &&
+                    pf.Facility.Latitude >= query.SouthLat.Value && pf.Facility.Latitude <= query.NorthLat.Value &&
+                    pf.Facility.Longitude >= query.WestLng.Value && pf.Facility.Longitude <= query.EastLng.Value));
         }
 
         return q;
@@ -260,7 +282,44 @@ public class ProviderRepository : IProviderRepository
             .Include(p => p.ProviderCategories)
                 .ThenInclude(pc => pc.Category)
             .Include(p => p.ProviderSpecialties)
-                .ThenInclude(ps => ps.Specialty);
+                .ThenInclude(ps => ps.Specialty)
+            .Include(p => p.ProviderFacilities)
+                .ThenInclude(pf => pf.Facility);
+
+    private static IEnumerable<ProviderSearchRow> ExpandLocationRows(Provider provider, double latitude, double longitude)
+    {
+        var facilities = provider.ProviderFacilities
+            .Where(pf => pf.Facility is { Latitude: not null, Longitude: not null })
+            .OrderByDescending(pf => pf.IsPrimary)
+            .ThenBy(pf => pf.Facility!.Name)
+            .Select(pf => pf.Facility!)
+            .ToList();
+
+        if (facilities.Count == 0)
+        {
+            if (provider.Latitude.HasValue && provider.Longitude.HasValue)
+                yield return new ProviderSearchRow(provider, CalculateDistanceMiles(latitude, longitude, provider.Latitude.Value, provider.Longitude.Value));
+            yield break;
+        }
+
+        foreach (var facility in facilities)
+        {
+            yield return new ProviderSearchRow(
+                provider,
+                CalculateDistanceMiles(latitude, longitude, facility.Latitude!.Value, facility.Longitude!.Value),
+                facility);
+        }
+    }
+
+    private static Facility? PrimaryFacility(Provider provider)
+    {
+        return provider.ProviderFacilities
+            .Where(pf => pf.Facility is not null)
+            .OrderByDescending(pf => pf.IsPrimary)
+            .ThenBy(pf => pf.Facility!.Name)
+            .Select(pf => pf.Facility)
+            .FirstOrDefault();
+    }
 
     private static bool HasRadiusSearch(GetProvidersQuery query) =>
         query.Latitude.HasValue && query.Longitude.HasValue && query.RadiusMiles.HasValue;

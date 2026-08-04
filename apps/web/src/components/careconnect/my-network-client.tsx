@@ -37,7 +37,7 @@ interface MyNetworkClientProps {
   specialtyOptions: SpecialtyOption[];
 }
 
-type PanelMode = 'closed' | 'search' | 'confirm' | 'create' | 'edit';
+type PanelMode = 'closed' | 'search' | 'confirm' | 'create' | 'location' | 'edit';
 type ViewMode  = 'list' | 'cards' | 'map';
 
 const GEOCODED_POINT_SOURCE = 'Geocoded';
@@ -61,6 +61,27 @@ const EMPTY_NEW_FORM = {
   specialtyIds: [] as string[],
 };
 
+function networkProviderEntryId(provider: Pick<NetworkProviderItem, 'id' | 'networkProviderId'>): string {
+  return provider.networkProviderId || provider.id;
+}
+
+function providerLocationKey(providerId: string, facilityId?: string | null): string {
+  return `${providerId}:${facilityId ?? ''}`;
+}
+
+function searchResultKey(provider: ProviderSearchResult): string {
+  return providerLocationKey(provider.id, provider.facilityId);
+}
+
+function shouldShowFacilityName(provider: Pick<NetworkProviderItem, 'name' | 'organizationName' | 'facilityName'>): boolean {
+  const facilityName = provider.facilityName?.trim() ?? '';
+  if (!facilityName) return false;
+  const providerName = provider.name.trim().toLowerCase();
+  const orgName = provider.organizationName?.trim().toLowerCase() ?? '';
+  const normalizedFacility = facilityName.toLowerCase();
+  return normalizedFacility !== providerName && normalizedFacility !== orgName;
+}
+
 export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }: MyNetworkClientProps) {
   const [network,   setNetwork]   = useState<NetworkDetail | null>(initialNetwork);
   const [providers, setProviders] = useState<NetworkProviderItem[]>(initialNetwork?.providers ?? []);
@@ -80,6 +101,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
   const [searchError,  setSearchError]  = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<ProviderSearchResult[] | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<ProviderSearchResult | null>(null);
+  const [locationTarget, setLocationTarget] = useState<ProviderSearchResult | null>(null);
   const [addingId,     setAddingId]     = useState<string | null>(null);
   const [newForm,      setNewForm]      = useState(EMPTY_NEW_FORM);
   const [createError,  setCreateError]  = useState<string | null>(null);
@@ -282,6 +304,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     setSearchResults(null);
     setSearchError(null);
     setConfirmTarget(null);
+    setLocationTarget(null);
     setNewForm(EMPTY_NEW_FORM);
     setCreateError(null);
     setEditingProvider(null);
@@ -295,6 +318,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     setPanelMode('closed');
     setSearchResults(null);
     setConfirmTarget(null);
+    setLocationTarget(null);
     setCreateError(null);
     setSearchError(null);
     setEditingProvider(null);
@@ -308,6 +332,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     setSearchResults(null);
     setSearchError(null);
     setConfirmTarget(null);
+    setLocationTarget(null);
     setEditingProvider(provider);
     setCreateError(null);
     setGeoLat(null);
@@ -330,6 +355,37 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       specialtyIds: provider.specialties?.map(s => s.id) ?? [],
     });
     setPanelMode('edit');
+  }
+
+  function openLocationPanel(provider: ProviderSearchResult) {
+    const { title, firstName, lastName } = splitProviderName(provider.name);
+    setConfirmTarget(null);
+    setLocationTarget(provider);
+    setEditingProvider(null);
+    setCreateError(null);
+    setSearchError(null);
+    setAddrSuggestions([]);
+    setAddrOpen(false);
+    setGeoLat(null);
+    setGeoLng(null);
+    setSelectedPostalCode(null);
+    setNewForm({
+      title: provider.title?.trim() || title,
+      firstName,
+      lastName,
+      organizationName: provider.organizationName ?? provider.name,
+      email: provider.email ?? '',
+      phone: formatPhoneInput(provider.phone ?? ''),
+      addressLine1: '',
+      city: '',
+      state: '',
+      postalCode: '',
+      npi: provider.npi ?? '',
+      isActive: true,
+      acceptingReferrals: provider.acceptingReferrals,
+      specialtyIds: provider.specialties?.map(s => s.id) ?? [],
+    });
+    setPanelMode('location');
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -365,12 +421,14 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
 
   async function handleConfirmAdd() {
     if (!confirmTarget || !network) return;
-    setAddingId(confirmTarget.id);
+    const key = searchResultKey(confirmTarget);
+    setAddingId(key);
     try {
       const { data } = await careConnectApi.networks.addProvider(network.id, {
         existingProviderId: confirmTarget.id,
+        existingFacilityId: confirmTarget.facilityId ?? undefined,
       });
-      if (data && !providers.find(p => p.id === data.id)) {
+      if (data && !providers.find(p => networkProviderEntryId(p) === networkProviderEntryId(data))) {
         setProviders(prev => [...prev, data]);
       }
       setMarkersLoaded(false);
@@ -425,7 +483,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
             : {}),
         },
       });
-      if (data && !providers.find(p => p.id === data.id)) {
+      if (data && !providers.find(p => networkProviderEntryId(p) === networkProviderEntryId(data))) {
         setProviders(prev => [...prev, data]);
       }
       setMarkersLoaded(false);
@@ -433,6 +491,48 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       closeAddPanel();
     } catch (err: unknown) {
       setCreateError(err instanceof Error ? err.message : 'Failed to add provider. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleAddLocation(e: React.FormEvent) {
+    e.preventDefault();
+    if (!network || !locationTarget) return;
+    if (hasInvalidPhone || hasInvalidPostalCode || hasZipMismatch) return;
+
+    const fallback = splitProviderName(locationTarget.name);
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const { data } = await careConnectApi.networks.addProvider(network.id, {
+        existingProviderId: locationTarget.id,
+        newProvider: {
+          title:              newForm.title.trim() || locationTarget.title || fallback.title || undefined,
+          firstName:          newForm.firstName.trim() || fallback.firstName || locationTarget.name,
+          lastName:           newForm.lastName.trim() || fallback.lastName || '',
+          organizationName:   newForm.organizationName.trim() || locationTarget.organizationName || locationTarget.name,
+          email:              newForm.email.trim(),
+          phone:              stripPhone(newForm.phone),
+          addressLine1:       newForm.addressLine1.trim(),
+          city:               newForm.city.trim(),
+          state:              newForm.state.trim().toUpperCase(),
+          postalCode:         newForm.postalCode.trim(),
+          isActive:           newForm.isActive,
+          acceptingReferrals: newForm.acceptingReferrals,
+          ...(geoLat !== null && geoLng !== null
+            ? { latitude: geoLat, longitude: geoLng, geoPointSource: GEOCODED_POINT_SOURCE }
+            : {}),
+        },
+      });
+      if (data && !providers.find(p => networkProviderEntryId(p) === networkProviderEntryId(data))) {
+        setProviders(prev => [...prev, data]);
+      }
+      setMarkersLoaded(false);
+      showToast(`${locationTarget.name} location added to your network.`);
+      closeAddPanel();
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to add provider location. Please try again.');
     } finally {
       setCreating(false);
     }
@@ -499,7 +599,8 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     }
   }
 
-  const alreadyInNetwork = new Set(providers.map(p => p.id));
+  const alreadyInNetwork = new Set(providers.map(p => providerLocationKey(p.providerId ?? p.id, p.facilityId)));
+  const providerIdsInNetwork = new Set(providers.map(p => p.providerId ?? p.id));
 
   // ── Render: no network yet ───────────────────────────────────────────────
 
@@ -609,7 +710,11 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-gray-900">
-                {panelMode === 'edit' ? 'Edit Provider' : 'Add Provider'}
+                {panelMode === 'edit'
+                  ? 'Edit Provider'
+                  : panelMode === 'location'
+                    ? 'Add Provider Location'
+                    : 'Add Provider'}
               </h2>
               {panelMode === 'confirm' && (
                 <span className="text-xs text-blue-700 bg-blue-100 border border-blue-200 rounded-full px-2 py-0.5">
@@ -619,6 +724,11 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
               {panelMode === 'create' && (
                 <span className="text-xs text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-2 py-0.5">
                   New Provider
+                </span>
+              )}
+              {panelMode === 'location' && (
+                <span className="text-xs text-cyan-700 bg-cyan-50 border border-cyan-200 rounded-full px-2 py-0.5">
+                  New Location
                 </span>
               )}
               {panelMode === 'edit' && (
@@ -644,6 +754,14 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                   ← Back to search
                 </button>
               )}
+              {panelMode === 'location' && (
+                <button
+                  onClick={() => { setPanelMode('search'); setLocationTarget(null); setCreateError(null); }}
+                  className="text-xs text-gray-500 hover:underline"
+                >
+                  ← Back to search
+                </button>
+              )}
               {panelMode === 'confirm' && (
                 <button
                   onClick={() => setPanelMode('search')}
@@ -663,7 +781,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
             <div className="space-y-3">
               <p className="text-xs text-blue-800 bg-blue-100 border border-blue-200 rounded-lg px-3 py-2">
                 <i className="ri-search-line mr-1" />
-                Search the shared provider registry first. If the provider is found, you can confirm adding them to your network. If not, add them as a new provider.
+                Search the shared provider registry first. If the provider is found, add an existing location or use Add new location. If not, add them as a new provider.
               </p>
               <form onSubmit={handleSearch} className="space-y-2">
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -753,9 +871,12 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                       </div>
                       <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
                         {searchResults.map(p => {
-                          const inNetwork = alreadyInNetwork.has(p.id);
+                          const key = searchResultKey(p);
+                          const inNetwork = p.facilityId
+                            ? alreadyInNetwork.has(key)
+                            : providerIdsInNetwork.has(p.id);
                           return (
-                            <div key={p.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
+                            <div key={key} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
                                   <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
@@ -779,7 +900,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                                   </div>
                                 )}
                               </div>
-                              <div className="ml-3 shrink-0">
+                              <div className="ml-3 flex shrink-0 flex-col items-end gap-1.5">
                                 {inNetwork ? (
                                   <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
                                     <i className="ri-check-line" />Already in network
@@ -793,6 +914,13 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                                     Add to Network
                                   </button>
                                 )}
+                                <button
+                                  onClick={() => openLocationPanel(p)}
+                                  className="inline-flex items-center gap-1 rounded-md border border-cyan-300 bg-white px-3 py-1 text-xs font-medium text-cyan-700 hover:bg-cyan-50 transition-colors"
+                                >
+                                  <i className="ri-map-pin-add-line" />
+                                  Add new location
+                                </button>
                               </div>
                             </div>
                           );
@@ -873,21 +1001,58 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                 >
                   Cancel
                 </button>
+                <button
+                  type="button"
+                  onClick={() => openLocationPanel(confirmTarget)}
+                  className="rounded-lg border border-cyan-300 bg-white px-4 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50"
+                >
+                  Add new location instead
+                </button>
               </div>
             </div>
           )}
 
-          {/* ── Create mode ── */}
-          {(panelMode === 'create' || panelMode === 'edit') && (
+          {/* ── Create / location / edit mode ── */}
+          {(panelMode === 'create' || panelMode === 'location' || panelMode === 'edit') && (
             <div className="space-y-3">
               <p className="text-xs text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
                 <i className="ri-information-line mr-1" />
                 {panelMode === 'edit'
                   ? 'Update provider setup details for this network member. Specialty is required before saving changes.'
-                  : 'This provider will be added to the shared platform registry and linked to your network. The NPI number is strongly recommended to prevent duplicates.'}
+                  : panelMode === 'location'
+                    ? 'Add a new facility/location for this existing provider. Provider identity and specialties stay on the existing registry record.'
+                    : 'This provider will be added to the shared platform registry and linked to your network. Duplicate NPI or email records must be handled by searching the registry and using Add new location.'}
               </p>
-              <form onSubmit={panelMode === 'edit' ? handleUpdate : handleCreate} className="space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {panelMode === 'location' && locationTarget && (
+                <div className="rounded-lg border border-cyan-200 bg-white p-4 text-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="h-9 w-9 rounded-full bg-cyan-50 flex items-center justify-center shrink-0">
+                      <i className="ri-user-location-line text-cyan-700" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-gray-900">{locationTarget.name}</p>
+                        <AccessStageBadge stage={locationTarget.accessStage} />
+                      </div>
+                      {locationTarget.organizationName && (
+                        <p className="text-xs text-gray-500">{locationTarget.organizationName}</p>
+                      )}
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                        {locationTarget.npi && <span>NPI: <span className="font-mono">{locationTarget.npi}</span></span>}
+                        {locationTarget.specialties?.length > 0 && (
+                          <span>Specialties: {locationTarget.specialties.map(s => s.name).join(', ')}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <form
+                onSubmit={panelMode === 'edit' ? handleUpdate : panelMode === 'location' ? handleAddLocation : handleCreate}
+                className="space-y-3"
+              >
+                {panelMode !== 'location' && (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
                     <input
@@ -918,15 +1083,19 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                       className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                     />
                   </div>
-                </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Organization / Practice</label>
+                  <div className={panelMode === 'location' ? 'sm:col-span-2' : undefined}>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      {panelMode === 'location' ? 'Location / Facility name *' : 'Organization / Practice'}
+                    </label>
                     <input
+                      required={panelMode === 'location'}
                       value={newForm.organizationName}
                       onChange={e => setNewForm(f => ({ ...f, organizationName: e.target.value }))}
-                      placeholder="Smith Family Practice"
+                      placeholder={panelMode === 'location' ? 'Smith Family Practice - North' : 'Smith Family Practice'}
                       className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                     />
                   </div>
@@ -962,35 +1131,37 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                       <span className="text-xs text-gray-700">Accepting referrals</span>
                     </label>
                   </div>
-                  <div className={panelMode === 'edit' ? 'sm:col-span-1' : 'sm:col-span-2'}>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Specialty *</label>
-                    <div className={`rounded-md border bg-white p-2 ${
-                      hasNoSpecialty && createError === 'Select at least one specialty.'
-                        ? 'border-red-300'
-                        : 'border-gray-300'
-                    }`}>
-                      {specialtyOptions.length === 0 ? (
-                        <p className="text-xs text-gray-400">No active specialties are configured.</p>
-                      ) : (
-                        <div className="grid gap-1 sm:grid-cols-2">
-                          {specialtyOptions.map(s => (
-                            <label key={s.id} className="flex items-center gap-2 rounded px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
-                              <input
-                                type="checkbox"
-                                checked={newForm.specialtyIds.includes(s.id)}
-                                onChange={() => toggleSpecialty(s.id)}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span>{s.name}</span>
-                            </label>
-                          ))}
-                        </div>
+                  {panelMode !== 'location' && (
+                    <div className={panelMode === 'edit' ? 'sm:col-span-1' : 'sm:col-span-2'}>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Specialty *</label>
+                      <div className={`rounded-md border bg-white p-2 ${
+                        hasNoSpecialty && createError === 'Select at least one specialty.'
+                          ? 'border-red-300'
+                          : 'border-gray-300'
+                      }`}>
+                        {specialtyOptions.length === 0 ? (
+                          <p className="text-xs text-gray-400">No active specialties are configured.</p>
+                        ) : (
+                          <div className="grid gap-1 sm:grid-cols-2">
+                            {specialtyOptions.map(s => (
+                              <label key={s.id} className="flex items-center gap-2 rounded px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
+                                <input
+                                  type="checkbox"
+                                  checked={newForm.specialtyIds.includes(s.id)}
+                                  onChange={() => toggleSpecialty(s.id)}
+                                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span>{s.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {hasNoSpecialty && createError === 'Select at least one specialty.' && (
+                        <p className="text-xs text-red-500 mt-1">Select at least one specialty.</p>
                       )}
                     </div>
-                    {hasNoSpecialty && createError === 'Select at least one specialty.' && (
-                      <p className="text-xs text-red-500 mt-1">Select at least one specialty.</p>
-                    )}
-                  </div>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
                     <input
@@ -1108,12 +1279,33 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                     {creating || savingEdit ? (
                       <><span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />{panelMode === 'edit' ? 'Saving…' : 'Adding…'}</>
                     ) : (
-                      <><i className={panelMode === 'edit' ? 'ri-save-line' : 'ri-user-add-line'} />{panelMode === 'edit' ? 'Save Provider' : 'Add to Registry & My Network'}</>
+                      <>
+                        <i className={
+                          panelMode === 'edit'
+                            ? 'ri-save-line'
+                            : panelMode === 'location'
+                              ? 'ri-map-pin-add-line'
+                              : 'ri-user-add-line'
+                        } />
+                        {panelMode === 'edit'
+                          ? 'Save Provider'
+                          : panelMode === 'location'
+                            ? 'Add Location to My Network'
+                            : 'Add to Registry & My Network'}
+                      </>
                     )}
                   </button>
                   <button
                     type="button"
-                    onClick={() => panelMode === 'edit' ? closeAddPanel() : setPanelMode('search')}
+                    onClick={() => {
+                      if (panelMode === 'edit') {
+                        closeAddPanel();
+                        return;
+                      }
+                      setLocationTarget(null);
+                      setCreateError(null);
+                      setPanelMode('search');
+                    }}
                     className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
                   >
                     Cancel
@@ -1181,11 +1373,11 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
               <tbody className="divide-y divide-gray-100">
                 {providers.map(p => (
                   <ProviderRow
-                    key={p.id}
+                    key={networkProviderEntryId(p)}
                     provider={p}
-                    removing={removingId === p.id}
+                    removing={removingId === networkProviderEntryId(p)}
                     onEdit={() => openEditPanel(p)}
-                    onRemove={() => handleRemove(p.id, p.name)}
+                    onRemove={() => handleRemove(networkProviderEntryId(p), p.name)}
                   />
                 ))}
               </tbody>
@@ -1199,11 +1391,11 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {providers.map(p => (
             <ProviderCard
-              key={p.id}
+              key={networkProviderEntryId(p)}
               provider={p}
-              removing={removingId === p.id}
+              removing={removingId === networkProviderEntryId(p)}
               onEdit={() => openEditPanel(p)}
-              onRemove={() => handleRemove(p.id, p.name)}
+              onRemove={() => handleRemove(networkProviderEntryId(p), p.name)}
             />
           ))}
         </div>
@@ -1255,6 +1447,8 @@ function ProviderCard({
   onEdit: () => void;
   onRemove: () => void;
 }) {
+  const showFacilityName = shouldShowFacilityName(provider);
+
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 flex flex-col gap-4 hover:shadow-sm transition-shadow">
       {/* Card header */}
@@ -1267,6 +1461,14 @@ function ProviderCard({
             <p className="font-semibold text-gray-900 leading-tight truncate">{provider.name}</p>
             {provider.organizationName && (
               <p className="text-xs text-gray-500 mt-0.5 truncate">{provider.organizationName}</p>
+            )}
+            {showFacilityName && (
+              <p className="text-xs text-gray-500 mt-0.5 truncate">{provider.facilityName}</p>
+            )}
+            {(provider.addressLine1 || provider.city || provider.state) && (
+              <p className="text-xs text-gray-400 mt-0.5 truncate">
+                {[provider.addressLine1, [provider.city, provider.state].filter(Boolean).join(', '), provider.postalCode].filter(Boolean).join(' ')}
+              </p>
             )}
           </div>
         </div>
@@ -1354,12 +1556,22 @@ function ProviderRow({
   onEdit: () => void;
   onRemove: () => void;
 }) {
+  const showFacilityName = shouldShowFacilityName(provider);
+
   return (
     <tr className="hover:bg-gray-50 transition-colors">
       <td className="px-4 py-3">
         <p className="font-medium text-gray-900 leading-tight">{provider.name}</p>
         {provider.organizationName && (
           <p className="text-xs text-gray-500 mt-0.5 leading-tight">{provider.organizationName}</p>
+        )}
+        {showFacilityName && (
+          <p className="text-xs text-gray-500 mt-0.5 leading-tight">{provider.facilityName}</p>
+        )}
+        {(provider.addressLine1 || provider.postalCode) && (
+          <p className="text-xs text-gray-400 mt-0.5 leading-tight">
+            {[provider.addressLine1, provider.postalCode].filter(Boolean).join(' ')}
+          </p>
         )}
       </td>
       <td className="px-4 py-3">

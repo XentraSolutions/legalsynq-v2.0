@@ -33,6 +33,7 @@ public class ReferralService : IReferralService
     private readonly ILogger<ReferralService> _logger;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IReferralAttachmentRepository _referralAttachments;
+    private readonly INetworkRepository? _networks;
 
     public ReferralService(
         IReferralRepository referrals,
@@ -48,7 +49,8 @@ public class ReferralService : IReferralService
         ILogger<ReferralService> logger,
         IHttpContextAccessor httpContextAccessor,
         IReferralAttachmentRepository referralAttachments,
-        IActivationRequestService? activationRequests = null)
+        IActivationRequestService? activationRequests = null,
+        INetworkRepository? networks = null)
     {
         _referrals            = referrals;
         _providers            = providers;
@@ -64,6 +66,7 @@ public class ReferralService : IReferralService
         _logger               = logger;
         _httpContextAccessor  = httpContextAccessor;
         _referralAttachments  = referralAttachments;
+        _networks             = networks;
     }
 
     public async Task<PagedResponse<ReferralResponse>> SearchAsync(Guid tenantId, GetReferralsQuery query, CancellationToken ct = default)
@@ -149,11 +152,36 @@ public class ReferralService : IReferralService
     {
         ValidateCreate(request);
 
-        // Providers are a platform-wide marketplace (cross-tenant discoverable).
-        // Use GetByIdCrossAsync so a referral can target any active provider regardless
-        // of whether their TenantId matches the referrer's tenant.
-        var provider = await _providers.GetByIdCrossAsync(request.ProviderId, ct)
-            ?? throw new NotFoundException($"Provider '{request.ProviderId}' was not found.");
+        Provider provider;
+        if (request.NetworkProviderId.HasValue)
+        {
+            if (_networks is null)
+                throw new InvalidOperationException("Network membership validation is not configured.");
+
+            var membership = await _networks.GetTenantNetworkMembershipAsync(tenantId, request.NetworkProviderId.Value, ct)
+                ?? throw new NotFoundException($"Network provider '{request.NetworkProviderId.Value}' was not found.");
+
+            if (request.ProviderId != Guid.Empty && request.ProviderId != membership.ProviderId)
+                throw new NotFoundException($"Network provider '{request.NetworkProviderId.Value}' was not found.");
+
+            if (!membership.IsActive || !membership.AcceptingReferrals)
+            {
+                throw new ValidationException("One or more validation errors occurred.",
+                    new() { ["networkProviderId"] = ["Selected provider location is not accepting referrals."] });
+            }
+
+            request.ProviderId = membership.ProviderId;
+            request.FacilityId = membership.FacilityId;
+            provider = membership.Provider;
+        }
+        else
+        {
+            // Providers are a platform-wide marketplace (cross-tenant discoverable).
+            // Use GetByIdCrossAsync so a referral can target any active provider regardless
+            // of whether their TenantId matches the referrer's tenant.
+            provider = await _providers.GetByIdCrossAsync(request.ProviderId, ct)
+                ?? throw new NotFoundException($"Provider '{request.ProviderId}' was not found.");
+        }
 
         request.ReceivingOrganizationId = provider.OrganizationId;
 
@@ -205,7 +233,8 @@ public class ReferralService : IReferralService
             referrerFirmName:  request.ReferrerFirmName,
             referrerPhone:    request.ReferrerPhone,
             treatmentTypeId: request.TreatmentTypeId,
-            dateOfAccident: request.DateOfAccident);
+            dateOfAccident: request.DateOfAccident,
+            facilityId: request.FacilityId);
 
         await _referrals.AddAsync(referral, ct);
 
@@ -265,6 +294,8 @@ public class ReferralService : IReferralService
                 referralId            = referral.Id,
                 tenantId,
                 providerId            = request.ProviderId,
+                facilityId            = request.FacilityId,
+                networkProviderId     = request.NetworkProviderId,
                 requestedService      = request.RequestedService,
                 urgency               = request.Urgency,
                 referringOrganizationId = request.ReferringOrganizationId,
@@ -1322,8 +1353,8 @@ public class ReferralService : IReferralService
     {
         var errors = new Dictionary<string, string[]>();
 
-        if (r.ProviderId == Guid.Empty)
-            errors["providerId"] = new[] { "ProviderId is required." };
+        if (r.ProviderId == Guid.Empty && !r.NetworkProviderId.HasValue)
+            errors["providerId"] = new[] { "ProviderId or NetworkProviderId is required." };
 
         if (string.IsNullOrWhiteSpace(r.ClientFirstName))
             errors["clientFirstName"] = new[] { "ClientFirstName is required." };
@@ -1364,6 +1395,7 @@ public class ReferralService : IReferralService
         Id = r.Id,
         TenantId = r.TenantId,
         ProviderId = r.ProviderId,
+        FacilityId = r.FacilityId,
         ProviderName = GetProviderDisplayName(r.Provider),
         ClientFirstName = r.ClientFirstName,
         ClientLastName = r.ClientLastName,

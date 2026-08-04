@@ -24,11 +24,17 @@ public class NetworkImportTests
                 "providers.csv",
                 1,
                 [
-                    new ProviderImportParsedRow(
-                        2, "row-2", tenantId.ToString(), "Dr.", "Jane", "Smith",
-                        "Smith Family Practice", "1234567890", "Jane@Example.com",
-                        "555-0100", "123 Main St", "Chicago", "il", "60601",
-                        "yes", "no",
+                    ImportRow(
+                        tenantId,
+                        title: "Dr.",
+                        firstName: "Jane",
+                        lastName: "Smith",
+                        organizationName: "Smith Family Practice",
+                        facilityName: "Smith Family Practice",
+                        npi: "1234567890",
+                        email: "Jane@Example.com",
+                        isActive: "yes",
+                        acceptingReferrals: "no",
                         SpecialtyCodesRaw: "Chiropractor",
                         LatitudeRaw: "41.881832",
                         LongitudeRaw: "-87.623177",
@@ -36,6 +42,7 @@ public class NetworkImportTests
                 ]));
 
         Provider? createdProvider = null;
+        Facility? createdFacility = null;
         NetworkProvider? createdMembership = null;
         var specialty = Specialty.Create("Chiropractor", "CHIROPRACTOR");
         List<Guid>? syncedSpecialtyIds = null;
@@ -47,8 +54,11 @@ public class NetworkImportTests
             .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
         networks.Setup(r => r.GetProvidersByTenantEmailsAsync(tenantId, It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
-        networks.Setup(r => r.GetNetworkProviderIdsAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+        networks.Setup(r => r.GetNetworkProviderLocationKeysAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
+        networks.Setup(r => r.AddFacilityAsync(It.IsAny<Facility>(), It.IsAny<CancellationToken>()))
+            .Callback<Facility, CancellationToken>((facility, _) => createdFacility = facility)
+            .Returns(Task.CompletedTask);
         networks.Setup(r => r.AddProviderToRegistryAsync(It.IsAny<Provider>(), It.IsAny<CancellationToken>()))
             .Callback<Provider, CancellationToken>((provider, _) => createdProvider = provider)
             .Returns(Task.CompletedTask);
@@ -83,6 +93,9 @@ public class NetworkImportTests
         Assert.Equal(41.881832, createdProvider.Latitude);
         Assert.Equal(-87.623177, createdProvider.Longitude);
         Assert.Equal(GeoPointSource.Geocoded, createdProvider.GeoPointSource);
+        Assert.NotNull(createdFacility);
+        Assert.Equal("Smith Family Practice", createdFacility!.Name);
+        Assert.Equal("Chicago", createdFacility.City);
         Assert.NotNull(syncedSpecialtyIds);
         Assert.Equal(specialty.Id, Assert.Single(syncedSpecialtyIds!));
         Assert.NotNull(createdMembership);
@@ -99,11 +112,7 @@ public class NetworkImportTests
             .ReturnsAsync(new ProviderImportParseResult(
                 "providers.csv",
                 1,
-                [new ProviderImportParsedRow(
-                    2, "row-2", tenantId.ToString(), null, "Jane", "Smith",
-                    null, null, "jane@example.com", "555-0100", "123 Main St",
-                    "Chicago", "IL", "60601", null, null,
-                    SpecialtyCodesRaw: "Chiropractor")]));
+                [ImportRow(tenantId, SpecialtyCodesRaw: "Chiropractor")]));
         var specialty = Specialty.Create("Chiropractor", "CHIROPRACTOR");
 
         var networks = BuildRepositoryMock();
@@ -113,7 +122,7 @@ public class NetworkImportTests
             .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
         networks.Setup(r => r.GetProvidersByTenantEmailsAsync(tenantId, It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
-        networks.Setup(r => r.GetNetworkProviderIdsAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+        networks.Setup(r => r.GetNetworkProviderLocationKeysAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         var specialties = new Mock<ISpecialtyRepository>();
@@ -133,6 +142,94 @@ public class NetworkImportTests
     }
 
     [Fact]
+    public async Task ImportProvidersAsync_SameNpiDifferentLocations_CreatesOneProviderWithMultipleLocationMemberships()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var parser = new Mock<IProviderImportParser>();
+        parser.Setup(p => p.ParseAsync(It.IsAny<Stream>(), "providers.csv", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProviderImportParseResult(
+                "providers.csv",
+                2,
+                [
+                    ImportRow(
+                        tenantId,
+                        npi: "1234567890",
+                        SpecialtyCodesRaw: "Pain",
+                        PrimarySpecialtyCode: "Pain"),
+                    ImportRow(
+                        tenantId,
+                        facilityName: "Smith Family Practice - Naperville",
+                        organizationName: "Smith Family Practice",
+                        npi: "1234567890",
+                        addressLine1: "456 Oak St",
+                        city: "Naperville",
+                        postalCode: "60540",
+                        SpecialtyCodesRaw: "Chiropractor",
+                        PrimarySpecialtyCode: "Chiropractor")
+                ]));
+
+        var pain = Specialty.Create("Pain", "PAIN");
+        var chiropractor = Specialty.Create("Chiropractor", "CHIROPRACTOR");
+        var allSpecialties = new[] { pain, chiropractor };
+        var providersByNpi = new Dictionary<string, Provider>(StringComparer.Ordinal);
+        var providersByEmail = new Dictionary<string, Provider>(StringComparer.Ordinal);
+        var locationKeys = new HashSet<string>(StringComparer.Ordinal);
+        var createdProviders = new List<Provider>();
+        var createdFacilities = new List<Facility>();
+        var createdMemberships = new List<NetworkProvider>();
+        var syncedSpecialtyIds = new List<List<Guid>>();
+
+        var networks = BuildRepositoryMock();
+        networks.Setup(r => r.GetByIdGlobalAsync(networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "My Network", string.Empty));
+        networks.Setup(r => r.GetProvidersByNpisAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(providersByNpi);
+        networks.Setup(r => r.GetProvidersByTenantEmailsAsync(tenantId, It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(providersByEmail);
+        networks.Setup(r => r.GetNetworkProviderLocationKeysAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(locationKeys);
+        networks.Setup(r => r.AddProviderToRegistryAsync(It.IsAny<Provider>(), It.IsAny<CancellationToken>()))
+            .Callback<Provider, CancellationToken>((provider, _) => createdProviders.Add(provider))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.AddFacilityAsync(It.IsAny<Facility>(), It.IsAny<CancellationToken>()))
+            .Callback<Facility, CancellationToken>((facility, _) => createdFacilities.Add(facility))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.AddProviderAsync(It.IsAny<NetworkProvider>(), It.IsAny<CancellationToken>()))
+            .Callback<NetworkProvider, CancellationToken>((membership, _) => createdMemberships.Add(membership))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SyncProviderSpecialtiesAsync(It.IsAny<Guid>(), It.IsAny<List<Guid>>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, List<Guid>, CancellationToken>((_, ids, _) => syncedSpecialtyIds.Add([.. ids]))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var specialties = new Mock<ISpecialtyRepository>();
+        specialties.Setup(r => r.GetActiveByCodesAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IEnumerable<string> codes, CancellationToken _) =>
+            {
+                var requested = codes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                return allSpecialties.Where(s => requested.Contains(s.Code)).ToList();
+            });
+
+        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), specialties.Object, parser.Object, NullLogger<NetworkService>.Instance);
+
+        await using var stream = new MemoryStream();
+        var result = await sut.ImportProvidersAsync(networkId, stream, "providers.csv", dryRun: false, userId: null, CancellationToken.None);
+
+        Assert.Equal(1, result.CreatedProviders);
+        Assert.Equal(2, result.CreatedFacilities);
+        Assert.Equal(2, result.LinkedLocations);
+        Assert.Equal(1, result.ReusedByNpi);
+        Assert.Single(createdProviders);
+        Assert.Equal(2, createdFacilities.Count);
+        Assert.Equal(2, createdMemberships.Count);
+        Assert.All(createdMemberships, membership => Assert.Equal(createdProviders[0].Id, membership.ProviderId));
+        Assert.Equal(new[] { pain.Id }, syncedSpecialtyIds[0]);
+        Assert.Equal(new[] { pain.Id, chiropractor.Id }, syncedSpecialtyIds[1]);
+    }
+
+    [Fact]
     public async Task ImportProvidersAsync_NewProviderWithoutSpecialty_FailsRowWithoutWriting()
     {
         var tenantId = Guid.CreateVersion7();
@@ -142,10 +239,7 @@ public class NetworkImportTests
             .ReturnsAsync(new ProviderImportParseResult(
                 "providers.csv",
                 1,
-                [new ProviderImportParsedRow(
-                    2, "row-2", tenantId.ToString(), null, "Jane", "Smith",
-                    null, null, "jane@example.com", "555-0100", "123 Main St",
-                    "Chicago", "IL", "60601", null, null)]));
+                [ImportRow(tenantId)]));
 
         var networks = BuildRepositoryMock();
         networks.Setup(r => r.GetByIdGlobalAsync(networkId, It.IsAny<CancellationToken>()))
@@ -154,7 +248,7 @@ public class NetworkImportTests
             .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
         networks.Setup(r => r.GetProvidersByTenantEmailsAsync(tenantId, It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
-        networks.Setup(r => r.GetNetworkProviderIdsAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+        networks.Setup(r => r.GetNetworkProviderLocationKeysAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), Mock.Of<ISpecialtyRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
@@ -192,15 +286,29 @@ public class NetworkImportTests
             firstName: "Jane",
             lastName: "Smith");
 
+        var existingFacility = Facility.Create(
+            tenantId,
+            "Smith Family Practice",
+            "123 Main St",
+            "Chicago",
+            "IL",
+            "60601",
+            "555-0100",
+            true,
+            null,
+            "jane@example.com");
+
         var parser = new Mock<IProviderImportParser>();
         parser.Setup(p => p.ParseAsync(It.IsAny<Stream>(), "providers.csv", It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProviderImportParseResult(
                 "providers.csv",
                 1,
-                [new ProviderImportParsedRow(
-                    2, "row-2", tenantId.ToString(), null, "Jane", "Smith",
-                    null, "1234567890", "jane@example.com", "555-0100",
-                    "123 Main St", "Chicago", "IL", "60601", null, null)]));
+                [ImportRow(
+                    tenantId,
+                    organizationName: "Smith Family Practice",
+                    facilityName: "Smith Family Practice",
+                    npi: "1234567890",
+                    SpecialtyCodesRaw: "Chiropractor")]));
 
         var networks = BuildRepositoryMock();
         networks.Setup(r => r.GetByIdGlobalAsync(networkId, It.IsAny<CancellationToken>()))
@@ -209,10 +317,23 @@ public class NetworkImportTests
             .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal) { ["1234567890"] = existingProvider });
         networks.Setup(r => r.GetProvidersByTenantEmailsAsync(tenantId, It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal) { ["jane@example.com"] = existingProvider });
-        networks.Setup(r => r.GetNetworkProviderIdsAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([existingProvider.Id]);
+        networks.Setup(r => r.GetNetworkProviderLocationKeysAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([existingProvider.Id.ToString() + "|" + existingFacility.Id.ToString()]);
+        networks.Setup(r => r.FindFacilityAsync(
+                tenantId,
+                "Smith Family Practice",
+                "123 Main St",
+                "Chicago",
+                "IL",
+                "60601",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(existingFacility);
+        var specialty = Specialty.Create("Chiropractor", "CHIROPRACTOR");
+        var specialties = new Mock<ISpecialtyRepository>();
+        specialties.Setup(r => r.GetActiveByCodesAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([specialty]);
 
-        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), Mock.Of<ISpecialtyRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
+        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), specialties.Object, parser.Object, NullLogger<NetworkService>.Instance);
 
         await using var stream = new MemoryStream();
         var result = await sut.ImportProvidersAsync(networkId, stream, "providers.csv", dryRun: false, userId: null, CancellationToken.None);
@@ -233,11 +354,7 @@ public class NetworkImportTests
             .ReturnsAsync(new ProviderImportParseResult(
                 "providers.csv",
                 1,
-                [new ProviderImportParsedRow(
-                    2, "row-2", tenantId.ToString(), null, "Jane", "Smith",
-                    null, null, "jane@example.com", "555-0100", "123 Main St",
-                    "Chicago", "IL", "60601", "maybe", null,
-                    SpecialtyCodesRaw: "Chiropractor")]));
+                [ImportRow(tenantId, isActive: "maybe", SpecialtyCodesRaw: "Chiropractor")]));
 
         var networks = BuildRepositoryMock();
         networks.Setup(r => r.GetByIdGlobalAsync(networkId, It.IsAny<CancellationToken>()))
@@ -246,7 +363,7 @@ public class NetworkImportTests
             .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
         networks.Setup(r => r.GetProvidersByTenantEmailsAsync(tenantId, It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
-        networks.Setup(r => r.GetNetworkProviderIdsAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+        networks.Setup(r => r.GetNetworkProviderLocationKeysAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), Mock.Of<ISpecialtyRepository>(), parser.Object, NullLogger<NetworkService>.Instance);
@@ -279,6 +396,76 @@ public class NetworkImportTests
     {
         var mock = new Mock<INetworkRepository>(MockBehavior.Strict);
         mock.Setup(r => r.ClearTracking());
+        mock.Setup(r => r.FindFacilityAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Facility?)null);
+        mock.Setup(r => r.GetProviderFacilityAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProviderFacility?)null);
+        mock.Setup(r => r.GetPrimaryProviderFacilityAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProviderFacility?)null);
+        mock.Setup(r => r.AddProviderFacilityAsync(It.IsAny<ProviderFacility>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        mock.Setup(r => r.AddFacilityAsync(It.IsAny<Facility>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        mock.Setup(r => r.UpdateFacilityAsync(It.IsAny<Facility>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         return mock;
     }
+
+    private static ProviderImportParsedRow ImportRow(
+        Guid tenantId,
+        string? title = null,
+        string? providerName = null,
+        string? facilityName = "Smith Family Practice",
+        string? firstName = "Jane",
+        string? lastName = "Smith",
+        string? organizationName = "Smith Family Practice",
+        string? npi = null,
+        string? email = "jane@example.com",
+        string? phone = "555-0100",
+        string? addressLine1 = "123 Main St",
+        string? city = "Chicago",
+        string? state = "IL",
+        string? postalCode = "60601",
+        string? isActive = null,
+        string? acceptingReferrals = null,
+        string? CategoryCodesRaw = null,
+        string? PrimaryCategoryCode = null,
+        string? SpecialtyCodesRaw = null,
+        string? PrimarySpecialtyCode = null,
+        string? LatitudeRaw = null,
+        string? LongitudeRaw = null,
+        string? GeoPointSource = null)
+        => new(
+            RowNumber: 2,
+            SourceKey: "row-2",
+            TenantId: tenantId.ToString(),
+            Title: title,
+            ProviderName: providerName,
+            FacilityName: facilityName,
+            FirstName: firstName,
+            LastName: lastName,
+            OrganizationName: organizationName,
+            Npi: npi,
+            Email: email,
+            Phone: phone,
+            AddressLine1: addressLine1,
+            City: city,
+            State: state,
+            PostalCode: postalCode,
+            IsActiveRaw: isActive,
+            AcceptingReferralsRaw: acceptingReferrals,
+            CategoryCodesRaw: CategoryCodesRaw,
+            PrimaryCategoryCode: PrimaryCategoryCode,
+            SpecialtyCodesRaw: SpecialtyCodesRaw,
+            PrimarySpecialtyCode: PrimarySpecialtyCode,
+            LatitudeRaw: LatitudeRaw,
+            LongitudeRaw: LongitudeRaw,
+            GeoPointSource: GeoPointSource);
 }

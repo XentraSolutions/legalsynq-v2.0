@@ -176,7 +176,8 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("AppointmentSlotId");
 
-                    b.HasIndex("FacilityId");
+                    b.HasIndex("FacilityId")
+                        .HasDatabaseName("IX_NetworkProviders_FacilityId");
 
                     b.HasIndex("OrganizationRelationshipId")
                         .HasDatabaseName("IX_Appointments_OrganizationRelationshipId");
@@ -809,8 +810,25 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("varchar(320)");
+
+                    b.Property<string>("GeoPointSource")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("GeoUpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("decimal(10,7)");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("decimal(10,7)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -850,6 +868,12 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Name");
 
+                    b.HasIndex("TenantId", "AddressLine1", "City", "State", "PostalCode")
+                        .HasDatabaseName("IX_Facilities_Tenant_Address");
+
+                    b.HasIndex("TenantId", "Latitude", "Longitude")
+                        .HasDatabaseName("IX_Facilities_TenantId_Latitude_Longitude");
+
                     b.ToTable("cc_Facilities", (string)null);
                 });
 
@@ -859,11 +883,20 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<bool>("AcceptingReferrals")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
                     b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("char(36)");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<Guid>("ProviderId")
                         .HasColumnType("char(36)");
@@ -882,10 +915,16 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("FacilityId");
+
                     b.HasIndex("ProviderId");
 
                     b.HasIndex("ProviderNetworkId", "ProviderId")
-                        .IsUnique();
+                        .HasDatabaseName("IX_NetworkProviders_ProviderNetworkId_ProviderId");
+
+                    b.HasIndex("ProviderNetworkId", "ProviderId", "FacilityId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_NetworkProviders_ProviderNetworkId_ProviderId_FacilityId");
 
                     b.HasIndex("TenantId", "ProviderNetworkId")
                         .HasDatabaseName("IX_NetworkProviders_TenantId_ProviderNetworkId");
@@ -1472,6 +1511,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("FacilityId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("varchar(2000)");
@@ -1554,6 +1596,8 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("ProviderId");
 
+                    b.HasIndex("FacilityId");
+
                     b.HasIndex("SubjectPartyId")
                         .HasDatabaseName("IX_Referrals_SubjectPartyId");
 
@@ -1565,6 +1609,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "CreatedAtUtc")
                         .HasDatabaseName("IX_Referrals_TenantId_CreatedAtUtc");
+
+                    b.HasIndex("TenantId", "FacilityId")
+                        .HasDatabaseName("IX_Referrals_TenantId_FacilityId");
 
                     b.HasIndex("TenantId", "ProviderId")
                         .HasDatabaseName("IX_Referrals_TenantId_ProviderId");
@@ -2009,6 +2056,12 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("CareConnect.Domain.NetworkProvider", b =>
                 {
+                    b.HasOne("CareConnect.Domain.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("CareConnect.Domain.Provider", "Provider")
                         .WithMany()
                         .HasForeignKey("ProviderId")
@@ -2022,6 +2075,8 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Network");
+
+                    b.Navigation("Facility");
 
                     b.Navigation("Provider");
                 });
@@ -2045,7 +2100,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("CareConnect.Domain.Provider", "Provider")
-                        .WithMany()
+                        .WithMany("ProviderFacilities")
                         .HasForeignKey("ProviderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -2166,6 +2221,11 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("CareConnect.Domain.Referral", b =>
                 {
+                    b.HasOne("CareConnect.Domain.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CareConnect.Domain.Provider", "Provider")
                         .WithMany()
                         .HasForeignKey("ProviderId")
@@ -2176,6 +2236,8 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .WithMany()
                         .HasForeignKey("SubjectPartyId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Facility");
 
                     b.Navigation("Provider");
 
@@ -2251,6 +2313,8 @@ namespace CareConnect.Infrastructure.Data.Migrations
             modelBuilder.Entity("CareConnect.Domain.Provider", b =>
                 {
                     b.Navigation("ProviderCategories");
+
+                    b.Navigation("ProviderFacilities");
 
                     b.Navigation("ProviderSpecialties");
                 });

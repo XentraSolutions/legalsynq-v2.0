@@ -40,7 +40,7 @@ public class ProviderService : IProviderService
 
         return new PagedResponse<ProviderResponse>
         {
-            Items      = items.Select(row => ToResponse(row.Provider, row.DistanceMiles)).ToList(),
+            Items      = items.Select(row => ToResponse(row.Provider, row.DistanceMiles, row.Facility)).ToList(),
             Page       = query.Page,
             PageSize   = query.PageSize,
             TotalCount = totalCount
@@ -52,7 +52,7 @@ public class ProviderService : IProviderService
         ValidateSearchGeo(query);
 
         var items = await _providers.GetMarkersAsync(tenantId, query, ct);
-        return items.Select(row => ToMarker(row.Provider, row.DistanceMiles)).ToList();
+        return items.Select(row => ToMarker(row.Provider, row.DistanceMiles, row.Facility)).ToList();
     }
 
     public async Task<ProviderResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -318,7 +318,7 @@ public class ProviderService : IProviderService
         return distinct;
     }
 
-    private static ProviderResponse ToResponse(Provider p, double? distanceMiles = null)
+    private static ProviderResponse ToResponse(Provider p, double? distanceMiles = null, Facility? facility = null)
     {
         var categories = p.ProviderCategories
             .Where(pc => pc.Category != null)
@@ -330,32 +330,35 @@ public class ProviderService : IProviderService
         var primary  = categories.FirstOrDefault();
         var primarySpecialty = specialties.FirstOrDefault();
         var label    = p.OrganizationName ?? p.Name;
-        var subtitle = BuildSubtitle(p.City, p.State, primarySpecialty?.Name ?? primary);
+        var city = facility?.City ?? p.City;
+        var state = facility?.State ?? p.State;
+        var subtitle = BuildSubtitle(city, state, primarySpecialty?.Name ?? primary);
 
         return new ProviderResponse
         {
             Id               = p.Id,
+            FacilityId       = facility?.Id,
             TenantId         = p.TenantId,
             Name             = p.Name,
             Title            = p.Title,
             OrganizationName = p.OrganizationName,
             OrganizationId   = p.OrganizationId,
-            Email            = p.Email,
-            Phone            = p.Phone,
-            AddressLine1     = p.AddressLine1,
-            City             = p.City,
-            State            = p.State,
-            PostalCode       = p.PostalCode,
+            Email            = facility?.Email ?? p.Email,
+            Phone            = facility?.Phone ?? p.Phone,
+            AddressLine1     = facility?.AddressLine1 ?? p.AddressLine1,
+            City             = city,
+            State            = state,
+            PostalCode       = facility?.PostalCode ?? p.PostalCode,
             IsActive         = p.IsActive,
             AcceptingReferrals = p.AcceptingReferrals,
             Categories       = categories,
             Specialties      = specialties,
             SpecialtyIds     = specialties.Select(s => s.Id).ToList(),
-            Latitude         = p.Latitude,
-            Longitude        = p.Longitude,
-            GeoPointSource   = p.GeoPointSource,
-            GeoUpdatedAtUtc  = p.GeoUpdatedAtUtc,
-            HasGeoLocation   = p.Latitude.HasValue && p.Longitude.HasValue,
+            Latitude         = facility?.Latitude ?? p.Latitude,
+            Longitude        = facility?.Longitude ?? p.Longitude,
+            GeoPointSource   = facility?.GeoPointSource ?? p.GeoPointSource,
+            GeoUpdatedAtUtc  = facility?.GeoUpdatedAtUtc ?? p.GeoUpdatedAtUtc,
+            HasGeoLocation   = (facility?.Latitude ?? p.Latitude).HasValue && (facility?.Longitude ?? p.Longitude).HasValue,
             PrimaryCategory  = primary,
             PrimarySpecialty = primarySpecialty?.Name,
             PrimarySpecialtyId = primarySpecialty?.Id,
@@ -370,7 +373,7 @@ public class ProviderService : IProviderService
         };
     }
 
-    private static ProviderMarkerResponse ToMarker(Provider p, double? distanceMiles = null)
+    private static ProviderMarkerResponse ToMarker(Provider p, double? distanceMiles = null, Facility? facility = null)
     {
         var categories = p.ProviderCategories
             .Where(pc => pc.Category != null)
@@ -382,27 +385,32 @@ public class ProviderService : IProviderService
         var primary  = categories.FirstOrDefault();
         var primarySpecialty = specialties.FirstOrDefault();
         var label    = p.OrganizationName ?? p.Name;
-        var subtitle = BuildSubtitle(p.City, p.State, primarySpecialty?.Name ?? primary);
+        var city = facility?.City ?? p.City;
+        var state = facility?.State ?? p.State;
+        var latitude = facility?.Latitude ?? p.Latitude;
+        var longitude = facility?.Longitude ?? p.Longitude;
+        var subtitle = BuildSubtitle(city, state, primarySpecialty?.Name ?? primary);
 
         return new ProviderMarkerResponse
         {
             Id               = p.Id,
+            FacilityId       = facility?.Id,
             Name             = p.Name,
             Title            = p.Title,
             OrganizationName = p.OrganizationName,
             DisplayLabel     = label,
             MarkerSubtitle   = subtitle,
-            City             = p.City,
-            State            = p.State,
-            AddressLine1     = p.AddressLine1,
-            PostalCode       = p.PostalCode,
-            Email            = p.Email,
-            Phone            = p.Phone,
+            City             = city,
+            State            = state,
+            AddressLine1     = facility?.AddressLine1 ?? p.AddressLine1,
+            PostalCode       = facility?.PostalCode ?? p.PostalCode,
+            Email            = facility?.Email ?? p.Email,
+            Phone            = facility?.Phone ?? p.Phone,
             AcceptingReferrals = p.AcceptingReferrals,
             IsActive         = p.IsActive,
-            Latitude         = p.Latitude!.Value,
-            Longitude        = p.Longitude!.Value,
-            GeoPointSource   = p.GeoPointSource,
+            Latitude         = latitude!.Value,
+            Longitude        = longitude!.Value,
+            GeoPointSource   = facility?.GeoPointSource ?? p.GeoPointSource,
             PrimaryCategory  = primary,
             Categories       = categories,
             Specialties      = specialties,

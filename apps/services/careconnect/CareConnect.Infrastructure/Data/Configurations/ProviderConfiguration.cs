@@ -96,5 +96,10 @@ public class ProviderConfiguration : IEntityTypeConfiguration<Provider>
                .WithOne(ps => ps.Provider)
                .HasForeignKey(ps => ps.ProviderId)
                .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(p => p.ProviderFacilities)
+               .WithOne(pf => pf.Provider)
+               .HasForeignKey(pf => pf.ProviderId)
+               .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -183,12 +183,12 @@ public static class NetworkEndpoints
             _ = EmitNetworkAuditAsync(auditClient,
                 eventType:     "careconnect.network.provider_added",
                 action:        "ProviderAdded",
-                description:   $"Provider '{provider.Id}' added to network '{id}' by user.",
+                description:   $"Provider '{provider.ProviderId}' added to network '{id}' by user.",
                 tenantId:      tenantId,
                 actorUserId:   ctx.UserId,
                 networkId:     id,
                 correlationId: correlationId,
-                metadata:      JsonSerializer.Serialize(new { providerId = provider.Id }));
+                metadata:      JsonSerializer.Serialize(new { networkProviderId = provider.NetworkProviderId, providerId = provider.ProviderId, facilityId = provider.FacilityId }));
             return Results.Ok(provider);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);

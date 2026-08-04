@@ -153,6 +153,11 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
           if (currentZoom < 13) map.setZoom(13);
           onSelect(captured.id);
           const identity = getProviderIdentity(captured);
+          const facilityName = captured.facilityName?.trim() ?? '';
+          const showFacilityName =
+            facilityName.length > 0 &&
+            facilityName.toLowerCase() !== identity.primary.toLowerCase() &&
+            facilityName.toLowerCase() !== (identity.secondary ?? '').toLowerCase();
           const content = `
             <div style="font-family:system-ui,sans-serif;min-width:200px">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -160,6 +165,7 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
                 <p style="font-weight:700;font-size:14px;color:#111827;margin:0">${esc(identity.primary)}</p>
               </div>
               ${identity.secondary ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${esc(identity.secondary)}</p>` : ''}
+              ${showFacilityName ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${esc(facilityName)}</p>` : ''}
               <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${esc(captured.city)}, ${esc(captured.state)}</p>
               ${typeof captured.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 8px;font-weight:600">${captured.distanceMiles.toFixed(1)} mi away</p>` : ''}
               ${(captured.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 8px">${captured.specialties.map(s => esc(s.name)).join(', ')}</p>` : ''}

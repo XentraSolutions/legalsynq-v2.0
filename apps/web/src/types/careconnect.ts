@@ -654,6 +654,7 @@ export interface ReferralPerformanceResult {
 /** Result from GET /api/networks/{id}/providers/search — shared global registry */
 export interface ProviderSearchResult {
   id:                string;
+  facilityId?:        string | null;
   name:              string;
   title?:            string | null;
   organizationName?: string;
@@ -673,9 +674,15 @@ export interface ProviderSearchResult {
   distanceMiles?:    number | null;
 }
 
-/** Body for POST /api/networks/{id}/providers — match-or-create */
+/**
+ * Body for POST /api/networks/{id}/providers.
+ * - existingProviderId + existingFacilityId adds an existing provider-location membership.
+ * - existingProviderId + newProvider creates a new location for an existing provider.
+ * - newProvider alone creates a new provider identity and first location; duplicate NPI/email is rejected.
+ */
 export interface AddProviderToNetworkRequest {
   existingProviderId?: string;
+  existingFacilityId?: string | null;
   newProvider?: {
     title?:              string;
     firstName:           string;
@@ -739,9 +746,13 @@ export type ProviderAccessStageValue = typeof ProviderAccessStage[keyof typeof P
 
 export interface NetworkProviderItem {
   id:                string;
+  networkProviderId: string;
+  providerId:        string;
+  facilityId:        string;
   name:              string;
   title?:            string | null;
   organizationName?: string;
+  facilityName:      string;
   email:             string;
   phone:             string;
   city:              string;
@@ -768,9 +779,13 @@ export interface NetworkDetail {
 
 export interface NetworkProviderMarker {
   id:                string;
+  networkProviderId: string;
+  providerId:        string;
+  facilityId:        string;
   name:              string;
   title?:            string | null;
   organizationName?: string;
+  facilityName:      string;
   city:              string;
   state:             string;
   addressLine1:      string;

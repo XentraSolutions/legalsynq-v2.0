@@ -447,6 +447,14 @@ static async Task EnsureSchemaObjectsAsync(
         }
     }
 
+    async Task<bool> DropIndexIfExists(string table, string index, string label)
+    {
+        if (!await IndexExists(table, index))
+            return false;
+
+        return await Exec($"DROP INDEX `{index}` ON `{table}`", label);
+    }
+
     int applied = 0;
 
     // Only run the B06+ repair path once the prefix migration is already part of
@@ -542,6 +550,183 @@ static async Task EnsureSchemaObjectsAsync(
         if (await Exec("ALTER TABLE `cc_Providers` ADD COLUMN `Title` varchar(50) NULL",
             "cc_Providers.Title")) applied++;
 
+    // ── 20260804010000_AddProviderNetworkLocations ────────────────────────
+    if (await TableExists("cc_Facilities"))
+    {
+        if (!await ColumnExists("cc_Facilities", "Email"))
+            if (await Exec("ALTER TABLE `cc_Facilities` ADD COLUMN `Email` varchar(320) NULL",
+                "cc_Facilities.Email")) applied++;
+
+        if (!await ColumnExists("cc_Facilities", "Latitude"))
+            if (await Exec("ALTER TABLE `cc_Facilities` ADD COLUMN `Latitude` decimal(10,7) NULL",
+                "cc_Facilities.Latitude")) applied++;
+
+        if (!await ColumnExists("cc_Facilities", "Longitude"))
+            if (await Exec("ALTER TABLE `cc_Facilities` ADD COLUMN `Longitude` decimal(10,7) NULL",
+                "cc_Facilities.Longitude")) applied++;
+
+        if (!await ColumnExists("cc_Facilities", "GeoPointSource"))
+            if (await Exec("ALTER TABLE `cc_Facilities` ADD COLUMN `GeoPointSource` varchar(20) NULL",
+                "cc_Facilities.GeoPointSource")) applied++;
+
+        if (!await ColumnExists("cc_Facilities", "GeoUpdatedAtUtc"))
+            if (await Exec("ALTER TABLE `cc_Facilities` ADD COLUMN `GeoUpdatedAtUtc` datetime(6) NULL",
+                "cc_Facilities.GeoUpdatedAtUtc")) applied++;
+
+        if (!await IndexExists("cc_Facilities", "IX_Facilities_TenantId_Latitude_Longitude"))
+            if (await Exec("CREATE INDEX `IX_Facilities_TenantId_Latitude_Longitude` ON `cc_Facilities` (`TenantId`, `Latitude`, `Longitude`)",
+                "cc_Facilities tenant geo index")) applied++;
+
+        if (!await IndexExists("cc_Facilities", "IX_Facilities_Tenant_Address"))
+            if (await Exec("CREATE INDEX `IX_Facilities_Tenant_Address` ON `cc_Facilities` (`TenantId`, `AddressLine1`, `City`, `State`, `PostalCode`)",
+                "cc_Facilities tenant address index")) applied++;
+    }
+
+    if (await TableExists("cc_NetworkProviders"))
+    {
+        if (!await ColumnExists("cc_NetworkProviders", "FacilityId"))
+            if (await Exec("ALTER TABLE `cc_NetworkProviders` ADD COLUMN `FacilityId` char(36) NULL",
+                "cc_NetworkProviders.FacilityId")) applied++;
+
+        if (!await ColumnExists("cc_NetworkProviders", "IsActive"))
+            if (await Exec("ALTER TABLE `cc_NetworkProviders` ADD COLUMN `IsActive` tinyint(1) NOT NULL DEFAULT 1",
+                "cc_NetworkProviders.IsActive")) applied++;
+
+        if (!await ColumnExists("cc_NetworkProviders", "AcceptingReferrals"))
+            if (await Exec("ALTER TABLE `cc_NetworkProviders` ADD COLUMN `AcceptingReferrals` tinyint(1) NOT NULL DEFAULT 1",
+                "cc_NetworkProviders.AcceptingReferrals")) applied++;
+    }
+
+    if (await TableExists("cc_Referrals") && !await ColumnExists("cc_Referrals", "FacilityId"))
+        if (await Exec("ALTER TABLE `cc_Referrals` ADD COLUMN `FacilityId` char(36) NULL",
+            "cc_Referrals.FacilityId")) applied++;
+
+    if (await TableExists("cc_Providers") &&
+        await TableExists("cc_Facilities") &&
+        await TableExists("cc_ProviderFacilities"))
+    {
+        if (await Exec("""
+            INSERT INTO `cc_Facilities`
+                (`Id`, `TenantId`, `Name`, `AddressLine1`, `City`, `State`, `PostalCode`, `Email`, `Phone`, `IsActive`,
+                 `Latitude`, `Longitude`, `GeoPointSource`, `GeoUpdatedAtUtc`, `CreatedAtUtc`, `UpdatedAtUtc`, `CreatedByUserId`, `UpdatedByUserId`)
+            SELECT
+                UUID(),
+                p.`TenantId`,
+                COALESCE(NULLIF(TRIM(p.`OrganizationName`), ''), NULLIF(TRIM(p.`Name`), ''), 'Provider location'),
+                COALESCE(NULLIF(TRIM(p.`AddressLine1`), ''), 'Unknown address'),
+                COALESCE(NULLIF(TRIM(p.`City`), ''), 'Unknown'),
+                COALESCE(NULLIF(TRIM(p.`State`), ''), 'NA'),
+                COALESCE(NULLIF(TRIM(p.`PostalCode`), ''), '00000'),
+                p.`Email`,
+                p.`Phone`,
+                p.`IsActive`,
+                p.`Latitude`,
+                p.`Longitude`,
+                p.`GeoPointSource`,
+                p.`GeoUpdatedAtUtc`,
+                COALESCE(p.`CreatedAtUtc`, UTC_TIMESTAMP(6)),
+                COALESCE(p.`UpdatedAtUtc`, UTC_TIMESTAMP(6)),
+                p.`CreatedByUserId`,
+                p.`UpdatedByUserId`
+            FROM `cc_Providers` p
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM `cc_Facilities` f
+                WHERE f.`TenantId` = p.`TenantId`
+                  AND UPPER(TRIM(f.`Name`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`OrganizationName`), ''), NULLIF(TRIM(p.`Name`), ''), 'Provider location')))
+                  AND UPPER(TRIM(f.`AddressLine1`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`AddressLine1`), ''), 'Unknown address')))
+                  AND UPPER(TRIM(f.`City`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`City`), ''), 'Unknown')))
+                  AND UPPER(TRIM(f.`State`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`State`), ''), 'NA')))
+                  AND UPPER(TRIM(f.`PostalCode`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`PostalCode`), ''), '00000')))
+            )
+            """, "cc_Facilities provider backfill")) applied++;
+
+        if (await Exec("""
+            INSERT IGNORE INTO `cc_ProviderFacilities`
+                (`ProviderId`, `FacilityId`, `IsPrimary`)
+            SELECT
+                p.`Id`,
+                MIN(f.`Id`) AS `FacilityId`,
+                1 AS `IsPrimary`
+            FROM `cc_Providers` p
+            INNER JOIN `cc_Facilities` f
+                ON f.`TenantId` = p.`TenantId`
+               AND UPPER(TRIM(f.`Name`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`OrganizationName`), ''), NULLIF(TRIM(p.`Name`), ''), 'Provider location')))
+               AND UPPER(TRIM(f.`AddressLine1`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`AddressLine1`), ''), 'Unknown address')))
+               AND UPPER(TRIM(f.`City`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`City`), ''), 'Unknown')))
+               AND UPPER(TRIM(f.`State`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`State`), ''), 'NA')))
+               AND UPPER(TRIM(f.`PostalCode`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`PostalCode`), ''), '00000')))
+            GROUP BY p.`Id`
+            """, "cc_ProviderFacilities provider backfill")) applied++;
+
+        if (await Exec("""
+            UPDATE `cc_ProviderFacilities` pf
+            INNER JOIN (
+                SELECT `ProviderId`, MIN(`FacilityId`) AS `PrimaryFacilityId`
+                FROM `cc_ProviderFacilities`
+                GROUP BY `ProviderId`
+            ) selected ON selected.`ProviderId` = pf.`ProviderId`
+            SET pf.`IsPrimary` = CASE WHEN pf.`FacilityId` = selected.`PrimaryFacilityId` THEN 1 ELSE 0 END
+            """, "cc_ProviderFacilities primary backfill")) applied++;
+    }
+
+    if (await TableExists("cc_NetworkProviders") &&
+        await TableExists("cc_Providers") &&
+        await TableExists("cc_ProviderFacilities"))
+    {
+        if (await Exec("""
+            UPDATE `cc_NetworkProviders` np
+            INNER JOIN `cc_Providers` p ON p.`Id` = np.`ProviderId`
+            INNER JOIN (
+                SELECT `ProviderId`, MIN(`FacilityId`) AS `FacilityId`
+                FROM `cc_ProviderFacilities`
+                GROUP BY `ProviderId`
+            ) pf ON pf.`ProviderId` = np.`ProviderId`
+            SET
+                np.`FacilityId` = pf.`FacilityId`,
+                np.`IsActive` = p.`IsActive`,
+                np.`AcceptingReferrals` = p.`AcceptingReferrals`
+            WHERE np.`FacilityId` IS NULL
+            """, "cc_NetworkProviders facility/status backfill")) applied++;
+
+        if (await Exec("""
+            SET @networkProviderFacilityNotNull = IF(
+                (SELECT COUNT(*) FROM `cc_NetworkProviders` WHERE `FacilityId` IS NULL) = 0,
+                'ALTER TABLE `cc_NetworkProviders` MODIFY COLUMN `FacilityId` char(36) NOT NULL',
+                'SELECT 1');
+            PREPARE stmt FROM @networkProviderFacilityNotNull; EXECUTE stmt; DEALLOCATE PREPARE stmt
+            """, "cc_NetworkProviders.FacilityId not-null repair")) applied++;
+
+        if (!await IndexExists("cc_NetworkProviders", "IX_NetworkProviders_ProviderNetworkId_ProviderId_Tmp"))
+            if (await Exec("CREATE INDEX `IX_NetworkProviders_ProviderNetworkId_ProviderId_Tmp` ON `cc_NetworkProviders` (`ProviderNetworkId`, `ProviderId`)",
+                "cc_NetworkProviders temporary provider lookup index")) applied++;
+
+        if (await DropIndexIfExists("cc_NetworkProviders", "IX_cc_NetworkProviders_ProviderNetworkId_ProviderId",
+            "cc_NetworkProviders old unique provider index drop")) applied++;
+
+        if (await DropIndexIfExists("cc_NetworkProviders", "IX_NetworkProviders_ProviderNetworkId_ProviderId",
+            "cc_NetworkProviders old named provider index drop")) applied++;
+
+        if (!await IndexExists("cc_NetworkProviders", "IX_NetworkProviders_ProviderNetworkId_ProviderId"))
+            if (await Exec("CREATE INDEX `IX_NetworkProviders_ProviderNetworkId_ProviderId` ON `cc_NetworkProviders` (`ProviderNetworkId`, `ProviderId`)",
+                "cc_NetworkProviders provider lookup index")) applied++;
+
+        if (await DropIndexIfExists("cc_NetworkProviders", "IX_NetworkProviders_ProviderNetworkId_ProviderId_Tmp",
+            "cc_NetworkProviders temporary provider lookup index drop")) applied++;
+
+        if (!await IndexExists("cc_NetworkProviders", "IX_NetworkProviders_ProviderNetworkId_ProviderId_FacilityId"))
+            if (await Exec("CREATE UNIQUE INDEX `IX_NetworkProviders_ProviderNetworkId_ProviderId_FacilityId` ON `cc_NetworkProviders` (`ProviderNetworkId`, `ProviderId`, `FacilityId`)",
+                "cc_NetworkProviders provider facility unique index")) applied++;
+
+        if (!await IndexExists("cc_NetworkProviders", "IX_NetworkProviders_FacilityId"))
+            if (await Exec("CREATE INDEX `IX_NetworkProviders_FacilityId` ON `cc_NetworkProviders` (`FacilityId`)",
+                "cc_NetworkProviders facility index")) applied++;
+    }
+
+    if (await TableExists("cc_Referrals") && !await IndexExists("cc_Referrals", "IX_Referrals_TenantId_FacilityId"))
+        if (await Exec("CREATE INDEX `IX_Referrals_TenantId_FacilityId` ON `cc_Referrals` (`TenantId`, `FacilityId`)",
+            "cc_Referrals tenant facility index")) applied++;
+
     // ── 20260429120000_AddReferralComments ──────────────────────────────────
     if (!await TableExists("cc_ReferralComments"))
         if (await Exec("""
@@ -614,7 +799,8 @@ static async Task EnsureSchemaObjectsAsync(
                     ('41000000-0000-0000-0000-000000000004', 'Physical Therapy', 'PHYSICAL_THERAPY', NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
                     ('41000000-0000-0000-0000-000000000006', 'Neuro',            'NEURO',            NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
                     ('41000000-0000-0000-0000-000000000005', 'Imaging',          'IMAGING',          NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
-                    ('41000000-0000-0000-0000-000000000002', 'Chiropractor',     'CHIROPRACTOR',     NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00')
+                    ('41000000-0000-0000-0000-000000000002', 'Chiropractor',     'CHIROPRACTOR',     NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000009', 'Extremities',      'EXTREMITIES',      NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00')
                 """, "cc_Specialties seed data")) applied++;
 
             if (await Exec("""

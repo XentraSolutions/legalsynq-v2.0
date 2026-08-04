@@ -34,8 +34,13 @@ const DETAIL: PublicNetworkDetail = {
   providers: [
     {
       id: 'provider-1',
+      networkProviderId: 'network-provider-1',
+      providerId: 'provider-1',
+      facilityId: 'facility-1',
       name: 'Atlas Rehab',
       organizationName: 'Atlas Health',
+      facilityName: 'Atlas Health',
+      addressLine1: '123 Main St',
       phone: '555-123-4567',
       city: 'Austin',
       state: 'TX',
@@ -61,8 +66,12 @@ const DETAIL: PublicNetworkDetail = {
   markers: [
     {
       id: 'provider-1',
+      networkProviderId: 'network-provider-1',
+      providerId: 'provider-1',
+      facilityId: 'facility-1',
       name: 'Atlas Rehab',
       organizationName: 'Atlas Health',
+      facilityName: 'Atlas Health',
       city: 'Austin',
       state: 'TX',
       acceptingReferrals: true,
@@ -99,8 +108,13 @@ const MULTI_PROVIDER_DETAIL: PublicNetworkDetail = {
     ...DETAIL.providers,
     {
       id: 'provider-2',
+      networkProviderId: 'network-provider-2',
+      providerId: 'provider-2',
+      facilityId: 'facility-2',
       name: 'Bright Spine',
       organizationName: 'Bright Spine Clinic',
+      facilityName: 'Bright Spine Clinic',
+      addressLine1: '456 Sunset Blvd',
       phone: '555-987-6543',
       city: 'Los Angeles',
       state: 'CA',
@@ -119,8 +133,12 @@ const MULTI_PROVIDER_DETAIL: PublicNetworkDetail = {
     ...DETAIL.markers,
     {
       id: 'provider-2',
+      networkProviderId: 'network-provider-2',
+      providerId: 'provider-2',
+      facilityId: 'facility-2',
       name: 'Bright Spine',
       organizationName: 'Bright Spine Clinic',
+      facilityName: 'Bright Spine Clinic',
       city: 'Los Angeles',
       state: 'CA',
       acceptingReferrals: true,
@@ -243,7 +261,13 @@ describe('PublicNetworkView', () => {
       }
 
       if (url.includes('/api/public/careconnect/api/public/referrals')) {
-        const body = JSON.parse(String(init?.body ?? '{}')) as { serviceType?: string };
+        const body = JSON.parse(String(init?.body ?? '{}')) as {
+          providerId?: string;
+          networkProviderId?: string;
+          serviceType?: string;
+        };
+        expect(body.providerId).toBe('provider-1');
+        expect(body.networkProviderId).toBe('network-provider-1');
         expect(body.serviceType).toBe('General Referral');
         return jsonResponse({ referralId: 'ref-1', providerId: 'provider-1' });
       }

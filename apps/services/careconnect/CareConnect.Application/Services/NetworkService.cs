@@ -143,16 +143,19 @@ public class NetworkService : INetworkService
 
         var providersByNpi = await _networks.GetProvidersByNpisAsync(npis, ct);
         var providersByEmail = await _networks.GetProvidersByTenantEmailsAsync(networkTenantId, emails, ct);
-        var providerIdsInNetwork = await _networks.GetNetworkProviderIdsAsync(networkTenantId, networkId, ct);
+        var providerLocationKeysInNetwork = await _networks.GetNetworkProviderLocationKeysAsync(networkTenantId, networkId, ct);
 
         var rows = new List<ProviderImportRowResult>(parsed.Rows.Count);
         var createdProviders = 0;
+        var createdFacilities = 0;
         var reusedByNpi = 0;
         var reusedByEmail = 0;
+        var linkedLocations = 0;
         var alreadyInNetwork = 0;
         var failedRows = 0;
         var validRows = 0;
         var processedRows = 0;
+        var specialtyIdsByProviderId = new Dictionary<Guid, List<Guid>>();
 
         foreach (var parsedRow in parsed.Rows)
         {
@@ -163,6 +166,8 @@ public class NetworkService : INetworkService
                     parsedRow.RowNumber,
                     parsedRow.SourceKey,
                     "failed",
+                    null,
+                    null,
                     null,
                     "Row validation failed.",
                     null,
@@ -182,6 +187,8 @@ public class NetworkService : INetworkService
                         parsedRow.SourceKey,
                         "failed",
                         null,
+                        null,
+                        null,
                         "Row tenant does not match the target network tenant.",
                         normalized,
                         [$"tenantId {normalized.TenantId} does not match network tenant {networkTenantId}."]));
@@ -198,8 +205,15 @@ public class NetworkService : INetworkService
                 var provider = resolution.Provider;
                 var status = resolution.Status;
                 var message = resolution.Message;
+                var facilityResolution = await ResolveImportFacilityAsync(
+                    networkTenantId,
+                    userId,
+                    normalized,
+                    ct);
+                var facility = facilityResolution.Facility;
+                var membershipKey = NetworkProviderLocationKey(provider.Id, facility.Id);
 
-                if (providerIdsInNetwork.Contains(provider.Id))
+                if (providerLocationKeysInNetwork.Contains(membershipKey))
                 {
                     alreadyInNetwork++;
                     processedRows++;
@@ -208,7 +222,9 @@ public class NetworkService : INetworkService
                         parsedRow.SourceKey,
                         "already_in_network",
                         provider.Id,
-                        "Provider is already linked to this network.",
+                        facility.Id,
+                        null,
+                        "Provider location is already linked to this network.",
                         normalized,
                         []));
                     continue;
@@ -216,22 +232,74 @@ public class NetworkService : INetworkService
 
                 if (!dryRun)
                 {
+                    var mergedSpecialtyIds = MergeImportedSpecialtyIds(
+                        provider,
+                        resolution.SpecialtyIds,
+                        specialtyIdsByProviderId);
+
                     if (status == "created")
                     {
                         await _networks.AddProviderToRegistryAsync(provider, ct);
                         if (resolution.CategoryIds.Count > 0)
                             await _networks.SyncProviderCategoriesAsync(provider.Id, resolution.CategoryIds, ct);
-                        await _networks.SyncProviderSpecialtiesAsync(provider.Id, resolution.SpecialtyIds, ct);
                     }
+                    await _networks.SyncProviderSpecialtiesAsync(provider.Id, mergedSpecialtyIds, ct);
+                    specialtyIdsByProviderId[provider.Id] = mergedSpecialtyIds;
 
-                    await _networks.AddProviderAsync(NetworkProvider.Create(networkTenantId, networkId, provider.Id), ct);
+                    if (facilityResolution.Status == "created")
+                        await _networks.AddFacilityAsync(facility, ct);
+                    else if (facilityResolution.Status == "updated")
+                        await _networks.UpdateFacilityAsync(facility, ct);
+
+                    await EnsureProviderFacilityAsync(provider.Id, facility.Id, isPrimary: true, ct);
+
+                    var membership = NetworkProvider.Create(
+                        networkTenantId,
+                        networkId,
+                        provider.Id,
+                        facility.Id,
+                        normalized.IsActive,
+                        normalized.AcceptingReferrals);
+                    await _networks.AddProviderAsync(membership, ct);
                     await _networks.SaveChangesAsync(ct);
+
+                    rows.Add(new ProviderImportRowResult(
+                        parsedRow.RowNumber,
+                        parsedRow.SourceKey,
+                        status,
+                        provider.Id,
+                        facility.Id,
+                        membership.Id,
+                        message,
+                        normalized,
+                        []));
+                }
+                else
+                {
+                    specialtyIdsByProviderId[provider.Id] = MergeImportedSpecialtyIds(
+                        provider,
+                        resolution.SpecialtyIds,
+                        specialtyIdsByProviderId);
+
+                    rows.Add(new ProviderImportRowResult(
+                        parsedRow.RowNumber,
+                        parsedRow.SourceKey,
+                        status,
+                        provider.Id,
+                        facility.Id,
+                        null,
+                        message,
+                        normalized,
+                        []));
                 }
 
-                providerIdsInNetwork.Add(provider.Id);
+                providerLocationKeysInNetwork.Add(membershipKey);
                 CacheResolvedProvider(provider, providersByNpi, providersByEmail);
 
                 processedRows++;
+                linkedLocations++;
+                if (facilityResolution.Status == "created")
+                    createdFacilities++;
                 switch (status)
                 {
                     case "created":
@@ -245,14 +313,6 @@ public class NetworkService : INetworkService
                         break;
                 }
 
-                rows.Add(new ProviderImportRowResult(
-                    parsedRow.RowNumber,
-                    parsedRow.SourceKey,
-                    status,
-                    provider.Id,
-                    message,
-                    normalized,
-                    []));
             }
             catch (ValidationException ex)
             {
@@ -268,6 +328,8 @@ public class NetworkService : INetworkService
                     parsedRow.RowNumber,
                     parsedRow.SourceKey,
                     "failed",
+                    null,
+                    null,
                     null,
                     "Row validation failed.",
                     normalized,
@@ -287,6 +349,8 @@ public class NetworkService : INetworkService
                     parsedRow.SourceKey,
                     "failed",
                     null,
+                    null,
+                    null,
                     "Row import failed.",
                     normalized,
                     [ex.Message]));
@@ -294,8 +358,8 @@ public class NetworkService : INetworkService
         }
 
         _logger.LogInformation(
-            "Provider import completed: TenantId={TenantId} NetworkId={NetworkId} FileName={FileName} DryRun={DryRun} TotalRows={TotalRows} Created={CreatedProviders} ReusedByNpi={ReusedByNpi} ReusedByEmail={ReusedByEmail} AlreadyInNetwork={AlreadyInNetwork} FailedRows={FailedRows}",
-            networkTenantId, networkId, fileName, dryRun, parsed.TotalRows, createdProviders, reusedByNpi, reusedByEmail, alreadyInNetwork, failedRows);
+            "Provider import completed: TenantId={TenantId} NetworkId={NetworkId} FileName={FileName} DryRun={DryRun} TotalRows={TotalRows} Created={CreatedProviders} CreatedFacilities={CreatedFacilities} LinkedLocations={LinkedLocations} ReusedByNpi={ReusedByNpi} ReusedByEmail={ReusedByEmail} AlreadyInNetwork={AlreadyInNetwork} FailedRows={FailedRows}",
+            networkTenantId, networkId, fileName, dryRun, parsed.TotalRows, createdProviders, createdFacilities, linkedLocations, reusedByNpi, reusedByEmail, alreadyInNetwork, failedRows);
 
         return new ProviderImportSummaryResponse(
             TenantId: networkTenantId,
@@ -306,8 +370,10 @@ public class NetworkService : INetworkService
             ValidRows: validRows,
             ProcessedRows: processedRows,
             CreatedProviders: createdProviders,
+            CreatedFacilities: createdFacilities,
             ReusedByNpi: reusedByNpi,
             ReusedByEmail: reusedByEmail,
+            LinkedLocations: linkedLocations,
             AlreadyInNetwork: alreadyInNetwork,
             FailedRows: failedRows,
             Rows: rows);
@@ -324,17 +390,76 @@ public class NetworkService : INetworkService
             ?? throw new NotFoundException($"Network {networkId} not found.");
 
         Provider provider;
+        Facility facility;
+        bool isActive;
+        bool acceptingReferrals;
+
+        if (request.ExistingProviderId.HasValue && request.ExistingFacilityId.HasValue && request.NewProvider is not null)
+        {
+            throw new ValidationException("Choose either an existing location or a new location, not both.",
+                new() { ["request"] = ["ExistingFacilityId and NewProvider cannot be supplied together."] });
+        }
 
         if (request.ExistingProviderId.HasValue)
         {
             provider = await _networks.GetProviderByIdGlobalAsync(request.ExistingProviderId.Value, ct)
                 ?? throw new NotFoundException($"Provider {request.ExistingProviderId.Value} not found in the shared registry.");
+
+            if (request.NewProvider is { } location)
+            {
+                ValidateNewProviderLocation(location);
+                ValidateGeoFields(location.Latitude, location.Longitude, location.GeoPointSource);
+
+                facility = await EnsureFacilityAsync(
+                    tenantId,
+                    FacilityNameForProvider(provider, location.OrganizationName),
+                    location.AddressLine1,
+                    location.City,
+                    location.State,
+                    location.PostalCode,
+                    location.Phone,
+                    location.IsActive,
+                    userId,
+                    location.Email,
+                    location.Latitude,
+                    location.Longitude,
+                    location.GeoPointSource,
+                    ct);
+                isActive = location.IsActive;
+                acceptingReferrals = location.AcceptingReferrals;
+            }
+            else
+            {
+                facility = request.ExistingFacilityId.HasValue
+                    ? await _networks.GetFacilityByIdAsync(tenantId, request.ExistingFacilityId.Value, ct)
+                        ?? throw new NotFoundException($"Facility {request.ExistingFacilityId.Value} not found.")
+                    : await EnsurePrimaryFacilityAsync(tenantId, provider, userId, ct);
+                isActive = provider.IsActive;
+                acceptingReferrals = provider.AcceptingReferrals;
+            }
         }
         else if (request.NewProvider is { } np)
         {
             ValidateNewProvider(np);
             ValidateGeoFields(np.Latitude, np.Longitude, np.GeoPointSource);
             provider = await ResolveProviderForAddAsync(tenantId, np, userId, ct);
+            facility = await EnsureFacilityAsync(
+                tenantId,
+                FacilityNameForProvider(provider, np.OrganizationName),
+                np.AddressLine1,
+                np.City,
+                np.State,
+                np.PostalCode,
+                np.Phone,
+                np.IsActive,
+                userId,
+                np.Email,
+                np.Latitude,
+                np.Longitude,
+                np.GeoPointSource,
+                ct);
+            isActive = np.IsActive;
+            acceptingReferrals = np.AcceptingReferrals;
         }
         else
         {
@@ -342,15 +467,18 @@ public class NetworkService : INetworkService
                 new() { ["request"] = ["Either ExistingProviderId or NewProvider must be provided."] });
         }
 
-        var existing = await _networks.GetMembershipAsync(networkId, provider.Id, ct);
+        await EnsureProviderFacilityAsync(provider.Id, facility.Id, isPrimary: true, ct);
+
+        var existing = await _networks.GetMembershipAsync(networkId, provider.Id, facility.Id, ct);
         if (existing is null)
-            await _networks.AddProviderAsync(NetworkProvider.Create(tenantId, networkId, provider.Id), ct);
+            await _networks.AddProviderAsync(NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals), ct);
         else
-            _logger.LogDebug("Provider {ProviderId} already in network {NetworkId} — no-op.", provider.Id, networkId);
+            _logger.LogDebug("Provider {ProviderId} facility {FacilityId} already in network {NetworkId} — no-op.", provider.Id, facility.Id, networkId);
 
         await _networks.SaveChangesAsync(ct);
 
-        return ToProviderItem(provider);
+        var loaded = await _networks.GetMembershipAsync(networkId, provider.Id, facility.Id, ct);
+        return ToProviderItem(loaded ?? existing ?? NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals), provider, facility);
     }
 
     public async Task RemoveProviderAsync(
@@ -359,15 +487,15 @@ public class NetworkService : INetworkService
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
 
-        var entry = await _networks.GetMembershipAsync(networkId, providerId, ct)
-            ?? throw new NotFoundException($"Provider {providerId} is not a member of network {networkId}.");
+        var entry = await _networks.GetMembershipByIdOrProviderAsync(networkId, providerId, ct)
+            ?? throw new NotFoundException($"Provider or network membership {providerId} is not a member of network {networkId}.");
 
         await _networks.RemoveProviderAsync(entry, ct);
         await _networks.SaveChangesAsync(ct);
 
         _logger.LogInformation(
             "Provider {ProviderId} removed from network {NetworkId} (association only; shared record preserved).",
-            providerId, networkId);
+            entry.ProviderId, networkId);
     }
 
     public async Task<List<NetworkProviderMarker>> GetMarkersAsync(
@@ -376,29 +504,35 @@ public class NetworkService : INetworkService
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
 
-        var providers = await _networks.GetNetworkProvidersAsync(tenantId, networkId, ct);
+        var memberships = await _networks.GetNetworkProviderMembershipsAsync(tenantId, networkId, ct);
 
-        return providers
-            .Select(p =>
+        return memberships
+            .Select(np =>
             {
+                var p = np.Provider;
+                var f = np.Facility;
                 var specialties = MapSpecialties(p.ProviderSpecialties);
                 var primarySpecialty = specialties.FirstOrDefault();
                 return new NetworkProviderMarker(
+                    np.Id,
+                    np.Id,
                     p.Id,
+                    f.Id,
                     p.Name,
                     p.Title,
                     p.OrganizationName,
-                    p.City,
-                    p.State,
-                    p.AddressLine1,
-                    p.PostalCode,
-                    p.Email,
-                    p.Phone,
-                    p.AcceptingReferrals,
-                    p.IsActive,
-                    p.Latitude ?? 0.0,
-                    p.Longitude ?? 0.0,
-                    p.GeoPointSource,
+                    f.Name,
+                    f.City,
+                    f.State,
+                    f.AddressLine1,
+                    f.PostalCode,
+                    f.Email ?? p.Email,
+                    f.Phone ?? p.Phone,
+                    np.AcceptingReferrals,
+                    np.IsActive,
+                    f.Latitude ?? p.Latitude ?? 0.0,
+                    f.Longitude ?? p.Longitude ?? 0.0,
+                    f.GeoPointSource ?? p.GeoPointSource,
                     specialties,
                     primarySpecialty?.Id,
                     primarySpecialty?.Name);
@@ -417,8 +551,8 @@ public class NetworkService : INetworkService
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
 
-        _ = await _networks.GetMembershipAsync(networkId, providerId, ct)
-            ?? throw new NotFoundException($"Provider {providerId} is not a member of network {networkId}.");
+        var membership = await _networks.GetMembershipByIdOrProviderAsync(networkId, providerId, ct)
+            ?? throw new NotFoundException($"Provider or network membership {providerId} is not a member of network {networkId}.");
 
         ValidateNetworkProviderFields(
             request.FirstName,
@@ -433,8 +567,10 @@ public class NetworkService : INetworkService
         ValidateGeoFields(request.Latitude, request.Longitude, request.GeoPointSource);
         var specialtyIds = await ValidateSpecialtyIdsAsync(request.SpecialtyIds, ct);
 
-        var provider = await _networks.GetProviderByIdGlobalAsync(providerId, ct)
-            ?? throw new NotFoundException($"Provider {providerId} not found in the shared registry.");
+        var provider = await _networks.GetProviderByIdGlobalAsync(membership.ProviderId, ct)
+            ?? throw new NotFoundException($"Provider {membership.ProviderId} not found in the shared registry.");
+        var facility = await _networks.GetFacilityByIdAsync(tenantId, membership.FacilityId, ct)
+            ?? throw new NotFoundException($"Facility {membership.FacilityId} not found.");
 
         provider.Update(
             name: BuildProviderDisplayName(request.Title, request.FirstName, request.LastName),
@@ -454,13 +590,28 @@ public class NetworkService : INetworkService
             firstName: request.FirstName,
             lastName: request.LastName,
             title: request.Title);
+        facility.Update(
+            name: FacilityNameForProvider(provider, request.OrganizationName),
+            addressLine1: request.AddressLine1,
+            city: request.City,
+            state: request.State.Trim().ToUpperInvariant(),
+            postalCode: request.PostalCode,
+            phone: request.Phone,
+            isActive: request.IsActive,
+            updatedByUserId: userId,
+            email: request.Email.Trim().ToLowerInvariant(),
+            latitude: request.Latitude ?? facility.Latitude,
+            longitude: request.Longitude ?? facility.Longitude,
+            geoPointSource: request.Latitude.HasValue ? request.GeoPointSource : facility.GeoPointSource);
+        membership.UpdateStatus(request.IsActive, request.AcceptingReferrals);
 
         await _networks.UpdateProviderInRegistryAsync(provider, ct);
+        await _networks.UpdateFacilityAsync(facility, ct);
         await _networks.SyncProviderSpecialtiesAsync(provider.Id, specialtyIds, ct);
         await _networks.SaveChangesAsync(ct);
 
-        var loaded = await _networks.GetProviderByIdGlobalAsync(providerId, ct);
-        return ToProviderItem(loaded ?? provider);
+        var loaded = await _networks.GetMembershipByIdOrProviderAsync(networkId, membership.Id, ct);
+        return loaded is not null ? ToProviderItem(loaded) : ToProviderItem(membership, provider, facility);
     }
 
     // ── Mapping helpers ───────────────────────────────────────────────────────
@@ -473,16 +624,20 @@ public class NetworkService : INetworkService
             n.Id,
             n.Name,
             n.Description,
-            n.NetworkProviders.Select(np => ToProviderItem(np.Provider)).ToList(),
+            n.NetworkProviders.Select(ToProviderItem).ToList(),
             n.CreatedAtUtc,
             n.UpdatedAtUtc);
 
-    private static NetworkProviderItem ToProviderItem(Provider p)
+    private static NetworkProviderItem ToProviderItem(NetworkProvider np)
+        => ToProviderItem(np, np.Provider, np.Facility);
+
+    private static NetworkProviderItem ToProviderItem(NetworkProvider np, Provider p, Facility f)
     {
         var specialties = MapSpecialties(p.ProviderSpecialties);
         var primarySpecialty = specialties.FirstOrDefault();
-        return new(p.Id, p.Name, p.Title, p.OrganizationName, p.Email, p.Phone, p.City, p.State,
-            p.AddressLine1, p.PostalCode, p.IsActive, p.AcceptingReferrals, p.AccessStage,
+        return new(np.Id, np.Id, p.Id, f.Id, p.Name, p.Title, p.OrganizationName, f.Name,
+            f.Email ?? p.Email, f.Phone ?? p.Phone, f.City, f.State,
+            f.AddressLine1, f.PostalCode, np.IsActive, np.AcceptingReferrals, p.AccessStage,
             specialties,
             primarySpecialty?.Id,
             primarySpecialty?.Name);
@@ -492,8 +647,16 @@ public class NetworkService : INetworkService
     {
         var specialties = MapSpecialties(p.ProviderSpecialties);
         var primarySpecialty = specialties.FirstOrDefault();
-        return new(p.Id, p.Name, p.Title, p.OrganizationName, p.Email, p.Phone, p.City, p.State,
-            p.AddressLine1, p.PostalCode, p.Npi, p.IsActive, p.AcceptingReferrals, p.AccessStage,
+        var primaryFacility = p.ProviderFacilities
+            .Where(pf => pf.Facility is not null)
+            .OrderByDescending(pf => pf.IsPrimary)
+            .ThenBy(pf => pf.Facility!.Name)
+            .Select(pf => pf.Facility)
+            .FirstOrDefault();
+        return new(p.Id, primaryFacility?.Id, p.Name, p.Title, p.OrganizationName, primaryFacility?.Email ?? p.Email, primaryFacility?.Phone ?? p.Phone,
+            primaryFacility?.City ?? p.City, primaryFacility?.State ?? p.State,
+            primaryFacility?.AddressLine1 ?? p.AddressLine1, primaryFacility?.PostalCode ?? p.PostalCode,
+            p.Npi, p.IsActive, p.AcceptingReferrals, p.AccessStage,
             specialties,
             primarySpecialty?.Id,
             primarySpecialty?.Name);
@@ -511,9 +674,10 @@ public class NetworkService : INetworkService
             if (byNpi is not null)
             {
                 _logger.LogInformation(
-                    "Provider NPI {Npi} already exists (Id={ProviderId}); reusing instead of creating duplicate.",
+                    "Provider NPI {Npi} already exists (Id={ProviderId}); rejecting new-provider creation.",
                     np.Npi, byNpi.Id);
-                return byNpi;
+                ThrowDuplicateProvider(
+                    $"A provider with NPI {np.Npi.Trim()} already exists. Search for the existing provider and use Add new location.");
             }
         }
 
@@ -521,9 +685,10 @@ public class NetworkService : INetworkService
         if (byEmail is not null)
         {
             _logger.LogInformation(
-                "Provider email {Email} already exists for tenant {TenantId} (Id={ProviderId}); reusing existing provider.",
+                "Provider email {Email} already exists for tenant {TenantId} (Id={ProviderId}); rejecting new-provider creation.",
                 np.Email, tenantId, byEmail.Id);
-            return byEmail;
+            ThrowDuplicateProvider(
+                "A provider with this email already exists. Search for the existing provider and use Add new location.");
         }
 
         var provider = Provider.Create(
@@ -583,6 +748,11 @@ public class NetworkService : INetworkService
         return provider;
     }
 
+    private static void ThrowDuplicateProvider(string message)
+    {
+        throw new ConflictException(message, "DUPLICATE_PROVIDER");
+    }
+
     private async Task<ImportProviderResolution> ResolveImportProviderAsync(
         Guid tenantId,
         Guid? userId,
@@ -591,6 +761,12 @@ public class NetworkService : INetworkService
         Dictionary<string, Provider> providersByEmail,
         CancellationToken ct)
     {
+        var specialtyIds = await ResolveSpecialtyIdsByCodesAsync(
+            normalized.SpecialtyCodes,
+            normalized.PrimarySpecialtyCode,
+            requireAtLeastOne: true,
+            ct);
+
         if (!string.IsNullOrWhiteSpace(normalized.Npi) &&
             providersByNpi.TryGetValue(normalized.Npi, out var byNpi))
         {
@@ -599,7 +775,7 @@ public class NetworkService : INetworkService
                 "reused_npi",
                 "Matched existing provider by NPI.",
                 [],
-                []);
+                specialtyIds);
         }
 
         if (providersByEmail.TryGetValue(normalized.Email, out var byEmail))
@@ -609,14 +785,9 @@ public class NetworkService : INetworkService
                 "reused_email",
                 "Matched existing provider by tenant email.",
                 [],
-                []);
+                specialtyIds);
         }
 
-        var specialtyIds = await ResolveSpecialtyIdsByCodesAsync(
-            normalized.SpecialtyCodes,
-            normalized.PrimarySpecialtyCode,
-            requireAtLeastOne: true,
-            ct);
         var categoryIds = await ResolveCategoryIdsByCodesAsync(
             normalized.CategoryCodes,
             normalized.PrimaryCategoryCode,
@@ -662,6 +833,182 @@ public class NetworkService : INetworkService
         providersByEmail[provider.Email] = provider;
     }
 
+    private async Task<FacilityResolution> ResolveImportFacilityAsync(
+        Guid tenantId,
+        Guid? userId,
+        ProviderImportNormalizedRow normalized,
+        CancellationToken ct)
+    {
+        var facility = await _networks.FindFacilityAsync(
+            tenantId,
+            normalized.FacilityName,
+            normalized.AddressLine1,
+            normalized.City,
+            normalized.State,
+            normalized.PostalCode,
+            ct);
+
+        if (facility is null)
+        {
+            return new FacilityResolution(
+                Facility.Create(
+                    tenantId,
+                    normalized.FacilityName,
+                    normalized.AddressLine1,
+                    normalized.City,
+                    normalized.State,
+                    normalized.PostalCode,
+                    normalized.Phone,
+                    normalized.IsActive,
+                    userId,
+                    normalized.Email,
+                    normalized.Latitude,
+                    normalized.Longitude,
+                    normalized.GeoPointSource),
+                "created");
+        }
+
+        var status = "existing";
+        if ((normalized.Latitude.HasValue && normalized.Longitude.HasValue) ||
+            !string.Equals(facility.Email, normalized.Email, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(facility.Phone, normalized.Phone, StringComparison.Ordinal))
+        {
+            facility.Update(
+                normalized.FacilityName,
+                normalized.AddressLine1,
+                normalized.City,
+                normalized.State,
+                normalized.PostalCode,
+                normalized.Phone,
+                normalized.IsActive,
+                userId,
+                normalized.Email,
+                normalized.Latitude ?? facility.Latitude,
+                normalized.Longitude ?? facility.Longitude,
+                normalized.Latitude.HasValue ? normalized.GeoPointSource : facility.GeoPointSource);
+            status = "updated";
+        }
+
+        return new FacilityResolution(facility, status);
+    }
+
+    private async Task<Facility> EnsureFacilityAsync(
+        Guid tenantId,
+        string name,
+        string addressLine1,
+        string city,
+        string state,
+        string postalCode,
+        string phone,
+        bool isActive,
+        Guid? userId,
+        string email,
+        double? latitude,
+        double? longitude,
+        string? geoPointSource,
+        CancellationToken ct)
+    {
+        var facility = await _networks.FindFacilityAsync(tenantId, name, addressLine1, city, state, postalCode, ct);
+        if (facility is not null)
+        {
+            facility.Update(
+                name,
+                addressLine1,
+                city,
+                state.Trim().ToUpperInvariant(),
+                postalCode,
+                phone,
+                isActive,
+                userId,
+                email.Trim().ToLowerInvariant(),
+                latitude ?? facility.Latitude,
+                longitude ?? facility.Longitude,
+                latitude.HasValue ? geoPointSource : facility.GeoPointSource);
+            await _networks.UpdateFacilityAsync(facility, ct);
+            return facility;
+        }
+
+        facility = Facility.Create(
+            tenantId,
+            name,
+            addressLine1,
+            city,
+            state.Trim().ToUpperInvariant(),
+            postalCode,
+            phone,
+            isActive,
+            userId,
+            email.Trim().ToLowerInvariant(),
+            latitude,
+            longitude,
+            geoPointSource);
+        await _networks.AddFacilityAsync(facility, ct);
+        return facility;
+    }
+
+    private async Task<Facility> EnsurePrimaryFacilityAsync(Guid tenantId, Provider provider, Guid? userId, CancellationToken ct)
+    {
+        var existing = await _networks.GetPrimaryProviderFacilityAsync(provider.Id, ct);
+        if (existing?.Facility is not null)
+            return existing.Facility;
+
+        var facility = await EnsureFacilityAsync(
+            tenantId,
+            FacilityNameForProvider(provider, provider.OrganizationName),
+            provider.AddressLine1,
+            provider.City,
+            provider.State,
+            provider.PostalCode,
+            provider.Phone,
+            provider.IsActive,
+            userId,
+            provider.Email,
+            provider.Latitude,
+            provider.Longitude,
+            provider.GeoPointSource,
+            ct);
+
+        await EnsureProviderFacilityAsync(provider.Id, facility.Id, isPrimary: true, ct);
+        return facility;
+    }
+
+    private async Task EnsureProviderFacilityAsync(Guid providerId, Guid facilityId, bool isPrimary, CancellationToken ct)
+    {
+        var existing = await _networks.GetProviderFacilityAsync(providerId, facilityId, ct);
+        if (existing is null)
+            await _networks.AddProviderFacilityAsync(ProviderFacility.Create(providerId, facilityId, isPrimary), ct);
+    }
+
+    private static string FacilityNameForProvider(Provider provider, string? organizationName)
+        => NormalizeOptional(organizationName) ?? provider.OrganizationName ?? provider.Name;
+
+    private static string NetworkProviderLocationKey(Guid providerId, Guid facilityId)
+        => providerId.ToString() + "|" + facilityId.ToString();
+
+    private static List<Guid> MergeImportedSpecialtyIds(
+        Provider provider,
+        List<Guid> importedSpecialtyIds,
+        Dictionary<Guid, List<Guid>> specialtyIdsByProviderId)
+    {
+        var merged = specialtyIdsByProviderId.TryGetValue(provider.Id, out var known)
+            ? [.. known]
+            : provider.ProviderSpecialties
+                .OrderByDescending(ps => ps.IsPrimary)
+                .ThenBy(ps => ps.Specialty?.Name ?? string.Empty)
+                .Select(ps => ps.SpecialtyId)
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+
+        foreach (var specialtyId in importedSpecialtyIds.Where(id => id != Guid.Empty).Distinct())
+        {
+            if (!merged.Contains(specialtyId))
+                merged.Add(specialtyId);
+        }
+
+        return merged;
+    }
+
     private static bool TryNormalizeImportRow(
         ProviderImportParsedRow parsedRow,
         out ProviderImportNormalizedRow normalized,
@@ -670,21 +1017,32 @@ public class NetworkService : INetworkService
         errors = [];
 
         var tenantId = ParseRequiredGuid(parsedRow.TenantId, "tenantId is required and must be a valid GUID.", errors);
-        var firstName = NormalizeRequired(parsedRow.FirstName, "Provider first name is required.", errors);
-        var lastName = NormalizeRequired(parsedRow.LastName, "Provider last name is required.", errors);
+        var providerNameParts = SplitImportedProviderName(parsedRow.ProviderName);
+        var title = NormalizeOptional(parsedRow.Title) ?? providerNameParts.Title;
+        var facilityName = NormalizeRequired(parsedRow.FacilityName ?? parsedRow.OrganizationName, "Medical facility is required.", errors);
+        var firstName = NormalizeOptional(parsedRow.FirstName) ?? providerNameParts.FirstName;
+        var lastName = NormalizeOptional(parsedRow.LastName) ?? providerNameParts.LastName;
+        if (string.IsNullOrWhiteSpace(firstName) && string.IsNullOrWhiteSpace(lastName))
+        {
+            firstName = facilityName;
+            lastName = string.Empty;
+        }
         var email = NormalizeRequired(parsedRow.Email, "Provider email is required.", errors, NormalizeEmail);
         var phone = NormalizeRequired(parsedRow.Phone, "Provider phone is required.", errors);
         var addressLine1 = NormalizeRequired(parsedRow.AddressLine1, "Address is required.", errors);
         var city = NormalizeRequired(parsedRow.City, "City is required.", errors);
         var state = NormalizeRequired(parsedRow.State, "State is required.", errors, v => v.Trim().ToUpperInvariant());
         var postalCode = NormalizeRequired(parsedRow.PostalCode, "Postal code is required.", errors);
-        var title = NormalizeOptional(parsedRow.Title);
         var categoryCodes = NormalizeCodeList(parsedRow.CategoryCodesRaw);
         var specialtyCodes = NormalizeCodeList(parsedRow.SpecialtyCodesRaw);
         if (specialtyCodes.Count == 0 && categoryCodes.Count > 0)
             specialtyCodes = [.. categoryCodes];
-        var primaryCategoryCode = NormalizeOptional(parsedRow.PrimaryCategoryCode) ?? categoryCodes.FirstOrDefault();
-        var primarySpecialtyCode = NormalizeOptional(parsedRow.PrimarySpecialtyCode) ?? specialtyCodes.FirstOrDefault();
+        var primaryCategoryCode = NormalizeOptional(parsedRow.PrimaryCategoryCode) is { } rawPrimaryCategory
+            ? Specialty.NormalizeCode(rawPrimaryCategory)
+            : categoryCodes.FirstOrDefault();
+        var primarySpecialtyCode = NormalizeOptional(parsedRow.PrimarySpecialtyCode) is { } rawPrimarySpecialty
+            ? NormalizeSpecialtyAlias(rawPrimarySpecialty)
+            : specialtyCodes.FirstOrDefault();
 
         if (!TryParseOptionalBoolean(parsedRow.IsActiveRaw, defaultValue: true, out var isActive, out var isActiveError))
             errors.Add(isActiveError);
@@ -713,8 +1071,9 @@ public class NetworkService : INetworkService
             TenantId: tenantId!.Value,
             Title: title,
             FirstName: firstName!,
-            LastName: lastName!,
+            LastName: lastName ?? string.Empty,
             OrganizationName: NormalizeOptional(parsedRow.OrganizationName),
+            FacilityName: facilityName!,
             Npi: NormalizeOptional(parsedRow.Npi),
             Email: email!,
             Phone: phone!,
@@ -778,10 +1137,49 @@ public class NetworkService : INetworkService
 
         return normalized
             .Split([',', ';', '|', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(Specialty.NormalizeCode)
+            .Select(NormalizeSpecialtyAlias)
             .Where(code => !string.IsNullOrWhiteSpace(code))
             .Distinct(StringComparer.Ordinal)
             .ToList();
+    }
+
+    private static string NormalizeSpecialtyAlias(string value)
+    {
+        var code = Specialty.NormalizeCode(value);
+        return code switch
+        {
+            "CHIRO" => "CHIROPRACTOR",
+            _ => code
+        };
+    }
+
+    private static (string? Title, string? FirstName, string? LastName) SplitImportedProviderName(string? name)
+    {
+        var normalized = NormalizeOptional(name);
+        if (normalized is null) return (null, null, null);
+
+        var parts = normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        if (parts.Count == 0) return (null, null, null);
+
+        string? title = null;
+        var first = parts[0].TrimEnd('.').ToLowerInvariant();
+        if (first is "dr" or "mr" or "mrs" or "ms" or "prof")
+        {
+            title = first switch
+            {
+                "dr" => "Dr.",
+                "mr" => "Mr.",
+                "mrs" => "Mrs.",
+                "ms" => "Ms.",
+                "prof" => "Prof.",
+                _ => parts[0]
+            };
+            parts.RemoveAt(0);
+        }
+
+        if (parts.Count == 0) return (title, null, null);
+        if (parts.Count == 1) return (title, parts[0], string.Empty);
+        return (title, string.Join(" ", parts.Take(parts.Count - 1)), parts[^1]);
     }
 
     private static double? ParseOptionalDouble(string? raw, string fieldName, List<string> errors)
@@ -893,6 +1291,25 @@ public class NetworkService : INetworkService
             errors["title"] = ["Title must be 50 characters or fewer."];
         if (np.SpecialtyCodes is null || np.SpecialtyCodes.Count == 0)
             errors["specialtyCodes"] = ["Select at least one specialty."];
+        if (errors.Count > 0)
+            throw new ValidationException("Validation failed.", errors);
+    }
+
+    private static void ValidateNewProviderLocation(NewProviderData np)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(np.Email))
+            errors["email"] = ["Location email is required."];
+        if (string.IsNullOrWhiteSpace(np.Phone))
+            errors["phone"] = ["Location phone is required."];
+        if (string.IsNullOrWhiteSpace(np.AddressLine1))
+            errors["addressLine1"] = ["Address is required."];
+        if (string.IsNullOrWhiteSpace(np.City))
+            errors["city"] = ["City is required."];
+        if (string.IsNullOrWhiteSpace(np.State))
+            errors["state"] = ["State is required."];
+        if (string.IsNullOrWhiteSpace(np.PostalCode))
+            errors["postalCode"] = ["Postal code is required."];
         if (errors.Count > 0)
             throw new ValidationException("Validation failed.", errors);
     }
@@ -1037,4 +1454,6 @@ public class NetworkService : INetworkService
         string Message,
         List<Guid> CategoryIds,
         List<Guid> SpecialtyIds);
+
+    private sealed record FacilityResolution(Facility Facility, string Status);
 }

@@ -105,13 +105,9 @@ public static class PublicNetworkEndpoints
                     var network = await repo.GetByIdAsync(tenantId.Value, id, ct);
                     if (network == null) return null;
 
-                    var providers = await repo.GetNetworkProvidersAsync(tenantId.Value, id, ct);
-                    return providers
-                        .Select(p => new PublicProviderItem(
-                            p.Id, p.Name, p.Title, p.OrganizationName,
-                            p.Phone, p.City, p.State, p.PostalCode,
-                            p.IsActive, p.AcceptingReferrals, p.AccessStage, null,
-                            MapSpecialties(p), PrimarySpecialtyId(p), PrimarySpecialtyName(p)))
+                    var memberships = await repo.GetNetworkProviderMembershipsAsync(tenantId.Value, id, ct);
+                    return memberships
+                        .Select(ToPublicProviderItem)
                         .ToList();
                 });
 
@@ -144,16 +140,12 @@ public static class PublicNetworkEndpoints
                     var network = await repo.GetByIdAsync(tenantId.Value, id, ct);
                     if (network == null) return null;
 
-                    var providers = await repo.GetNetworkProvidersAsync(tenantId.Value, id, ct);
+                    var memberships = await repo.GetNetworkProviderMembershipsAsync(tenantId.Value, id, ct);
                     // Include every provider so the client can geocode those
                     // whose coordinates have not yet been stored (0.0 signals
                     // "needs geocoding" to the client-side geocoder).
-                    return providers
-                        .Select(p => new PublicProviderMarker(
-                            p.Id, p.Name, p.Title, p.OrganizationName,
-                            p.City, p.State, p.AcceptingReferrals,
-                            p.Latitude ?? 0.0, p.Longitude ?? 0.0,
-                            MapSpecialties(p), PrimarySpecialtyId(p), PrimarySpecialtyName(p)))
+                    return memberships
+                        .Select(ToPublicProviderMarker)
                         .ToList();
                 });
 
@@ -189,28 +181,19 @@ public static class PublicNetworkEndpoints
                     if (network == null) return null;
                     var specialtyOptions = await specialtyService.GetAllAsync(includeInactive: false, ct);
 
-                    // BLK-PERF-01: Providers already loaded via Include — no extra round-trip.
-                    var providers = network.NetworkProviders
-                        .Where(np => np.Provider != null)
-                        .Select(np => np.Provider!)
-                        .OrderBy(p => p.Name)
+                    var memberships = network.NetworkProviders
+                        .Where(np => np.Provider != null && np.Facility != null)
+                        .OrderBy(np => np.Provider.OrganizationName ?? np.Provider.Name)
+                        .ThenBy(np => np.Facility.Name)
                         .ToList();
 
-                    var items = providers
-                        .Select(p => new PublicProviderItem(
-                            p.Id, p.Name, p.Title, p.OrganizationName,
-                            p.Phone, p.City, p.State, p.PostalCode,
-                            p.IsActive, p.AcceptingReferrals, p.AccessStage, null,
-                            MapSpecialties(p), PrimarySpecialtyId(p), PrimarySpecialtyName(p)))
+                    var items = memberships
+                        .Select(ToPublicProviderItem)
                         .ToList();
 
                     // Include every provider (0.0 lat/lng = needs client-side geocoding).
-                    var markers = providers
-                        .Select(p => new PublicProviderMarker(
-                            p.Id, p.Name, p.Title, p.OrganizationName,
-                            p.City, p.State, p.AcceptingReferrals,
-                            p.Latitude ?? 0.0, p.Longitude ?? 0.0,
-                            MapSpecialties(p), PrimarySpecialtyId(p), PrimarySpecialtyName(p)))
+                    var markers = memberships
+                        .Select(ToPublicProviderMarker)
                         .ToList();
 
                     return new PublicNetworkDetail(network.Id, network.Name, network.Description, items, markers, specialtyOptions);
@@ -531,46 +514,59 @@ public static class PublicNetworkEndpoints
             if (errors.Count > 0)
                 return Results.UnprocessableEntity(new { message = "Validation failed.", errors });
 
-            // Provider lookup + AcceptingReferrals guard.
-            // Cross-tenant lookup because providers are a platform-wide marketplace.
-            Provider? provider;
-            try { provider = await providerRepo.GetByIdCrossAsync(req.ProviderId, ct); }
-            catch { provider = null; }
+            NetworkProvider? membership = null;
+            if (req.NetworkProviderId.HasValue)
+            {
+                try { membership = await networkRepo.GetTenantNetworkMembershipAsync(tenantId.Value, req.NetworkProviderId.Value, ct); }
+                catch { membership = null; }
+            }
+
+            Provider? provider = membership?.Provider;
+            Facility? facility = membership?.Facility;
 
             if (provider is null)
-                return Results.NotFound(new { message = "Provider not found." });
+            {
+                // Legacy fallback for clients still submitting only ProviderId.
+                try { provider = await providerRepo.GetByIdCrossAsync(req.ProviderId, ct); }
+                catch { provider = null; }
 
-            if (!provider.AcceptingReferrals)
-                return Results.UnprocessableEntity(new
+                if (provider is null)
+                    return Results.NotFound(new { message = "Provider not found." });
+
+                bool providerInTenantNetwork;
+                try { providerInTenantNetwork = await networkRepo.IsProviderInTenantNetworkAsync(tenantId.Value, req.ProviderId, ct); }
+                catch { providerInTenantNetwork = false; }
+
+                if (!providerInTenantNetwork)
                 {
-                    message = "This provider is not currently accepting referrals."
-                });
-
-            // CC2-SEC-01: Public referral network binding.
-            // The submitted ProviderId must belong to at least one network published by this
-            // tenant's public directory. This prevents an attacker from submitting a referral
-            // to an arbitrary provider from any other tenant by replaying a foreign provider UUID
-            // against a different tenant's public endpoint (cross-tenant provider injection).
-            // Treat any membership failure as NotFound — consistent with provider-not-found so
-            // enumeration of foreign provider IDs across tenants is not possible.
-            bool providerInTenantNetwork;
-            try { providerInTenantNetwork = await networkRepo.IsProviderInTenantNetworkAsync(tenantId.Value, req.ProviderId, ct); }
-            catch { providerInTenantNetwork = false; }
-
-            if (!providerInTenantNetwork)
+                    logger.LogWarning(
+                        "Public referral rejected: provider {ProviderId} is not in any network for tenant {TenantId}. " +
+                        "Possible cross-tenant provider injection attempt.",
+                        req.ProviderId, tenantId.Value);
+                    return Results.NotFound(new { message = "Provider not found." });
+                }
+            }
+            else if (req.ProviderId != Guid.Empty && provider.Id != req.ProviderId)
             {
                 logger.LogWarning(
-                    "Public referral rejected: provider {ProviderId} is not in any network for tenant {TenantId}. " +
-                    "Possible cross-tenant provider injection attempt.",
-                    req.ProviderId, tenantId.Value);
+                    "Public referral rejected: networkProviderId {NetworkProviderId} does not match provider {ProviderId}.",
+                    req.NetworkProviderId, req.ProviderId);
                 return Results.NotFound(new { message = "Provider not found." });
             }
+
+            if (membership is not null && !membership.AcceptingReferrals)
+                return Results.UnprocessableEntity(new { message = "This provider location is not currently accepting referrals." });
+
+            if (membership is null && !provider.AcceptingReferrals)
+                return Results.UnprocessableEntity(new { message = "This provider is not currently accepting referrals." });
 
             // Map to the internal CreateReferralRequest.
             // ReferrerName/ReferrerEmail drive the signed-token email notification flow.
             var createReq = new CreateReferralRequest
             {
-                ProviderId              = req.ProviderId,
+                ProviderId              = provider.Id,
+                FacilityId              = facility?.Id,
+                NetworkProviderId       = membership?.Id,
                 ClientFirstName         = req.PatientFirstName.Trim(),
                 ClientLastName          = req.PatientLastName.Trim(),
                 ClientPhone             = req.PatientPhone.Trim(),
@@ -611,6 +607,8 @@ public static class PublicNetworkEndpoints
                 var response = new PublicReferralResponse(
                     referral.Id,
                     provider.Id,
+                    facility?.Id,
+                    membership?.Id,
                     provider.Name,
                     provider.AccessStage,
                     "Referral submitted successfully. The provider will be in touch shortly.");
@@ -775,8 +773,8 @@ public static class PublicNetworkEndpoints
     {
         var errors = new Dictionary<string, string>();
 
-        if (req.ProviderId == Guid.Empty)
-            errors["providerId"] = "A valid provider ID is required.";
+        if (req.ProviderId == Guid.Empty && !req.NetworkProviderId.HasValue)
+            errors["providerId"] = "A valid provider or provider-location selection is required.";
 
         if (string.IsNullOrWhiteSpace(req.SenderFirstName))
             errors["senderFirstName"] = "Your first name is required.";
@@ -856,6 +854,56 @@ public static class PublicNetworkEndpoints
                 IsActive = ps.Specialty.IsActive
             })
             .ToList();
+    }
+
+    private static PublicProviderItem ToPublicProviderItem(NetworkProvider np)
+    {
+        var p = np.Provider;
+        var f = np.Facility;
+        return new PublicProviderItem(
+            p.Id,
+            np.Id,
+            p.Id,
+            f.Id,
+            p.Name,
+            p.Title,
+            p.OrganizationName,
+            f.Name,
+            f.AddressLine1,
+            f.Phone ?? p.Phone,
+            f.City,
+            f.State,
+            f.PostalCode,
+            np.IsActive,
+            np.AcceptingReferrals,
+            p.AccessStage,
+            null,
+            MapSpecialties(p),
+            PrimarySpecialtyId(p),
+            PrimarySpecialtyName(p));
+    }
+
+    private static PublicProviderMarker ToPublicProviderMarker(NetworkProvider np)
+    {
+        var p = np.Provider;
+        var f = np.Facility;
+        return new PublicProviderMarker(
+            p.Id,
+            np.Id,
+            p.Id,
+            f.Id,
+            p.Name,
+            p.Title,
+            p.OrganizationName,
+            f.Name,
+            f.City,
+            f.State,
+            np.AcceptingReferrals,
+            f.Latitude ?? p.Latitude ?? 0.0,
+            f.Longitude ?? p.Longitude ?? 0.0,
+            MapSpecialties(p),
+            PrimarySpecialtyId(p),
+            PrimarySpecialtyName(p));
     }
 
     private static Guid? PrimarySpecialtyId(Provider provider) =>

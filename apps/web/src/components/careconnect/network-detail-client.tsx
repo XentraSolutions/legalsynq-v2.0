@@ -34,6 +34,18 @@ function toProviderMarker(m: NetworkProviderMarker): ProviderMarker {
   };
 }
 
+function networkProviderEntryId(provider: Pick<NetworkProviderItem, 'id' | 'networkProviderId'>): string {
+  return provider.networkProviderId || provider.id;
+}
+
+function providerLocationKey(providerId: string, facilityId?: string | null): string {
+  return `${providerId}:${facilityId ?? ''}`;
+}
+
+function searchResultKey(provider: ProviderSearchResult): string {
+  return providerLocationKey(provider.id, provider.facilityId);
+}
+
 interface NetworkDetailClientProps {
   network:        NetworkDetail;
   initialMarkers: NetworkProviderMarker[];
@@ -112,12 +124,14 @@ export function NetworkDetailClient({ network, initialMarkers, specialtyOptions 
   // ── Associate existing ──────────────────────────────────────────────────────
 
   async function handleAssociate(provider: ProviderSearchResult) {
-    setAddingId(provider.id);
+    const key = searchResultKey(provider);
+    setAddingId(key);
     try {
       const { data } = await careConnectApi.networks.addProvider(network.id, {
         existingProviderId: provider.id,
+        existingFacilityId: provider.facilityId ?? undefined,
       });
-      if (data && !providers.find(p => p.id === data.id)) {
+      if (data && !providers.find(p => networkProviderEntryId(p) === networkProviderEntryId(data))) {
         setProviders(prev => [...prev, data]);
       }
       setSearchResults(null);
@@ -186,7 +200,7 @@ export function NetworkDetailClient({ network, initialMarkers, specialtyOptions 
     try {
       await careConnectApi.networks.removeProvider(network.id, providerId);
       setProviders(prev => prev.filter(p => p.id !== providerId));
-      setMarkers(prev => prev.filter(m => m.id !== providerId));
+      setMarkers(prev => prev.filter(m => (m.networkProviderId || m.id) !== providerId));
     } catch {
       alert('Failed to remove provider. Please try again.');
     } finally {
@@ -195,7 +209,8 @@ export function NetworkDetailClient({ network, initialMarkers, specialtyOptions 
   }
 
   const providerMarkers = markers.map(toProviderMarker);
-  const alreadyInNetwork = new Set(providers.map(p => p.id));
+  const alreadyInNetwork = new Set(providers.map(p => providerLocationKey(p.providerId ?? p.id, p.facilityId)));
+  const providerIdsInNetwork = new Set(providers.map(p => p.providerId ?? p.id));
 
   return (
     <div>
@@ -291,9 +306,12 @@ export function NetworkDetailClient({ network, initialMarkers, specialtyOptions 
                 ) : (
                   <div className="divide-y divide-gray-100 rounded-md border border-gray-200 bg-white overflow-hidden max-h-72 overflow-y-auto">
                     {searchResults.map(p => {
-                      const inNetwork = alreadyInNetwork.has(p.id);
+                      const key = searchResultKey(p);
+                      const inNetwork = p.facilityId
+                        ? alreadyInNetwork.has(key)
+                        : providerIdsInNetwork.has(p.id);
                       return (
-                        <div key={p.id} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
+                        <div key={key} className="flex items-center justify-between px-3 py-2 hover:bg-gray-50">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
@@ -324,10 +342,10 @@ export function NetworkDetailClient({ network, initialMarkers, specialtyOptions 
                             ) : (
                               <button
                                 onClick={() => handleAssociate(p)}
-                                disabled={addingId === p.id}
+                                disabled={addingId === key}
                                 className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                               >
-                                {addingId === p.id ? 'Adding…' : 'Add to Network'}
+                                {addingId === key ? 'Adding…' : 'Add to Network'}
                               </button>
                             )}
                           </div>

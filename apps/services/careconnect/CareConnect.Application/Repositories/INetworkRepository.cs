@@ -18,8 +18,11 @@ public interface INetworkRepository
     Task AddAsync(ProviderNetwork network, CancellationToken ct = default);
     Task AddProviderAsync(NetworkProvider entry, CancellationToken ct = default);
     Task<NetworkProvider?> GetMembershipAsync(Guid networkId, Guid providerId, CancellationToken ct = default);
+    Task<NetworkProvider?> GetMembershipAsync(Guid networkId, Guid providerId, Guid facilityId, CancellationToken ct = default);
+    Task<NetworkProvider?> GetMembershipByIdOrProviderAsync(Guid networkId, Guid idOrProviderId, CancellationToken ct = default);
     Task RemoveProviderAsync(NetworkProvider entry, CancellationToken ct = default);
     Task<List<Provider>> GetNetworkProvidersAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
+    Task<List<NetworkProvider>> GetNetworkProviderMembershipsAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);
 
     // CC2-INT-B06-01: Shared provider registry — global (cross-tenant) lookups
@@ -32,6 +35,14 @@ public interface INetworkRepository
     Task<Dictionary<string, Provider>> GetProvidersByNpisAsync(IEnumerable<string> npis, CancellationToken ct = default);
     Task<Dictionary<string, Provider>> GetProvidersByTenantEmailsAsync(Guid tenantId, IEnumerable<string> emails, CancellationToken ct = default);
     Task<HashSet<Guid>> GetNetworkProviderIdsAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
+    Task<HashSet<string>> GetNetworkProviderLocationKeysAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
+    Task<Facility?> GetFacilityByIdAsync(Guid tenantId, Guid facilityId, CancellationToken ct = default);
+    Task<Facility?> FindFacilityAsync(Guid tenantId, string name, string addressLine1, string city, string state, string postalCode, CancellationToken ct = default);
+    Task AddFacilityAsync(Facility facility, CancellationToken ct = default);
+    Task UpdateFacilityAsync(Facility facility, CancellationToken ct = default);
+    Task<ProviderFacility?> GetProviderFacilityAsync(Guid providerId, Guid facilityId, CancellationToken ct = default);
+    Task<ProviderFacility?> GetPrimaryProviderFacilityAsync(Guid providerId, CancellationToken ct = default);
+    Task AddProviderFacilityAsync(ProviderFacility providerFacility, CancellationToken ct = default);
 
     /// <summary>
     /// Replaces all category associations for a provider with the supplied list.
@@ -47,5 +58,6 @@ public interface INetworkRepository
     /// anonymous POST /api/public/referrals endpoint.
     /// </summary>
     Task<bool> IsProviderInTenantNetworkAsync(Guid tenantId, Guid providerId, CancellationToken ct = default);
+    Task<NetworkProvider?> GetTenantNetworkMembershipAsync(Guid tenantId, Guid networkProviderId, CancellationToken ct = default);
     void ClearTracking();
 }

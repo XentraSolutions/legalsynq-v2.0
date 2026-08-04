@@ -20,9 +20,14 @@ public sealed record PublicNetworkSummary(
 /// </summary>
 public sealed record PublicProviderItem(
     Guid    Id,
+    Guid    NetworkProviderId,
+    Guid    ProviderId,
+    Guid    FacilityId,
     string  Name,
     string? Title,
     string? OrganizationName,
+    string  FacilityName,
+    string  AddressLine1,
     string  Phone,
     string  City,
     string  State,
@@ -42,9 +47,13 @@ public sealed record PublicProviderItem(
 /// </summary>
 public sealed record PublicProviderMarker(
     Guid    Id,
+    Guid    NetworkProviderId,
+    Guid    ProviderId,
+    Guid    FacilityId,
     string  Name,
     string? Title,
     string? OrganizationName,
+    string  FacilityName,
     string  City,
     string  State,
     bool    AcceptingReferrals,
@@ -87,6 +96,9 @@ public sealed class PublicReferralRequest
 {
     /// <summary>Target provider (from the public directory card).</summary>
     public Guid ProviderId { get; set; }
+
+    /// <summary>Selected provider-location network membership from the public directory card.</summary>
+    public Guid? NetworkProviderId { get; set; }
 
     /// <summary>First name of the person submitting the referral (law firm staff).</summary>
     public string SenderFirstName { get; set; } = string.Empty;
@@ -150,6 +162,8 @@ public sealed class PublicReferralRequest
 public sealed record PublicReferralResponse(
     Guid   ReferralId,
     Guid   ProviderId,
+    Guid?  FacilityId,
+    Guid?  NetworkProviderId,
     string ProviderName,
     string ProviderStage,
     string Message);

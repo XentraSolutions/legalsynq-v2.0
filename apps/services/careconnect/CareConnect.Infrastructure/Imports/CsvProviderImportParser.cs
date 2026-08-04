@@ -15,6 +15,11 @@ public sealed class CsvProviderImportParser : IProviderImportParser
         ["tenantid"] = "tenantId",
         ["title"] = "title",
         ["providertitle"] = "title",
+        ["medicalprovider"] = "providerName",
+        ["providername"] = "providerName",
+        ["medicalfacility"] = "facilityName",
+        ["facility"] = "facilityName",
+        ["facilityname"] = "facilityName",
         ["firstname"] = "firstName",
         ["lastname"] = "lastName",
         ["organizationname"] = "organizationName",
@@ -24,7 +29,9 @@ public sealed class CsvProviderImportParser : IProviderImportParser
         ["npinumber"] = "npi",
         ["email"] = "email",
         ["phone"] = "phone",
+        ["phonenumber"] = "phone",
         ["addressline1"] = "addressLine1",
+        ["address1"] = "addressLine1",
         ["city"] = "city",
         ["state"] = "state",
         ["postalcode"] = "postalCode",
@@ -61,7 +68,7 @@ public sealed class CsvProviderImportParser : IProviderImportParser
 
     private static readonly string[] RequiredHeaders =
     [
-        "tenantId", "firstName", "lastName", "email", "phone", "addressLine1", "city", "state", "postalCode"
+        "tenantId", "email", "phone", "addressLine1", "city", "state", "postalCode"
     ];
 
     public Task<ProviderImportParseResult> ParseAsync(Stream stream, string fileName, CancellationToken ct = default)
@@ -136,6 +143,8 @@ public sealed class CsvProviderImportParser : IProviderImportParser
                 SourceKey: $"row-{rowNumber}",
                 TenantId: GetField("tenantId"),
                 Title: GetField("title"),
+                ProviderName: GetField("providerName"),
+                FacilityName: GetField("facilityName"),
                 FirstName: GetField("firstName"),
                 LastName: GetField("lastName"),
                 OrganizationName: GetField("organizationName"),

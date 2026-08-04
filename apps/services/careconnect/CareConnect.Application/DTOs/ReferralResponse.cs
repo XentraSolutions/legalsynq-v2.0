@@ -5,6 +5,7 @@ public class ReferralResponse
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid ProviderId { get; set; }
+    public Guid? FacilityId { get; set; }
     public string ProviderName { get; set; } = string.Empty;
     public string ClientFirstName { get; set; } = string.Empty;
     public string ClientLastName { get; set; } = string.Empty;
