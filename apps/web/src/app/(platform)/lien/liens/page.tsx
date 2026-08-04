@@ -11,7 +11,10 @@ import { StatusBadge } from "@/components/lien/status-badge";
 import { DateDisplay } from "@/components/ui/date-display";
 import { CreateLienModal } from "@/components/lien/forms/create-lien-modal";
 import { useLienStore } from "@/stores/lien-store";
-import { usePrimaryLoad, useBackgroundReady } from "@/hooks/use-background-queue";
+import {
+  usePrimaryLoad,
+  useBackgroundReady,
+} from "@/hooks/use-background-queue";
 import { ApiError } from "@/lib/api-client";
 import {
   liensService,
@@ -19,7 +22,11 @@ import {
   type LiensQuery,
   type PaginationMeta,
 } from "@/lib/liens";
-import { LiensFilter, EMPTY_LIENS_FILTERS, type LiensFilterValues } from "./components/liens-filter";
+import {
+  LiensFilter,
+  EMPTY_LIENS_FILTERS,
+  type LiensFilterValues,
+} from "./components/liens-filter";
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "—";
@@ -102,7 +109,8 @@ export default function LiensPage() {
   const bgReady = useBackgroundReady() && !loading;
 
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<LiensFilterValues>(EMPTY_LIENS_FILTERS);
+  const [filters, setFilters] =
+    useState<LiensFilterValues>(EMPTY_LIENS_FILTERS);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
@@ -123,7 +131,11 @@ export default function LiensPage() {
       closedDateFrom: filters.closedDateFrom || undefined,
       closedDateTo: filters.closedDateTo || undefined,
       sortBy: sorting[0] ? SORT_BY_MAP[sorting[0].id] : undefined,
-      sortDirection: sorting[0] ? (sorting[0].desc ? "desc" : "asc") : undefined,
+      sortDirection: sorting[0]
+        ? sorting[0].desc
+          ? "desc"
+          : "asc"
+        : undefined,
     }),
     [search, filters, sorting],
   );
@@ -178,11 +190,12 @@ export default function LiensPage() {
         id: "lienNumber",
         accessorKey: "lienNumber",
         header: "Lien ID",
-        meta: frozenColumn("left-0", "w-[110px] min-w-[110px]"),
+        meta: {
+          ...frozenColumn("left-0", "w-[170px] min-w-[170px]"),
+          minWidth: "170px",
+        },
         cell: ({ row }) => (
-          <span className="text-xs font-mono text-gray-700">
-            {row.original.lienNumber}
-          </span>
+          <span className="text-sm">{row.original.lienNumber}</span>
         ),
       },
       {
@@ -190,9 +203,15 @@ export default function LiensPage() {
         // Display-only columns (no accessorKey) are unsortable to TanStack by
         // default — this accessorFn is what makes the column sortable at all,
         // matching the isConfidential masking the cell itself renders.
-        accessorFn: (row) => (row.isConfidential ? "Confidential" : row.plaintiff || row.subjectName || ""),
+        accessorFn: (row) =>
+          row.isConfidential
+            ? "Confidential"
+            : row.plaintiff || row.subjectName || "",
         header: "Plaintiff Name",
-        meta: frozenColumn("left-[110px]", "w-[160px] min-w-[160px]"),
+        meta: {
+          ...frozenColumn("left-[170px]", "w-[180px] min-w-[180px]"),
+          minWidth: "180px",
+        },
         cell: ({ row }) =>
           row.original.isConfidential ? (
             <span className="italic text-gray-400 text-sm">Confidential</span>
@@ -206,17 +225,22 @@ export default function LiensPage() {
         id: "lawFirm",
         accessorKey: "lawFirm",
         header: "Law Firm",
-        meta: frozenColumn("left-[270px]", "w-[150px] min-w-[150px]", true),
+        meta: frozenColumn("left-[350px]", "w-[220px] min-w-[220px]", true),
         cell: ({ row }) => (
-          <span className="text-sm text-gray-700">{row.original.lawFirm || "—"}</span>
+          <span className="text-sm text-gray-700">
+            {row.original.lawFirm || "—"}
+          </span>
         ),
       },
       {
         id: "facilityName",
         accessorKey: "facilityName",
         header: "Medical Facility",
+        meta: { minWidth: "220px" },
         cell: ({ row }) => (
-          <span className="text-sm text-gray-700">{row.original.facilityName || "—"}</span>
+          <span className="text-sm text-gray-700">
+            {row.original.facilityName || "—"}
+          </span>
         ),
       },
       {
@@ -261,7 +285,11 @@ export default function LiensPage() {
         header: "Initial Service Date",
         cell: ({ row }) => (
           <span className="text-sm text-gray-700 whitespace-nowrap">
-            <DateDisplay value={row.original.initialServiceDate} format="date" fallback="—" />
+            <DateDisplay
+              value={row.original.initialServiceDate}
+              format="date"
+              fallback="—"
+            />
           </span>
         ),
       },
@@ -270,7 +298,9 @@ export default function LiensPage() {
         accessorKey: "caseManager",
         header: "Case Manager",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-700">{row.original.caseManager || "—"}</span>
+          <span className="text-sm text-gray-700">
+            {row.original.caseManager || "—"}
+          </span>
         ),
       },
     ],
@@ -279,7 +309,10 @@ export default function LiensPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Liens" subtitle={loading ? "Loading..." : `${pagination.totalCount} liens`} />
+      <PageHeader
+        title="Liens"
+        subtitle={loading ? "Loading..." : `${pagination.totalCount} liens`}
+      />
 
       <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px]">
@@ -356,11 +389,17 @@ export default function LiensPage() {
           manualPagination
           pageCount={pagination.totalPages}
           totalCount={pagination.totalCount}
-          pagination={{ pageIndex: pagination.page - 1, pageSize: pagination.pageSize }}
+          pagination={{
+            pageIndex: pagination.page - 1,
+            pageSize: pagination.pageSize,
+          }}
           onPaginationChange={(updater) => {
             const next =
               typeof updater === "function"
-                ? updater({ pageIndex: pagination.page - 1, pageSize: pagination.pageSize })
+                ? updater({
+                    pageIndex: pagination.page - 1,
+                    pageSize: pagination.pageSize,
+                  })
                 : updater;
             handlePageChange(next.pageIndex + 1);
           }}

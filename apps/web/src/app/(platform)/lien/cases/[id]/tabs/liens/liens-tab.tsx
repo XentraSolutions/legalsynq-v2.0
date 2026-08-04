@@ -122,7 +122,8 @@ export function LiensTab({
   }, [filtered, pagination.page, pagination.pageSize]);
 
   useEffect(() => {
-    const totalCount = filteredLiens?.pagination.totalCount ?? liensPagination.totalCount;
+    const totalCount =
+      filteredLiens?.pagination.totalCount ?? liensPagination.totalCount;
     const totalPages = Math.max(1, Math.ceil(totalCount / pagination.pageSize));
     const safePage = Math.min(pagination.page, totalPages);
     setPagination((prev) => {
@@ -176,12 +177,7 @@ export function LiensTab({
       id: "lienId",
       header: "Lien ID",
       cell: ({ row }) => (
-        <span
-          className="text-xs font-mono cursor-pointer text-primary hover:underline"
-          onClick={() =>
-            router.push(`/lien/cases/${caseId}/liens/${row.original.id}`)
-          }
-        >
+        <span className="text-sm text-gray-600 truncate max-w-40 block">
           {row.original.lienNumber}
         </span>
       ),
@@ -199,7 +195,7 @@ export function LiensTab({
       id: "serviceDate",
       header: "Initial Service Date",
       cell: ({ row }) => (
-        <span className="text-xs text-gray-500 whitespace-nowrap">
+        <span className="text-sm text-gray-600  whitespace-nowrap">
           {row.original.serviceDate}
         </span>
       ),
@@ -208,7 +204,7 @@ export function LiensTab({
       id: "purchaseDate",
       header: "Purchase Date",
       cell: ({ row }) => (
-        <span className="text-xs text-gray-500 whitespace-nowrap">
+        <span className="text-sm text-gray-600  whitespace-nowrap">
           {row.original.purchaseDate}
         </span>
       ),
@@ -218,7 +214,7 @@ export function LiensTab({
       header: "Purchase Amount",
       meta: { align: "right" },
       cell: ({ row }) => (
-        <span className="text-sm text-gray-700 tabular-nums">
+        <span className="text-sm text-gray-600  tabular-nums">
           {formatCurrency(row.original.purchaseAmount)}
         </span>
       ),
@@ -228,7 +224,7 @@ export function LiensTab({
       header: "Billing Amount",
       meta: { align: "right" },
       cell: ({ row }) => (
-        <span className="text-sm text-gray-700 font-medium tabular-nums">
+        <span className="text-sm text-gray-600  font-medium tabular-nums">
           {formatCurrency(row.original.originalAmount)}
         </span>
       ),
@@ -238,7 +234,7 @@ export function LiensTab({
       header: "Servicing",
       cell: ({ row }) => (
         <span
-          className={`text-xs font-medium ${row.original.isServicing ? "text-primary" : "text-gray-400"}`}
+          className={`text-sm font-medium ${row.original.isServicing ? "text-primary" : "text-gray-600"}`}
         >
           {row.original.isServicing ? "Yes" : "No"}
         </span>
@@ -288,6 +284,7 @@ export function LiensTab({
         onAddMedicalLien={() => onAddMedicalLien(true)}
         onFilterClick={() => setShowFilter(true)}
         activeFilterCount={activeFilterCount}
+        onRowClick={(id) => router.push(`/lien/cases/${caseId}/liens/${id}`)}
       />
 
       <LienUpdatesSection
@@ -327,7 +324,12 @@ export function LiensTab({
         title="Delete Lien Confirmation"
         description={
           <>
-            Are you sure you want to delete <span className="font-semibold text-primary">{lienToDelete?.lienNumber}</span>? This action cannot be undone and will permanently remove all associated data.
+            Are you sure you want to delete{" "}
+            <span className="font-semibold text-primary">
+              {lienToDelete?.lienNumber}
+            </span>
+            ? This action cannot be undone and will permanently remove all
+            associated data.
           </>
         }
         confirmLabel="Yes, Delete Lien"

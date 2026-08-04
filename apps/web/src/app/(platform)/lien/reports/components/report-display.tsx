@@ -185,10 +185,18 @@ export default function ReportDisplay({
             item.key,
           );
 
+          const isDefaultMinWidth =
+            item.key.includes("facility") || item.key.includes("law")
+              ? { minWidth: "300px", width: "100%" }
+              : { minWidth: "170px" };
+
           return {
             id: item.key,
             header: item.label,
             accessorFn: (row: any) => row[item.key],
+            meta: {
+              ...isDefaultMinWidth,
+            },
             cell: ({ row }: any) => {
               const value = row.original[item.key];
               let formattedValue = value;
@@ -219,11 +227,17 @@ export default function ReportDisplay({
         const isCurrencyField = /amt|amount|price|cost|fee|total/i.test(
           item.key,
         );
-
+        const isDefaultMinWidth =
+          item.key.includes("facility") || item.key.includes("law")
+            ? { minWidth: "300px", width: "100%" }
+            : { minWidth: "170px" };
         return {
           id: item.key,
           header: item.label,
           accessorFn: (row: any) => row[item.key],
+          meta: {
+            ...isDefaultMinWidth,
+          },
           cell: ({ row }: any) => {
             const value = row.original[item.key];
 
@@ -300,6 +314,7 @@ export default function ReportDisplay({
                 isLoading={loadingData}
                 emptyMessage="No data found."
                 manualPagination
+                enableSorting={false}
                 pageCount={pagination.totalPages}
                 totalCount={pagination.totalCount}
                 pagination={{
@@ -316,7 +331,7 @@ export default function ReportDisplay({
                       : updater;
                   onPaginate?.({ ...pagination, page: next.pageIndex + 1 });
                 }}
-                className="bg-white border-gray-200 rounded-xl"
+                className="bg-white border-gray-200 !rounded-none"
               />
             </div>
           </>
