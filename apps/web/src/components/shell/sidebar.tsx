@@ -10,7 +10,7 @@ import { getClientPortalConfig, type PortalConfig } from '@/lib/portal';
 import { useSession } from '@/hooks/use-session';
 import { useNavBadges } from '@/hooks/use-nav-badges';
 import { useProviderMode } from '@/hooks/use-provider-mode';
-import { useToast } from '@/lib/toast-context';
+import { toast } from 'sonner';
 import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
 
@@ -214,7 +214,6 @@ function SidebarItem({
 }) {
   const isActive = isActiveProp ?? (pathname === item.href || pathname.startsWith(item.href + '/'));
   const showBadge = typeof badgeCount === 'number' && badgeCount > 0;
-  const { show } = useToast();
 
   const content = (
     <>
@@ -262,7 +261,7 @@ function SidebarItem({
     return (
       <button
         type="button"
-        onClick={() => show(item.disabledMessage!, 'info')}
+        onClick={() => toast.info(item.disabledMessage!)}
         title={collapsed ? `${item.label}${showBadge ? ` (${badgeCount})` : ''}` : undefined}
         className={clsx(className, 'w-full text-left appearance-none bg-transparent border-0 cursor-pointer')}
         style={style}

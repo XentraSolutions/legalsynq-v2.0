@@ -24,7 +24,11 @@ import type {
   LienListItem,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
-import { DraftLienParams, LienInfoParams } from "../liens/liens.types";
+import {
+  CreateLienParams,
+  CreateLienResult,
+  LienInfoParams,
+} from "../liens/liens.types";
 import { LienDetailsResult } from "@/types/lien-selling";
 import { LienListResult } from "./selling-liens.service";
 
@@ -97,8 +101,18 @@ export const liensApi = {
     );
   },
 
-  createLienDraft(request: DraftLienParams) {
-    return apiClient.post<any>(`${BASE}/drafts`, request);
+  // Undocumented (no OpenAPI entry) but real — see SellingV2Endpoints.CreateLien
+  // in apps/services/liens/Liens.Api/Endpoints/SellingV2Endpoints.cs. There is
+  // no `/drafts` route; this POST to `/liens` is what actually creates a new
+  // seller lien, and it's the only way to get a lienId before saving the rest
+  // of the intake steps (lien-information, case-information, etc). Response
+  // is `{ lienId, lienNumber, sellerStatus }`, not `{ id }`.
+  createLien(request: CreateLienParams) {
+    return apiClient.post<CreateLienResult>(
+      `${BASE}/liens`,
+      request,
+      idempotencyHeaders(),
+    );
   },
 
   saveLienInformation(

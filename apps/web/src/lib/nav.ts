@@ -222,23 +222,98 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
   ],
 
   selling: [
-    // {
-    //   heading: '',
-    //   items: [
-    //     { href: '/selling/dashboard',     label: 'Dashboard',     icon: 'ri-dashboard-line' }
-    //   ]
-    // },
+    {
+      items: [
+        {
+          href: "/selling/dashboard",
+          label: "Dashboard",
+          icon: "ri-dashboard-line",
+        },
+      ],
+    },
     {
       heading: "Lien Portfolio",
       items: [
         {
           href: "/selling/portfolio",
           label: "Portfolio",
-          icon: "ri-dashboard-line",
+          icon: "ri-folder-3-line",
         },
-        // { href: '/selling/cases',         label: 'Cases',         icon: 'ri-survey-line' },
-        // { href: '/selling/liens',         label: 'Liens',         icon: 'ri-file-transfer-line' },
-        // { href: '/selling/contacts',      label: 'Contacts',      icon: 'ri-contacts-book-line' },
+        {
+          href: "/selling/cases",
+          label: "Cases",
+          icon: "ri-briefcase-line",
+          disabledMessage: "Cases is coming soon",
+        },
+        {
+          href: "/selling/liens",
+          label: "Liens",
+          icon: "ri-file-transfer-line",
+          disabledMessage: "Liens is coming soon",
+        },
+        {
+          href: "/selling/documents",
+          label: "LOP / Documents",
+          icon: "ri-file-text-line",
+          disabledMessage: "LOP / Documents is coming soon",
+        },
+        {
+          href: "/selling/reductions",
+          label: "Reductions",
+          icon: "ri-line-chart-line",
+          disabledMessage: "Reductions is coming soon",
+        },
+        {
+          href: "/selling/settlements",
+          label: "Settlements",
+          icon: "ri-scales-line",
+          disabledMessage: "Settlements is coming soon",
+        },
+        {
+          href: "/selling/contacts",
+          label: "Contacts",
+          icon: "ri-contacts-book-line",
+        },
+      ],
+    },
+    {
+      heading: "Receivables",
+      items: [
+        {
+          href: "/selling/receivables",
+          label: "Receivables",
+          icon: "ri-file-list-2-line",
+          disabledMessage: "Receivables is coming soon",
+        },
+        {
+          href: "/selling/aging",
+          label: "Aging",
+          icon: "ri-time-line",
+          disabledMessage: "Aging is coming soon",
+        },
+        {
+          href: "/selling/payments",
+          label: "Payments",
+          icon: "ri-money-dollar-circle-line",
+          disabledMessage: "Payments is coming soon",
+        },
+      ],
+    },
+    {
+      heading: "Reports",
+      items: [
+        {
+          href: "/selling/analytics",
+          label: "Analytics",
+          icon: "ri-pie-chart-line",
+          disabledMessage: "Analytics is coming soon",
+        },
+        {
+          href: "/selling/reports",
+          label: "Reports",
+          icon: "ri-file-chart-line",
+          disabledMessage: "Reports is coming soon",
+        },
       ],
     },
     {

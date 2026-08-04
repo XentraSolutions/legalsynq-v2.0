@@ -37,7 +37,8 @@ function PricingRowFields({
   // Same lookup as the add-medical-lien wizard (useMedicareProcedureCodes /
   // useMedicareCosts) — eager-loaded, client-filtered code list plus a
   // reactive cost fetch keyed off the selected code.
-  const { data: medicalCodes } = useMedicareProcedureCodes();
+  const { data: medicalCodes, isLoading: isLoadingMedicalCodes } =
+    useMedicareProcedureCodes();
   const { data: medicareCost } = useMedicareCosts(row.medicalCode);
 
   useEffect(() => {
@@ -57,6 +58,7 @@ function PricingRowFields({
             });
           }}
           options={medicalCodes ?? []}
+          isLoading={isLoadingMedicalCodes}
           placeholder="Select code"
           searchPlaceholder="Search codes..."
           className="w-full"
