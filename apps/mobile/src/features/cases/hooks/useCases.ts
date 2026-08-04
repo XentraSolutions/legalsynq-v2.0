@@ -12,6 +12,9 @@ import {
   LegacyCasesApi,
 } from '@/shared/api/endpoints/Cases';
 import { ContactsApi } from '@/shared/api/endpoints/Contacts';
+import { DocumentsApi } from '@/shared/api/endpoints/Documents';
+import { LiensApi } from '@/shared/api/endpoints/Liens';
+import type { LienDocumentType } from '@/shared/api/endpoints/Liens';
 import { LookupsApi } from '@/shared/api/endpoints/Lookups';
 import type {
   CaseDetailsUpdateRequest,
@@ -32,7 +35,75 @@ export const caseFeatureKeys = {
   lienUpdates: (id: string) => [...caseFeatureKeys.all, 'lien-updates', id] as const,
   payoffQuote: (id: string) => [...caseFeatureKeys.all, 'payoff-quote', id] as const,
   trackingOptions: () => [...caseFeatureKeys.all, 'tracking-options'] as const,
+  documents: (id: string) => [...caseFeatureKeys.all, 'documents', id] as const,
+  documentTypes: () => [...caseFeatureKeys.all, 'document-types'] as const,
 };
+
+export function useCaseDocuments(caseId: string, enabled = true) {
+  return useQuery({
+    queryKey: caseFeatureKeys.documents(caseId),
+    queryFn: () =>
+      DocumentsApi.listDocuments({
+        productId: 'SYNQLIEN',
+        referenceId: caseId,
+        referenceType: 'Case',
+        limit: 200,
+      }),
+    enabled: Boolean(caseId) && enabled,
+  });
+}
+
+export function useCaseDocumentTypes(enabled = true) {
+  return useQuery({
+    queryKey: caseFeatureKeys.documentTypes(),
+    queryFn: () => LiensApi.listDocumentTypes(),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export interface CaseDocumentUploadInput {
+  documentType: LienDocumentType;
+  file: {
+    uri: string;
+    name: string;
+    mimeType?: string | null;
+  };
+}
+
+export function useUploadCaseDocument(caseId: string) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ documentType, file }: CaseDocumentUploadInput) => {
+      if (!user?.tenantId) {
+        throw new Error('A tenant is required to upload this document.');
+      }
+
+      const formData = new FormData();
+      formData.append('file', {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType || 'application/octet-stream',
+      } as unknown as Blob);
+      formData.append('tenantId', user.tenantId);
+      formData.append('productId', 'SYNQLIEN');
+      formData.append('referenceId', caseId);
+      formData.append('referenceType', 'Case');
+      formData.append('documentTypeId', documentType.id);
+      formData.append('title', file.name);
+      formData.append(
+        'description',
+        documentType.description || `${documentType.name} supporting the case`
+      );
+      return DocumentsApi.uploadDocument(formData);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: caseFeatureKeys.documents(caseId) });
+    },
+  });
+}
 
 export function useCaseTrackingOptions() {
   return useQuery({

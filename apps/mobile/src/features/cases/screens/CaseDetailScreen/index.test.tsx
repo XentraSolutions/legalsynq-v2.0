@@ -10,6 +10,8 @@ const mockDeleteCase = jest.fn(() => Promise.resolve());
 const mockMergeCase = jest.fn(() => Promise.resolve());
 const mockUseCaseDetail = jest.fn();
 const mockAlert = jest.fn();
+const mockRefetchDocuments = jest.fn();
+const mockUploadCaseDocument = jest.fn();
 const mockCaseLiens = Array.from({ length: 6 }, (_, index) => ({
   id: `lien-${index + 1}`,
   lienNumber: `26-41823-0${index + 1}`,
@@ -71,6 +73,50 @@ jest.mock('@react-navigation/native', () => ({
 jest.mock('@/features/cases/hooks', () => ({
   useAddCaseNote: () => ({ isPending: false, mutateAsync: mockMutateAsync }),
   useCaseDetail: () => mockUseCaseDetail(),
+  useCaseDocuments: () => ({
+    data: {
+      data: [
+        {
+          id: 'document-1',
+          tenantId: 'tenant-1',
+          productId: 'SYNQLIEN',
+          referenceId: 'case-1',
+          referenceType: 'Case',
+          documentTypeId: 'document-type-1',
+          title: 'Case_Brief_Martinez.pdf',
+          status: 'ACTIVE',
+          mimeType: 'application/pdf',
+          fileSizeBytes: 1024,
+          versionCount: 1,
+          scanStatus: 'CLEAN',
+          scanThreats: [],
+          isDeleted: false,
+          createdAt: '2026-05-03T00:00:00Z',
+          createdBy: 'user-1',
+          updatedAt: '2026-05-03T00:00:00Z',
+          updatedBy: 'user-1',
+        },
+      ],
+      total: 1,
+      limit: 200,
+      offset: 0,
+    },
+    isError: false,
+    isLoading: false,
+    refetch: mockRefetchDocuments,
+  }),
+  useCaseDocumentTypes: () => ({
+    data: [
+      {
+        id: 'document-type-1',
+        code: 'LegalBrief',
+        name: 'Legal Brief',
+        isActive: true,
+      },
+    ],
+    isError: false,
+    isLoading: false,
+  }),
   useCaseLienUpdates: () => ({ data: [], isLoading: false }),
   useCases: () => ({
     cases: [
@@ -86,6 +132,10 @@ jest.mock('@/features/cases/hooks', () => ({
   useCaseUpdates: () => ({ data: [], isLoading: false }),
   useDeleteCase: () => ({ isPending: false, mutateAsync: mockDeleteCase }),
   useMergeCase: () => ({ isPending: false, mutateAsync: mockMergeCase }),
+  useUploadCaseDocument: () => ({
+    isPending: false,
+    mutateAsync: mockUploadCaseDocument,
+  }),
 }));
 
 jest.mock('@/features/liens/hooks', () => ({
@@ -176,7 +226,10 @@ describe('CaseDetailScreen', () => {
 
     fireEvent.press(getByText('Documents'));
     expect(getByTestId('case-documents-page')).toBeTruthy();
-    expect(getByText('This section is ready for case-specific content.')).toBeTruthy();
+    expect(getByText('Case_Brief_Martinez.pdf')).toBeTruthy();
+    expect(getByText('Legal Brief')).toBeTruthy();
+    expect(getByText('05/03/2026')).toBeTruthy();
+    expect(getByText('Upload More')).toBeTruthy();
   });
 
   it('opens the manage case menu and routes to the payoff quote', () => {

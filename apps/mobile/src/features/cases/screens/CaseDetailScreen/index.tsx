@@ -7,6 +7,7 @@ import type { NavigationProp } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { CaseDetailHeader } from '@/features/cases/components/CaseDetailHeader';
+import { CaseDocumentsTab } from '@/features/cases/components/CaseDocumentsTab';
 import { CaseLiensTab } from '@/features/cases/components/CaseLiensTab';
 import { CaseDetailPlaceholderPage } from '@/features/cases/components/CaseDetailPlaceholderPage';
 import { CaseDetailTabBar } from '@/features/cases/components/CaseDetailTabBar';
@@ -629,7 +630,7 @@ export function CaseDetailScreen() {
           onView={(lienId) => navigation.navigate('ManagementLienDetail', { lienId })}
         />
       ) : null}
-      {activeTab === 'documents' ? <CaseDetailPlaceholderPage title="Documents" /> : null}
+      {activeTab === 'documents' ? <CaseDocumentsTab caseId={route.params.caseId} /> : null}
       {activeTab === 'servicing' ? <CaseDetailPlaceholderPage title="Servicing" /> : null}
       {activeTab === 'notes' ? (
         <NotesTab
