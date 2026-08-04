@@ -129,6 +129,69 @@ public class NetworkAddProviderTests
         networks.Verify(r => r.SyncProviderSpecialtiesAsync(It.IsAny<Guid>(), It.IsAny<List<Guid>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Fact]
+    public async Task SearchProvidersAsync_ReturnsOneResultPerFacility()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var provider = Provider.Create(
+            tenantId,
+            "Dr. John Doe4",
+            "JD Clinic4",
+            "john@example.com",
+            "3136136161",
+            "120 Green Street",
+            "Greenland",
+            "AR",
+            "72701",
+            true,
+            true,
+            null,
+            npi: "5245147573",
+            firstName: "John",
+            lastName: "Doe4",
+            title: "Dr.");
+        var greenland = Facility.Create(
+            tenantId,
+            "JD Clinic4",
+            "120 Green Street",
+            "Greenland",
+            "AR",
+            "72701",
+            "3136136161",
+            true,
+            null,
+            "john@example.com");
+        var bay = Facility.Create(
+            tenantId,
+            "JD Clinic4 - Bay",
+            "120 Market Street",
+            "San Francisco",
+            "CA",
+            "94111",
+            "3136136161",
+            true,
+            null,
+            "bay@example.com");
+        var greenlandLink = ProviderFacility.Create(provider.Id, greenland.Id, isPrimary: true);
+        var bayLink = ProviderFacility.Create(provider.Id, bay.Id, isPrimary: false);
+        SetNavigation(greenlandLink, nameof(ProviderFacility.Facility), greenland);
+        SetNavigation(bayLink, nameof(ProviderFacility.Facility), bay);
+        provider.ProviderFacilities.Add(greenlandLink);
+        provider.ProviderFacilities.Add(bayLink);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.SearchProvidersGlobalAsync(null, null, "5245147573", null, 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([provider]);
+
+        var sut = BuildSut(networks.Object);
+
+        var results = await sut.SearchProvidersAsync(null, null, "5245147573", null);
+
+        Assert.Equal(2, results.Count);
+        Assert.Contains(results, r => r.FacilityId == greenland.Id && r.FacilityName == "JD Clinic4");
+        Assert.Contains(results, r => r.FacilityId == bay.Id && r.FacilityName == "JD Clinic4 - Bay");
+    }
+
     private static NetworkService BuildSut(INetworkRepository networks) =>
         new(
             networks,
@@ -173,4 +236,11 @@ public class NetworkAddProviderTests
             IsActive: true,
             AcceptingReferrals: true,
             Npi: null));
+
+    private static void SetNavigation<T>(object target, string propertyName, T value)
+    {
+        var property = target.GetType().GetProperty(propertyName)
+            ?? throw new InvalidOperationException($"Property {propertyName} was not found.");
+        property.SetValue(target, value);
+    }
 }

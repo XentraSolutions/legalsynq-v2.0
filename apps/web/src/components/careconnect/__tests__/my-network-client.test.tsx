@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { MyNetworkClient } from '../my-network-client';
@@ -90,6 +90,7 @@ const BASE_PROVIDER: NetworkProviderItem = {
 const BASE_SEARCH_RESULT: ProviderSearchResult = {
   id: 'provider-existing',
   facilityId: 'facility-existing',
+  facilityName: 'Smith Family Practice',
   name: 'Dr. Jane Smith',
   title: 'Dr.',
   organizationName: 'Smith Family Practice',
@@ -228,7 +229,7 @@ describe('MyNetworkClient', () => {
       name: BASE_SEARCH_RESULT.name,
       title: BASE_SEARCH_RESULT.title,
       organizationName: BASE_SEARCH_RESULT.organizationName,
-      facilityName: 'Smith Family Practice - North',
+      facilityName: 'Smith Family Practice',
       email: 'north@example.com',
       phone: '5552223333',
       addressLine1: '456 Oak Ave',
@@ -255,9 +256,8 @@ describe('MyNetworkClient', () => {
     expect(await screen.findByText('Dr. Jane Smith')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Add new location/i }));
 
-    const locationInput = inputFor('Location / Facility name *');
-    await user.clear(locationInput);
-    await user.type(locationInput, 'Smith Family Practice - North');
+    expect(screen.queryByText('Location / Facility name *')).not.toBeInTheDocument();
+    expect(inputFor('Organization / Practice')).toHaveValue('Smith Family Practice');
     await user.clear(screen.getByPlaceholderText('jane@example.com'));
     await user.type(screen.getByPlaceholderText('jane@example.com'), 'north@example.com');
     await user.clear(screen.getByPlaceholderText('(555) 555-5555'));
@@ -274,7 +274,7 @@ describe('MyNetworkClient', () => {
       expect.objectContaining({
         existingProviderId: BASE_SEARCH_RESULT.id,
         newProvider: expect.objectContaining({
-          organizationName: 'Smith Family Practice - North',
+          organizationName: 'Smith Family Practice',
           email: 'north@example.com',
           phone: '5552223333',
           addressLine1: '456 Oak Ave',
@@ -291,7 +291,48 @@ describe('MyNetworkClient', () => {
     expect(request?.newProvider?.npi).toBeUndefined();
   });
 
-  test('requires a specialty before editing a provider and submits selected specialty ids', async () => {
+  test('shows every facility returned by provider registry search', async () => {
+    const user = userEvent.setup();
+    vi.mocked(careConnectApi.networks.searchProviders).mockResolvedValue(ok([
+      {
+        ...BASE_SEARCH_RESULT,
+        facilityId: 'facility-greenland',
+        facilityName: 'JD Clinic4',
+        addressLine1: '120 Green Street',
+        city: 'Greenland',
+        state: 'AR',
+        postalCode: '72701',
+      },
+      {
+        ...BASE_SEARCH_RESULT,
+        facilityId: 'facility-san-francisco',
+        facilityName: 'JD Clinic4 - Bay',
+        addressLine1: '120 Market Street',
+        city: 'San Francisco',
+        state: 'CA',
+        postalCode: '94111',
+      },
+    ]));
+
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork()}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /Add Provider/i }));
+    await user.type(inputFor('NPI number'), '5245147573');
+    await user.click(screen.getByRole('button', { name: /Search Registry/i }));
+
+    expect(await screen.findByText('JD Clinic4')).toBeInTheDocument();
+    expect(screen.getByText('JD Clinic4 - Bay')).toBeInTheDocument();
+    expect(screen.getByText(/120 Green Street Greenland, AR 72701/)).toBeInTheDocument();
+    expect(screen.getByText(/120 Market Street San Francisco, CA 94111/)).toBeInTheDocument();
+  });
+
+  test('requires a specialty before saving provider setup and submits grouped setup fields', async () => {
     const user = userEvent.setup();
     vi.mocked(careConnectApi.networks.updateProvider).mockResolvedValue(ok({
       ...BASE_PROVIDER,
@@ -311,14 +352,17 @@ describe('MyNetworkClient', () => {
     await user.click(screen.getByTitle('Edit provider'));
 
     expect(inputFor('Title')).toHaveValue('Dr.');
+    expect(inputFor('Email *')).toHaveValue('atlas@example.com');
+    expect(inputFor('Phone *')).toHaveValue('(555) 123-4567');
+    expect(screen.getByRole('button', { name: /Save Provider Setup/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Save Provider/i }));
+    await user.click(screen.getByRole('button', { name: /Save Provider Setup/i }));
 
     expect(await screen.findAllByText('Select at least one specialty.')).not.toHaveLength(0);
     expect(careConnectApi.networks.updateProvider).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('checkbox', { name: 'Chiropractors' }));
-    await user.click(screen.getByRole('button', { name: /Save Provider/i }));
+    await user.click(screen.getByRole('button', { name: /Save Provider Setup/i }));
 
     await waitFor(() => expect(careConnectApi.networks.updateProvider).toHaveBeenCalledTimes(1));
     expect(careConnectApi.networks.updateProvider).toHaveBeenCalledWith(
@@ -326,9 +370,99 @@ describe('MyNetworkClient', () => {
       'network-provider-1',
       expect.objectContaining({
         title: 'Dr.',
+        organizationName: 'Atlas Health',
+        email: 'atlas@example.com',
+        phone: '5551234567',
         specialtyIds: ['specialty-2'],
       }),
     );
+    expect(vi.mocked(careConnectApi.networks.updateProvider).mock.calls[0]?.[2].facilityName).toBeUndefined();
+  });
+
+  test('shows all provider locations in edit mode and soft deletes one location', async () => {
+    const user = userEvent.setup();
+    const confirmMock = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirmMock);
+    vi.mocked(careConnectApi.networks.removeProvider).mockResolvedValue(ok(undefined));
+
+    const north = {
+      ...BASE_PROVIDER,
+      id: 'network-provider-1',
+      networkProviderId: 'network-provider-1',
+      providerId: 'provider-shared',
+      facilityId: 'facility-north',
+      facilityName: 'Atlas Health - North',
+      city: 'Austin',
+      specialties: [SPECIALTIES[0]],
+      primarySpecialtyId: SPECIALTIES[0].id,
+      primarySpecialty: SPECIALTIES[0].name,
+    };
+    const south = {
+      ...BASE_PROVIDER,
+      id: 'network-provider-2',
+      networkProviderId: 'network-provider-2',
+      providerId: 'provider-shared',
+      facilityId: 'facility-south',
+      facilityName: 'Atlas Health - South',
+      city: 'Dallas',
+      specialties: [SPECIALTIES[0]],
+      primarySpecialtyId: SPECIALTIES[0].id,
+      primarySpecialty: SPECIALTIES[0].name,
+    };
+    vi.mocked(careConnectApi.networks.updateProvider).mockImplementation(async (_networkId, entryId, request) => ok({
+      ...(entryId === 'network-provider-2' ? south : north),
+      title: request.title,
+      organizationName: request.organizationName ?? undefined,
+      email: request.email,
+      phone: request.phone,
+      specialties: [SPECIALTIES[0]],
+      primarySpecialtyId: SPECIALTIES[0].id,
+      primarySpecialty: SPECIALTIES[0].name,
+    }));
+
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork([north, south])}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+      />,
+    );
+
+    await user.click(screen.getAllByTitle('Edit provider')[0]);
+
+    expect(screen.queryByText('Location / Facility name *')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Email *')).toHaveLength(1);
+    expect(screen.getAllByText('Phone *')).toHaveLength(1);
+    expect(screen.getByText('2 locations')).toBeInTheDocument();
+
+    await user.clear(inputFor('Email *'));
+    await user.type(inputFor('Email *'), 'setup@example.com');
+    await user.clear(inputFor('Phone *'));
+    await user.type(inputFor('Phone *'), '5559876543');
+    await user.click(screen.getByRole('button', { name: /Save Provider Setup/i }));
+
+    await waitFor(() => expect(careConnectApi.networks.updateProvider).toHaveBeenCalledTimes(2));
+    expect(careConnectApi.networks.updateProvider).toHaveBeenNthCalledWith(
+      1,
+      'network-1',
+      'network-provider-1',
+      expect.objectContaining({ email: 'setup@example.com', phone: '5559876543' }),
+    );
+    expect(careConnectApi.networks.updateProvider).toHaveBeenNthCalledWith(
+      2,
+      'network-1',
+      'network-provider-2',
+      expect.objectContaining({ email: 'setup@example.com', phone: '5559876543' }),
+    );
+
+    const southForm = screen.getByDisplayValue('Dallas').closest('form');
+    expect(southForm).not.toBeNull();
+    await user.click(within(southForm as HTMLFormElement).getByRole('button', { name: /Delete location/i }));
+
+    await waitFor(() => expect(careConnectApi.networks.removeProvider).toHaveBeenCalledTimes(1));
+    expect(careConnectApi.networks.removeProvider).toHaveBeenCalledWith('network-1', 'network-provider-2');
+    expect(confirmMock).toHaveBeenCalledWith(expect.stringContaining('Atlas Health - South'));
+    expect(within(southForm as HTMLFormElement).getAllByText('Deleted').length).toBeGreaterThan(0);
   });
 
   test('submits backend geo point source after selecting a geocoded address', async () => {

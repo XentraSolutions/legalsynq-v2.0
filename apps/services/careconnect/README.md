@@ -46,6 +46,7 @@ CareConnect.Tests/         Tests
 | `POST` | `/api/careconnect/appointments` | Bearer | Book appointment |
 | `GET` | `/api/public/careconnect/network` | Anonymous | Public provider network |
 | `PUT` | `/api/networks/{networkId}/providers/{providerId}` | Bearer | Edit a provider from a tenant network after membership validation |
+| `DELETE` | `/api/networks/{networkId}/providers/{id}` | Bearer | Soft-delete a provider-location network membership |
 | `POST` | `/api/networks/{networkId}/providers/import` | Development-only | CSV/XLSX provider migration/import into a tenant network |
 
 ### Provider specialties
@@ -77,10 +78,21 @@ and referral flows return one row/card/marker per provider-location membership a
 `networkProviderId`; the backend validates that the selected membership belongs to the tenant network and stores
 `FacilityId` on the referral.
 
+Shared registry search for tenant network setup also returns one result per provider facility so administrators can
+add an existing location directly when a matched provider has multiple addresses.
+
 Tenant network provider setup rejects duplicate provider creation by NPI or tenant email. Administrators should
 search the shared registry first; if the provider already exists, the supported path for another address is the
 explicit Add new location flow, which creates or reuses a `Facility` and adds a provider-location network membership
 without creating another `Provider` row.
+
+Tenant network provider editing is provider-scoped but location-aware: opening Edit from any provider-location row
+shows all locations for that provider in the selected network. Provider title/name/organization and specialties remain
+shared setup fields, while each facility row has its own facility name, contact, address, active flag, and accepting
+referrals flag. Deleting a location is a membership soft delete: `DELETE /api/networks/{networkId}/providers/{id}`
+marks that `cc_NetworkProviders` row inactive and not accepting referrals instead of removing the row. My Network keeps
+inactive locations visible for edit/restore; public network payloads and provider counts include only active
+provider-location memberships whose provider and facility are also active.
 
 ### Provider import
 

@@ -40,7 +40,7 @@ public class NetworkRepository : INetworkRepository
                 n.Id,
                 n.Name,
                 (string?)n.Description,
-                n.NetworkProviders.Count()))
+                n.NetworkProviders.Count(np => np.IsActive && np.Provider.IsActive && np.Facility.IsActive)))
             .ToListAsync(ct);
     }
 

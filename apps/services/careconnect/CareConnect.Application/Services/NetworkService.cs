@@ -108,7 +108,11 @@ public class NetworkService : INetworkService
         string? name, string? phone, string? npi, string? city, CancellationToken ct = default)
     {
         var providers = await _networks.SearchProvidersGlobalAsync(name, phone, npi, city, limit: 20, ct: ct);
-        return providers.Select(ToSearchResult).ToList();
+        return providers
+            .SelectMany(ToSearchResults)
+            .OrderBy(r => r.OrganizationName ?? r.Name)
+            .ThenBy(r => r.FacilityName ?? r.City)
+            .ToList();
     }
 
     public async Task<ProviderImportSummaryResponse> ImportProvidersAsync(
@@ -490,12 +494,12 @@ public class NetworkService : INetworkService
         var entry = await _networks.GetMembershipByIdOrProviderAsync(networkId, providerId, ct)
             ?? throw new NotFoundException($"Provider or network membership {providerId} is not a member of network {networkId}.");
 
-        await _networks.RemoveProviderAsync(entry, ct);
+        entry.UpdateStatus(isActive: false, acceptingReferrals: false);
         await _networks.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Provider {ProviderId} removed from network {NetworkId} (association only; shared record preserved).",
-            entry.ProviderId, networkId);
+            "Provider {ProviderId} facility {FacilityId} soft-deleted from network {NetworkId} (association preserved as inactive).",
+            entry.ProviderId, entry.FacilityId, networkId);
     }
 
     public async Task<List<NetworkProviderMarker>> GetMarkersAsync(
@@ -567,9 +571,11 @@ public class NetworkService : INetworkService
         ValidateGeoFields(request.Latitude, request.Longitude, request.GeoPointSource);
         var specialtyIds = await ValidateSpecialtyIdsAsync(request.SpecialtyIds, ct);
 
-        var provider = await _networks.GetProviderByIdGlobalAsync(membership.ProviderId, ct)
+        var provider = membership.Provider
+            ?? await _networks.GetProviderByIdGlobalAsync(membership.ProviderId, ct)
             ?? throw new NotFoundException($"Provider {membership.ProviderId} not found in the shared registry.");
-        var facility = await _networks.GetFacilityByIdAsync(tenantId, membership.FacilityId, ct)
+        var facility = membership.Facility
+            ?? await _networks.GetFacilityByIdAsync(tenantId, membership.FacilityId, ct)
             ?? throw new NotFoundException($"Facility {membership.FacilityId} not found.");
 
         provider.Update(
@@ -581,8 +587,8 @@ public class NetworkService : INetworkService
             city: request.City,
             state: request.State.Trim().ToUpperInvariant(),
             postalCode: request.PostalCode,
-            isActive: request.IsActive,
-            acceptingReferrals: request.AcceptingReferrals,
+            isActive: provider.IsActive,
+            acceptingReferrals: provider.AcceptingReferrals,
             updatedByUserId: userId,
             latitude: request.Latitude ?? provider.Latitude,
             longitude: request.Longitude ?? provider.Longitude,
@@ -591,7 +597,7 @@ public class NetworkService : INetworkService
             lastName: request.LastName,
             title: request.Title);
         facility.Update(
-            name: FacilityNameForProvider(provider, request.OrganizationName),
+            name: FacilityNameForProvider(provider, request.FacilityName ?? request.OrganizationName),
             addressLine1: request.AddressLine1,
             city: request.City,
             state: request.State.Trim().ToUpperInvariant(),
@@ -643,23 +649,38 @@ public class NetworkService : INetworkService
             primarySpecialty?.Name);
     }
 
-    private static ProviderSearchResult ToSearchResult(Provider p)
+    private static IEnumerable<ProviderSearchResult> ToSearchResults(Provider p)
     {
         var specialties = MapSpecialties(p.ProviderSpecialties);
         var primarySpecialty = specialties.FirstOrDefault();
-        var primaryFacility = p.ProviderFacilities
+        var facilities = p.ProviderFacilities
             .Where(pf => pf.Facility is not null)
             .OrderByDescending(pf => pf.IsPrimary)
             .ThenBy(pf => pf.Facility!.Name)
-            .Select(pf => pf.Facility)
-            .FirstOrDefault();
-        return new(p.Id, primaryFacility?.Id, p.Name, p.Title, p.OrganizationName, primaryFacility?.Email ?? p.Email, primaryFacility?.Phone ?? p.Phone,
-            primaryFacility?.City ?? p.City, primaryFacility?.State ?? p.State,
-            primaryFacility?.AddressLine1 ?? p.AddressLine1, primaryFacility?.PostalCode ?? p.PostalCode,
+            .Select(pf => pf.Facility!)
+            .ToList();
+
+        if (facilities.Count == 0)
+        {
+            yield return new(p.Id, null, null, p.Name, p.Title, p.OrganizationName, p.Email, p.Phone,
+                p.City, p.State, p.AddressLine1, p.PostalCode,
+                p.Npi, p.IsActive, p.AcceptingReferrals, p.AccessStage,
+                specialties,
+                primarySpecialty?.Id,
+                primarySpecialty?.Name);
+            yield break;
+        }
+
+        foreach (var facility in facilities)
+        {
+            yield return new(p.Id, facility.Id, facility.Name, p.Name, p.Title, p.OrganizationName, facility.Email ?? p.Email, facility.Phone ?? p.Phone,
+            facility.City, facility.State,
+            facility.AddressLine1, facility.PostalCode,
             p.Npi, p.IsActive, p.AcceptingReferrals, p.AccessStage,
             specialties,
             primarySpecialty?.Id,
             primarySpecialty?.Name);
+        }
     }
 
     private async Task<Provider> ResolveProviderForAddAsync(

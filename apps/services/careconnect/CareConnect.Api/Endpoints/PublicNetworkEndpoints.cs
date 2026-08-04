@@ -107,6 +107,7 @@ public static class PublicNetworkEndpoints
 
                     var memberships = await repo.GetNetworkProviderMembershipsAsync(tenantId.Value, id, ct);
                     return memberships
+                        .Where(IsPublicProviderLocationActive)
                         .Select(ToPublicProviderItem)
                         .ToList();
                 });
@@ -145,6 +146,7 @@ public static class PublicNetworkEndpoints
                     // whose coordinates have not yet been stored (0.0 signals
                     // "needs geocoding" to the client-side geocoder).
                     return memberships
+                        .Where(IsPublicProviderLocationActive)
                         .Select(ToPublicProviderMarker)
                         .ToList();
                 });
@@ -183,6 +185,7 @@ public static class PublicNetworkEndpoints
 
                     var memberships = network.NetworkProviders
                         .Where(np => np.Provider != null && np.Facility != null)
+                        .Where(IsPublicProviderLocationActive)
                         .OrderBy(np => np.Provider.OrganizationName ?? np.Provider.Name)
                         .ThenBy(np => np.Facility.Name)
                         .ToList();
@@ -882,6 +885,11 @@ public static class PublicNetworkEndpoints
             PrimarySpecialtyId(p),
             PrimarySpecialtyName(p));
     }
+
+    private static bool IsPublicProviderLocationActive(NetworkProvider np) =>
+        np.IsActive &&
+        np.Provider.IsActive &&
+        np.Facility.IsActive;
 
     private static PublicProviderMarker ToPublicProviderMarker(NetworkProvider np)
     {

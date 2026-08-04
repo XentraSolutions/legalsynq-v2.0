@@ -655,6 +655,7 @@ export interface ReferralPerformanceResult {
 export interface ProviderSearchResult {
   id:                string;
   facilityId?:        string | null;
+  facilityName?:      string | null;
   name:              string;
   title?:            string | null;
   organizationName?: string;
@@ -713,6 +714,7 @@ export interface UpdateNetworkProviderRequest {
   firstName:           string;
   lastName:            string;
   organizationName?:   string | null;
+  facilityName?:       string | null;
   email:               string;
   phone:               string;
   addressLine1:        string;

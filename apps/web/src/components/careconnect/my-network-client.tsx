@@ -61,6 +61,21 @@ const EMPTY_NEW_FORM = {
   specialtyIds: [] as string[],
 };
 
+interface EditLocationForm {
+  entryId: string;
+  providerId: string;
+  facilityId: string;
+  facilityName: string;
+  email: string;
+  phone: string;
+  addressLine1: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  isActive: boolean;
+  acceptingReferrals: boolean;
+}
+
 function networkProviderEntryId(provider: Pick<NetworkProviderItem, 'id' | 'networkProviderId'>): string {
   return provider.networkProviderId || provider.id;
 }
@@ -106,7 +121,10 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
   const [newForm,      setNewForm]      = useState(EMPTY_NEW_FORM);
   const [createError,  setCreateError]  = useState<string | null>(null);
   const [editingProvider, setEditingProvider] = useState<NetworkProviderItem | null>(null);
+  const [editLocations,   setEditLocations]   = useState<EditLocationForm[]>([]);
   const [savingEdit,      setSavingEdit]      = useState(false);
+  const [savingLocationId, setSavingLocationId] = useState<string | null>(null);
+  const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
   const [removingId,   setRemovingId]   = useState<string | null>(null);
   const [toast,        setToast]        = useState<string | null>(null);
   const [networkUrl,   setNetworkUrl]   = useState<string>('');
@@ -297,6 +315,96 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       .join(' ');
   }
 
+  function providerIdentityId(provider: NetworkProviderItem): string {
+    return provider.providerId || provider.id;
+  }
+
+  function providerLocationForms(provider: NetworkProviderItem): EditLocationForm[] {
+    const providerId = providerIdentityId(provider);
+    return providers
+      .filter(p => providerIdentityId(p) === providerId)
+      .slice()
+      .sort((a, b) => {
+        if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+        return (a.facilityName || a.city || '').localeCompare(b.facilityName || b.city || '');
+      })
+      .map(toEditLocationForm);
+  }
+
+  function toEditLocationForm(provider: NetworkProviderItem): EditLocationForm {
+    return {
+      entryId: networkProviderEntryId(provider),
+      providerId: providerIdentityId(provider),
+      facilityId: provider.facilityId,
+      facilityName: provider.facilityName || provider.organizationName || provider.name,
+      email: provider.email ?? '',
+      phone: formatPhoneInput(provider.phone ?? ''),
+      addressLine1: provider.addressLine1 ?? '',
+      city: provider.city ?? '',
+      state: provider.state ?? '',
+      postalCode: provider.postalCode ?? '',
+      isActive: provider.isActive,
+      acceptingReferrals: provider.acceptingReferrals,
+    };
+  }
+
+  function updateEditLocation(entryId: string, patch: Partial<EditLocationForm>) {
+    setEditLocations(prev => prev.map(location => (
+      location.entryId === entryId ? { ...location, ...patch } : location
+    )));
+  }
+
+  function locationHasInvalidPostalCode(location: Pick<EditLocationForm, 'postalCode'>): boolean {
+    return location.postalCode.trim().length > 0 && !isValidUsZipCode(location.postalCode);
+  }
+
+  function validateProviderSetupFields(): boolean {
+    if (!newForm.firstName.trim() || !newForm.lastName.trim()) {
+      setCreateError('First name and last name are required.');
+      return false;
+    }
+    if (!newForm.email.trim()) {
+      setCreateError('Email is required.');
+      return false;
+    }
+    if (!newForm.phone.trim()) {
+      setCreateError('Phone is required.');
+      return false;
+    }
+    if (hasNoSpecialty) {
+      setCreateError('Select at least one specialty.');
+      return false;
+    }
+    if (hasInvalidPhone) return false;
+    return true;
+  }
+
+  function savedProviderLocationForms(): EditLocationForm[] {
+    if (!editingProvider) return [];
+    const providerId = providerIdentityId(editingProvider);
+    return providers
+      .filter(p => providerIdentityId(p) === providerId)
+      .map(toEditLocationForm);
+  }
+
+  function buildProviderUpdatePayload(location: EditLocationForm): UpdateNetworkProviderRequest {
+    return {
+      title:              newForm.title.trim() || null,
+      firstName:          newForm.firstName.trim(),
+      lastName:           newForm.lastName.trim(),
+      organizationName:   newForm.organizationName.trim() || null,
+      email:              newForm.email.trim(),
+      phone:              stripPhone(newForm.phone),
+      addressLine1:       location.addressLine1.trim(),
+      city:               location.city.trim(),
+      state:              location.state.trim().toUpperCase(),
+      postalCode:         location.postalCode.trim(),
+      isActive:           location.isActive,
+      acceptingReferrals: location.acceptingReferrals,
+      specialtyIds:       newForm.specialtyIds,
+    };
+  }
+
   // ── Add panel open/close ──────────────────────────────────────────────────
 
   function openAddPanel() {
@@ -308,6 +416,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     setNewForm(EMPTY_NEW_FORM);
     setCreateError(null);
     setEditingProvider(null);
+    setEditLocations([]);
     setGeoLat(null);
     setGeoLng(null);
     setSelectedPostalCode(null);
@@ -322,6 +431,9 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     setCreateError(null);
     setSearchError(null);
     setEditingProvider(null);
+    setEditLocations([]);
+    setSavingLocationId(null);
+    setDeletingLocationId(null);
     setGeoLat(null);
     setGeoLng(null);
     setSelectedPostalCode(null);
@@ -334,6 +446,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     setConfirmTarget(null);
     setLocationTarget(null);
     setEditingProvider(provider);
+    setEditLocations(providerLocationForms(provider));
     setCreateError(null);
     setGeoLat(null);
     setGeoLng(null);
@@ -362,6 +475,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     setConfirmTarget(null);
     setLocationTarget(provider);
     setEditingProvider(null);
+    setEditLocations([]);
     setCreateError(null);
     setSearchError(null);
     setAddrSuggestions([]);
@@ -538,62 +652,141 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     }
   }
 
-  async function handleUpdate(e: React.FormEvent) {
+  function applyProviderUpdate(updated: NetworkProviderItem) {
+    const entryId = networkProviderEntryId(updated);
+    setProviders(prev => prev.map(p => {
+      if (providerIdentityId(p) !== providerIdentityId(updated)) return p;
+      if (networkProviderEntryId(p) === entryId) return updated;
+      return {
+        ...p,
+        name: updated.name,
+        title: updated.title,
+        organizationName: updated.organizationName,
+        email: updated.email,
+        phone: updated.phone,
+        accessStage: updated.accessStage,
+        specialties: updated.specialties,
+        primarySpecialtyId: updated.primarySpecialtyId,
+        primarySpecialty: updated.primarySpecialty,
+      };
+    }));
+  }
+
+  async function handleUpdateLocation(e: React.FormEvent, entryId: string) {
     e.preventDefault();
     if (!network || !editingProvider) return;
-    if (hasNoSpecialty) {
-      setCreateError('Select at least one specialty.');
-      return;
-    }
-    if (hasInvalidPhone || hasInvalidPostalCode || hasZipMismatch) return;
+    const location = editLocations.find(item => item.entryId === entryId);
+    if (!location) return;
+    if (!validateProviderSetupFields()) return;
+    if (hasInvalidPhone || locationHasInvalidPostalCode(location)) return;
 
-    const payload: UpdateNetworkProviderRequest = {
-      title:              newForm.title.trim() || null,
-      firstName:          newForm.firstName.trim(),
-      lastName:           newForm.lastName.trim(),
-      organizationName:   newForm.organizationName.trim() || null,
-      email:              newForm.email.trim(),
-      phone:              stripPhone(newForm.phone),
-      addressLine1:       newForm.addressLine1.trim(),
-      city:               newForm.city.trim(),
-      state:              newForm.state.trim().toUpperCase(),
-      postalCode:         newForm.postalCode.trim(),
-      isActive:           newForm.isActive,
-      acceptingReferrals: newForm.acceptingReferrals,
-      specialtyIds:       newForm.specialtyIds,
-      ...(geoLat !== null && geoLng !== null
-        ? { latitude: geoLat, longitude: geoLng, geoPointSource: GEOCODED_POINT_SOURCE }
-        : {}),
-    };
+    const payload = buildProviderUpdatePayload(location);
 
     setSavingEdit(true);
+    setSavingLocationId(entryId);
     setCreateError(null);
     try {
-      const { data } = await careConnectApi.networks.updateProvider(network.id, editingProvider.id, payload);
-      setProviders(prev => prev.map(p => p.id === data.id ? data : p));
+      const { data } = await careConnectApi.networks.updateProvider(network.id, entryId, payload);
+      applyProviderUpdate(data);
+      setEditLocations(prev => prev.map(item => (
+        item.entryId === entryId ? toEditLocationForm(data) : item
+      )));
+      setEditingProvider(data);
       setMarkersLoaded(false);
-      showToast(`${data.name} updated.`);
-      closeAddPanel();
+      showToast(`${data.facilityName || data.name} updated.`);
     } catch (err: unknown) {
-      setCreateError(err instanceof Error ? err.message : 'Failed to update provider. Please try again.');
+      setCreateError(err instanceof Error ? err.message : 'Failed to update provider location. Please try again.');
     } finally {
       setSavingEdit(false);
+      setSavingLocationId(null);
+    }
+  }
+
+  async function handleUpdateProviderSetup() {
+    if (!network || !editingProvider) return;
+    if (!validateProviderSetupFields()) return;
+
+    const locations = savedProviderLocationForms();
+    if (locations.length === 0) {
+      setCreateError('At least one location is required before saving provider setup.');
+      return;
+    }
+
+    setSavingEdit(true);
+    setSavingLocationId(null);
+    setCreateError(null);
+    try {
+      const updatedItems: NetworkProviderItem[] = [];
+      for (const location of locations) {
+        const { data } = await careConnectApi.networks.updateProvider(
+          network.id,
+          location.entryId,
+          buildProviderUpdatePayload(location),
+        );
+        updatedItems.push(data);
+        applyProviderUpdate(data);
+      }
+
+      const latest = updatedItems[updatedItems.length - 1];
+      if (latest) {
+        setEditingProvider(latest);
+        setEditLocations(prev => prev.map(item => {
+          const updated = updatedItems.find(p => networkProviderEntryId(p) === item.entryId);
+          return updated ? toEditLocationForm(updated) : item;
+        }));
+      }
+      setMarkersLoaded(false);
+      showToast(`${providerDisplayName(newForm)} provider setup updated.`);
+    } catch (err: unknown) {
+      setCreateError(err instanceof Error ? err.message : 'Failed to update provider setup. Please try again.');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function handleSoftDeleteLocation(location: EditLocationForm) {
+    if (!network) return;
+    if (!confirm(`Delete ${location.facilityName || 'this location'}? This will mark it inactive and stop accepting referrals.`)) return;
+    setDeletingLocationId(location.entryId);
+    setCreateError(null);
+    try {
+      await careConnectApi.networks.removeProvider(network.id, location.entryId);
+      setProviders(prev => prev.map(p => (
+        networkProviderEntryId(p) === location.entryId
+          ? { ...p, isActive: false, acceptingReferrals: false }
+          : p
+      )));
+      setEditLocations(prev => prev.map(item => (
+        item.entryId === location.entryId
+          ? { ...item, isActive: false, acceptingReferrals: false }
+          : item
+      )));
+      setMarkersLoaded(false);
+      showToast(`${location.facilityName || 'Location'} deleted.`);
+    } catch {
+      setCreateError('Failed to delete provider location. Please try again.');
+    } finally {
+      setDeletingLocationId(null);
     }
   }
 
   // ── Remove ────────────────────────────────────────────────────────────────
 
   async function handleRemove(providerId: string, providerName: string) {
-    if (!confirm(`Remove ${providerName} from your network? The provider stays in the shared registry.`)) return;
+    if (!confirm(`Delete ${providerName} from your network? This will mark the location inactive and stop accepting referrals.`)) return;
     if (!network) return;
     setRemovingId(providerId);
     try {
       await careConnectApi.networks.removeProvider(network.id, providerId);
-      setProviders(prev => prev.filter(p => p.id !== providerId));
+      setProviders(prev => prev.map(p => (
+        networkProviderEntryId(p) === providerId
+          ? { ...p, isActive: false, acceptingReferrals: false }
+          : p
+      )));
       setMarkersLoaded(false);
-      showToast(`${providerName} removed from your network.`);
+      showToast(`${providerName} location deleted.`);
     } catch {
-      showToast('Failed to remove provider. Please try again.');
+      showToast('Failed to delete provider location. Please try again.');
     } finally {
       setRemovingId(null);
     }
@@ -885,8 +1078,11 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                                 {p.organizationName && (
                                   <p className="text-xs text-gray-500 truncate">{p.organizationName}</p>
                                 )}
+                                {p.facilityName && p.facilityName !== p.organizationName && (
+                                  <p className="text-xs text-gray-500 truncate">{p.facilityName}</p>
+                                )}
                                 <p className="text-xs text-gray-400 mt-0.5">
-                                  {p.city}, {p.state}
+                                  {[p.addressLine1, [p.city, p.state].filter(Boolean).join(', '), p.postalCode].filter(Boolean).join(' ')}
                                   {p.npi && <span className="ml-2 font-mono">NPI: {p.npi}</span>}
                                   <span className="ml-2">{formatPhoneDisplay(p.phone)}</span>
                                 </p>
@@ -954,11 +1150,14 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                     {confirmTarget.organizationName && (
                       <p className="text-sm text-gray-500">{confirmTarget.organizationName}</p>
                     )}
+                    {confirmTarget.facilityName && confirmTarget.facilityName !== confirmTarget.organizationName && (
+                      <p className="text-sm text-gray-500">{confirmTarget.facilityName}</p>
+                    )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 pl-12">
-                  <div><span className="font-medium text-gray-500">Location:</span> {confirmTarget.city}, {confirmTarget.state} {confirmTarget.postalCode}</div>
+                  <div><span className="font-medium text-gray-500">Location:</span> {[confirmTarget.addressLine1, [confirmTarget.city, confirmTarget.state].filter(Boolean).join(', '), confirmTarget.postalCode].filter(Boolean).join(' ')}</div>
                   <div><span className="font-medium text-gray-500">Phone:</span> {formatPhoneDisplay(confirmTarget.phone)}</div>
                   <div><span className="font-medium text-gray-500">Email:</span> {confirmTarget.email}</div>
                   {confirmTarget.npi && (
@@ -1012,16 +1211,14 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
             </div>
           )}
 
-          {/* ── Create / location / edit mode ── */}
-          {(panelMode === 'create' || panelMode === 'location' || panelMode === 'edit') && (
+          {/* ── Create / location mode ── */}
+          {(panelMode === 'create' || panelMode === 'location') && (
             <div className="space-y-3">
               <p className="text-xs text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
                 <i className="ri-information-line mr-1" />
-                {panelMode === 'edit'
-                  ? 'Update provider setup details for this network member. Specialty is required before saving changes.'
-                  : panelMode === 'location'
-                    ? 'Add a new facility/location for this existing provider. Provider identity and specialties stay on the existing registry record.'
-                    : 'This provider will be added to the shared platform registry and linked to your network. Duplicate NPI or email records must be handled by searching the registry and using Add new location.'}
+                {panelMode === 'location'
+                  ? 'Add a new facility/location for this existing provider. Provider identity and specialties stay on the existing registry record.'
+                  : 'This provider will be added to the shared platform registry and linked to your network. Duplicate NPI or email records must be handled by searching the registry and using Add new location.'}
               </p>
               {panelMode === 'location' && locationTarget && (
                 <div className="rounded-lg border border-cyan-200 bg-white p-4 text-sm">
@@ -1048,7 +1245,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                 </div>
               )}
               <form
-                onSubmit={panelMode === 'edit' ? handleUpdate : panelMode === 'location' ? handleAddLocation : handleCreate}
+                onSubmit={panelMode === 'location' ? handleAddLocation : handleCreate}
                 className="space-y-3"
               >
                 {panelMode !== 'location' && (
@@ -1088,14 +1285,11 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className={panelMode === 'location' ? 'sm:col-span-2' : undefined}>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      {panelMode === 'location' ? 'Location / Facility name *' : 'Organization / Practice'}
-                    </label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Organization / Practice</label>
                     <input
-                      required={panelMode === 'location'}
                       value={newForm.organizationName}
                       onChange={e => setNewForm(f => ({ ...f, organizationName: e.target.value }))}
-                      placeholder={panelMode === 'location' ? 'Smith Family Practice - North' : 'Smith Family Practice'}
+                      placeholder="Smith Family Practice"
                       className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                     />
                   </div>
@@ -1111,7 +1305,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                       />
                     </div>
                   )}
-                  <div className={`${panelMode === 'edit' ? 'sm:col-span-1' : 'sm:col-span-2'} flex items-center gap-5`}>
+                  <div className="sm:col-span-2 flex items-center gap-5">
                     <label className="flex items-center gap-2 cursor-pointer select-none">
                       <input
                         type="checkbox"
@@ -1132,7 +1326,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                     </label>
                   </div>
                   {panelMode !== 'location' && (
-                    <div className={panelMode === 'edit' ? 'sm:col-span-1' : 'sm:col-span-2'}>
+                    <div className="sm:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">Specialty *</label>
                       <div className={`rounded-md border bg-white p-2 ${
                         hasNoSpecialty && createError === 'Select at least one specialty.'
@@ -1277,31 +1471,23 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                     className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
                   >
                     {creating || savingEdit ? (
-                      <><span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />{panelMode === 'edit' ? 'Saving…' : 'Adding…'}</>
+                      <><span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />Adding…</>
                     ) : (
                       <>
                         <i className={
-                          panelMode === 'edit'
-                            ? 'ri-save-line'
-                            : panelMode === 'location'
-                              ? 'ri-map-pin-add-line'
-                              : 'ri-user-add-line'
+                          panelMode === 'location'
+                            ? 'ri-map-pin-add-line'
+                            : 'ri-user-add-line'
                         } />
-                        {panelMode === 'edit'
-                          ? 'Save Provider'
-                          : panelMode === 'location'
-                            ? 'Add Location to My Network'
-                            : 'Add to Registry & My Network'}
+                        {panelMode === 'location'
+                          ? 'Add Location to My Network'
+                          : 'Add to Registry & My Network'}
                       </>
                     )}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      if (panelMode === 'edit') {
-                        closeAddPanel();
-                        return;
-                      }
                       setLocationTarget(null);
                       setCreateError(null);
                       setPanelMode('search');
@@ -1312,6 +1498,290 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                   </button>
                 </div>
               </form>
+            </div>
+          )}
+
+          {/* ── Edit mode ── */}
+          {panelMode === 'edit' && editingProvider && (
+            <div className="space-y-4">
+              <p className="text-xs text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
+                <i className="ri-information-line mr-1" />
+                Update provider setup details and manage each facility/location in this network. Specialty is required before saving changes.
+              </p>
+
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Title</label>
+                    <input
+                      value={newForm.title}
+                      onChange={e => setNewForm(f => ({ ...f, title: e.target.value }))}
+                      placeholder="Dr."
+                      maxLength={50}
+                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">First name *</label>
+                    <input
+                      required
+                      value={newForm.firstName}
+                      onChange={e => setNewForm(f => ({ ...f, firstName: e.target.value }))}
+                      placeholder="Jane"
+                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Last name *</label>
+                    <input
+                      required
+                      value={newForm.lastName}
+                      onChange={e => setNewForm(f => ({ ...f, lastName: e.target.value }))}
+                      placeholder="Smith"
+                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Organization / Practice</label>
+                    <input
+                      value={newForm.organizationName}
+                      onChange={e => setNewForm(f => ({ ...f, organizationName: e.target.value }))}
+                      placeholder="Smith Family Practice"
+                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
+                    <input
+                      required
+                      type="email"
+                      value={newForm.email}
+                      onChange={e => setNewForm(f => ({ ...f, email: e.target.value }))}
+                      placeholder="jane@example.com"
+                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Phone *</label>
+                    <input
+                      required
+                      type="tel"
+                      value={newForm.phone}
+                      onChange={e => setNewForm(f => ({ ...f, phone: formatPhoneInput(e.target.value) }))}
+                      placeholder="(555) 555-5555"
+                      className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
+                        hasInvalidPhone
+                          ? 'border-red-300 focus:border-red-400'
+                          : 'border-gray-300 focus:border-blue-500'
+                      }`}
+                    />
+                    {hasInvalidPhone && (
+                      <p className="text-xs text-red-500 mt-1">Phone number must be 10 digits.</p>
+                    )}
+                  </div>
+                  <div className="lg:col-span-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Specialty *</label>
+                    <div className={`rounded-md border bg-white p-2 ${
+                      hasNoSpecialty && createError === 'Select at least one specialty.'
+                        ? 'border-red-300'
+                        : 'border-gray-300'
+                    }`}>
+                      {specialtyOptions.length === 0 ? (
+                        <p className="text-xs text-gray-400">No active specialties are configured.</p>
+                      ) : (
+                        <div className="grid gap-1 sm:grid-cols-2">
+                          {specialtyOptions.map(s => (
+                            <label key={s.id} className="flex items-center gap-2 rounded px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
+                              <input
+                                type="checkbox"
+                                checked={newForm.specialtyIds.includes(s.id)}
+                                onChange={() => toggleSpecialty(s.id)}
+                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <span>{s.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {hasNoSpecialty && createError === 'Select at least one specialty.' && (
+                      <p className="text-xs text-red-500 mt-1">Select at least one specialty.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {createError && <p className="mr-auto text-xs text-red-600">{createError}</p>}
+                <button
+                  type="button"
+                  onClick={handleUpdateProviderSetup}
+                  disabled={savingEdit || editLocations.length === 0 || hasInvalidPhone}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                >
+                  {savingEdit && savingLocationId === null ? (
+                    <><span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />Saving…</>
+                  ) : (
+                    <><i className="ri-save-line" />Save Provider Setup</>
+                  )}
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between border-t border-blue-100 pt-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Facilities
+                </h3>
+                <span className="text-xs text-gray-400">{editLocations.length} location{editLocations.length === 1 ? '' : 's'}</span>
+              </div>
+
+              <div className="space-y-3">
+                {editLocations.map((location, index) => {
+                  const invalidZip = locationHasInvalidPostalCode(location);
+                  const saving = savingLocationId === location.entryId;
+                  const deleting = deletingLocationId === location.entryId;
+
+                  return (
+                    <form
+                      key={location.entryId}
+                      onSubmit={e => handleUpdateLocation(e, location.entryId)}
+                      className={`rounded-lg border bg-white p-4 space-y-3 ${
+                        location.isActive ? 'border-gray-200' : 'border-gray-200 opacity-80'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-gray-900">Location {index + 1}</p>
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+                              location.isActive
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-gray-50 text-gray-500 border-gray-200'
+                            }`}>
+                              {location.isActive ? 'Active' : 'Deleted'}
+                            </span>
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+                              location.acceptingReferrals
+                                ? 'bg-green-50 text-green-700 border-green-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                              {location.acceptingReferrals ? 'Accepting' : 'Not accepting'}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 truncate text-xs text-gray-500">
+                            {[location.addressLine1, [location.city, location.state].filter(Boolean).join(', '), location.postalCode].filter(Boolean).join(' ')}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSoftDeleteLocation(location)}
+                          disabled={!location.isActive || deleting || saving}
+                          className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <i className={deleting ? 'ri-loader-4-line animate-spin' : 'ri-delete-bin-line'} />
+                          {deleting ? 'Deleting…' : location.isActive ? 'Delete location' : 'Deleted'}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        <div className="lg:col-span-2">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Address *</label>
+                          <input
+                            required
+                            value={location.addressLine1}
+                            onChange={e => updateEditLocation(location.entryId, { addressLine1: e.target.value })}
+                            placeholder="123 Main St"
+                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">City *</label>
+                          <input
+                            required
+                            value={location.city}
+                            onChange={e => updateEditLocation(location.entryId, { city: e.target.value })}
+                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">State *</label>
+                            <input
+                              required
+                              value={location.state}
+                              onChange={e => updateEditLocation(location.entryId, { state: e.target.value })}
+                              placeholder="IL"
+                              maxLength={2}
+                              className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm uppercase focus:border-blue-500 focus:outline-none"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">ZIP *</label>
+                            <input
+                              required
+                              value={location.postalCode}
+                              onChange={e => updateEditLocation(location.entryId, { postalCode: e.target.value })}
+                              placeholder="60601"
+                              className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
+                                invalidZip
+                                  ? 'border-red-300 focus:border-red-400'
+                                  : 'border-gray-300 focus:border-blue-500'
+                              }`}
+                            />
+                            {invalidZip && (
+                              <p className="text-xs text-red-500 mt-1">ZIP code must be 5 digits or 5+4 format.</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-3">
+                        <div className="flex items-center gap-5">
+                          <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={location.isActive}
+                              onChange={e => updateEditLocation(location.entryId, { isActive: e.target.checked })}
+                              className="rounded border-gray-300 text-blue-600"
+                            />
+                            <span className="text-xs text-gray-700">Active</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={location.acceptingReferrals}
+                              onChange={e => updateEditLocation(location.entryId, { acceptingReferrals: e.target.checked })}
+                              className="rounded border-gray-300 text-blue-600"
+                            />
+                            <span className="text-xs text-gray-700">Accepting referrals</span>
+                          </label>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={savingEdit || deleting || hasInvalidPhone || invalidZip}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                        >
+                          {saving ? (
+                            <><span className="h-3.5 w-3.5 rounded-full border-2 border-white/60 border-t-transparent animate-spin" />Saving…</>
+                          ) : (
+                            <><i className="ri-save-line" />Save Location</>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={closeAddPanel}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Close
+              </button>
             </div>
           )}
         </div>

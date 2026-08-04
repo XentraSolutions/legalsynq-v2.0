@@ -77,9 +77,6 @@ public class NetworkProviderEditTests
             .ReturnsAsync(membership);
         networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, membership.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(membership);
-        networks.SetupSequence(r => r.GetProviderByIdGlobalAsync(providerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(provider)
-            .ReturnsAsync(provider);
         networks.Setup(r => r.UpdateProviderInRegistryAsync(provider, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         networks.Setup(r => r.GetFacilityByIdAsync(tenantId, facility.Id, It.IsAny<CancellationToken>()))
@@ -113,10 +110,38 @@ public class NetworkProviderEditTests
         Assert.Equal("Pain Doctors", result.PrimarySpecialty);
         Assert.Equal("Dr.", result.Title);
         Assert.Equal("Dr. Jane Provider", result.Name);
+        Assert.Equal("Jane Practice - North", facility.Name);
         networks.Verify(r => r.SyncProviderSpecialtiesAsync(
             provider.Id,
             It.Is<List<Guid>>(ids => ids.SequenceEqual(new[] { specialtyId })),
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RemoveProviderAsync_SoftDeletesMembership()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var providerId = Guid.CreateVersion7();
+        var facilityId = Guid.CreateVersion7();
+        var membership = NetworkProvider.Create(tenantId, networkId, providerId, facilityId, true, true);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var sut = BuildSut(networks.Object, Mock.Of<ISpecialtyRepository>());
+
+        await sut.RemoveProviderAsync(tenantId, networkId, membership.Id);
+
+        Assert.False(membership.IsActive);
+        Assert.False(membership.AcceptingReferrals);
+        networks.Verify(r => r.RemoveProviderAsync(It.IsAny<NetworkProvider>(), It.IsAny<CancellationToken>()), Times.Never);
+        networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private static NetworkService BuildSut(INetworkRepository networks, ISpecialtyRepository specialties) =>
@@ -131,6 +156,7 @@ public class NetworkProviderEditTests
         FirstName: "Jane",
         LastName: "Provider",
         OrganizationName: "Jane Practice",
+        FacilityName: "Jane Practice - North",
         Email: "jane@example.com",
         Phone: "555-0100",
         AddressLine1: "123 Main St",

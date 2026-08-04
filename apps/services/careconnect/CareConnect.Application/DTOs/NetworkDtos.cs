@@ -76,6 +76,7 @@ public sealed record NetworkProviderMarker(
 public sealed record ProviderSearchResult(
     Guid    Id,
     Guid?   FacilityId,
+    string? FacilityName,
     string  Name,
     string? Title,
     string? OrganizationName,
@@ -144,6 +145,7 @@ public sealed record UpdateNetworkProviderRequest(
     string  FirstName,
     string  LastName,
     string? OrganizationName,
+    string? FacilityName,
     string  Email,
     string  Phone,
     string  AddressLine1,
