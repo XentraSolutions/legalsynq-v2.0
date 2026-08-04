@@ -117,6 +117,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
   const [searchResults, setSearchResults] = useState<ProviderSearchResult[] | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<ProviderSearchResult | null>(null);
   const [locationTarget, setLocationTarget] = useState<ProviderSearchResult | null>(null);
+  const [locationReturnsToEdit, setLocationReturnsToEdit] = useState(false);
   const [addingId,     setAddingId]     = useState<string | null>(null);
   const [newForm,      setNewForm]      = useState(EMPTY_NEW_FORM);
   const [createError,  setCreateError]  = useState<string | null>(null);
@@ -319,9 +320,9 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     return provider.providerId || provider.id;
   }
 
-  function providerLocationForms(provider: NetworkProviderItem): EditLocationForm[] {
+  function providerLocationForms(provider: NetworkProviderItem, list: NetworkProviderItem[] = providers): EditLocationForm[] {
     const providerId = providerIdentityId(provider);
-    return providers
+    return list
       .filter(p => providerIdentityId(p) === providerId)
       .slice()
       .sort((a, b) => {
@@ -413,6 +414,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     setSearchError(null);
     setConfirmTarget(null);
     setLocationTarget(null);
+    setLocationReturnsToEdit(false);
     setNewForm(EMPTY_NEW_FORM);
     setCreateError(null);
     setEditingProvider(null);
@@ -428,6 +430,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     setSearchResults(null);
     setConfirmTarget(null);
     setLocationTarget(null);
+    setLocationReturnsToEdit(false);
     setCreateError(null);
     setSearchError(null);
     setEditingProvider(null);
@@ -445,6 +448,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     setSearchError(null);
     setConfirmTarget(null);
     setLocationTarget(null);
+    setLocationReturnsToEdit(false);
     setEditingProvider(provider);
     setEditLocations(providerLocationForms(provider));
     setCreateError(null);
@@ -474,6 +478,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     const { title, firstName, lastName } = splitProviderName(provider.name);
     setConfirmTarget(null);
     setLocationTarget(provider);
+    setLocationReturnsToEdit(false);
     setEditingProvider(null);
     setEditLocations([]);
     setCreateError(null);
@@ -497,6 +502,57 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       npi: provider.npi ?? '',
       isActive: true,
       acceptingReferrals: provider.acceptingReferrals,
+      specialtyIds: provider.specialties?.map(s => s.id) ?? [],
+    });
+    setPanelMode('location');
+  }
+
+  function openAddLocationFromEdit(provider: NetworkProviderItem) {
+    const { title, firstName, lastName } = splitProviderName(provider.name);
+    setConfirmTarget(null);
+    setLocationTarget({
+      id: providerIdentityId(provider),
+      facilityId: null,
+      facilityName: null,
+      name: provider.name,
+      title: provider.title,
+      organizationName: provider.organizationName,
+      email: provider.email,
+      phone: provider.phone,
+      city: '',
+      state: '',
+      addressLine1: '',
+      postalCode: '',
+      isActive: true,
+      acceptingReferrals: true,
+      accessStage: provider.accessStage,
+      specialties: provider.specialties,
+      primarySpecialtyId: provider.primarySpecialtyId,
+      primarySpecialty: provider.primarySpecialty,
+    });
+    setLocationReturnsToEdit(true);
+    setEditLocations([]);
+    setCreateError(null);
+    setSearchError(null);
+    setAddrSuggestions([]);
+    setAddrOpen(false);
+    setGeoLat(null);
+    setGeoLng(null);
+    setSelectedPostalCode(null);
+    setNewForm({
+      title: provider.title?.trim() || title,
+      firstName,
+      lastName,
+      organizationName: provider.organizationName ?? provider.name,
+      email: provider.email ?? '',
+      phone: formatPhoneInput(provider.phone ?? ''),
+      addressLine1: '',
+      city: '',
+      state: '',
+      postalCode: '',
+      npi: '',
+      isActive: true,
+      acceptingReferrals: true,
       specialtyIds: provider.specialties?.map(s => s.id) ?? [],
     });
     setPanelMode('location');
@@ -639,12 +695,22 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
             : {}),
         },
       });
+      let nextProviders = providers;
       if (data && !providers.find(p => networkProviderEntryId(p) === networkProviderEntryId(data))) {
-        setProviders(prev => [...prev, data]);
+        nextProviders = [...providers, data];
+        setProviders(nextProviders);
       }
       setMarkersLoaded(false);
       showToast(`${locationTarget.name} location added to your network.`);
-      closeAddPanel();
+      if (locationReturnsToEdit && editingProvider) {
+        setEditLocations(providerLocationForms(editingProvider, nextProviders));
+        setLocationReturnsToEdit(false);
+        setLocationTarget(null);
+        setCreateError(null);
+        setPanelMode('edit');
+      } else {
+        closeAddPanel();
+      }
     } catch (err: unknown) {
       setCreateError(err instanceof Error ? err.message : 'Failed to add provider location. Please try again.');
     } finally {
@@ -949,10 +1015,21 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
               )}
               {panelMode === 'location' && (
                 <button
-                  onClick={() => { setPanelMode('search'); setLocationTarget(null); setCreateError(null); }}
+                  onClick={() => {
+                    if (locationReturnsToEdit) {
+                      setLocationReturnsToEdit(false);
+                      setLocationTarget(null);
+                      setCreateError(null);
+                      setPanelMode('edit');
+                    } else {
+                      setPanelMode('search');
+                      setLocationTarget(null);
+                      setCreateError(null);
+                    }
+                  }}
                   className="text-xs text-gray-500 hover:underline"
                 >
-                  ← Back to search
+                  {locationReturnsToEdit ? '← Back to provider' : '← Back to search'}
                 </button>
               )}
               {panelMode === 'confirm' && (
@@ -1286,12 +1363,18 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className={panelMode === 'location' ? 'sm:col-span-2' : undefined}>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Organization / Practice</label>
-                    <input
-                      value={newForm.organizationName}
-                      onChange={e => setNewForm(f => ({ ...f, organizationName: e.target.value }))}
-                      placeholder="Smith Family Practice"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
+                    {panelMode === 'location' ? (
+                      <p className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-700">
+                        {newForm.organizationName || '—'}
+                      </p>
+                    ) : (
+                      <input
+                        value={newForm.organizationName}
+                        onChange={e => setNewForm(f => ({ ...f, organizationName: e.target.value }))}
+                        placeholder="Smith Family Practice"
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                      />
+                    )}
                   </div>
                   {panelMode === 'create' && (
                     <div>
@@ -1357,32 +1440,50 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                     </div>
                   )}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
-                    <input
-                      required
-                      type="email"
-                      value={newForm.email}
-                      onChange={e => setNewForm(f => ({ ...f, email: e.target.value }))}
-                      placeholder="jane@example.com"
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Email{panelMode === 'location' ? '' : ' *'}
+                    </label>
+                    {panelMode === 'location' ? (
+                      <p className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-700">
+                        {newForm.email || '—'}
+                      </p>
+                    ) : (
+                      <input
+                        required
+                        type="email"
+                        value={newForm.email}
+                        onChange={e => setNewForm(f => ({ ...f, email: e.target.value }))}
+                        placeholder="jane@example.com"
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                      />
+                    )}
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Phone *</label>
-                    <input
-                      required
-                      type="tel"
-                      value={newForm.phone}
-                      onChange={e => setNewForm(f => ({ ...f, phone: formatPhoneInput(e.target.value) }))}
-                      placeholder="(555) 555-5555"
-                      className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
-                        hasInvalidPhone
-                          ? 'border-red-300 focus:border-red-400'
-                          : 'border-gray-300 focus:border-blue-500'
-                      }`}
-                    />
-                    {hasInvalidPhone && (
-                      <p className="text-xs text-red-500 mt-1">Phone number must be 10 digits.</p>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Phone{panelMode === 'location' ? '' : ' *'}
+                    </label>
+                    {panelMode === 'location' ? (
+                      <p className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-700">
+                        {newForm.phone || '—'}
+                      </p>
+                    ) : (
+                      <>
+                        <input
+                          required
+                          type="tel"
+                          value={newForm.phone}
+                          onChange={e => setNewForm(f => ({ ...f, phone: formatPhoneInput(e.target.value) }))}
+                          placeholder="(555) 555-5555"
+                          className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
+                            hasInvalidPhone
+                              ? 'border-red-300 focus:border-red-400'
+                              : 'border-gray-300 focus:border-blue-500'
+                          }`}
+                        />
+                        {hasInvalidPhone && (
+                          <p className="text-xs text-red-500 mt-1">Phone number must be 10 digits.</p>
+                        )}
+                      </>
                     )}
                   </div>
                   <div className="relative">
@@ -1490,7 +1591,12 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                     onClick={() => {
                       setLocationTarget(null);
                       setCreateError(null);
-                      setPanelMode('search');
+                      if (locationReturnsToEdit) {
+                        setLocationReturnsToEdit(false);
+                        setPanelMode('edit');
+                      } else {
+                        setPanelMode('search');
+                      }
                     }}
                     className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
                   >
@@ -1634,7 +1740,17 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Facilities
                 </h3>
-                <span className="text-xs text-gray-400">{editLocations.length} location{editLocations.length === 1 ? '' : 's'}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400">{editLocations.length} location{editLocations.length === 1 ? '' : 's'}</span>
+                  <button
+                    type="button"
+                    onClick={() => openAddLocationFromEdit(editingProvider)}
+                    className="inline-flex items-center gap-1 rounded-md border border-cyan-300 bg-white px-2.5 py-1 text-xs font-medium text-cyan-700 hover:bg-cyan-50 transition-colors"
+                  >
+                    <i className="ri-map-pin-add-line" />
+                    Add location
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-3">

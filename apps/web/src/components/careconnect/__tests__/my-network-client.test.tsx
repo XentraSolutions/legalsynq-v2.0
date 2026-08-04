@@ -230,8 +230,8 @@ describe('MyNetworkClient', () => {
       title: BASE_SEARCH_RESULT.title,
       organizationName: BASE_SEARCH_RESULT.organizationName,
       facilityName: 'Smith Family Practice',
-      email: 'north@example.com',
-      phone: '5552223333',
+      email: BASE_SEARCH_RESULT.email,
+      phone: BASE_SEARCH_RESULT.phone,
       addressLine1: '456 Oak Ave',
       city: 'Naperville',
       state: 'IL',
@@ -257,11 +257,13 @@ describe('MyNetworkClient', () => {
     await user.click(screen.getByRole('button', { name: /Add new location/i }));
 
     expect(screen.queryByText('Location / Facility name *')).not.toBeInTheDocument();
-    expect(inputFor('Organization / Practice')).toHaveValue('Smith Family Practice');
-    await user.clear(screen.getByPlaceholderText('jane@example.com'));
-    await user.type(screen.getByPlaceholderText('jane@example.com'), 'north@example.com');
-    await user.clear(screen.getByPlaceholderText('(555) 555-5555'));
-    await user.type(screen.getByPlaceholderText('(555) 555-5555'), '5552223333');
+    const locationForm = screen.getByRole('button', { name: /Add Location to My Network/i }).closest('form') as HTMLFormElement;
+    // Organization/Practice, Email, and Phone come from the existing provider record and are display-only here.
+    expect(within(locationForm).queryByRole('textbox', { name: /Organization \/ Practice/i })).not.toBeInTheDocument();
+    expect(within(locationForm).getByText('Smith Family Practice')).toBeInTheDocument();
+    expect(within(locationForm).getByText(BASE_SEARCH_RESULT.email)).toBeInTheDocument();
+    expect(within(locationForm).getByText('(555) 123-4567')).toBeInTheDocument();
+
     await user.type(screen.getByPlaceholderText('123 Main St'), '456 Oak Ave');
     await user.type(inputFor('City *'), 'Naperville');
     await user.type(screen.getByPlaceholderText('IL'), 'IL');
@@ -275,8 +277,8 @@ describe('MyNetworkClient', () => {
         existingProviderId: BASE_SEARCH_RESULT.id,
         newProvider: expect.objectContaining({
           organizationName: 'Smith Family Practice',
-          email: 'north@example.com',
-          phone: '5552223333',
+          email: BASE_SEARCH_RESULT.email,
+          phone: BASE_SEARCH_RESULT.phone,
           addressLine1: '456 Oak Ave',
           city: 'Naperville',
           state: 'IL',
@@ -532,5 +534,64 @@ describe('MyNetworkClient', () => {
         }),
       }),
     );
+  });
+
+  test('adds a new location from the edit-provider panel and returns to the edit view', async () => {
+    const user = userEvent.setup();
+    vi.mocked(careConnectApi.networks.addProvider).mockResolvedValue(ok({
+      ...BASE_PROVIDER,
+      id: 'network-provider-2',
+      networkProviderId: 'network-provider-2',
+      providerId: BASE_PROVIDER.providerId,
+      facilityId: 'facility-south',
+      facilityName: 'Atlas Health - South',
+      city: 'Dallas',
+      state: 'TX',
+      addressLine1: '789 South St',
+      postalCode: '75201',
+    }));
+
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork([BASE_PROVIDER])}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+      />,
+    );
+
+    await user.click(screen.getByTitle('Edit provider'));
+    expect(screen.getByText('1 location')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Add location/i }));
+
+    expect(screen.getByRole('heading', { name: /Add Provider Location/i })).toBeInTheDocument();
+    const locationForm = screen.getByRole('button', { name: /Add Location to My Network/i }).closest('form') as HTMLFormElement;
+    expect(within(locationForm).queryByRole('textbox', { name: /Organization \/ Practice/i })).not.toBeInTheDocument();
+    expect(within(locationForm).getByText('Atlas Health')).toBeInTheDocument();
+    expect(within(locationForm).getByText(BASE_PROVIDER.email)).toBeInTheDocument();
+    expect(within(locationForm).getByText('(555) 123-4567')).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('123 Main St'), '789 South St');
+    await user.type(inputFor('City *'), 'Dallas');
+    await user.type(screen.getByPlaceholderText('IL'), 'TX');
+    await user.type(screen.getByPlaceholderText('60601'), '75201');
+    await user.click(screen.getByRole('button', { name: /Add Location to My Network/i }));
+
+    await waitFor(() => expect(careConnectApi.networks.addProvider).toHaveBeenCalledTimes(1));
+    expect(careConnectApi.networks.addProvider).toHaveBeenCalledWith(
+      'network-1',
+      expect.objectContaining({
+        existingProviderId: BASE_PROVIDER.providerId,
+        newProvider: expect.objectContaining({
+          addressLine1: '789 South St',
+          city: 'Dallas',
+          state: 'TX',
+          postalCode: '75201',
+        }),
+      }),
+    );
+
+    expect(await screen.findByRole('heading', { name: /Edit Provider/i })).toBeInTheDocument();
+    expect(screen.getByText('2 locations')).toBeInTheDocument();
   });
 });
