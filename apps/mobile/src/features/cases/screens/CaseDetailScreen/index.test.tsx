@@ -131,6 +131,7 @@ jest.mock('@/features/cases/hooks', () => ({
   useCaseNotes: () => ({ data: [], isLoading: false }),
   useCaseUpdates: () => ({ data: [], isLoading: false }),
   useDeleteCase: () => ({ isPending: false, mutateAsync: mockDeleteCase }),
+  useDeleteCaseNote: () => ({ isPending: false, mutateAsync: jest.fn() }),
   useMergeCase: () => ({ isPending: false, mutateAsync: mockMergeCase }),
   useUploadCaseDocument: () => ({
     isPending: false,
@@ -156,6 +157,7 @@ jest.mock('@/features/liens/hooks', () => ({
 }));
 
 jest.mock('@/shared/hooks', () => ({
+  useAuth: () => ({ user: { id: 'user-1' } }),
   useToast: () => ({
     showError: jest.fn(),
     showInfo: jest.fn(),
@@ -230,6 +232,12 @@ describe('CaseDetailScreen', () => {
     expect(getByText('Legal Brief')).toBeTruthy();
     expect(getByText('05/03/2026')).toBeTruthy();
     expect(getByText('Upload More')).toBeTruthy();
+
+    fireEvent.press(getByText('Notes'));
+    expect(getByTestId('case-notes-page')).toBeTruthy();
+    expect(getByText('Case Tracking')).toBeTruthy();
+    expect(getByText('Feeds')).toBeTruthy();
+    expect(getByText('No Case Tracking Notes')).toBeTruthy();
   });
 
   it('opens the manage case menu and routes to the payoff quote', () => {

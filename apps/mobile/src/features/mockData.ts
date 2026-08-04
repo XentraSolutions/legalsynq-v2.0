@@ -250,16 +250,22 @@ export const NOTES: Note[] = [
     caseId: 'case-001',
     authorId: 'usr-seller-1',
     authorName: 'Nora Smith',
+    category: 'follow-up',
     content: 'Updated treatment ledger uploaded for buyer review.',
     createdAt: '2026-06-22T15:30:00Z',
+    isEdited: false,
+    isPinned: false,
   },
   {
     id: 'note-002',
     caseId: 'case-001',
     authorId: DEMO_USER.id,
     authorName: 'Avery Mendoza',
+    category: 'general',
     content: 'Confirming jurisdiction and lien amount before counteroffer.',
     createdAt: '2026-06-23T10:15:00Z',
+    isEdited: false,
+    isPinned: false,
   },
 ];
 

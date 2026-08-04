@@ -183,4 +183,38 @@ describe('mobile SynqLien process-flow endpoints', () => {
     await CasesApi.deleteCase('case-1');
     expect(apiClient.delete).toHaveBeenCalledWith('/api/lien/api/liens/cases/delete/case-1');
   });
+
+  it('normalizes categorized case notes and deletes through the case notes endpoint', async () => {
+    apiClient.get = jest.fn(() =>
+      Promise.resolve({
+        data: [
+          {
+            id: 'note-1',
+            caseId: 'case-1',
+            content: 'Follow up with the court.',
+            category: 'follow-up',
+            createdByUserId: 'user-1',
+            createdByName: 'John Doe',
+            createdAtUtc: '2026-07-24T14:29:00Z',
+            isEdited: false,
+            isPinned: false,
+          },
+        ],
+      })
+    );
+
+    const notes = await CasesApi.getCaseNotes('case-1');
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({
+      authorId: 'user-1',
+      category: 'follow-up',
+      content: 'Follow up with the court.',
+    });
+    expect(apiClient.get).toHaveBeenCalledWith('/liens/api/liens/cases/case-1/notes');
+
+    await CasesApi.deleteCaseNote('case-1', 'note-1');
+    expect(apiClient.delete).toHaveBeenCalledWith(
+      '/liens/api/liens/cases/case-1/notes/note-1'
+    );
+  });
 });

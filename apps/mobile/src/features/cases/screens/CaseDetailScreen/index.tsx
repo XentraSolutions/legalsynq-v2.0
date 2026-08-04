@@ -9,17 +9,15 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { CaseDetailHeader } from '@/features/cases/components/CaseDetailHeader';
 import { CaseDocumentsTab } from '@/features/cases/components/CaseDocumentsTab';
 import { CaseLiensTab } from '@/features/cases/components/CaseLiensTab';
+import { CaseNotesTab } from '@/features/cases/components/CaseNotesTab';
 import { CaseDetailPlaceholderPage } from '@/features/cases/components/CaseDetailPlaceholderPage';
 import { CaseDetailTabBar } from '@/features/cases/components/CaseDetailTabBar';
 import { CaseDetailTabPage } from '@/features/cases/components/CaseDetailTabPage';
 import { CaseSummaryRow } from '@/features/cases/components/CaseSummaryRow';
-import { NoteItem } from '@/features/cases/components/NoteItem';
 import {
-  useAddCaseNote,
   useCaseDetail,
   useCaseLienUpdates,
   useCases,
-  useCaseNotes,
   useCaseUpdates,
   useDeleteCase,
   useMergeCase,
@@ -30,13 +28,11 @@ import type { CaseDetailResponse, CaseUpdate } from '@/shared/api/endpoints/Case
 import type { BadgeVariant } from '@/shared/components/Badge/Badge';
 import { Button } from '@/shared/components/Button';
 import { EmptyState } from '@/shared/components/EmptyState';
-import { Input } from '@/shared/components/Input';
-import { Modal } from '@/shared/components/Modal';
 import { SelectOptionModal } from '@/shared/components/SelectOptionModal';
 import type { SelectOptionItem } from '@/shared/components/SelectOptionModal';
 import { Spinner } from '@/shared/components/Spinner';
 import { useToast } from '@/shared/hooks';
-import { cx, FIGMA_TEXT, SHADOWS } from '@/shared/styles';
+import { cx, SHADOWS } from '@/shared/styles';
 import { formatDisplayDate } from '@/shared/utils';
 
 type DetailRoute = NativeStackScreenProps<MainStackParamList, 'CaseDetail'>['route'];
@@ -308,38 +304,6 @@ function DetailsTab({
   );
 }
 
-function NotesTab({
-  isLoading,
-  notes,
-  onAddNote,
-}: {
-  isLoading: boolean;
-  notes: ReturnType<typeof useCaseNotes>['data'];
-  onAddNote: () => void;
-}) {
-  return (
-    <CaseDetailTabPage testID="case-notes-page">
-      <View className="flex-row items-center justify-between">
-        <Text className={cx(FIGMA_TEXT.sectionTitle, 'text-[#202228] dark:text-white')}>Notes</Text>
-        <Button label="+ Add Note" size="sm" variant="ghost" onPress={onAddNote} />
-      </View>
-      <View className="mt-4 gap-4">
-        {isLoading ? (
-          <Spinner />
-        ) : (notes ?? []).length > 0 ? (
-          notes?.map((note) => <NoteItem key={note.id} note={note} />)
-        ) : (
-          <View className="rounded-[20px] bg-white px-6 py-10 dark:bg-[#191a1f]" style={SHADOWS.sm}>
-            <Text className={cx(FIGMA_TEXT.body, 'text-center text-[#777a84] dark:text-[#a1a1aa]')}>
-              No notes have been added.
-            </Text>
-          </View>
-        )}
-      </View>
-    </CaseDetailTabPage>
-  );
-}
-
 function ManageCaseModal({
   visible,
   onClose,
@@ -473,32 +437,14 @@ export function CaseDetailScreen() {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<DetailRoute>();
   const caseQuery = useCaseDetail(route.params.caseId);
-  const notesQuery = useCaseNotes(route.params.caseId);
   const updatesQuery = useCaseUpdates(route.params.caseId);
   const lienUpdatesQuery = useCaseLienUpdates(route.params.caseId);
-  const addNote = useAddCaseNote(route.params.caseId);
   const mergeCase = useMergeCase(route.params.caseId);
   const deleteCase = useDeleteCase(route.params.caseId);
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<CaseDetailTabId>('summary');
-  const [noteVisible, setNoteVisible] = useState(false);
   const [manageVisible, setManageVisible] = useState(false);
   const [mergeVisible, setMergeVisible] = useState(false);
-  const [noteContent, setNoteContent] = useState('');
-
-  async function submitNote() {
-    const content = noteContent.trim();
-    if (!content) return;
-
-    try {
-      await addNote.mutateAsync(content);
-      setNoteContent('');
-      setNoteVisible(false);
-      toast.showSuccess('Note posted');
-    } catch (error) {
-      toast.showError(error instanceof Error ? error.message : 'Unable to post the note');
-    }
-  }
 
   function confirmMerge(option: SelectOptionItem) {
     Alert.alert(
@@ -632,13 +578,7 @@ export function CaseDetailScreen() {
       ) : null}
       {activeTab === 'documents' ? <CaseDocumentsTab caseId={route.params.caseId} /> : null}
       {activeTab === 'servicing' ? <CaseDetailPlaceholderPage title="Servicing" /> : null}
-      {activeTab === 'notes' ? (
-        <NotesTab
-          isLoading={notesQuery.isLoading}
-          notes={notesQuery.data}
-          onAddNote={() => setNoteVisible(true)}
-        />
-      ) : null}
+      {activeTab === 'notes' ? <CaseNotesTab caseId={route.params.caseId} /> : null}
       {activeTab === 'tasks' ? <CaseDetailPlaceholderPage title="Task Manager" /> : null}
 
       <ManageCaseModal
@@ -663,26 +603,6 @@ export function CaseDetailScreen() {
         />
       ) : null}
 
-      <Modal
-        footer={
-          <Button
-            disabled={!noteContent.trim()}
-            label="Post Note"
-            loading={addNote.isPending}
-            onPress={submitNote}
-          />
-        }
-        title="Add Note"
-        visible={noteVisible}
-        onClose={() => setNoteVisible(false)}
-      >
-        <Input
-          multiline
-          placeholder="Add a note..."
-          value={noteContent}
-          onChangeText={setNoteContent}
-        />
-      </Modal>
     </View>
   );
 }

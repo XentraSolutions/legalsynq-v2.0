@@ -51,7 +51,11 @@ export const noteSchema = z.object({
   authorId: z.string(),
   authorName: z.string(),
   content: z.string(),
+  category: z.string().default('general'),
+  isPinned: z.boolean().default(false),
+  isEdited: z.boolean().default(false),
   createdAt: z.string(),
+  updatedAt: z.string().nullable().optional(),
 });
 
 export const addCaseNoteRequestSchema = z.object({

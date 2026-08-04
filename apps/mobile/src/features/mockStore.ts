@@ -139,8 +139,11 @@ export const MockStore = {
       caseId,
       authorId: DEMO_USER.id,
       authorName: `${DEMO_USER.firstName} ${DEMO_USER.lastName}`,
+      category: 'general',
       content,
       createdAt: new Date().toISOString(),
+      isEdited: false,
+      isPinned: false,
     };
 
     notes = [created, ...notes];
