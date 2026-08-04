@@ -86,15 +86,21 @@ export default function ReportDisplay({
           },
           {
             label: "Total Purchase Amount",
-            value: report?.summaryTotals?.totalPurchaseAmt ?? `$ 0.00`,
+            value:
+              formatCurrency(report?.summaryTotals?.totalPurchaseAmt) ??
+              `$ 0.00`,
           },
           {
             label: "Total Returned",
-            value: report?.summaryTotals?.totalReturnedAmt ?? `$ 0.00`,
+            value:
+              formatCurrency(report?.summaryTotals?.totalReturnedAmt) ??
+              `$ 0.00`,
           },
           {
             label: "Total Billing Amount",
-            value: report?.summaryTotals?.totalBillingAmt ?? `$ 0.00`,
+            value:
+              formatCurrency(report?.summaryTotals?.totalBillingAmt) ??
+              `$ 0.00`,
           },
         ]
       : [
@@ -112,15 +118,21 @@ export default function ReportDisplay({
           },
           {
             label: "Total Purchase Amount",
-            value: report?.summaryTotals?.totalPurchaseAmt ?? `$ 0.00`,
+            value:
+              formatCurrency(report?.summaryTotals?.totalPurchaseAmt) ??
+              `$ 0.00`,
           },
           {
             label: "Total Returned",
-            value: report?.summaryTotals?.totalReturnedAmt ?? `$ 0.00`,
+            value:
+              formatCurrency(report?.summaryTotals?.totalReturnedAmt) ??
+              `$ 0.00`,
           },
           {
             label: "Total Billing Amount",
-            value: report?.summaryTotals?.totalBillingAmt ?? `$ 0.00`,
+            value:
+              formatCurrency(report?.summaryTotals?.totalBillingAmt) ??
+              `$ 0.00`,
           },
         ];
 
@@ -259,11 +271,11 @@ export default function ReportDisplay({
       </div>
 
       {/* METRICS GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6  gap-4">
         {metrics.map((m) => (
           <div
             key={m.label}
-            className="border border-gray-200 rounded-xl p-5 hover:shadow-sm"
+            className="border border-gray-200 rounded-xl p-5 hover:shadow-sm break-words"
           >
             <p className="text-xs text-gray-500">{m.label}</p>
             <p className="text-lg font-semibold">{m.value}</p>
