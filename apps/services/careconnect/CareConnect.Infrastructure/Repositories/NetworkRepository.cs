@@ -97,7 +97,17 @@ public class NetworkRepository : INetworkRepository
 
     public async Task<NetworkProvider?> GetMembershipAsync(Guid networkId, Guid providerId, Guid facilityId, CancellationToken ct = default)
     {
+        // Includes mirror GetMembershipByIdOrProviderAsync: without them, a Provider that's
+        // already tracked in this DbContext (e.g. just created a few lines up by the AddProvider
+        // flow) gets returned via EF's identity map with ProviderSpecialties either empty or
+        // holding entries whose .Specialty navigation was never fixed up — MapSpecialties then
+        // silently drops them, so a freshly-added provider's specialties don't show until a
+        // page reload re-queries with a real join.
         return await _db.NetworkProviders
+            .Include(np => np.Provider)
+                .ThenInclude(p => p.ProviderSpecialties)
+                    .ThenInclude(ps => ps.Specialty)
+            .Include(np => np.Facility)
             .FirstOrDefaultAsync(np =>
                 np.ProviderNetworkId == networkId &&
                 np.ProviderId == providerId &&

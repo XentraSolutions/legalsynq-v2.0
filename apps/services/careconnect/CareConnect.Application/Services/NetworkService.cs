@@ -482,7 +482,12 @@ public class NetworkService : INetworkService
         await _networks.SaveChangesAsync(ct);
 
         var loaded = await _networks.GetMembershipAsync(networkId, provider.Id, facility.Id, ct);
-        return ToProviderItem(loaded ?? existing ?? NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals), provider, facility);
+        // Use loaded.Provider/loaded.Facility (fresh, fully-included), not the local provider/
+        // facility variables — those can be missing just-synced specialties (see the comment
+        // on GetMembershipAsync's include list).
+        return loaded is not null
+            ? ToProviderItem(loaded)
+            : ToProviderItem(existing ?? NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals), provider, facility);
     }
 
     public async Task RemoveProviderAsync(
