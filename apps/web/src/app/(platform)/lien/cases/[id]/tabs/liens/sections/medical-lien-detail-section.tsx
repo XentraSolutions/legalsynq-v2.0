@@ -20,7 +20,7 @@ export function MedicalLienDetailSection({
   data: Record<number, any>;
   onFormValid: (data: any, index: number) => void;
   onDocumentsUploaded: () => void;
-  onGoBack: () => void;
+  onGoBack?: () => void;
   onSave: () => void;
 }) {
   return (

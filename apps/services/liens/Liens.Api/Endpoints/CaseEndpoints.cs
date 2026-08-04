@@ -6317,8 +6317,116 @@ public static class CaseEndpoints
         });
     }
 
-    private static Task<IResult> GetDashboardTaskSummary(ICurrentRequestContext _) =>
-        Task.FromResult<IResult>(Results.Ok(new { totalTasks = 0, overdue = 0, dueToday = 0 }));
+    private static async Task<IResult> GetDashboardTaskSummary(
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        var userIdText = userId.ToString();
+
+        // SL-CORE scoped this dashboard to the signed-in task assignee.  Legacy
+        // compatibility tasks retain their legacy values in ServicingItems, while
+        // AssignedToUserId supports tasks created after the migration.
+        var tasks = await db.ServicingItems
+            .AsNoTracking()
+            .Where(item =>
+                item.TenantId == tenantId &&
+                item.TaskType == "LegacyCaseTask" &&
+                (item.AssignedToUserId == userId ||
+                 item.AssignedTo == userIdText ||
+                 (!string.IsNullOrWhiteSpace(ctx.Email) && item.AssignedTo == ctx.Email)))
+            .OrderByDescending(item => item.CreatedAtUtc)
+            .ToListAsync(ct);
+
+        var caseIds = tasks
+            .Where(item => item.CaseId.HasValue)
+            .Select(item => item.CaseId!.Value)
+            .Distinct()
+            .ToList();
+        Dictionary<Guid, (string CaseCode, string CaseName)> casesById;
+        if (caseIds.Count == 0)
+        {
+            casesById = [];
+        }
+        else
+        {
+            casesById = await db.Cases
+                .AsNoTracking()
+                .Where(item => item.TenantId == tenantId && caseIds.Contains(item.Id))
+                .ToDictionaryAsync(
+                    item => item.Id,
+                    item => (item.CaseNumber, $"{item.ClientFirstName} {item.ClientLastName}".Trim()),
+                    ct);
+        }
+
+        var responseTasks = tasks.Select(item =>
+        {
+            var fields = ParseLegacyNoteFields(item.Notes);
+            var statusId = fields.GetValueOrDefault("statusId", fields.GetValueOrDefault("status", item.Status));
+            var priorityId = fields.GetValueOrDefault("priorityId", item.Priority);
+            casesById.TryGetValue(item.CaseId ?? Guid.Empty, out var caseInfo);
+
+            return new
+            {
+                taskId = item.Id.ToString(),
+                caseId = item.CaseId?.ToString() ?? string.Empty,
+                caseCode = caseInfo.CaseCode ?? string.Empty,
+                caseName = caseInfo.CaseName ?? string.Empty,
+                assignedTo = item.AssignedTo,
+                title = fields.GetValueOrDefault("title", item.Description),
+                description = item.Description,
+                dueDate = item.DueDate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
+                status = GetLegacyTaskStatusName(statusId),
+                statusId,
+                priority = GetLegacyTaskPriorityName(priorityId),
+                priorityId,
+            };
+        }).ToList();
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Successfully retrieved all tasks.",
+            data = new
+            {
+                totalTasks = responseTasks.Count,
+                upcomingTasks = responseTasks.Count(task => IsLegacyTaskStatus(task.statusId, "1", TaskStatuses.New)),
+                inProgressTasks = responseTasks.Count(task => IsLegacyTaskStatus(task.statusId, "2", TaskStatuses.InProgress)),
+                inReviewTasks = responseTasks.Count(task => IsLegacyTaskStatus(task.statusId, "3", TaskStatuses.WaitingBlocked)),
+                completedTasks = responseTasks.Count(task => IsLegacyTaskStatus(task.statusId, "4", TaskStatuses.Completed)),
+                tasks = responseTasks,
+            },
+        });
+    }
+
+    private static bool IsLegacyTaskStatus(string? statusId, string legacyId, string currentStatus) =>
+        string.Equals(statusId, legacyId, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(statusId, currentStatus, StringComparison.OrdinalIgnoreCase);
+
+    private static string GetLegacyTaskStatusName(string? statusId) => statusId switch
+    {
+        "1" => "Upcoming",
+        "2" => "In Progress",
+        "3" => "In Review",
+        "4" => "Completed",
+        TaskStatuses.New => "Upcoming",
+        TaskStatuses.InProgress => "In Progress",
+        TaskStatuses.WaitingBlocked => "In Review",
+        TaskStatuses.Completed => "Completed",
+        TaskStatuses.Cancelled => "Cancelled",
+        _ => statusId ?? string.Empty,
+    };
+
+    private static string GetLegacyTaskPriorityName(string? priorityId) => priorityId switch
+    {
+        TaskPriorities.Low => "Low",
+        TaskPriorities.Medium => "Medium",
+        TaskPriorities.High => "High",
+        TaskPriorities.Urgent => "Urgent",
+        _ => priorityId ?? string.Empty,
+    };
 
     private static async Task<IResult> GetTotalLienReport(
         LiensDbContext db,

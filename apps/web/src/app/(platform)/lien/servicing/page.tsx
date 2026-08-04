@@ -181,10 +181,13 @@ export default function ServicingPage() {
       {
         id: "caseCode",
         header: "Case number",
+        meta: {
+          minWidth: "180px",
+        },
         cell: ({ row }) => (
           <Link
             href={`/lien/cases/${row.original.caseId}/servicing`}
-            className="text-xs font-mono text-primary hover:underline"
+            className="text-sm"
           >
             {row.original.caseCode}
           </Link>
@@ -210,42 +213,54 @@ export default function ServicingPage() {
         id: "currentStatus",
         header: "Current Status",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.currentStatus}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.currentStatus}
+          </span>
         ),
       },
       {
         id: "settlementStatus",
         header: "Settlement Status",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.settlementStatus}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.settlementStatus}
+          </span>
         ),
       },
       {
         id: "billingAmount",
         header: "Billing Amount",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.billingAmount}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.billingAmount}
+          </span>
         ),
       },
       {
         id: "purchaseAmount",
         header: "Purchase Amount",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.purchaseAmount}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.purchaseAmount}
+          </span>
         ),
       },
       {
         id: "settlementAmount",
         header: "Amount Settled",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.settlementAmount}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.settlementAmount}
+          </span>
         ),
       },
       {
         id: "settlementDate",
         header: "Settled Date",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.settlementDate}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.settlementDate}
+          </span>
         ),
       },
     ],
@@ -335,11 +350,17 @@ export default function ServicingPage() {
         manualPagination
         pageCount={pagination.totalPages}
         totalCount={pagination.totalCount}
-        pagination={{ pageIndex: pagination.page - 1, pageSize: pagination.pageSize }}
+        pagination={{
+          pageIndex: pagination.page - 1,
+          pageSize: pagination.pageSize,
+        }}
         onPaginationChange={(updater) => {
           const next =
             typeof updater === "function"
-              ? updater({ pageIndex: pagination.page - 1, pageSize: pagination.pageSize })
+              ? updater({
+                  pageIndex: pagination.page - 1,
+                  pageSize: pagination.pageSize,
+                })
               : updater;
           fetchData(next.pageIndex + 1);
         }}

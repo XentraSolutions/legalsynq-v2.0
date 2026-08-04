@@ -25,11 +25,18 @@ import {
   type BulkActionConfig,
   type BulkOperationResult,
 } from "@/lib/bulk-operations";
-import { CasesFilter, EMPTY_CASES_FILTERS, type CasesFilterValues } from "./components/cases-filter";
+import {
+  CasesFilter,
+  EMPTY_CASES_FILTERS,
+  type CasesFilterValues,
+} from "./components/cases-filter";
 import { CasesQuery } from "@/lib/cases/cases.types";
 import { useCases, useCreateCase } from "@/hooks/use-case-liens";
 import { useQueryClient } from "@tanstack/react-query";
-import { usePrimaryLoad, useBackgroundReady } from "@/hooks/use-background-queue";
+import {
+  usePrimaryLoad,
+  useBackgroundReady,
+} from "@/hooks/use-background-queue";
 import MedicalLienComponent from "@/components/lien/add-medical-lien/add-medical-lien/medical-lien-component";
 
 export const dynamic = "force-dynamic";
@@ -105,7 +112,8 @@ export default function CasesPage() {
   const [searchInput, setSearchInput] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
 
-  const [filters, setFilters] = useState<CasesFilterValues>(EMPTY_CASES_FILTERS);
+  const [filters, setFilters] =
+    useState<CasesFilterValues>(EMPTY_CASES_FILTERS);
   const [showCreate, setShowCreate] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [showMedicalLien, setShowMedicalLien] = useState(false);
@@ -266,8 +274,7 @@ export default function CasesPage() {
               {", "}
               <span className="text-primary">Date of Birth: </span>
               <span className="text-gray-700">{c.clientDob}</span>
-              {c.lawFirm ? `, ${c.lawFirm}` : ""}
-              {" "}
+              {c.lawFirm ? `, ${c.lawFirm}` : ""}{" "}
               <span className="text-primary">Case ID: </span>
               <span className="text-gray-700">{c.caseNumber}</span>
             </div>
@@ -296,8 +303,9 @@ export default function CasesPage() {
         id: "caseNumber",
         header: "Case ID",
         accessorFn: (row) => row.caseNumber,
+        meta: { minWidth: "180px" },
         cell: ({ row }) => (
-          <span className="text-xs font-mono text-gray-700">
+          <span className="text-sm font-medium text-gray-700">
             {row.original.caseNumber}
           </span>
         ),
@@ -307,7 +315,7 @@ export default function CasesPage() {
         header: "Plaintiff Name",
         accessorFn: (row) => row.clientName,
         cell: ({ row }) => (
-          <span className="text-sm text-gray-700 font-medium">
+          <span className="text-sm text-gray-700 ">
             {row.original.clientName}
           </span>
         ),
@@ -366,7 +374,12 @@ export default function CasesPage() {
         id: "status",
         header: "Status",
         accessorFn: (row) => row.status,
-        cell: ({ row }) => <StatusBadge status={row.original.status} label={row.original.statusLabel} />,
+        cell: ({ row }) => (
+          <StatusBadge
+            status={row.original.status}
+            label={row.original.statusLabel}
+          />
+        ),
       },
     ],
     [router],

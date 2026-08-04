@@ -6,6 +6,7 @@ import ReportDisplay from "../components/report-display";
 import { ReportTemplate } from "@/lib/liens/lien-report.types";
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import { PaginationMeta } from "@/lib/contacts";
+import { useLienReport } from "@/hooks/use-report";
 
 const SAMPLE_REPORTS: any[] = [
   {
@@ -32,87 +33,17 @@ export default function ReportDetailsPage() {
   const { id } = useParams();
   const router = useRouter();
 
-  const [report, setReport] = useState<any | null>(null);
-  const [template, setTemplate] = useState<any | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingData, setLoadingData] = useState(true);
+  const { report, template, setPage, isLoading, isLoadingData } = useLienReport(
+    {
+      id: id?.toString(),
+      initialPage: 1,
+      initialPageSize: 10,
+    },
+  );
 
-  const [editMode, setEditMode] = useState(false);
-  const [pagination, setPagination] = useState<PaginationMeta>({
-    page: 1,
-    pageSize: 10,
-    totalCount: 0,
-    totalPages: 0,
-  });
-  const fetchReport = useCallback(async () => {
-    try {
-      const result = await lienReportsService.getReportsById(
-        id?.toString() ?? "",
-      );
-      const generatedTemplate = await lienReportsService.generateTemplate({
-        ...result,
-        limit: 10,
-        page: pagination.page,
-      });
+  useEffect(() => {}, [template, report]);
 
-      setReport(result);
-      setTemplate({
-        ...generatedTemplate,
-        page: pagination.page,
-        limit: pagination.pageSize,
-        totalCount: generatedTemplate?.totalCount
-          ? generatedTemplate?.totalCount
-          : 0,
-        totalPages: generatedTemplate?.totalCount
-          ? Math.floor(generatedTemplate?.totalCount / 10)
-          : 1,
-      });
-    } catch (err) {
-    } finally {
-      setLoading(false);
-      setLoadingData(false);
-    }
-  }, []);
-
-  const fetchReportData = useCallback(async () => {
-    setLoadingData(true);
-    try {
-      const result = await lienReportsService.getReportsById(
-        id?.toString() ?? "",
-      );
-      const generatedTemplate = await lienReportsService.generateTemplate({
-        ...result,
-        limit: 10,
-        page: pagination.page,
-      });
-
-      setReport(result);
-      setTemplate({
-        ...generatedTemplate,
-        page: pagination.page,
-        limit: pagination.pageSize,
-        totalCount: generatedTemplate?.totalCount
-          ? generatedTemplate?.totalCount
-          : 0,
-        totalPages: generatedTemplate?.totalCount
-          ? Math.round(generatedTemplate?.totalCount / 10)
-          : 1,
-      });
-    } catch (err) {
-    } finally {
-      setLoadingData(false);
-    }
-  }, [pagination]);
-  useEffect(() => {
-    setLoading(true);
-    fetchReport();
-  }, [id]);
-
-  useEffect(() => {
-    fetchReportData();
-  }, [pagination]);
-
-  if (loading) {
+  if (isLoading) {
     return <div className="p-6 text-sm text-gray-500">Loading report...</div>;
   }
 
@@ -134,18 +65,10 @@ export default function ReportDetailsPage() {
     <div className="space-y-6">
       {template && (
         <ReportDisplay
-          report={{ ...report, ...template, reportId: id }}
+          report={{ ...report, ...template, reportId: id?.toString() ?? "" }}
           onBack={() => router.push("/lien/reports")}
-          onEdit={() => setEditMode(true)}
-          onSaved={() => {
-            setEditMode(false);
-            setTemplate(null);
-            setTimeout(() => {
-              router.push("/lien/reports");
-            }, 500);
-          }}
-          onPaginate={(e) => setPagination(e)}
-          loadingData={loadingData}
+          onPaginate={(e) => setPage(e.page)}
+          loadingData={isLoadingData}
         />
       )}
     </div>

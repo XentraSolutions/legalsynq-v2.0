@@ -32,6 +32,73 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task DashboardTaskSummary_returns_the_legacy_assignee_scoped_envelope()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var prefix = $"DASH-{Guid.NewGuid():N}"[..20];
+
+            db.ServicingItems.AddRange(
+                CreateLegacyDashboardTask($"{prefix}-UP", "1", "Upcoming task"),
+                CreateLegacyDashboardTask($"{prefix}-IP", "2", "In progress task"),
+                CreateLegacyDashboardTask($"{prefix}-IR", "3", "In review task"),
+                CreateLegacyDashboardTask($"{prefix}-CO", "4", "Completed task"),
+                ServicingItem.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    $"{prefix}-OTHER",
+                    "LegacyCaseTask",
+                    "Another user's task",
+                    "another-user",
+                    SeedHelper.UserId,
+                    caseId: SeedHelper.CaseId,
+                    notes: "title=Excluded task; status=1"));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync("/api/liens/cases/dashboard/task-summary");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        root.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        root.GetProperty("message").GetString().Should().Be("Successfully retrieved all tasks.");
+
+        var data = root.GetProperty("data");
+        data.GetProperty("totalTasks").GetInt32().Should().Be(4);
+        data.GetProperty("upcomingTasks").GetInt32().Should().Be(1);
+        data.GetProperty("inProgressTasks").GetInt32().Should().Be(1);
+        data.GetProperty("inReviewTasks").GetInt32().Should().Be(1);
+        data.GetProperty("completedTasks").GetInt32().Should().Be(1);
+
+        var completed = data.GetProperty("tasks").EnumerateArray()
+            .Single(task => task.GetProperty("title").GetString() == "Completed task");
+        completed.GetProperty("caseId").GetString().Should().Be(SeedHelper.CaseId.ToString());
+        completed.GetProperty("caseCode").GetString().Should().NotBeNullOrEmpty();
+        completed.GetProperty("caseName").GetString().Should().NotBeNullOrEmpty();
+        completed.GetProperty("status").GetString().Should().Be("Completed");
+        completed.GetProperty("statusId").GetString().Should().Be("4");
+        completed.GetProperty("priority").GetString().Should().Be("Normal");
+        completed.GetProperty("priorityId").GetString().Should().Be("Normal");
+    }
+
+    private static ServicingItem CreateLegacyDashboardTask(string taskNumber, string status, string title) =>
+        ServicingItem.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            taskNumber,
+            "LegacyCaseTask",
+            $"{title} description",
+            SeedHelper.UserId.ToString(),
+            SeedHelper.UserId,
+            caseId: SeedHelper.CaseId,
+            assignedToUserId: SeedHelper.UserId,
+            notes: $"title={title}; status={status}");
+
+    [Fact]
     public async Task CreateCase_defaults_case_number_from_current_year_and_next_sequence()
     {
         var yearPrefix = DateTime.UtcNow.ToString("yy");
