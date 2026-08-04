@@ -1272,6 +1272,40 @@ Uploads the file to the Documents service and records legacy document metadata a
 
 ---
 
+### Legacy document retrieval and opening
+
+`GET /api/liens/cases/get-casedocument/{caseId}`, `GET
+/api/liens/cases/liens/get-medicaldocument/{liensId}`, and `GET
+/api/liens/cases/get-allcasedocument/{caseId}` return a legacy `url` field.
+
+Current uploads return `/documents/{documentId}` and must be opened through the
+Documents-service view-token endpoint. SQL-migrated SL-CORE records instead
+retain an allowlisted `https://legal-dmm-prod.legalsynq.com/...` URL because
+they do not have a Documents-service ID. The tenant portal's BFF resolves the
+legacy object key through a tenant-scoped Liens endpoint and redirects only to
+that exact HTTPS host; browser code continues using the existing view-token flow.
+
+### GET `/api/liens/legacy-document-links/{objectKey}/resolve`
+
+Protected compatibility endpoint used by the tenant portal BFF when an existing
+Documents-service `view-url` request contains a migrated legacy object key
+instead of a Documents GUID. It is tenant-scoped, accepts only a safe filename
+key, and returns a URL only when exactly one `LegacyCaseDocument`,
+`LegacyLienDocument`, or `LegacyMedicalDocument` record resolves to the
+allowlisted legacy host.
+
+**Permission:** `SYNQ_LIENS.case:read`
+
+**Response:** `200 OK`
+
+```json
+{
+  "url": "https://legal-dmm-prod.legalsynq.com/path/to/document.pdf"
+}
+```
+
+---
+
 ### CaseResponse
 
 | Field | Type | Nullable | Description |

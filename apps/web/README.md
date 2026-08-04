@@ -24,6 +24,12 @@ All API calls from the browser go through Next.js API routes that:
 
 Client code uses relative `/api/` paths — rewrite in `next.config` maps to the gateway.
 
+For SynqLien document views, current Documents-service references
+(`/documents/{guid}`) continue through the BFF's tokenized view-url flow.
+For migrated SL-CORE object keys, the BFF resolves a tenant-scoped legacy link
+through Liens and redirects only to the exact HTTPS
+`legal-dmm-prod.legalsynq.com` host; no browser code handles legacy URLs.
+
 ## E2E Tests
 
 See [`e2e/README.md`](e2e/README.md) for how to run them day to day (`--ui`, `--debug`,
