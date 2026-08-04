@@ -106,7 +106,14 @@ function normalizeNote(raw: unknown): Note {
     authorId: String(note.authorId ?? note.createdByUserId ?? ''),
     authorName: String(note.authorName ?? note.createdByName ?? 'Unknown user'),
     content: String(note.content ?? note.note ?? ''),
+    category: String(note.category ?? 'general'),
+    isPinned: Boolean(note.isPinned),
+    isEdited: Boolean(note.isEdited),
     createdAt: String(note.createdAt ?? note.createdAtUtc ?? new Date(0).toISOString()),
+    updatedAt:
+      typeof (note.updatedAt ?? note.updatedAtUtc) === 'string'
+        ? String(note.updatedAt ?? note.updatedAtUtc)
+        : null,
   };
 }
 
@@ -244,6 +251,10 @@ export const CasesApi = {
   async addCaseNote(caseId: string, body: AddCaseNoteRequest): Promise<Note> {
     const response = await apiClient.post<unknown>(`${CASES_BASE_PATH}/${caseId}/notes`, body);
     return normalizeNote(response.data);
+  },
+
+  async deleteCaseNote(caseId: string, noteId: string): Promise<void> {
+    await apiClient.delete(`${CASES_BASE_PATH}/${caseId}/notes/${noteId}`);
   },
 
   async getDashboardPiechart(): Promise<DashboardPiechart> {

@@ -275,12 +275,23 @@ export function useAddCaseNote(caseId: string) {
   const { user } = useAuth();
 
   return useMutation({
-    mutationFn: (content: string) =>
+    mutationFn: ({ content, category = 'general' }: { content: string; category?: string }) =>
       CasesApi.addCaseNote(caseId, {
         content,
-        category: 'general',
+        category,
         createdByName: user ? `${user.firstName} ${user.lastName}`.trim() : 'Mobile user',
       }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: caseFeatureKeys.notes(caseId) });
+    },
+  });
+}
+
+export function useDeleteCaseNote(caseId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (noteId: string) => CasesApi.deleteCaseNote(caseId, noteId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: caseFeatureKeys.notes(caseId) });
     },
