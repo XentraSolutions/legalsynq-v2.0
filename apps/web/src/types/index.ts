@@ -133,6 +133,12 @@ export interface NavItem {
    * but should stay visible in the nav (e.g. "Coming soon").
    */
   disabledMessage?: string;
+  /**
+   * Nested sub-items rendered under this item as a collapsible dropdown.
+   * When present, the item acts as an expand/collapse toggle in addition
+   * to (or instead of) being a link.
+   */
+  children?: NavItem[];
 }
 
 export interface NavSection {

@@ -256,18 +256,20 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           href: "/selling/portfolio",
           label: "Portfolio",
           icon: "ri-folder-3-line",
-        },
-        {
-          href: "/selling/cases",
-          label: "Cases",
-          icon: "ri-briefcase-line",
-          disabledMessage: "Cases is coming soon",
-        },
-        {
-          href: "/selling/liens",
-          label: "Liens",
-          icon: "ri-file-transfer-line",
-          disabledMessage: "Liens is coming soon",
+          children: [
+            {
+              href: "/selling/cases",
+              label: "Cases",
+              icon: "ri-briefcase-line",
+              disabledMessage: "Cases is coming soon",
+            },
+            {
+              href: "/selling/liens",
+              label: "Liens",
+              icon: "ri-file-transfer-line",
+              disabledMessage: "Liens is coming soon",
+            },
+          ],
         },
         {
           href: "/selling/documents",
