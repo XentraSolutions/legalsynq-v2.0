@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 
 import { careConnectApi }    from '@/lib/careconnect-api';
 import { AccessStageBadge }  from '@/components/careconnect/status-badge';
+import { ConfirmDialog }     from '@/components/lien/modal';
 import { formatPhoneDisplay, formatPhoneInput, isValidPhone, stripPhone } from '@/lib/phone';
 import { isValidUsZipCode } from '@/lib/address';
 import type {
@@ -74,6 +75,7 @@ interface EditLocationForm {
   postalCode: string;
   isActive: boolean;
   acceptingReferrals: boolean;
+  facilityIsActive: boolean;
 }
 
 function networkProviderEntryId(provider: Pick<NetworkProviderItem, 'id' | 'networkProviderId'>): string {
@@ -127,6 +129,8 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
   const [savingLocationId, setSavingLocationId] = useState<string | null>(null);
   const [deletingLocationId, setDeletingLocationId] = useState<string | null>(null);
   const [removingId,   setRemovingId]   = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ entryId: string; displayName: string } | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<{ providerId: string; providerName: string } | null>(null);
   const [toast,        setToast]        = useState<string | null>(null);
   const [networkUrl,   setNetworkUrl]   = useState<string>('');
   const [urlCopied,    setUrlCopied]    = useState(false);
@@ -145,6 +149,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
   const hasZipMismatch = !!selectedPostalCode &&
     newForm.postalCode.trim().slice(0, 5) !== selectedPostalCode.slice(0, 5);
   const hasNoSpecialty = newForm.specialtyIds.length === 0;
+  const activeEditLocations = editLocations.filter(l => l.facilityIsActive);
 
   useEffect(() => {
     setNetworkUrl(window.location.origin + '/careconnect/network');
@@ -346,6 +351,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       postalCode: provider.postalCode ?? '',
       isActive: provider.isActive,
       acceptingReferrals: provider.acceptingReferrals,
+      facilityIsActive: provider.facilityIsActive,
     };
   }
 
@@ -810,37 +816,58 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     }
   }
 
-  async function handleSoftDeleteLocation(location: EditLocationForm) {
-    if (!network) return;
-    if (!confirm(`Delete ${location.facilityName || 'this location'}? This will mark it inactive and stop accepting referrals.`)) return;
-    setDeletingLocationId(location.entryId);
+  // ── Delete location (Facilities panel "Delete location" button only) ──
+
+  function requestDeleteLocation(entryId: string, displayName: string, providerIdentity: string) {
+    const remainingCount = providers.filter(p => providerIdentityId(p) === providerIdentity && p.facilityIsActive).length;
+    if (remainingCount <= 1) {
+      const message = 'A provider must have at least one location. Add another location before deleting this one.';
+      setCreateError(message);
+      return;
+    }
+    setDeleteTarget({ entryId, displayName });
+  }
+
+  async function confirmDeleteLocation() {
+    if (!network || !deleteTarget) return;
+    const { entryId, displayName } = deleteTarget;
+    setDeletingLocationId(entryId);
     setCreateError(null);
     try {
-      await careConnectApi.networks.removeProvider(network.id, location.entryId);
+      await careConnectApi.networks.removeProvider(network.id, entryId, true);
+      // This specific row's own location was just deleted, so hide it regardless of
+      // whether the backend happened to leave the underlying (possibly shared) Facility
+      // row active for another membership — that's a different row, keyed separately.
       setProviders(prev => prev.map(p => (
-        networkProviderEntryId(p) === location.entryId
-          ? { ...p, isActive: false, acceptingReferrals: false }
+        networkProviderEntryId(p) === entryId
+          ? { ...p, isActive: false, acceptingReferrals: false, facilityIsActive: false }
           : p
       )));
       setEditLocations(prev => prev.map(item => (
-        item.entryId === location.entryId
-          ? { ...item, isActive: false, acceptingReferrals: false }
+        item.entryId === entryId
+          ? { ...item, isActive: false, acceptingReferrals: false, facilityIsActive: false }
           : item
       )));
       setMarkersLoaded(false);
-      showToast(`${location.facilityName || 'Location'} deleted.`);
+      showToast(`${displayName || 'Location'} deleted.`);
+      setDeleteTarget(null);
     } catch {
       setCreateError('Failed to delete provider location. Please try again.');
+      showToast('Failed to delete provider location. Please try again.');
     } finally {
       setDeletingLocationId(null);
     }
   }
 
-  // ── Remove ────────────────────────────────────────────────────────────────
+  // ── Remove (Delete Icon in the provider list/cards — distinct from Delete location above) ──
 
-  async function handleRemove(providerId: string, providerName: string) {
-    if (!confirm(`Delete ${providerName} from your network? This will mark the location inactive and stop accepting referrals.`)) return;
-    if (!network) return;
+  function requestRemove(providerId: string, providerName: string) {
+    setRemoveTarget({ providerId, providerName });
+  }
+
+  async function confirmRemove() {
+    if (!network || !removeTarget) return;
+    const { providerId, providerName } = removeTarget;
     setRemovingId(providerId);
     try {
       await careConnectApi.networks.removeProvider(network.id, providerId);
@@ -850,9 +877,10 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
           : p
       )));
       setMarkersLoaded(false);
-      showToast(`${providerName} location deleted.`);
+      showToast(`${providerName} set to inactive.`);
+      setRemoveTarget(null);
     } catch {
-      showToast('Failed to delete provider location. Please try again.');
+      showToast('Failed to set provider location to inactive. Please try again.');
     } finally {
       setRemovingId(null);
     }
@@ -860,6 +888,11 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
 
   const alreadyInNetwork = new Set(providers.map(p => providerLocationKey(p.providerId ?? p.id, p.facilityId)));
   const providerIdsInNetwork = new Set(providers.map(p => p.providerId ?? p.id));
+  // Deleted locations (facilityIsActive: false) stay in `providers` so search-dedup and
+  // Facilities-panel logic can still reference them — the visible list itself hides only
+  // truly deleted locations, not ones merely toggled inactive via the separate Active
+  // checkbox (`isActive`, the NetworkProvider membership's own status).
+  const visibleProviders = providers.filter(p => p.facilityIsActive);
 
   // ── Render: no network yet ───────────────────────────────────────────────
 
@@ -907,13 +940,37 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
         </div>
       )}
 
+      {/* Delete location confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDeleteLocation}
+        title="Delete location?"
+        description={`Delete ${deleteTarget?.displayName || 'this location'}? This will mark it inactive and stop accepting referrals.`}
+        confirmLabel="Delete location"
+        confirmVariant="danger"
+        loading={!!deletingLocationId}
+      />
+
+      {/* Remove from network confirmation (distinct from Delete location above — no Facility cascade) */}
+      <ConfirmDialog
+        open={!!removeTarget}
+        onClose={() => setRemoveTarget(null)}
+        onConfirm={confirmRemove}
+        title="Remove from network?"
+        description={`Delete ${removeTarget?.providerName || 'this provider'} from your network? This will mark the location inactive and stop accepting referrals.`}
+        confirmLabel="Remove"
+        confirmVariant="danger"
+        loading={!!removingId}
+      />
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-semibold text-gray-900">{network.name}</h1>
             <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 border border-blue-200">
-              {providers.length} {providers.length === 1 ? 'provider' : 'providers'}
+              {visibleProviders.length} {visibleProviders.length === 1 ? 'provider' : 'providers'}
             </span>
           </div>
           {network.description && (
@@ -1741,7 +1798,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                   Facilities
                 </h3>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-400">{editLocations.length} location{editLocations.length === 1 ? '' : 's'}</span>
+                  <span className="text-xs text-gray-400">{activeEditLocations.length} location{activeEditLocations.length === 1 ? '' : 's'}</span>
                   <button
                     type="button"
                     onClick={() => openAddLocationFromEdit(editingProvider)}
@@ -1754,18 +1811,17 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
               </div>
 
               <div className="space-y-3">
-                {editLocations.map((location, index) => {
+                {activeEditLocations.map((location, index) => {
                   const invalidZip = locationHasInvalidPostalCode(location);
                   const saving = savingLocationId === location.entryId;
                   const deleting = deletingLocationId === location.entryId;
+                  const isLastRemainingLocation = activeEditLocations.length <= 1;
 
                   return (
                     <form
                       key={location.entryId}
                       onSubmit={e => handleUpdateLocation(e, location.entryId)}
-                      className={`rounded-lg border bg-white p-4 space-y-3 ${
-                        location.isActive ? 'border-gray-200' : 'border-gray-200 opacity-80'
-                      }`}
+                      className="rounded-lg border border-gray-200 bg-white p-4 space-y-3"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -1776,7 +1832,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                 : 'bg-gray-50 text-gray-500 border-gray-200'
                             }`}>
-                              {location.isActive ? 'Active' : 'Deleted'}
+                              {location.isActive ? 'Active' : 'Inactive'}
                             </span>
                             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
                               location.acceptingReferrals
@@ -1792,12 +1848,13 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleSoftDeleteLocation(location)}
-                          disabled={!location.isActive || deleting || saving}
+                          onClick={() => requestDeleteLocation(location.entryId, location.facilityName, location.providerId)}
+                          disabled={deleting || saving || isLastRemainingLocation}
+                          title={isLastRemainingLocation ? 'A provider must have at least one location' : undefined}
                           className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <i className={deleting ? 'ri-loader-4-line animate-spin' : 'ri-delete-bin-line'} />
-                          {deleting ? 'Deleting…' : location.isActive ? 'Delete location' : 'Deleted'}
+                          {deleting ? 'Deleting…' : 'Delete location'}
                         </button>
                       </div>
 
@@ -1904,9 +1961,9 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       )}
 
       {/* ── View toggle bar ─────────────────────────────────────────────────── */}
-      {providers.length > 0 && (
+      {visibleProviders.length > 0 && (
         <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-400">{providers.length} provider{providers.length !== 1 ? 's' : ''}</span>
+          <span className="text-xs text-gray-400">{visibleProviders.length} provider{visibleProviders.length !== 1 ? 's' : ''}</span>
           <div className="inline-flex rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm">
             {([ 
               { mode: 'list'  as ViewMode, icon: 'ri-list-unordered', label: 'List'  },
@@ -1931,7 +1988,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       )}
 
       {/* ── Empty state ─────────────────────────────────────────────────────── */}
-      {providers.length === 0 && (
+      {visibleProviders.length === 0 && (
         <div className="rounded-xl border-2 border-dashed border-gray-200 py-14 text-center">
           <i className="ri-hospital-line text-4xl text-gray-300" />
           <p className="mt-3 text-sm font-medium text-gray-500">No providers in your network yet.</p>
@@ -1940,7 +1997,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       )}
 
       {/* ── List view ───────────────────────────────────────────────────────── */}
-      {providers.length > 0 && viewMode === 'list' && (
+      {visibleProviders.length > 0 && viewMode === 'list' && (
         <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px] text-sm">
@@ -1957,13 +2014,13 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {providers.map(p => (
+                {visibleProviders.map(p => (
                   <ProviderRow
                     key={networkProviderEntryId(p)}
                     provider={p}
                     removing={removingId === networkProviderEntryId(p)}
                     onEdit={() => openEditPanel(p)}
-                    onRemove={() => handleRemove(networkProviderEntryId(p), p.name)}
+                    onRemove={() => requestRemove(networkProviderEntryId(p), p.name)}
                   />
                 ))}
               </tbody>
@@ -1973,22 +2030,22 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       )}
 
       {/* ── Cards view ──────────────────────────────────────────────────────── */}
-      {providers.length > 0 && viewMode === 'cards' && (
+      {visibleProviders.length > 0 && viewMode === 'cards' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {providers.map(p => (
+          {visibleProviders.map(p => (
             <ProviderCard
               key={networkProviderEntryId(p)}
               provider={p}
               removing={removingId === networkProviderEntryId(p)}
               onEdit={() => openEditPanel(p)}
-              onRemove={() => handleRemove(networkProviderEntryId(p), p.name)}
+              onRemove={() => requestRemove(networkProviderEntryId(p), p.name)}
             />
           ))}
         </div>
       )}
 
       {/* ── Map view ────────────────────────────────────────────────────────── */}
-      {providers.length > 0 && viewMode === 'map' && (
+      {visibleProviders.length > 0 && viewMode === 'map' && (
         <div className="space-y-2">
           {markersLoading ? (
             <div className="h-[480px] rounded-xl bg-gray-100 flex items-center justify-center">
@@ -2006,10 +2063,10 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                   onSelect={setMapSelectedId}
                 />
               </div>
-              {markers.filter(m => m.latitude && m.longitude).length < providers.length && (
+              {markers.filter(m => m.latitude && m.longitude).length < visibleProviders.length && (
                 <p className="text-xs text-gray-400 text-center">
                   <i className="ri-information-line mr-1" />
-                  {providers.length - markers.filter(m => m.latitude && m.longitude).length} provider(s) couldn't be located — add a full address when editing to pin them on the map.
+                  {visibleProviders.length - markers.filter(m => m.latitude && m.longitude).length} provider(s) couldn't be located — add a full address when editing to pin them on the map.
                 </p>
               )}
             </>

@@ -771,6 +771,13 @@ export interface NetworkProviderItem {
   postalCode:        string;
   isActive:          boolean;
   acceptingReferrals: boolean;
+  /**
+   * Whether the underlying cc_Facilities row is active. Distinct from `isActive` above (the
+   * NetworkProvider membership's own Active/Accepting-referrals toggle — an existing,
+   * independent feature): this is false only when the location itself was soft-deleted via
+   * "Delete location". Use this, not `isActive`, to decide whether a location was deleted.
+   */
+  facilityIsActive:  boolean;
   accessStage:       string;
   specialties:       SpecialtyOption[];
   primarySpecialtyId?: string | null;

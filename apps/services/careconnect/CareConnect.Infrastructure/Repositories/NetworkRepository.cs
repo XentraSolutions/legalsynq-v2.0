@@ -349,6 +349,19 @@ public class NetworkRepository : INetworkRepository
         return Task.CompletedTask;
     }
 
+    public async Task<bool> HasOtherActiveNetworkProviderForFacilityAsync(
+        Guid tenantId, Guid facilityId, Guid excludeNetworkProviderId, CancellationToken ct = default)
+    {
+        return await _db.NetworkProviders
+            .AsNoTracking()
+            .AnyAsync(np =>
+                np.TenantId == tenantId &&
+                np.FacilityId == facilityId &&
+                np.Id != excludeNetworkProviderId &&
+                np.IsActive,
+                ct);
+    }
+
     public async Task<ProviderFacility?> GetProviderFacilityAsync(Guid providerId, Guid facilityId, CancellationToken ct = default)
     {
         return await _db.ProviderFacilities

@@ -80,6 +80,7 @@ const BASE_PROVIDER: NetworkProviderItem = {
   postalCode: '78701',
   isActive: true,
   acceptingReferrals: true,
+  facilityIsActive: true,
   accessStage: 'PUBLIC',
   specialties: [],
   primarySpecialtyId: null,
@@ -383,8 +384,6 @@ describe('MyNetworkClient', () => {
 
   test('shows all provider locations in edit mode and soft deletes one location', async () => {
     const user = userEvent.setup();
-    const confirmMock = vi.fn(() => true);
-    vi.stubGlobal('confirm', confirmMock);
     vi.mocked(careConnectApi.networks.removeProvider).mockResolvedValue(ok(undefined));
 
     const north = {
@@ -461,10 +460,77 @@ describe('MyNetworkClient', () => {
     expect(southForm).not.toBeNull();
     await user.click(within(southForm as HTMLFormElement).getByRole('button', { name: /Delete location/i }));
 
+    const dialog = await screen.findByRole('dialog', { name: /Delete location\?/i });
+    expect(within(dialog).getByText(/Atlas Health - South/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /Delete location/i }));
+
     await waitFor(() => expect(careConnectApi.networks.removeProvider).toHaveBeenCalledTimes(1));
-    expect(careConnectApi.networks.removeProvider).toHaveBeenCalledWith('network-1', 'network-provider-2');
-    expect(confirmMock).toHaveBeenCalledWith(expect.stringContaining('Atlas Health - South'));
-    expect(within(southForm as HTMLFormElement).getAllByText('Deleted').length).toBeGreaterThan(0);
+    // Delete location cascades the deactivation to the underlying Facility row, unlike
+    // the "Remove from network" icon which omits this flag (see the dedicated test below).
+    expect(careConnectApi.networks.removeProvider).toHaveBeenCalledWith('network-1', 'network-provider-2', true);
+    // Deleted locations disappear from the Facilities panel instead of showing a "Deleted" badge.
+    await waitFor(() => expect(screen.queryByDisplayValue('Dallas')).not.toBeInTheDocument());
+    expect(screen.getByText('1 location')).toBeInTheDocument();
+    // The deleted location's row also disappears from the provider list below, while
+    // the sibling location for the same provider stays visible.
+    expect(screen.queryByText('Atlas Health - South')).not.toBeInTheDocument();
+    expect(screen.getByText('Atlas Health - North')).toBeInTheDocument();
+  });
+
+  test('toggling a location Active off (existing feature) keeps its row in the list — only Delete removes it', async () => {
+    const user = userEvent.setup();
+    const providerWithSpecialty = { ...BASE_PROVIDER, specialties: [SPECIALTIES[0]] };
+
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork([providerWithSpecialty])}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+      />,
+    );
+
+    // Toggling the "Active" checkbox and saving is a separate, pre-existing feature from
+    // deletion. The backend never flips cc_Facilities.IsActive for this — only
+    // RemoveProviderAsync (Delete location) does — so the row must stay visible.
+    vi.mocked(careConnectApi.networks.updateProvider).mockResolvedValue(ok({
+      ...providerWithSpecialty,
+      isActive: false,
+      facilityIsActive: true,
+    }));
+
+    await user.click(screen.getByTitle('Edit provider'));
+    await user.click(screen.getByRole('checkbox', { name: 'Active' }));
+    await user.click(screen.getByRole('button', { name: /Save Location/i }));
+
+    await waitFor(() => expect(careConnectApi.networks.updateProvider).toHaveBeenCalledTimes(1));
+
+    // Still present in the main list, just no longer showing as "Active".
+    expect(screen.getByText('Atlas Rehab')).toBeInTheDocument();
+  });
+
+  test('"Remove from network" icon uses the styled ConfirmDialog, no Facility cascade, updated toast wording', async () => {
+    const user = userEvent.setup();
+    vi.mocked(careConnectApi.networks.removeProvider).mockResolvedValue(ok(undefined));
+
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork([BASE_PROVIDER])}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+      />,
+    );
+
+    await user.click(screen.getByTitle('Remove from network'));
+
+    const dialog = await screen.findByRole('dialog', { name: /Remove from network\?/i });
+    expect(within(dialog).getByText(/Atlas Rehab/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: /Remove/i }));
+
+    await waitFor(() => expect(careConnectApi.networks.removeProvider).toHaveBeenCalledTimes(1));
+    // No cascadeFacility argument — distinct from Delete location, which passes `true`.
+    expect(careConnectApi.networks.removeProvider).toHaveBeenCalledWith('network-1', 'network-provider-1');
+    expect(await screen.findByText('Atlas Rehab set to inactive.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   test('submits backend geo point source after selecting a geocoded address', async () => {

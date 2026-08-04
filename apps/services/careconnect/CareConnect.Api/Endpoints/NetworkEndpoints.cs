@@ -224,10 +224,16 @@ public static class NetworkEndpoints
             IAuditEventClient auditClient,
             IMemoryCache cache,
             HttpContext http,
-            CancellationToken ct) =>
+            CancellationToken ct,
+            [FromQuery] bool cascadeFacility = false) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await service.RemoveProviderAsync(tenantId, id, providerId, ct);
+            // cascadeFacility: only "Delete location" (the Facilities panel button) should tag
+            // cc_Facilities.IsActive false. The tenant-portal "Remove from network" icon keeps
+            // its original behavior — membership-only soft delete, Facility untouched — since
+            // it's a distinct action from Delete location, not merely a different UI trigger
+            // for the same one.
+            await service.RemoveProviderAsync(tenantId, id, providerId, cascadeFacility, ctx.UserId, ct);
             // BLK-PERF-02: Provider removed from network — evict public provider/marker/detail/list
             // cache entries for this tenant+network so the directory reflects the removal.
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
