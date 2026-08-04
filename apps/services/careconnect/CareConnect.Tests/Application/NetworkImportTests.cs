@@ -142,6 +142,66 @@ public class NetworkImportTests
     }
 
     [Fact]
+    public async Task ImportProvidersAsync_RowWithoutTenantId_UsesTargetNetworkTenant()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var parser = new Mock<IProviderImportParser>();
+        parser.Setup(p => p.ParseAsync(It.IsAny<Stream>(), "providers.xlsx", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProviderImportParseResult(
+                "providers.xlsx",
+                1,
+                [
+                    ImportRow(
+                        null,
+                        providerName: "Dr. Stuart Baird",
+                        firstName: null,
+                        lastName: null,
+                        organizationName: null,
+                        facilityName: "Precision Pain Center",
+                        npi: "1336383504",
+                        email: "info@precisionpaincenter.com",
+                        phone: "702-781-1700",
+                        addressLine1: "7380 W. Sahara Ave Ste. 160",
+                        city: "Las Vegas",
+                        state: "NV",
+                        postalCode: "89117",
+                        SpecialtyCodesRaw: "Pain")
+                ]));
+        var pain = Specialty.Create("Pain", "PAIN");
+
+        var networks = BuildRepositoryMock();
+        networks.Setup(r => r.GetByIdGlobalAsync(networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "My Network", string.Empty));
+        networks.Setup(r => r.GetProvidersByNpisAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
+        networks.Setup(r => r.GetProvidersByTenantEmailsAsync(tenantId, It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
+        networks.Setup(r => r.GetNetworkProviderLocationKeysAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var specialties = new Mock<ISpecialtyRepository>();
+        specialties.Setup(r => r.GetActiveByCodesAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([pain]);
+
+        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), specialties.Object, parser.Object, NullLogger<NetworkService>.Instance);
+
+        await using var stream = new MemoryStream();
+        var result = await sut.ImportProvidersAsync(networkId, stream, "providers.xlsx", dryRun: true, userId: null, CancellationToken.None);
+
+        var row = Assert.Single(result.Rows);
+        Assert.Equal("created", row.Status);
+        Assert.NotNull(row.NormalizedProvider);
+        Assert.Equal(tenantId, row.NormalizedProvider!.TenantId);
+        Assert.Equal("Dr.", row.NormalizedProvider.Title);
+        Assert.Equal("Stuart", row.NormalizedProvider.FirstName);
+        Assert.Equal("Baird", row.NormalizedProvider.LastName);
+        Assert.Equal("Precision Pain Center", row.NormalizedProvider.FacilityName);
+        networks.Verify(r => r.AddProviderToRegistryAsync(It.IsAny<Provider>(), It.IsAny<CancellationToken>()), Times.Never);
+        networks.Verify(r => r.AddProviderAsync(It.IsAny<NetworkProvider>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ImportProvidersAsync_SameNpiDifferentLocations_CreatesOneProviderWithMultipleLocationMemberships()
     {
         var tenantId = Guid.CreateVersion7();
@@ -419,7 +479,7 @@ public class NetworkImportTests
     }
 
     private static ProviderImportParsedRow ImportRow(
-        Guid tenantId,
+        Guid? tenantId,
         string? title = null,
         string? providerName = null,
         string? facilityName = "Smith Family Practice",
@@ -445,7 +505,7 @@ public class NetworkImportTests
         => new(
             RowNumber: 2,
             SourceKey: "row-2",
-            TenantId: tenantId.ToString(),
+            TenantId: tenantId?.ToString(),
             Title: title,
             ProviderName: providerName,
             FacilityName: facilityName,

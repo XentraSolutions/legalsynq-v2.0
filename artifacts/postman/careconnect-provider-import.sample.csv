@@ -1,5 +1,6 @@
-tenantId,Medical Provider,Medical Facility,NPI,Specialty,email,Phone Number,Address 1,City,State,ZIP,isActive,acceptingReferrals,latitude,longitude,geoPointSource
-11111111-1111-1111-1111-111111111111,Dr. Jane Smith,Smith Family Practice,1234567890,Chiro,jane.smith@example.com,555-555-5555,123 Main St,Chicago,IL,60601,true,true,41.881832,-87.623177,Imported
-11111111-1111-1111-1111-111111111111,Dr. Jane Smith,Smith Family Practice - Naperville,1234567890,Chiro,jane.smith@example.com,555-555-1212,456 Oak Ave,Naperville,IL,60540,true,true,41.750839,-88.153535,Imported
-11111111-1111-1111-1111-111111111111,,Advanced Imaging Center,2234567890,Imaging,referrals@advancedimaging.example.com,555-222-1212,789 Scan Rd,Oak Brook,IL,60523,true,true,41.839787,-87.953553,Imported
-11111111-1111-1111-1111-111111111111,Dr. Alan Pierce,Pierce Orthopedic Rehab,3234567890,"Physical Therapy;Extremities",alan.pierce@example.com,555-333-1212,300 Rehab Pkwy,Schaumburg,IL,60173,true,false,42.033360,-88.083405,Imported
+Specialty,Medical Facility,Medical Provider,Address 1,Address 2,City,State,ZIP,Email,Phone Number,NPI
+Pain,Precision Pain Center,Dr. Stuart Baird,7380 W. Sahara Ave,Ste. 160,Las Vegas,NV,89117,info@precisionpaincenter.com,702-781-1700,1336383504
+Pain,Precision Pain Center,Dr. Stuart Baird,1000 Wigwam Pkwy Ste. 100,,Henderson,NV,89074,info@precisionpaincenter.com,702-781-1700,1336383504
+Pain,Vegas Injury Physicians (VIP),Dr. Alain Coppel,9033 W. Sahara Avenue,,Las Vegas,NV,89117,referrals@vegasinjuryphysicians.com,702-478-1878,1316057573
+Pain,Vegas Injury Physicians (VIP),Dr. Alain Coppel,2820 W. Charleston Blvd Suite 7,,Las Vegas,NV,89102,referrals@vegasinjuryphysicians.com,702-478-1878,1316057573
+Pain,Vegas Injury Physicians (VIP),Dr. Alain Coppel,"1610 E. Lake Mead Blvd Suite B, N",,Las Vegas,NV,89030,referrals@vegasinjuryphysicians.com,702-478-1878,1316057573

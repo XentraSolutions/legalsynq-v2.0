@@ -46,7 +46,7 @@ CareConnect.Tests/         Tests
 | `POST` | `/api/careconnect/appointments` | Bearer | Book appointment |
 | `GET` | `/api/public/careconnect/network` | Anonymous | Public provider network |
 | `PUT` | `/api/networks/{networkId}/providers/{providerId}` | Bearer | Edit a provider from a tenant network after membership validation |
-| `POST` | `/api/networks/{networkId}/providers/import` | Development-only | CSV provider migration/import into a tenant network |
+| `POST` | `/api/networks/{networkId}/providers/import` | Development-only | CSV/XLSX provider migration/import into a tenant network |
 
 ### Provider specialties
 
@@ -84,16 +84,19 @@ without creating another `Provider` row.
 
 ### Provider import
 
-The development-only provider import endpoint accepts CSV uploads at `POST /api/networks/{networkId}/providers/import`.
+The development-only provider import endpoint accepts CSV or XLSX uploads at `POST /api/networks/{networkId}/providers/import`.
 Each valid row creates or reuses a provider identity, creates or reuses a facility location, links the provider to
 that facility, and links that provider-location pair to the network. Matching uses exact NPI first. Blank NPI rows
 fall back to tenant email plus provider/facility context. Same NPI plus a different address creates another facility
 and another network membership, not another provider.
 
-The import accepts canonical headers and workbook-style headers. Required usable location fields are `tenantId`,
-`email`, `phone`, address, city, state, and ZIP. `Medical Provider` maps to provider title/name parsing. If
+The import accepts canonical headers and workbook-style headers. Required usable location fields are `email`, `phone`,
+address, city, state, and ZIP. `tenantId` is optional when the file is imported through a specific
+network; missing row tenant IDs default to the target network tenant, while supplied mismatched tenant IDs are rejected.
+`Medical Provider` maps to provider title/name parsing. If
 `Medical Provider` is blank, `Medical Facility` becomes the organization-level provider identity. `Medical Facility`
-maps to `Facility.Name` and provider organization name. Address columns map to `Facility`, while `NPI` maps only to
+maps to `Facility.Name` and provider organization name. Address columns map to `Facility`; `Address 2` is appended to
+`Address 1` during parsing because CareConnect currently has one facility street-address field. `NPI` maps only to
 `Provider.Npi`.
 
 Specialty values may be codes or names such as `Pain`, `Spine`, `Physical Therapy`, `Neuro`, `Imaging`,

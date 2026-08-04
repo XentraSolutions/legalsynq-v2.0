@@ -368,6 +368,8 @@ public static class NetworkEndpoints
                         result.TotalRows,
                         result.ProcessedRows,
                         result.CreatedProviders,
+                        result.CreatedFacilities,
+                        result.LinkedLocations,
                         result.ReusedByNpi,
                         result.ReusedByEmail,
                         result.AlreadyInNetwork,
@@ -402,9 +404,11 @@ public static class NetworkEndpoints
             throw new ValidationException("Validation failed.",
                 new() { ["file"] = ["The import file exceeds the 5 MB limit."] });
 
-        if (!string.Equals(Path.GetExtension(file.FileName), ".csv", StringComparison.OrdinalIgnoreCase))
+        var extension = Path.GetExtension(file.FileName);
+        if (!string.Equals(extension, ".csv", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase))
             throw new ValidationException("Validation failed.",
-                new() { ["file"] = ["Only CSV files are supported for provider imports."] });
+                new() { ["file"] = ["Only CSV or XLSX files are supported for provider imports."] });
 
         return file;
     }

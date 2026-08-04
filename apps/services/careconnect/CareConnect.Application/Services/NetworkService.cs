@@ -159,7 +159,7 @@ public class NetworkService : INetworkService
 
         foreach (var parsedRow in parsed.Rows)
         {
-            if (!TryNormalizeImportRow(parsedRow, out var normalized, out var errors))
+            if (!TryNormalizeImportRow(parsedRow, networkTenantId, out var normalized, out var errors))
             {
                 failedRows++;
                 rows.Add(new ProviderImportRowResult(
@@ -1011,12 +1011,15 @@ public class NetworkService : INetworkService
 
     private static bool TryNormalizeImportRow(
         ProviderImportParsedRow parsedRow,
+        Guid networkTenantId,
         out ProviderImportNormalizedRow normalized,
         out List<string> errors)
     {
         errors = [];
 
-        var tenantId = ParseRequiredGuid(parsedRow.TenantId, "tenantId is required and must be a valid GUID.", errors);
+        var tenantId = string.IsNullOrWhiteSpace(parsedRow.TenantId)
+            ? networkTenantId
+            : ParseRequiredGuid(parsedRow.TenantId, "tenantId must be a valid GUID.", errors) ?? networkTenantId;
         var providerNameParts = SplitImportedProviderName(parsedRow.ProviderName);
         var title = NormalizeOptional(parsedRow.Title) ?? providerNameParts.Title;
         var facilityName = NormalizeRequired(parsedRow.FacilityName ?? parsedRow.OrganizationName, "Medical facility is required.", errors);
@@ -1068,7 +1071,7 @@ public class NetworkService : INetworkService
         }
 
         normalized = new ProviderImportNormalizedRow(
-            TenantId: tenantId!.Value,
+            TenantId: tenantId,
             Title: title,
             FirstName: firstName!,
             LastName: lastName ?? string.Empty,
