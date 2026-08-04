@@ -492,6 +492,118 @@ public class ReferralEmailServiceTests
     }
 
     [Fact]
+    public async Task SendNewReferralNotificationAsync_IncludesFacilityAddress_WhenReferralHasFacility()
+    {
+        var notifications = new Mock<INotificationRepository>();
+        notifications
+            .Setup(n => n.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        notifications
+            .Setup(n => n.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        string? providerHtmlBody = null;
+        var producer = new Mock<INotificationsProducer>();
+        producer
+            .Setup(p => p.SubmitAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, string, string, string, string, string?, string?, CancellationToken>(
+                (_, _, _, _, body, _, _, _) => providerHtmlBody = body)
+            .Returns(Task.CompletedTask);
+
+        var referral = BuildReferral();
+        var provider = BuildProvider();
+        var facility = Facility.Create(
+            Guid.CreateVersion7(),
+            name: "Test Clinic - North",
+            addressLine1: "456 North Ave",
+            city: "Henderson",
+            state: "NV",
+            postalCode: "89052",
+            phone: null,
+            isActive: true,
+            createdByUserId: null);
+        typeof(Referral).GetProperty(nameof(Referral.Facility))!.SetValue(referral, facility);
+
+        var service = new ReferralEmailService(
+            notifications.Object,
+            producer.Object,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ReferralToken:Secret"] = TestSecret,
+                    ["AppBaseUrl"] = TestBaseUrl,
+                })
+                .Build(),
+            new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
+            NullLogger<ReferralEmailService>.Instance);
+
+        await service.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None);
+
+        Assert.NotNull(providerHtmlBody);
+        Assert.Contains("456 North Ave", providerHtmlBody);
+        Assert.Contains("Henderson", providerHtmlBody);
+        Assert.DoesNotContain("Test Clinic - North", providerHtmlBody);
+        Assert.DoesNotContain("123 Main St", providerHtmlBody);
+    }
+
+    /// <summary>
+    /// Regression test for a real bug: ReferralService.CreateAsync fires the new-referral email
+    /// using the in-memory Referral straight out of Referral.Create() — its Facility AND Provider
+    /// navigation properties are both null (never loaded from the DB), even though a separately
+    /// loaded Provider is passed alongside it. Location resolution must use that explicit Provider
+    /// parameter as a fallback rather than silently rendering no location at all.
+    /// </summary>
+    [Fact]
+    public async Task SendNewReferralNotificationAsync_UnhydratedReferral_FallsBackToExplicitProviderParameter()
+    {
+        var notifications = new Mock<INotificationRepository>();
+        notifications
+            .Setup(n => n.TryAddWithDedupeAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        notifications
+            .Setup(n => n.UpdateAsync(It.IsAny<CareConnectNotification>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        string? providerHtmlBody = null;
+        var producer = new Mock<INotificationsProducer>();
+        producer
+            .Setup(p => p.SubmitAsync(
+                It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<Guid, string, string, string, string, string?, string?, CancellationToken>(
+                (_, _, _, _, body, _, _, _) => providerHtmlBody = body)
+            .Returns(Task.CompletedTask);
+
+        // BuildReferral() returns a raw Referral.Create() result — Facility and Provider
+        // navigation are both null here, exactly like the object CreateAsync passes in.
+        var referral = BuildReferral();
+        var provider = BuildProvider();
+
+        var service = new ReferralEmailService(
+            notifications.Object,
+            producer.Object,
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ReferralToken:Secret"] = TestSecret,
+                    ["AppBaseUrl"] = TestBaseUrl,
+                })
+                .Build(),
+            new Mock<ITenantServiceClient>().Object,
+            new Mock<ITenantSubdomainCache>().Object,
+            NullLogger<ReferralEmailService>.Instance);
+
+        await service.SendNewReferralNotificationAsync(referral, provider, CancellationToken.None);
+
+        Assert.NotNull(providerHtmlBody);
+        Assert.Contains("123 Main St", providerHtmlBody);
+        Assert.Contains("Las Vegas", providerHtmlBody);
+    }
+
+    [Fact]
     public async Task SendCommentNotificationAsync_MentionsAttachmentsWithoutDirectFileUrls()
     {
         var notifications = new Mock<INotificationRepository>();

@@ -5,6 +5,7 @@ import { useBrowserTimezone } from '@/lib/use-timezone';
 import { StatusBadge, UrgencyBadge } from './status-badge';
 import { formatPhoneDisplay } from '@/lib/phone';
 import { formatDateOnly } from '@/lib/format-date';
+import { formatReferralLocation } from '@/lib/referral-location';
 
 interface ReferralDetailPanelProps {
   referral:    ReferralDetail;
@@ -80,6 +81,7 @@ export function ReferralDetailPanel({ referral, hideHeader = false, timezone }: 
         {/* Referral */}
         <Section title="Referral">
           <Field label="Provider"            value={referral.providerName} />
+          <Field label="Provider Location"   value={formatReferralLocation(referral)} />
           <Field label="Requested service"  value={referral.requestedService} />
           <Field label="Urgency"            value={<UrgencyBadge urgency={referral.urgency} />} />
           <Field label="Date of accident"   value={referral.dateOfAccident ? formatDateOnlyField(referral.dateOfAccident) : undefined} />

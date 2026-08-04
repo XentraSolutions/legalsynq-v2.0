@@ -57,6 +57,7 @@ public class ReferralThreadService : IReferralThreadService
 
         var providerName = BuildProviderName(referral);
         var referrerFirmName = await ResolveReferrerFirmNameAsync(referral, ct);
+        var location = ReferralLocationResolver.Resolve(referral);
         return PublicReferralAccessResult<PublicReferralThreadResponse>.Success(new PublicReferralThreadResponse
         {
             ReferralId = referral.Id,
@@ -80,10 +81,11 @@ public class ReferralThreadService : IReferralThreadService
             ProviderLastName = referral.Provider?.LastName,
             ProviderEmail = referral.Provider?.Email ?? string.Empty,
             ProviderPhone = referral.Provider?.Phone ?? string.Empty,
-            ProviderAddressLine1 = referral.Provider?.AddressLine1 ?? string.Empty,
-            ProviderCity = referral.Provider?.City ?? string.Empty,
-            ProviderState = referral.Provider?.State ?? string.Empty,
-            ProviderPostalCode = referral.Provider?.PostalCode ?? string.Empty,
+            FacilityName = location.FacilityName,
+            LocationAddressLine1 = location.AddressLine1,
+            LocationCity = location.City,
+            LocationState = location.State,
+            LocationPostalCode = location.PostalCode,
             ReferrerFirmName = referrerFirmName,
             ReferrerPhone = referral.ReferrerPhone,
             ReferrerName = referral.ReferrerName,

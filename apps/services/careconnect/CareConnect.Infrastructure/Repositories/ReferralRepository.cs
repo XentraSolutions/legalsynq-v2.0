@@ -172,6 +172,7 @@ public class ReferralRepository : IReferralRepository
             .Skip(skip)
             .Take(query.PageSize)
             .Include(r => r.Provider)
+            .Include(r => r.Facility)
             .ToListAsync(ct);
 
         return (items, totalCount);
@@ -208,6 +209,7 @@ public class ReferralRepository : IReferralRepository
             .AsNoTracking()
             .Where(r => r.TenantId == tenantId && r.Id == id)
             .Include(r => r.Provider)
+            .Include(r => r.Facility)
             .FirstOrDefaultAsync(ct);
     }
 
@@ -217,6 +219,7 @@ public class ReferralRepository : IReferralRepository
             .AsNoTracking()
             .Where(r => r.Id == id)
             .Include(r => r.Provider)
+            .Include(r => r.Facility)
             .FirstOrDefaultAsync(ct);
     }
 
