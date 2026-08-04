@@ -17,6 +17,7 @@ export function LienListSection<TLien>({
   totalBilling,
   onAddMedicalLien,
   onFilterClick,
+  onRowClick,
   activeFilterCount = 0,
 }: {
   search: string;
@@ -30,6 +31,7 @@ export function LienListSection<TLien>({
   totalBilling: number;
   onAddMedicalLien: () => void;
   onFilterClick?: () => void;
+  onRowClick?: (id: number) => void;
   activeFilterCount?: number;
 }) {
   return (
@@ -82,6 +84,7 @@ export function LienListSection<TLien>({
             columns={columns}
             data={paginatedLiens}
             getRowId={(l: any) => l.id}
+            onRowClick={(l: any) => l.id && onRowClick?.(l.id)}
             enablePagination={false}
             footerCells={[
               {
