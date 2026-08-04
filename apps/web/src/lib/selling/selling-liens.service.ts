@@ -2,6 +2,8 @@ import { liensApi } from "./selling-liens.api";
 import {
   sellingLookupsApi,
   type SellingLookupItem,
+  type SellingFundingCompanyContactItem,
+  type SellingFacilityItem,
   type SellingMedicalCodeLookupItem,
 } from "./lookup.api";
 import { mapLienItem, mapOfferToItem, mapPagination } from "./liens.mapper";
@@ -26,7 +28,11 @@ import type {
   SubmitSellingLienRequest,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
-import { DraftLienParams, LienInfoParams } from "../liens/liens.types";
+import {
+  CreateLienParams,
+  CreateLienResult,
+  LienInfoParams,
+} from "../liens/liens.types";
 import { LienDetailsResult } from "@/types/lien-selling";
 
 export interface LienListResult {
@@ -95,8 +101,8 @@ export const liensService = {
     return data;
   },
 
-  async createLienDraft(request: DraftLienParams): Promise<any> {
-    const { data } = await liensApi.createLienDraft(request);
+  async createLien(request: CreateLienParams): Promise<CreateLienResult> {
+    const { data } = await liensApi.createLien(request);
     return data;
   },
 
@@ -179,7 +185,7 @@ export const liensService = {
 
   async getFundingCompanyContacts(
     fundingCompanyId: string,
-  ): Promise<SellingLookupItem[]> {
+  ): Promise<SellingFundingCompanyContactItem[]> {
     const { data } =
       await sellingLookupsApi.fundingCompanyContacts(fundingCompanyId);
     return data.items;
@@ -192,7 +198,7 @@ export const liensService = {
     return data.data;
   },
 
-  async getFacilities(): Promise<SellingLookupItem[]> {
+  async getFacilities(): Promise<SellingFacilityItem[]> {
     const { data } = await sellingLookupsApi.facilities();
     return data.items;
   },
