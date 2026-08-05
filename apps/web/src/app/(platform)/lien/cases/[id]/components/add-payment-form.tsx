@@ -96,7 +96,7 @@ export function AddPaymentForm({
   const PAYMENT_METHOD_CHECK = "Check";
 
   // TEMP: hardcoded until API endpoint is ready
-  const TEMP_SETTLEMENT_TYPES: LookupData[] = [
+  const TEMP_SETTLEMENT_STATUSES: LookupData[] = [
     {
       id: "full_payment",
       name: "Full Payment",
@@ -140,7 +140,7 @@ export function AddPaymentForm({
   ];
 
   // TEMP: hardcoded until API endpoint is ready
-  const TEMP_SETTLEMENT_STATUSES: LookupData[] = [
+  const TEMP_SETTLEMENT_TYPES: LookupData[] = [
     {
       id: "by_attorney",
       name: "By Attorney",
