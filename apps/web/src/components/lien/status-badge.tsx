@@ -1,4 +1,5 @@
 //prettier-ignore
+//prettier-ignore
 interface StatusBadgeProps {
   status: string;
   label?: string;
@@ -11,6 +12,7 @@ const STATUS_STYLES: Record<string, string> = {
   Sold:                  'bg-[#dbf6e9]   text-[#10c469]   border-green-200',
   Withdrawn:             'bg-red-50      text-red-600     border-red-200',
   PreDemand:             'bg-[#dbf6e9]   text-[#10c469]   border-green-200',
+  "Pre-Demand":           'bg-[#dbf6e9]   text-[#10c469]   border-green-200',
   DemandSent:            'bg-indigo-50   text-indigo-700  border-indigo-200',
   InNegotiation:         'bg-purple-50   text-purple-700  border-purple-200',
   CaseSettled:           'bg-emerald-50  text-emerald-700 border-emerald-200',

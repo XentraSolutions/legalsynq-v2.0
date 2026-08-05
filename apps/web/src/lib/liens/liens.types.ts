@@ -259,9 +259,20 @@ export interface PaginationMeta {
   totalPages: number;
 }
 
-export interface DraftLienParams {
+// Maps to CreateSellingLienRequest / the anonymous response object in
+// SellingV2Endpoints.CreateLien (apps/services/liens/Liens.Api/Endpoints/
+// SellingV2Endpoints.cs) — undocumented in any OpenAPI spec, so this is the
+// source of truth for the contract. sellerStatus must be "Pending" or
+// "Internal" (NormalizeIntakeStatus rejects anything else, e.g. "Sold" or
+// "Draft") or the API 400s.
+export interface CreateLienParams {
   sellerStatus: string;
-  source: string;
+  source?: string;
+}
+export interface CreateLienResult {
+  lienId: string;
+  lienNumber: string;
+  sellerStatus: string;
 }
 export interface LienInfoParams {
   sellerStatus: string;

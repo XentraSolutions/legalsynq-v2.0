@@ -21,12 +21,18 @@ interface LienRowActionsMenuProps {
 const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
   "prepare-sale": { label: "Sell Lien", icon: "ri-hand-coin-line" },
   "confirm-sale": { label: "Continue Sale", icon: "ri-send-plane-line" },
+  keep: { label: "Keep", icon: "ri-inbox-archive-line" },
   "withdraw-sale": {
     label: "Withdraw from Sale",
     icon: "ri-arrow-go-back-line",
   },
   archive: { label: "Archive", icon: "ri-archive-line" },
 };
+
+// The liens list endpoint doesn't populate `availableActions` (only the
+// single-lien detail endpoint does), so pending/internal rows fall back to
+// this static Keep/Sell/Archive set to mirror what the details view offers.
+const PENDING_FALLBACK_ACTIONS = ["prepare-sale", "keep", "archive"];
 
 export function LienRowActionsMenu({
   lienId,
@@ -42,7 +48,7 @@ export function LienRowActionsMenu({
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDecisionModal, setShowDecisionModal] = useState(autoOpenDecision);
   const [confirmAction, setConfirmAction] = useState<
-    "withdraw-sale" | "archive" | null
+    "withdraw-sale" | "archive" | "keep" | null
   >(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [keepLoading, setKeepLoading] = useState(false);
@@ -59,7 +65,14 @@ export function LienRowActionsMenu({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [menuOpen]);
 
-  if (availableActions.length === 0) return null;
+  const status = lien?.sellerStatus ?? lien?.status;
+  const resolvedActions =
+    availableActions.length === 0 &&
+    (status === "Pending" || status === "Internal")
+      ? PENDING_FALLBACK_ACTIONS
+      : availableActions;
+
+  if (resolvedActions.length === 0) return null;
 
   const handleAction = (action: string) => {
     setMenuOpen(false);
@@ -71,7 +84,7 @@ export function LienRowActionsMenu({
       router.push(`/selling/portfolio/${lienId}/sell`);
       return;
     }
-    if (action === "withdraw-sale" || action === "archive") {
+    if (action === "keep" || action === "withdraw-sale" || action === "archive") {
       setConfirmAction(action);
       return;
     }
@@ -102,11 +115,19 @@ export function LienRowActionsMenu({
       if (confirmAction === "withdraw-sale") {
         await liensService.withdrawSale(lienId);
         showToast("Lien withdrawn from sale.", "success");
-      } else {
+      } else if (confirmAction === "archive") {
         await liensService.archiveLien(lienId);
         showToast("Lien archived.", "success");
+      } else {
+        await liensService.submitLien(lienId, {
+          ...lien,
+          sellerStatus: "Internal",
+          listingVisibility: "Private",
+        });
+        showToast("Lien kept as internal asset.", "success");
       }
       setConfirmAction(null);
+      setShowDecisionModal(false);
       onActionComplete();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Action failed", "error");
@@ -136,7 +157,7 @@ export function LienRowActionsMenu({
         <div
           className={`absolute ${align === "right" ? "right-0" : "left-0"} mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden divide-y divide-gray-100`}
         >
-          {availableActions.map((action) => {
+          {resolvedActions.map((action) => {
             const meta = ACTION_LABELS[action];
             if (!meta) return null;
             return (
@@ -194,17 +215,25 @@ export function LienRowActionsMenu({
         title={
           confirmAction === "withdraw-sale"
             ? "Withdraw From Sale?"
-            : "Archive This Lien?"
+            : confirmAction === "archive"
+              ? "Archive This Lien?"
+              : "Keep as Internal Asset?"
         }
         description={
           confirmAction === "withdraw-sale"
             ? "This lien will no longer be visible to the buyer and will need to be re-submitted for sale."
-            : "Archived liens are hidden from the active portfolio. This can't be undone through this workflow."
+            : confirmAction === "archive"
+              ? "Archived liens are hidden from the active portfolio. This can't be undone through this workflow."
+              : "This lien will be kept as a private internal asset instead of being listed for sale."
         }
         confirmLabel={
-          confirmAction === "withdraw-sale" ? "Withdraw" : "Archive"
+          confirmAction === "withdraw-sale"
+            ? "Withdraw"
+            : confirmAction === "archive"
+              ? "Archive"
+              : "Keep"
         }
-        confirmVariant="danger"
+        confirmVariant={confirmAction === "keep" ? "primary" : "danger"}
       />
     </div>
   );

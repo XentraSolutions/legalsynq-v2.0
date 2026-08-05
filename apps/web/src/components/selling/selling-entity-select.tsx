@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { BaseSelect, type BaseSelectOption } from "@/components/ui/base-select";
 import { AddContactModal } from "@/components/lien/add-contact-modal";
 import type { ContactDetail } from "@/lib/contacts";
@@ -146,11 +147,21 @@ export function SellingEntitySelect({
           contactSubtype={createContactSubtype}
           lawFirmId={entityType === "CaseManager" ? lawFirmId : undefined}
           facilityId={entityType === "FundingCompanyContact" ? fundingCompanyId : undefined}
-          onSaved={(created: ContactDetail) => {
-            queryClient.invalidateQueries({
-              queryKey: invalidationKey(entityType, fundingCompanyId, lawFirmId),
-            });
-            onChange(created.id, { value: created.id, label: created.displayName });
+          onSaved={async (created: ContactDetail) => {
+            const queryKey = invalidationKey(entityType, fundingCompanyId, lawFirmId);
+            await queryClient.invalidateQueries({ queryKey });
+
+            const refreshed = queryClient.getQueryData<{ id: string }[]>(queryKey);
+            const stillListed = refreshed?.some((item) => item.id === created.id);
+
+            if (stillListed ?? true) {
+              onChange(created.id, { value: created.id, label: created.displayName });
+            } else {
+              toast.error("Couldn't select the new entry", {
+                description:
+                  "It was created but didn't come back in the refreshed list. Please select it manually.",
+              });
+            }
             setShowCreate(false);
           }}
         />
