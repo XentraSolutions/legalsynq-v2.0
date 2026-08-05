@@ -159,4 +159,27 @@ export const lookupService = {
     const { data } = await lookupApi.getSettlementType();
     return { items: data };
   },
+
+  async getTasks(): Promise<{
+    tasks: any;
+    completedTasks: number;
+    inProgressTasks: number;
+    inReviewTasks: number;
+    totalTasks: number;
+    upcomingTasks: number;
+  }> {
+    const { data } = await lookupApi.getTasks();
+    return {
+      tasks: data.data.tasks.map((prev: any) => ({
+        ...prev,
+        id: prev.taskId,
+        status: prev.status.toUpperCase(),
+      })),
+      completedTasks: data.data.completedTasks,
+      inProgressTasks: data.data.inProgressTasks,
+      inReviewTasks: data.data.inReviewTasks,
+      totalTasks: data.data.totalTasks,
+      upcomingTasks: data.data.upcomingTasks,
+    };
+  },
 };

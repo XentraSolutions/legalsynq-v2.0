@@ -1,4 +1,4 @@
-import { apiClient } from '@/lib/api-client';
+import { apiClient } from "@/lib/api-client";
 import type {
   TaskDto,
   PaginatedTasksDto,
@@ -7,19 +7,21 @@ import type {
   AssignTaskRequest,
   UpdateTaskStatusRequest,
   TasksQuery,
-} from './lien-tasks.types';
+} from "./lien-tasks.types";
 
 function toQs(params: Record<string, unknown>): string {
   const pairs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
-  return pairs.length ? `?${pairs.join('&')}` : '';
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(
+      ([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`,
+    );
+  return pairs.length ? `?${pairs.join("&")}` : "";
 }
 
 export const lienTasksApi = {
   list(query: TasksQuery = {}) {
-    return apiClient.get<PaginatedTasksDto>(
-      `/lien/api/liens/tasks${toQs(query as Record<string, unknown>)}`,
+    return apiClient.get<{ data: TaskDto[] }>(
+      `/lien/api/liens/cases/get-task/${query.caseId}`,
     );
   },
 
@@ -28,19 +30,35 @@ export const lienTasksApi = {
   },
 
   create(request: CreateTaskRequest) {
-    return apiClient.post<TaskDto>('/lien/api/liens/tasks', request);
+    return apiClient.post<TaskDto>(
+      "/lien/api/liens/cases/task/create",
+      request,
+    );
   },
 
-  update(id: string, request: UpdateTaskRequest) {
-    return apiClient.put<TaskDto>(`/lien/api/liens/tasks/${id}`, request);
+  update(request: UpdateTaskRequest) {
+    return apiClient.patch<TaskDto>(
+      "/lien/api/liens/cases/task/update",
+      request,
+    );
+  },
+
+  delete(id: string) {
+    return apiClient.delete<TaskDto>(`/lien/api/liens/cases/task/delete/${id}`);
   },
 
   assign(id: string, request: AssignTaskRequest) {
-    return apiClient.post<TaskDto>(`/lien/api/liens/tasks/${id}/assign`, request);
+    return apiClient.post<TaskDto>(
+      `/lien/api/liens/tasks/${id}/assign`,
+      request,
+    );
   },
 
   updateStatus(id: string, request: UpdateTaskStatusRequest) {
-    return apiClient.post<TaskDto>(`/lien/api/liens/tasks/${id}/status`, request);
+    return apiClient.post<TaskDto>(
+      `/lien/api/liens/tasks/${id}/status`,
+      request,
+    );
   },
 
   complete(id: string) {

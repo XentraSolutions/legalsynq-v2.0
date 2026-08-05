@@ -12,12 +12,14 @@ import type {
   CasesQuery,
 } from "@/lib/cases/cases.types";
 import { useSession } from "@/hooks/use-session";
-import type {
-  TaskDto,
-  CreateTaskRequest,
-  UpdateTaskRequest,
-  TaskPriority,
-  TaskGovernanceSettings,
+import {
+  type TaskDto,
+  type CreateTaskRequest,
+  type UpdateTaskRequest,
+  type TaskPriority,
+  type TaskGovernanceSettings,
+  type TaskStatus,
+  TASK_STATUS_LABELS,
 } from "@/lib/liens/lien-tasks.types";
 import type {
   TaskTemplateDto,
@@ -48,10 +50,10 @@ const PRIORITIES: {
   color: string;
 }[] = [
   {
-    value: "LOW",
-    label: "Low",
-    icon: "ri-arrow-down-line",
-    color: "text-gray-500",
+    value: "HIGH",
+    label: "High",
+    icon: "ri-arrow-up-line",
+    color: "text-orange-500",
   },
   {
     value: "MEDIUM",
@@ -60,16 +62,10 @@ const PRIORITIES: {
     color: "text-blue-500",
   },
   {
-    value: "HIGH",
-    label: "High",
-    icon: "ri-arrow-up-line",
-    color: "text-orange-500",
-  },
-  {
-    value: "URGENT",
-    label: "Urgent",
-    icon: "ri-alarm-warning-line",
-    color: "text-red-600",
+    value: "LOW",
+    label: "Low",
+    icon: "ri-arrow-down-line",
+    color: "text-gray-500",
   },
 ];
 
@@ -116,6 +112,9 @@ export function CreateEditTaskForm({
   const [priority, setPriority] = useState<TaskPriority>(
     editTask?.priority ?? "MEDIUM",
   );
+  const [status, setStatus] = useState<TaskStatus>(
+    editTask?.status ?? "UPCOMING",
+  );
   const [dueDate, setDueDate] = useState(
     editTask?.dueDate ? editTask.dueDate.split("T")[0] : "",
   );
@@ -128,8 +127,8 @@ export function CreateEditTaskForm({
     null,
   );
   const [users, setUsers] = useState<TenantUser[]>([]);
-  const [assignedUserId, setAssignedUserId] = useState<string>(
-    editTask?.assignedUserId ?? "",
+  const [assignedTo, setAssignedTo] = useState<string>(
+    editTask?.assignedTo ?? "",
   );
 
   // ── Case autocomplete state ───────────────────────────────────────────────
@@ -156,7 +155,7 @@ export function CreateEditTaskForm({
     setDueDate("");
     setError(null);
     setFieldErrors({});
-    setAssignedUserId("");
+    setAssignedTo("");
     setCaseId(prefillCaseId ?? "");
     setCaseDisplay("");
     setCaseQuery("");
@@ -290,8 +289,8 @@ export function CreateEditTaskForm({
     }
 
     const clientErrors: Record<string, string> = {};
-    if (requireAssignee && !assignedUserId)
-      clientErrors.assignedUserId = "Task assignee is required.";
+    if (requireAssignee && !assignedTo)
+      clientErrors.assignedTo = "Task assignee is required.";
     if (Object.keys(clientErrors).length > 0) {
       setFieldErrors(clientErrors);
       return;
@@ -304,28 +303,25 @@ export function CreateEditTaskForm({
       let saved: TaskDto;
       if (isEdit) {
         const req: UpdateTaskRequest = {
-          title: title.trim(),
-          description: description.trim() || undefined,
-          priority,
+          taskId: editTask?.id,
           caseId: editTask?.caseId,
-          lienIds: editTask?.linkedLiens.map((l) => l.lienId) ?? [],
+          title: title.trim(),
           dueDate: dueDate || undefined,
-          workflowStageId: editTask?.workflowStageId,
+          priority,
+          status: status,
+          assignedTo: assignedTo || undefined,
+          description: description.trim() || undefined,
         };
-        saved = await lienTasksService.updateTask(editTask!.id, req);
+        saved = await lienTasksService.updateTask(req);
       } else {
         const req: CreateTaskRequest = {
-          title: title.trim(),
-          description: description.trim() || undefined,
-          priority,
-          assignedUserId: assignedUserId || undefined,
           caseId: prefillCaseId ?? (caseId.trim() || undefined),
-          lienIds: prefillLienId ? [prefillLienId] : [],
+          title: title.trim(),
           dueDate: dueDate || undefined,
-          workflowStageId:
-            selectedTemplate?.applicableWorkflowStageId ??
-            prefillWorkflowStageId,
-          templateId: selectedTemplate?.id,
+          priority,
+          status: status,
+          assignedTo: assignedTo || undefined,
+          description: description.trim() || undefined,
         };
         saved = await lienTasksService.createTask(req);
       }
@@ -561,40 +557,62 @@ export function CreateEditTaskForm({
                 </div>
               </div>
 
-              {/* Assignee picker */}
-              {!isEdit && (
+              {/* Status + Assignee pick */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Assigned To{" "}
-                    {requireAssignee && <span className="text-red-500">*</span>}
+                    Status
                   </label>
                   <select
-                    value={assignedUserId}
-                    onChange={(e) => {
-                      setAssignedUserId(e.target.value);
-                      if (fieldErrors.assignedUserId)
-                        setFieldErrors((p) => ({ ...p, assignedUserId: "" }));
-                    }}
-                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ${
-                      fieldErrors.assignedUserId
-                        ? "border-red-400"
-                        : "border-gray-300"
-                    }`}
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as TaskStatus)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                   >
-                    <option value="">-- Unassigned --</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.firstName} {u.lastName} ({u.email})
+                    {Object.values(TASK_STATUS_LABELS).map((p) => (
+                      <option key={p} value={p}>
+                        {p}
                       </option>
                     ))}
                   </select>
-                  {fieldErrors.assignedUserId && (
-                    <p className="mt-1 text-xs text-red-600">
-                      {fieldErrors.assignedUserId}
-                    </p>
-                  )}
                 </div>
-              )}
+
+                {/* Assignee picker */}
+                {!isEdit && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Assigned To{" "}
+                      {requireAssignee && (
+                        <span className="text-red-500">*</span>
+                      )}
+                    </label>
+                    <select
+                      value={assignedTo}
+                      onChange={(e) => {
+                        setAssignedTo(e.target.value);
+                        if (fieldErrors.assignedTo)
+                          setFieldErrors((p) => ({ ...p, assignedTo: "" }));
+                      }}
+                      className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ${
+                        fieldErrors.assignedTo
+                          ? "border-red-400"
+                          : "border-gray-300"
+                      }`}
+                    >
+                      <option value="">-- Unassigned --</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.firstName} {u.lastName} ({u.email})
+                        </option>
+                      ))}
+                    </select>
+                    {fieldErrors.assignedTo && (
+                      <p className="mt-1 text-xs text-red-600">
+                        {fieldErrors.assignedTo}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Reporter — read-only, auto-filled from session */}
               {!isEdit && (
