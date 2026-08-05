@@ -81,7 +81,10 @@ the payment-details response displays supported types as `By Attorney`, `By Medi
 `By Funding Company`, or `Other`.
 Other settlement values do not change the lien. In the legacy payment-details response, a zero saved payment
 amount uses the linked amount-to-settle as `checkAmount` instead of displaying
-`0.00`.
+`0.00`. New payments that omit `paymentNumber` receive the next positive case payment number.
+Historical zero-number rows receive deterministic non-zero display numbers. The payment-details
+`amountToSettle` uses the recorded payment allocation before falling back to a linked settlement or
+the lien's current balance, so closing a lien does not replace its payment-time amount with zero.
 
 List filters accept both canonical persisted statuses and the legacy/UI lifecycle groups: `Open` expands to all active lien states, `Closed` expands to `Settled`, and `Rejected` expands to `Declined`, `Withdrawn`, and `Cancelled`. Historical rows literally persisted as `Rejected` remain hidden by default. Status/date-only lien-list filters are counted and paged in the database before per-lien detail and servicing enrichment, so broad status selections do not enrich the entire matching result set. The V3 case filter accepts comma-separated status, law-firm, case-manager, and accident-type selections. Case status filtering uses the saved legacy status label to distinguish `New`, `Processing`, and `Pre-Demand` cases that share the canonical `PreDemand` state, and to distinguish `Litigation` from `Negotiations` cases that share `InNegotiation`. The complete SL-CORE import preserves those labels, and the guarded relationship backfill repairs them for already-imported cases that have not since changed status. Law-firm values match the contact ID saved in case metadata and continue to accept legacy organization IDs.
 

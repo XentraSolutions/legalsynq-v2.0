@@ -187,15 +187,51 @@ public class SettlementService : ISettlementService
                 tenantId, request.LienId, userId, requestedLienStatus!, ct);
         }
 
+        var paymentNumber = request.PaymentNumber > 0
+            ? request.PaymentNumber
+            : await GetNextPaymentNumberAsync(tenantId, request.CaseId, ct);
         var entity = SettlementPaymentDetail.Create(
             tenantId, request.CaseId, request.LienId,
-            request.PaymentNumber, request.Amount, userId,
+            paymentNumber, request.Amount, userId,
             request.PaymentDate,
             request.Payee,
             FirstNonEmpty(request.CheckNumber, request.ReferenceNumber),
             BuildPaymentNote(request, settlementType, settlementStatus));
         await _paymentRepo.AddAsync(entity, ct);
         return MapPayment(entity);
+    }
+
+    private async Task<int> GetNextPaymentNumberAsync(
+        Guid tenantId,
+        Guid caseId,
+        CancellationToken ct)
+    {
+        var existing = await _paymentRepo.GetByCaseIdAsync(tenantId, caseId, ct);
+        var usedNumbers = existing
+            .Where(payment => payment.PaymentNumber > 0)
+            .Select(payment => payment.PaymentNumber)
+            .ToHashSet();
+        var nextFallback = 1;
+
+        foreach (var _ in existing
+                     .Where(payment => payment.PaymentNumber <= 0)
+                     .OrderBy(payment => payment.CreatedAtUtc)
+                     .ThenBy(payment => payment.Id))
+        {
+            while (usedNumbers.Contains(nextFallback))
+                nextFallback++;
+
+            usedNumbers.Add(nextFallback++);
+        }
+
+        if (usedNumbers.Count == 0)
+            return 1;
+
+        var next = (long)usedNumbers.Max() + 1;
+        if (next > int.MaxValue)
+            throw new InvalidOperationException($"No payment numbers remain available for case '{caseId}'.");
+
+        return (int)next;
     }
 
     public async Task DeletePaymentAsync(
