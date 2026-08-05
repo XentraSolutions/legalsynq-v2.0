@@ -266,6 +266,14 @@ public class SellingBulkImportEndpointTests : IClassFixture<LiensApiFactory>, IA
         var liens = db.Liens.Where(lien => lien.CaseId == importedCase.Id).ToList();
         liens.Should().HaveCount(3);
         liens.Select(lien => lien.CaseId).Distinct().Should().ContainSingle();
+        liens.Select(lien => lien.LienNumber).Should().OnlyHaveUniqueItems();
+        liens.Should().OnlyContain(lien => lien.LienNumber.StartsWith("SL-") && lien.LienNumber.Length == 35);
+
+        var importedLienIds = liens.Select(lien => lien.Id).ToHashSet();
+        var servicingItems = db.ServicingItems.Where(item => item.LienId.HasValue && importedLienIds.Contains(item.LienId.Value)).ToList();
+        AssertUniqueImportTaskNumbers(servicingItems, "SellingMedicalPricing", 36);
+        AssertUniqueImportTaskNumbers(servicingItems, "LegacyMedicalCode", 36);
+        AssertUniqueImportTaskNumbers(servicingItems, "LegacyMedicalFacilityInfo", 37);
     }
 
     [Fact]
@@ -302,4 +310,15 @@ public class SellingBulkImportEndpointTests : IClassFixture<LiensApiFactory>, IA
 
     private static void SetId<T>(T entity, Guid id) where T : class
         => typeof(T).GetProperty("Id", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)!.SetValue(entity, id);
+
+    private static void AssertUniqueImportTaskNumbers(
+        IReadOnlyCollection<ServicingItem> items,
+        string taskType,
+        int expectedLength)
+    {
+        var matching = items.Where(item => item.TaskType == taskType).ToList();
+        matching.Should().HaveCount(3);
+        matching.Select(item => item.TaskNumber).Should().OnlyHaveUniqueItems();
+        matching.Should().OnlyContain(item => item.TaskNumber.Length == expectedLength);
+    }
 }

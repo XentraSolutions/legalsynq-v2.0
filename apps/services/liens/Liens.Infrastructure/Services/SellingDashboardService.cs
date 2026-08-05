@@ -75,13 +75,27 @@ public sealed class SellingDashboardService : ISellingDashboardService
             .Where(row => MatchesTab(row.Status, normalizedQuery.Tab))
             .ToList();
 
-        var highestBids = await LoadHighestBidsAsync(tenantId, sellerOrgId, tabRows, ct);
-        var sorted = Sort(tabRows, normalizedQuery.SortBy, normalizedQuery.SortDirection, highestBids);
-        var items = sorted
+        IReadOnlyDictionary<Guid, decimal> highestBids;
+        List<DashboardRow> sorted;
+        if (string.Equals(normalizedQuery.SortBy, "highestbid", StringComparison.Ordinal))
+        {
+            highestBids = await LoadHighestBidsAsync(tenantId, sellerOrgId, tabRows, ct);
+            sorted = Sort(tabRows, normalizedQuery.SortBy, normalizedQuery.SortDirection, highestBids);
+        }
+        else
+        {
+            highestBids = new Dictionary<Guid, decimal>();
+            sorted = Sort(tabRows, normalizedQuery.SortBy, normalizedQuery.SortDirection, highestBids);
+        }
+
+        var pageRows = sorted
             .Skip((normalizedQuery.Page - 1) * normalizedQuery.PageSize)
             .Take(normalizedQuery.PageSize)
-            .Select(row => Map(row, highestBids))
             .ToList();
+        if (!string.Equals(normalizedQuery.SortBy, "highestbid", StringComparison.Ordinal))
+            highestBids = await LoadHighestBidsAsync(tenantId, sellerOrgId, pageRows, ct);
+
+        var items = pageRows.Select(row => Map(row, highestBids)).ToList();
 
         return new SellingDashboardResponse
         {
@@ -158,14 +172,26 @@ public sealed class SellingDashboardService : ISellingDashboardService
         if (lienIds.Count == 0)
             return new Dictionary<Guid, decimal>();
 
-        var offers = await _db.LienOffers.AsNoTracking()
-            .Where(offer => offer.TenantId == tenantId && offer.SellerOrgId == sellerOrgId && lienIds.Contains(offer.LienId))
-            .ToListAsync(ct);
-
-        var offerBids = offers
-            .Where(IsEligibleOffer)
+        var nowUtc = DateTime.UtcNow;
+        var offerBids = await _db.LienOffers
+            .AsNoTracking()
+            .Where(offer =>
+                offer.TenantId == tenantId &&
+                offer.SellerOrgId == sellerOrgId &&
+                lienIds.Contains(offer.LienId) &&
+                offer.Status != OfferStatus.Rejected &&
+                offer.Status != OfferStatus.Withdrawn &&
+                offer.Status != OfferStatus.Expired &&
+                !(offer.Status == OfferStatus.Pending &&
+                  offer.ExpiresAtUtc.HasValue &&
+                  offer.ExpiresAtUtc.Value <= nowUtc))
             .GroupBy(offer => offer.LienId)
-            .ToDictionary(group => group.Key, group => group.Max(offer => offer.OfferAmount));
+            .Select(group => new
+            {
+                LienId = group.Key,
+                Amount = group.Max(offer => offer.OfferAmount),
+            })
+            .ToDictionaryAsync(item => item.LienId, item => item.Amount, ct);
 
         return rows.ToDictionary(
             row => row.Lien.Id,
@@ -247,19 +273,41 @@ public sealed class SellingDashboardService : ISellingDashboardService
 
     private static SellingDashboardSummary BuildSummary(IReadOnlyCollection<DashboardRow> rows)
     {
-        var pending = rows.Where(row => row.Status == SellingLienStatus.Pending).ToList();
-        var internalRows = rows.Where(row => row.Status == SellingLienStatus.Internal).ToList();
-        var sold = rows.Where(row => row.Status == SellingLienStatus.Sold).ToList();
+        var totalPending = 0m;
+        var totalInternal = 0m;
+        var totalSold = 0m;
+        var pendingCount = 0;
+        var internalCount = 0;
+        var soldCount = 0;
+
+        foreach (var row in rows)
+        {
+            switch (row.Status)
+            {
+                case SellingLienStatus.Pending:
+                    totalPending += row.Lien.OriginalAmount;
+                    pendingCount++;
+                    break;
+                case SellingLienStatus.Internal:
+                    totalInternal += row.Lien.OriginalAmount;
+                    internalCount++;
+                    break;
+                case SellingLienStatus.Sold:
+                    totalSold += row.Lien.OriginalAmount;
+                    soldCount++;
+                    break;
+            }
+        }
 
         return new SellingDashboardSummary
         {
-            TotalPortfolioValue = rows.Sum(row => row.Lien.OriginalAmount),
-            TotalPending = pending.Sum(row => row.Lien.OriginalAmount),
-            TotalInternal = internalRows.Sum(row => row.Lien.OriginalAmount),
-            TotalSold = sold.Sum(row => row.Lien.PurchasePrice ?? row.Lien.OriginalAmount),
-            PendingCount = pending.Count,
-            InternalCount = internalRows.Count,
-            SoldCount = sold.Count,
+            TotalPortfolioValue = totalPending + totalInternal + totalSold,
+            TotalPending = totalPending,
+            TotalInternal = totalInternal,
+            TotalSold = totalSold,
+            PendingCount = pendingCount,
+            InternalCount = internalCount,
+            SoldCount = soldCount,
         };
     }
 
@@ -382,24 +430,22 @@ public sealed class SellingDashboardService : ISellingDashboardService
     private static string StatusFor(Lien lien)
     {
         if (!string.IsNullOrWhiteSpace(lien.SellerStatus))
-            return lien.SellerStatus;
+        {
+            return string.Equals(lien.SellerStatus, SellingLienStatus.Accepted, StringComparison.Ordinal)
+                ? SellingLienStatus.Sold
+                : lien.SellerStatus;
+        }
 
         return lien.Status switch
         {
             LienStatus.Sold => SellingLienStatus.Sold,
             LienStatus.Declined => SellingLienStatus.Declined,
             LienStatus.Withdrawn => SellingLienStatus.Withdrawn,
-            LienStatus.Accepted => SellingLienStatus.Accepted,
+            LienStatus.Accepted => SellingLienStatus.Sold,
             LienStatus.Offered or LienStatus.UnderReview => SellingLienStatus.SubmittedForSale,
             _ => SellingLienStatus.Pending,
         };
     }
-
-    private static bool IsEligibleOffer(LienOffer offer)
-        => offer.Status != OfferStatus.Rejected
-           && offer.Status != OfferStatus.Withdrawn
-           && offer.Status != OfferStatus.Expired
-           && !offer.IsExpired;
 
     private static string? ResolveContactLabel(
         Guid? id,

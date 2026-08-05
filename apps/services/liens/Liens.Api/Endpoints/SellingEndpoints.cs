@@ -826,18 +826,14 @@ public static class SellingEndpoints
         IReadOnlyCollection<Guid> lienIds,
         CancellationToken ct)
     {
-        var liens = new Dictionary<Guid, Lien>();
+        if (lienIds.Count == 0)
+            return [];
 
-        foreach (var lienId in lienIds)
-        {
-            var lien = await db.Liens
-                .AsNoTracking()
-                .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == lienId, ct);
-            if (lien is not null)
-                liens[lien.Id] = lien;
-        }
-
-        return liens;
+        var ids = lienIds.Distinct().ToList();
+        return await db.Liens
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId && ids.Contains(item.Id))
+            .ToDictionaryAsync(item => item.Id, ct);
     }
 
     private static async Task<HashSet<Guid>> ResolveBuyerContactIdsAsync(
@@ -884,32 +880,41 @@ public static class SellingEndpoints
         if (sellerKeys.Length == 0)
             return [];
 
-        var names = new Dictionary<SellerDisplayKey, SellerOrganizationDisplay>();
-        var contactCache = new Dictionary<Guid, List<Contact>>();
-        foreach (var sellerKey in sellerKeys)
+        var sellerOrgIds = sellerKeys.Select(key => key.SellerOrgId).Distinct().ToList();
+        var contacts = await db.Contacts
+            .AsNoTracking()
+            .Where(item =>
+                item.TenantId == tenantId &&
+                item.IsActive &&
+                sellerOrgIds.Contains(item.OrgId))
+            .ToListAsync(ct);
+        var contactsByOrgId = contacts
+            .GroupBy(item => item.OrgId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        using var throttle = new SemaphoreSlim(initialCount: 4);
+        var resolutionTasks = sellerKeys.Select(async sellerKey =>
         {
-            if (!contactCache.TryGetValue(sellerKey.SellerOrgId, out var contacts))
+            await throttle.WaitAsync(ct);
+            try
             {
-                contacts = await db.Contacts
-                    .AsNoTracking()
-                    .Where(item =>
-                        item.TenantId == tenantId &&
-                        item.IsActive &&
-                        item.OrgId == sellerKey.SellerOrgId)
-                    .ToListAsync(ct);
-                contactCache[sellerKey.SellerOrgId] = contacts;
+                var sellerContacts = contactsByOrgId.GetValueOrDefault(sellerKey.SellerOrgId) ?? [];
+                var display = await sellerDisplayResolver.ResolveAsync(
+                    tenantId,
+                    sellerKey.SellerOrgId,
+                    sellerContacts,
+                    sellerUserId: sellerKey.SellerUserId,
+                    fallbackEmail: null,
+                    ct: ct);
+                return new KeyValuePair<SellerDisplayKey, SellerOrganizationDisplay>(sellerKey, display);
             }
+            finally
+            {
+                throttle.Release();
+            }
+        });
 
-            names[sellerKey] = await sellerDisplayResolver.ResolveAsync(
-                tenantId,
-                sellerKey.SellerOrgId,
-                contacts,
-                sellerUserId: sellerKey.SellerUserId,
-                fallbackEmail: null,
-                ct: ct);
-        }
-
-        return names;
+        return (await Task.WhenAll(resolutionTasks)).ToDictionary(pair => pair.Key, pair => pair.Value);
     }
 
     private static async Task<Dictionary<Guid, string>> ResolveProviderNamesAsync(
@@ -918,30 +923,25 @@ public static class SellingEndpoints
         IReadOnlyCollection<BuyerOfferedLienSource> sources,
         CancellationToken ct)
     {
-        var names = new Dictionary<Guid, string>();
         var facilityIds = sources
             .Select(source => source.FacilityId)
             .Where(id => id.HasValue)
             .Select(id => id!.Value)
             .Distinct()
-            .ToArray();
+            .ToList();
 
-        if (facilityIds.Length > 0)
-        {
-            foreach (var facilityId in facilityIds)
-            {
-                var facility = await db.Facilities
-                    .AsNoTracking()
-                    .Where(item => item.TenantId == tenantId && item.Id == facilityId)
-                    .Select(item => new { item.Id, item.Name })
-                    .FirstOrDefaultAsync(ct);
+        if (facilityIds.Count == 0)
+            return [];
 
-                if (!string.IsNullOrWhiteSpace(facility?.Name))
-                    names[facility.Id] = facility.Name.Trim();
-            }
-        }
+        var facilities = await db.Facilities
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId && facilityIds.Contains(item.Id))
+            .Select(item => new { item.Id, item.Name })
+            .ToListAsync(ct);
 
-        return names;
+        return facilities
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+            .ToDictionary(item => item.Id, item => item.Name.Trim());
     }
 
     private static async Task<string?> ResolveProviderNameAsync(

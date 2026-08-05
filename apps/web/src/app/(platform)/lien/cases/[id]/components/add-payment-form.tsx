@@ -5,6 +5,7 @@ import { FormModal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { settlementService } from "@/lib/settlement";
+import { buildSettlementPaymentRequest } from "@/lib/settlement/payment-request";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 import { lookupService } from "@/lib/lookup";
 import type {
@@ -205,8 +206,8 @@ export function AddPaymentForm({
     setTypeError(false);
     setStatusError(false);
     Promise.allSettled([
-      lookupService.getSettlementType(),
       lookupService.getSettlementStatus(),
+      lookupService.getSettlementType(),
       lookupService.getLiensStatus(),
     ]).then(([typeRes, statusRes, lienStatusRes]) => {
       if (typeRes.status === "fulfilled" && typeRes.value.items.length > 0) {
@@ -425,6 +426,7 @@ export function AddPaymentForm({
     !form.checkDate ||
     !form.checkNumber ||
     !form.type ||
+    !form.status ||
     isEditing
       ? false
       : checkedIds.size === 0;
@@ -726,7 +728,7 @@ export function AddPaymentForm({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Settlement Status
+                Settlement Status <span className="text-red-500">*</span>
               </label>
               <Select
                 value={form.status}

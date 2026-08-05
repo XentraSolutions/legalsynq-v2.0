@@ -158,7 +158,7 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task CreatePayment_with_closed_settlement_status_moves_lien_to_closed_list()
+    public async Task CreatePayment_with_closed_lien_status_preserves_settlement_fields_and_moves_lien_to_closed_list()
     {
         Lien lien;
         using (var scope = _factory.Services.CreateScope())
@@ -186,8 +186,9 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
             paymentDate = "2026-08-05",
             paymentMethod = "Check",
             referenceNumber = "123123123",
-            settlementStatus = "Closed",
-            settlementType = "full_payment",
+            lienStatus = "Closed",
+            settlementType = "by_attorney",
+            settlementStatus = "full_payment",
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.Created,
@@ -219,6 +220,114 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         recordedPayment.GetProperty("amount").GetString().Should().Be("0.00");
         recordedPayment.GetProperty("amountToSettle").GetString().Should().Be("1000.00");
         recordedPayment.GetProperty("checkAmount").GetString().Should().Be("1000.00");
+        recordedPayment.GetProperty("lienStatus").GetString().Should().Be("Closed");
+        recordedPayment.GetProperty("lienStatusId").GetString().Should().Be(LienStatus.Settled);
+        recordedPayment.GetProperty("typeId").GetString().Should().Be("by_attorney");
+        recordedPayment.GetProperty("type").GetString().Should().Be("By Attorney");
+        recordedPayment.GetProperty("statusId").GetString().Should().Be("full_payment");
+        recordedPayment.GetProperty("status").GetString().Should().Be("Full Payment");
+    }
+
+    [Fact]
+    public async Task CreatePayment_legacy_closed_settlement_status_still_moves_lien_to_closed_list()
+    {
+        var response = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
+        {
+            amount = 100m,
+            caseId = SeedHelper.CaseId,
+            lienId = SeedHelper.LienId,
+            paymentDate = "2026-08-05",
+            paymentMethod = "Check",
+            referenceNumber = "CHK-LEGACY-CLOSED",
+            settlementStatus = "Closed",
+            settlementType = "full_payment",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedLien = await db.Liens.FindAsync(SeedHelper.LienId);
+        persistedLien!.Status.Should().Be(LienStatus.Settled);
+
+        var detailsResponse = await _client.GetAsync(
+            $"/service/liens/settlement/payment-details/{SeedHelper.CaseId}");
+        var details = await detailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var payment = details!.RootElement.GetProperty("data").EnumerateArray().Single(item =>
+            item.GetProperty("checkNumber").GetString() == "CHK-LEGACY-CLOSED");
+        payment.GetProperty("typeId").GetString().Should().Be("other");
+        payment.GetProperty("type").GetString().Should().Be("Other");
+        payment.GetProperty("statusId").GetString().Should().Be("full_payment");
+        payment.GetProperty("status").GetString().Should().Be("Full Payment");
+    }
+
+    [Theory]
+    [InlineData("by_attorney", "By Attorney")]
+    [InlineData("by_medical_provider", "By Medical Provider")]
+    [InlineData("by_funding_company", "By Funding Company")]
+    [InlineData("other", "Other")]
+    public async Task PaymentDetails_returns_each_supported_settlement_type(
+        string settlementType,
+        string expectedDisplayName)
+    {
+        var checkNumber = $"CHK-TYPE-{settlementType}";
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
+        {
+            caseId = SeedHelper.CaseId,
+            lienId = SeedHelper.LienId,
+            amount = 100m,
+            paymentDate = "2026-08-06",
+            paymentMethod = "Check",
+            referenceNumber = checkNumber,
+            settlementType,
+            settlementStatus = "full_payment",
+            lienStatus = "Active",
+        });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+        var createdPayment = await createResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        createdPayment!.RootElement.GetProperty("settlementTypeId").GetString()
+            .Should().Be(settlementType);
+
+        var detailsResponse = await _client.GetAsync(
+            $"/service/liens/settlement/payment-details/{SeedHelper.CaseId}");
+        var details = await detailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var payment = details!.RootElement.GetProperty("data").EnumerateArray().Single(item =>
+            item.GetProperty("checkNumber").GetString() == checkNumber);
+
+        payment.GetProperty("typeId").GetString().Should().Be(settlementType);
+        payment.GetProperty("type").GetString().Should().Be(expectedDisplayName);
+    }
+
+    [Fact]
+    public async Task CreatePayment_accepts_legacy_type_and_status_aliases()
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
+        {
+            caseId = SeedHelper.CaseId,
+            lienId = SeedHelper.LienId,
+            amount = 100m,
+            paymentDate = "2026-08-06",
+            paymentMethod = "Check",
+            referenceNumber = "CHK-LEGACY-ALIASES",
+            type = "by_medical_provider",
+            status = "full_payment",
+            lienStatus = "Active",
+        });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var detailsResponse = await _client.GetAsync(
+            $"/service/liens/settlement/payment-details/{SeedHelper.CaseId}");
+        var details = await detailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var payment = details!.RootElement.GetProperty("data").EnumerateArray().Single(item =>
+            item.GetProperty("checkNumber").GetString() == "CHK-LEGACY-ALIASES");
+
+        payment.GetProperty("typeId").GetString().Should().Be("by_medical_provider");
+        payment.GetProperty("type").GetString().Should().Be("By Medical Provider");
+        payment.GetProperty("statusId").GetString().Should().Be("full_payment");
+        payment.GetProperty("status").GetString().Should().Be("Full Payment");
     }
 
     [Fact]
@@ -230,9 +339,9 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         {
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
             settlementTypeId = db.LookupValues.Single(x =>
-                x.Category == LookupCategory.SettlementType && x.Code == "Full").Id;
-            settlementStatusId = db.LookupValues.Single(x =>
                 x.Category == LookupCategory.SettlementStatus && x.Code == "Pending").Id;
+            settlementStatusId = db.LookupValues.Single(x =>
+                x.Category == LookupCategory.SettlementType && x.Code == "Full").Id;
         }
 
         var createResponse = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
@@ -262,9 +371,9 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         payment.GetProperty("payor").GetString().Should().Be("Check");
         payment.GetProperty("note").GetString().Should().Be("Payment received from counsel.");
         payment.GetProperty("typeId").GetString().Should().Be(settlementTypeId.ToString());
-        payment.GetProperty("type").GetString().Should().Be("Full Settlement");
+        payment.GetProperty("type").GetString().Should().Be("Pending");
         payment.GetProperty("statusId").GetString().Should().Be(settlementStatusId.ToString());
-        payment.GetProperty("status").GetString().Should().Be("Pending");
+        payment.GetProperty("status").GetString().Should().Be("Full Settlement");
         payment.GetProperty("netProfit").GetString().Should().Be("0.00");
     }
 

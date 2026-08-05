@@ -39,12 +39,14 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `GET` | `/api/liens/cases` | Case list |
 | `GET` | `/api/liens/cases/{id}` | Case detail |
 | `GET` | `/api/liens/cases/dashboard/task-summary` | Legacy-compatible, assignee-scoped task dashboard. Returns the `isSuccess`/`message`/`data` envelope with total, upcoming, in-progress, in-review, and completed counts plus the task list. |
+| `POST` | `/api/liens/cases/task/create`, `/api/liens/cases/tasks/create` | Creates a legacy case task. Priority accepts `High`, `Medium`, and `Low` case-insensitively; `Medium` maps to the servicing-domain `Normal` value while remaining `Medium` in legacy responses. |
+| `POST`, `PATCH` | `/api/liens/cases/task/update` | Updates a legacy case task. Both methods are supported for compatibility with deployed clients. |
 | `DELETE` | `/api/liens/cases/delete/{id}` | Legacy case deletion; blocks when a linked lien is active, and detaches terminal/rejected liens before removing the case |
-| `POST` | `/api/liens/cases/generate-csv` | Exports cases as Base64-encoded CSV using the canonical migrated Accident Type display value; its accident-type filter uses the canonical ID with legacy metadata fallback |
-| `GET` | `/service/liens/settlement/payment-details/{caseId}` | Returns complete legacy payment details, including check/reference number, payment method/payor, note, settlement type/status IDs and display names, and net profit from current or migrated payment metadata |
+| `POST` | `/api/liens/cases/generate-csv` | Exports cases as Base64-encoded CSV using canonical case fields plus raw migrated metadata and contact/audit enrichment for legacy-only columns; its accident-type and case-manager filters use canonical IDs with legacy metadata fallback |
+| `GET` | `/service/liens/settlement/payment-details/{caseId}` | Returns complete legacy payment details, including check/reference number, payment method/payor, note, settlement type/status IDs and display names, and net profit from current or migrated payment metadata. Canonical settled liens are displayed as `Closed`, and legacy snake-case settlement type codes are returned as human-readable names while their original IDs are preserved. |
 | `POST` | `/api/liens/reports/diy/export` | Export a DIY report as Base64-encoded CSV in the legacy `data` export envelope |
-| `POST` | `/api/liens/cases/dashboard/total-lien-report-export/v3` | Returns all legacy-eligible liens with full-result status and billing/purchase summaries; the legacy V3 request has no date filter |
-| `POST` | `/api/liens/cases/dashboard/total-case-report-export/v3` | Returns all legacy-eligible cases with full-result status counts; the legacy V3 request has no date filter |
+| `POST` | `/api/liens/cases/dashboard/total-lien-report-export/v3` | Returns all legacy-eligible liens with full-result status and billing/purchase summaries; paged JSON requests calculate summaries from compact database projections and enrich only the requested page, while CSV still loads every matching export row; the legacy V3 request has no date filter |
+| `POST` | `/api/liens/cases/dashboard/total-case-report-export/v3` | Returns all legacy-eligible cases with full-result status counts; paged, unfiltered JSON requests aggregate statuses in the database and enrich only the requested page; the legacy V3 request has no date filter |
 | `POST` | `/api/liens/cases/dashboard/lawfirm-case-report-export/v3` | Returns case/law-firm allocation and filters cases by the purchase date of any linked lien |
 | `POST` | `/api/liens/cases/dashboard/medical-provider-report-export/v3` | Returns lien/facility allocation filtered by lien purchase date |
 | `POST` | `/api/liens/cases/dashboard/deployed` | Sums lien purchase amounts with a persisted `PurchaseDate`; undated liens are excluded |
@@ -54,6 +56,12 @@ All four V3 report endpoints return paginated rows plus full-result summaries. W
 missing or invalid, JSON requests default to `page: 1` and return all matching rows; positive
 `page` and `limit` values are honored for the returned `items` array.
 Set `isCsv: true` or `isCsv: "yes"` for an uncapped Base64-encoded CSV export.
+Dashboard pie-chart and deployed/cash-received metrics use database grouping and aggregation instead of
+materializing every matching case, lien, or settlement. Report contact enrichment is restricted to referenced
+contacts, organization law firms, providers, and facilities rather than loading the tenant-wide contact table.
+The tenant dashboard requests one report row alongside the full-result summaries, then loads a selected
+report's detailed breakdown in server-paginated pages of 10 rows. This keeps the initial four V3 JSON responses
+bounded while preserving uncapped CSV exports and access to every report page.
 
 DIY reports treat the legacy UI sentinel `isBulk: "N"` as no bulk filter, matching the legacy report SQL. Explicit `Y`/`Yes` selects bulk liens, while canonical `No`/`False`/`0` selects non-bulk and unset liens. Legacy relationship filters for law firm, attorney, funding company, medical facility, case manager, and medical provider are applied before pagination and summary calculation. Lien-status filter values may be either status codes or IDs from the lien-status lookup category.
 
@@ -61,11 +69,17 @@ The DIY `ALL` status view includes every non-deleted lifecycle state, including 
 
 DIY report billing and purchase columns aggregate `billingAmount` and `purchaseAmount` from linked legacy medical-code records, falling back to lien-level amounts when none exist. For LIENS compatibility responses, `summaryTotals.totalBillingAmt` retains the legacy card behavior and contains outstanding billing (`gross billing - returned`); `summaryTotals.grossBillingAmt` exposes gross billing, and `summaryTotals.totalAmtToSettle` contains the same outstanding value. Settlement, reduction, returned-amount, gross-profit, and ROI fields use imported legacy settlement metadata when it is available, matching the legacy DIY report formulas.
 
-`POST /api/liens/settlement/create` preserves its settlement-detail status and
-`POST /api/liens/settlement/payments` preserves its payment status metadata.
-When either endpoint receives `Open` or `Closed`, it also updates the linked
-lien to `Active` or `Settled`, respectively. Other settlement statuses do not
-change the lien. In the legacy payment-details response, a zero saved payment
+`POST /api/liens/settlement/create` preserves its settlement-detail status.
+`POST /api/liens/settlement/payments` stores settlement type (for example, `By Attorney`),
+settlement status (for example, `Full Payment`), and lien status independently. An `Open`
+or `Closed` lien status updates the linked lien to `Active` or `Settled`, respectively;
+legacy callers that supplied `Open` or `Closed` through `settlementStatus` remain supported.
+For their historical rows, a payment outcome formerly saved as the type is displayed as settlement status,
+while an unavailable settlement type is displayed as `Other` rather than left blank or inferred incorrectly.
+Payment creation accepts both `settlementType`/`settlementStatus` and the legacy `type`/`status` field names;
+the payment-details response displays supported types as `By Attorney`, `By Medical Provider`,
+`By Funding Company`, or `Other`.
+Other settlement values do not change the lien. In the legacy payment-details response, a zero saved payment
 amount uses the linked amount-to-settle as `checkAmount` instead of displaying
 `0.00`.
 
@@ -74,7 +88,8 @@ List filters accept both canonical persisted statuses and the legacy/UI lifecycl
 ## Selling Workflow
 
 Seller-mode endpoints live under `/api/liens/selling` and require SynqLien product access plus sell mode. The Selling V2
-lien-first lifecycle is `Pending`/`Internal` → `PreparedForSale` → `SubmittedForSale` → `Sold`; seller draft is not exposed.
+lien-first lifecycle is `Pending`/`Internal` → `SubmittedForSale` → `Sold`; seller draft is not exposed. `PreparedForSale`
+remains accepted only as a legacy transition state for records created by earlier deployments.
 Intake writes are permitted only while the lien is `Pending` or `Internal`. State-changing V2 routes require an
 `Idempotency-Key`; a retry with the same payload replays its stored response, while reusing the key with a different payload
 returns `409 Conflict`.
@@ -85,16 +100,20 @@ new mutation (reuse it only to retry that exact request).
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/liens/selling/dashboard?tab=pending\|internal\|sold\|all` | Returns seller-scoped portfolio totals, tab counts, and a paginated lien table. Supports search, funding company, law firm, case manager, facility, initial-service-date, and sort filters. |
-| `GET` | `/api/liens/selling/liens?tab=pending\|internal\|sold\|all` | Returns the same seller-scoped, filtered, paginated lien rows without dashboard totals. |
+| `GET` | `/api/liens/selling/dashboard?tab=pending\|internal\|sold\|all` | Returns seller-scoped portfolio totals, tab counts, and a paginated lien table. Summary amounts aggregate the displayed billing amounts for the filtered Pending, Internal, and Sold lists; Total Portfolio Value is their sum and excludes statuses outside those lists. Supports search, funding company, law firm, case manager, facility, initial-service-date, and sort filters. Accepted liens are categorized and displayed as Sold. |
+| `GET` | `/api/liens/selling/liens?tab=pending\|internal\|sold\|all` | Returns the same seller-scoped, filtered, paginated lien rows without dashboard totals. Accepted liens remain searchable in the Sold tab. |
+
+Seller dashboard highest bids are aggregated in the database and, unless sorting by highest bid, are loaded only
+for the requested page. Buyer dashboard lien, facility, and seller-contact lookups are batched; seller display
+resolution uses bounded parallelism so multiple seller organizations do not serialize identity lookups.
 | `POST` | `/api/liens/selling/liens` | Creates a lien directly in `Pending` or `Internal`; it does not create a seller draft. |
 | `GET` | `/api/liens/selling/liens/{lienId}` | Returns seller-scoped lien detail for the intake wizard, including funding-company contact person/email and case-manager/law-firm details when available. |
-| `PUT` | `/api/liens/selling/liens/{lienId}/lien-information`, `/case-information`, `/medical-pricing`, `/documents` | Saves the seller wizard sections. Existing document IDs are verified against the Documents service and must reference the seller-owned lien or case. |
-| `POST` | `/api/liens/selling/liens/{lienId}/prepare-sale` | Validates readiness without requiring a buyer selection. When a buyer contact is supplied, its buyer organization is derived from that contact rather than a separate funding-company selection. `confirm-sale` still requires a valid buyer contact to issue the buyer access link and notification. |
-| `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared selling lien, moves it to `Offered` / `SubmittedForSale`, and sends buyer and seller `New Lien Offer` emails. |
+| `PUT` | `/api/liens/selling/liens/{lienId}/lien-information`, `/case-information`, `/medical-pricing`, `/documents` | Saves the seller wizard sections. Medical-pricing rows and document references use collision-resistant task identifiers, including when required and supporting documents are saved together. Existing document IDs are verified against the Documents service and must reference the seller-owned lien or case. |
+| `POST` | `/api/liens/selling/liens/{lienId}/prepare-sale` | Validates readiness and saves buyer, ask, visibility, and message selections without changing the lien from `Pending` or `Internal`. When a buyer contact is supplied, its buyer organization is derived from that contact rather than a separate funding-company selection. `confirm-sale` still requires a valid buyer contact to issue the buyer access link and notification. |
+| `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared request, moves the lien from `Pending`/`Internal` (or legacy `PreparedForSale`) to `Offered` / `SubmittedForSale`, and sends buyer and seller `New Lien Offer` emails. |
 | `POST` | `/api/liens/selling/liens/{lienId}/withdraw-sale`, `/archive`, `/buyer-access-links` | Withdraws a submitted lien, archives an unsold lien, or creates a time-limited buyer capability link. Raw link tokens are returned only on first creation and are never persisted. |
 | `GET` | `/api/liens/selling/bulk-import-template` | Downloads the current CSV template for a staged selling-lien bulk import. |
-| `POST` | `/api/liens/selling/bulk-imports` | Uploads a CSV, XLS, or XLSX selling-lien import using `multipart/form-data`. The import is staged tenant-scoped for subsequent validation and confirmation; it does not create liens directly. Confirmation rejects an import with `INVALID` rows until it is corrected and validated again; otherwise it creates rows independently and reports `PARTIAL` with failed-row reasons when an individual row cannot be persisted. Each row creates one lien; rows with the same Case Code link to one existing seller case or create one shared case. Funding Company, Facility Name, and Medical Provider Name are matched case-insensitively to active records when there is exactly one match; otherwise their imported text is retained without a linked record. Medical Code & Description creates both Selling pricing and legacy medical-code records. |
+| `POST` | `/api/liens/selling/bulk-imports` | Uploads a CSV, XLS, or XLSX selling-lien import using `multipart/form-data`. The import is staged tenant-scoped for subsequent validation and confirmation; it does not create liens directly. Confirmation rejects an import with `INVALID` rows until it is corrected and validated again; otherwise it creates rows independently and reports `PARTIAL` with failed-row reasons when an individual row cannot be persisted. Each valid row creates one lien with collision-resistant lien and servicing identifiers; rows with the same Case Code link to one existing seller case or create one shared case. Funding Company, Facility Name, and Medical Provider Name are matched case-insensitively to active records when there is exactly one match; otherwise their imported text is retained without a linked record. Medical Code & Description creates both Selling pricing and legacy medical-code records. |
 
 Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. The request only confirms
 seller acceptance; notification delivery is mandatory and cannot be opted out through request payload. On every
