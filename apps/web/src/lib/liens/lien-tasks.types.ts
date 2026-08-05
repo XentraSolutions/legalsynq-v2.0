@@ -56,6 +56,7 @@ export interface TaskDto {
   description?: string;
   status: TaskStatus;
   priority: TaskPriority;
+  priorityId: TaskPriority;
   assignedTo?: string;
   caseId?: string;
   caseCode?: string;

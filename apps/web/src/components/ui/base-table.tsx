@@ -444,25 +444,37 @@ export function BaseTable<TData>({
           {pageSizeOptions ? (
             <div className="flex items-center gap-2 text-xs text-gray-500">
               <span>Showing</span>
-              <Select value={String(currentPageSize)} onValueChange={handlePageSizeChange}>
-                <SelectTrigger className="h-7 w-[68px] px-2 text-xs" aria-label="Rows per page">
+              <Select
+                value={String(currentPageSize)}
+                onValueChange={handlePageSizeChange}
+              >
+                <SelectTrigger
+                  className="h-7 w-[68px] px-2 text-xs"
+                  aria-label="Rows per page"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {pageSizeOptions.map((size) => (
-                    <SelectItem key={size} value={String(size)} className="text-xs">
+                    <SelectItem
+                      key={size}
+                      value={String(size)}
+                      className="text-xs"
+                    >
                       {size}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <span>
-                {totalRows === 0 ? "0" : `${firstRow}-${lastRow}`} of {totalRows} entries
+                {totalRows === 0 ? "0" : `${firstRow}-${lastRow}`} of{" "}
+                {totalRows} entries
               </span>
             </div>
           ) : (
             <span className="text-xs text-gray-500">
-              Page {pageIndex + 1} of {Math.max(pageCountResolved, 1)} · {totalRows} total
+              Page {pageIndex + 1} of {Math.max(pageCountResolved, 1)} ·{" "}
+              {totalRows} total
             </span>
           )}
           {showPagination && (
