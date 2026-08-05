@@ -12,6 +12,7 @@ const mockUseCaseDetail = jest.fn();
 const mockAlert = jest.fn();
 const mockRefetchDocuments = jest.fn();
 const mockUploadCaseDocument = jest.fn();
+let mockRouteParams: { caseId: string; initialTab?: 'servicing' } = { caseId: 'case-1' };
 const mockCaseLiens = Array.from({ length: 6 }, (_, index) => ({
   id: `lien-${index + 1}`,
   lienNumber: `26-41823-0${index + 1}`,
@@ -67,7 +68,7 @@ const caseDetail = {
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ goBack: mockGoBack, navigate: mockNavigate }),
-  useRoute: () => ({ params: { caseId: 'case-1' } }),
+  useRoute: () => ({ params: mockRouteParams }),
 }));
 
 jest.mock('@/features/cases/hooks', () => ({
@@ -173,6 +174,7 @@ jest.mock('@/shared/hooks', () => ({
 describe('CaseDetailScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRouteParams = { caseId: 'case-1' };
     mockUseCaseDetail.mockReturnValue({
       data: caseDetail,
       error: null,
@@ -180,6 +182,15 @@ describe('CaseDetailScreen', () => {
       isLoading: false,
       refetch: jest.fn(),
     });
+  });
+
+  it('opens directly on servicing when requested by the servicing list', () => {
+    mockRouteParams = { caseId: 'case-1', initialTab: 'servicing' };
+
+    const screen = render(<CaseDetailScreen />);
+
+    expect(screen.getByTestId('case-servicing-page')).toBeTruthy();
+    expect(screen.queryByTestId('case-summary-page')).toBeNull();
   });
 
   it('renders the case header while the detail request is loading', () => {

@@ -27,8 +27,9 @@ export type MainStackParamList = {
   EditLien: { lienId: string; section: LienEditSection };
   SellLien: undefined;
   MyLiens: undefined;
+  Servicing: undefined;
   OfferDetail: { offerId: string };
-  CaseDetail: { caseId: string };
+  CaseDetail: { caseId: string; initialTab?: 'servicing' };
   EditCaseDetails: { caseId: string };
   EditCasePersonal: { caseId: string };
   PayoffQuote: { caseId: string };

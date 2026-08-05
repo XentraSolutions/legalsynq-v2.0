@@ -7,7 +7,7 @@ export const MENU_VISIBILITY_OPTIONS = [
   { key: 'cases', label: 'Cases', defaultVisible: true },
   { key: 'liens', label: 'Liens', defaultVisible: true },
   { key: 'billOfSales', label: 'Bill of Sales', defaultVisible: false },
-  { key: 'servicing', label: 'Servicing', defaultVisible: false },
+  { key: 'servicing', label: 'Servicing', defaultVisible: true },
   { key: 'contacts', label: 'Contacts', defaultVisible: false },
   { key: 'reports', label: 'Reports', defaultVisible: false },
   { key: 'batchUpload', label: 'Batch Upload', defaultVisible: false },

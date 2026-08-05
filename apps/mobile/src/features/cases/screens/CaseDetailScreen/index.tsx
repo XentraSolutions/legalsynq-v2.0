@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Modal as ReactNativeModal, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -438,7 +438,9 @@ function MergeCaseModal({
 export function CaseDetailScreen() {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<DetailRoute>();
-  const [activeTab, setActiveTab] = useState<CaseDetailTabId>('summary');
+  const [activeTab, setActiveTab] = useState<CaseDetailTabId>(
+    route.params.initialTab ?? 'summary'
+  );
   const caseQuery = useCaseDetail(route.params.caseId);
   const updatesQuery = useCaseUpdates(route.params.caseId);
   const lienUpdatesQuery = useCaseLienUpdates(route.params.caseId);
@@ -448,6 +450,10 @@ export function CaseDetailScreen() {
   const toast = useToast();
   const [manageVisible, setManageVisible] = useState(false);
   const [mergeVisible, setMergeVisible] = useState(false);
+
+  useEffect(() => {
+    setActiveTab(route.params.initialTab ?? 'summary');
+  }, [route.params.caseId, route.params.initialTab]);
 
   function confirmMerge(option: SelectOptionItem) {
     Alert.alert(

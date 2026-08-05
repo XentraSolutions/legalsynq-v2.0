@@ -14,7 +14,11 @@ describe('AppMenu', () => {
     const defaultSections = getVisibleMenuSections('selling', DEFAULT_MENU_VISIBILITY);
 
     expect(defaultSections).toHaveLength(1);
-    expect(defaultSections[0]?.children.map((child) => child.label)).toEqual(['Cases']);
+    expect(defaultSections[0]?.children.map((child) => child.label)).toEqual([
+      'Cases',
+      'Liens',
+      'Servicing',
+    ]);
 
     const sectionsWithReports = getVisibleMenuSections('selling', {
       ...DEFAULT_MENU_VISIBILITY,
@@ -43,6 +47,18 @@ describe('AppMenu', () => {
         .find((child) => child.label === 'Liens');
 
       expect(liensItem?.route).toBe('MyLiens');
+    }
+  });
+
+  it('routes Servicing to the servicing case list in both account modes', () => {
+    const visibility = { ...DEFAULT_MENU_VISIBILITY, servicing: true, selling: true };
+
+    for (const mode of ['selling', 'buying'] as const) {
+      const servicingItem = getVisibleMenuSections(mode, visibility)
+        .flatMap((section) => section.children)
+        .find((child) => child.label === 'Servicing');
+
+      expect(servicingItem?.route).toBe('Servicing');
     }
   });
 
