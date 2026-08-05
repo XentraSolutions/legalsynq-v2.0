@@ -374,7 +374,7 @@ public static class SellingV2Endpoints
         foreach (var row in request.Rows)
         {
             db.ServicingItems.Add(ServicingItem.Create(
-                tenantId, sellerOrgId, $"SMP-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
+                tenantId, sellerOrgId, $"SMP-{Guid.CreateVersion7():N}".ToUpperInvariant(),
                 SellingMedicalPricingTaskType, row.MedicalCode.Trim(), "Selling", userId,
                 caseId: lien.CaseId, lienId: lien.Id,
                 notes: JsonSerializer.Serialize(new
@@ -423,7 +423,7 @@ public static class SellingV2Endpoints
         foreach (var document in request.Documents)
         {
             db.ServicingItems.Add(ServicingItem.Create(
-                tenantId, sellerOrgId, $"SDR-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
+                tenantId, sellerOrgId, $"SDR-{Guid.CreateVersion7():N}".ToUpperInvariant(),
                 SellingDocumentTaskType, document.DisplayName?.Trim() ?? document.DocumentId.ToString(), "Selling", userId,
                 caseId: lien.CaseId, lienId: lien.Id,
                 notes: JsonSerializer.Serialize(new { document.DocumentId, document.DocumentType, document.DisplayName })));
@@ -474,7 +474,6 @@ public static class SellingV2Endpoints
         if (started.Result is not null) return started.Result;
 
         lien.UpdateSellingAnalyticsFields(userId,
-            sellerStatus: SellingLienStatus.PreparedForSale,
             listingVisibility: visibility,
             // A buyer is optional while preparing. When selected, its organization
             // is derived from the contact rather than a separate company record.
@@ -482,7 +481,7 @@ public static class SellingV2Endpoints
             fundingCompanyContactId: buyerContact?.Id,
             askAmount: request.AskAmount);
         lien.SetBuyerMessage(request.MessageToBuyer, userId);
-        AddActivity(db, lien, userId, "Lien prepared for sale.");
+        AddActivity(db, lien, userId, "Sale preparation details saved; lien remains in intake until confirmation succeeds.");
         await db.SaveChangesAsync(ct);
         return await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status200OK,
             new { lienId = lien.Id, lien.SellerStatus, lien.AskAmount, lien.ListingVisibility }, ct);
@@ -506,14 +505,25 @@ public static class SellingV2Endpoints
         if (lien is null) return NotFoundLien(lienId);
         if (!request.ConfirmationAccepted)
             return ValidationError("confirmationAccepted", "Confirm the sale before submitting it.");
-        if (lien.SellerStatus != SellingLienStatus.PreparedForSale)
+        var canConfirm = IntakeStatuses.Contains(lien.SellerStatus ?? string.Empty) ||
+            lien.SellerStatus == SellingLienStatus.PreparedForSale;
+        if (!canConfirm)
         {
             if (lien.SellerStatus == SellingLienStatus.SubmittedForSale)
                 return Results.Conflict(new { error = new { code = "sale_already_submitted", message = "This lien has already been submitted for sale." } });
-            return ValidationError("sellerStatus", "Only PreparedForSale liens can be confirmed for sale.");
+            return ValidationError("sellerStatus", "Only Pending, Internal, or legacy PreparedForSale liens can be confirmed for sale.");
+        }
+        if (IntakeStatuses.Contains(lien.SellerStatus ?? string.Empty))
+        {
+            var pricingRows = await db.ServicingItems.AnyAsync(item =>
+                item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingMedicalPricingTaskType, ct);
+            var documents = await db.ServicingItems.AnyAsync(item =>
+                item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingDocumentTaskType, ct);
+            if (!Readiness(lien, lien.CaseId.HasValue, pricingRows ? 1 : 0, documents ? 1 : 0).ready)
+                return ValidationError("saleReadiness", "The lien must have case, buyer, pricing, ask amount, and document details before it can be confirmed for sale.");
         }
 
-        // A second client key must not race the PreparedForSale -> Submitted
+        // A second client key must not race the intake -> Submitted
         // transition. This one-per-lien gate is persisted before invoking the
         // legacy service, whose notification/link work runs in its own unit of
         // work transaction.
@@ -1054,7 +1064,7 @@ public static class SellingV2Endpoints
                     db.Liens.Add(lien);
                     rowEntities.Add(lien);
                     var pricing = ServicingItem.Create(
-                        tenantId, sellerOrgId, $"SMP-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
+                        tenantId, sellerOrgId, $"SMP-{Guid.CreateVersion7():N}".ToUpperInvariant(),
                         SellingMedicalPricingTaskType, medicalCode, "Selling", userId,
                         caseId: caseEntity.Id, lienId: lien.Id,
                         notes: JsonSerializer.Serialize(new
@@ -1068,14 +1078,14 @@ public static class SellingV2Endpoints
                     db.ServicingItems.Add(pricing);
                     rowEntities.Add(pricing);
                     var legacyMedicalCode = ServicingItem.Create(
-                        tenantId, sellerOrgId, $"LMC-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
+                        tenantId, sellerOrgId, $"LMC-{Guid.CreateVersion7():N}".ToUpperInvariant(),
                         "LegacyMedicalCode", $"Medical code {medicalCode}", "system", userId,
                         caseId: caseEntity.Id, lienId: lien.Id,
                         notes: $"code={medicalCode}; description={medicalDescription}; medicareCost={GetImportValue(values, "Medicare Cost") ?? string.Empty}; billingAmount={GetImportValue(values, "Billing Amount*") ?? string.Empty}; purchaseAmount={GetImportValue(values, "Purchase Amount*") ?? string.Empty}; payee={GetImportValue(values, "Payee") ?? string.Empty}; outboundCheckNumber={GetImportValue(values, "Outbound Check Number") ?? string.Empty}");
                     db.ServicingItems.Add(legacyMedicalCode);
                     rowEntities.Add(legacyMedicalCode);
                     var facilityInfo = ServicingItem.Create(
-                        tenantId, sellerOrgId, $"LMFI-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
+                        tenantId, sellerOrgId, $"LMFI-{Guid.CreateVersion7():N}".ToUpperInvariant(),
                         "LegacyMedicalFacilityInfo", "Legacy medical facility information", "system", userId,
                         caseId: caseEntity.Id, lienId: lien.Id,
                         notes: $"facilityId={facility?.Id}; facilityName={facility?.Name ?? facilityName ?? string.Empty}; medicalProviderId={medicalProvider?.Id}; medicalProvider={medicalProvider?.Organization ?? medicalProvider?.DisplayName ?? medicalProviderName ?? string.Empty}");
@@ -1329,7 +1339,7 @@ public static class SellingV2Endpoints
         if (!TryParseImportDecimal(values, "Billing Amount*", out var billing) || billing < 0m) return "Billing Amount* must be a non-negative decimal.";
         return null;
     }
-    private static string ResolveImportLienNumber(IReadOnlyDictionary<string, string> values) => $"SL-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant();
+    private static string ResolveImportLienNumber(IReadOnlyDictionary<string, string> values) => $"SL-{Guid.CreateVersion7():N}".ToUpperInvariant();
     private static Contact? ResolveImportContactByName(IEnumerable<Contact> contacts, string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;

@@ -76,5 +76,8 @@ public sealed class CreateSettlementPaymentDetailRequest
     public string?  Notes           { get; init; }
     public string?  SettlementType  { get; init; }
     public string?  SettlementStatus { get; init; }
+    public string?  LienStatus      { get; init; }
+    public string?  Type            { get; init; }
+    public string?  Status          { get; init; }
     public decimal? NetProfit       { get; init; }
 }

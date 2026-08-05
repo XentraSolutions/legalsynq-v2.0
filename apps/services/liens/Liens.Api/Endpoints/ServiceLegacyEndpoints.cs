@@ -436,8 +436,14 @@ public static class ServiceLegacyEndpoints
             settlementsByPayment.TryGetValue(
                 (payment.LienId, payment.PaymentNumber),
                 out var settlement);
-            var typeId = payment.SettlementTypeId ?? string.Empty;
-            var statusId = payment.SettlementStatusId ?? settlement?.Status ?? string.Empty;
+            var storedTypeId = payment.SettlementTypeId ?? string.Empty;
+            var storedStatusId = payment.SettlementStatusId ?? settlement?.Status ?? string.Empty;
+            var usesLegacyPaymentFields = IsLegacyLienStatus(storedStatusId) &&
+                                          IsSettlementPaymentStatus(paymentLookups, storedTypeId);
+            var typeId = usesLegacyPaymentFields ? "other" : storedTypeId;
+            if (string.IsNullOrWhiteSpace(typeId))
+                typeId = "other";
+            var statusId = usesLegacyPaymentFields ? storedTypeId : storedStatusId;
             var amountToSettle = lien?.CurrentBalance ?? settlement?.Amount ?? 0m;
             var checkAmount = payment.Amount == 0m ? amountToSettle : payment.Amount;
             return new
@@ -445,16 +451,16 @@ public static class ServiceLegacyEndpoints
                 caseId = payment.CaseId.ToString(),
                 lienId = payment.LienId.ToString(),
                 lienCode = lien?.LienNumber ?? string.Empty,
-                lienStatus = lien?.Status ?? string.Empty,
+                lienStatus = ResolveLegacyLienStatus(lien?.Status),
                 lienStatusId = lien?.Status ?? string.Empty,
                 amount = payment.Amount.ToString("0.00", CultureInfo.InvariantCulture),
                 checkAmount = checkAmount.ToString("0.00", CultureInfo.InvariantCulture),
                 checkDate = payment.PaymentDate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
                 checkNumber = payment.CheckNumber ?? string.Empty,
                 typeId,
-                type = ResolvePaymentLookupName(paymentLookups, LookupCategory.SettlementType, typeId),
+                type = ResolvePaymentLookupName(paymentLookups, LookupCategory.SettlementStatus, typeId),
                 statusId,
-                status = ResolvePaymentLookupName(paymentLookups, LookupCategory.SettlementStatus, statusId),
+                status = ResolvePaymentLookupName(paymentLookups, LookupCategory.SettlementType, statusId),
                 payor = payment.Payee ?? payment.PaymentMethod ?? string.Empty,
                 netProfit = (payment.NetProfit ?? 0m).ToString("0.00", CultureInfo.InvariantCulture),
                 note = payment.Note ?? settlement?.Note ?? string.Empty,
@@ -481,7 +487,59 @@ public static class ServiceLegacyEndpoints
              string.Equals(lookup.Code, value, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(lookup.Name, value, StringComparison.OrdinalIgnoreCase)));
 
-        return match?.Name ?? value;
+        if (match is not null)
+            return match.Name;
+
+        return HumanizeLegacyCode(value);
+    }
+
+    private static string ResolveLegacyLienStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return string.Empty;
+
+        return string.Equals(status, LienStatus.Settled, StringComparison.OrdinalIgnoreCase)
+            ? "Closed"
+            : status;
+    }
+
+    private static bool IsLegacyLienStatus(string value) =>
+        string.Equals(value, "Open", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value, "Closed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSettlementPaymentStatus(
+        IReadOnlyCollection<LookupValue> lookups,
+        string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        if (value.Equals("full_payment", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("reduced_payment", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("partial_loss", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("no_recovery", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return lookups.Any(lookup =>
+            string.Equals(lookup.Category, LookupCategory.SettlementType, StringComparison.Ordinal) &&
+            (string.Equals(lookup.Id.ToString(), value, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(lookup.Code, value, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(lookup.Name, value, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static string HumanizeLegacyCode(string value)
+    {
+        if (string.Equals(value, "other", StringComparison.OrdinalIgnoreCase))
+            return "Other";
+
+        if (!value.Contains('_'))
+            return value;
+
+        return string.Join(' ', value
+            .Split('_', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant()));
     }
 
     private static async Task<IResult> UpdateLienStatusLegacy(

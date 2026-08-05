@@ -1,14 +1,26 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, PaginationState } from '@tanstack/react-table';
 import { Modal } from '@/components/lien/modal';
 import { BaseTable } from '@/components/ui/base-table';
 import { DonutChart } from './donut-chart';
 import { tintColor } from './status-colors';
 import type { ReportModalConfig } from './types';
 
-export function ReportDetailModal({ open, onClose, config, periodLabel, onExport, isExporting }: {
+export function ReportDetailModal({
+  open,
+  onClose,
+  config,
+  periodLabel,
+  onExport,
+  isExporting,
+  page,
+  pageSize,
+  totalCount,
+  onPageChange,
+  isLoading,
+}: {
   open: boolean;
   onClose: () => void;
   config: ReportModalConfig;
@@ -16,6 +28,11 @@ export function ReportDetailModal({ open, onClose, config, periodLabel, onExport
   /** Wire this to a backend export endpoint. Export button is disabled while unset. */
   onExport?: (config: ReportModalConfig) => void | Promise<void>;
   isExporting?: boolean;
+  page?: number;
+  pageSize?: number;
+  totalCount?: number;
+  onPageChange?: (page: number) => void;
+  isLoading?: boolean;
 }) {
   const filteredSegments = config.segments.filter((s) => s.value > 0);
   const grandTotal = filteredSegments.reduce((s, seg) => s + seg.value, 0);
@@ -33,6 +50,14 @@ export function ReportDetailModal({ open, onClose, config, periodLabel, onExport
   );
 
   const handleExport = () => onExport?.(config);
+  const serverPaginated =
+    page !== undefined &&
+    pageSize !== undefined &&
+    totalCount !== undefined &&
+    !!onPageChange;
+  const pagination: PaginationState | undefined = serverPaginated
+    ? { pageIndex: page - 1, pageSize }
+    : undefined;
 
   return (
     <Modal
@@ -91,7 +116,9 @@ export function ReportDetailModal({ open, onClose, config, periodLabel, onExport
 
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-800">Detailed Breakdown</h3>
-        <p className="text-xs text-gray-400">{config.rows.length.toLocaleString()} records</p>
+        <p className="text-xs text-gray-400">
+          {(totalCount ?? config.rows.length).toLocaleString()} records
+        </p>
       </div>
       <BaseTable
         key={config.title}
@@ -99,6 +126,26 @@ export function ReportDetailModal({ open, onClose, config, periodLabel, onExport
         columns={columns}
         getRowId={(row) => String(config.rowKey(row))}
         emptyMessage="No records found"
+        isLoading={isLoading}
+        manualPagination={serverPaginated}
+        pagination={pagination}
+        pageSize={pageSize}
+        pageCount={serverPaginated ? Math.ceil(totalCount / pageSize) : undefined}
+        totalCount={totalCount}
+        onPaginationChange={
+          serverPaginated
+            ? (updater) => {
+                let next: PaginationState;
+                if (typeof updater === 'function') {
+                  if (!pagination) return;
+                  next = updater(pagination);
+                } else {
+                  next = updater;
+                }
+                onPageChange(next.pageIndex + 1);
+              }
+            : undefined
+        }
       />
     </Modal>
   );

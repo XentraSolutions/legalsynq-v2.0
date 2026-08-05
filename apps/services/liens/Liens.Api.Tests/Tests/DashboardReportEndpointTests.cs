@@ -41,6 +41,27 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task DashboardPiechart_returns_database_aggregates_with_consistent_totals()
+    {
+        var response = await _client.GetAsync("/api/liens/cases/dashboard/piechart");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var data = payload.RootElement.GetProperty("data");
+
+        var caseStatusTotal = data.GetProperty("caseStatus")
+            .EnumerateArray()
+            .Sum(item => item.GetProperty("value").GetInt32());
+        var lienStatusTotal = data.GetProperty("lienStatus")
+            .EnumerateArray()
+            .Sum(item => item.GetProperty("value").GetInt32());
+
+        data.GetProperty("totalCases").GetInt32().Should().Be(caseStatusTotal);
+        data.GetProperty("totalLiens").GetInt32().Should().Be(lienStatusTotal);
+        data.GetProperty("totalLienValue").GetDouble().Should().BeGreaterThan(0d);
+    }
+
+    [Fact]
     public async Task TotalCaseReportV3_returns_seeded_case_rows()
     {
         var response = await _client.PostAsJsonAsync(
@@ -85,6 +106,25 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
+    public async Task TotalCaseReportV3_keeps_full_summary_when_rows_are_paged()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/total-case-report-export/v3",
+            new { page = 1, limit = 1 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = payload.RootElement;
+        root.GetProperty("items").GetArrayLength().Should().Be(1);
+        root.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(1);
+        root.GetProperty("statusCounts")
+            .EnumerateObject()
+            .Sum(item => item.Value.GetInt32())
+            .Should().Be(root.GetProperty("totalCount").GetInt32());
+    }
+
+    [Fact]
     public async Task TotalLienReportV3_keeps_non_deleted_business_statuses_and_returns_full_result_summaries()
     {
         var response = await _client.PostAsJsonAsync(
@@ -107,6 +147,28 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         var amounts = payload.RootElement.GetProperty("statusAmounts");
         amounts.GetProperty("Open").GetProperty("purchase").GetDecimal().Should().Be(100m);
         amounts.GetProperty("Open").GetProperty("billing").GetDecimal().Should().Be(150m);
+    }
+
+    [Fact]
+    public async Task TotalLienReportV3_applies_status_filter_before_fast_summary_and_paging()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/total-lien-report-export/v3",
+            new
+            {
+                page = 1,
+                limit = 1,
+                filterType = "status",
+                filterId = "Closed",
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        payload.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
+        payload.RootElement.GetProperty("items").GetArrayLength().Should().Be(1);
+        payload.RootElement.GetProperty("items")[0].GetProperty("status").GetString().Should().Be("Closed");
+        payload.RootElement.GetProperty("statusCounts").GetProperty("Closed").GetInt32().Should().Be(1);
     }
 
     [Theory]
@@ -311,7 +373,7 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
-    public async Task Dashboard_metrics_without_date_range_include_all_history_and_undated_settlements()
+    public async Task Dashboard_metrics_without_date_range_include_all_dated_history()
     {
         var deployedResponse = await _client.PostAsJsonAsync(
             "/api/liens/cases/dashboard/deployed",
@@ -338,8 +400,8 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         var receivedData = received.RootElement.GetProperty("data");
         receivedData.GetProperty("periodStart").GetString().Should().BeEmpty();
         receivedData.GetProperty("periodEnd").GetString().Should().BeEmpty();
-        receivedData.GetProperty("totalAmount").GetString().Should().Be("4750.00");
-        receivedData.GetProperty("totalCount").GetInt32().Should().Be(2);
+        receivedData.GetProperty("totalAmount").GetString().Should().Be("250.00");
+        receivedData.GetProperty("totalCount").GetInt32().Should().Be(1);
     }
 
     [Fact]

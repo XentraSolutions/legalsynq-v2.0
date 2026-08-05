@@ -46,7 +46,37 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task Prepared_lien_confirm_sale_sets_offered_and_submitted_not_sold()
+    public async Task Save_medical_pricing_persists_multiple_rows_with_unique_task_numbers()
+    {
+        var lienId = await CreateSellingLienAsync();
+
+        var response = await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/medical-pricing", new
+        {
+            askAmount = 5000m,
+            billingAmount = 3000m,
+            rows = new[]
+            {
+                new { medicalCode = "45385", description = "Colonoscopy", billingAmount = 3000m, medicareCost = 675m, targetSaleAmount = 1000m },
+                new { medicalCode = "96372", description = "Therapeutic injection", billingAmount = 0m, medicareCost = 476m, targetSaleAmount = 4000m },
+            },
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var pricingRows = db.ServicingItems
+            .Where(item => item.LienId == lienId && item.TaskType == "SellingMedicalPricing")
+            .ToList();
+
+        pricingRows.Should().HaveCount(2);
+        pricingRows.Select(item => item.TaskNumber).Should().OnlyHaveUniqueItems();
+        pricingRows.Select(item => item.TaskNumber).Should().OnlyContain(taskNumber => taskNumber.Length == 36);
+        pricingRows.Select(item => item.Description).Should().BeEquivalentTo("45385", "96372");
+    }
+
+    [Fact]
+    public async Task Pending_lien_confirm_sale_sets_offered_and_submitted_not_sold()
     {
         var (_, buyerContactId) = await SeedConfirmSaleContactsAsync(
             "buyer.prepared-confirm@capital.test",
@@ -96,6 +126,13 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         prepare.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
         (await _client.SendAsync(prepare)).EnsureSuccessStatusCode();
 
+        using (var preparedScope = _factory.Services.CreateScope())
+        {
+            var preparedDb = preparedScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var preparedLien = await preparedDb.Liens.FindAsync(lienId);
+            preparedLien!.SellerStatus.Should().Be(SellingLienStatus.Pending);
+        }
+
         var confirm = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/confirm-sale")
         {
             Content = JsonContent.Create(new { confirmationAccepted = true, sendBuyerNotification = false }),
@@ -117,7 +154,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task Prepare_sale_does_not_require_buyer_contact()
+    public async Task Prepare_sale_without_buyer_contact_keeps_pending_when_confirmation_fails()
     {
         var lienId = await CreateSellingLienAsync();
 
@@ -154,9 +191,22 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         var persisted = await db.Liens.FindAsync(lienId);
-        persisted!.SellerStatus.Should().Be(SellingLienStatus.PreparedForSale);
+        persisted!.SellerStatus.Should().Be(SellingLienStatus.Pending);
         persisted.FundingCompanyId.Should().BeNull();
         persisted.FundingCompanyContactId.Should().BeNull();
+
+        using var confirm = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/confirm-sale")
+        {
+            Content = JsonContent.Create(new { confirmationAccepted = true, sendBuyerNotification = true }),
+        };
+        confirm.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+
+        var confirmResponse = await _client.SendAsync(confirm);
+
+        confirmResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest, await confirmResponse.Content.ReadAsStringAsync());
+        await db.Entry(persisted).ReloadAsync();
+        persisted.SellerStatus.Should().Be(SellingLienStatus.Pending);
+        persisted.Status.Should().Be(LienStatus.Draft);
     }
 
     [Fact]
@@ -557,7 +607,31 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task Intake_writes_are_locked_after_prepare_sale()
+    public async Task Documents_endpoint_saves_required_and_supporting_documents_with_unique_task_numbers()
+    {
+        var lienId = await CreateSellingLienAsync();
+        var documents = new[]
+        {
+            new { documentId = Guid.CreateVersion7(), documentType = "MedicalBill", displayName = "bill.pdf" },
+            new { documentId = Guid.CreateVersion7(), documentType = "MedicalRecord", displayName = "record.pdf" },
+            new { documentId = Guid.CreateVersion7(), documentType = "PoliceReport", displayName = "report.pdf" },
+        };
+
+        var response = await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/documents", new { documents });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var savedReferences = db.ServicingItems
+            .Where(item => item.LienId == lienId && item.TaskType == "SellingDocumentReference")
+            .ToList();
+        savedReferences.Should().HaveCount(documents.Length);
+        savedReferences.Select(item => item.TaskNumber).Should().OnlyHaveUniqueItems();
+        savedReferences.Should().OnlyContain(item => item.TaskNumber.StartsWith("SDR-") && item.TaskNumber.Length == 36);
+    }
+
+    [Fact]
+    public async Task Intake_writes_remain_available_after_prepare_sale_until_confirmation()
     {
         var lienId = await PrepareSellingLienAsync(SeedHelper.FundingCompanyId, SeedHelper.FundingCompanyId);
 
@@ -566,7 +640,13 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
             sellerStatus = "Pending", initialServiceDate = "2026-07-20", listingVisibility = "Private",
         });
 
-        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persisted = await db.Liens.FindAsync(lienId);
+        persisted!.SellerStatus.Should().Be(SellingLienStatus.Pending);
+        persisted.InitialServiceDate.Should().Be(new DateOnly(2026, 7, 20));
     }
 
     [Fact]

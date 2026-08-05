@@ -119,7 +119,6 @@ export default function LienDashboardPage() {
   const [search, setSearch] = useState("");
   // const [filters, setFilters] = useState<LiensFilterValues>(EMPTY_LIENS_FILTERS);
   const [sorting, setSorting] = useState<SortingState>([]);
-  const lienRows = reports?.liens.items ?? [];
   const totalLienCount = reports?.liens.totalCount ?? 0;
 
   const periodLabel = useMemo(
@@ -127,16 +126,7 @@ export default function LienDashboardPage() {
     [dashboardRange],
   );
 
-  const lienAmountsByStatus = useMemo(() => {
-    const result: Record<string, { purchase: number; billing: number }> = {};
-    for (const lien of lienRows) {
-      const key = lien.status ?? "Unknown";
-      if (!result[key]) result[key] = { purchase: 0, billing: 0 };
-      result[key].purchase += lien.totalPurchaseAmount ?? 0;
-      result[key].billing += lien.totalBillingAmount ?? 0;
-    }
-    return result;
-  }, [lienRows]);
+  const lienAmountsByStatus = reports?.liens.statusAmounts ?? {};
 
   const dateRanges = ["0-30", "31-60", "61-90", "91-120", "120"];
 
@@ -166,7 +156,7 @@ export default function LienDashboardPage() {
       counts[key] = lien.value;
     }
     return counts;
-  }, [lienRows]);
+  }, []);
 
   // Built from the known status order plus whatever the API actually returns, so a
   // status this list doesn't anticipate still shows up instead of silently dropping
@@ -182,14 +172,7 @@ export default function LienDashboardPage() {
     }));
   }, [DaysStatusCounts, lienAmountsByStatus]);
 
-  const lienStatusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const lien of lienRows) {
-      const key = lien.status ?? "Unknown";
-      counts[key] = (counts[key] ?? 0) + 1;
-    }
-    return counts;
-  }, [lienRows]);
+  const lienStatusCounts = reports?.liens.statusCounts ?? {};
   const lienSegments: Segment[] = useMemo(() => {
     const keys = Array.from(
       new Set([...LIEN_STATUS_ORDER, ...Object.keys(lienStatusCounts)]),
