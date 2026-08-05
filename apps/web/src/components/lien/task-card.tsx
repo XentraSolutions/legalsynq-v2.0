@@ -214,7 +214,8 @@ export function TaskCard({
             className={`text-[10px] flex items-center gap-0.5 ${overdue ? "text-red-600 font-medium" : "text-gray-400"}`}
           >
             <i className="ri-calendar-line" />
-            <DateDisplay value={task.dueDate} format="date" />
+            {task.dueDate}
+            {/* <DateDisplay value={task.dueDate} format="date" /> */}
             {overdue && <i className="ri-error-warning-line" />}
           </span>
         )}
