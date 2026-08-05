@@ -162,6 +162,11 @@ jest.mock('@/features/liens/hooks', () => ({
   }),
 }));
 
+jest.mock('@/features/cases/hooks/useCaseTasks', () => ({
+  useCaseTasks: () => ({ data: [], isError: false, isLoading: false, refetch: jest.fn() }),
+  useDeleteCaseTask: () => ({ isPending: false, mutateAsync: jest.fn() }),
+}));
+
 jest.mock('@/shared/hooks', () => ({
   useAuth: () => ({ user: { id: 'user-1' } }),
   useToast: () => ({
@@ -265,6 +270,12 @@ describe('CaseDetailScreen', () => {
     expect(getByText('Case Tracking')).toBeTruthy();
     expect(getByText('Feeds')).toBeTruthy();
     expect(getByText('No Case Tracking Notes')).toBeTruthy();
+
+    fireEvent.press(getByText('Task Manager'));
+    expect(getByTestId('case-tasks-page')).toBeTruthy();
+    expect(getByText('No Tasks Yet')).toBeTruthy();
+    fireEvent.press(getByLabelText('Create task'));
+    expect(mockNavigate).toHaveBeenCalledWith('CaseTaskForm', { caseId: 'case-1' });
   });
 
   it('opens the manage case menu and routes to the payoff quote', () => {

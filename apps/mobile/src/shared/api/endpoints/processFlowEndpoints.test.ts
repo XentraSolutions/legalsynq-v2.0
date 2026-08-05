@@ -42,6 +42,50 @@ describe('mobile SynqLien process-flow endpoints', () => {
   });
 
   it('routes task, servicing, settlement, contact, bill-of-sale, report, and user flows through gateway paths', async () => {
+    await TasksApi.listCaseTasks('case-1');
+    expect(apiClient.get).toHaveBeenCalledWith(
+      '/liens/api/liens/tasks/legacy/get-task/case-1'
+    );
+
+    await TasksApi.createCaseTask({
+      assignedTo: 'Sarah Mitchell',
+      caseId: 'case-1',
+      description: 'Prepare demand',
+      priority: 'High',
+      status: 'Upcoming',
+      title: 'Prepare Demand',
+    });
+    expect(apiClient.post).toHaveBeenCalledWith('/liens/api/liens/tasks/legacy/create', {
+      assignedTo: 'Sarah Mitchell',
+      caseId: 'case-1',
+      description: 'Prepare demand',
+      priority: 'High',
+      status: 'Upcoming',
+      title: 'Prepare Demand',
+    });
+
+    await TasksApi.updateCaseTask({
+      assignedTo: 'Sarah Mitchell',
+      description: 'Updated demand',
+      priority: 'Medium',
+      status: 'In Progress',
+      taskId: 'task-1',
+      title: 'Prepare Demand',
+    });
+    expect(apiClient.patch).toHaveBeenCalledWith('/liens/api/liens/tasks/legacy/task/update', {
+      assignedTo: 'Sarah Mitchell',
+      description: 'Updated demand',
+      priority: 'Medium',
+      status: 'In Progress',
+      taskId: 'task-1',
+      title: 'Prepare Demand',
+    });
+
+    await TasksApi.deleteCaseTask('task-1');
+    expect(apiClient.delete).toHaveBeenCalledWith(
+      '/liens/api/liens/tasks/legacy/task/delete/task-1'
+    );
+
     await TasksApi.complete('task-1');
     expect(apiClient.post).toHaveBeenCalledWith('/liens/api/liens/tasks/task-1/complete');
 
