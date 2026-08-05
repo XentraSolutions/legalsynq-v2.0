@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "routes": [
+    {
+      "key": "dashboard",
+      "pathTemplate": "/dashboard",
+      "mobileDestination": "dashboard",
+      "requiresAuthentication": true,
+      "requiresAuthorization": true,
+      "requiredPathParameters": [],
+      "optionalQueryParameters": [],
+      "fallbackDestination": "dashboard",
+      "analyticsEvent": "deep_link.dashboard.opened",
+      "enabled": true
+    },
+    {
+      "key": "dealDetails",
+      "pathTemplate": "/deals/:dealId",
+      "mobileDestination": "dealDetails",
+      "requiresAuthentication": true,
+      "requiresAuthorization": true,
+      "requiredPathParameters": ["dealId"],
+      "optionalQueryParameters": [],
+      "fallbackDestination": "dashboard",
+      "analyticsEvent": "deep_link.deal_details.opened",
+      "enabled": true
+    },
+    {
+      "key": "contactDetails",
+      "pathTemplate": "/contacts/:contactId",
+      "mobileDestination": "contactDetails",
+      "requiresAuthentication": true,
+      "requiresAuthorization": true,
+      "requiredPathParameters": ["contactId"],
+      "optionalQueryParameters": [],
+      "fallbackDestination": "dashboard",
+      "analyticsEvent": "deep_link.contact_details.opened",
+      "enabled": true
+    },
+    {
+      "key": "applicationDetails",
+      "pathTemplate": "/applications/:applicationId",
+      "mobileDestination": "applicationDetails",
+      "requiresAuthentication": true,
+      "requiresAuthorization": true,
+      "requiredPathParameters": ["applicationId"],
+      "optionalQueryParameters": [],
+      "fallbackDestination": "dashboard",
+      "analyticsEvent": "deep_link.application_details.opened",
+      "enabled": true
+    },
+    {
+      "key": "reportDetails",
+      "pathTemplate": "/reports/:reportId",
+      "mobileDestination": "reportDetails",
+      "requiresAuthentication": true,
+      "requiresAuthorization": true,
+      "requiredPathParameters": ["reportId"],
+      "optionalQueryParameters": [],
+      "fallbackDestination": "dashboard",
+      "analyticsEvent": "deep_link.report_details.opened",
+      "enabled": true
+    }
+  ]
+}

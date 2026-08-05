@@ -6,4 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\deep-links\routes.json"
+                      LogicalName="Contracts.DeepLinks.routes.json" />
+  </ItemGroup>
+
 </Project>
