@@ -24,7 +24,14 @@ export interface AppMenuProps {
 
 type DirectRoute = keyof Pick<
   MainStackParamList,
-  'Dashboard' | 'Cases' | 'Marketplace' | 'MyLiens' | 'Offers' | 'Settings' | 'XeniaAI'
+  | 'Dashboard'
+  | 'Cases'
+  | 'Marketplace'
+  | 'MyLiens'
+  | 'Offers'
+  | 'Servicing'
+  | 'Settings'
+  | 'XeniaAI'
 >;
 type MenuSectionId = 'management' | 'tools';
 
@@ -63,7 +70,7 @@ const MENU_SECTIONS: Record<AccountMode, MenuSection[]> = {
         },
         {
           label: 'Servicing',
-          subtitle: 'Servicing tools will be added in a future pass.',
+          route: 'Servicing',
           visibilityKey: 'servicing',
         },
         {
@@ -121,7 +128,7 @@ const MENU_SECTIONS: Record<AccountMode, MenuSection[]> = {
         },
         {
           label: 'Servicing',
-          subtitle: 'Servicing tools will be added in a future pass.',
+          route: 'Servicing',
           visibilityKey: 'servicing',
         },
         {
@@ -222,6 +229,9 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
         break;
       case 'Offers':
         navigation.navigate('Offers');
+        break;
+      case 'Servicing':
+        navigation.navigate('Servicing');
         break;
       case 'Settings':
         navigation.navigate('Settings');

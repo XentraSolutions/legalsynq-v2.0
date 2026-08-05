@@ -19,6 +19,7 @@ import {
 import { OfferDetailScreen } from '@/features/offers';
 import { PlaceholderScreen } from '@/features/placeholders';
 import { SettingsScreen } from '@/features/profile';
+import { ServicingListScreen } from '@/features/servicing';
 import { XeniaChatScreen } from '@/features/xenia';
 import type { MainStackParamList } from '@/navigation/types/navigation';
 
@@ -36,6 +37,7 @@ export function MainStack() {
       <Stack.Screen component={EditLienScreen} name="EditLien" />
       <Stack.Screen component={SellLienScreen} name="SellLien" />
       <Stack.Screen component={MyLiensScreen} name="MyLiens" />
+      <Stack.Screen component={ServicingListScreen} name="Servicing" />
       <Stack.Screen component={OfferDetailScreen} name="OfferDetail" />
       <Stack.Screen component={CaseDetailScreen} name="CaseDetail" />
       <Stack.Screen component={EditCaseDetailsScreen} name="EditCaseDetails" />
