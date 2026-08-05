@@ -169,6 +169,12 @@ public class SettlementService : ISettlementService
     public async Task<SettlementPaymentDetailResponse> CreatePaymentAsync(
         Guid tenantId, Guid userId, CreateSettlementPaymentDetailRequest request, CancellationToken ct = default)
     {
+        if (IsLienStatusSyncRequest(request.SettlementStatus))
+        {
+            await _lienService.SetLegacyMedicalStatusAsync(
+                tenantId, request.LienId, userId, request.SettlementStatus!, ct);
+        }
+
         var entity = SettlementPaymentDetail.Create(
             tenantId, request.CaseId, request.LienId,
             request.PaymentNumber, request.Amount, userId,

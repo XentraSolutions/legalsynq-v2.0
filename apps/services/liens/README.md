@@ -61,9 +61,13 @@ The DIY `ALL` status view includes every non-deleted lifecycle state, including 
 
 DIY report billing and purchase columns aggregate `billingAmount` and `purchaseAmount` from linked legacy medical-code records, falling back to lien-level amounts when none exist. For LIENS compatibility responses, `summaryTotals.totalBillingAmt` retains the legacy card behavior and contains outstanding billing (`gross billing - returned`); `summaryTotals.grossBillingAmt` exposes gross billing, and `summaryTotals.totalAmtToSettle` contains the same outstanding value. Settlement, reduction, returned-amount, gross-profit, and ROI fields use imported legacy settlement metadata when it is available, matching the legacy DIY report formulas.
 
-`POST /api/liens/settlement/create` preserves its settlement-detail status and,
-when that status is `Open` or `Closed`, also updates the linked lien to `Active`
-or `Settled`, respectively. Other settlement statuses do not change the lien.
+`POST /api/liens/settlement/create` preserves its settlement-detail status and
+`POST /api/liens/settlement/payments` preserves its payment status metadata.
+When either endpoint receives `Open` or `Closed`, it also updates the linked
+lien to `Active` or `Settled`, respectively. Other settlement statuses do not
+change the lien. In the legacy payment-details response, a zero saved payment
+amount uses the linked amount-to-settle as `checkAmount` instead of displaying
+`0.00`.
 
 List filters accept both canonical persisted statuses and the legacy/UI lifecycle groups: `Open` expands to all active lien states, `Closed` expands to `Settled`, and `Rejected` expands to `Declined`, `Withdrawn`, and `Cancelled`. Historical rows literally persisted as `Rejected` remain hidden by default. Status/date-only lien-list filters are counted and paged in the database before per-lien detail and servicing enrichment, so broad status selections do not enrich the entire matching result set. The V3 case filter accepts comma-separated status, law-firm, case-manager, and accident-type selections. Case status filtering uses the saved legacy status label to distinguish `New`, `Processing`, and `Pre-Demand` cases that share the canonical `PreDemand` state, and to distinguish `Litigation` from `Negotiations` cases that share `InNegotiation`. The complete SL-CORE import preserves those labels, and the guarded relationship backfill repairs them for already-imported cases that have not since changed status. Law-firm values match the contact ID saved in case metadata and continue to accept legacy organization IDs.
 
