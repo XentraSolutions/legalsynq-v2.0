@@ -30,6 +30,7 @@ import type { CaseResponseDto } from "@/lib/cases/cases.types";
 import { TemplatePicker } from "@/components/lien/template-picker";
 import { casesService } from "@/lib/cases";
 import { DatePicker } from "@/components/ui/date-picker";
+import { dateConvertertoIso } from "@/lib/cases/cases.mapper";
 
 interface CreateEditTaskFormProps {
   open: boolean;
@@ -110,13 +111,16 @@ export function CreateEditTaskForm({
   const [title, setTitle] = useState(editTask?.title ?? "");
   const [description, setDescription] = useState(editTask?.description ?? "");
   const [priority, setPriority] = useState<TaskPriority>(
-    editTask?.priority ?? "MEDIUM",
+    editTask?.priorityId ?? "MEDIUM",
   );
+  console.log(editTask);
   const [status, setStatus] = useState<TaskStatus>(
     editTask?.status ?? "UPCOMING",
   );
   const [dueDate, setDueDate] = useState(
-    editTask?.dueDate ? editTask.dueDate.split("T")[0] : "",
+    editTask?.dueDate
+      ? dateConvertertoIso(editTask?.dueDate?.split("T")[0])
+      : "",
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -247,7 +251,7 @@ export function CreateEditTaskForm({
     setSelectedTemplate(template);
     setTitle(template.defaultTitle);
     setDescription(template.defaultDescription ?? "");
-    setPriority(template.defaultPriority as TaskPriority);
+    // setPriority(template.defaultPriority as TaskPriority);
     setDueDate(calcDueDate(template.defaultDueOffsetDays));
     setStep("fill-form");
   }
