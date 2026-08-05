@@ -193,6 +193,10 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         response.StatusCode.Should().Be(HttpStatusCode.Created,
             $"Body: {await response.Content.ReadAsStringAsync()}");
+        var createdPayment = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var createdPaymentId = createdPayment!.RootElement.GetProperty("id").GetGuid();
+        var createdPaymentNumber = createdPayment.RootElement.GetProperty("paymentNumber").GetInt32();
+        createdPaymentNumber.Should().BePositive();
 
         using var verificationScope = _factory.Services.CreateScope();
         var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -217,6 +221,8 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var paymentDetails = await paymentDetailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
         var recordedPayment = paymentDetails!.RootElement.GetProperty("data").EnumerateArray()
             .Single(item => item.GetProperty("checkNumber").GetString() == "123123123");
+        recordedPayment.GetProperty("id").GetGuid().Should().Be(createdPaymentId);
+        recordedPayment.GetProperty("paymentNumber").GetString().Should().Be(createdPaymentNumber.ToString());
         recordedPayment.GetProperty("amount").GetString().Should().Be("0.00");
         recordedPayment.GetProperty("amountToSettle").GetString().Should().Be("1000.00");
         recordedPayment.GetProperty("checkAmount").GetString().Should().Be("1000.00");
@@ -226,6 +232,158 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         recordedPayment.GetProperty("type").GetString().Should().Be("By Attorney");
         recordedPayment.GetProperty("statusId").GetString().Should().Be("full_payment");
         recordedPayment.GetProperty("status").GetString().Should().Be("Full Payment");
+    }
+
+    [Fact]
+    public async Task CreatePayment_current_frontend_payload_keeps_full_payment_separate_from_closed_lien_status()
+    {
+        Lien lien;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"PAYMENT-CURRENT-PAYLOAD-{Guid.CreateVersion7():N}",
+                LienType.MedicalLien,
+                3_590m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            lien.SetLegacyMedicalStatus("Open", SeedHelper.UserId);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
+        {
+            caseId = SeedHelper.CaseId,
+            lienId = lien.Id,
+            amount = 3_590m,
+            paymentDate = "2026-08-06",
+            paymentMethod = "Check",
+            referenceNumber = "453346",
+            notes = "",
+            settlementType = "by_attorney",
+            settlementStatus = "full_payment",
+            lienStatus = "Closed",
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var created = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        created!.RootElement.GetProperty("settlementTypeId").GetString().Should().Be("by_attorney");
+        created.RootElement.GetProperty("settlementStatusId").GetString().Should().Be("full_payment");
+        var paymentId = created.RootElement.GetProperty("id").GetGuid();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var persistedPayment = await db.SettlementPaymentDetails.FindAsync(paymentId);
+            persistedPayment!.Note.Should().Contain("type=by_attorney");
+            persistedPayment.Note.Should().Contain("status=full_payment");
+            persistedPayment.Note.Should().NotContain("status=Closed");
+        }
+
+        var detailsResponse = await _client.GetAsync(
+            $"/service/liens/settlement/payment-details/{SeedHelper.CaseId}");
+        detailsResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detailsResponse.Content.ReadAsStringAsync()}");
+        var details = await detailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var payment = details!.RootElement.GetProperty("data").EnumerateArray().Single(item =>
+            item.GetProperty("checkNumber").GetString() == "453346");
+
+        payment.GetProperty("typeId").GetString().Should().Be("by_attorney");
+        payment.GetProperty("type").GetString().Should().Be("By Attorney");
+        payment.GetProperty("statusId").GetString().Should().Be("full_payment");
+        payment.GetProperty("status").GetString().Should().Be("Full Payment");
+        payment.GetProperty("lienStatus").GetString().Should().Be("Closed");
+    }
+
+    [Fact]
+    public async Task PaymentDetails_uses_recorded_amount_when_closed_lien_balance_is_zero()
+    {
+        Lien lien;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"PAYMENT-ZERO-BALANCE-{Guid.CreateVersion7():N}",
+                LienType.MedicalLien,
+                1_200m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            lien.SetLegacyMedicalStatus("Open", SeedHelper.UserId);
+            lien.Settle(1_200m, SeedHelper.UserId);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
+        {
+            amount = 1_200m,
+            caseId = SeedHelper.CaseId,
+            lienId = lien.Id,
+            paymentDate = "2026-08-06",
+            paymentMethod = "Check",
+            referenceNumber = "CHK-ZERO-BALANCE",
+            settlementType = "by_attorney",
+            settlementStatus = "full_payment",
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var detailsResponse = await _client.GetAsync(
+            $"/service/liens/settlement/payment-details/{SeedHelper.CaseId}");
+        var details = await detailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var payment = details!.RootElement.GetProperty("data").EnumerateArray().Single(item =>
+            item.GetProperty("checkNumber").GetString() == "CHK-ZERO-BALANCE");
+
+        payment.GetProperty("paymentNumber").GetString().Should().NotBe("0");
+        payment.GetProperty("amountToSettle").GetString().Should().Be("1200.00");
+        payment.GetProperty("checkAmount").GetString().Should().Be("1200.00");
+    }
+
+    [Fact]
+    public async Task PaymentDetails_assigns_distinct_display_numbers_to_historical_zero_number_rows()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.SettlementPaymentDetails.AddRange(
+                SettlementPaymentDetail.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.CaseId,
+                    SeedHelper.LienId,
+                    0,
+                    250m,
+                    SeedHelper.UserId,
+                    new DateOnly(2026, 8, 6),
+                    checkNumber: "CHK-HISTORICAL-ZERO-1"),
+                SettlementPaymentDetail.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.CaseId,
+                    SeedHelper.LienId,
+                    0,
+                    300m,
+                    SeedHelper.UserId,
+                    new DateOnly(2026, 8, 6),
+                    checkNumber: "CHK-HISTORICAL-ZERO-2"));
+            await db.SaveChangesAsync();
+        }
+
+        var detailsResponse = await _client.GetAsync(
+            $"/service/liens/settlement/payment-details/{SeedHelper.CaseId}");
+        var details = await detailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var payments = details!.RootElement.GetProperty("data").EnumerateArray()
+            .Where(item => item.GetProperty("checkNumber").GetString() is
+                "CHK-HISTORICAL-ZERO-1" or "CHK-HISTORICAL-ZERO-2")
+            .ToList();
+
+        payments.Should().HaveCount(2);
+        payments.Select(item => item.GetProperty("paymentNumber").GetString())
+            .Should().OnlyHaveUniqueItems().And.NotContain("0");
     }
 
     [Fact]

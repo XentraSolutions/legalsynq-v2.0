@@ -422,6 +422,7 @@ public static class ServiceLegacyEndpoints
             .ToDictionary(
                 group => group.Key,
                 group => group.OrderByDescending(settlement => settlement.CreatedAtUtc).First());
+        var displayPaymentNumbers = ResolveDisplayPaymentNumbers(payments);
         var paymentLookups = await db.LookupValues.AsNoTracking()
             .Where(lookup =>
                 lookup.IsActive &&
@@ -444,10 +445,15 @@ public static class ServiceLegacyEndpoints
             if (string.IsNullOrWhiteSpace(typeId))
                 typeId = "other";
             var statusId = usesLegacyPaymentFields ? storedTypeId : storedStatusId;
-            var amountToSettle = lien?.CurrentBalance ?? settlement?.Amount ?? 0m;
+            var amountToSettle = payment.Amount != 0m
+                ? payment.Amount
+                : settlement is { Amount: not 0m }
+                    ? settlement.Amount
+                    : lien?.CurrentBalance ?? settlement?.Amount ?? 0m;
             var checkAmount = payment.Amount == 0m ? amountToSettle : payment.Amount;
             return new
             {
+                id = payment.Id.ToString(),
                 caseId = payment.CaseId.ToString(),
                 lienId = payment.LienId.ToString(),
                 lienCode = lien?.LienNumber ?? string.Empty,
@@ -464,13 +470,40 @@ public static class ServiceLegacyEndpoints
                 payor = payment.Payee ?? payment.PaymentMethod ?? string.Empty,
                 netProfit = (payment.NetProfit ?? 0m).ToString("0.00", CultureInfo.InvariantCulture),
                 note = payment.Note ?? settlement?.Note ?? string.Empty,
-                paymentNumber = payment.PaymentNumber.ToString(CultureInfo.InvariantCulture),
+                paymentNumber = displayPaymentNumbers[payment.Id].ToString(CultureInfo.InvariantCulture),
                 date = PacificTimeHelper.FormatDate(payment.CreatedAtUtc),
                 amountToSettle = amountToSettle.ToString("0.00", CultureInfo.InvariantCulture),
             };
         }).ToList();
 
         return Results.Ok(new { isSuccess = true, message = "Settlement payment details retrieved successfully.", data });
+    }
+
+    private static IReadOnlyDictionary<Guid, int> ResolveDisplayPaymentNumbers(
+        IReadOnlyCollection<SettlementPaymentDetailResponse> payments)
+    {
+        var usedNumbers = payments
+            .Where(payment => payment.PaymentNumber > 0)
+            .Select(payment => payment.PaymentNumber)
+            .ToHashSet();
+        var resolved = payments
+            .Where(payment => payment.PaymentNumber > 0)
+            .ToDictionary(payment => payment.Id, payment => payment.PaymentNumber);
+        var nextFallback = 1;
+
+        foreach (var payment in payments
+                     .Where(payment => payment.PaymentNumber <= 0)
+                     .OrderBy(payment => payment.CreatedAtUtc)
+                     .ThenBy(payment => payment.Id))
+        {
+            while (usedNumbers.Contains(nextFallback))
+                nextFallback++;
+
+            resolved[payment.Id] = nextFallback;
+            usedNumbers.Add(nextFallback++);
+        }
+
+        return resolved;
     }
 
     private static string ResolvePaymentLookupName(
