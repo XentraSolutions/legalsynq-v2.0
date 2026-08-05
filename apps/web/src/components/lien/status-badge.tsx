@@ -1,4 +1,5 @@
 //prettier-ignore
+//prettier-ignore
 interface StatusBadgeProps {
   status: string;
   label?: string;
