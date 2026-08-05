@@ -3,7 +3,6 @@
 import { ConfirmDialog } from "@/components/lien/modal";
 import { BaseTable } from "@/components/ui/base-table";
 import { useFetchReportColumns } from "@/hooks/use-report";
-import { useFetchReportColumns } from "@/hooks/use-report";
 import { ApiError } from "@/lib/api-client";
 import { CaseListItem } from "@/lib/cases";
 import { PaginationMeta } from "@/lib/contacts";
