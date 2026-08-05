@@ -5,6 +5,7 @@ import { CasesApi } from './Cases';
 import { ContactsApi } from './Contacts';
 import { DocumentsApi } from './Documents';
 import { ReportsApi } from './Reports';
+import { SettlementApi } from './Settlement';
 import { ServicingApi } from './Servicing';
 import { TasksApi } from './Tasks';
 import { UserManagementApi } from './UserManagement';
@@ -40,7 +41,7 @@ describe('mobile SynqLien process-flow endpoints', () => {
     apiClient.delete = jest.fn(() => Promise.resolve({ data: undefined }));
   });
 
-  it('routes task, servicing, contact, bill-of-sale, report, and user flows through gateway paths', async () => {
+  it('routes task, servicing, settlement, contact, bill-of-sale, report, and user flows through gateway paths', async () => {
     await TasksApi.complete('task-1');
     expect(apiClient.post).toHaveBeenCalledWith('/liens/api/liens/tasks/task-1/complete');
 
@@ -49,6 +50,17 @@ describe('mobile SynqLien process-flow endpoints', () => {
       resolution: 'Resolved',
       status: 'Completed',
     });
+
+    await SettlementApi.listByCase('case-1');
+    expect(apiClient.get).toHaveBeenCalledWith('/liens/api/liens/settlement/case/case-1');
+
+    await SettlementApi.listReductionsByCase('case-1');
+    expect(apiClient.get).toHaveBeenCalledWith(
+      '/liens/api/liens/settlement/reductions/case/case-1'
+    );
+
+    await SettlementApi.listPaymentsByCase('case-1');
+    expect(apiClient.get).toHaveBeenCalledWith('/liens/api/liens/settlement/payments/case/case-1');
 
     await ContactsApi.listByType('Provider');
     expect(apiClient.get).toHaveBeenCalledWith('/liens/api/liens/contacts/providers');

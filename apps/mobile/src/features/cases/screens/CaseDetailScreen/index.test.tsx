@@ -118,6 +118,11 @@ jest.mock('@/features/cases/hooks', () => ({
     isLoading: false,
   }),
   useCaseLienUpdates: () => ({ data: [], isLoading: false }),
+  useCaseSettlementDetails: () => ({
+    data: { payments: [], reductions: [], settlements: [] },
+    isError: false,
+    isLoading: false,
+  }),
   useCases: () => ({
     cases: [
       {
@@ -212,7 +217,9 @@ describe('CaseDetailScreen', () => {
   });
 
   it('switches between data-backed and template tabs', () => {
-    const { getByTestId, getByText, queryByTestId } = render(<CaseDetailScreen />);
+    const { getByLabelText, getByTestId, getByText, queryByTestId } = render(
+      <CaseDetailScreen />
+    );
 
     expect(getByTestId('case-summary-page')).toBeTruthy();
 
@@ -232,6 +239,15 @@ describe('CaseDetailScreen', () => {
     expect(getByText('Legal Brief')).toBeTruthy();
     expect(getByText('05/03/2026')).toBeTruthy();
     expect(getByText('Upload More')).toBeTruthy();
+
+    fireEvent.press(getByText('Servicing'));
+    expect(getByTestId('case-servicing-page')).toBeTruthy();
+    expect(getByText('Servicing Details')).toBeTruthy();
+    expect(getByText('Current Law Firm')).toBeTruthy();
+    expect(getByText('Current Lawyer')).toBeTruthy();
+
+    fireEvent.press(getByLabelText('Edit servicing details'));
+    expect(mockNavigate).toHaveBeenCalledWith('EditCaseDetails', { caseId: 'case-1' });
 
     fireEvent.press(getByText('Notes'));
     expect(getByTestId('case-notes-page')).toBeTruthy();

@@ -16,6 +16,7 @@ import { DocumentsApi } from '@/shared/api/endpoints/Documents';
 import { LiensApi } from '@/shared/api/endpoints/Liens';
 import type { LienDocumentType } from '@/shared/api/endpoints/Liens';
 import { LookupsApi } from '@/shared/api/endpoints/Lookups';
+import { SettlementApi } from '@/shared/api/endpoints/Settlement';
 import type {
   CaseDetailsUpdateRequest,
   CaseExportFilter,
@@ -37,6 +38,7 @@ export const caseFeatureKeys = {
   trackingOptions: () => [...caseFeatureKeys.all, 'tracking-options'] as const,
   documents: (id: string) => [...caseFeatureKeys.all, 'documents', id] as const,
   documentTypes: () => [...caseFeatureKeys.all, 'document-types'] as const,
+  settlement: (id: string) => [...caseFeatureKeys.all, 'settlement', id] as const,
 };
 
 export function useCaseDocuments(caseId: string, enabled = true) {
@@ -212,6 +214,21 @@ export function useCaseUpdates(caseId: string) {
   return useQuery({
     queryKey: caseFeatureKeys.updates(caseId),
     queryFn: () => CasesApi.getCaseUpdates(caseId),
+  });
+}
+
+export function useCaseSettlementDetails(caseId: string, enabled = true) {
+  return useQuery({
+    queryKey: caseFeatureKeys.settlement(caseId),
+    queryFn: async () => {
+      const [reductions, settlements, payments] = await Promise.all([
+        SettlementApi.listReductionsByCase(caseId),
+        SettlementApi.listByCase(caseId),
+        SettlementApi.listPaymentsByCase(caseId),
+      ]);
+      return { reductions, settlements, payments };
+    },
+    enabled: Boolean(caseId) && enabled,
   });
 }
 
