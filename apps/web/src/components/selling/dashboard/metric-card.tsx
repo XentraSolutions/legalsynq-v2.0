@@ -30,7 +30,7 @@ export function MetricCard({
         <p className="text-sm leading-5 text-neutral-500 break-words">
           {label}
         </p>
-        {trend && (
+        {trend ? (
           <span
             className={
               trend === "up"
@@ -48,25 +48,35 @@ export function MetricCard({
             />
             {statsPercentage}%
           </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-400 break-words">
+            —
+          </span>
         )}
       </div>
       <p className="mt-3 text-2xl font-bold leading-8 break-words">
         {displayValue}
       </p>
       <p className="mt-5 text-xs font-bold text-neutral-950">
-        {trendDescription ?? ""}
-        {trend && (
-          <i
-            className={
-              trend === "up"
-                ? "ri-arrow-right-up-line"
-                : "ri-arrow-right-down-line"
-            }
-            aria-hidden
-          />
+        {trend ? (
+          <>
+            {trendDescription ?? ""}
+            <i
+              className={
+                trend === "up"
+                  ? "ri-arrow-right-up-line"
+                  : "ri-arrow-right-down-line"
+              }
+              aria-hidden
+            />
+          </>
+        ) : (
+          <span className="text-neutral-400">No trend data</span>
         )}
       </p>
-      <p className="mt-1 text-xs leading-5 text-neutral-500">{description}</p>
+      <p className="mt-1 text-xs leading-5 text-neutral-500">
+        {trend ? description : "—"}
+      </p>
     </article>
   );
 }
