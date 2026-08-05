@@ -3960,7 +3960,9 @@ public static class CaseEndpoints
 
                     var fields = ParseLegacyNoteFields(c.Notes);
                     return string.Equals(
-                        fields.GetValueOrDefault("accidentTypeId", string.Empty),
+                        FirstNonEmpty(
+                            c.AccidentTypeId,
+                            fields.GetValueOrDefault("accidentTypeId", string.Empty)),
                         request.accidentTypeId,
                         StringComparison.OrdinalIgnoreCase);
                 })
@@ -4049,7 +4051,10 @@ public static class CaseEndpoints
                 EscapeLegacyCsv(fields.GetValueOrDefault("isServicing", string.Empty)),
                 EscapeLegacyCsv(fields.GetValueOrDefault("isUccFiled", string.Empty)),
                 EscapeLegacyCsv(fields.GetValueOrDefault("isBulk", string.Empty)),
-                EscapeLegacyCsv(fields.GetValueOrDefault("accidentType", string.Empty)),
+                EscapeLegacyCsv(FirstNonEmpty(
+                    item.AccidentType,
+                    item.CaseType,
+                    fields.GetValueOrDefault("accidentType", string.Empty)) ?? string.Empty),
                 EscapeLegacyCsv(fields.GetValueOrDefault("accidentState", string.Empty)),
                 EscapeLegacyCsv(FormatLegacyDate(item.DateOfIncident)),
                 EscapeLegacyCsv(fields.GetValueOrDefault("lawFirm", string.Empty)),

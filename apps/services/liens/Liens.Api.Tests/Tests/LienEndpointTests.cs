@@ -2,10 +2,14 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Liens.Api.Tests.Helpers;
+using Liens.Application.DTOs;
+using Liens.Application.Interfaces;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Liens.Api.Tests.Tests;
 
@@ -385,6 +389,66 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         postBody!.Items.Select(item => item.LienNumber)
             .Should().Contain([ $"{prefix}-DRAFT", $"{prefix}-ACTIVE" ]);
         postBody.Items.Should().NotContain(item => item.LienNumber == $"{prefix}-SETTLED");
+    }
+
+    [Fact]
+    public async Task SearchLiens_status_filter_enriches_only_the_requested_page()
+    {
+        const int pageSize = 3;
+        const int matchingLienCount = 8;
+        var prefix = $"LIEN-STATUS-PAGING-{Guid.CreateVersion7():N}";
+        var servicingItems = new CountingServicingItemService(pageSize);
+
+        using var factory = _factory.WithWebHostBuilder(builder =>
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IServicingItemService>();
+                services.AddSingleton<IServicingItemService>(servicingItems);
+            }));
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            await SeedHelper.SeedAsync(scope.ServiceProvider);
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+            for (var index = 0; index < matchingLienCount; index++)
+            {
+                var lien = Lien.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    $"{prefix}-{index:D2}",
+                    LienType.MedicalLien,
+                    125m,
+                    SeedHelper.UserId,
+                    caseId: SeedHelper.CaseId);
+                lien.SetLegacyMedicalStatus(LienStatus.Active, SeedHelper.UserId);
+                db.Liens.Add(lien);
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer",
+                JwtTokenHelper.CreateFullAccessToken(SeedHelper.TenantId, SeedHelper.UserId));
+
+        var response = await client.PostAsJsonAsync("/api/liens/liens/search", new
+        {
+            search = prefix,
+            lienStatusIds = new[] { LienStatus.Active },
+            page = 1,
+            pageSize,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = await response.Content.ReadFromJsonAsync<PaginatedLiensResponseBody>();
+        body.Should().NotBeNull();
+        body!.TotalCount.Should().Be(matchingLienCount);
+        body.Items.Should().HaveCount(pageSize);
+        servicingItems.SearchCallCount.Should().Be(pageSize);
     }
 
     [Fact]
@@ -1157,5 +1221,71 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         public string? LawFirm { get; init; }
         public string? MedicalFacility { get; init; }
         public string? CaseManager { get; init; }
+    }
+
+    private sealed class CountingServicingItemService(int maxSearchCalls) : IServicingItemService
+    {
+        public int SearchCallCount { get; private set; }
+
+        public Task<PaginatedResult<ServicingItemResponse>> SearchAsync(
+            Guid tenantId,
+            string? search,
+            string? status,
+            string? priority,
+            string? assignedTo,
+            Guid? caseId,
+            Guid? lienId,
+            int page,
+            int pageSize,
+            CancellationToken ct = default)
+        {
+            SearchCallCount++;
+            if (SearchCallCount > maxSearchCalls)
+            {
+                throw new InvalidOperationException(
+                    "The status filter enriched records outside the requested page.");
+            }
+
+            return Task.FromResult(new PaginatedResult<ServicingItemResponse>
+            {
+                Items = [],
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = 0,
+            });
+        }
+
+        public Task<ServicingItemResponse?> GetByIdAsync(
+            Guid tenantId,
+            Guid id,
+            CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<ServicingItemResponse> CreateAsync(
+            Guid tenantId,
+            Guid orgId,
+            Guid actingUserId,
+            CreateServicingItemRequest request,
+            CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<ServicingItemResponse> UpdateAsync(
+            Guid tenantId,
+            Guid id,
+            Guid actingUserId,
+            UpdateServicingItemRequest request,
+            CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task<ServicingItemResponse> UpdateStatusAsync(
+            Guid tenantId,
+            Guid id,
+            Guid actingUserId,
+            string status,
+            string? resolution = null,
+            CancellationToken ct = default) => throw new NotSupportedException();
+
+        public Task DeleteAsync(
+            Guid tenantId,
+            Guid id,
+            Guid actingUserId,
+            CancellationToken ct = default) => throw new NotSupportedException();
     }
 }

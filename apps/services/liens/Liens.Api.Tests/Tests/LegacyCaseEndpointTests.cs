@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
@@ -164,7 +165,7 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             keyword = "Contact",
             page = 1,
             limit = 50,
-            statusId = "New",
+            statusId = "Pre-Demand",
             lawFirmId = $"{lawFirmId},{Guid.CreateVersion7()}",
             accidentTypeId = $"{accidentTypeId},{Guid.CreateVersion7()}",
             caseManagerId = $"{caseManagerId},{Guid.CreateVersion7()}",
@@ -209,6 +210,76 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
         payload!.RootElement.GetProperty("data").EnumerateArray()
             .Should().Contain(item => item.GetProperty("caseNumber").GetString() == caseNumber);
+    }
+
+    [Fact]
+    public async Task GetCasesV3_returns_only_cases_matching_each_selected_legacy_status()
+    {
+        var prefix = $"CASE-STATUS-{Guid.CreateVersion7():N}"[..24];
+        var expectedCaseNumbers = new Dictionary<string, string>
+        {
+            ["New"] = $"{prefix}-NEW",
+            ["Processing"] = $"{prefix}-PROCESSING",
+            ["Closed"] = $"{prefix}-CLOSED",
+            ["Pre-Demand"] = $"{prefix}-PRE-DEMAND",
+            ["Demand Sent"] = $"{prefix}-DEMAND-SENT",
+            ["Negotiations"] = $"{prefix}-NEGOTIATIONS",
+            ["Litigation"] = $"{prefix}-LITIGATION",
+            ["Case Settled"] = $"{prefix}-CASE-SETTLED",
+        };
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+            AddCase("New", CaseStatus.PreDemand, "New");
+            AddCase("Processing", CaseStatus.PreDemand, "Processing");
+            AddCase("Closed", CaseStatus.Closed);
+            AddCase("Pre-Demand", CaseStatus.PreDemand);
+            AddCase("Demand Sent", CaseStatus.DemandSent);
+            AddCase("Negotiations", CaseStatus.InNegotiation);
+            AddCase("Litigation", CaseStatus.InNegotiation, "Litigation");
+            AddCase("Case Settled", CaseStatus.CaseSettled);
+
+            await db.SaveChangesAsync();
+
+            void AddCase(string displayStatus, string canonicalStatus, string? statusLabel = null)
+            {
+                var caseEntity = Case.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    expectedCaseNumbers[displayStatus],
+                    "StatusMatrix",
+                    displayStatus.Replace(" ", string.Empty, StringComparison.Ordinal),
+                    SeedHelper.UserId,
+                    notes: statusLabel is null
+                        ? null
+                        : $"[legacy-meta]{Environment.NewLine}statusLabel={statusLabel}");
+
+                if (canonicalStatus != CaseStatus.PreDemand)
+                    caseEntity.TransitionStatus(canonicalStatus, SeedHelper.UserId);
+
+                db.Cases.Add(caseEntity);
+            }
+        }
+
+        foreach (var (selectedStatus, expectedCaseNumber) in expectedCaseNumbers)
+        {
+            var response = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+            {
+                keyword = prefix,
+                page = 1,
+                limit = 20,
+                statusId = selectedStatus,
+            });
+            response.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Status: {selectedStatus}; Body: {await response.Content.ReadAsStringAsync()}");
+
+            var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+            var items = payload!.RootElement.GetProperty("data").EnumerateArray().ToList();
+            items.Should().ContainSingle($"only the {selectedStatus} case should match");
+            items.Single().GetProperty("caseNumber").GetString().Should().Be(expectedCaseNumber);
+        }
     }
 
     [Fact]
@@ -265,6 +336,45 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         item.GetProperty("caseManager").GetString().Should().Be("John Doe");
         item.GetProperty("accidentTypeId").GetString().Should().Be("MVA");
         item.GetProperty("accidentType").GetString().Should().Be("Motor Vehicle Accident");
+    }
+
+    [Fact]
+    public async Task GenerateCaseCsv_exports_migrated_accident_type_and_filters_by_its_canonical_id()
+    {
+        var accidentTypeId = $"ACC-{Guid.CreateVersion7():N}";
+        var caseNumber = $"CASE-CSV-{Guid.CreateVersion7():N}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                caseNumber,
+                "CSV",
+                "Export",
+                SeedHelper.UserId,
+                notes: $"accidentTypeId={accidentTypeId}; accidentType=Motor Vehicle Accident"));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/generate-csv", new
+        {
+            caseId = caseNumber,
+            accidentTypeId,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var encodedCsv = payload!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
+        var lines = csv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        var headers = lines[0].Split(',');
+        var values = lines[1].Split(',');
+
+        values[Array.IndexOf(headers, "AccidentType")].Should().Be("Motor Vehicle Accident");
     }
 
     [Fact]

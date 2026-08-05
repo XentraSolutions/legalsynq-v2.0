@@ -159,7 +159,8 @@ charges/facility links, payments/settlements, contacts, or workflow state.
 
 Relationship repair:
   --backfill-case-relationships  Runs the guarded Program 1 case-manager,
-                                  accident-type, and lien-facility repair.
+                                  accident-type, case-status-label, and
+                                  lien-facility repair.
                                   Use --backfill-case-relationships --help for
                                   its required arguments and dry-run/apply flow.
 """);

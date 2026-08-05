@@ -157,6 +157,53 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
             $"Body: {await resp.Content.ReadAsStringAsync()}");
     }
 
+    [Fact]
+    public async Task PaymentDetails_returns_fields_sent_by_the_current_payment_form()
+    {
+        Guid settlementTypeId;
+        Guid settlementStatusId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            settlementTypeId = db.LookupValues.Single(x =>
+                x.Category == LookupCategory.SettlementType && x.Code == "Full").Id;
+            settlementStatusId = db.LookupValues.Single(x =>
+                x.Category == LookupCategory.SettlementStatus && x.Code == "Pending").Id;
+        }
+
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
+        {
+            caseId = SeedHelper.CaseId,
+            lienId = SeedHelper.LienId,
+            amount = 100m,
+            paymentDate = "2026-08-05",
+            paymentMethod = "Check",
+            referenceNumber = "CHK-CURRENT-UI",
+            notes = "Payment received from counsel.",
+            settlementType = settlementTypeId,
+            settlementStatus = settlementStatusId,
+        });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var detailsResponse = await _client.GetAsync(
+            $"/service/liens/settlement/payment-details/{SeedHelper.CaseId}");
+        detailsResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detailsResponse.Content.ReadAsStringAsync()}");
+
+        var payload = await detailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var payment = payload!.RootElement.GetProperty("data").EnumerateArray().Single(item =>
+            item.GetProperty("checkNumber").GetString() == "CHK-CURRENT-UI");
+
+        payment.GetProperty("payor").GetString().Should().Be("Check");
+        payment.GetProperty("note").GetString().Should().Be("Payment received from counsel.");
+        payment.GetProperty("typeId").GetString().Should().Be(settlementTypeId.ToString());
+        payment.GetProperty("type").GetString().Should().Be("Full Settlement");
+        payment.GetProperty("statusId").GetString().Should().Be(settlementStatusId.ToString());
+        payment.GetProperty("status").GetString().Should().Be("Pending");
+        payment.GetProperty("netProfit").GetString().Should().Be("0.00");
+    }
+
     // ── DELETE /service/delete-payment/{id} ───────────────────────────────────
 
     [Fact]

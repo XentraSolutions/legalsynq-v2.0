@@ -1,8 +1,10 @@
 -- SL-CORE Program 1 relationship backfill (DBeaver/MySQL script)
 --
--- Restores only relationships omitted by the historical core importer:
+-- Restores relationships and status metadata omitted by the historical core importer:
 --   * SL_CASE.CASE_MANAGER -> case Notes metadata caseManagerId
 --   * SL_CASE.CASE_ACCIDENT_TYPE -> case Notes metadata accidentTypeId/type
+--   * SL_CASE.CASE_STATUS -> case Notes metadata statusLabel where canonical
+--     storage collapsed New/Processing or Litigation
 --   * SL_LEINS_MEDICAL_INFORMATION_FACILITY -> liens_Liens.FacilityId
 --
 -- This is intentionally an ordinary SQL script: it has no stored procedure and
@@ -113,7 +115,30 @@ SELECT
     case_x.TargetId AS TargetCaseId,
     target_case.TenantId AS TargetCaseTenantId,
     target_case.OrgId AS TargetCaseOrgId,
+    target_case.Status AS TargetCaseStatus,
     target_case.Notes AS NotesBefore,
+    CASE UPPER(TRIM(COALESCE(source_case.CASE_STATUS, '')))
+        WHEN 'N' THEN 'New'
+        WHEN 'NEW' THEN 'New'
+        WHEN 'P' THEN 'Processing'
+        WHEN 'PROCESSING' THEN 'Processing'
+        WHEN 'LP' THEN 'Litigation'
+        WHEN 'LO' THEN 'Litigation'
+        WHEN 'LC' THEN 'Litigation'
+        WHEN 'LITIGATION' THEN 'Litigation'
+        WHEN 'LITIGATION (PENDING)' THEN 'Litigation'
+        WHEN 'LITIGATION (OPEN)' THEN 'Litigation'
+        WHEN 'LITIGATION (CLOSED)' THEN 'Litigation'
+        ELSE NULL
+    END AS SourceStatusLabel,
+    CASE
+        WHEN UPPER(TRIM(COALESCE(source_case.CASE_STATUS, ''))) IN ('N', 'NEW', 'P', 'PROCESSING')
+          THEN 'PreDemand'
+        WHEN UPPER(TRIM(COALESCE(source_case.CASE_STATUS, ''))) IN
+          ('LP', 'LO', 'LC', 'LITIGATION', 'LITIGATION (PENDING)', 'LITIGATION (OPEN)', 'LITIGATION (CLOSED)')
+          THEN 'InNegotiation'
+        ELSE NULL
+    END AS SourceCanonicalStatus,
     CASE
         WHEN source_case.CASE_MANAGER IS NULL OR source_case.CASE_MANAGER = 0 THEN 0
         ELSE 1
@@ -189,10 +214,13 @@ ALTER TABLE tmp_sl_core_case_relationships
     ADD COLUMN ExistingAccidentTypeIdCount INT NOT NULL DEFAULT 0,
     ADD COLUMN ExistingAccidentTypeName VARCHAR(250) NULL,
     ADD COLUMN ExistingAccidentTypeNameCount INT NOT NULL DEFAULT 0,
+    ADD COLUMN ExistingStatusLabel VARCHAR(100) NULL,
+    ADD COLUMN ExistingStatusLabelCount INT NOT NULL DEFAULT 0,
     ADD COLUMN BlockingReason VARCHAR(300) NULL,
     ADD COLUMN NeedsCaseManager TINYINT NOT NULL DEFAULT 0,
     ADD COLUMN NeedsAccidentTypeId TINYINT NOT NULL DEFAULT 0,
     ADD COLUMN NeedsAccidentTypeName TINYINT NOT NULL DEFAULT 0,
+    ADD COLUMN NeedsStatusLabel TINYINT NOT NULL DEFAULT 0,
     ADD COLUMN NotesAfter VARCHAR(4000) NULL;
 
 UPDATE tmp_sl_core_case_relationships
@@ -234,6 +262,16 @@ SET ExistingCaseManagerCount = CASE
     ExistingAccidentTypeName = NULLIF(TRIM(SUBSTRING_INDEX(
         REGEXP_SUBSTR(COALESCE(MetadataText, ''),
             '(^|;[[:space:]]*)accidentType=[^;]*', 1, 1, 'i'),
+        '=', -1)), ''),
+    ExistingStatusLabelCount = CASE
+        WHEN MetadataText IS NULL THEN 0
+        ELSE (CHAR_LENGTH(LOWER(MetadataText))
+              - CHAR_LENGTH(REPLACE(LOWER(MetadataText), 'statuslabel=', '')))
+             / CHAR_LENGTH('statusLabel=')
+    END,
+    ExistingStatusLabel = NULLIF(TRIM(SUBSTRING_INDEX(
+        REGEXP_SUBSTR(COALESCE(MetadataText, ''),
+            '(^|;[[:space:]]*)statusLabel=[^;]*', 1, 1, 'i'),
         '=', -1)), '');
 
 UPDATE tmp_sl_core_case_relationships
@@ -263,11 +301,12 @@ SET BlockingReason = CASE
       AND TRIM(COALESCE(NotesBefore, '')) REGEXP
           '^[A-Za-z0-9_]+=[^;]+(;[[:space:]]*[A-Za-z0-9_]+=[^;]+)*$'
       AND REGEXP_LIKE(NotesBefore,
-          '(^|;[[:space:]]*)(caseManagerId|accidentTypeId|accidentType)=', 'i')
+          '(^|;[[:space:]]*)(caseManagerId|accidentTypeId|accidentType|statusLabel)=', 'i')
       THEN 'UnmarkedLegacyMetadata'
     WHEN ExistingCaseManagerCount > 1 THEN 'DuplicateCaseManagerMetadata'
     WHEN ExistingAccidentTypeIdCount > 1 THEN 'DuplicateAccidentTypeIdMetadata'
     WHEN ExistingAccidentTypeNameCount > 1 THEN 'DuplicateAccidentTypeMetadata'
+    WHEN ExistingStatusLabelCount > 1 THEN 'DuplicateStatusLabelMetadata'
     WHEN SourceCaseManagerRequired = 1
       AND ExistingCaseManagerCount = 1
       AND ExistingCaseManagerId IS NULL THEN 'MalformedExistingCaseManagerId'
@@ -289,6 +328,15 @@ SET BlockingReason = CASE
       AND ExistingAccidentTypeName IS NOT NULL
       AND LOWER(ExistingAccidentTypeName) <> LOWER(TargetAccidentTypeName)
       THEN 'ConflictingExistingAccidentType'
+    WHEN SourceStatusLabel IS NOT NULL
+      AND TargetCaseStatus = SourceCanonicalStatus
+      AND ExistingStatusLabelCount = 1
+      AND ExistingStatusLabel IS NULL THEN 'MalformedExistingStatusLabel'
+    WHEN SourceStatusLabel IS NOT NULL
+      AND TargetCaseStatus = SourceCanonicalStatus
+      AND ExistingStatusLabel IS NOT NULL
+      AND LOWER(ExistingStatusLabel) <> LOWER(SourceStatusLabel)
+      THEN 'ConflictingExistingStatusLabel'
     ELSE NULL
 END;
 
@@ -304,13 +352,19 @@ SET NeedsCaseManager = CASE
     NeedsAccidentTypeName = CASE
         WHEN BlockingReason IS NULL
          AND SourceAccidentTypeRequired = 1
-         AND ExistingAccidentTypeNameCount = 0 THEN 1 ELSE 0 END;
+         AND ExistingAccidentTypeNameCount = 0 THEN 1 ELSE 0 END,
+    NeedsStatusLabel = CASE
+        WHEN BlockingReason IS NULL
+         AND SourceStatusLabel IS NOT NULL
+         AND TargetCaseStatus = SourceCanonicalStatus
+         AND ExistingStatusLabelCount = 0 THEN 1 ELSE 0 END;
 
 UPDATE tmp_sl_core_case_relationships
 SET NotesAfter = CASE
     WHEN NeedsCaseManager = 0
      AND NeedsAccidentTypeId = 0
-     AND NeedsAccidentTypeName = 0 THEN NotesBefore
+     AND NeedsAccidentTypeName = 0
+     AND NeedsStatusLabel = 0 THEN NotesBefore
     WHEN NotesBefore IS NULL OR TRIM(NotesBefore) = '' THEN CONCAT(
         '[legacy-meta]', CHAR(10),
         CONCAT_WS('; ',
@@ -319,7 +373,9 @@ SET NotesAfter = CASE
             CASE WHEN NeedsAccidentTypeId = 1
                  THEN CONCAT('accidentTypeId=', TargetAccidentTypeId) END,
             CASE WHEN NeedsAccidentTypeName = 1
-                 THEN CONCAT('accidentType=', TargetAccidentTypeName) END
+                 THEN CONCAT('accidentType=', TargetAccidentTypeName) END,
+            CASE WHEN NeedsStatusLabel = 1
+                 THEN CONCAT('statusLabel=', SourceStatusLabel) END
         )
     )
     WHEN MetadataMarkerCount = 0 THEN CONCAT(
@@ -330,7 +386,9 @@ SET NotesAfter = CASE
             CASE WHEN NeedsAccidentTypeId = 1
                  THEN CONCAT('accidentTypeId=', TargetAccidentTypeId) END,
             CASE WHEN NeedsAccidentTypeName = 1
-                 THEN CONCAT('accidentType=', TargetAccidentTypeName) END
+                 THEN CONCAT('accidentType=', TargetAccidentTypeName) END,
+            CASE WHEN NeedsStatusLabel = 1
+                 THEN CONCAT('statusLabel=', SourceStatusLabel) END
         )
     )
     WHEN MetadataText IS NULL OR MetadataText = '' THEN CONCAT(
@@ -341,7 +399,9 @@ SET NotesAfter = CASE
             CASE WHEN NeedsAccidentTypeId = 1
                  THEN CONCAT('accidentTypeId=', TargetAccidentTypeId) END,
             CASE WHEN NeedsAccidentTypeName = 1
-                 THEN CONCAT('accidentType=', TargetAccidentTypeName) END
+                 THEN CONCAT('accidentType=', TargetAccidentTypeName) END,
+            CASE WHEN NeedsStatusLabel = 1
+                 THEN CONCAT('statusLabel=', SourceStatusLabel) END
         )
     )
     ELSE CONCAT(
@@ -352,7 +412,9 @@ SET NotesAfter = CASE
             CASE WHEN NeedsAccidentTypeId = 1
                  THEN CONCAT('accidentTypeId=', TargetAccidentTypeId) END,
             CASE WHEN NeedsAccidentTypeName = 1
-                 THEN CONCAT('accidentType=', TargetAccidentTypeName) END
+                 THEN CONCAT('accidentType=', TargetAccidentTypeName) END,
+            CASE WHEN NeedsStatusLabel = 1
+                 THEN CONCAT('statusLabel=', SourceStatusLabel) END
         )
     )
 END;
@@ -361,7 +423,8 @@ UPDATE tmp_sl_core_case_relationships
 SET BlockingReason = 'NotesOverflow',
     NeedsCaseManager = 0,
     NeedsAccidentTypeId = 0,
-    NeedsAccidentTypeName = 0
+    NeedsAccidentTypeName = 0,
+    NeedsStatusLabel = 0
 WHERE BlockingReason IS NULL
   AND CHAR_LENGTH(COALESCE(NotesAfter, '')) > 4000;
 
@@ -461,13 +524,17 @@ FROM tmp_sl_core_case_relationships
 WHERE BlockingReason IS NULL
   AND (NeedsCaseManager = 1
     OR NeedsAccidentTypeId = 1
-    OR NeedsAccidentTypeName = 1);
+    OR NeedsAccidentTypeName = 1
+    OR NeedsStatusLabel = 1);
 SELECT COUNT(*) INTO @case_manager_updates
 FROM tmp_sl_core_case_relationships
 WHERE BlockingReason IS NULL AND NeedsCaseManager = 1;
 SELECT COUNT(*) INTO @accident_type_updates
 FROM tmp_sl_core_case_relationships
 WHERE BlockingReason IS NULL AND NeedsAccidentTypeId = 1;
+SELECT COUNT(*) INTO @status_label_updates
+FROM tmp_sl_core_case_relationships
+WHERE BlockingReason IS NULL AND NeedsStatusLabel = 1;
 SELECT COUNT(*) INTO @facility_conflict_count
 FROM tmp_sl_core_lien_facility_relationships
 WHERE BlockingReason IS NOT NULL;
@@ -495,6 +562,7 @@ SELECT
     @case_update_count AS CaseRowsToUpdate,
     @case_manager_updates AS CaseManagerRelationsToAdd,
     @accident_type_updates AS AccidentTypeRelationsToAdd,
+    @status_label_updates AS CaseStatusLabelsToAdd,
     @facility_update_count AS LienFacilityRowsToUpdate,
     @case_conflict_count AS CaseConflicts,
     @facility_conflict_count AS FacilityConflicts;
@@ -532,7 +600,8 @@ WHERE @apply_permitted = 1
   AND staged.BlockingReason IS NULL
   AND (staged.NeedsCaseManager = 1
     OR staged.NeedsAccidentTypeId = 1
-    OR staged.NeedsAccidentTypeName = 1)
+    OR staged.NeedsAccidentTypeName = 1
+    OR staged.NeedsStatusLabel = 1)
   AND target_case.TenantId = @tenant_id
   AND target_case.OrgId = @org_id
   AND target_case.Notes <=> staged.NotesBefore
@@ -563,7 +632,8 @@ WHERE @apply_permitted = 1
   AND staged.BlockingReason IS NULL
   AND (staged.NeedsCaseManager = 1
     OR staged.NeedsAccidentTypeId = 1
-    OR staged.NeedsAccidentTypeName = 1)
+    OR staged.NeedsAccidentTypeName = 1
+    OR staged.NeedsStatusLabel = 1)
   AND target_case.TenantId = @tenant_id
   AND target_case.OrgId = @org_id
   AND target_case.Notes <=> staged.NotesBefore;
@@ -589,7 +659,8 @@ WHERE @apply_permitted = 1
   AND staged.BlockingReason IS NULL
   AND (staged.NeedsCaseManager = 1
     OR staged.NeedsAccidentTypeId = 1
-    OR staged.NeedsAccidentTypeName = 1)
+    OR staged.NeedsAccidentTypeName = 1
+    OR staged.NeedsStatusLabel = 1)
   AND (
       (staged.NeedsCaseManager = 1
        AND LOCATE(CONCAT('caseManagerId=', staged.TargetCaseManagerId), target_case.Notes) = 0)
@@ -597,6 +668,8 @@ WHERE @apply_permitted = 1
        AND LOCATE(CONCAT('accidentTypeId=', staged.TargetAccidentTypeId), target_case.Notes) = 0)
    OR (staged.NeedsAccidentTypeName = 1
        AND LOCATE(CONCAT('accidentType=', staged.TargetAccidentTypeName), target_case.Notes) = 0)
+   OR (staged.NeedsStatusLabel = 1
+       AND LOCATE(CONCAT('statusLabel=', staged.SourceStatusLabel), target_case.Notes) = 0)
   );
 
 SELECT COUNT(*) INTO @facility_postcondition_errors
