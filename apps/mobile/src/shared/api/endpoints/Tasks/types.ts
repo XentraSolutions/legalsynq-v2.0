@@ -73,3 +73,31 @@ export interface TaskHistoryEntry {
 export type TaskListResult = Omit<PagedResult<LienTask>, 'totalPages'> & {
   totalPages?: number;
 };
+
+export interface CaseTask {
+  assignedTo: string;
+  caseId: string;
+  createdAt: string;
+  description: string;
+  dueDate: string;
+  priority: string;
+  priorityId: string;
+  status: string;
+  statusId: string;
+  taskId: string;
+  title: string;
+}
+
+export interface CreateCaseTaskRequest {
+  assignedTo: string;
+  caseId: string;
+  description: string;
+  dueDate?: string;
+  priority: string;
+  status: string;
+  title: string;
+}
+
+export interface UpdateCaseTaskRequest extends Omit<CreateCaseTaskRequest, 'caseId'> {
+  taskId: string;
+}

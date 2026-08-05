@@ -2,15 +2,29 @@ import { apiClient } from '@/shared/api/client';
 
 import type {
   CreateTaskRequest,
+  CaseTask,
+  CreateCaseTaskRequest,
   LienTask,
   TaskHistoryEntry,
   TaskListResult,
   TaskNote,
   TaskQueryParams,
   UpdateTaskRequest,
+  UpdateCaseTaskRequest,
 } from './types';
 
 const BASE_PATH = '/liens/api/liens/tasks';
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function legacyData<T>(payload: unknown): T[] {
+  const record = asRecord(payload);
+  return Array.isArray(record?.data) ? (record.data as T[]) : [];
+}
 
 export const taskKeys = {
   all: ['tasks'] as const,
@@ -19,6 +33,32 @@ export const taskKeys = {
 };
 
 export const TasksApi = {
+  async listCaseTasks(caseId: string): Promise<CaseTask[]> {
+    const response = await apiClient.get<unknown>(`${BASE_PATH}/legacy/get-task/${caseId}`);
+    return legacyData<CaseTask>(response.data);
+  },
+
+  async getCaseTask(caseId: string, taskId: string): Promise<CaseTask> {
+    const response = await apiClient.get<unknown>(
+      `${BASE_PATH}/legacy/get-task/${caseId}/${taskId}`
+    );
+    const task = legacyData<CaseTask>(response.data)[0];
+    if (!task) throw new Error('The task was not found.');
+    return task;
+  },
+
+  async createCaseTask(body: CreateCaseTaskRequest): Promise<void> {
+    await apiClient.post(`${BASE_PATH}/legacy/create`, body);
+  },
+
+  async updateCaseTask(body: UpdateCaseTaskRequest): Promise<void> {
+    await apiClient.patch(`${BASE_PATH}/legacy/task/update`, body);
+  },
+
+  async deleteCaseTask(taskId: string): Promise<void> {
+    await apiClient.delete(`${BASE_PATH}/legacy/task/delete/${taskId}`);
+  },
+
   async list(params: TaskQueryParams = {}): Promise<TaskListResult> {
     const response = await apiClient.get<TaskListResult>(BASE_PATH, { params });
     return response.data;

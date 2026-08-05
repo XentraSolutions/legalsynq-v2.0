@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import {
   CaseDetailScreen,
+  CaseTaskFormScreen,
   CreateCaseScreen,
   EditCaseDetailsScreen,
   EditCasePersonalScreen,
@@ -40,6 +41,7 @@ export function MainStack() {
       <Stack.Screen component={ServicingListScreen} name="Servicing" />
       <Stack.Screen component={OfferDetailScreen} name="OfferDetail" />
       <Stack.Screen component={CaseDetailScreen} name="CaseDetail" />
+      <Stack.Screen component={CaseTaskFormScreen} name="CaseTaskForm" />
       <Stack.Screen component={EditCaseDetailsScreen} name="EditCaseDetails" />
       <Stack.Screen component={EditCasePersonalScreen} name="EditCasePersonal" />
       <Stack.Screen component={PayoffQuoteScreen} name="PayoffQuote" />

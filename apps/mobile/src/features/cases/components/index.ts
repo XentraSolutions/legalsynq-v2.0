@@ -7,4 +7,5 @@ export * from './CaseDetailTabPage';
 export * from './CaseFilterModal';
 export * from './CaseServicingTab';
 export * from './CaseSummaryRow';
+export * from './CaseTasksTab';
 export * from './NoteItem';

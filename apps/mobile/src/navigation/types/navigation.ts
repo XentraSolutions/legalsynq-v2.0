@@ -30,6 +30,7 @@ export type MainStackParamList = {
   Servicing: undefined;
   OfferDetail: { offerId: string };
   CaseDetail: { caseId: string; initialTab?: 'servicing' };
+  CaseTaskForm: { caseId: string; taskId?: string };
   EditCaseDetails: { caseId: string };
   EditCasePersonal: { caseId: string };
   PayoffQuote: { caseId: string };

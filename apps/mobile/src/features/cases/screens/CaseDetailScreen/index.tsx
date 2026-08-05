@@ -10,8 +10,8 @@ import { CaseDetailHeader } from '@/features/cases/components/CaseDetailHeader';
 import { CaseDocumentsTab } from '@/features/cases/components/CaseDocumentsTab';
 import { CaseLiensTab } from '@/features/cases/components/CaseLiensTab';
 import { CaseNotesTab } from '@/features/cases/components/CaseNotesTab';
-import { CaseDetailPlaceholderPage } from '@/features/cases/components/CaseDetailPlaceholderPage';
 import { CaseServicingTab } from '@/features/cases/components/CaseServicingTab';
+import { CaseTasksTab } from '@/features/cases/components/CaseTasksTab';
 import { CaseDetailTabBar } from '@/features/cases/components/CaseDetailTabBar';
 import { CaseDetailTabPage } from '@/features/cases/components/CaseDetailTabPage';
 import { CaseSummaryRow } from '@/features/cases/components/CaseSummaryRow';
@@ -602,7 +602,15 @@ export function CaseDetailScreen() {
         />
       ) : null}
       {activeTab === 'notes' ? <CaseNotesTab caseId={route.params.caseId} /> : null}
-      {activeTab === 'tasks' ? <CaseDetailPlaceholderPage title="Task Manager" /> : null}
+      {activeTab === 'tasks' ? (
+        <CaseTasksTab
+          caseId={route.params.caseId}
+          onCreate={() => navigation.navigate('CaseTaskForm', { caseId: route.params.caseId })}
+          onEdit={(taskId) =>
+            navigation.navigate('CaseTaskForm', { caseId: route.params.caseId, taskId })
+          }
+        />
+      ) : null}
 
       <ManageCaseModal
         visible={manageVisible}
