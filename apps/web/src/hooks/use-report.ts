@@ -70,6 +70,7 @@ export function useLienReport<TTemplate = any>({
     },
     enabled: Boolean(report) && Boolean(id),
     placeholderData: (previousData) => previousData,
+    refetchOnWindowFocus: false,
   });
 
   // Handlers to update pagination from your UI components
