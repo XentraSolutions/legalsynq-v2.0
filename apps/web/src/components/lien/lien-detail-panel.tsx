@@ -91,7 +91,7 @@ export function LienDetailPanel({ lien }: LienDetailPanelProps) {
       {/* Header */}
       <div className="px-6 py-5 border-b border-gray-100 flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-mono text-gray-400">{lien.lienNumber}</p>
+          <p className="text-xs text-gray-400">{lien.lienNumber}</p>
           <h2 className="text-lg font-semibold text-gray-900 mt-0.5">
             {LIEN_TYPE_LABELS[lien.lienType] ?? lien.lienType}
           </h2>

@@ -118,13 +118,105 @@ public class NetworkProviderEditTests
     }
 
     [Fact]
-    public async Task RemoveProviderAsync_SoftDeletesMembership()
+    public async Task UpdateProviderAsync_WhenTogglingLocationInactive_DoesNotDeactivateFacility()
+    {
+        // The per-location "Active" checkbox (Save Location / Save Provider Setup) is a
+        // separate, pre-existing feature from deletion — it must only affect the
+        // NetworkProvider membership's own status, never cc_Facilities.IsActive. Only
+        // RemoveProviderAsync (Delete Location) is allowed to deactivate the Facility.
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var specialtyId = Guid.CreateVersion7();
+        var specialty = Specialty.Create("Pain Doctors", "PAIN_DOCTORS", null);
+        var provider = Provider.Create(
+            tenantId, "Jane Provider", "Jane Practice", "jane@example.com", "555-0100",
+            "123 Main St", "Austin", "TX", "78701", true, true, null);
+        var providerId = provider.Id;
+        var facility = Facility.Create(
+            tenantId, "Jane Practice", "123 Main St", "Austin", "TX", "78701", "555-0100",
+            true, null, "jane@example.com");
+        var membership = NetworkProvider.Create(tenantId, networkId, providerId, facility.Id, true, true);
+        SetNavigation(membership, nameof(NetworkProvider.Provider), provider);
+        SetNavigation(membership, nameof(NetworkProvider.Facility), facility);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, providerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        networks.Setup(r => r.UpdateProviderInRegistryAsync(provider, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.GetFacilityByIdAsync(tenantId, facility.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(facility);
+        networks.Setup(r => r.UpdateFacilityAsync(facility, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SyncProviderSpecialtiesAsync(provider.Id, It.IsAny<List<Guid>>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var specialties = new Mock<ISpecialtyRepository>();
+        specialties.Setup(r => r.GetActiveByIdsAsync(It.Is<List<Guid>>(ids => ids.SequenceEqual(new[] { specialtyId })), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([specialty]);
+
+        var sut = BuildSut(networks.Object, specialties.Object);
+
+        var inactiveRequest = ValidUpdateRequest([specialtyId]) with { IsActive = false, AcceptingReferrals = false };
+        var result = await sut.UpdateProviderAsync(tenantId, networkId, providerId, inactiveRequest, null);
+
+        Assert.False(membership.IsActive);
+        Assert.False(result.IsActive);
+        Assert.True(facility.IsActive);
+        Assert.True(result.FacilityIsActive);
+    }
+
+    [Fact]
+    public async Task RemoveProviderAsync_SoftDeletesMembershipAndTagsFacilityInactive()
     {
         var tenantId = Guid.CreateVersion7();
         var networkId = Guid.CreateVersion7();
         var providerId = Guid.CreateVersion7();
-        var facilityId = Guid.CreateVersion7();
-        var membership = NetworkProvider.Create(tenantId, networkId, providerId, facilityId, true, true);
+        var facility = Facility.Create(
+            tenantId, "Jane Practice", "123 Main St", "Austin", "TX", "78701", "555-0100", true, null);
+        var membership = NetworkProvider.Create(tenantId, networkId, providerId, facility.Id, true, true);
+        SetNavigation(membership, nameof(NetworkProvider.Facility), facility);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        networks.Setup(r => r.HasOtherActiveNetworkProviderForFacilityAsync(tenantId, facility.Id, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var sut = BuildSut(networks.Object, Mock.Of<ISpecialtyRepository>());
+
+        await sut.RemoveProviderAsync(tenantId, networkId, membership.Id, cascadeFacility: true, userId: null);
+
+        Assert.False(membership.IsActive);
+        Assert.False(membership.AcceptingReferrals);
+        Assert.False(facility.IsActive);
+        networks.Verify(r => r.RemoveProviderAsync(It.IsAny<NetworkProvider>(), It.IsAny<CancellationToken>()), Times.Never);
+        networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RemoveProviderAsync_WhenCascadeFacilityIsFalse_LeavesFacilityUntouched()
+    {
+        // The tenant-portal "Remove from network" (X) icon is a distinct action from
+        // "Delete location" — it must keep its original, membership-only soft delete and
+        // never touch cc_Facilities.IsActive, even though both actions call this same method.
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var providerId = Guid.CreateVersion7();
+        var facility = Facility.Create(
+            tenantId, "Jane Practice", "123 Main St", "Austin", "TX", "78701", "555-0100", true, null);
+        var membership = NetworkProvider.Create(tenantId, networkId, providerId, facility.Id, true, true);
+        SetNavigation(membership, nameof(NetworkProvider.Facility), facility);
 
         var networks = new Mock<INetworkRepository>();
         networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
@@ -136,11 +228,72 @@ public class NetworkProviderEditTests
 
         var sut = BuildSut(networks.Object, Mock.Of<ISpecialtyRepository>());
 
-        await sut.RemoveProviderAsync(tenantId, networkId, membership.Id);
+        await sut.RemoveProviderAsync(tenantId, networkId, membership.Id, cascadeFacility: false, userId: null);
 
         Assert.False(membership.IsActive);
         Assert.False(membership.AcceptingReferrals);
-        networks.Verify(r => r.RemoveProviderAsync(It.IsAny<NetworkProvider>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.True(facility.IsActive);
+        networks.Verify(r => r.HasOtherActiveNetworkProviderForFacilityAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RemoveProviderAsync_WhenFacilityStillUsedByAnotherActiveMembership_LeavesFacilityActive()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var providerId = Guid.CreateVersion7();
+        var facility = Facility.Create(
+            tenantId, "Shared Clinic", "1 Plaza Dr", "Austin", "TX", "78701", "555-0100", true, null);
+        var membership = NetworkProvider.Create(tenantId, networkId, providerId, facility.Id, true, true);
+        SetNavigation(membership, nameof(NetworkProvider.Facility), facility);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        // Another active NetworkProvider (different provider/network) still points at this same facility.
+        networks.Setup(r => r.HasOtherActiveNetworkProviderForFacilityAsync(tenantId, facility.Id, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var sut = BuildSut(networks.Object, Mock.Of<ISpecialtyRepository>());
+
+        await sut.RemoveProviderAsync(tenantId, networkId, membership.Id, cascadeFacility: true, userId: null);
+
+        Assert.False(membership.IsActive);
+        Assert.True(facility.IsActive);
+    }
+
+    [Fact]
+    public async Task RemoveProviderAsync_WhenMembershipHasNoFacility_SoftDeletesWithoutThrowing()
+    {
+        // Legacy memberships can have FacilityId == Guid.Empty with no matching Facility row
+        // (see GetMembershipByIdOrProviderAsync's ThenByDescending ordering) — the Facility
+        // navigation stays null in that case and must not be dereferenced.
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var providerId = Guid.CreateVersion7();
+        var membership = NetworkProvider.Create(tenantId, networkId, providerId, Guid.Empty, true, true);
+
+        var networks = new Mock<INetworkRepository>();
+        networks.Setup(r => r.GetByIdAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "Network", string.Empty));
+        networks.Setup(r => r.GetMembershipByIdOrProviderAsync(networkId, membership.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(membership);
+        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var sut = BuildSut(networks.Object, Mock.Of<ISpecialtyRepository>());
+
+        await sut.RemoveProviderAsync(tenantId, networkId, membership.Id, cascadeFacility: true, userId: null);
+
+        Assert.False(membership.IsActive);
+        networks.Verify(r => r.HasOtherActiveNetworkProviderForFacilityAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
         networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 

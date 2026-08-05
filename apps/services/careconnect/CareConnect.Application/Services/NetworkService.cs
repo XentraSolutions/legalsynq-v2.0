@@ -482,11 +482,16 @@ public class NetworkService : INetworkService
         await _networks.SaveChangesAsync(ct);
 
         var loaded = await _networks.GetMembershipAsync(networkId, provider.Id, facility.Id, ct);
-        return ToProviderItem(loaded ?? existing ?? NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals), provider, facility);
+        // Use loaded.Provider/loaded.Facility (fresh, fully-included), not the local provider/
+        // facility variables — those can be missing just-synced specialties (see the comment
+        // on GetMembershipAsync's include list).
+        return loaded is not null
+            ? ToProviderItem(loaded)
+            : ToProviderItem(existing ?? NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals), provider, facility);
     }
 
     public async Task RemoveProviderAsync(
-        Guid tenantId, Guid networkId, Guid providerId, CancellationToken ct = default)
+        Guid tenantId, Guid networkId, Guid providerId, bool cascadeFacility, Guid? userId, CancellationToken ct = default)
     {
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
@@ -495,11 +500,31 @@ public class NetworkService : INetworkService
             ?? throw new NotFoundException($"Provider or network membership {providerId} is not a member of network {networkId}.");
 
         entry.UpdateStatus(isActive: false, acceptingReferrals: false);
+
+        // cascadeFacility: true only for "Delete location" (the Facilities panel button).
+        // A Facility row can be shared across multiple NetworkProvider memberships (see
+        // EnsureFacilityAsync dedup-by-address), so only tag it inactive when this was the
+        // last active membership pointing at it — otherwise we'd hide a location that's
+        // still in active use under a different provider/network. Some legacy memberships
+        // have no Facility (FacilityId == Guid.Empty — see GetMembershipByIdOrProviderAsync's
+        // ordering), so guard against a null navigation before deactivating it.
+        var facilityDeactivated = false;
+        if (cascadeFacility && entry.Facility is not null)
+        {
+            var facilityStillInUse = await _networks.HasOtherActiveNetworkProviderForFacilityAsync(
+                tenantId, entry.FacilityId, entry.Id, ct);
+            if (!facilityStillInUse)
+            {
+                entry.Facility.Deactivate(userId);
+                facilityDeactivated = true;
+            }
+        }
+
         await _networks.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Provider {ProviderId} facility {FacilityId} soft-deleted from network {NetworkId} (association preserved as inactive).",
-            entry.ProviderId, entry.FacilityId, networkId);
+            "Provider {ProviderId} facility {FacilityId} soft-deleted from network {NetworkId} (association preserved as inactive; facility tagged inactive: {FacilityDeactivated}).",
+            entry.ProviderId, entry.FacilityId, networkId, facilityDeactivated);
     }
 
     public async Task<List<NetworkProviderMarker>> GetMarkersAsync(
@@ -603,7 +628,11 @@ public class NetworkService : INetworkService
             state: request.State.Trim().ToUpperInvariant(),
             postalCode: request.PostalCode,
             phone: request.Phone,
-            isActive: request.IsActive,
+            // Preserve Facility.IsActive here — the "Active" checkbox on this form only
+            // toggles the NetworkProvider membership's own operational status (below), a
+            // separate, pre-existing feature. Facility.IsActive is the true "was this
+            // location deleted" flag and should only ever be flipped by RemoveProviderAsync.
+            isActive: facility.IsActive,
             updatedByUserId: userId,
             email: request.Email.Trim().ToLowerInvariant(),
             latitude: request.Latitude ?? facility.Latitude,
@@ -646,7 +675,8 @@ public class NetworkService : INetworkService
             f.AddressLine1, f.PostalCode, np.IsActive, np.AcceptingReferrals, p.AccessStage,
             specialties,
             primarySpecialty?.Id,
-            primarySpecialty?.Name);
+            primarySpecialty?.Name,
+            f.IsActive);
     }
 
     private static IEnumerable<ProviderSearchResult> ToSearchResults(Provider p)

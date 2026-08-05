@@ -17,10 +17,12 @@ export function LienDetailView({
   caseId,
   lienId,
   onGoBack,
+  onUpdate,
 }: {
   caseId: string;
   lienId: string;
-  onGoBack: () => void;
+  onGoBack?: () => void;
+  onUpdate: () => void;
 }) {
   const addToast = useLienStore((s) => s.addToast);
   const { relatedLiens } = useCaseDetailContext();
@@ -289,7 +291,7 @@ export function LienDetailView({
       title: "Liens Updated",
       description: `Liens has been updated.`,
     });
-    onGoBack();
+    onUpdate();
   }
 
   return (

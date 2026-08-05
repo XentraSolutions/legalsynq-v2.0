@@ -275,9 +275,14 @@ export const careConnectApi = {
     updateProvider: (networkId: string, providerId: string, request: UpdateNetworkProviderRequest) =>
       apiClient.put<NetworkProviderItem>(`/careconnect/api/networks/${networkId}/providers/${providerId}`, request),
 
-    /** DELETE /api/networks/{id}/providers/{providerId} — removes association only */
-    removeProvider: (networkId: string, providerId: string) =>
-      apiClient.delete<void>(`/careconnect/api/networks/${networkId}/providers/${providerId}`),
+    /**
+     * DELETE /api/networks/{id}/providers/{providerId} — removes association only.
+     * cascadeFacility: true only for "Delete location" (Facilities panel) — also tags the
+     * underlying Facility inactive. The "Remove from network" icon omits it, keeping its
+     * original membership-only soft delete.
+     */
+    removeProvider: (networkId: string, providerId: string, cascadeFacility = false) =>
+      apiClient.delete<void>(`/careconnect/api/networks/${networkId}/providers/${providerId}${cascadeFacility ? '?cascadeFacility=true' : ''}`),
 
     /** GET /api/networks/{id}/providers/markers — map markers for the network */
     getMarkers: (id: string) =>

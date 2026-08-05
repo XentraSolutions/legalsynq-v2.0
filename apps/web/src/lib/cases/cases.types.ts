@@ -436,7 +436,7 @@ export interface ExportResponse {
 
 export interface CaseAllocationReportRequest {
   page: number;
-  limit: number;
+  limit?: number;
   startDate?: string;
   endDate?: string;
   isCsv?: boolean;

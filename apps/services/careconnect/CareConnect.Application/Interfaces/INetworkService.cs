@@ -19,7 +19,7 @@ public interface INetworkService
     /// </summary>
     Task<NetworkProviderItem> AddProviderAsync(Guid tenantId, Guid networkId, AddProviderToNetworkRequest request, Guid? userId, CancellationToken ct = default);
 
-    Task RemoveProviderAsync(Guid tenantId, Guid networkId, Guid providerId, CancellationToken ct = default);
+    Task RemoveProviderAsync(Guid tenantId, Guid networkId, Guid providerId, bool cascadeFacility, Guid? userId, CancellationToken ct = default);
     Task<List<NetworkProviderMarker>> GetMarkersAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
     Task<NetworkProviderItem> UpdateProviderAsync(Guid tenantId, Guid networkId, Guid providerId, UpdateNetworkProviderRequest request, Guid? userId, CancellationToken ct = default);
 

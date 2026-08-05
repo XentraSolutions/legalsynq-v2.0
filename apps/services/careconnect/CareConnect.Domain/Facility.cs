@@ -75,6 +75,13 @@ public class Facility : AuditableEntity
         };
     }
 
+    public void Deactivate(Guid? updatedByUserId)
+    {
+        IsActive = false;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public void Update(
         string name,
         string addressLine1,

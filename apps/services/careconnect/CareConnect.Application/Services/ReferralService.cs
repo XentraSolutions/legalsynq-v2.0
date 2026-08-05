@@ -250,11 +250,21 @@ public class ReferralService : IReferralService
         // avoiding a concurrent-access conflict with the request-scoped context still in use below.
         var scopeFactory = _scopeFactory;
         var logger       = _logger;
+        var createdTenantId = tenantId;
         _ = Task.Run(async () =>
         {
             using var scope    = scopeFactory.CreateScope();
             var       emailSvc = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
-            try { await emailSvc.SendNewReferralNotificationAsync(referral, provider, treatmentTypeName, CancellationToken.None); }
+            try
+            {
+                // The in-memory `referral` from Referral.Create() has no Facility/Provider
+                // navigation loaded — reload it here (via this scope's own DbContext, so it
+                // never touches the request-scoped context above) so the email can resolve
+                // the correct routed-facility location instead of falling back to nothing.
+                var referralsRepo = scope.ServiceProvider.GetRequiredService<IReferralRepository>();
+                var hydrated = await referralsRepo.GetByIdAsync(createdTenantId, referral.Id, CancellationToken.None) ?? referral;
+                await emailSvc.SendNewReferralNotificationAsync(hydrated, provider, treatmentTypeName, CancellationToken.None);
+            }
             catch (Exception ex)
             {
                 logger.LogWarning(ex,
@@ -1390,43 +1400,52 @@ public class ReferralService : IReferralService
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
 
-    private static ReferralResponse ToResponse(Referral r, CareConnectNotification? latestNotif = null, string? treatmentTypeName = null) => new()
+    private static ReferralResponse ToResponse(Referral r, CareConnectNotification? latestNotif = null, string? treatmentTypeName = null)
     {
-        Id = r.Id,
-        TenantId = r.TenantId,
-        ProviderId = r.ProviderId,
-        FacilityId = r.FacilityId,
-        ProviderName = GetProviderDisplayName(r.Provider),
-        ClientFirstName = r.ClientFirstName,
-        ClientLastName = r.ClientLastName,
-        ClientDob = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null,
-        ClientPhone = r.ClientPhone,
-        ClientEmail = r.ClientEmail,
-        CaseNumber = r.CaseNumber,
-        RequestedService = r.RequestedService,
-        Urgency = r.Urgency,
-        Status = r.Status,
-        Notes = r.Notes,
-        DeclineNotes = r.DeclineNotes,
-        DateOfAccident = r.DateOfAccident?.ToString("yyyy-MM-dd"),
-        CreatedAtUtc = r.CreatedAtUtc,
-        UpdatedAtUtc = r.UpdatedAtUtc,
-        // Phase 5: expose org context fields resolved at creation time
-        ReferringOrganizationId = r.ReferringOrganizationId,
-        ReceivingOrganizationId = r.ReceivingOrganizationId ?? r.Provider?.OrganizationId,
-        OrganizationRelationshipId = r.OrganizationRelationshipId,
-        // CC-REFERRER-EMAIL: surface for participant-check in endpoints
-        ReferrerEmail = r.ReferrerEmail,
-        ReferrerName = r.ReferrerName,
-        // LSCC-005-01: hardening fields
-        TokenVersion          = r.TokenVersion,
-        ProviderEmailStatus   = latestNotif?.Status,
-        ProviderEmailAttempts = latestNotif?.AttemptCount ?? 0,
-        ProviderEmailFailureReason = latestNotif?.FailureReason,
-        // Type of Treatment
-        TreatmentTypeId   = r.TreatmentTypeId,
-        TreatmentTypeName = treatmentTypeName,
-    };
+        var location = ReferralLocationResolver.Resolve(r);
+        return new()
+        {
+            Id = r.Id,
+            TenantId = r.TenantId,
+            ProviderId = r.ProviderId,
+            FacilityId = r.FacilityId,
+            ProviderName = GetProviderDisplayName(r.Provider),
+            FacilityName = location.FacilityName,
+            LocationAddressLine1 = location.AddressLine1,
+            LocationCity = location.City,
+            LocationState = location.State,
+            LocationPostalCode = location.PostalCode,
+            ClientFirstName = r.ClientFirstName,
+            ClientLastName = r.ClientLastName,
+            ClientDob = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null,
+            ClientPhone = r.ClientPhone,
+            ClientEmail = r.ClientEmail,
+            CaseNumber = r.CaseNumber,
+            RequestedService = r.RequestedService,
+            Urgency = r.Urgency,
+            Status = r.Status,
+            Notes = r.Notes,
+            DeclineNotes = r.DeclineNotes,
+            DateOfAccident = r.DateOfAccident?.ToString("yyyy-MM-dd"),
+            CreatedAtUtc = r.CreatedAtUtc,
+            UpdatedAtUtc = r.UpdatedAtUtc,
+            // Phase 5: expose org context fields resolved at creation time
+            ReferringOrganizationId = r.ReferringOrganizationId,
+            ReceivingOrganizationId = r.ReceivingOrganizationId ?? r.Provider?.OrganizationId,
+            OrganizationRelationshipId = r.OrganizationRelationshipId,
+            // CC-REFERRER-EMAIL: surface for participant-check in endpoints
+            ReferrerEmail = r.ReferrerEmail,
+            ReferrerName = r.ReferrerName,
+            // LSCC-005-01: hardening fields
+            TokenVersion          = r.TokenVersion,
+            ProviderEmailStatus   = latestNotif?.Status,
+            ProviderEmailAttempts = latestNotif?.AttemptCount ?? 0,
+            ProviderEmailFailureReason = latestNotif?.FailureReason,
+            // Type of Treatment
+            TreatmentTypeId   = r.TreatmentTypeId,
+            TreatmentTypeName = treatmentTypeName,
+        };
+    }
 
     private static ReferralStatusHistoryResponse ToHistoryResponse(ReferralStatusHistory h) => new()
     {
@@ -1632,6 +1651,7 @@ public class ReferralService : IReferralService
         }
 
         var attachments = await _referralAttachments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
+        var location    = ReferralLocationResolver.Resolve(referral);
 
         return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Success(new ReferralPublicSummaryResponse
         {
@@ -1645,10 +1665,12 @@ public class ReferralService : IReferralService
             Status                = referral.Status,
             ProviderPhone         = referral.Provider?.Phone         ?? "",
             ProviderEmail         = referral.Provider?.Email         ?? "",
-            ProviderAddressLine1  = referral.Provider?.AddressLine1  ?? "",
-            ProviderCity          = referral.Provider?.City          ?? "",
-            ProviderState         = referral.Provider?.State         ?? "",
-            ProviderPostalCode    = referral.Provider?.PostalCode    ?? "",
+            // LSCC-referral-location: facility-first (where this referral was routed), falling
+            // back to the provider's own address — see ReferralLocationResolver.
+            ProviderAddressLine1  = location.AddressLine1,
+            ProviderCity          = location.City,
+            ProviderState         = location.State,
+            ProviderPostalCode    = location.PostalCode,
             ProviderHasAccount    = ProviderHasPortalAccount(referral.Provider),
             Attachments           = attachments
                 .Select(a => new PublicAttachmentInfo(a.Id, a.FileName, a.ContentType, a.FileSizeBytes))

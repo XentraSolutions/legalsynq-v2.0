@@ -66,7 +66,6 @@ export default function TemplatesPage() {
   }, []);
 
   const fetchReport = useCallback(async () => {
-    console.log("here", templateId);
     setLoading(true);
     if (!templateId) return;
     try {
@@ -173,6 +172,7 @@ export default function TemplatesPage() {
           template={template}
           initialData={template}
           onSaved={(data: any) => {
+            setTemplate(null);
             setShowCreate({ isOpen: false });
             fetchReports();
           }}
