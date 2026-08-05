@@ -158,6 +158,70 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task CreatePayment_with_closed_settlement_status_moves_lien_to_closed_list()
+    {
+        Lien lien;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"PAYMENT-CLOSED-{Guid.CreateVersion7():N}",
+                LienType.MedicalLien,
+                1_000m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            lien.SetLegacyMedicalStatus("Open", SeedHelper.UserId);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
+        {
+            amount = 0,
+            caseId = SeedHelper.CaseId,
+            lienId = lien.Id,
+            notes = "",
+            paymentDate = "2026-08-05",
+            paymentMethod = "Check",
+            referenceNumber = "123123123",
+            settlementStatus = "Closed",
+            settlementType = "full_payment",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedLien = await verificationDb.Liens.FindAsync(lien.Id);
+        persistedLien!.Status.Should().Be(LienStatus.Settled);
+        persistedLien.ClosedAtUtc.Should().NotBeNull();
+
+        var closedListResponse = await _client.GetAsync(
+            $"/api/liens/liens/?search={Uri.EscapeDataString(lien.LienNumber)}&status=Closed&page=1&pageSize=20");
+        closedListResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await closedListResponse.Content.ReadAsStringAsync()}");
+
+        var closedList = await closedListResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        closedList!.RootElement.GetProperty("items").EnumerateArray()
+            .Should().Contain(item => item.GetProperty("id").GetGuid() == lien.Id);
+
+        var paymentDetailsResponse = await _client.GetAsync(
+            $"/service/liens/settlement/payment-details/{SeedHelper.CaseId}");
+        paymentDetailsResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await paymentDetailsResponse.Content.ReadAsStringAsync()}");
+
+        var paymentDetails = await paymentDetailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var recordedPayment = paymentDetails!.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("checkNumber").GetString() == "123123123");
+        recordedPayment.GetProperty("amount").GetString().Should().Be("0.00");
+        recordedPayment.GetProperty("amountToSettle").GetString().Should().Be("1000.00");
+        recordedPayment.GetProperty("checkAmount").GetString().Should().Be("1000.00");
+    }
+
+    [Fact]
     public async Task PaymentDetails_returns_fields_sent_by_the_current_payment_form()
     {
         Guid settlementTypeId;

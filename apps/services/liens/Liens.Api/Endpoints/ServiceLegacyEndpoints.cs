@@ -438,6 +438,8 @@ public static class ServiceLegacyEndpoints
                 out var settlement);
             var typeId = payment.SettlementTypeId ?? string.Empty;
             var statusId = payment.SettlementStatusId ?? settlement?.Status ?? string.Empty;
+            var amountToSettle = lien?.CurrentBalance ?? settlement?.Amount ?? 0m;
+            var checkAmount = payment.Amount == 0m ? amountToSettle : payment.Amount;
             return new
             {
                 caseId = payment.CaseId.ToString(),
@@ -446,7 +448,7 @@ public static class ServiceLegacyEndpoints
                 lienStatus = lien?.Status ?? string.Empty,
                 lienStatusId = lien?.Status ?? string.Empty,
                 amount = payment.Amount.ToString("0.00", CultureInfo.InvariantCulture),
-                checkAmount = payment.Amount.ToString("0.00", CultureInfo.InvariantCulture),
+                checkAmount = checkAmount.ToString("0.00", CultureInfo.InvariantCulture),
                 checkDate = payment.PaymentDate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
                 checkNumber = payment.CheckNumber ?? string.Empty,
                 typeId,
@@ -458,7 +460,7 @@ public static class ServiceLegacyEndpoints
                 note = payment.Note ?? settlement?.Note ?? string.Empty,
                 paymentNumber = payment.PaymentNumber.ToString(CultureInfo.InvariantCulture),
                 date = PacificTimeHelper.FormatDate(payment.CreatedAtUtc),
-                amountToSettle = lien?.CurrentBalance?.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00",
+                amountToSettle = amountToSettle.ToString("0.00", CultureInfo.InvariantCulture),
             };
         }).ToList();
 
