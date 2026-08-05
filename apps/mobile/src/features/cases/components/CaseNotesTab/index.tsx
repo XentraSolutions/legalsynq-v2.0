@@ -245,7 +245,11 @@ export function CaseNotesTab({ caseId }: { caseId: string }) {
   }
 
   return (
-    <View className="flex-1" testID="case-notes-page">
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      className="flex-1"
+      testID="case-notes-page"
+    >
       <NotesSegment active={activeView} onChange={setActiveView} />
       <ScrollView
         className="flex-1"
@@ -286,36 +290,34 @@ export function CaseNotesTab({ caseId }: { caseId: string }) {
       </ScrollView>
 
       {activeView === 'feeds' ? (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View className="flex-row items-end gap-3 border-t border-[#dedee0] bg-white px-6 py-4 dark:border-[#303138] dark:bg-[#191a1f]">
-            <TextInput
-              accessibilityLabel="Add feed note"
-              className="max-h-28 min-h-10 flex-1 rounded-[20px] bg-[#ebebec] px-4 py-2 font-jakarta text-[14px] leading-5 text-[#18181b] dark:bg-[#2a2b30] dark:text-white"
-              maxLength={5000}
-              multiline
-              placeholder="Add note..."
-              placeholderTextColor="#858892"
-              value={content}
-              onChangeText={setContent}
-            />
-            <Pressable
-              accessibilityLabel="Send note"
-              accessibilityRole="button"
-              className={cx(
-                'h-10 w-10 items-center justify-center rounded-full bg-[#f97332]',
-                !content.trim() || addNote.isPending ? 'opacity-50' : ''
-              )}
-              disabled={!content.trim() || addNote.isPending}
-              onPress={() => void submitNote()}
-            >
-              {addNote.isPending ? (
-                <Spinner color="#ffffff" />
-              ) : (
-                <Ionicons color="#ffffff" name="send-outline" size={18} />
-              )}
-            </Pressable>
-          </View>
-        </KeyboardAvoidingView>
+        <View className="flex-row items-end gap-3 border-t border-[#dedee0] bg-white px-6 py-4 dark:border-[#303138] dark:bg-[#191a1f]">
+          <TextInput
+            accessibilityLabel="Add feed note"
+            className="max-h-28 min-h-10 flex-1 rounded-[20px] bg-[#ebebec] px-4 py-2 font-jakarta text-[14px] leading-5 text-[#18181b] dark:bg-[#2a2b30] dark:text-white"
+            maxLength={5000}
+            multiline
+            placeholder="Add note..."
+            placeholderTextColor="#858892"
+            value={content}
+            onChangeText={setContent}
+          />
+          <Pressable
+            accessibilityLabel="Send note"
+            accessibilityRole="button"
+            className={cx(
+              'h-10 w-10 items-center justify-center rounded-full bg-[#f97332]',
+              !content.trim() || addNote.isPending ? 'opacity-50' : ''
+            )}
+            disabled={!content.trim() || addNote.isPending}
+            onPress={() => void submitNote()}
+          >
+            {addNote.isPending ? (
+              <Spinner color="#ffffff" />
+            ) : (
+              <Ionicons color="#ffffff" name="send-outline" size={18} />
+            )}
+          </Pressable>
+        </View>
       ) : null}
 
       <ManageNoteModal
@@ -324,6 +326,6 @@ export function CaseNotesTab({ caseId }: { caseId: string }) {
         onClose={() => setManagedNote(null)}
         onDelete={() => void removeNote()}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
