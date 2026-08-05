@@ -194,10 +194,12 @@ export default function ReportDisplay({
           );
 
           const isDefaultMinWidth =
-            item.key.includes("facility") || item.key.includes("law")
+            item.key.includes("facility") ||
+            item.key.includes("law") ||
+            item.key.includes("case_type")
               ? { minWidth: "220px", width: "100%" }
               : item.key.includes("id") || item.key.includes("status")
-                ? { minWidth: "100px" }
+                ? { minWidth: "135px", width: "100%" }
                 : { minWidth: "50px" };
 
           return {
@@ -237,12 +239,16 @@ export default function ReportDisplay({
         const isCurrencyField = /amt|amount|price|cost|fee|total/i.test(
           item.key,
         );
-        console.log(item);
         const isDefaultMinWidth =
-          item.key.includes("facility") || item.key.includes("law")
+          item.key.includes("facility") ||
+          item.key.includes("law") ||
+          item.key.includes("case_type") ||
+          item.key.includes("manager")
             ? { minWidth: "220px", width: "100%" }
-            : item.key.includes("id") || item.key.includes("status")
-              ? { minWidth: "100px" }
+            : item.key.includes("lien_id") ||
+                item.key.includes("case_id") ||
+                item.key.includes("status")
+              ? { minWidth: "135px", width: "100%" }
               : { minWidth: "50px" };
         return {
           id: item.key,
@@ -311,7 +317,7 @@ export default function ReportDisplay({
       </div>
 
       {/* TABLE PLACEHOLDER */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-scroll h-full">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-x-scroll h-full">
         {loading ? (
           <div className="py-12 text-center">
             <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
