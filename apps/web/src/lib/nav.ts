@@ -121,15 +121,6 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           label: "Contacts",
           icon: "ri-contacts-book-line",
         },
-        {
-          href: "/lien/portfolio",
-          label: "Portfolio",
-          icon: "ri-briefcase-line",
-          requiredRoles: [
-            ProductRole.SynqLienBuyer,
-            ProductRole.SynqLienHolder,
-          ],
-        },
       ],
     },
     {
@@ -156,15 +147,6 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           label: "Marketplace",
           icon: "ri-store-2-line",
           requiredRoles: [ProductRole.SynqLienBuyer],
-        },
-        {
-          href: "/lien/portfolio",
-          label: "Portfolio",
-          icon: "ri-briefcase-line",
-          requiredRoles: [
-            ProductRole.SynqLienBuyer,
-            ProductRole.SynqLienHolder,
-          ],
         },
       ],
     },
