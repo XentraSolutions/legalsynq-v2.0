@@ -40,6 +40,8 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `GET` | `/api/liens/cases/{id}` | Case detail |
 | `GET` | `/api/liens/cases/dashboard/task-summary` | Legacy-compatible, assignee-scoped task dashboard. Returns the `isSuccess`/`message`/`data` envelope with total, upcoming, in-progress, in-review, and completed counts plus the task list. |
 | `DELETE` | `/api/liens/cases/delete/{id}` | Legacy case deletion; blocks when a linked lien is active, and detaches terminal/rejected liens before removing the case |
+| `POST` | `/api/liens/cases/generate-csv` | Exports cases as Base64-encoded CSV using the canonical migrated Accident Type display value; its accident-type filter uses the canonical ID with legacy metadata fallback |
+| `GET` | `/service/liens/settlement/payment-details/{caseId}` | Returns complete legacy payment details, including check/reference number, payment method/payor, note, settlement type/status IDs and display names, and net profit from current or migrated payment metadata |
 | `POST` | `/api/liens/reports/diy/export` | Export a DIY report as Base64-encoded CSV in the legacy `data` export envelope |
 | `POST` | `/api/liens/cases/dashboard/total-lien-report-export/v3` | Returns all legacy-eligible liens with full-result status and billing/purchase summaries; the legacy V3 request has no date filter |
 | `POST` | `/api/liens/cases/dashboard/total-case-report-export/v3` | Returns all legacy-eligible cases with full-result status counts; the legacy V3 request has no date filter |
@@ -63,7 +65,7 @@ DIY report billing and purchase columns aggregate `billingAmount` and `purchaseA
 when that status is `Open` or `Closed`, also updates the linked lien to `Active`
 or `Settled`, respectively. Other settlement statuses do not change the lien.
 
-List filters accept both canonical persisted statuses and the legacy/UI lifecycle groups: `Open` expands to all active lien states, `Closed` expands to `Settled`, and `Rejected` expands to `Declined`, `Withdrawn`, and `Cancelled`. Historical rows literally persisted as `Rejected` remain hidden by default. The V3 case filter accepts comma-separated status, law-firm, case-manager, and accident-type selections. Law-firm values match the contact ID saved in case metadata and continue to accept legacy organization IDs.
+List filters accept both canonical persisted statuses and the legacy/UI lifecycle groups: `Open` expands to all active lien states, `Closed` expands to `Settled`, and `Rejected` expands to `Declined`, `Withdrawn`, and `Cancelled`. Historical rows literally persisted as `Rejected` remain hidden by default. Status/date-only lien-list filters are counted and paged in the database before per-lien detail and servicing enrichment, so broad status selections do not enrich the entire matching result set. The V3 case filter accepts comma-separated status, law-firm, case-manager, and accident-type selections. Case status filtering uses the saved legacy status label to distinguish `New`, `Processing`, and `Pre-Demand` cases that share the canonical `PreDemand` state, and to distinguish `Litigation` from `Negotiations` cases that share `InNegotiation`. The complete SL-CORE import preserves those labels, and the guarded relationship backfill repairs them for already-imported cases that have not since changed status. Law-firm values match the contact ID saved in case metadata and continue to accept legacy organization IDs.
 
 ## Selling Workflow
 

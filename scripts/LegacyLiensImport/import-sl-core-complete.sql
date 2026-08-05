@@ -551,12 +551,29 @@ BEGIN
           WHEN 'LC'          THEN 'InNegotiation'
           WHEN 'NEGOTIATIONS' THEN 'InNegotiation'
           WHEN 'LITIGATION'  THEN 'InNegotiation'
+          WHEN 'LITIGATION (PENDING)' THEN 'InNegotiation'
+          WHEN 'LITIGATION (OPEN)' THEN 'InNegotiation'
+          WHEN 'LITIGATION (CLOSED)' THEN 'InNegotiation'
           WHEN 'CS'          THEN 'CaseSettled'
           WHEN 'CASE SETTLED' THEN 'CaseSettled'
           WHEN 'C'           THEN 'Closed'
           WHEN 'CLOSED'      THEN 'Closed'
           ELSE NULL
         END AS Status,
+        CASE COALESCE(UPPER(TRIM(c.CASE_STATUS)),'')
+          WHEN 'N' THEN 'New'
+          WHEN 'NEW' THEN 'New'
+          WHEN 'P' THEN 'Processing'
+          WHEN 'PROCESSING' THEN 'Processing'
+          WHEN 'LP' THEN 'Litigation'
+          WHEN 'LO' THEN 'Litigation'
+          WHEN 'LC' THEN 'Litigation'
+          WHEN 'LITIGATION' THEN 'Litigation'
+          WHEN 'LITIGATION (PENDING)' THEN 'Litigation'
+          WHEN 'LITIGATION (OPEN)' THEN 'Litigation'
+          WHEN 'LITIGATION (CLOSED)' THEN 'Litigation'
+          ELSE NULL
+        END AS StatusLabel,
         CASE
           WHEN c.CASE_DATE_OF_LOSS IS NULL OR TRIM(c.CASE_DATE_OF_LOSS) = ''
             THEN NULL
@@ -612,7 +629,9 @@ BEGIN
         CASE WHEN AccidentTypeLookupId IS NOT NULL
              THEN CONCAT('accidentTypeId=', AccidentTypeLookupId)  ELSE NULL END,
         CASE WHEN AccidentTypeLookupName IS NOT NULL
-             THEN CONCAT('accidentType=', AccidentTypeLookupName)  ELSE NULL END
+             THEN CONCAT('accidentType=', AccidentTypeLookupName)  ELSE NULL END,
+        CASE WHEN StatusLabel IS NOT NULL
+             THEN CONCAT('statusLabel=', StatusLabel)              ELSE NULL END
     ), '');
 
     UPDATE tmp_sle_cases

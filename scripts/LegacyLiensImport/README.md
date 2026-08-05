@@ -113,23 +113,28 @@ Resolve any returned conflicts, then rerun it with the exact `ContactsToInsert`
 value and `p_apply = '1'.` Production execution requires explicit approval and
 an intentionally selected `LS_LIENS` connection.
 
-## Program 1 case-manager, accident-type, and facility repair
+## Program 1 case-manager, accident-type, status-label, and facility repair
 
 Use [`backfill-sl-core-case-relationships.sql`](backfill-sl-core-case-relationships.sql)
 after both the Program 1 core import and the Program 1 contacts/facilities
 import have completed for the same source fingerprint. It repairs only omitted
-relationships:
+relationships and legacy case-status metadata:
 
 - `SL_CASE.CASE_MANAGER` through its `SL_CONTACT` crosswalk to `caseManagerId`
   metadata on the target case.
 - `SL_CASE.CASE_ACCIDENT_TYPE` through `SL_ACCIDENT_TYPE` to the matching
   system `liens_LookupValues` UUID plus the target `accidentType` name.
+- `SL_CASE.CASE_STATUS` to `statusLabel` metadata for `New`, `Processing`, and
+  `Litigation` rows whose target case remains in the corresponding collapsed
+  canonical status (`PreDemand` or `InNegotiation`).
 - `SL_LEINS_MEDICAL_INFORMATION_FACILITY` to a blank target lien `FacilityId`.
 
 The facility relationship is lien-level, not a column on `liens_Cases`. The
 script never creates contacts, facilities, lookups, or crosswalks; a missing or
 ambiguous mapping blocks the entire apply. It also refuses to overwrite an
-existing different case-manager, accident-type, or facility assignment.
+existing different case-manager, accident-type, case-status label, or facility
+assignment. Cases whose status changed after import retain their current status
+and are not given the historical label.
 
 You may use DBeaver to inspect the SQL file in dry-run mode (`@apply = 0`),
 but use the checked-in .NET runner for every apply. It owns the transaction and

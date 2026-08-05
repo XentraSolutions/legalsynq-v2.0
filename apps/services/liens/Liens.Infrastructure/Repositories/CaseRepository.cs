@@ -90,19 +90,7 @@ public class CaseRepository : ICaseRepository
             }
         }
 
-        var statuses = CaseStatus.ExpandFilterValues(SplitFilterValues(status));
-        if (statuses.Count > 0)
-        {
-            if (statuses.Count == 1)
-            {
-                var single = statuses.Single();
-                q = q.Where(c => c.Status == single);
-            }
-            else if (statuses.Count > 1)
-            {
-                q = q.Where(c => statuses.Contains(c.Status));
-            }
-        }
+        q = ApplyCaseStatusFilter(q, status);
 
         q = ApplyMetadataFilter(q, "accidentTypeId", accidentTypeId);
         q = ApplyMetadataFilter(q, "caseManagerId", caseManagerId);
@@ -150,6 +138,112 @@ public class CaseRepository : ICaseRepository
 
         foreach (var value in values)
             matches = matches.Concat(FilterByMetadataToken(query, "lawFirmId", value));
+
+        return matches.Distinct();
+    }
+
+    private static IQueryable<Case> ApplyCaseStatusFilter(
+        IQueryable<Case> query,
+        string? rawValues)
+    {
+        var values = SplitFilterValues(rawValues);
+        if (values.Count == 0)
+            return query;
+
+        IQueryable<Case>? matches = null;
+        foreach (var value in values)
+        {
+            var valueMatches = FilterByCaseStatus(query, value);
+            matches = matches is null ? valueMatches : matches.Concat(valueMatches);
+        }
+
+        return matches!.Distinct();
+    }
+
+    private static IQueryable<Case> FilterByCaseStatus(
+        IQueryable<Case> query,
+        string value)
+    {
+        var normalized = value.Trim()
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "N" or "NEW" => FilterByLegacyStatusLabel(
+                query, CaseStatus.PreDemand, ["New"], ["N", "New"]),
+            "P" or "PROCESSING" => FilterByLegacyStatusLabel(
+                query, CaseStatus.PreDemand, ["Processing"], ["P", "Processing"]),
+            "PD" or "PREDEMAND" => FilterByCanonicalStatus(
+                query, CaseStatus.PreDemand, ["Pre-Demand", "PreDemand"], ["PD", "Pre-Demand"]),
+            "DS" or "DEMANDSENT" => FilterByCanonicalStatus(
+                query, CaseStatus.DemandSent, ["Demand Sent", "DemandSent"], ["DS", "Demand Sent"]),
+            "NT" or "NEGOTIATIONS" or "INNEGOTIATION" => FilterByCanonicalStatus(
+                query,
+                CaseStatus.InNegotiation,
+                ["Negotiations", "In Negotiation", "InNegotiation"],
+                ["NT", "Negotiations", "In Negotiation"]),
+            "LP" or "LO" or "LC" => FilterByLitigationStatus(query),
+            var status when status.StartsWith("LITIGATION", StringComparison.Ordinal) =>
+                FilterByLitigationStatus(query),
+            "CS" or "CASESETTLED" => FilterByCanonicalStatus(
+                query, CaseStatus.CaseSettled, ["Case Settled", "CaseSettled"], ["CS", "Case Settled"]),
+            "C" or "CLOSED" => FilterByCanonicalStatus(
+                query, CaseStatus.Closed, ["Closed"], ["C"]),
+            _ => query.Where(caseEntity => caseEntity.Status == value.Trim()),
+        };
+    }
+
+    private static IQueryable<Case> FilterByLitigationStatus(IQueryable<Case> query)
+    {
+        string[] labels =
+        [
+            "Litigation",
+            "Litigation (Pending)",
+            "Litigation(Pending)",
+            "Litigation (Open)",
+            "Litigation(Open)",
+            "Litigation (Closed)",
+            "Litigation(Closed)",
+        ];
+
+        return FilterByLegacyStatusLabel(query, CaseStatus.InNegotiation, labels, ["LP", "LO", "LC", .. labels]);
+    }
+
+    private static IQueryable<Case> FilterByCanonicalStatus(
+        IQueryable<Case> query,
+        string canonicalStatus,
+        IReadOnlyCollection<string> acceptedLabels,
+        IReadOnlyCollection<string> historicalStatuses)
+    {
+        var canonicalQuery = query.Where(caseEntity => caseEntity.Status == canonicalStatus);
+        IQueryable<Case> matches = canonicalQuery.Where(caseEntity =>
+            caseEntity.Notes == null || !caseEntity.Notes.Contains("statusLabel="));
+
+        foreach (var label in acceptedLabels)
+            matches = matches.Concat(FilterByMetadataToken(canonicalQuery, "statusLabel", label));
+
+        foreach (var historicalStatus in historicalStatuses)
+            matches = matches.Concat(query.Where(caseEntity => caseEntity.Status == historicalStatus));
+
+        return matches.Distinct();
+    }
+
+    private static IQueryable<Case> FilterByLegacyStatusLabel(
+        IQueryable<Case> query,
+        string canonicalStatus,
+        IReadOnlyCollection<string> labels,
+        IReadOnlyCollection<string> historicalStatuses)
+    {
+        var canonicalQuery = query.Where(caseEntity => caseEntity.Status == canonicalStatus);
+        IQueryable<Case> matches = query.Where(_ => false);
+
+        foreach (var label in labels)
+            matches = matches.Concat(FilterByMetadataToken(canonicalQuery, "statusLabel", label));
+
+        foreach (var historicalStatus in historicalStatuses)
+            matches = matches.Concat(query.Where(caseEntity => caseEntity.Status == historicalStatus));
 
         return matches.Distinct();
     }

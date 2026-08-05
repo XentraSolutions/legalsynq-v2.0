@@ -553,14 +553,48 @@ public static class LienEndpoints
         if (closedTo.HasValue)
             query = query.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value <= closedTo.Value);
 
+        var normalizedLawFirmIds = NormalizeFilterValues(lawFirmIds);
+        var normalizedMedicalFacilityIds = NormalizeFilterValues(medicalFacilityIds);
+        var normalizedCaseManagerIds = NormalizeFilterValues(caseManagerIds);
+        var requiresRelationshipFiltering =
+            normalizedLawFirmIds.Count > 0 ||
+            normalizedMedicalFacilityIds.Count > 0 ||
+            normalizedCaseManagerIds.Count > 0;
+
+        // Status/date filters are already fully represented by the database query.
+        // Page those results before the per-lien detail and servicing enrichment;
+        // otherwise a broad status such as Active performs several queries for every
+        // matching lien and can leave the UI waiting until the request times out.
+        if (!requiresRelationshipFiltering && string.IsNullOrWhiteSpace(sortBy))
+        {
+            var totalCount = await query.CountAsync(ct);
+            var pageLiens = await query
+                .OrderByDescending(l => l.CreatedAtUtc)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(ct);
+
+            var pageResponses = await GetDetailedLienResponsesAsync(
+                pageLiens,
+                lienService,
+                tenantId,
+                servicingItemService,
+                ct);
+
+            return Results.Ok(new PaginatedResult<LienResponse>
+            {
+                Items = MapBuyingLienStatuses(pageResponses),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount,
+            });
+        }
+
         var liens = await query
             .OrderByDescending(l => l.CreatedAtUtc)
             .ToListAsync(ct);
 
         var advancedRows = await BuildAdvancedLienFilterRowsAsync(db, tenantId, liens, ct);
-        var normalizedLawFirmIds = NormalizeFilterValues(lawFirmIds);
-        var normalizedMedicalFacilityIds = NormalizeFilterValues(medicalFacilityIds);
-        var normalizedCaseManagerIds = NormalizeFilterValues(caseManagerIds);
 
         var filteredLiens = advancedRows
             .Where(row => MatchesAdvancedFilter(normalizedLawFirmIds, row.LawFirmId))

@@ -49,6 +49,10 @@ public sealed class SettlementPaymentDetailResponse
     public string?  Payee         { get; init; }
     public string?  CheckNumber   { get; init; }
     public string?  Note          { get; init; }
+    public string?  PaymentMethod { get; init; }
+    public string?  SettlementTypeId { get; init; }
+    public string?  SettlementStatusId { get; init; }
+    public decimal? NetProfit     { get; init; }
     public DateTime CreatedAtUtc  { get; init; }
     public DateTime UpdatedAtUtc  { get; init; }
     public Guid?    CreatedByUserId { get; init; }
@@ -65,4 +69,12 @@ public sealed class CreateSettlementPaymentDetailRequest
     public string?  Payee         { get; init; }
     public string?  CheckNumber   { get; init; }
     public string?  Note          { get; init; }
+
+    // Aliases used by the current tenant-portal payment form.
+    public string?  PaymentMethod   { get; init; }
+    public string?  ReferenceNumber { get; init; }
+    public string?  Notes           { get; init; }
+    public string?  SettlementType  { get; init; }
+    public string?  SettlementStatus { get; init; }
+    public decimal? NetProfit       { get; init; }
 }

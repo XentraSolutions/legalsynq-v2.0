@@ -225,7 +225,7 @@ internal static class CaseRelationshipBackfill
     private static void WriteUsage()
     {
         Console.WriteLine("""
-            Backfill omitted SL-CORE Program 1 case relationships.
+            Backfill omitted SL-CORE Program 1 case relationships and status labels.
 
             Required:
               --backfill-case-relationships

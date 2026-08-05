@@ -2,11 +2,14 @@ using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
 using Liens.Domain.Entities;
+using System.Globalization;
 
 namespace Liens.Application.Services;
 
 public class SettlementService : ISettlementService
 {
+    private const string LegacyMetadataMarker = "[legacy-meta]";
+
     private readonly ILienReductionRepository          _reductionRepo;
     private readonly ILienSettlementRepository         _settlementRepo;
     private readonly ISettlementPaymentDetailRepository _paymentRepo;
@@ -169,7 +172,10 @@ public class SettlementService : ISettlementService
         var entity = SettlementPaymentDetail.Create(
             tenantId, request.CaseId, request.LienId,
             request.PaymentNumber, request.Amount, userId,
-            request.PaymentDate, request.Payee, request.CheckNumber, request.Note);
+            request.PaymentDate,
+            request.Payee,
+            FirstNonEmpty(request.CheckNumber, request.ReferenceNumber),
+            BuildPaymentNote(request));
         await _paymentRepo.AddAsync(entity, ct);
         return MapPayment(entity);
     }
@@ -183,21 +189,105 @@ public class SettlementService : ISettlementService
         await _paymentRepo.SoftDeleteAsync(entity, ct);
     }
 
-    private static SettlementPaymentDetailResponse MapPayment(SettlementPaymentDetail p) => new()
+    private static SettlementPaymentDetailResponse MapPayment(SettlementPaymentDetail p)
     {
-        Id            = p.Id,
-        TenantId      = p.TenantId,
-        CaseId        = p.CaseId,
-        LienId        = p.LienId,
-        PaymentNumber = p.PaymentNumber,
-        Amount        = p.Amount,
-        PaymentDate   = p.PaymentDate,
-        Payee         = p.Payee,
-        CheckNumber   = p.CheckNumber,
-        Note          = p.Note,
-        CreatedAtUtc  = p.CreatedAtUtc,
-        UpdatedAtUtc  = p.UpdatedAtUtc,
-        CreatedByUserId = p.CreatedByUserId,
-        UpdatedByUserId = p.UpdatedByUserId,
-    };
+        var metadata = ParsePaymentMetadata(p.Note);
+        return new SettlementPaymentDetailResponse
+        {
+            Id            = p.Id,
+            TenantId      = p.TenantId,
+            CaseId        = p.CaseId,
+            LienId        = p.LienId,
+            PaymentNumber = p.PaymentNumber,
+            Amount        = p.Amount,
+            PaymentDate   = p.PaymentDate,
+            Payee         = p.Payee,
+            CheckNumber   = p.CheckNumber,
+            Note          = ExtractPaymentNote(p.Note),
+            PaymentMethod = metadata.GetValueOrDefault("paymentMethod"),
+            SettlementTypeId = metadata.GetValueOrDefault("type"),
+            SettlementStatusId = metadata.GetValueOrDefault("status"),
+            NetProfit     = ParseLegacyDecimal(metadata.GetValueOrDefault("netProfit")),
+            CreatedAtUtc  = p.CreatedAtUtc,
+            UpdatedAtUtc  = p.UpdatedAtUtc,
+            CreatedByUserId = p.CreatedByUserId,
+            UpdatedByUserId = p.UpdatedByUserId,
+        };
+    }
+
+    private static string? BuildPaymentNote(CreateSettlementPaymentDetailRequest request)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["netProfit"] = (request.NetProfit ?? 0m).ToString("0.00", CultureInfo.InvariantCulture),
+        };
+        SetMetadata(metadata, "paymentMethod", request.PaymentMethod);
+        SetMetadata(metadata, "type", request.SettlementType);
+        SetMetadata(metadata, "status", request.SettlementStatus);
+
+        var note = FirstNonEmpty(request.Note, request.Notes);
+        var serializedMetadata = string.Join("; ", metadata.Select(pair => $"{pair.Key}={pair.Value}"));
+        return string.IsNullOrWhiteSpace(note)
+            ? $"{LegacyMetadataMarker}{Environment.NewLine}{serializedMetadata}"
+            : $"{note}{Environment.NewLine}{LegacyMetadataMarker}{Environment.NewLine}{serializedMetadata}";
+    }
+
+    private static Dictionary<string, string> ParsePaymentMetadata(string? note)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(note))
+            return metadata;
+
+        var rawMetadata = note;
+        var markerIndex = note.IndexOf(LegacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+            rawMetadata = note[(markerIndex + LegacyMetadataMarker.Length)..];
+
+        foreach (var segment in rawMetadata.Split(
+                     ';',
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0)
+                continue;
+
+            var key = segment[..separator].Trim();
+            var value = segment[(separator + 1)..].Trim();
+            if (!string.IsNullOrWhiteSpace(key))
+                metadata[key] = value;
+        }
+
+        return metadata;
+    }
+
+    private static string? ExtractPaymentNote(string? note)
+    {
+        if (string.IsNullOrWhiteSpace(note))
+            return null;
+
+        var markerIndex = note.IndexOf(LegacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+            return FirstNonEmpty(note[..markerIndex]);
+
+        return note.Contains("legacyPaymentDetailId=", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : note.Trim();
+    }
+
+    private static decimal? ParseLegacyDecimal(string? value) =>
+        decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+
+    private static string? FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
+    private static void SetMetadata(
+        IDictionary<string, string> metadata,
+        string key,
+        string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            metadata[key] = value.Trim();
+    }
 }

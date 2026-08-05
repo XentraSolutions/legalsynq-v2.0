@@ -5,6 +5,7 @@ using Liens.Api.Serialization;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
+using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Liens.Infrastructure.Persistence;
@@ -402,6 +403,7 @@ public static class ServiceLegacyEndpoints
         string caseId,
         ISettlementService settlementService,
         ILienService lienService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -412,12 +414,30 @@ public static class ServiceLegacyEndpoints
         }
 
         var payments = await settlementService.GetPaymentsByCaseAsync(tenantId, parsedCaseId, ct);
+        var settlements = await settlementService.GetSettlementsByCaseAsync(tenantId, parsedCaseId, ct);
         var liens = await SearchLiensByCaseAsync(lienService, tenantId, parsedCaseId, ct);
         var liensById = liens.ToDictionary(l => l.Id);
+        var settlementsByPayment = settlements
+            .GroupBy(settlement => (settlement.LienId, settlement.PaymentNumber))
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(settlement => settlement.CreatedAtUtc).First());
+        var paymentLookups = await db.LookupValues.AsNoTracking()
+            .Where(lookup =>
+                lookup.IsActive &&
+                (lookup.TenantId == null || lookup.TenantId == tenantId) &&
+                (lookup.Category == LookupCategory.SettlementType ||
+                 lookup.Category == LookupCategory.SettlementStatus))
+            .ToListAsync(ct);
 
         var data = payments.Select(payment =>
         {
             liensById.TryGetValue(payment.LienId, out var lien);
+            settlementsByPayment.TryGetValue(
+                (payment.LienId, payment.PaymentNumber),
+                out var settlement);
+            var typeId = payment.SettlementTypeId ?? string.Empty;
+            var statusId = payment.SettlementStatusId ?? settlement?.Status ?? string.Empty;
             return new
             {
                 caseId = payment.CaseId.ToString(),
@@ -429,13 +449,13 @@ public static class ServiceLegacyEndpoints
                 checkAmount = payment.Amount.ToString("0.00", CultureInfo.InvariantCulture),
                 checkDate = payment.PaymentDate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
                 checkNumber = payment.CheckNumber ?? string.Empty,
-                typeId = string.Empty,
-                type = string.Empty,
-                statusId = string.Empty,
-                status = string.Empty,
-                payor = payment.Payee ?? string.Empty,
-                netProfit = string.Empty,
-                note = payment.Note ?? string.Empty,
+                typeId,
+                type = ResolvePaymentLookupName(paymentLookups, LookupCategory.SettlementType, typeId),
+                statusId,
+                status = ResolvePaymentLookupName(paymentLookups, LookupCategory.SettlementStatus, statusId),
+                payor = payment.Payee ?? payment.PaymentMethod ?? string.Empty,
+                netProfit = (payment.NetProfit ?? 0m).ToString("0.00", CultureInfo.InvariantCulture),
+                note = payment.Note ?? settlement?.Note ?? string.Empty,
                 paymentNumber = payment.PaymentNumber.ToString(CultureInfo.InvariantCulture),
                 date = PacificTimeHelper.FormatDate(payment.CreatedAtUtc),
                 amountToSettle = lien?.CurrentBalance?.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00",
@@ -443,6 +463,23 @@ public static class ServiceLegacyEndpoints
         }).ToList();
 
         return Results.Ok(new { isSuccess = true, message = "Settlement payment details retrieved successfully.", data });
+    }
+
+    private static string ResolvePaymentLookupName(
+        IReadOnlyCollection<LookupValue> lookups,
+        string category,
+        string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var match = lookups.FirstOrDefault(lookup =>
+            string.Equals(lookup.Category, category, StringComparison.Ordinal) &&
+            (string.Equals(lookup.Id.ToString(), value, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(lookup.Code, value, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(lookup.Name, value, StringComparison.OrdinalIgnoreCase)));
+
+        return match?.Name ?? value;
     }
 
     private static async Task<IResult> UpdateLienStatusLegacy(
