@@ -11,12 +11,14 @@ import { CaseDocumentsTab } from '@/features/cases/components/CaseDocumentsTab';
 import { CaseLiensTab } from '@/features/cases/components/CaseLiensTab';
 import { CaseNotesTab } from '@/features/cases/components/CaseNotesTab';
 import { CaseDetailPlaceholderPage } from '@/features/cases/components/CaseDetailPlaceholderPage';
+import { CaseServicingTab } from '@/features/cases/components/CaseServicingTab';
 import { CaseDetailTabBar } from '@/features/cases/components/CaseDetailTabBar';
 import { CaseDetailTabPage } from '@/features/cases/components/CaseDetailTabPage';
 import { CaseSummaryRow } from '@/features/cases/components/CaseSummaryRow';
 import {
   useCaseDetail,
   useCaseLienUpdates,
+  useCaseSettlementDetails,
   useCases,
   useCaseUpdates,
   useDeleteCase,
@@ -436,13 +438,14 @@ function MergeCaseModal({
 export function CaseDetailScreen() {
   const navigation = useNavigation<NavigationProp<MainStackParamList>>();
   const route = useRoute<DetailRoute>();
+  const [activeTab, setActiveTab] = useState<CaseDetailTabId>('summary');
   const caseQuery = useCaseDetail(route.params.caseId);
   const updatesQuery = useCaseUpdates(route.params.caseId);
   const lienUpdatesQuery = useCaseLienUpdates(route.params.caseId);
+  const settlementQuery = useCaseSettlementDetails(route.params.caseId, activeTab === 'servicing');
   const mergeCase = useMergeCase(route.params.caseId);
   const deleteCase = useDeleteCase(route.params.caseId);
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<CaseDetailTabId>('summary');
   const [manageVisible, setManageVisible] = useState(false);
   const [mergeVisible, setMergeVisible] = useState(false);
 
@@ -577,7 +580,21 @@ export function CaseDetailScreen() {
         />
       ) : null}
       {activeTab === 'documents' ? <CaseDocumentsTab caseId={route.params.caseId} /> : null}
-      {activeTab === 'servicing' ? <CaseDetailPlaceholderPage title="Servicing" /> : null}
+      {activeTab === 'servicing' ? (
+        <CaseServicingTab
+          caseItem={caseItem}
+          payments={settlementQuery.data?.payments ?? []}
+          reductions={settlementQuery.data?.reductions ?? []}
+          settlementError={settlementQuery.isError}
+          settlementLoading={settlementQuery.isLoading}
+          settlements={settlementQuery.data?.settlements ?? []}
+          updates={updatesQuery.data ?? []}
+          onAddPayment={() => toast.showInfo('Add Payment is not available yet.')}
+          onEdit={() => navigation.navigate('EditCaseDetails', { caseId: route.params.caseId })}
+          onNoRecovery={() => toast.showInfo('No Recovery is not available yet.')}
+          onSetupReduction={() => toast.showInfo('Setup Reduction is not available yet.')}
+        />
+      ) : null}
       {activeTab === 'notes' ? <CaseNotesTab caseId={route.params.caseId} /> : null}
       {activeTab === 'tasks' ? <CaseDetailPlaceholderPage title="Task Manager" /> : null}
 

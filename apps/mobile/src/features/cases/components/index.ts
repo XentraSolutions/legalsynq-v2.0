@@ -5,5 +5,6 @@ export * from './CaseDetailPlaceholderPage';
 export * from './CaseDetailTabBar';
 export * from './CaseDetailTabPage';
 export * from './CaseFilterModal';
+export * from './CaseServicingTab';
 export * from './CaseSummaryRow';
 export * from './NoteItem';

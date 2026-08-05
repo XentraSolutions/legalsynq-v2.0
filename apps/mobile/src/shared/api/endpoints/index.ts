@@ -8,6 +8,7 @@ export * from './Liens';
 export * from './Lookups';
 export * as OffersEndpoint from './Offers';
 export * from './Reports';
+export * from './Settlement';
 export * from './Servicing';
 export * from './Tasks';
 export * from './User';
