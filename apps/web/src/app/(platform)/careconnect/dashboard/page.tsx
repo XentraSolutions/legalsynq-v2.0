@@ -258,6 +258,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       totalRefResult,
       acceptedRefResult,
       declinedRefResult,
+      cancelledRefResult,
       scheduledRefResult,
       completedRefResult,
       totalApptResult,
@@ -300,6 +301,12 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       }),
       careConnectServerApi.adminDashboard.getReferrals({
         status: 'Declined',
+        pageSize: 1,
+        createdFrom: analyticsRange.from,
+        createdTo: analyticsRange.to,
+      }),
+      careConnectServerApi.adminDashboard.getReferrals({
+        status: 'Cancelled',
         pageSize: 1,
         createdFrom: analyticsRange.from,
         createdTo: analyticsRange.to,
@@ -360,6 +367,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       totalRefResult,
       acceptedRefResult,
       declinedRefResult,
+      cancelledRefResult,
       scheduledRefResult,
       completedRefResult,
       totalApptResult,
@@ -453,7 +461,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <StatCard
             label="Open Referrals"
             value={dashboardMetrics?.openReferrals ?? referrals.length}
@@ -477,6 +485,11 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             label="Declined"
             value={getAdminCount(declinedRefResult)}
             href={`/careconnect/referrals?from=dashboard&status=Declined&createdFrom=${analyticsRange.from}&createdTo=${analyticsRange.to}`}
+          />
+          <StatCard
+            label="Cancelled"
+            value={getAdminCount(cancelledRefResult)}
+            href={`/careconnect/referrals?from=dashboard&status=Cancelled&createdFrom=${analyticsRange.from}&createdTo=${analyticsRange.to}`}
           />
         </div>
 
@@ -558,15 +571,17 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   let appointments: AppointmentSummary[] = [];
   let completedReferralCount = 0;
   let declinedReferralCount = 0;
+  let cancelledReferralCount = 0;
   let acceptedReferralCount = 0;
   let upcomingApptCount = 0;
 
   if (showReferrerView) {
-    const [activeRef, completedRef, declinedRef, scheduledAppt, confirmedAppt] =
+    const [activeRef, completedRef, declinedRef, cancelledRef, scheduledAppt, confirmedAppt] =
       await Promise.allSettled([
         careConnectServerApi.referrals.search({ pageSize: 5 }),
         careConnectServerApi.referrals.search({ status: 'Completed', pageSize: 1 }),
         careConnectServerApi.referrals.search({ status: 'Declined', pageSize: 1 }),
+        careConnectServerApi.referrals.search({ status: 'Cancelled', pageSize: 1 }),
         careConnectServerApi.appointments.search({ status: 'Scheduled', pageSize: 20 }),
         careConnectServerApi.appointments.search({ status: 'Confirmed', pageSize: 20 }),
       ]);
@@ -578,6 +593,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     }
     if (completedRef.status === 'fulfilled') completedReferralCount = completedRef.value.totalCount;
     if (declinedRef.status === 'fulfilled') declinedReferralCount = declinedRef.value.totalCount;
+    if (cancelledRef.status === 'fulfilled') cancelledReferralCount = cancelledRef.value.totalCount;
 
     const apptMap = new Map<string, AppointmentSummary>();
     if (scheduledAppt.status === 'fulfilled') scheduledAppt.value.items.forEach((a) => apptMap.set(a.id, a));
@@ -707,13 +723,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 gap-4 ${showReferrerView ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
         {showReferrerView ? (
           <>
             <StatCard label="Active Referrals" value={referrals.length} href="/careconnect/referrals?from=dashboard" />
             <StatCard label="Upcoming (7 days)" value={upcomingApptCount} href="/careconnect/appointments" />
             <StatCard label="Completed" value={completedReferralCount} href="/careconnect/referrals?from=dashboard&status=Completed" />
             <StatCard label="Declined" value={declinedReferralCount} href="/careconnect/referrals?from=dashboard&status=Declined" />
+            <StatCard label="Cancelled" value={cancelledReferralCount} href="/careconnect/referrals?from=dashboard&status=Cancelled" />
           </>
         ) : (
           <>
