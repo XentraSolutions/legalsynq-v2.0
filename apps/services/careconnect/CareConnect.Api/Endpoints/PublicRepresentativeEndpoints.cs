@@ -1,5 +1,4 @@
 using CareConnect.Api.Helpers;
-using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 
@@ -36,7 +35,6 @@ public static class PublicRepresentativeEndpoints
             VerifyReferralAttributionAccessCodeRequest request,
             HttpContext http,
             IConfiguration config,
-            ITenantServiceClient tenantClient,
             IReferralAttributionAccessCodeService codeService,
             CancellationToken ct) =>
         {
@@ -44,9 +42,6 @@ public static class PublicRepresentativeEndpoints
             if (tenantId is null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
-
-            if (!await IsPortalEnabledAsync(tenantClient, tenantId.Value, ct))
-                return Results.Ok(new VerifyReferralAttributionAccessCodeResponse { Ok = false });
 
             var result = await codeService.VerifyAsync(tenantId.Value, request.Code, ct);
             return Results.Ok(result);
@@ -57,7 +52,6 @@ public static class PublicRepresentativeEndpoints
             [AsParameters] PublicRepresentativeReferralSearchParams p,
             HttpContext http,
             IConfiguration config,
-            ITenantServiceClient tenantClient,
             IReferralAttributionAccessCodeService codeService,
             IRepresentativeReferralService representativeService,
             CancellationToken ct) =>
@@ -67,7 +61,7 @@ public static class PublicRepresentativeEndpoints
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
 
-            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantClient, tenantId.Value, p.Code, ct);
+            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantId.Value, p.Code, ct);
             if (attributionId is null)
                 return Results.Json(new { error = "This code is invalid, has expired, or no longer grants access." }, statusCode: StatusCodes.Status401Unauthorized);
 
@@ -92,7 +86,6 @@ public static class PublicRepresentativeEndpoints
             string? code,
             HttpContext http,
             IConfiguration config,
-            ITenantServiceClient tenantClient,
             IReferralAttributionAccessCodeService codeService,
             IRepresentativeReferralService representativeService,
             CancellationToken ct) =>
@@ -102,7 +95,7 @@ public static class PublicRepresentativeEndpoints
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
 
-            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantClient, tenantId.Value, code, ct);
+            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantId.Value, code, ct);
             if (attributionId is null)
                 return Results.Json(new { error = "This code is invalid, has expired, or no longer grants access." }, statusCode: StatusCodes.Status401Unauthorized);
 
@@ -118,7 +111,6 @@ public static class PublicRepresentativeEndpoints
             DateTime? to,
             HttpContext http,
             IConfiguration config,
-            ITenantServiceClient tenantClient,
             IReferralAttributionAccessCodeService codeService,
             IRepresentativeReferralService representativeService,
             CancellationToken ct) =>
@@ -128,7 +120,7 @@ public static class PublicRepresentativeEndpoints
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
 
-            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantClient, tenantId.Value, code, ct);
+            var attributionId = await VerifyAndResolveAttributionAsync(codeService, tenantId.Value, code, ct);
             if (attributionId is null)
                 return Results.Json(new { error = "This code is invalid, has expired, or no longer grants access." }, statusCode: StatusCodes.Status401Unauthorized);
 
@@ -137,27 +129,19 @@ public static class PublicRepresentativeEndpoints
         }).AllowAnonymous().RequireRateLimiting("public-read-limit");
     }
 
-    private static async Task<bool> IsPortalEnabledAsync(ITenantServiceClient tenantClient, Guid tenantId, CancellationToken ct) =>
-        await tenantClient.IsCapabilityEnabledAsync(tenantId, ReferralRepresentativeFeature.PortalEnabledCapabilityKey, ct);
-
     /// <summary>
-    /// The single choke point every data endpoint above calls through: checks the tenant
-    /// feature flag, then re-verifies the raw code from scratch. Returns null for every
-    /// failure mode (feature disabled, missing/malformed code, invalid/expired/revoked
-    /// code, deactivated attribution) — callers surface one generic 401, never distinguishing
-    /// which case occurred.
+    /// The single choke point every data endpoint above calls through: re-verifies the raw
+    /// code from scratch. Returns null for every failure mode (missing/malformed code,
+    /// invalid/expired/revoked code, deactivated attribution) — callers surface one generic
+    /// 401, never distinguishing which case occurred.
     /// </summary>
     private static async Task<Guid?> VerifyAndResolveAttributionAsync(
         IReferralAttributionAccessCodeService codeService,
-        ITenantServiceClient tenantClient,
         Guid tenantId,
         string? code,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(code))
-            return null;
-
-        if (!await IsPortalEnabledAsync(tenantClient, tenantId, ct))
             return null;
 
         var result = await codeService.VerifyAsync(tenantId, code, ct);
