@@ -35,6 +35,9 @@ import { OpenLiensSection } from "./settlement-details/sections/open-liens-secti
 import { ClosedLiensSection } from "./settlement-details/sections/closed-liens-section";
 import { ServicingHistorySection } from "./history/sections/servicing-history-section";
 import { SERVICING_SUB_TABS, type ServicingSubTab } from "./types";
+import { dateConvertertoIso } from "@/lib/cases/cases.mapper";
+import { settlementService } from "@/lib/settlement";
+import { ConfirmDialog } from "@/components/lien/modal";
 
 export function ServicingTab({
   caseDetail,
@@ -128,6 +131,9 @@ export function ServicingTab({
     string | undefined
   >();
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<boolean>(false);
+
   let openLiens = liens.filter((i) => i.closedAtUtc === null);
   let closedLiens = liens.filter((i) => i.closedAtUtc !== null);
 
@@ -171,6 +177,8 @@ export function ServicingTab({
 
   const { lookup } = useSessionContext();
 
+  const [selectedPayment, setSelectedPayment] = useState<any>();
+
   const caseStatusList =
     lookup?.CaseStatus.map((s) => {
       return { key: s.id, value: s.code, label: s.name };
@@ -209,6 +217,41 @@ export function ServicingTab({
     });
     setSwitchedLawFirm(false);
     setSavedCaseStatus(caseStatus);
+  };
+
+  const handleEditPayment = (p: any) => {
+    const formattedLien = {
+      ...p,
+      type: p.typeId,
+      status: p.statusId,
+      checkDate: dateConvertertoIso(p.checkDate),
+      isEditing: true,
+    };
+    setSelectedPayment(formattedLien);
+    setIsAddPaymentOpen(true);
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    if (!deletingId) return;
+    try {
+      await settlementService.deleteSettlementPayment(deletingId);
+      addToast({
+        type: "success",
+        title: "Payment Deleted",
+        description: "The payment record was removed.",
+      });
+      setDeletingId(null);
+      onRefreshPayments();
+    } catch {
+      addToast({
+        type: "error",
+        title: "Delete Failed",
+        description: "Failed to delete the payment.",
+      });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   useEffect(() => {
@@ -326,7 +369,20 @@ export function ServicingTab({
               onRefreshPayments();
               refetchHistory();
             }}
+            onEditPayment={handleEditPayment}
+            onDeletePayment={setDeletingId}
             isPaymentsFetching={isPaymentsFetching}
+          />
+
+          <ConfirmDialog
+            open={deletingId !== null}
+            onClose={() => setDeletingId(null)}
+            onConfirm={handleDelete}
+            loading={deleting}
+            title="Delete Payment Record"
+            description="Are you sure you want to delete this payment record? This action cannot be undone and will permanently remove the payment record from the system."
+            confirmLabel="Delete"
+            confirmVariant="danger"
           />
         </div>
       )}
@@ -398,14 +454,20 @@ export function ServicingTab({
         }}
       />
       <AddPaymentForm
+        selectedPayment={selectedPayment}
         open={isAddPaymentOpen}
-        onClose={() => setIsAddPaymentOpen(false)}
+        isEditing={selectedPayment != null}
+        onClose={() => {
+          setSelectedPayment(undefined);
+          setIsAddPaymentOpen(false);
+        }}
         caseId={caseDetail.id}
         liens={liens}
         liensLoadedAt={liensLoadedAt}
         onRefreshLiens={onRefreshLiens}
         isLiensFetching={isLiensFetching}
         onSaved={() => {
+          setSelectedPayment(undefined);
           setIsAddPaymentOpen(false);
           onRefreshPayments();
           refreshAllLienData();

@@ -99,6 +99,7 @@ export interface CreateSettlementPaymentRequest {
   notes: string;
 
   // missing from the api
+  lienStatus: string;
   settlementType: string;
   settlementStatus: string;
 }

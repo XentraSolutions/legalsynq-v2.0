@@ -57,6 +57,8 @@ interface AddPaymentFormProps {
   onRefreshLiens?: () => void;
   isLiensFetching?: boolean;
   onSaved: () => void;
+  selectedPayment?: any;
+  isEditing?: boolean;
 }
 
 const INITIAL_FORM = {
@@ -78,9 +80,12 @@ export function AddPaymentForm({
   onRefreshLiens,
   isLiensFetching,
   onSaved,
+  selectedPayment,
+  isEditing = false,
 }: AddPaymentFormProps) {
   const addToast = useLienStore((s) => s.addToast);
-  const [form, setForm] = useState({ ...INITIAL_FORM });
+  const [form, setForm] = useState({ ...INITIAL_FORM, ...selectedPayment });
+
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [lienPayments, setLienPayments] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -229,9 +234,12 @@ export function AddPaymentForm({
       const active = lienStatusOptions.find(
         (s) => (s.code || "").toLowerCase() === "active",
       );
-      setForm((prev) => ({
+      setForm((prev: any) => ({
         ...prev,
-        lienStatus: (active ?? lienStatusOptions[0])?.code ?? "",
+        ...selectedPayment,
+        lienStatus: isEditing
+          ? selectedPayment.lienStatus
+          : (active ?? lienStatusOptions[0]?.code ?? ""),
       }));
       setLookupsLoading(false);
     });
@@ -353,28 +361,44 @@ export function AddPaymentForm({
       const lienIds = Array.from(checkedIds);
       const paymentDate = form.checkDate ? formatDate(form.checkDate) : "";
 
-      await Promise.all(
-        lienIds.flatMap((id) => [
-          settlementService.createSettlementPayment({
-            lienId: id,
-            caseId,
-            amount: parseFloat(lienPayments[id] || "0"),
-            paymentDate,
-            paymentMethod: PAYMENT_METHOD_CHECK,
-            referenceNumber: form.checkNumber,
-            notes: form.note,
-            settlementType: form.type,
-            settlementStatus: form.lienStatus,
-          }),
-          settlementService.createLienSettlement({
-            lienId: id,
-            caseId,
-            settlementAmount: parseFloat(lienPayments[id] || "0"),
-            settlementDate: paymentDate,
-            notes: form.note,
-          }),
-        ]),
-      );
+      if (isEditing) {
+        settlementService.updateSettlement({
+          lienId: form.lienId,
+          lienStatus: form.lienStatus,
+          caseId,
+          amount: parseFloat(form.checkAmount || "0"),
+          paymentDate,
+          paymentMethod: PAYMENT_METHOD_CHECK,
+          referenceNumber: form.checkNumber,
+          notes: form.note,
+          settlementType: form.type,
+          settlementStatus: form.status,
+        });
+      } else {
+        await Promise.all(
+          lienIds.flatMap((id) => [
+            settlementService.createSettlementPayment({
+              lienId: id,
+              lienStatus: form.lienStatus,
+              caseId,
+              amount: parseFloat(lienPayments[id] || "0"),
+              paymentDate,
+              paymentMethod: PAYMENT_METHOD_CHECK,
+              referenceNumber: form.checkNumber,
+              notes: form.note,
+              settlementType: form.type,
+              settlementStatus: form.status,
+            }),
+            settlementService.createLienSettlement({
+              lienId: id,
+              caseId,
+              settlementAmount: parseFloat(lienPayments[id] || "0"),
+              settlementDate: paymentDate,
+              notes: form.note,
+            }),
+          ]),
+        );
+      }
 
       addToast({
         type: "success",
@@ -401,7 +425,9 @@ export function AddPaymentForm({
     !form.checkDate ||
     !form.checkNumber ||
     !form.type ||
-    checkedIds.size === 0;
+    isEditing
+      ? false
+      : checkedIds.size === 0;
 
   const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
 
@@ -428,7 +454,8 @@ export function AddPaymentForm({
   const receivedExceedsCheck =
     totalReceivedPayment > checkAmountNum &&
     checkAmountNum > 0 &&
-    totalReceivedPayment > 0;
+    totalReceivedPayment > 0 &&
+    !isEditing;
 
   const paymentColumns: LienColumnDef[] = [
     {
