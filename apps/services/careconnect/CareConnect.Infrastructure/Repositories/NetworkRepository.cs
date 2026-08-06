@@ -328,14 +328,14 @@ public class NetworkRepository : INetworkRepository
         string addressLine1,
         string city,
         string state,
-        string postalCode,
+        string? postalCode,
         CancellationToken ct = default)
     {
         var normalizedName = name.Trim();
         var normalizedAddress = addressLine1.Trim();
         var normalizedCity = city.Trim();
         var normalizedState = state.Trim().ToUpperInvariant();
-        var normalizedPostal = postalCode.Trim();
+        var normalizedPostal = string.IsNullOrWhiteSpace(postalCode) ? null : postalCode.Trim();
 
         return await _db.Facilities
             .FirstOrDefaultAsync(f =>

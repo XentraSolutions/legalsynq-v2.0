@@ -42,6 +42,7 @@ type PanelMode = 'closed' | 'search' | 'confirm' | 'create' | 'location' | 'edit
 type ViewMode  = 'list' | 'cards' | 'map';
 
 const GEOCODED_POINT_SOURCE = 'Geocoded';
+const CITY_CENTROID_POINT_SOURCE = 'CityCentroid';
 const KNOWN_PROVIDER_TITLES: Record<string, string> = {
   dr: 'Dr.',
   'dr.': 'Dr.',
@@ -55,11 +56,15 @@ const KNOWN_PROVIDER_TITLES: Record<string, string> = {
   'prof.': 'Prof.',
 };
 
+const DEFAULT_SERVICE_RADIUS_MILES = '25';
+const MAX_SERVICE_RADIUS_MILES = 60;
+
 const EMPTY_NEW_FORM = {
   title: '', firstName: '', lastName: '', organizationName: '', email: '', phone: '',
   addressLine1: '', city: '', state: '', postalCode: '',
   npi: '', isActive: true, acceptingReferrals: true,
   specialtyIds: [] as string[],
+  isMobile: false, serviceRadiusMiles: DEFAULT_SERVICE_RADIUS_MILES,
 };
 
 interface EditLocationForm {
@@ -76,6 +81,8 @@ interface EditLocationForm {
   isActive: boolean;
   acceptingReferrals: boolean;
   facilityIsActive: boolean;
+  isMobile: boolean;
+  serviceRadiusMiles: string;
 }
 
 function networkProviderEntryId(provider: Pick<NetworkProviderItem, 'id' | 'networkProviderId'>): string {
@@ -88,6 +95,24 @@ function providerLocationKey(providerId: string, facilityId?: string | null): st
 
 function searchResultKey(provider: ProviderSearchResult): string {
   return providerLocationKey(provider.id, provider.facilityId);
+}
+
+function formatLocationLine(location: {
+  addressLine1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  isMobile?: boolean;
+  serviceRadiusMiles?: number | null;
+}): string {
+  const cityState = [location.city, location.state].filter(Boolean).join(', ');
+  if (location.isMobile) {
+    const parts = [location.addressLine1, cityState].filter(Boolean).join(' · ');
+    return location.serviceRadiusMiles != null
+      ? `Mobile · ${parts} · ${location.serviceRadiusMiles}mi radius`
+      : `Mobile · ${parts}`;
+  }
+  return [location.addressLine1, cityState, location.postalCode].filter(Boolean).join(' ');
 }
 
 function shouldShowFacilityName(provider: Pick<NetworkProviderItem, 'name' | 'organizationName' | 'facilityName'>): boolean {
@@ -145,9 +170,15 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
   const addrDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasInvalidPhone = newForm.phone.trim().length > 0 && !isValidPhone(newForm.phone);
-  const hasInvalidPostalCode = newForm.postalCode.trim().length > 0 && !isValidUsZipCode(newForm.postalCode);
-  const hasZipMismatch = !!selectedPostalCode &&
+  const hasInvalidPostalCode = !newForm.isMobile &&
+    newForm.postalCode.trim().length > 0 && !isValidUsZipCode(newForm.postalCode);
+  const hasZipMismatch = !newForm.isMobile && !!selectedPostalCode &&
     newForm.postalCode.trim().slice(0, 5) !== selectedPostalCode.slice(0, 5);
+  const hasInvalidServiceRadius = newForm.isMobile && (
+    !newForm.serviceRadiusMiles.trim() ||
+    !(Number(newForm.serviceRadiusMiles) > 0) ||
+    Number(newForm.serviceRadiusMiles) > MAX_SERVICE_RADIUS_MILES
+  );
   const hasNoSpecialty = newForm.specialtyIds.length === 0;
   const activeEditLocations = editLocations.filter(l => l.facilityIsActive);
 
@@ -287,6 +318,67 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     setAddrOpen(false);
   }
 
+  // Mobile providers have no street address — anchor them to a city-level centroid
+  // (loose=1 asks the geocoder to match on city/state alone, no house number required).
+  async function geocodeServiceArea(city: string, state: string) {
+    if (!city.trim() || !state.trim()) return;
+    try {
+      const q = encodeURIComponent(`${city.trim()}, ${state.trim()}`);
+      const res = await fetch(`/api/geocode/address?q=${q}&loose=1`, { credentials: 'include' });
+      if (!res.ok) return;
+      const suggestions: AddressSuggestion[] = await res.json();
+      if (suggestions.length > 0) {
+        setGeoLat(suggestions[0].latitude);
+        setGeoLng(suggestions[0].longitude);
+      }
+    } catch { /* silently ignore */ }
+  }
+
+  // City autocomplete for mobile providers — same debounced-suggestion UX as the street
+  // address field, but loose=1 so a bare city name (no house number) resolves.
+  function handleCityChange(value: string) {
+    setNewForm(f => ({ ...f, city: value }));
+    setGeoLat(null);
+    setGeoLng(null);
+    if (addrDebounce.current) clearTimeout(addrDebounce.current);
+    if (value.trim().length < 3) {
+      setAddrSuggestions([]);
+      setAddrOpen(false);
+      return;
+    }
+    addrDebounce.current = setTimeout(async () => {
+      setAddrLoading(true);
+      try {
+        const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(value)}&loose=1`, { credentials: 'include' });
+        if (res.ok) {
+          const suggestions: AddressSuggestion[] = await res.json();
+          setAddrSuggestions(suggestions);
+          setAddrOpen(suggestions.length > 0);
+        }
+      } catch { /* silently ignore */ } finally {
+        setAddrLoading(false);
+      }
+    }, 300);
+  }
+
+  function selectCitySuggestion(s: AddressSuggestion) {
+    setNewForm(f => ({ ...f, city: s.city, state: s.state }));
+    setGeoLat(s.latitude);
+    setGeoLng(s.longitude);
+    setAddrSuggestions([]);
+    setAddrOpen(false);
+  }
+
+  function toggleMobile(checked: boolean) {
+    setNewForm(f => ({ ...f, isMobile: checked, postalCode: checked ? '' : f.postalCode }));
+    setGeoLat(null);
+    setGeoLng(null);
+    setSelectedPostalCode(null);
+    setAddrSuggestions([]);
+    setAddrOpen(false);
+    if (checked) void geocodeServiceArea(newForm.city, newForm.state);
+  }
+
   function toggleSpecialty(id: string) {
     setNewForm(f => ({
       ...f,
@@ -352,6 +444,10 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       isActive: provider.isActive,
       acceptingReferrals: provider.acceptingReferrals,
       facilityIsActive: provider.facilityIsActive,
+      isMobile: provider.isMobile,
+      serviceRadiusMiles: provider.serviceRadiusMiles != null
+        ? String(provider.serviceRadiusMiles)
+        : DEFAULT_SERVICE_RADIUS_MILES,
     };
   }
 
@@ -361,8 +457,16 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     )));
   }
 
-  function locationHasInvalidPostalCode(location: Pick<EditLocationForm, 'postalCode'>): boolean {
-    return location.postalCode.trim().length > 0 && !isValidUsZipCode(location.postalCode);
+  function locationHasInvalidPostalCode(location: Pick<EditLocationForm, 'postalCode' | 'isMobile'>): boolean {
+    return !location.isMobile && location.postalCode.trim().length > 0 && !isValidUsZipCode(location.postalCode);
+  }
+
+  function locationHasInvalidServiceRadius(location: Pick<EditLocationForm, 'isMobile' | 'serviceRadiusMiles'>): boolean {
+    return location.isMobile && (
+      !location.serviceRadiusMiles.trim() ||
+      !(Number(location.serviceRadiusMiles) > 0) ||
+      Number(location.serviceRadiusMiles) > MAX_SERVICE_RADIUS_MILES
+    );
   }
 
   function validateProviderSetupFields(): boolean {
@@ -405,10 +509,12 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       addressLine1:       location.addressLine1.trim(),
       city:               location.city.trim(),
       state:              location.state.trim().toUpperCase(),
-      postalCode:         location.postalCode.trim(),
+      postalCode:         location.postalCode.trim() || null,
       isActive:           location.isActive,
       acceptingReferrals: location.acceptingReferrals,
       specialtyIds:       newForm.specialtyIds,
+      isMobile:           location.isMobile,
+      serviceRadiusMiles: location.isMobile ? Number(location.serviceRadiusMiles) : null,
     };
   }
 
@@ -476,6 +582,8 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       isActive: provider.isActive,
       acceptingReferrals: provider.acceptingReferrals,
       specialtyIds: provider.specialties?.map(s => s.id) ?? [],
+      isMobile: false,
+      serviceRadiusMiles: DEFAULT_SERVICE_RADIUS_MILES,
     });
     setPanelMode('edit');
   }
@@ -509,6 +617,8 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       isActive: true,
       acceptingReferrals: provider.acceptingReferrals,
       specialtyIds: provider.specialties?.map(s => s.id) ?? [],
+      isMobile: false,
+      serviceRadiusMiles: DEFAULT_SERVICE_RADIUS_MILES,
     });
     setPanelMode('location');
   }
@@ -560,6 +670,8 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       isActive: true,
       acceptingReferrals: true,
       specialtyIds: provider.specialties?.map(s => s.id) ?? [],
+      isMobile: false,
+      serviceRadiusMiles: DEFAULT_SERVICE_RADIUS_MILES,
     });
     setPanelMode('location');
   }
@@ -628,7 +740,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
       setCreateError('Select at least one specialty.');
       return;
     }
-    if (hasInvalidPhone || hasInvalidPostalCode || hasZipMismatch) return;
+    if (hasInvalidPhone || hasInvalidPostalCode || hasZipMismatch || hasInvalidServiceRadius) return;
     const specialtyCodes = selectedSpecialtyCodes();
     if (specialtyCodes.length === 0) {
       setCreateError('Select at least one specialty.');
@@ -648,14 +760,16 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
           addressLine1:       newForm.addressLine1.trim(),
           city:               newForm.city.trim(),
           state:              newForm.state.trim().toUpperCase(),
-          postalCode:         newForm.postalCode.trim(),
+          postalCode:         newForm.postalCode.trim() || null,
           isActive:           newForm.isActive,
           acceptingReferrals: newForm.acceptingReferrals,
           npi:                newForm.npi.trim() || undefined,
           specialtyCodes,
           primarySpecialtyCode: specialtyCodes[0],
+          isMobile:            newForm.isMobile,
+          serviceRadiusMiles:  newForm.isMobile ? Number(newForm.serviceRadiusMiles) : null,
           ...(geoLat !== null && geoLng !== null
-            ? { latitude: geoLat, longitude: geoLng, geoPointSource: GEOCODED_POINT_SOURCE }
+            ? { latitude: geoLat, longitude: geoLng, geoPointSource: newForm.isMobile ? CITY_CENTROID_POINT_SOURCE : GEOCODED_POINT_SOURCE }
             : {}),
         },
       });
@@ -675,7 +789,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
   async function handleAddLocation(e: React.FormEvent) {
     e.preventDefault();
     if (!network || !locationTarget) return;
-    if (hasInvalidPhone || hasInvalidPostalCode || hasZipMismatch) return;
+    if (hasInvalidPhone || hasInvalidPostalCode || hasZipMismatch || hasInvalidServiceRadius) return;
 
     const fallback = splitProviderName(locationTarget.name);
     setCreating(true);
@@ -693,11 +807,13 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
           addressLine1:       newForm.addressLine1.trim(),
           city:               newForm.city.trim(),
           state:              newForm.state.trim().toUpperCase(),
-          postalCode:         newForm.postalCode.trim(),
+          postalCode:         newForm.postalCode.trim() || null,
           isActive:           newForm.isActive,
           acceptingReferrals: newForm.acceptingReferrals,
+          isMobile:            newForm.isMobile,
+          serviceRadiusMiles:  newForm.isMobile ? Number(newForm.serviceRadiusMiles) : null,
           ...(geoLat !== null && geoLng !== null
-            ? { latitude: geoLat, longitude: geoLng, geoPointSource: GEOCODED_POINT_SOURCE }
+            ? { latitude: geoLat, longitude: geoLng, geoPointSource: newForm.isMobile ? CITY_CENTROID_POINT_SOURCE : GEOCODED_POINT_SOURCE }
             : {}),
         },
       });
@@ -750,7 +866,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
     const location = editLocations.find(item => item.entryId === entryId);
     if (!location) return;
     if (!validateProviderSetupFields()) return;
-    if (hasInvalidPhone || locationHasInvalidPostalCode(location)) return;
+    if (hasInvalidPhone || locationHasInvalidPostalCode(location) || locationHasInvalidServiceRadius(location)) return;
 
     const payload = buildProviderUpdatePayload(location);
 
@@ -1216,7 +1332,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                                   <p className="text-xs text-gray-500 truncate">{p.facilityName}</p>
                                 )}
                                 <p className="text-xs text-gray-400 mt-0.5">
-                                  {[p.addressLine1, [p.city, p.state].filter(Boolean).join(', '), p.postalCode].filter(Boolean).join(' ')}
+                                  {formatLocationLine(p)}
                                   {p.npi && <span className="ml-2 font-mono">NPI: {p.npi}</span>}
                                   <span className="ml-2">{formatPhoneDisplay(p.phone)}</span>
                                 </p>
@@ -1291,7 +1407,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 pl-12">
-                  <div><span className="font-medium text-gray-500">Location:</span> {[confirmTarget.addressLine1, [confirmTarget.city, confirmTarget.state].filter(Boolean).join(', '), confirmTarget.postalCode].filter(Boolean).join(' ')}</div>
+                  <div><span className="font-medium text-gray-500">Location:</span> {formatLocationLine(confirmTarget)}</div>
                   <div><span className="font-medium text-gray-500">Phone:</span> {formatPhoneDisplay(confirmTarget.phone)}</div>
                   <div><span className="font-medium text-gray-500">Email:</span> {confirmTarget.email}</div>
                   {confirmTarget.npi && (
@@ -1543,24 +1659,40 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                       </>
                     )}
                   </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="newProviderIsMobile"
+                      checked={newForm.isMobile}
+                      onChange={e => toggleMobile(e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                    />
+                    <label htmlFor="newProviderIsMobile" className="text-xs font-medium text-gray-600">
+                      Mobile / roaming provider (no fixed address)
+                    </label>
+                  </div>
                   <div className="relative">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Address *</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      {newForm.isMobile ? 'Service area description *' : 'Address *'}
+                    </label>
                     <div className="relative">
                       <input
                         required
                         autoComplete="off"
                         value={newForm.addressLine1}
-                        onChange={e => handleAddressChange(e.target.value)}
-                        onFocus={() => addrSuggestions.length > 0 && setAddrOpen(true)}
+                        onChange={e => newForm.isMobile
+                          ? setNewForm(f => ({ ...f, addressLine1: e.target.value }))
+                          : handleAddressChange(e.target.value)}
+                        onFocus={() => !newForm.isMobile && addrSuggestions.length > 0 && setAddrOpen(true)}
                         onBlur={() => setTimeout(() => setAddrOpen(false), 150)}
-                        placeholder="123 Main St"
+                        placeholder={newForm.isMobile ? 'e.g. Greater Las Vegas Metro' : '123 Main St'}
                         className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none pr-7"
                       />
-                      {addrLoading && (
+                      {addrLoading && !newForm.isMobile && (
                         <span className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
                       )}
                     </div>
-                    {addrOpen && addrSuggestions.length > 0 && (
+                    {!newForm.isMobile && addrOpen && addrSuggestions.length > 0 && (
                       <ul className="absolute z-50 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg text-sm overflow-hidden">
                         {addrSuggestions.map((s, i) => (
                           <li
@@ -1575,14 +1707,41 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                       </ul>
                     )}
                   </div>
-                  <div>
+                  <div className="relative">
                     <label className="block text-xs font-medium text-gray-600 mb-1">City *</label>
-                    <input
-                      required
-                      value={newForm.city}
-                      onChange={e => setNewForm(f => ({ ...f, city: e.target.value }))}
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-                    />
+                    <div className="relative">
+                      <input
+                        required
+                        autoComplete="off"
+                        value={newForm.city}
+                        onChange={e => newForm.isMobile
+                          ? handleCityChange(e.target.value)
+                          : setNewForm(f => ({ ...f, city: e.target.value }))}
+                        onFocus={() => newForm.isMobile && addrSuggestions.length > 0 && setAddrOpen(true)}
+                        onBlur={() => {
+                          setTimeout(() => setAddrOpen(false), 150);
+                          if (newForm.isMobile && geoLat === null) void geocodeServiceArea(newForm.city, newForm.state);
+                        }}
+                        className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none pr-7"
+                      />
+                      {newForm.isMobile && addrLoading && (
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+                      )}
+                    </div>
+                    {newForm.isMobile && addrOpen && addrSuggestions.length > 0 && (
+                      <ul className="absolute z-50 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg text-sm overflow-hidden">
+                        {addrSuggestions.map((s, i) => (
+                          <li
+                            key={i}
+                            onMouseDown={() => selectCitySuggestion(s)}
+                            className="flex items-start gap-2 px-3 py-2 cursor-pointer hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-0"
+                          >
+                            <i className="ri-map-pin-line text-gray-400 mt-0.5 shrink-0" />
+                            <span className="text-gray-700">{s.displayName}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <div className="flex-1">
@@ -1591,30 +1750,57 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                         required
                         value={newForm.state}
                         onChange={e => setNewForm(f => ({ ...f, state: e.target.value }))}
+                        onBlur={() => newForm.isMobile && geoLat === null && void geocodeServiceArea(newForm.city, newForm.state)}
                         placeholder="IL"
                         maxLength={2}
                         className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm uppercase focus:border-blue-500 focus:outline-none"
                       />
                     </div>
                     <div className="flex-1">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">ZIP *</label>
-                      <input
-                        required
-                        value={newForm.postalCode}
-                        onChange={e => setNewForm(f => ({ ...f, postalCode: e.target.value }))}
-                        placeholder="60601"
-                        className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
-                          hasInvalidPostalCode || hasZipMismatch
-                            ? 'border-red-300 focus:border-red-400'
-                            : 'border-gray-300 focus:border-blue-500'
-                        }`}
-                      />
-                      {(hasInvalidPostalCode || hasZipMismatch) && (
-                        <p className="text-xs text-red-500 mt-1">
-                          {hasZipMismatch
-                            ? 'ZIP code must match the selected address.'
-                            : 'ZIP code must be 5 digits or 5+4 format.'}
-                        </p>
+                      {newForm.isMobile ? (
+                        <>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Service radius (mi) *</label>
+                          <input
+                            required
+                            type="number"
+                            min={1}
+                            max={MAX_SERVICE_RADIUS_MILES}
+                            value={newForm.serviceRadiusMiles}
+                            onChange={e => setNewForm(f => ({ ...f, serviceRadiusMiles: e.target.value }))}
+                            className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
+                              hasInvalidServiceRadius
+                                ? 'border-red-300 focus:border-red-400'
+                                : 'border-gray-300 focus:border-blue-500'
+                            }`}
+                          />
+                          {hasInvalidServiceRadius && (
+                            <p className="text-xs text-red-500 mt-1">
+                              Enter a radius between 1 and {MAX_SERVICE_RADIUS_MILES} miles.
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">ZIP *</label>
+                          <input
+                            required
+                            value={newForm.postalCode}
+                            onChange={e => setNewForm(f => ({ ...f, postalCode: e.target.value }))}
+                            placeholder="60601"
+                            className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
+                              hasInvalidPostalCode || hasZipMismatch
+                                ? 'border-red-300 focus:border-red-400'
+                                : 'border-gray-300 focus:border-blue-500'
+                            }`}
+                          />
+                          {(hasInvalidPostalCode || hasZipMismatch) && (
+                            <p className="text-xs text-red-500 mt-1">
+                              {hasZipMismatch
+                                ? 'ZIP code must match the selected address.'
+                                : 'ZIP code must be 5 digits or 5+4 format.'}
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -1813,6 +1999,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
               <div className="space-y-3">
                 {activeEditLocations.map((location, index) => {
                   const invalidZip = locationHasInvalidPostalCode(location);
+                  const invalidRadius = locationHasInvalidServiceRadius(location);
                   const saving = savingLocationId === location.entryId;
                   const deleting = deletingLocationId === location.entryId;
                   const isLastRemainingLocation = activeEditLocations.length <= 1;
@@ -1843,7 +2030,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                             </span>
                           </div>
                           <p className="mt-0.5 truncate text-xs text-gray-500">
-                            {[location.addressLine1, [location.city, location.state].filter(Boolean).join(', '), location.postalCode].filter(Boolean).join(' ')}
+                            {formatLocationLine({ ...location, serviceRadiusMiles: Number(location.serviceRadiusMiles) })}
                           </p>
                         </div>
                         <button
@@ -1858,14 +2045,31 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                         </button>
                       </div>
 
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id={`locationIsMobile-${location.entryId}`}
+                          checked={location.isMobile}
+                          onChange={e => updateEditLocation(location.entryId, {
+                            isMobile: e.target.checked,
+                            postalCode: e.target.checked ? '' : location.postalCode,
+                          })}
+                          className="h-3.5 w-3.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                        />
+                        <label htmlFor={`locationIsMobile-${location.entryId}`} className="text-xs font-medium text-gray-600">
+                          Mobile / roaming provider (no fixed address)
+                        </label>
+                      </div>
                       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                         <div className="lg:col-span-2">
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Address *</label>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            {location.isMobile ? 'Service area description *' : 'Address *'}
+                          </label>
                           <input
                             required
                             value={location.addressLine1}
                             onChange={e => updateEditLocation(location.entryId, { addressLine1: e.target.value })}
-                            placeholder="123 Main St"
+                            placeholder={location.isMobile ? 'e.g. Greater Las Vegas Metro' : '123 Main St'}
                             className="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                           />
                         </div>
@@ -1891,20 +2095,46 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                             />
                           </div>
                           <div className="flex-1">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">ZIP *</label>
-                            <input
-                              required
-                              value={location.postalCode}
-                              onChange={e => updateEditLocation(location.entryId, { postalCode: e.target.value })}
-                              placeholder="60601"
-                              className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
-                                invalidZip
-                                  ? 'border-red-300 focus:border-red-400'
-                                  : 'border-gray-300 focus:border-blue-500'
-                              }`}
-                            />
-                            {invalidZip && (
-                              <p className="text-xs text-red-500 mt-1">ZIP code must be 5 digits or 5+4 format.</p>
+                            {location.isMobile ? (
+                              <>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Service radius (mi) *</label>
+                                <input
+                                  required
+                                  type="number"
+                                  min={1}
+                                  max={MAX_SERVICE_RADIUS_MILES}
+                                  value={location.serviceRadiusMiles}
+                                  onChange={e => updateEditLocation(location.entryId, { serviceRadiusMiles: e.target.value })}
+                                  className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
+                                    invalidRadius
+                                      ? 'border-red-300 focus:border-red-400'
+                                      : 'border-gray-300 focus:border-blue-500'
+                                  }`}
+                                />
+                                {invalidRadius && (
+                                  <p className="text-xs text-red-500 mt-1">
+                                    Enter a radius between 1 and {MAX_SERVICE_RADIUS_MILES} miles.
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">ZIP *</label>
+                                <input
+                                  required
+                                  value={location.postalCode}
+                                  onChange={e => updateEditLocation(location.entryId, { postalCode: e.target.value })}
+                                  placeholder="60601"
+                                  className={`w-full rounded-md border bg-white px-3 py-1.5 text-sm focus:outline-none ${
+                                    invalidZip
+                                      ? 'border-red-300 focus:border-red-400'
+                                      : 'border-gray-300 focus:border-blue-500'
+                                  }`}
+                                />
+                                {invalidZip && (
+                                  <p className="text-xs text-red-500 mt-1">ZIP code must be 5 digits or 5+4 format.</p>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
@@ -1933,7 +2163,7 @@ export function MyNetworkClient({ initialNetwork, fetchError, specialtyOptions }
                         </div>
                         <button
                           type="submit"
-                          disabled={savingEdit || deleting || hasInvalidPhone || invalidZip}
+                          disabled={savingEdit || deleting || hasInvalidPhone || invalidZip || invalidRadius}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
                         >
                           {saving ? (
@@ -2110,7 +2340,7 @@ function ProviderCard({
             )}
             {(provider.addressLine1 || provider.city || provider.state) && (
               <p className="text-xs text-gray-400 mt-0.5 truncate">
-                {[provider.addressLine1, [provider.city, provider.state].filter(Boolean).join(', '), provider.postalCode].filter(Boolean).join(' ')}
+                {formatLocationLine(provider)}
               </p>
             )}
           </div>
@@ -2213,7 +2443,9 @@ function ProviderRow({
         )}
         {(provider.addressLine1 || provider.postalCode) && (
           <p className="text-xs text-gray-400 mt-0.5 leading-tight">
-            {[provider.addressLine1, provider.postalCode].filter(Boolean).join(' ')}
+            {provider.isMobile
+              ? formatLocationLine(provider)
+              : [provider.addressLine1, provider.postalCode].filter(Boolean).join(' ')}
           </p>
         )}
       </td>

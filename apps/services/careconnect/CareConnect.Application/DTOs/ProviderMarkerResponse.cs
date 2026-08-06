@@ -12,7 +12,7 @@ public class ProviderMarkerResponse
     public string  City             { get; set; } = string.Empty;
     public string  State            { get; set; } = string.Empty;
     public string  AddressLine1     { get; set; } = string.Empty;
-    public string  PostalCode       { get; set; } = string.Empty;
+    public string? PostalCode       { get; set; }
     public string  Email            { get; set; } = string.Empty;
     public string  Phone            { get; set; } = string.Empty;
     public bool    AcceptingReferrals { get; set; }
@@ -26,4 +26,7 @@ public class ProviderMarkerResponse
     public string? PrimarySpecialty { get; set; }
     public Guid? PrimarySpecialtyId { get; set; }
     public double? DistanceMiles { get; set; }
+    public bool    IsMobile         { get; set; }
+    public double? ServiceRadiusMiles { get; set; }
+    public string? ServiceAreaLabel { get; set; }
 }

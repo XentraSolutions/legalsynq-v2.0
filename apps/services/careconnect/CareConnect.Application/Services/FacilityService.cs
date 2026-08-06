@@ -155,6 +155,8 @@ public class FacilityService : IFacilityService
         Longitude = f.Longitude,
         GeoPointSource = f.GeoPointSource,
         GeoUpdatedAtUtc = f.GeoUpdatedAtUtc,
-        OrganizationId = f.OrganizationId
+        OrganizationId = f.OrganizationId,
+        IsMobile = f.IsMobile,
+        ServiceRadiusMiles = f.ServiceRadiusMiles
     };
 }

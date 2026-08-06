@@ -45,7 +45,14 @@ export function ProviderDetailCard({ provider }: ProviderDetailCardProps) {
         <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5">
           <Field label="Email"    value={provider.email} />
           <Field label="Phone"    value={formatPhoneDisplay(provider.phone)} />
-          <Field label="Address"  value={provider.city ? `${provider.city}, ${provider.state} ${provider.postalCode}` : undefined} />
+          <Field
+            label="Address"
+            value={provider.isMobile
+              ? `Mobile · ${[provider.serviceAreaLabel ?? provider.addressLine1, `${provider.city}, ${provider.state}`].filter(Boolean).join(' · ')}${provider.serviceRadiusMiles ? ` · ${provider.serviceRadiusMiles}mi radius` : ''}`
+              : provider.city
+                ? [provider.addressLine1, `${provider.city}, ${provider.state}`, provider.postalCode].filter(Boolean).join(' ')
+                : undefined}
+          />
 
           <Field
             label="Specialties"

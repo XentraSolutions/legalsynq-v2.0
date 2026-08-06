@@ -31,7 +31,7 @@ public sealed record PublicProviderItem(
     string  Phone,
     string  City,
     string  State,
-    string  PostalCode,
+    string? PostalCode,
     bool    IsActive,
     bool    AcceptingReferrals,
     string  AccessStage,
@@ -39,7 +39,10 @@ public sealed record PublicProviderItem(
     List<SpecialtyResponse> Specialties,
     Guid? PrimarySpecialtyId,
     string? PrimarySpecialty,
-    double? DistanceMiles = null);
+    double? DistanceMiles = null,
+    bool    IsMobile = false,
+    double? ServiceRadiusMiles = null,
+    string? ServiceAreaLabel = null);
 
 /// <summary>
 /// Public-facing map marker for a provider in a network.
@@ -62,7 +65,10 @@ public sealed record PublicProviderMarker(
     List<SpecialtyResponse> Specialties,
     Guid? PrimarySpecialtyId,
     string? PrimarySpecialty,
-    double? DistanceMiles = null);
+    double? DistanceMiles = null,
+    bool    IsMobile = false,
+    double? ServiceRadiusMiles = null,
+    string? ServiceAreaLabel = null);
 
 /// <summary>
 /// Resolved public network surface returned when the tenant has a single network.

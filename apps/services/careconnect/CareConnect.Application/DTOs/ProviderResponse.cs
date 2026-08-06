@@ -20,7 +20,10 @@ public class ProviderResponse
     public string  AddressLine1      { get; set; } = string.Empty;
     public string  City              { get; set; } = string.Empty;
     public string  State             { get; set; } = string.Empty;
-    public string  PostalCode        { get; set; } = string.Empty;
+    public string? PostalCode        { get; set; }
+    public bool    IsMobile          { get; set; }
+    public double? ServiceRadiusMiles { get; set; }
+    public string? ServiceAreaLabel  { get; set; }
     public bool    IsActive          { get; set; }
     public bool    AcceptingReferrals { get; set; }
     public List<string> Categories   { get; set; } = new();

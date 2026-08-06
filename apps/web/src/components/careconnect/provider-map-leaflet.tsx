@@ -25,6 +25,7 @@ interface ProviderMapProps {
 type L = typeof import('leaflet');
 
 const US_CENTER: [number, number] = [39.5, -98.35];
+const MILES_TO_METERS = 1609.34;
 
 /** Escapes HTML special characters to prevent XSS when injecting provider data into popup innerHTML. */
 function esc(s: string): string {
@@ -129,12 +130,16 @@ export function ProviderMapLeaflet({
     for (const m of markers) {
       const isSelected = m.id === selectedId;
 
+      const locationLine = m.isMobile
+        ? `Mobile · ${[m.serviceAreaLabel, `${m.city}, ${m.state}`].filter((s): s is string => Boolean(s)).map(esc).join(' · ')}${m.serviceRadiusMiles ? ` · ${m.serviceRadiusMiles}mi radius` : ''}`
+        : esc(m.markerSubtitle);
+
       const popupEl = document.createElement('div');
       popupEl.style.fontFamily = 'inherit';
       popupEl.style.minWidth   = '200px';
       popupEl.innerHTML = `
         <p style="font-weight:600;font-size:14px;margin:0 0 2px;color:#111827">${esc(m.displayLabel)}</p>
-        <p style="font-size:12px;color:#6b7280;margin:0 0 6px">${esc(m.markerSubtitle)}</p>
+        <p style="font-size:12px;color:#6b7280;margin:0 0 6px">${locationLine}</p>
         ${typeof m.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 6px">${m.distanceMiles.toFixed(1)} mi away</p>` : ''}
         ${(m.specialties ?? []).length > 0
           ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 6px">${esc(m.specialties.map(s => s.name).join(', '))}</p>`
@@ -153,16 +158,40 @@ export function ProviderMapLeaflet({
         </div>
       `;
 
-      Leaflet.circleMarker([m.latitude, m.longitude], {
-        radius:      isSelected ? 11 : 7,
-        fillColor:   m.acceptingReferrals ? '#16a34a' : '#6b7280',
-        fillOpacity: 0.85,
-        color:       isSelected ? '#1d4ed8' : '#ffffff',
-        weight:      isSelected ? 3 : 1.5,
-      })
+      if (m.isMobile && m.serviceRadiusMiles) {
+        Leaflet.circle([m.latitude, m.longitude], {
+          radius:      m.serviceRadiusMiles * MILES_TO_METERS,
+          color:       '#7c3aed',
+          weight:      2,
+          opacity:     0.8,
+          dashArray:   '6, 6',
+          fillColor:   '#7c3aed',
+          fillOpacity: isSelected ? 0.12 : 0,
+          interactive: false,
+        }).addTo(layer);
+      }
+
+      const marker = m.isMobile
+        ? Leaflet.marker([m.latitude, m.longitude], {
+            icon: Leaflet.divIcon({
+              className: '',
+              html: `<div style="width:${isSelected ? 16 : 12}px;height:${isSelected ? 16 : 12}px;background:${m.acceptingReferrals ? '#16a34a' : '#6b7280'};border:${isSelected ? 3 : 1.5}px solid ${isSelected ? '#1d4ed8' : '#ffffff'};transform:rotate(45deg);box-sizing:border-box"></div>`,
+              iconSize: [isSelected ? 16 : 12, isSelected ? 16 : 12],
+              iconAnchor: [(isSelected ? 16 : 12) / 2, (isSelected ? 16 : 12) / 2],
+            }),
+          })
+        : Leaflet.circleMarker([m.latitude, m.longitude], {
+            radius:      isSelected ? 11 : 7,
+            fillColor:   m.acceptingReferrals ? '#16a34a' : '#6b7280',
+            fillOpacity: 0.85,
+            color:       isSelected ? '#1d4ed8' : '#ffffff',
+            weight:      isSelected ? 3 : 1.5,
+          });
+
+      marker
         .bindPopup(popupEl, { minWidth: 200 })
         .on('click', () => {
-          map.setView([m.latitude, m.longitude], Math.max(map.getZoom(), 13));
+          map.setView([m.latitude, m.longitude], Math.max(map.getZoom(), m.isMobile ? 10 : 13));
           onSelectRef.current(m.id);
         })
         .addTo(layer);
