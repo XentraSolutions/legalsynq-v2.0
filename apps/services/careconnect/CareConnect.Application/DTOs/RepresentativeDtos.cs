@@ -90,9 +90,7 @@ public class RepresentativeReferralMetricsResponse
     public int AcceptedReferrals { get; set; }
     public int DeclinedReferrals { get; set; }
     public int CompletedReferrals { get; set; }
-
-    /// <summary>Count within the caller-supplied date range, when one was provided; otherwise equals TotalAttributedReferrals.</summary>
-    public int ReferralsInRange { get; set; }
+    public int CancelledReferrals { get; set; }
 
     public Dictionary<string, int> ReferralsByStatus { get; set; } = new();
 }

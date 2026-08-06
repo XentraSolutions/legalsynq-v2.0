@@ -7,7 +7,15 @@ import { useRepresentativePortal } from '@/components/careconnect/representative
 import { ApiError } from '@/lib/api-client';
 import type { RepresentativeReferralListItem } from '@/types/careconnect';
 
-const STATUS_OPTIONS = ['New', 'NewOpened', 'Accepted', 'InProgress', 'Completed', 'Declined', 'Cancelled'];
+// Matches the Dashboard's metric groupings (Pending = New + NewOpened, Accepted = Accepted +
+// InProgress) — values are comma-separated raw statuses, resolved server-side into an IN filter.
+const STATUS_OPTIONS = [
+  { label: 'Pending', value: 'New,NewOpened' },
+  { label: 'Accepted', value: 'Accepted,InProgress' },
+  { label: 'Declined', value: 'Declined' },
+  { label: 'Completed', value: 'Completed' },
+  { label: 'Cancelled', value: 'Cancelled' },
+];
 
 export default function RepresentativeReferralsPage() {
   const { code } = useRepresentativePortal();
@@ -58,8 +66,8 @@ export default function RepresentativeReferralsPage() {
             onChange={e => { setStatus(e.target.value); setPage(1); }}
             className="border border-gray-300 rounded-md px-3 py-2 text-sm bg-white"
           >
-            <option value="">All statuses</option>
-            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            <option value="">All</option>
+            {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
         <div>

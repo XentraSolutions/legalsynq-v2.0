@@ -44,11 +44,11 @@ export default function RepresentativeDashboardPage() {
 
       <div className="flex items-end gap-3 mb-6">
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">From</label>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Submitted from</label>
           <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="border border-gray-300 rounded-md px-3 py-2 text-sm" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">To</label>
+          <label className="block text-xs font-medium text-gray-700 mb-1">Submitted to</label>
           <input type="date" value={to} onChange={e => setTo(e.target.value)} className="border border-gray-300 rounded-md px-3 py-2 text-sm" />
         </div>
         {(from || to) && (
@@ -68,36 +68,20 @@ export default function RepresentativeDashboardPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <h3 className="text-base font-semibold text-gray-900 mb-1">No referrals yet</h3>
           <p className="text-sm text-gray-500">
-            No referrals have been submitted for this source yet — they&apos;ll appear here once they are.
+            {from || to
+              ? 'No referrals match the selected date range.'
+              : "No referrals have been submitted for this source yet — they'll appear here once they are."}
           </p>
         </div>
       ) : metrics ? (
-        <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-            <StatCard label="Total Attributed" value={metrics.totalAttributedReferrals} />
-            <StatCard label="Pending" value={metrics.pendingReferrals} />
-            <StatCard label="Accepted" value={metrics.acceptedReferrals} />
-            <StatCard label="Declined" value={metrics.declinedReferrals} />
-            <StatCard label="Completed" value={metrics.completedReferrals} />
-          </div>
-
-          {(from || to) && (
-            <p className="text-sm text-gray-600 mb-4">
-              <span className="font-semibold">{metrics.referralsInRange.toLocaleString()}</span> referral(s) submitted in the selected date range.
-            </p>
-          )}
-
-          <div className="bg-white border border-gray-200 rounded-lg p-5">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">By Status</h3>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(metrics.referralsByStatus).map(([status, count]) => (
-                <span key={status} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                  {status}: {count}
-                </span>
-              ))}
-            </div>
-          </div>
-        </>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          <StatCard label="Total Attributed" value={metrics.totalAttributedReferrals} />
+          <StatCard label="Pending" value={metrics.pendingReferrals} />
+          <StatCard label="Accepted" value={metrics.acceptedReferrals} />
+          <StatCard label="Declined" value={metrics.declinedReferrals} />
+          <StatCard label="Completed" value={metrics.completedReferrals} />
+          <StatCard label="Cancelled" value={metrics.cancelledReferrals} />
+        </div>
       ) : null}
     </div>
   );

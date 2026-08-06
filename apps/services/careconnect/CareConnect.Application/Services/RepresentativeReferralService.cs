@@ -69,24 +69,27 @@ public class RepresentativeReferralService : IRepresentativeReferralService
         Guid tenantId, Guid referralAttributionId, DateTime? from, DateTime? to, CancellationToken ct = default)
     {
         var allQuery = new GetReferralsQuery { Page = 1, PageSize = int.MaxValue, RestrictedToAttributionIds = [referralAttributionId] };
-        var (allItems, allCount) = await _referrals.SearchAsync(tenantId, allQuery, ct);
+        var (allItems, _) = await _referrals.SearchAsync(tenantId, allQuery, ct);
 
+        // Same field the "My Referrals" list filters on (submittedFrom/submittedTo →
+        // CreatedFrom/CreatedTo) — every metric below respects the range, matching that
+        // list's behavior instead of only the (now-removed) separate "in range" count.
         var inRangeItems = allItems.Where(r =>
             (!from.HasValue || r.CreatedAtUtc >= from.Value) &&
             (!to.HasValue || r.CreatedAtUtc <= to.Value)).ToList();
 
-        var byStatus = allItems
+        var byStatus = inRangeItems
             .GroupBy(r => r.Status)
             .ToDictionary(g => g.Key, g => g.Count());
 
         return new RepresentativeReferralMetricsResponse
         {
-            TotalAttributedReferrals = allCount,
-            PendingReferrals = allItems.Count(r => IsPending(r.Status)),
-            AcceptedReferrals = allItems.Count(r => IsAccepted(r.Status)),
-            DeclinedReferrals = allItems.Count(r => r.Status == Referral.ValidStatuses.Declined),
-            CompletedReferrals = allItems.Count(r => r.Status == Referral.ValidStatuses.Completed),
-            ReferralsInRange = inRangeItems.Count,
+            TotalAttributedReferrals = inRangeItems.Count,
+            PendingReferrals = inRangeItems.Count(r => IsPending(r.Status)),
+            AcceptedReferrals = inRangeItems.Count(r => IsAccepted(r.Status)),
+            DeclinedReferrals = inRangeItems.Count(r => r.Status == Referral.ValidStatuses.Declined),
+            CompletedReferrals = inRangeItems.Count(r => r.Status == Referral.ValidStatuses.Completed),
+            CancelledReferrals = inRangeItems.Count(r => r.Status == Referral.ValidStatuses.Cancelled),
             ReferralsByStatus = byStatus,
         };
     }

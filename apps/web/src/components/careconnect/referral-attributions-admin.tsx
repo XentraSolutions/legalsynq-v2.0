@@ -169,7 +169,7 @@ export function ReferralAttributionsAdmin() {
                 value={form.firstName}
                 onChange={e => setForm(f => f && { ...f, firstName: e.target.value })}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                placeholder="Cam"
+                placeholder="Enter first name"
               />
             </div>
             <div>
@@ -178,7 +178,7 @@ export function ReferralAttributionsAdmin() {
                 value={form.lastName}
                 onChange={e => setForm(f => f && { ...f, lastName: e.target.value })}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                placeholder="Perry"
+                placeholder="Enter last name"
               />
             </div>
             <div>
@@ -187,7 +187,7 @@ export function ReferralAttributionsAdmin() {
                 value={form.code}
                 onChange={e => setForm(f => f && { ...f, code: e.target.value })}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                placeholder="CAM_PERRY"
+                placeholder="Enter code"
               />
             </div>
             <div>

@@ -327,7 +327,7 @@ export interface RepresentativeReferralMetrics {
   acceptedReferrals:        number;
   declinedReferrals:        number;
   completedReferrals:       number;
-  referralsInRange:         number;
+  cancelledReferrals:       number;
   referralsByStatus:        Record<string, number>;
 }
 

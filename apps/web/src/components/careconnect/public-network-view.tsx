@@ -1460,7 +1460,7 @@ function ReferralPanel({
                     disabled={state === 'submitting'}
                     className={panelInputCls(false)}
                   >
-                    <option value="">Select a referral source</option>
+                    <option value="">None</option>
                     {attributionOptions.map(a => (
                       <option key={a.id} value={a.id}>
                         {a.firstName} {a.lastName}

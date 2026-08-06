@@ -277,7 +277,7 @@ export function ReferralAttributionDetail({ id }: { id: string }) {
         <h2 className="text-sm font-semibold text-gray-900 mb-1">Representative Access Code</h2>
         <p className="text-xs text-gray-500 mb-4">
           Generate a code and share it with the representative who should see this source&apos;s referrals — they
-          enter it themselves at the portal URL shown on the Referral Attributions list page. No login required.
+          enter it themselves at the portal URL shown on the Referral Attributions list page.
         </p>
 
         {codeError && <p className="text-xs text-red-600 mb-3">{codeError}</p>}
