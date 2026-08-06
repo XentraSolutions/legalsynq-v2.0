@@ -113,7 +113,6 @@ export function CreateEditTaskForm({
   const [priority, setPriority] = useState<TaskPriority>(
     editTask?.priorityId ?? "MEDIUM",
   );
-  console.log(editTask);
   const [status, setStatus] = useState<TaskStatus>(
     editTask?.status ?? "UPCOMING",
   );
