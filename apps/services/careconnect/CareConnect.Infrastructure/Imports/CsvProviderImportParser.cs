@@ -71,6 +71,13 @@ public sealed class CsvProviderImportParser : IProviderImportParser
         ["geopointsource"] = "geoPointSource",
         ["geosource"] = "geoPointSource",
         ["coordinatesource"] = "geoPointSource",
+        ["mobile"] = "isMobile",
+        ["ismobile"] = "isMobile",
+        ["mobileprovider"] = "isMobile",
+        ["serviceradius"] = "serviceRadiusMiles",
+        ["serviceradiusmiles"] = "serviceRadiusMiles",
+        ["radius"] = "serviceRadiusMiles",
+        ["radiusmiles"] = "serviceRadiusMiles",
     };
 
     private static readonly string[] RequiredHeaders =
@@ -260,7 +267,9 @@ public sealed class CsvProviderImportParser : IProviderImportParser
             PrimarySpecialtyCode: getField("primarySpecialtyCode"),
             LatitudeRaw: getField("latitude"),
             LongitudeRaw: getField("longitude"),
-            GeoPointSource: getField("geoPointSource"));
+            GeoPointSource: getField("geoPointSource"),
+            IsMobileRaw: getField("isMobile"),
+            ServiceRadiusMilesRaw: getField("serviceRadiusMiles"));
     }
 
     private static Dictionary<string, int> BuildHeaderMap(string[] rawHeaders)

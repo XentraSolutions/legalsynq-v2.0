@@ -27,7 +27,7 @@ public static class ReferralLocationResolver
                 AddressLine1:  facility.AddressLine1,
                 City:          facility.City,
                 State:         facility.State,
-                PostalCode:    facility.PostalCode);
+                PostalCode:    facility.PostalCode ?? string.Empty);
         }
 
         var provider = referral.Provider ?? providerFallback;

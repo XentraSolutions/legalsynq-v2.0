@@ -79,7 +79,7 @@ export interface PublicProviderItem {
   phone:            string;
   city:             string;
   state:            string;
-  postalCode:       string;
+  postalCode:       string | null;
   isActive:         boolean;
   acceptingReferrals: boolean;
   accessStage:      string;
@@ -88,6 +88,9 @@ export interface PublicProviderItem {
   primarySpecialtyId: string | null;
   primarySpecialty: string | null;
   distanceMiles?:   number | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 export interface PublicProviderMarker {
@@ -108,6 +111,9 @@ export interface PublicProviderMarker {
   primarySpecialtyId: string | null;
   primarySpecialty: string | null;
   distanceMiles?:   number | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 export interface PublicNetworkDetail {

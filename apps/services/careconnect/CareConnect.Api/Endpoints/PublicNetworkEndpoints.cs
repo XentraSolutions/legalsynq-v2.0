@@ -768,7 +768,10 @@ public static class PublicNetworkEndpoints
             null,
             MapSpecialties(p),
             PrimarySpecialtyId(p),
-            PrimarySpecialtyName(p));
+            PrimarySpecialtyName(p),
+            IsMobile: f.IsMobile,
+            ServiceRadiusMiles: f.ServiceRadiusMiles,
+            ServiceAreaLabel: f.IsMobile ? f.AddressLine1 : null);
     }
 
     private static bool IsPublicProviderLocationActive(NetworkProvider np) =>
@@ -796,7 +799,10 @@ public static class PublicNetworkEndpoints
             f.Longitude ?? p.Longitude ?? 0.0,
             MapSpecialties(p),
             PrimarySpecialtyId(p),
-            PrimarySpecialtyName(p));
+            PrimarySpecialtyName(p),
+            IsMobile: f.IsMobile,
+            ServiceRadiusMiles: f.ServiceRadiusMiles,
+            ServiceAreaLabel: f.IsMobile ? f.AddressLine1 : null);
     }
 
     private static Guid? PrimarySpecialtyId(Provider provider) =>

@@ -23,6 +23,7 @@ const ProviderMap = dynamic(
 function toProviderMarker(m: NetworkProviderMarker): ProviderMarker {
   return {
     ...m,
+    postalCode:      m.postalCode ?? '',
     displayLabel:    m.organizationName ?? m.name,
     markerSubtitle:  `${m.city}, ${m.state}`,
     primaryCategory: undefined,

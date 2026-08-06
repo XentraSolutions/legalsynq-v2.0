@@ -35,8 +35,11 @@ public class RepresentativeFacilityRef
     public string AddressLine1 { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
     public string State { get; set; } = string.Empty;
-    public string PostalCode { get; set; } = string.Empty;
+    public string? PostalCode { get; set; }
     public string? Phone { get; set; }
+    public bool IsMobile { get; set; }
+    public double? ServiceRadiusMiles { get; set; }
+    public string? ServiceAreaLabel { get; set; }
 }
 
 public class RepresentativeStatusRef

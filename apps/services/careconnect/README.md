@@ -206,9 +206,15 @@ Specialty values may be codes or names such as `Pain`, `Spine`, `Physical Therap
 accepted for compatibility and are used as a specialty fallback when no specialty column is supplied.
 
 Optional import columns include `title`, `categoryCodes`, `primaryCategoryCode`, `primarySpecialtyCode`, `latitude`,
-`longitude`, and `geoPointSource`. `geoPointSource` is normalized to the supported values `Manual`, `Geocoded`, or
-`Imported`; common geocoder labels such as `nominatim` are treated as `Geocoded`, and coordinate rows with no source
-default to `Imported`. The current sample is `artifacts/postman/careconnect-provider-import.sample.csv`.
+`longitude`, and `geoPointSource`. `geoPointSource` is normalized to the supported values `Manual`, `Geocoded`,
+`Imported`, or `CityCentroid`; common geocoder labels such as `nominatim` are treated as `Geocoded`, and coordinate
+rows with no source default to `Imported`. The current sample is `artifacts/postman/careconnect-provider-import.sample.csv`.
+
+A row for a mobile/roaming provider with no fixed street address (e.g. a mobile clinic that
+covers a metro area) can set `Mobile` to `Y`/`true` — this makes ZIP optional for that row (still
+required otherwise) and stores the address column as a free-text service-area label (e.g.
+"Greater Las Vegas Metro") instead of a street address. `ServiceRadius` (miles) is optional and
+defaults to 25; both are capped at `ProviderGeoHelper.ServiceRadiusMilesCap` (60 miles).
 
 ### Provider search and distance
 

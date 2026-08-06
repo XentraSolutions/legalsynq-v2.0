@@ -183,6 +183,9 @@ export function PublicNetworkView({
               primarySpecialtyId: p.primarySpecialtyId ?? null,
               primarySpecialty: p.primarySpecialty ?? null,
               distanceMiles: null,
+              isMobile: p.isMobile,
+              serviceRadiusMiles: p.serviceRadiusMiles,
+              serviceAreaLabel: p.serviceAreaLabel,
             });
           } catch { /* ignore */ }
         }),
@@ -635,8 +638,9 @@ const ProviderCard = forwardRef<
             </p>
           )}
           <p className={['text-gray-400 dark:text-gray-500 mt-0.5', compact ? 'text-xs' : 'text-sm'].join(' ')}>
-            {provider.city}, {provider.state}
-            {!compact && provider.postalCode ? ` ${provider.postalCode}` : ''}
+            {provider.isMobile
+              ? `Mobile · ${[provider.serviceAreaLabel, `${provider.city}, ${provider.state}`].filter(Boolean).join(' · ')}${!compact && provider.serviceRadiusMiles ? ` · ${provider.serviceRadiusMiles}mi radius` : ''}`
+              : <>{provider.city}, {provider.state}{!compact && provider.postalCode ? ` ${provider.postalCode}` : ''}</>}
           </p>
           {typeof provider.distanceMiles === 'number' && Number.isFinite(provider.distanceMiles) && (
             <p className={['text-blue-600 dark:text-blue-400 mt-0.5 font-medium', compact ? 'text-xs' : 'text-sm'].join(' ')}>
