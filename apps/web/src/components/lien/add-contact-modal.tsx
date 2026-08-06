@@ -49,6 +49,8 @@ interface AddContactModalProps {
   editTarget?: EditableContact | null;
   /** Hides the address/city/state/zip fields — used for sub-contacts (staff, law firm contacts) who don't need their own address. */
   hideAddress?: boolean;
+  /** Overrides the default bg-primary styling on the Save button (e.g. selling's orange brand). */
+  primaryButtonClassName?: string;
 }
 
 interface ContactTypeIconConfig {
@@ -174,6 +176,7 @@ export function AddContactModal({
   subtitle,
   editTarget,
   hideAddress,
+  primaryButtonClassName,
 }: AddContactModalProps) {
   const { lookup } = useSessionContext();
   const isEdit = Boolean(editTarget);
@@ -388,6 +391,7 @@ export function AddContactModal({
       subtitle={subtitle}
       submitLabel={submitting ? (isEdit ? "Saving..." : "Creating...") : "Save"}
       submitDisabled={submitting}
+      primaryButtonClassName={primaryButtonClassName}
     >
       <div className="flex items-center gap-2.5 mb-4">
         <div

@@ -1,4 +1,4 @@
-import { ContactDetailShell } from "./contact-detail-shell";
+import { ContactDetailShell } from "@/components/lien/contact-detail/shell";
 
 export default async function ContactDetailLayout({
   children,
@@ -8,5 +8,9 @@ export default async function ContactDetailLayout({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <ContactDetailShell id={id}>{children}</ContactDetailShell>;
+  return (
+    <ContactDetailShell id={id} basePath="/lien/contacts">
+      {children}
+    </ContactDetailShell>
+  );
 }

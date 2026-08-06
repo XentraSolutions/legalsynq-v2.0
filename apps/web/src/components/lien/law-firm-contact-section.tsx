@@ -13,12 +13,14 @@ import { ActionMenu } from "@/components/lien/action-menu";
 
 interface Props {
   lawFirmId: string;
+  /** Overrides the default bg-primary styling on the Add Contact button and its modal/delete-confirm actions (e.g. selling's orange brand). */
+  primaryButtonClassName?: string;
 }
 
 const CONTACT_TYPE = "LawFirm";
 const PAGE_SIZE = 12;
 
-export function LawFirmContactSection({ lawFirmId }: Props) {
+export function LawFirmContactSection({ lawFirmId, primaryButtonClassName }: Props) {
   const addToast = useLienStore((s) => s.addToast);
   const [contacts, setContacts] = useState<ContactResponseDto[]>([]);
   const [roles, setRoles] = useState<LookupData[]>([]);
@@ -126,7 +128,7 @@ export function LawFirmContactSection({ lawFirmId }: Props) {
           </button>
           <button
             onClick={openAdd}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90"
+            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 text-white rounded-lg ${primaryButtonClassName ?? 'bg-primary hover:bg-primary/90'}`}
           >
             <i className="ri-add-line" />
             Add Contact
@@ -191,6 +193,7 @@ export function LawFirmContactSection({ lawFirmId }: Props) {
           lawFirmId={lawFirmId}
           roleOptions={roles}
           editTarget={editTarget}
+          primaryButtonClassName={primaryButtonClassName}
           onSaved={() => {
             setModalOpen(false);
             fetchContacts();
@@ -216,6 +219,7 @@ export function LawFirmContactSection({ lawFirmId }: Props) {
           }
           confirmLabel="Delete"
           confirmVariant="danger"
+          primaryButtonClassName={primaryButtonClassName}
           warningTitle="Warning: Deleting this contact will also remove:"
           warningItems={[
             "All case associations",
