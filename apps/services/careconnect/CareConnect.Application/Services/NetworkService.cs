@@ -1114,11 +1114,6 @@ public class NetworkService : INetworkService
         var facilityName = NormalizeRequired(parsedRow.FacilityName ?? parsedRow.OrganizationName, "Medical facility is required.", errors);
         var firstName = NormalizeOptional(parsedRow.FirstName) ?? providerNameParts.FirstName;
         var lastName = NormalizeOptional(parsedRow.LastName) ?? providerNameParts.LastName;
-        if (string.IsNullOrWhiteSpace(firstName) && string.IsNullOrWhiteSpace(lastName))
-        {
-            firstName = facilityName;
-            lastName = string.Empty;
-        }
         var email = NormalizeRequired(parsedRow.Email, "Provider email is required.", errors, NormalizeEmail);
         var phone = NormalizeRequired(parsedRow.Phone, "Provider phone is required.", errors);
         var addressLine1 = NormalizeRequired(parsedRow.AddressLine1, "Address is required.", errors);
@@ -1181,9 +1176,9 @@ public class NetworkService : INetworkService
         normalized = new ProviderImportNormalizedRow(
             TenantId: tenantId,
             Title: title,
-            FirstName: firstName!,
+            FirstName: firstName ?? string.Empty,
             LastName: lastName ?? string.Empty,
-            OrganizationName: NormalizeOptional(parsedRow.OrganizationName),
+            OrganizationName: NormalizeOptional(parsedRow.OrganizationName) ?? facilityName,
             FacilityName: facilityName!,
             Npi: NormalizeOptional(parsedRow.Npi),
             Email: email!,

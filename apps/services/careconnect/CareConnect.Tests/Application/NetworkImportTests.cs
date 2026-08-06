@@ -202,6 +202,59 @@ public class NetworkImportTests
     }
 
     [Fact]
+    public async Task ImportProvidersAsync_RowWithNoProviderName_LeavesFirstAndLastNameEmpty()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var parser = new Mock<IProviderImportParser>();
+        parser.Setup(p => p.ParseAsync(It.IsAny<Stream>(), "providers.csv", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProviderImportParseResult(
+                "providers.csv",
+                1,
+                [
+                    ImportRow(
+                        tenantId,
+                        title: null,
+                        providerName: null,
+                        firstName: null,
+                        lastName: null,
+                        organizationName: null,
+                        facilityName: "Precision Pain Center",
+                        npi: "1336383504",
+                        email: "info@precisionpaincenter.com",
+                        SpecialtyCodesRaw: "Pain")
+                ]));
+        var pain = Specialty.Create("Pain", "PAIN");
+
+        var networks = BuildRepositoryMock();
+        networks.Setup(r => r.GetByIdGlobalAsync(networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "My Network", string.Empty));
+        networks.Setup(r => r.GetProvidersByNpisAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
+        networks.Setup(r => r.GetProvidersByTenantEmailsAsync(tenantId, It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
+        networks.Setup(r => r.GetNetworkProviderLocationKeysAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var specialties = new Mock<ISpecialtyRepository>();
+        specialties.Setup(r => r.GetActiveByCodesAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([pain]);
+
+        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), specialties.Object, parser.Object, NullLogger<NetworkService>.Instance);
+
+        await using var stream = new MemoryStream();
+        var result = await sut.ImportProvidersAsync(networkId, stream, "providers.csv", dryRun: true, userId: null, CancellationToken.None);
+
+        var row = Assert.Single(result.Rows);
+        Assert.Equal("created", row.Status);
+        Assert.NotNull(row.NormalizedProvider);
+        Assert.Equal(string.Empty, row.NormalizedProvider!.FirstName);
+        Assert.Equal(string.Empty, row.NormalizedProvider.LastName);
+        Assert.Equal("Precision Pain Center", row.NormalizedProvider.FacilityName);
+        Assert.Equal("Precision Pain Center", row.NormalizedProvider.OrganizationName);
+    }
+
+    [Fact]
     public async Task ImportProvidersAsync_SameNpiDifferentLocations_CreatesOneProviderWithMultipleLocationMemberships()
     {
         var tenantId = Guid.CreateVersion7();
