@@ -169,21 +169,69 @@ public class SettlementService : ISettlementService
     public async Task<SettlementPaymentDetailResponse> CreatePaymentAsync(
         Guid tenantId, Guid userId, CreateSettlementPaymentDetailRequest request, CancellationToken ct = default)
     {
-        if (IsLienStatusSyncRequest(request.SettlementStatus))
+        var usesLegacyFieldPositions = IsLienStatusSyncRequest(request.SettlementStatus) &&
+                                       string.IsNullOrWhiteSpace(request.LienStatus) &&
+                                       !IsSettlementTypeCode(request.SettlementType);
+        var settlementType = FirstNonEmpty(
+            usesLegacyFieldPositions ? null : request.SettlementType,
+            request.Type) ?? "other";
+        var settlementStatus = FirstNonEmpty(
+            usesLegacyFieldPositions ? request.SettlementType : request.SettlementStatus,
+            request.Status);
+        var requestedLienStatus = FirstNonEmpty(
+            request.LienStatus,
+            IsLienStatusSyncRequest(request.SettlementStatus) ? request.SettlementStatus : null);
+        if (IsLienStatusSyncRequest(requestedLienStatus))
         {
             await _lienService.SetLegacyMedicalStatusAsync(
-                tenantId, request.LienId, userId, request.SettlementStatus!, ct);
+                tenantId, request.LienId, userId, requestedLienStatus!, ct);
         }
 
+        var paymentNumber = request.PaymentNumber > 0
+            ? request.PaymentNumber
+            : await GetNextPaymentNumberAsync(tenantId, request.CaseId, ct);
         var entity = SettlementPaymentDetail.Create(
             tenantId, request.CaseId, request.LienId,
-            request.PaymentNumber, request.Amount, userId,
+            paymentNumber, request.Amount, userId,
             request.PaymentDate,
             request.Payee,
             FirstNonEmpty(request.CheckNumber, request.ReferenceNumber),
-            BuildPaymentNote(request));
+            BuildPaymentNote(request, settlementType, settlementStatus));
         await _paymentRepo.AddAsync(entity, ct);
         return MapPayment(entity);
+    }
+
+    private async Task<int> GetNextPaymentNumberAsync(
+        Guid tenantId,
+        Guid caseId,
+        CancellationToken ct)
+    {
+        var existing = await _paymentRepo.GetByCaseIdAsync(tenantId, caseId, ct);
+        var usedNumbers = existing
+            .Where(payment => payment.PaymentNumber > 0)
+            .Select(payment => payment.PaymentNumber)
+            .ToHashSet();
+        var nextFallback = 1;
+
+        foreach (var _ in existing
+                     .Where(payment => payment.PaymentNumber <= 0)
+                     .OrderBy(payment => payment.CreatedAtUtc)
+                     .ThenBy(payment => payment.Id))
+        {
+            while (usedNumbers.Contains(nextFallback))
+                nextFallback++;
+
+            usedNumbers.Add(nextFallback++);
+        }
+
+        if (usedNumbers.Count == 0)
+            return 1;
+
+        var next = (long)usedNumbers.Max() + 1;
+        if (next > int.MaxValue)
+            throw new InvalidOperationException($"No payment numbers remain available for case '{caseId}'.");
+
+        return (int)next;
     }
 
     public async Task DeletePaymentAsync(
@@ -211,7 +259,7 @@ public class SettlementService : ISettlementService
             CheckNumber   = p.CheckNumber,
             Note          = ExtractPaymentNote(p.Note),
             PaymentMethod = metadata.GetValueOrDefault("paymentMethod"),
-            SettlementTypeId = metadata.GetValueOrDefault("type"),
+            SettlementTypeId = FirstNonEmpty(metadata.GetValueOrDefault("type")) ?? "other",
             SettlementStatusId = metadata.GetValueOrDefault("status"),
             NetProfit     = ParseLegacyDecimal(metadata.GetValueOrDefault("netProfit")),
             CreatedAtUtc  = p.CreatedAtUtc,
@@ -221,15 +269,18 @@ public class SettlementService : ISettlementService
         };
     }
 
-    private static string? BuildPaymentNote(CreateSettlementPaymentDetailRequest request)
+    private static string? BuildPaymentNote(
+        CreateSettlementPaymentDetailRequest request,
+        string? settlementType,
+        string? settlementStatus)
     {
         var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["netProfit"] = (request.NetProfit ?? 0m).ToString("0.00", CultureInfo.InvariantCulture),
         };
         SetMetadata(metadata, "paymentMethod", request.PaymentMethod);
-        SetMetadata(metadata, "type", request.SettlementType);
-        SetMetadata(metadata, "status", request.SettlementStatus);
+        SetMetadata(metadata, "type", settlementType);
+        SetMetadata(metadata, "status", settlementStatus);
 
         var note = FirstNonEmpty(request.Note, request.Notes);
         var serializedMetadata = string.Join("; ", metadata.Select(pair => $"{pair.Key}={pair.Value}"));
@@ -287,6 +338,12 @@ public class SettlementService : ISettlementService
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
+    private static bool IsSettlementTypeCode(string? value) =>
+        string.Equals(value, "by_attorney", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value, "by_medical_provider", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value, "by_funding_company", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value, "other", StringComparison.OrdinalIgnoreCase);
 
     private static void SetMetadata(
         IDictionary<string, string> metadata,

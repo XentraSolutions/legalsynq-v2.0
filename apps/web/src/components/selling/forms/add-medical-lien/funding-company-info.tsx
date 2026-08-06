@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
 import { useSessionContext } from "@/providers/session-provider";
 import { BaseSelectOption } from "@/components/ui/base-select";
-import Field from "@/components/lien/field";
 import { contactsService } from "@/lib/contacts";
 
 export interface FundingCompanyInfoProps {
@@ -55,7 +54,7 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
   }, [statusList, data]);
 
   function validateForm() {
-    const valid = !!form.lawfirmId;
+    const valid = !!form.lawfirmId && !!form.fundingCompanyId;
     onFormValid?.(valid, form);
   }
 
@@ -85,7 +84,7 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
           <div className="grid grid-cols-2 gap-4 mt-4 mx-2">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Funding Company
+                Funding Company<span className="text-red-500 ml-0.5">*</span>
               </label>
               <SellingEntitySelect
                 entityType="FundingCompany"
@@ -131,15 +130,6 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
               />
             </div>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 mt-4 mx-2">
-          <Field
-            type="email"
-            label="Email Address"
-            value={form.email}
-            onChange={(v) => setForm({ ...form, email: v.toString() })}
-          />
         </div>
 
         <div className="grid grid-cols-2 gap-3 mt-4 mx-2">

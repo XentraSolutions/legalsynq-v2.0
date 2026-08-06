@@ -1,28 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Modal } from "@/components/lien/modal";
-
-// import "./medical-lien-component.css";
-import {
-  CreateMedicalCodeLiensDto,
-  CreateMedicalFacilityDto,
-  CreateMedicalLiensDto,
-  CreateMedicalPaymentDto,
-} from "@/lib/cases/cases.types";
-import { casesService } from "@/lib/cases";
-import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
-import { dateConverter } from "@/lib/cases/cases.mapper";
-import MedicalLienInfo from "../lien/forms/add-medical-lien/medical-lien-info";
 import LienInfo from "./forms/add-medical-lien/lien-info";
 import FundingCompanyInfo from "./forms/add-medical-lien/funding-company-info";
 import MedicalCodesDescription from "./forms/add-medical-lien/medical-codes-description";
 import UploadDocuments from "./forms/add-medical-lien/medical-upload-document";
 import { LienInfoParams } from "@/lib/liens/liens.types";
 import { liensService } from "@/lib/selling";
+import { parsePricingRow } from "@/lib/selling/selling-detail.mapper";
 import Link from "next/link";
 import { useToast } from "@/lib/toast-context";
 import { useRouter } from "next/navigation";
 export interface AddLienComponentProps {
+  // Existing draft lien to resume (from the /selling/add-liens/[lienId] route).
+  // Omitted when starting a brand-new lien from /selling/add-liens.
+  lienId?: string;
   caseId?: string;
   caseInfo?: any;
   purchase?: any;
@@ -74,6 +65,7 @@ export default function AddLienComponent(props: AddLienComponentProps) {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [hydrating, setHydrating] = useState(!!props.lienId);
 
   const [forms, setForms] = useState<any[]>(Array(totalSteps).fill(null));
   // Step 4 (upload docs) is optional — there's nothing to invalidate, so it
@@ -82,8 +74,75 @@ export default function AddLienComponent(props: AddLienComponentProps) {
     [totalSteps]: true,
   });
   const isLastStep = currentStep === steps.length;
-  const [liensId, setLiensId] = useState("");
+  const [liensId, setLiensId] = useState(props.lienId ?? "");
   const notComplete = useMemo(() => !valid[currentStep], [valid, currentStep]);
+
+  // Resuming an existing draft (came in via /selling/add-liens/[lienId], either
+  // from the redirect below or a page refresh) — hydrate the wizard's forms
+  // from the lien instead of starting a second bare lien from scratch.
+  useEffect(() => {
+    if (!props.lienId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const lien = await liensService.getLienById(props.lienId!);
+        if (cancelled) return;
+
+        const rows = lien.medicalPricing.rows.map((row) => {
+          const parsed = parsePricingRow(row);
+          return {
+            id: row.id,
+            code: parsed.medicalCode,
+            description: parsed.description ?? "",
+            billingAmount: parsed.billingAmount,
+            medicareCost: parsed.medicareCost,
+            targetSaleAmount: parsed.targetSaleAmount,
+          };
+        });
+
+        setForms([
+          {
+            status: lien.lienInformation.sellerStatus,
+            listingVisibility: lien.lienInformation.listingVisibility,
+            initialServiceDate: lien.lienInformation.initialServiceDate ?? "",
+            endServiceDate: lien.lienInformation.endServiceDate ?? "",
+            notes: lien.lienInformation.notes ?? "",
+          },
+          {
+            fundingCompanyId: lien.fundingCompany?.id ?? "",
+            fundingCompany: lien.fundingCompany?.name ?? "",
+            facilityContactId: lien.fundingCompany?.contact?.id ?? "",
+            facilityContact: lien.fundingCompany?.contact?.name ?? "",
+            lawfirmId: lien.caseInformation?.lawFirmId ?? "",
+            caseManagerId: lien.caseInformation?.caseManagerId ?? "",
+          },
+          { codeRows: rows },
+          null,
+        ]);
+
+        const resumeStep =
+          rows.length > 0
+            ? 4
+            : lien.caseInformation?.lawFirmId || lien.fundingCompany
+              ? 3
+              : 2;
+        setCurrentStep(resumeStep);
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : "Failed to load lien",
+          "error",
+        );
+      } finally {
+        if (!cancelled) setHydrating(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Mount-only: props.lienId is fixed for the lifetime of this component
+    // instance (a route param change remounts it).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function closeModal() {
     onClose?.();
@@ -108,8 +167,19 @@ export default function AddLienComponent(props: AddLienComponentProps) {
     if (currentStep == 1) {
       return await createLienInfo(forms[0]);
     }
+    if (currentStep == 2) {
+      return await saveCaseInfo(forms[1]);
+    }
+    if (currentStep == 3) {
+      return await saveMedicalPricingInfo(forms[2]);
+    }
     if (currentStep == 4) {
-      // save();
+      // Documents are attached (and persisted via saveDocuments) as soon as
+      // each file uploads in the UploadDocuments step, so there's nothing
+      // left to save here — just confirm and return to the portfolio.
+      showToast("Lien added successfully.", "success");
+      router.push("/selling/portfolio");
+      return;
     }
     if (!isLastStep) {
       setCurrentStep((s) => s + 1);
@@ -117,28 +187,109 @@ export default function AddLienComponent(props: AddLienComponentProps) {
     }
   };
 
-  const fetchDocument = async () => {
-    const docs = await casesService.loadLiensDocuments(liensId ?? "");
-    setForms((prev) => ({ ...prev, 3: docs.data }));
-  };
-
-  const createLienInfo = async (payload: LienInfoParams) => {
+  const createLienInfo = async (payload: any) => {
     startLoading();
     try {
       const request: LienInfoParams = {
-        sellerStatus: payload.sellerStatus,
+        sellerStatus: payload.status,
         initialServiceDate: payload.initialServiceDate,
-        endServiceDate: payload.endServiceDate,
+        endServiceDate: payload.endServiceDate || null,
         listingVisibility: payload.listingVisibility,
         notes: payload.notes,
       };
 
-      await liensService.createLienInfo("", request);
+      // The lien only gets created once. Re-submitting step 1 after going
+      // back to it (or resuming a draft from /selling/add-liens/[lienId])
+      // must update that same lien's info, not POST /liens again.
+      if (liensId) {
+        await liensService.createLienInfo(liensId, request);
+        setErrors({});
+        setCurrentStep((s) => s + 1);
+        return;
+      }
+
+      // There's no "create draft" endpoint — a lien only gets an id via
+      // POST /liens (liensService.createLien), then the rest of step 1's
+      // fields are saved with a separate PUT .../lien-information call.
+      // See the comment on liensApi.createLien for the backend source.
+      const created = await liensService.createLien({
+        sellerStatus: request.sellerStatus,
+        source: "Single",
+      });
+      await liensService.createLienInfo(created.lienId, request);
+      setLiensId(created.lienId);
       showToast("Liens Created", "success");
       setErrors({});
+      setCurrentStep((s) => s + 1);
+      // Move the URL onto the resumable draft route so a refresh (or the
+      // back button) continues editing this lien instead of creating another
+      // bare one. The backend has no draft-listing endpoint yet, so this URL
+      // is the only way progress survives a refresh.
+      router.replace(`/selling/add-liens/${created.lienId}`);
     } catch (err) {
       if (err instanceof ApiError) {
         console.log(err.message);
+        showToast(err.message, "error");
+      } else {
+        showToast("An unexpected error occurred", "error");
+      }
+    } finally {
+      stopLoading();
+    }
+  };
+
+  const saveCaseInfo = async (payload: any) => {
+    startLoading();
+    try {
+      await liensService.saveCaseInformation(liensId, {
+        fundingCompanyId: payload?.fundingCompanyId || undefined,
+        fundingCompanyContactId: payload?.facilityContactId || undefined,
+        handlingLawFirmId: payload?.lawfirmId || undefined,
+        caseManagerId: payload?.caseManagerId || undefined,
+        caseId: caseId || undefined,
+        createCaseIfMissing: !caseId,
+      });
+      setErrors({});
+      setCurrentStep((s) => s + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        showToast(err.message, "error");
+      } else {
+        showToast("An unexpected error occurred", "error");
+      }
+    } finally {
+      stopLoading();
+    }
+  };
+
+  const saveMedicalPricingInfo = async (payload: any) => {
+    startLoading();
+    try {
+      const rows = payload?.codeRows ?? [];
+      const askAmount = rows.reduce(
+        (sum: number, row: any) => sum + (row.targetSaleAmount || 0),
+        0,
+      );
+      const totalBillingAmount = rows.reduce(
+        (sum: number, row: any) => sum + (row.billingAmount || 0),
+        0,
+      );
+
+      await liensService.saveMedicalPricing(liensId, {
+        askAmount,
+        billingAmount: totalBillingAmount,
+        rows: rows.map((row: any) => ({
+          medicalCode: row.code,
+          description: row.description || undefined,
+          billingAmount: row.billingAmount,
+          medicareCost: row.medicareCost,
+          targetSaleAmount: row.targetSaleAmount,
+        })),
+      });
+      setErrors({});
+      setCurrentStep((s) => s + 1);
+    } catch (err) {
+      if (err instanceof ApiError) {
         showToast(err.message, "error");
       } else {
         showToast("An unexpected error occurred", "error");
@@ -156,8 +307,6 @@ export default function AddLienComponent(props: AddLienComponentProps) {
       return copy;
     });
   }
-
-  useEffect(() => {}, [liensId]);
 
   return (
     <div className="max-w-[700px] m-auto">
@@ -191,7 +340,13 @@ export default function AddLienComponent(props: AddLienComponentProps) {
           </div>
         )}
 
-        {currentStep === 1 && (
+        {hydrating && (
+          <div className="py-16 text-center">
+            <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          </div>
+        )}
+
+        {!hydrating && currentStep === 1 && (
           <LienInfo
             caseId={caseId}
             lienId={liensId}
@@ -199,15 +354,15 @@ export default function AddLienComponent(props: AddLienComponentProps) {
             onFormValid={onFormValid}
           />
         )}
-        {currentStep === 2 && (
+        {!hydrating && currentStep === 2 && (
           <FundingCompanyInfo
             caseId={caseId}
             lienId={liensId}
-            data={forms[0]}
+            data={forms[1]}
             onFormValid={onFormValid}
           />
         )}
-        {currentStep === 3 && liensId && (
+        {!hydrating && currentStep === 3 && liensId && (
           <MedicalCodesDescription
             caseId={caseId}
             lienId={liensId}
@@ -215,7 +370,7 @@ export default function AddLienComponent(props: AddLienComponentProps) {
             onFormValid={onFormValid}
           />
         )}
-        {currentStep === 4 && liensId && (
+        {!hydrating && currentStep === 4 && liensId && (
           <UploadDocuments
             data={forms[3]}
             caseId={caseId}
@@ -239,7 +394,7 @@ export default function AddLienComponent(props: AddLienComponentProps) {
             className="text-sm px-4 py-2 bg-[#EE7132] text-white rounded-lg hover:bg-[#EE7132]/90 disabled:bg-[#EE7132]/70"
             disabled={notComplete || submitting}
           >
-            {isLastStep ? "Save" : "Continue"}
+            {isLastStep ? "Add Lien" : "Continue"}
           </button>
         </div>
       </div>

@@ -35,7 +35,17 @@ function makePercentLabel(fontSize: number) {
   };
 }
 
-export function DonutChart({ segments, size = 240 }: { segments: Segment[]; size?: number }) {
+export function DonutChart({
+  segments,
+  size = 240,
+  centerValue,
+  centerLabel,
+}: {
+  segments: Segment[];
+  size?: number;
+  centerValue?: string;
+  centerLabel?: string;
+}) {
   const chartConfig = useMemo(() => {
     const cfg: ChartConfig = {};
     segments.forEach((seg) => { cfg[seg.label] = { label: seg.label, color: seg.color }; });
@@ -67,6 +77,14 @@ export function DonutChart({ segments, size = 240 }: { segments: Segment[]; size
           </Pie>
         </PieChart>
       </ChartContainer>
+      {centerValue && (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-xl font-bold text-gray-900">{centerValue}</span>
+          {centerLabel && (
+            <span className="text-xs text-gray-500">{centerLabel}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

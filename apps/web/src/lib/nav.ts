@@ -115,13 +115,6 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         { href: "/lien/cases", label: "Cases", icon: "ri-survey-line" },
         { href: "/lien/liens", label: "Liens", icon: "ri-file-transfer-line" },
         {
-          href: "/lien/bill-of-sales",
-          label: "Bill of Sales",
-          icon: "ri-file-list-3-line",
-          sellModeOnly: true,
-          disabledMessage: "Bill of Sales is coming soon",
-        },
-        {
           href: "/lien/servicing",
           label: "Servicing",
           icon: "ri-file-settings-line",
@@ -130,15 +123,6 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           href: "/lien/contacts",
           label: "Contacts",
           icon: "ri-contacts-book-line",
-        },
-        {
-          href: "/lien/portfolio",
-          label: "Portfolio",
-          icon: "ri-briefcase-line",
-          requiredRoles: [
-            ProductRole.SynqLienBuyer,
-            ProductRole.SynqLienHolder,
-          ],
         },
       ],
     },
@@ -167,15 +151,6 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           icon: "ri-store-2-line",
           requiredRoles: [ProductRole.SynqLienBuyer],
         },
-        {
-          href: "/lien/portfolio",
-          label: "Portfolio",
-          icon: "ri-briefcase-line",
-          requiredRoles: [
-            ProductRole.SynqLienBuyer,
-            ProductRole.SynqLienHolder,
-          ],
-        },
       ],
     },
     {
@@ -196,12 +171,6 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           label: "Batch Upload",
           icon: "ri-upload-line",
           requiredRoles: [ProductRole.SynqLienSeller],
-        },
-        {
-          href: "/lien/document-handling",
-          label: "Document Handling",
-          icon: "ri-file-list-line",
-          disabledMessage: "Document Handling is coming soon",
         },
       ],
     },
@@ -250,23 +219,100 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
   ],
 
   selling: [
-    // {
-    //   heading: '',
-    //   items: [
-    //     { href: '/selling/dashboard',     label: 'Dashboard',     icon: 'ri-dashboard-line' }
-    //   ]
-    // },
+    {
+      items: [
+        {
+          href: "/selling/dashboard",
+          label: "Dashboard",
+          icon: "ri-dashboard-line",
+        },
+      ],
+    },
     {
       heading: "Lien Portfolio",
       items: [
         {
           href: "/selling/portfolio",
           label: "Portfolio",
-          icon: "ri-dashboard-line",
+          icon: "ri-folder-3-line",
+          children: [
+            {
+              href: "/selling/cases",
+              label: "Cases",
+              icon: "ri-briefcase-line",
+              disabledMessage: "Cases is coming soon",
+            },
+            {
+              href: "/selling/liens",
+              label: "Liens",
+              icon: "ri-file-transfer-line",
+              disabledMessage: "Liens is coming soon",
+            },
+          ],
         },
-        // { href: '/selling/cases',         label: 'Cases',         icon: 'ri-survey-line' },
-        // { href: '/selling/liens',         label: 'Liens',         icon: 'ri-file-transfer-line' },
-        // { href: '/selling/contacts',      label: 'Contacts',      icon: 'ri-contacts-book-line' },
+        {
+          href: "/selling/documents",
+          label: "LOP / Documents",
+          icon: "ri-file-text-line",
+          disabledMessage: "LOP / Documents is coming soon",
+        },
+        {
+          href: "/selling/reductions",
+          label: "Reductions",
+          icon: "ri-line-chart-line",
+          disabledMessage: "Reductions is coming soon",
+        },
+        {
+          href: "/selling/settlements",
+          label: "Settlements",
+          icon: "ri-scales-line",
+          disabledMessage: "Settlements is coming soon",
+        },
+        {
+          href: "/selling/contacts",
+          label: "Contacts",
+          icon: "ri-contacts-book-line",
+        },
+      ],
+    },
+    {
+      heading: "Receivables",
+      items: [
+        {
+          href: "/selling/receivables",
+          label: "Receivables",
+          icon: "ri-file-list-2-line",
+          disabledMessage: "Receivables is coming soon",
+        },
+        {
+          href: "/selling/aging",
+          label: "Aging",
+          icon: "ri-time-line",
+          disabledMessage: "Aging is coming soon",
+        },
+        {
+          href: "/selling/payments",
+          label: "Payments",
+          icon: "ri-money-dollar-circle-line",
+          disabledMessage: "Payments is coming soon",
+        },
+      ],
+    },
+    {
+      heading: "Reports",
+      items: [
+        {
+          href: "/selling/analytics",
+          label: "Analytics",
+          icon: "ri-pie-chart-line",
+          disabledMessage: "Analytics is coming soon",
+        },
+        {
+          href: "/selling/reports",
+          label: "Reports",
+          icon: "ri-file-chart-line",
+          disabledMessage: "Reports is coming soon",
+        },
       ],
     },
     {

@@ -43,6 +43,12 @@ function formatCurrency(amount: number | null): string {
     minimumFractionDigits: 2, // Forces decimals like .00 if needed
   }).format(Number(amount));
 }
+function formatNumber(amount: number): string {
+  return new Intl.NumberFormat("en-IN", { maximumSignificantDigits: 3 }).format(
+    amount,
+  );
+}
+
 export default function ReportDisplay({
   report,
   onBack,
@@ -74,15 +80,17 @@ export default function ReportDisplay({
       ? [
           {
             label: "Total Cases",
-            value: report?.summaryTotals?.totalCases ?? report.totalCount,
+            value:
+              formatNumber(report?.summaryTotals?.totalCases) ??
+              report.totalCount,
           },
           {
             label: "Open Cases",
-            value: report?.summaryTotals?.totalOpenCases ?? 0,
+            value: formatNumber(report?.summaryTotals?.totalOpenCases) ?? 0,
           },
           {
             label: "Closed Cases",
-            value: report?.summaryTotals?.totalClosedCases ?? 0,
+            value: formatNumber(report?.summaryTotals?.totalClosedCases) ?? 0,
           },
           {
             label: "Total Purchase Amount",
@@ -186,9 +194,13 @@ export default function ReportDisplay({
           );
 
           const isDefaultMinWidth =
-            item.key.includes("facility") || item.key.includes("law")
-              ? { minWidth: "300px", width: "100%" }
-              : { minWidth: "170px" };
+            item.key.includes("facility") ||
+            item.key.includes("law") ||
+            item.key.includes("case_type")
+              ? { minWidth: "220px", width: "100%" }
+              : item.key.includes("id") || item.key.includes("status")
+                ? { minWidth: "135px", width: "100%" }
+                : { minWidth: "50px" };
 
           return {
             id: item.key,
@@ -228,9 +240,16 @@ export default function ReportDisplay({
           item.key,
         );
         const isDefaultMinWidth =
-          item.key.includes("facility") || item.key.includes("law")
-            ? { minWidth: "300px", width: "100%" }
-            : { minWidth: "170px" };
+          item.key.includes("facility") ||
+          item.key.includes("law") ||
+          item.key.includes("case_type") ||
+          item.key.includes("manager")
+            ? { minWidth: "220px", width: "100%" }
+            : item.key.includes("lien_id") ||
+                item.key.includes("case_id") ||
+                item.key.includes("status")
+              ? { minWidth: "135px", width: "100%" }
+              : { minWidth: "50px" };
         return {
           id: item.key,
           header: item.label,
@@ -289,16 +308,16 @@ export default function ReportDisplay({
         {metrics.map((m) => (
           <div
             key={m.label}
-            className="border border-gray-200 rounded-xl p-5 hover:shadow-sm break-words"
+            className="border border-gray-200 rounded-xl px-4 py-2 hover:shadow-sm break-words"
           >
             <p className="text-xs text-gray-500">{m.label}</p>
-            <p className="text-lg font-semibold">{m.value}</p>
+            <p className="text-lg font-semibold text-right py-3">{m.value}</p>
           </div>
         ))}
       </div>
 
       {/* TABLE PLACEHOLDER */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-scroll h-full max-h-[60vh]">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-x-scroll h-full">
         {loading ? (
           <div className="py-12 text-center">
             <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />

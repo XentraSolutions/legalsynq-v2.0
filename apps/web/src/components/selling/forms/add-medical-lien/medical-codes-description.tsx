@@ -1,16 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { BaseSelect } from "@/components/ui/base-select";
 import { CreateMedicalCode } from "../add-medical-code";
-import { casesService } from "@/lib/cases";
-import { useLienStore } from "@/stores/lien-store";
-import { ApiError } from "@/lib/api-client";
-import { CreateMedicalCodeLiensDto } from "@/lib/cases/cases.types";
 import {
   useMedicareCosts,
   useMedicareProcedureCodes,
 } from "@/hooks/use-case-liens";
 import { Input } from "@/components/ui/input";
-import { ConfirmDialog } from "@/components/lien/modal";
 import Field from "@/components/lien/field";
 
 export interface MedicalCodesDescriptionProps {
@@ -20,23 +15,20 @@ export interface MedicalCodesDescriptionProps {
   onFormValid?: (valid: boolean, data?: any) => void;
 }
 
-const INITIAL_FORM = {
-  procedureCode: "",
-  medicareCost: "",
-  billingAmount: "",
-  purchaseAmount: "",
-  purchaseAmountType: "amount",
-  payee: "",
-  outboundCheckNumber: "",
-};
+interface PricingRow {
+  id: string;
+  code: string;
+  description: string;
+  billingAmount: number;
+  medicareCost: number;
+  targetSaleAmount: number;
+}
 
-const INITIAL_ROW = {
-  id: "",
-  code: "",
-  description: "",
-  medicareCost: 0,
-  billingAmount: 0,
-  purchaseAmount: 0,
+const INITIAL_ENTRY = {
+  procedureCode: "",
+  billingAmount: "",
+  targetAmount: "",
+  targetPercent: "",
 };
 
 function formatCurrency(value: number) {
@@ -60,255 +52,76 @@ export default function MedicalCodesDescription(
   props: MedicalCodesDescriptionProps,
 ) {
   const { data = {}, onFormValid } = props;
-  const addToast = useLienStore((s) => s.addToast);
-  const { data: medicalCodes } = useMedicareProcedureCodes();
+  const { data: medicalCodes, isLoading: isLoadingMedicalCodes } =
+    useMedicareProcedureCodes();
 
-  const [form, setForm] = useState<any>({ ...INITIAL_FORM, ...data });
-  const { data: medicareCosts } = useMedicareCosts(form.procedureCode);
+  const [entry, setEntry] = useState({ ...INITIAL_ENTRY });
+  const { data: medicareCost } = useMedicareCosts(entry.procedureCode);
 
-  const [rows, setRows] = useState<Array<typeof INITIAL_ROW>>(
-    data?.codeRows ?? [],
+  const [rows, setRows] = useState<PricingRow[]>(data?.codeRows ?? []);
+  const [showCreate, setShowCreate] = useState(false);
+
+  const totals = useMemo(
+    () =>
+      rows.reduce(
+        (tot, row) => ({
+          billing: tot.billing + row.billingAmount,
+          target: tot.target + row.targetSaleAmount,
+        }),
+        { billing: 0, target: 0 },
+      ),
+    [rows],
   );
-  const [editingId, setEditingId] = useState<string>("");
-  const [showCreate, setShowCreate] = useState<boolean>(false);
-  const [confirmAction, setConfirmAction] = useState<{
-    id: string;
-    label: string;
-  } | null>(null);
 
   useEffect(() => {
-    validateForm();
-  }, [rows, data?.codeRows]);
+    onFormValid?.(rows.length > 0, { codeRows: rows });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
 
-  useEffect(() => {
-    setForm((prev: any) => ({ ...prev, medicareCost: medicareCosts }));
-  }, [medicareCosts]);
+  const billingAmount = parseNumber(entry.billingAmount);
 
-  function validateForm() {
-    const previousRows = Array.isArray(data?.codeRows) ? data.codeRows : [];
-    const rowsChanged = JSON.stringify(rows) !== JSON.stringify(previousRows);
-    const valid = rowsChanged ? rows.length > 0 && !form.procedure : false;
-    if (valid) onFormValid?.(valid, { ...form, codeRows: rows });
-  }
-  function cleanNumericInput(raw: string): string {
-    const cleaned = raw.replace(/[^\d.]/g, "");
-    const parts = cleaned.split(".");
-    return parts.length > 2 ? parts[0] + "." + parts[1] : cleaned;
-  }
-
-  const currentBilling = form.billingAmount;
-  const currentPurchase = form.purchaseAmount;
-  const handleParentInputChange = (raw: string) => {
-    const sanitized = cleanNumericInput(raw);
-    const n = parseFloat(sanitized);
-    if (!isNaN(n)) {
-      setForm({ ...form, purchaseAmount: n });
-      return;
-    } else {
-      setForm({ ...form, purchaseAmount: sanitized });
-    }
-  };
-
-  const inverseValue = (() => {
-    if (!form.purchaseAmount) return "";
-    return !form.billingAmount
-      ? 0
-      : form.purchaseAmountType === "percent"
-        ? Number(((form.purchaseAmount / 100) * form.billingAmount).toFixed(2))
-        : roundToTwo((form.purchaseAmount / form.billingAmount) * 100);
-  })();
-
-  const handleToggleMode = (toPercent: boolean) => {
-    const computated = !form.billingAmount
-      ? 0
-      : toPercent
-        ? roundToTwo((form.purchaseAmount / form.billingAmount) * 100)
-        : Number(((form.purchaseAmount / 100) * form.billingAmount).toFixed(2));
-    if (inverseValue !== null) {
-      setForm((prev: any) => ({
-        ...prev,
-        purchaseAmountType: toPercent ? "percent" : "amount",
-        purchaseAmount: computated,
-      }));
-    }
-  };
-
-  const totals = useMemo(() => {
-    return rows.reduce(
-      (tot, row) => ({
-        medicare: tot.medicare + row.medicareCost,
-        billing: tot.billing + row.billingAmount,
-        purchase: tot.purchase + row.purchaseAmount,
-      }),
-      { medicare: 0, billing: 0, purchase: 0 },
-    );
-  }, [rows, data]);
-
-  function resetLine() {
-    setForm({
-      ...form,
-      procedureCode: "",
-      medicareCost: "",
-      billingAmount: "",
-      purchaseAmount: "",
-    });
-    setEditingId("");
-  }
-
-  const getCurrentValue = () => {
-    if (form.purchaseAmountType == "percent") {
-      const val =
-        typeof inverseValue == "string"
-          ? parseNumber(inverseValue)
-          : inverseValue;
-      return val;
-    } else {
-      return typeof currentPurchase == "string"
-        ? parseNumber(currentPurchase)
-        : currentPurchase;
-    }
-  };
-  function handleAddOrUpdateLine() {
-    const selectedOption = medicalCodes?.find(
-      (option) => option.value === form.procedureCode,
-    );
-
-    setTimeout(async () => {
-      const response = await createMedicalCodeLiens(
-        {
-          ...form,
-          id: form.id,
-          code: form.procedureCode,
-          description: selectedOption?.label ?? "",
-          medicareCost: parseNumber(form.medicareCost),
-          billingAmount: parseNumber(currentBilling),
-          purchaseAmount: getCurrentValue(),
-        },
-        editingId != "",
-      );
-
-      const nextRow = {
-        id: editingId || response.data,
-        code: form.procedureCode,
-        description: selectedOption?.label ?? "",
-        medicareCost: parseNumber(form.medicareCost),
-        billingAmount: parseNumber(currentBilling),
-        purchaseAmount: getCurrentValue(),
-      };
-
-      setRows((current) => {
-        if (editingId) {
-          return current.map((row) => (row.id === editingId ? nextRow : row));
-        }
-        return [...current, nextRow];
-      });
-      validateForm();
-    }, 100);
-    resetLine();
-  }
-
-  const findCodeByDescription = (description: string) => {
-    return medicalCodes?.find((c) => c.value == description)?.key ?? "";
-  };
-
-  const createMedicalCodeLiens = async (
-    payload: CreateMedicalCodeLiensDto,
-    isEditing: boolean,
-  ) => {
-    try {
-      const selectedCode =
-        payload.code ||
-        (typeof (payload as any).procedureCode === "string"
-          ? (payload as any).procedureCode
-          : "");
-
-      const request: CreateMedicalCodeLiensDto = {
-        id: payload.id,
-        liensId: props.lienId ?? "",
-        code: findCodeByDescription(selectedCode),
-        medicareCost: parseFloat(payload.medicareCost).toFixed(2),
-        billingAmount: parseFloat(payload.billingAmount).toFixed(2),
-        purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),
-        payee: payload.payee,
-        outboundCheckNumber: payload.outboundCheckNumber,
-      };
-      const res = isEditing
-        ? await casesService.updateMedicalCodeLiens(request)
-        : await casesService.createMedicalCodeLiens(request);
-      addToast({
-        type: "success",
-        title: `Medical Code ${isEditing ? "Updated" : "Created"}`,
-        description: `Medical Code has been ${isEditing ? "updated" : "created"}.`,
-      });
-      return res;
-    } catch (err) {
-      if (err instanceof ApiError) {
-        addToast({
-          type: "error",
-          title: "Create Failed",
-          description: err.message,
-        });
-      } else {
-        addToast({
-          type: "error",
-          title: "Create Failed",
-          description: "An unexpected error occurred",
-        });
-      }
-    } finally {
-    }
-  };
-
-  function handleEditRow(row: typeof INITIAL_ROW) {
-    setEditingId(row.id);
-    setForm((prev: any) => ({
+  function handleTargetAmountChange(raw: string) {
+    setEntry((prev) => ({
       ...prev,
-      procedureCode: row.code,
-      medicareCost: String(row.medicareCost),
-      billingAmount: String(row.billingAmount),
-      purchaseAmount:
-        form.purchaseAmountType === "amount"
-          ? String(row.purchaseAmount)
-          : String(
-              row.billingAmount > 0
-                ? (row.purchaseAmount / row.billingAmount) * 100
-                : 0,
-            ),
+      targetAmount: raw,
+      targetPercent: billingAmount
+        ? roundToTwo((parseNumber(raw) / billingAmount) * 100).toString()
+        : prev.targetPercent,
     }));
   }
 
+  function handleTargetPercentChange(raw: string) {
+    setEntry((prev) => ({
+      ...prev,
+      targetPercent: raw,
+      targetAmount: billingAmount
+        ? roundToTwo((parseNumber(raw) / 100) * billingAmount).toString()
+        : prev.targetAmount,
+    }));
+  }
+
+  const isEntryValid =
+    !!entry.procedureCode && billingAmount > 0 && parseNumber(entry.targetAmount) > 0;
+
+  function handleAddRow() {
+    const selectedOption = medicalCodes?.find(
+      (option) => option.value === entry.procedureCode,
+    );
+    const nextRow: PricingRow = {
+      id: crypto.randomUUID(),
+      code: entry.procedureCode,
+      description: selectedOption?.label ?? "",
+      billingAmount,
+      medicareCost: parseNumber(medicareCost ?? ""),
+      targetSaleAmount: parseNumber(entry.targetAmount),
+    };
+    setRows((current) => [...current, nextRow]);
+    setEntry({ ...INITIAL_ENTRY });
+  }
+
   function handleDeleteRow(id: string) {
-    // setRows((current) => current.filter((row) => row.id !== id));
-    if (editingId === id) {
-      resetLine();
-    }
-    setConfirmAction({ id: id, label: "Delete" });
+    setRows((current) => current.filter((row) => row.id !== id));
   }
-
-  async function deleteCode(id: string) {
-    try {
-      await casesService.deleteMedicalCodeLiens(id);
-      addToast({
-        type: "success",
-        title: `Deleted`,
-      });
-      setTimeout(() => {
-        const newList = rows.filter((p) => p.id != id);
-        setRows(newList);
-      }, 1000);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-
-      addToast({
-        type: "error",
-        title: `Deleted`,
-        description: reason,
-      });
-    }
-  }
-
-  const isLineValid =
-    currentBilling > 0 && currentPurchase > 0 && !!form.procedureCode;
 
   return (
     <div className="container-fluid">
@@ -321,122 +134,70 @@ export default function MedicalCodesDescription(
           to support lien valuation and processing.
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Medical Code & Description
-              <span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <BaseSelect
-              value={form.procedureCode}
-              onChange={(v) => {
-                setForm({ ...form, procedureCode: v });
-                // getMedicalProcedureCosts(v);
-              }}
-              options={medicalCodes ?? []}
-              placeholder="Select a code"
-              searchPlaceholder="Search codes..."
-              createAction={{
-                label: "Add New Medical Code",
-                onSelect: () => setShowCreate(true),
-              }}
-            />
-          </div>
-
-          <Field
-            label="Medicare Cost"
-            value={form.medicareCost}
-            onChange={(v: string) =>
-              setForm({ ...form, medicareCost: v.toString() })
-            }
-            placeholder="Medicare Cost"
+        <div className="grid grid-cols-1 mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Medical Code & Description
+            <span className="text-red-500 ml-0.5">*</span>
+          </label>
+          <BaseSelect
+            value={entry.procedureCode}
+            onChange={(v) => setEntry({ ...entry, procedureCode: v })}
+            options={medicalCodes ?? []}
+            isLoading={isLoadingMedicalCodes}
+            placeholder="Select medical code & description"
+            searchPlaceholder="Search codes..."
+            createAction={{
+              label: "Add New Medical Code",
+              onSelect: () => setShowCreate(true),
+            }}
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+        <div className="grid grid-cols-1 mt-4">
           <Field
-            label="Billing Amount"
+            type="number"
+            label="Billing Amount (Face Value)"
             required
-            value={form.billingAmount}
-            onChange={(v: string) =>
-              setForm({ ...form, billingAmount: v.toString() })
-            }
-            placeholder="Billing Amount"
+            prefix="$"
+            value={entry.billingAmount}
+            onChange={(v) => setEntry({ ...entry, billingAmount: v })}
           />
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Purchase Amount
-              <span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <div className="flex flex-col gap-2">
-              <div
-                className={`flex h-9.5 rounded-lg border border-gray-200 overflow-hidden transition-colors `}
-              >
-                <div className={`relative w-50 flex-1`}>
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                    {form.purchaseAmountType == "percent" ? "%" : "$"}
-                  </span>
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    value={form.purchaseAmount}
-                    onChange={(e) => handleParentInputChange(e.target.value)}
-                    placeholder="0.00"
-                    className={`h-full border-0 rounded-none focus:ring-0 bg-transparent text-gray-400 pl-6 pr-3}`}
-                  />
-                </div>
-
-                <div className={`relative bg-gray-50 w-25`}>
-                  {form.purchaseAmountType == "percent" && (
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                      $
-                    </span>
-                  )}
-                  <Input
-                    type="text"
-                    disabled
-                    readOnly
-                    value={inverseValue}
-                    placeholder="0.00"
-                    className={`h-full border-0 rounded-none focus:ring-0 bg-transparent text-gray-400 ${form.purchaseAmountType == "amount" ? "pl-6 pr-2" : "pl-5 pr-6"}`}
-                  />
-                  {form.purchaseAmountType == "amount" && (
-                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                      %
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-stretch border-l border-gray-200">
-                  <button
-                    type="button"
-                    onClick={() => handleToggleMode(false)}
-                    className={`w-8 text-xs font-semibold transition-colors ${form.purchaseAmountType == "amount" ? "bg-primary text-white" : "bg-gray-50 text-gray-400 hover:bg-gray-100"}`}
-                  >
-                    $
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleMode(true)}
-                    className={`w-8 text-xs font-semibold transition-colors border-l border-gray-200 ${form.purchaseAmountType == "percent" ? "bg-primary text-white" : "bg-gray-50 text-gray-400 hover:bg-gray-100"}`}
-                  >
-                    %
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
-        <div className="justify-self-end">
-          <button
-            type="button"
-            disabled={!isLineValid}
-            onClick={handleAddOrUpdateLine}
-            className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-gray-300 mt-2"
-          >
-            {editingId ? "Update" : "Add"}
-          </button>
+        <div className="grid grid-cols-1 mt-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Target Ask Amount/Percentage
+            <span className="text-red-500 ml-0.5">*</span>
+          </label>
+          <div className="flex gap-3 items-start">
+            <div className="flex-1">
+              <Field
+                type="number"
+                label=""
+                prefix="$"
+                value={entry.targetAmount}
+                onChange={handleTargetAmountChange}
+              />
+            </div>
+            <div className="flex-1">
+              <Field
+                type="number"
+                label=""
+                prefix="%"
+                value={entry.targetPercent}
+                onChange={handleTargetPercentChange}
+              />
+            </div>
+            <button
+              type="button"
+              disabled={!isEntryValid}
+              onClick={handleAddRow}
+              className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-gray-300"
+            >
+              Add
+              <i className="ri-add-line text-sm" />
+            </button>
+          </div>
         </div>
 
         <div className="col-12 mt-5">
@@ -445,18 +206,14 @@ export default function MedicalCodesDescription(
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Code / Description
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Medical Care Cost
+                    Code/Description
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Billing Amount
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Purchase Amount
+                    Target Ask Amount
                   </th>
-                  <th className="px-4 py-3" />
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -470,22 +227,10 @@ export default function MedicalCodesDescription(
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700 text-right">
-                      {formatCurrency(row.medicareCost)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700 text-right">
                       {formatCurrency(row.billingAmount)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700 text-right">
-                      {formatCurrency(row.purchaseAmount)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleEditRow(row)}
-                        className="text-primary hover:text-primary/80"
-                      >
-                        Edit
-                      </button>
+                      {formatCurrency(row.targetSaleAmount)}
                     </td>
                     <td className="px-4 py-3 text-sm text-center">
                       <button
@@ -501,10 +246,11 @@ export default function MedicalCodesDescription(
                 {rows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={4}
                       className="px-4 py-6 text-center text-sm text-gray-500"
                     >
-                      No record
+                      <i className="ri-information-line mr-1.5" />
+                      No record added yet
                     </td>
                   </tr>
                 )}
@@ -516,15 +262,11 @@ export default function MedicalCodesDescription(
                       Total
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700 text-right">
-                      {formatCurrency(totals.medicare)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700 text-right">
                       {formatCurrency(totals.billing)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700 text-right">
-                      {formatCurrency(totals.purchase)}
+                      {formatCurrency(totals.target)}
                     </td>
-                    <td className="px-4 py-3" />
                     <td className="px-4 py-3" />
                   </tr>
                 </tfoot>
@@ -534,23 +276,6 @@ export default function MedicalCodesDescription(
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-        <Field
-          label="Payee"
-          value={form.payee}
-          onChange={(v: string) => setForm({ ...form, payee: v.toString() })}
-          placeholder="Payee"
-        />
-        <Field
-          label="Outbound Check Number"
-          value={form.outboundCheckNumber}
-          onChange={(v: string) =>
-            setForm({ ...form, outboundCheckNumber: v.toString() })
-          }
-          placeholder="Outbound Check Number"
-        />
-      </div>
-
       {showCreate && (
         <CreateMedicalCode
           open={showCreate}
@@ -558,21 +283,6 @@ export default function MedicalCodesDescription(
           onCreated={() => {
             setShowCreate(false);
           }}
-        />
-      )}
-
-      {confirmAction && (
-        <ConfirmDialog
-          open
-          onClose={() => setConfirmAction(null)}
-          onConfirm={() => {
-            deleteCode(confirmAction.id);
-            setConfirmAction(null);
-          }}
-          title={`${confirmAction.label} Medical Code`}
-          description={`Are you sure you want to ${confirmAction.label.toLowerCase()} this medical code?\n\nThis action is permanent and cannot be undone.`}
-          confirmLabel={confirmAction.label}
-          confirmVariant="danger"
         />
       )}
     </div>

@@ -142,6 +142,12 @@ export interface NavItem {
    * product entry point.
    */
   hiddenInProductPortal?: boolean;
+  /**
+   * Nested sub-items rendered under this item as a collapsible dropdown.
+   * When present, the item acts as an expand/collapse toggle in addition
+   * to (or instead of) being a link.
+   */
+  children?: NavItem[];
 }
 
 export interface NavSection {

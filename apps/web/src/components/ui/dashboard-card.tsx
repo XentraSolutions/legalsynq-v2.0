@@ -2,11 +2,16 @@ import { ReactNode } from "react";
 
 export function Card({
   title,
+  subtitle,
+  icon,
   actionLabel,
   className,
   children,
 }: {
   title: string;
+  subtitle?: string;
+  /** Remix Icon class rendered before the title, e.g. "ri-draggable". */
+  icon?: string;
   actionLabel?: string;
   className?: string;
   children: ReactNode;
@@ -16,7 +21,13 @@ export function Card({
       className={`flex flex-col rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] ${className ?? ""}`}
     >
       <div className="mb-6 flex items-center justify-between gap-4">
-        <h2 className="text-base font-semibold leading-5">{title}</h2>
+        <div>
+          <h2 className="flex items-center gap-2 text-base font-semibold leading-5">
+            {icon && <i className={`${icon} text-gray-400`} aria-hidden />}
+            {title}
+          </h2>
+          {subtitle && <p className="mt-1 text-xs text-gray-500">{subtitle}</p>}
+        </div>
         {actionLabel ? (
           <button
             type="button"

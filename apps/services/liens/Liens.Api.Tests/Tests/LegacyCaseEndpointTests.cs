@@ -342,11 +342,22 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
     public async Task GenerateCaseCsv_exports_migrated_accident_type_and_filters_by_its_canonical_id()
     {
         var accidentTypeId = $"ACC-{Guid.CreateVersion7():N}";
+        var caseManagerId = Guid.CreateVersion7();
         var caseNumber = $"CASE-CSV-{Guid.CreateVersion7():N}";
 
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseManager = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.CaseManager,
+                "Casey",
+                "Manager",
+                SeedHelper.UserId);
+            typeof(Contact).GetProperty(nameof(Contact.Id))!.SetValue(caseManager, caseManagerId);
+            db.Contacts.Add(caseManager);
+
             db.Cases.Add(Case.Create(
                 SeedHelper.TenantId,
                 SeedHelper.OrgId,
@@ -354,7 +365,18 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
                 "CSV",
                 "Export",
                 SeedHelper.UserId,
-                notes: $"accidentTypeId={accidentTypeId}; accidentType=Motor Vehicle Accident"));
+                clientDob: new DateOnly(1990, 1, 2),
+                clientPhone: "702-555-0100",
+                clientEmail: "csv.export@example.com",
+                clientAddress: "123 Main St, Las Vegas, NV, 89101",
+                dateOfIncident: new DateOnly(2026, 7, 31),
+                description: "Export summary",
+                notes: $"""
+                    Export note
+
+                    [legacy-meta]
+                    accidentTypeId={accidentTypeId}; accidentType=Motor Vehicle Accident; isServicing=Yes; isUccFiled=Yes; isBulk=No; accidentState=NV; lawFirmId={SeedHelper.LawFirmId}; caseManagerId={caseManagerId}; currentMedicalStatus=Treating; currentAttributes=Active; gender=Female; ssn=***-**-6789; toGeneratePdf=Yes; switchedDate=08/01/2026
+                    """));
             await db.SaveChangesAsync();
         }
 
@@ -371,10 +393,69 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         var encodedCsv = payload!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
         var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
         var lines = csv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-        var headers = lines[0].Split(',');
-        var values = lines[1].Split(',');
+        var headers = ParseCsvLine(lines[0]);
+        var values = ParseCsvLine(lines[1]);
+        var row = headers.Zip(values).ToDictionary(pair => pair.First, pair => pair.Second);
 
-        values[Array.IndexOf(headers, "AccidentType")].Should().Be("Motor Vehicle Accident");
+        row["Address"].Should().Be("123 Main St");
+        row["City"].Should().Be("Las Vegas");
+        row["State"].Should().Be("NV");
+        row["ZipCode"].Should().Be("89101");
+        row["IsServicing"].Should().Be("Yes");
+        row["IsUccFiled"].Should().Be("Yes");
+        row["IsBulk"].Should().Be("No");
+        row["AccidentType"].Should().Be("Motor Vehicle Accident");
+        row["AccidentState"].Should().Be("NV");
+        row["LawFirm"].Should().Be("Smith & Associates LLP");
+        row["CaseManager"].Should().Be("Casey Manager");
+        row["Note"].Should().Be("Export note");
+        row["CreateBy"].Should().Be(SeedHelper.UserId.ToString());
+        row["UpdateBy"].Should().Be(SeedHelper.UserId.ToString());
+        row["CurrentMedicalStatus"].Should().Be("Treating");
+        row["CurrentAttributes"].Should().Be("Active");
+        row["Email"].Should().Be("csv.export@example.com");
+        row["Phone"].Should().Be("702-555-0100");
+        row["Gender"].Should().Be("Female");
+        row["SSN"].Should().Be("***-**-6789");
+        row["Summary"].Should().Be("Export summary");
+        row["ToGeneratePdf"].Should().Be("Yes");
+        row["SwitchedDate"].Should().Be("08/01/2026");
+    }
+
+    private static string[] ParseCsvLine(string line)
+    {
+        var values = new List<string>();
+        var current = new StringBuilder();
+        var quoted = false;
+
+        for (var index = 0; index < line.Length; index++)
+        {
+            var character = line[index];
+            if (character == '"')
+            {
+                if (quoted && index + 1 < line.Length && line[index + 1] == '"')
+                {
+                    current.Append('"');
+                    index++;
+                }
+                else
+                {
+                    quoted = !quoted;
+                }
+            }
+            else if (character == ',' && !quoted)
+            {
+                values.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(character);
+            }
+        }
+
+        values.Add(current.ToString());
+        return values.ToArray();
     }
 
     [Fact]

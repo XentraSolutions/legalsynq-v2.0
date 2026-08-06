@@ -21,6 +21,13 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pagination } from "@/components/ui/pagination";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -66,6 +73,8 @@ export interface BaseTableProps<TData> {
   pageSize?: number;
   /** Total row count across all pages (server-driven). Defaults to the current page's row count. */
   totalCount?: number;
+  /** When set, renders a page-size dropdown ("Showing X-Y of Z entries") in the footer instead of the plain "Page X of Y" text. */
+  pageSizeOptions?: number[];
 
   // Row selection — checkbox column rendered only when this is provided.
   rowSelection?: RowSelectionState;
@@ -112,6 +121,7 @@ export function BaseTable<TData>({
   onPaginationChange,
   pageSize = 10,
   totalCount,
+  pageSizeOptions,
   rowSelection,
   onRowSelectionChange,
   enableRowSelection,
@@ -205,10 +215,20 @@ export function BaseTable<TData>({
     [onSortingChange, table],
   );
 
-  const { pageIndex } = table.getState().pagination;
+  const { pageIndex, pageSize: currentPageSize } = table.getState().pagination;
   const pageCountResolved = table.getPageCount();
   const showPagination = enablePagination && pageCountResolved > 1;
   const totalRows = totalCount ?? table.getFilteredRowModel().rows.length;
+
+  const setPagination = onPaginationChange ?? setInternalPagination;
+  const handlePageSizeChange = (value: string) => {
+    const nextPageSize = Number(value);
+    if (!Number.isFinite(nextPageSize) || nextPageSize <= 0) return;
+    setPagination({ pageIndex: 0, pageSize: nextPageSize });
+  };
+
+  const firstRow = totalRows === 0 ? 0 : pageIndex * currentPageSize + 1;
+  const lastRow = Math.min(totalRows, (pageIndex + 1) * currentPageSize);
 
   return (
     <div
@@ -421,10 +441,42 @@ export function BaseTable<TData>({
       </Table>
       {enablePagination && (
         <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100">
-          <span className="text-xs text-gray-500">
-            Page {pageIndex + 1} of {Math.max(pageCountResolved, 1)} ·{" "}
-            {totalRows} total
-          </span>
+          {pageSizeOptions ? (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span>Showing</span>
+              <Select
+                value={String(currentPageSize)}
+                onValueChange={handlePageSizeChange}
+              >
+                <SelectTrigger
+                  className="h-7 w-[68px] px-2 text-xs"
+                  aria-label="Rows per page"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {pageSizeOptions.map((size) => (
+                    <SelectItem
+                      key={size}
+                      value={String(size)}
+                      className="text-xs"
+                    >
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span>
+                {totalRows === 0 ? "0" : `${firstRow}-${lastRow}`} of{" "}
+                {totalRows} entries
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-gray-500">
+              Page {pageIndex + 1} of {Math.max(pageCountResolved, 1)} ·{" "}
+              {totalRows} total
+            </span>
+          )}
           {showPagination && (
             <Pagination
               page={pageIndex + 1}

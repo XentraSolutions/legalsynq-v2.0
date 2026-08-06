@@ -53,6 +53,12 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
                 soldAtUtc: DateTime.UtcNow.AddDays(-1)));
             db.Liens.Add(CreateDashboardLien(
                 fundingCompanyId,
+                SellingLienStatus.SubmittedForSale,
+                10_000m,
+                8_000m,
+                7_000m));
+            db.Liens.Add(CreateDashboardLien(
+                fundingCompanyId,
                 SellingLienStatus.Pending,
                 9_000m,
                 7_200m,
@@ -70,7 +76,7 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
         body!.Summary.TotalPortfolioValue.Should().Be(6_000m);
         body.Summary.TotalPending.Should().Be(1_000m);
         body.Summary.TotalInternal.Should().Be(2_000m);
-        body.Summary.TotalSold.Should().Be(2_500m);
+        body.Summary.TotalSold.Should().Be(3_000m);
         body.Summary.PendingCount.Should().Be(1);
         body.Summary.InternalCount.Should().Be(1);
         body.Summary.SoldCount.Should().Be(1);
@@ -79,6 +85,78 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
         body.Items[0].LienId.Should().Be(pending.Id);
         body.Items[0].HighestBidAmount.Should().Be(700m);
         body.Items[0].Status.Should().Be(SellingLienStatus.Pending);
+    }
+
+    [Fact]
+    public async Task Dashboard_sold_tab_search_includes_accepted_liens_as_sold()
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var accepted = CreateAcceptedDashboardLien(fundingCompanyId);
+        await SeedDashboardLiensAsync(db => db.Liens.Add(accepted));
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/dashboard?tab=sold&search={Uri.EscapeDataString(accepted.LienNumber)}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<SellingDashboardResponse>();
+        body.Should().NotBeNull();
+        body!.TotalCount.Should().Be(1);
+        body.Summary.SoldCount.Should().Be(1);
+        body.Summary.TotalSold.Should().Be(accepted.OriginalAmount);
+        body.Items.Should().ContainSingle();
+        body.Items[0].LienId.Should().Be(accepted.Id);
+        body.Items[0].Status.Should().Be(SellingLienStatus.Sold);
+    }
+
+    [Fact]
+    public async Task Dashboard_highest_bid_sort_uses_grouped_offer_values_before_paging()
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var buyerOrgId = Guid.CreateVersion7();
+        var lowerBidLien = CreateDashboardLien(
+            fundingCompanyId,
+            SellingLienStatus.Pending,
+            2_000m,
+            1_800m,
+            0m);
+        var higherBidLien = CreateDashboardLien(
+            fundingCompanyId,
+            SellingLienStatus.Pending,
+            3_000m,
+            2_700m,
+            0m);
+
+        await SeedDashboardLiensAsync(db =>
+        {
+            db.Liens.AddRange(lowerBidLien, higherBidLien);
+            db.LienOffers.Add(LienOffer.Create(
+                SeedHelper.TenantId,
+                lowerBidLien.Id,
+                buyerOrgId,
+                SeedHelper.OrgId,
+                1_200m,
+                SeedHelper.UserId));
+            db.LienOffers.Add(LienOffer.Create(
+                SeedHelper.TenantId,
+                higherBidLien.Id,
+                buyerOrgId,
+                SeedHelper.OrgId,
+                1_900m,
+                SeedHelper.UserId));
+        });
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/dashboard?tab=pending&fundingCompanyId={fundingCompanyId}&sortBy=highestBid&sortDirection=desc&page=1&pageSize=1");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<SellingDashboardResponse>();
+        body.Should().NotBeNull();
+        body!.TotalCount.Should().Be(2);
+        body.Items.Should().ContainSingle();
+        body.Items[0].LienId.Should().Be(higherBidLien.Id);
+        body.Items[0].HighestBidAmount.Should().Be(1_900m);
     }
 
     [Fact]
@@ -177,6 +255,31 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
             askAmount: askAmount,
             highestBidAmount: highestBidAmount,
             soldAtUtc: soldAtUtc);
+
+        return lien;
+    }
+
+    private static Lien CreateAcceptedDashboardLien(Guid fundingCompanyId)
+    {
+        var lien = Lien.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"LIEN-ACCEPTED-{Guid.NewGuid():N}"[..32],
+            LienType.MedicalLien,
+            3_000m,
+            SeedHelper.UserId,
+            caseId: SeedHelper.CaseId,
+            facilityId: SeedHelper.FacilityId,
+            initialServiceDate: new DateOnly(2026, 1, 15));
+
+        lien.ListForSale(2_500m, SeedHelper.UserId);
+        lien.TransitionStatus(LienStatus.Accepted, SeedHelper.UserId);
+        lien.UpdateSellingAnalyticsFields(
+            SeedHelper.UserId,
+            sellerStatus: SellingLienStatus.Accepted,
+            fundingCompanyId: fundingCompanyId,
+            askAmount: 2_500m,
+            highestBidAmount: 2_500m);
 
         return lien;
     }

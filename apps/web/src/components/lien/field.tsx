@@ -36,7 +36,7 @@ export interface NumberFieldProps {
 interface DateFieldProps {
   type?: "date";
   maxDate?: Date | null;
-  allowFutureDates?: boolean;
+  disableFutureDates?: boolean;
   value?: string;
   onChange: (value: string) => void;
 }
@@ -157,7 +157,7 @@ export default function Field<
       ) : props.type === "date" ? (
         <DatePicker
           maxDate={props?.maxDate}
-          disableFutureDates={!props.allowFutureDates}
+          disableFutureDates={props.disableFutureDates}
           value={props.value}
           onChange={props.onChange}
           disabled={disabled}

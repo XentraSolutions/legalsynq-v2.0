@@ -24,10 +24,13 @@ const INITIAL_FORM = {
   isServicing: "true",
 };
 
+// New liens can only be created as Pending or Internal — the API rejects any
+// other sellerStatus during intake (see NormalizeIntakeStatus in
+// apps/services/liens/Liens.Api/Endpoints/SellingV2Endpoints.cs; undocumented
+// elsewhere, so that file is the source of truth).
 const STATUSES = [
   { id: "Pending", code: "Pending", name: "Pending" },
   { id: "Internal", code: "Internal", name: "Internal" },
-  { id: "Sold", code: "Sold", name: "Sold" },
 ];
 
 export default function LienInfo(props: LienInfoProps) {
@@ -98,7 +101,7 @@ export default function LienInfo(props: LienInfoProps) {
             type="select"
             options={listingVisibility}
             required
-            label="Listing Visibility Date"
+            label="Listing Visibility"
             value={form.listingVisibility}
             onChange={(v: string) =>
               setForm({ ...form, listingVisibility: v.toString() })

@@ -5,6 +5,7 @@ import { FormModal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { settlementService } from "@/lib/settlement";
+import { buildSettlementPaymentRequest } from "@/lib/settlement/payment-request";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 import { lookupService } from "@/lib/lookup";
 import type {
@@ -96,7 +97,7 @@ export function AddPaymentForm({
   const PAYMENT_METHOD_CHECK = "Check";
 
   // TEMP: hardcoded until API endpoint is ready
-  const TEMP_SETTLEMENT_TYPES: LookupData[] = [
+  const TEMP_SETTLEMENT_STATUSES: LookupData[] = [
     {
       id: "full_payment",
       name: "Full Payment",
@@ -140,7 +141,7 @@ export function AddPaymentForm({
   ];
 
   // TEMP: hardcoded until API endpoint is ready
-  const TEMP_SETTLEMENT_STATUSES: LookupData[] = [
+  const TEMP_SETTLEMENT_TYPES: LookupData[] = [
     {
       id: "by_attorney",
       name: "By Attorney",
@@ -200,8 +201,8 @@ export function AddPaymentForm({
     setTypeError(false);
     setStatusError(false);
     Promise.allSettled([
-      lookupService.getSettlementType(),
       lookupService.getSettlementStatus(),
+      lookupService.getSettlementType(),
       lookupService.getLiensStatus(),
     ]).then(([typeRes, statusRes, lienStatusRes]) => {
       if (typeRes.status === "fulfilled" && typeRes.value.items.length > 0) {
@@ -355,17 +356,20 @@ export function AddPaymentForm({
 
       await Promise.all(
         lienIds.flatMap((id) => [
-          settlementService.createSettlementPayment({
-            lienId: id,
-            caseId,
-            amount: parseFloat(lienPayments[id] || "0"),
-            paymentDate,
-            paymentMethod: PAYMENT_METHOD_CHECK,
-            referenceNumber: form.checkNumber,
-            notes: form.note,
-            settlementType: form.type,
-            settlementStatus: form.lienStatus,
-          }),
+          settlementService.createSettlementPayment(
+            buildSettlementPaymentRequest({
+              lienId: id,
+              caseId,
+              amount: parseFloat(lienPayments[id] || "0"),
+              paymentDate,
+              paymentMethod: PAYMENT_METHOD_CHECK,
+              referenceNumber: form.checkNumber,
+              notes: form.note,
+              type: form.type,
+              status: form.status,
+              lienStatus: form.lienStatus,
+            }),
+          ),
           settlementService.createLienSettlement({
             lienId: id,
             caseId,
@@ -401,6 +405,7 @@ export function AddPaymentForm({
     !form.checkDate ||
     !form.checkNumber ||
     !form.type ||
+    !form.status ||
     checkedIds.size === 0;
 
   const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
@@ -699,7 +704,7 @@ export function AddPaymentForm({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Settlement Status
+                Settlement Status <span className="text-red-500">*</span>
               </label>
               <Select
                 value={form.status}
