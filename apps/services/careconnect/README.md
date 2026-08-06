@@ -59,7 +59,7 @@ CareConnect.Tests/         Tests
 | `GET` | `/api/public/careconnect/network` | Anonymous | Public provider network |
 | `PUT` | `/api/networks/{networkId}/providers/{providerId}` | Bearer | Edit a provider from a tenant network after membership validation |
 | `DELETE` | `/api/networks/{networkId}/providers/{id}` | Bearer | Soft-delete a provider-location network membership |
-| `POST` | `/api/networks/{networkId}/providers/import` | Development-only | CSV/XLSX provider migration/import into a tenant network |
+| `POST` | `/api/networks/{networkId}/providers/import` | Anonymous, loopback-only | CSV/XLSX provider migration/import into a tenant network |
 
 ### Referral Attribution & Referral Representative Portal
 
@@ -186,7 +186,12 @@ provider-location memberships whose provider and facility are also active.
 
 ### Provider import
 
-The development-only provider import endpoint accepts CSV or XLSX uploads at `POST /api/networks/{networkId}/providers/import`.
+The provider import endpoint accepts CSV or XLSX uploads at `POST /api/networks/{networkId}/providers/import`.
+It is intentionally unauthenticated (`.AllowAnonymous()`) and gated instead on the caller's raw TCP peer address —
+only requests whose physical connection originates from loopback (`127.0.0.1`/`::1`) are allowed; everything else
+gets `403`. The raw peer address is captured in `Program.cs` *before* `UseForwardedHeaders()` runs, so the gate
+can't be bypassed by sending a spoofed `X-Forwarded-For: 127.0.0.1` through the trusted reverse proxy. In practice
+this means: `curl` it directly on the box the service runs on (dev or prod), never through the gateway/LAN.
 Each valid row creates or reuses a provider identity, creates or reuses a facility location, links the provider to
 that facility, and links that provider-location pair to the network. Matching uses exact NPI first. Blank NPI rows
 fall back to tenant email plus provider/facility context. Same NPI plus a different address creates another facility

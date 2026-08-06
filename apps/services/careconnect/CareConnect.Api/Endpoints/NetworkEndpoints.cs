@@ -1,3 +1,4 @@
+using System.Net;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
@@ -22,6 +23,11 @@ namespace CareConnect.Api.Endpoints;
 // Access: CARECONNECT_NETWORK_MANAGER product role, or PlatformAdmin / TenantAdmin bypass.
 public static class NetworkEndpoints
 {
+    // BLK-SEC-06: HttpContext.Items key Program.cs stashes the raw physical TCP peer address
+    // under, captured before UseForwardedHeaders can rewrite Connection.RemoteIpAddress from a
+    // client-supplied X-Forwarded-For header. See the provider-import endpoint below.
+    internal const string RawRemoteIpAddressKey = "RawRemoteIpAddress";
+
     public static void MapNetworkEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/networks")
@@ -338,10 +344,15 @@ public static class NetworkEndpoints
             IAuditEventClient auditClient,
             IMemoryCache cache,
             HttpContext http,
-            IWebHostEnvironment environment,
             CancellationToken ct) =>
         {
-            if (!environment.IsDevelopment())
+            // BLK-SEC-06: this endpoint is intentionally unauthenticated (see .AllowAnonymous()
+            // below) — it's a bulk provider-write operation meant to be run only via `curl`
+            // against the loopback interface (127.0.0.1/::1) on the box the service runs on,
+            // never reachable from outside. Gated on the raw physical TCP peer address captured
+            // by Program.cs *before* UseForwardedHeaders runs, so a caller can't spoof loopback
+            // by sending X-Forwarded-For: 127.0.0.1 through the trusted reverse proxy.
+            if (!IsLoopbackCaller(http))
                 return Results.Forbid();
 
             var file = await ReadImportFileAsync(httpRequest, ct);
@@ -387,6 +398,21 @@ public static class NetworkEndpoints
         })
         .AllowAnonymous()
         .DisableAntiforgery();
+    }
+
+    private static bool IsLoopbackCaller(HttpContext http)
+    {
+        var ip = http.Items.TryGetValue(RawRemoteIpAddressKey, out var raw) && raw is IPAddress captured
+            ? captured
+            : http.Connection.RemoteIpAddress;
+
+        if (ip is null)
+            return false;
+
+        if (ip.IsIPv4MappedToIPv6)
+            ip = ip.MapToIPv4();
+
+        return IPAddress.IsLoopback(ip);
     }
 
     private static async Task<IFormFile> ReadImportFileAsync(HttpRequest httpRequest, CancellationToken ct)
