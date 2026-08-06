@@ -232,7 +232,6 @@ export default function ReportDisplay({
         });
 
       setColumns(cols);
-      setCases(report.data ?? []);
     } else {
       const tableColumns = defaultColumns.map((item) => {
         // Define keywords that identify an amount or numeric column
@@ -281,7 +280,6 @@ export default function ReportDisplay({
       });
 
       setColumns(tableColumns);
-      setCases(report.data ?? []);
     }
 
     setLoading(false);
@@ -290,6 +288,10 @@ export default function ReportDisplay({
   useEffect(() => {
     fetchColumns();
   }, [isColumnsLoading]);
+
+  useEffect(() => {
+    setCases(report.data ?? []);
+  }, [report, report.data]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
