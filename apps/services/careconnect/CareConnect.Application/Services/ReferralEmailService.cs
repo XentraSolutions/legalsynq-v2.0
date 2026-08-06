@@ -230,7 +230,7 @@ public class ReferralEmailService : IReferralEmailService
         if (!string.IsNullOrWhiteSpace(provider.Email))
         {
             var dedupeKey = $"referral:{referral.Id}:created:provider";
-            var subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
+            var subject   = $"New referral from {referral.ReferrerFirmName}";
             var body      = BuildNewReferralEmailHtml(referral, provider, providerEntryLink, treatmentTypeName);
 
             var notification = CareConnectNotification.Create(
@@ -696,7 +696,7 @@ public class ReferralEmailService : IReferralEmailService
                 }
                 var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
                 var providerEntryLink = await BuildProviderEntryLinkAsync(referral, provider, token, ct);
-                subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
+                subject   = $"New referral from {referral.ReferrerFirmName}";
                 body      = BuildNewReferralEmailHtml(referral, provider, providerEntryLink);
                 toAddress = provider.Email;
                 break;
