@@ -203,11 +203,11 @@ export interface ApiResponse {
   message: string;
   data: Array<Record<string, unknown>>;
 }
-export type ViewType = "CASES" | "LIENS";
+export type ViewType = "CASES" | "LIENS" | "COMBINE";
 
 export interface FilterQuery {
   reportType: ViewType;
-  limit: number;
+  limit?: number;
   keyword?: string;
   filterField?: string;
   lawFirmId?: string;

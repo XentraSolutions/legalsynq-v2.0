@@ -29,8 +29,14 @@ function formatUsd(value: number): string {
 // instead of leaving it a permanent no-op.
 function formatPeriodLabel(range: DateRangeValue): string | null {
   if (!range.from || !range.to) return null;
-  const from = formatDateOnly(`${range.from}T00:00:00`, { month: "short", day: "numeric" });
-  const to = formatDateOnly(`${range.to}T00:00:00`, { month: "short", day: "numeric" });
+  const from = formatDateOnly(`${range.from}T00:00:00`, {
+    month: "short",
+    day: "numeric",
+  });
+  const to = formatDateOnly(`${range.to}T00:00:00`, {
+    month: "short",
+    day: "numeric",
+  });
   return `${from} – ${to}`;
 }
 
@@ -79,11 +85,51 @@ interface TopBuyerRow {
 }
 
 const topBuyers: TopBuyerRow[] = [
-  { id: "apex-mutual", initials: "AM", name: "Apex Mutual", activeLiens: 182, lienBalance: 1125842.5, percentOfTotal: 23.5, avatarClassName: "bg-blue-100 text-blue-700" },
-  { id: "nova-care", initials: "NC", name: "Nova Care", activeLiens: 132, lienBalance: 687421.88, percentOfTotal: 14.4, avatarClassName: "bg-purple-100 text-purple-700" },
-  { id: "summit-ins", initials: "SI", name: "Summit Ins.", activeLiens: 98, lienBalance: 456218.33, percentOfTotal: 9.5, avatarClassName: "bg-green-100 text-green-700" },
-  { id: "beacon-life", initials: "BL", name: "Beacon Life", activeLiens: 76, lienBalance: 321775.19, percentOfTotal: 6.7, avatarClassName: "bg-orange-100 text-orange-700" },
-  { id: "vanguard", initials: "VG", name: "Vanguard", activeLiens: 64, lienBalance: 289114.22, percentOfTotal: 6.0, avatarClassName: "bg-pink-100 text-pink-700" },
+  {
+    id: "apex-mutual",
+    initials: "AM",
+    name: "Apex Mutual",
+    activeLiens: 182,
+    lienBalance: 1125842.5,
+    percentOfTotal: 23.5,
+    avatarClassName: "bg-blue-100 text-blue-700",
+  },
+  {
+    id: "nova-care",
+    initials: "NC",
+    name: "Nova Care",
+    activeLiens: 132,
+    lienBalance: 687421.88,
+    percentOfTotal: 14.4,
+    avatarClassName: "bg-purple-100 text-purple-700",
+  },
+  {
+    id: "summit-ins",
+    initials: "SI",
+    name: "Summit Ins.",
+    activeLiens: 98,
+    lienBalance: 456218.33,
+    percentOfTotal: 9.5,
+    avatarClassName: "bg-green-100 text-green-700",
+  },
+  {
+    id: "beacon-life",
+    initials: "BL",
+    name: "Beacon Life",
+    activeLiens: 76,
+    lienBalance: 321775.19,
+    percentOfTotal: 6.7,
+    avatarClassName: "bg-orange-100 text-orange-700",
+  },
+  {
+    id: "vanguard",
+    initials: "VG",
+    name: "Vanguard",
+    activeLiens: 64,
+    lienBalance: 289114.22,
+    percentOfTotal: 6.0,
+    avatarClassName: "bg-pink-100 text-pink-700",
+  },
 ];
 
 const topBuyersColumns: ColumnDef<TopBuyerRow, any>[] = [
@@ -156,11 +202,66 @@ interface AgingByBuyerRow {
 // sync with the matching company's `lienBalance` in topBuyers above) — the source
 // figures were off by anywhere from $0.31 to ~$1,000 depending on the row.
 const agingByBuyer: AgingByBuyerRow[] = [
-  { id: "apex-mutual", fundingCompany: "Apex Mutual", d0_30: 412512.31, d31_60: 298451.23, d61_90: 221114.55, d91_120: 112662.11, d120Plus: 81102.3, total: 1125842.5, pastDuePercent: 17.1, status: "High" },
-  { id: "nova-care", fundingCompany: "Nova Care", d0_30: 211541.23, d31_60: 156882.21, d61_90: 118442.33, d91_120: 74551.12, d120Plus: 126004.99, total: 687421.88, pastDuePercent: 29.1, status: "High" },
-  { id: "summit-ins", fundingCompany: "Summit Ins.", d0_30: 166331.14, d31_60: 108992.77, d61_90: 76551.88, d91_120: 53221.99, d120Plus: 51120.55, total: 456218.33, pastDuePercent: 22.8, status: "Medium" },
-  { id: "beacon-life", fundingCompany: "Beacon Life", d0_30: 99772.33, d31_60: 72441.11, d61_90: 54002.19, d91_120: 38441.77, d120Plus: 57117.79, total: 321775.19, pastDuePercent: 29.7, status: "High" },
-  { id: "vanguard", fundingCompany: "Vanguard", d0_30: 76221.31, d31_60: 54883.12, d61_90: 41667.22, d91_120: 29561.88, d120Plus: 86780.69, total: 289114.22, pastDuePercent: 40.3, status: "High" },
+  {
+    id: "apex-mutual",
+    fundingCompany: "Apex Mutual",
+    d0_30: 412512.31,
+    d31_60: 298451.23,
+    d61_90: 221114.55,
+    d91_120: 112662.11,
+    d120Plus: 81102.3,
+    total: 1125842.5,
+    pastDuePercent: 17.1,
+    status: "High",
+  },
+  {
+    id: "nova-care",
+    fundingCompany: "Nova Care",
+    d0_30: 211541.23,
+    d31_60: 156882.21,
+    d61_90: 118442.33,
+    d91_120: 74551.12,
+    d120Plus: 126004.99,
+    total: 687421.88,
+    pastDuePercent: 29.1,
+    status: "High",
+  },
+  {
+    id: "summit-ins",
+    fundingCompany: "Summit Ins.",
+    d0_30: 166331.14,
+    d31_60: 108992.77,
+    d61_90: 76551.88,
+    d91_120: 53221.99,
+    d120Plus: 51120.55,
+    total: 456218.33,
+    pastDuePercent: 22.8,
+    status: "Medium",
+  },
+  {
+    id: "beacon-life",
+    fundingCompany: "Beacon Life",
+    d0_30: 99772.33,
+    d31_60: 72441.11,
+    d61_90: 54002.19,
+    d91_120: 38441.77,
+    d120Plus: 57117.79,
+    total: 321775.19,
+    pastDuePercent: 29.7,
+    status: "High",
+  },
+  {
+    id: "vanguard",
+    fundingCompany: "Vanguard",
+    d0_30: 76221.31,
+    d31_60: 54883.12,
+    d61_90: 41667.22,
+    d91_120: 29561.88,
+    d120Plus: 86780.69,
+    total: 289114.22,
+    pastDuePercent: 40.3,
+    status: "High",
+  },
 ];
 
 const AGING_STATUS_STYLES: Record<AgingStatus, string> = {

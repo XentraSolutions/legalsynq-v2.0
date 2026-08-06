@@ -74,6 +74,7 @@ export interface TaskDto {
   updatedAtUtc: string;
   workflowInstanceId?: string;
   workflowStepKey?: string;
+  statusId?: TaskStatus;
 }
 
 export interface PaginatedTasksDto {

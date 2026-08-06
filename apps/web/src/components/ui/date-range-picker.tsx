@@ -21,6 +21,7 @@ interface DateRangePickerProps {
   disabled?: boolean;
   /** Renders a quick-select preset sidebar (Today/Yesterday/.../Last Year) alongside a two-month calendar. */
   presets?: boolean;
+  disableFutureDates?: boolean;
 }
 
 function parseDate(value?: string): Date | undefined {
@@ -166,9 +167,12 @@ export function DateRangePicker({
   className,
   disabled,
   presets = false,
+  disableFutureDates = false,
 }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false);
-  const [maxDate] = React.useState(() => new Date());
+  const [maxDate] = React.useState(() =>
+    disableFutureDates ? new Date() : new Date("9999-12-31"),
+  );
   const selected: DateRange | undefined = React.useMemo(() => {
     const from = parseDate(value?.from);
     const to = parseDate(value?.to);
@@ -223,7 +227,11 @@ export function DateRangePicker({
   }
 
   const years = React.useMemo(
-    () => yearRange((selected?.from ?? new Date()).getFullYear(), maxDate.getFullYear()),
+    () =>
+      yearRange(
+        (selected?.from ?? new Date()).getFullYear(),
+        maxDate.getFullYear(),
+      ),
     [selected?.from, maxDate],
   );
 
@@ -235,7 +243,10 @@ export function DateRangePicker({
 
   // Recomputed each time the popover opens (not just once at mount) so "today" can't
   // go stale if the page is left open across a day boundary.
-  const datePresets = React.useMemo(() => (presets ? buildPresets() : []), [presets, open]);
+  const datePresets = React.useMemo(
+    () => (presets ? buildPresets() : []),
+    [presets, open],
+  );
 
   function handlePresetClick(preset: DatePreset) {
     const range = preset.range();
@@ -250,7 +261,9 @@ export function DateRangePicker({
   function isPresetActive(preset: DatePreset): boolean {
     if (!selected?.from) return false;
     const range = preset.range();
-    return sameDate(selected.from, range.from) && sameDate(selected.to, range.to);
+    return (
+      sameDate(selected.from, range.from) && sameDate(selected.to, range.to)
+    );
   }
 
   const month2 = new Date(month.getFullYear(), month.getMonth() + 1, 1);
@@ -295,7 +308,8 @@ export function DateRangePicker({
                   onClick={() => handlePresetClick(preset)}
                   className={cn(
                     "text-left text-sm px-3 py-2 rounded-md hover:bg-gray-50 transition-colors text-gray-700",
-                    isPresetActive(preset) && "bg-primary/5 text-primary font-medium",
+                    isPresetActive(preset) &&
+                      "bg-primary/5 text-primary font-medium",
                   )}
                 >
                   {preset.label}
@@ -372,18 +386,25 @@ export function DateRangePicker({
                 month_caption: "hidden",
                 month_grid: "w-full border-collapse",
                 weekdays: "flex",
-                weekday: "w-9 text-xs font-medium text-gray-500 text-center py-1",
+                weekday:
+                  "w-9 text-xs font-medium text-gray-500 text-center py-1",
                 weeks: "flex flex-col",
                 week: "flex",
                 day: "w-9 text-center",
-                day_button: "h-9 w-9 rounded-full text-sm text-gray-900 hover:bg-gray-100 transition-colors focus:outline-none",
-                range_start: "rounded-l-full bg-primary [&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
-                range_end: "rounded-r-full bg-primary [&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
-                range_middle: "bg-gray-100 [&>button]:bg-transparent [&>button]:!text-gray-900 [&>button]:hover:bg-transparent [&>button]:rounded-none",
-                selected: "[&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
+                day_button:
+                  "h-9 w-9 rounded-full text-sm text-gray-900 hover:bg-gray-100 transition-colors focus:outline-none",
+                range_start:
+                  "rounded-l-full bg-primary [&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
+                range_end:
+                  "rounded-r-full bg-primary [&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
+                range_middle:
+                  "bg-gray-100 [&>button]:bg-transparent [&>button]:!text-gray-900 [&>button]:hover:bg-transparent [&>button]:rounded-none",
+                selected:
+                  "[&>button]:bg-primary [&>button]:text-white [&>button]:hover:bg-primary",
                 today: "[&>button]:font-semibold [&>button]:text-primary",
                 outside: "[&>button]:text-gray-400",
-                disabled: "[&>button]:text-gray-400 [&>button]:cursor-not-allowed",
+                disabled:
+                  "[&>button]:text-gray-400 [&>button]:cursor-not-allowed",
               }}
             />
           </div>
