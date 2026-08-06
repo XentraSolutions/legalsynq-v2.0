@@ -58,7 +58,7 @@ export function Sidebar() {
   const rawSections = selectedProductId ? (PRODUCT_NAV[selectedProductId] ?? []) : [];
   const isProductPortal = portalConfig?.productId === selectedProductId;
   const sections = session
-    ? filterNavByAccess(rawSections, session.productRoles, isSellMode, session.orgType, session.isTenantAdmin, isProductPortal)
+    ? filterNavByAccess(rawSections, session.productRoles, isSellMode, session.orgType, session.isTenantAdmin, isProductPortal, session.isPlatformAdmin || session.isTenantAdmin)
     : rawSections;
   const meta     = selectedProductId ? PRODUCT_META[selectedProductId] : null;
 

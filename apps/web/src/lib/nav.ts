@@ -542,6 +542,7 @@ export function filterNavByAccess(
   orgType?: OrgTypeValue | null,
   isTenantAdmin = false,
   isProductPortal = false,
+  isAdmin = false,
 ): NavSection[] {
   return filterNavByRoles(sections, userRoles, isTenantAdmin, orgType)
     .filter((s) => !s.sellModeOnly || isSellMode)
@@ -555,6 +556,7 @@ export function filterNavByAccess(
           item.hiddenForOrgTypes.includes(orgType)
         )
           return false;
+        if (item.adminOnly && !isAdmin) return false;
         if (item.hiddenInProductPortal && isProductPortal) return false;
         return true;
       }),
