@@ -27,6 +27,7 @@ interface PublicNetworkMapProps {
 type L = typeof import('leaflet');
 
 const US_CENTER: [number, number] = [39.5, -98.35];
+const MILES_TO_METERS = 1609.34;
 
 /** Escapes HTML special characters to prevent XSS when injecting provider data into popup innerHTML. */
 function esc(s: string): string {
@@ -74,7 +75,9 @@ function buildPopupEl(m: NumberedMarker, onReferral: (m: NumberedMarker) => void
     </div>
     ${identity.secondary ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${esc(identity.secondary)}</p>` : ''}
     ${showFacilityName ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${esc(facilityName)}</p>` : ''}
-    <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${esc(m.city)}, ${esc(m.state)}</p>
+    <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${m.isMobile
+      ? `Mobile · ${[m.serviceAreaLabel, `${m.city}, ${m.state}`].filter((s): s is string => Boolean(s)).map(esc).join(' · ')}${m.serviceRadiusMiles ? ` · ${m.serviceRadiusMiles}mi radius` : ''}`
+      : `${esc(m.city)}, ${esc(m.state)}`}</p>
     ${typeof m.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 8px;font-weight:600">${m.distanceMiles.toFixed(1)} mi away</p>` : ''}
     ${(m.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 8px">${esc(m.specialties.map(s => s.name).join(', '))}</p>` : ''}
     ${m.acceptingReferrals
@@ -169,6 +172,20 @@ export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoome
 
     for (const m of markers) {
       const sel  = m.id === selectedId;
+
+      if (m.isMobile && m.serviceRadiusMiles) {
+        Leaflet.circle([m.latitude, m.longitude], {
+          radius:      m.serviceRadiusMiles * MILES_TO_METERS,
+          color:       '#7c3aed',
+          weight:      2,
+          opacity:     0.8,
+          dashArray:   '6, 6',
+          fillColor:   '#7c3aed',
+          fillOpacity: sel ? 0.1 : 0,
+          interactive: false,
+        }).addTo(layer);
+      }
+
       const size = sel ? 34 : 28;
       const icon = Leaflet.divIcon({
         className:   '',

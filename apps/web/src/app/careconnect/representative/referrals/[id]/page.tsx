@@ -5,7 +5,21 @@ import Link from 'next/link';
 import { fetchRepresentativeReferralById } from '@/lib/representative-portal-api';
 import { useRepresentativePortal } from '@/components/careconnect/representative-access-code-gate';
 import { ApiError } from '@/lib/api-client';
-import type { RepresentativeReferralDetail } from '@/types/careconnect';
+import type { RepresentativeFacilityRef, RepresentativeReferralDetail } from '@/types/careconnect';
+
+function formatProviderLocation(location: RepresentativeFacilityRef): string {
+  if (location.isMobile) {
+    const parts = [location.serviceAreaLabel ?? location.addressLine1, `${location.city}, ${location.state}`]
+      .filter(Boolean)
+      .join(' · ');
+    return location.serviceRadiusMiles
+      ? `Mobile · ${parts} · ${location.serviceRadiusMiles}mi radius`
+      : `Mobile · ${parts}`;
+  }
+  return [location.addressLine1, `${location.city}, ${location.state}`, location.postalCode]
+    .filter(Boolean)
+    .join(' ');
+}
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -92,9 +106,7 @@ export default function RepresentativeReferralDetailPage({ params }: PageProps) 
               <Field label="Provider" value={referral.provider.displayName} />
               <Field
                 label="Provider location"
-                value={referral.providerLocation
-                  ? `${referral.providerLocation.addressLine1}, ${referral.providerLocation.city}, ${referral.providerLocation.state} ${referral.providerLocation.postalCode}`
-                  : null}
+                value={referral.providerLocation ? formatProviderLocation(referral.providerLocation) : null}
               />
               <Field label="Last updated" value={new Date(referral.lastUpdatedAtUtc).toLocaleDateString()} />
             </dl>

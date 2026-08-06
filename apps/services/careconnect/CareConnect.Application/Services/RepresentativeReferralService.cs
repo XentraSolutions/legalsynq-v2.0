@@ -201,6 +201,9 @@ public class RepresentativeReferralService : IRepresentativeReferralService
             State = r.Facility.State,
             PostalCode = r.Facility.PostalCode,
             Phone = r.Facility.Phone,
+            IsMobile = r.Facility.IsMobile,
+            ServiceRadiusMiles = r.Facility.ServiceRadiusMiles,
+            ServiceAreaLabel = r.Facility.IsMobile ? r.Facility.AddressLine1 : null,
         };
     }
 

@@ -12,6 +12,7 @@ interface MyNetworkMapProps {
 }
 
 const US_CENTER: [number, number] = [39.5, -98.35];
+const MILES_TO_METERS = 1609.34;
 
 /** Escapes HTML special characters to prevent XSS when injecting provider data into popup innerHTML. */
 function esc(s: string): string {
@@ -88,7 +89,9 @@ export function MyNetworkMapLeaflet({ markers, selectedId, onSelect }: MyNetwork
         <p style="font-weight:600;color:#111827;margin:0 0 2px;font-size:14px">${esc(m.name)}</p>
         ${m.organizationName ? `<p style="color:#6b7280;font-size:12px;margin:0 0 4px">${esc(m.organizationName)}</p>` : ''}
         <p style="color:#6b7280;font-size:12px;margin:0 0 4px">
-          ${m.addressLine1 ? `${esc(m.addressLine1)}<br>` : ''}${esc(m.city)}, ${esc(m.state)} ${esc(m.postalCode)}
+          ${m.isMobile
+            ? `Mobile · ${[m.serviceAreaLabel ?? m.addressLine1, `${m.city}, ${m.state}`].filter(Boolean).map(esc).join(' · ')}${m.serviceRadiusMiles != null ? ` · ${m.serviceRadiusMiles}mi radius` : ''}`
+            : `${m.addressLine1 ? `${esc(m.addressLine1)}<br>` : ''}${esc(m.city)}, ${esc(m.state)} ${esc(m.postalCode ?? '')}`}
         </p>
         ${m.phone ? `<p style="color:#6b7280;font-size:12px;margin:0 0 8px">${esc(formatPhoneDisplay(m.phone) ?? m.phone)}</p>` : ''}
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -101,16 +104,42 @@ export function MyNetworkMapLeaflet({ markers, selectedId, onSelect }: MyNetwork
         </div>
       `;
 
-      Leaflet.circleMarker([m.latitude, m.longitude], {
-        radius:      selected ? 13 : 9,
-        fillColor:   selected ? '#2563eb' : accepting ? '#10b981' : '#f59e0b',
-        fillOpacity: 0.9,
-        color:       selected ? '#1d4ed8' : accepting ? '#059669' : '#d97706',
-        weight:      selected ? 3 : 1.5,
-      })
+      if (m.isMobile && m.serviceRadiusMiles) {
+        Leaflet.circle([m.latitude, m.longitude], {
+          radius:      m.serviceRadiusMiles * MILES_TO_METERS,
+          color:       '#7c3aed',
+          weight:      2,
+          opacity:     0.8,
+          dashArray:   '6, 6',
+          fillColor:   '#7c3aed',
+          fillOpacity: selected ? 0.12 : 0,
+          interactive: false,
+        }).addTo(layer);
+      }
+
+      const fillColor = selected ? '#2563eb' : accepting ? '#10b981' : '#f59e0b';
+      const strokeColor = selected ? '#1d4ed8' : accepting ? '#059669' : '#d97706';
+      const marker = m.isMobile
+        ? Leaflet.marker([m.latitude, m.longitude], {
+            icon: Leaflet.divIcon({
+              className: '',
+              html: `<div style="width:${selected ? 18 : 14}px;height:${selected ? 18 : 14}px;background:${fillColor};border:${selected ? 3 : 1.5}px solid ${strokeColor};transform:rotate(45deg);box-sizing:border-box"></div>`,
+              iconSize: [selected ? 18 : 14, selected ? 18 : 14],
+              iconAnchor: [(selected ? 18 : 14) / 2, (selected ? 18 : 14) / 2],
+            }),
+          })
+        : Leaflet.circleMarker([m.latitude, m.longitude], {
+            radius:      selected ? 13 : 9,
+            fillColor,
+            fillOpacity: 0.9,
+            color:       strokeColor,
+            weight:      selected ? 3 : 1.5,
+          });
+
+      marker
         .bindPopup(popupEl)
         .on('click', () => {
-          map.setView([m.latitude, m.longitude], Math.max(map.getZoom(), 13));
+          map.setView([m.latitude, m.longitude], Math.max(map.getZoom(), m.isMobile ? 10 : 13));
           onSelectRef.current(m.id);
         })
         .addTo(layer);

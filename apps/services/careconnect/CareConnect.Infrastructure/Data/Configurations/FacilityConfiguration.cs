@@ -18,7 +18,7 @@ public class FacilityConfiguration : IEntityTypeConfiguration<Facility>
         builder.Property(f => f.AddressLine1).IsRequired().HasMaxLength(300);
         builder.Property(f => f.City).IsRequired().HasMaxLength(100);
         builder.Property(f => f.State).IsRequired().HasMaxLength(100);
-        builder.Property(f => f.PostalCode).IsRequired().HasMaxLength(20);
+        builder.Property(f => f.PostalCode).HasMaxLength(20);
         builder.Property(f => f.Email).HasMaxLength(320);
         builder.Property(f => f.Phone).HasMaxLength(50);
         builder.Property(f => f.IsActive).IsRequired();
@@ -29,6 +29,9 @@ public class FacilityConfiguration : IEntityTypeConfiguration<Facility>
         builder.Property(f => f.GeoPointSource)
             .HasMaxLength(20);
         builder.Property(f => f.GeoUpdatedAtUtc);
+        builder.Property(f => f.IsMobile).IsRequired().HasDefaultValue(false);
+        builder.Property(f => f.ServiceRadiusMiles)
+            .HasColumnType("decimal(5,1)");
         builder.Property(f => f.CreatedAtUtc).IsRequired();
         builder.Property(f => f.UpdatedAtUtc).IsRequired();
         builder.Property(f => f.CreatedByUserId);

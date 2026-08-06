@@ -2,6 +2,7 @@
 
 import { useRef, useEffect } from 'react';
 import { useGoogleMapsScript } from '@/lib/use-google-maps-script';
+import { circleOutlinePoints, DASHED_RING_ICONS } from '@/lib/coverage-circle';
 import type { PublicProviderMarker } from '@/lib/public-network-api';
 
 interface NumberedMarker extends PublicProviderMarker { index: number; }
@@ -17,15 +18,19 @@ interface PublicNetworkMapProps {
 }
 
 const US_CENTER = { lat: 39.5, lng: -98.35 };
+const MILES_TO_METERS = 1609.34;
 
-function numberedPinUrl(index: number, accepting: boolean, selected: boolean): string {
+function numberedPinUrl(index: number, accepting: boolean, selected: boolean, isMobile: boolean): string {
   const bg   = selected ? '#1d4ed8' : accepting ? '#dc2626' : '#6b7280';
   const size = selected ? 34 : 28;
   const font = selected ? 13 : 11;
   const c    = size / 2;
+  // Mobile/roaming providers get a dashed white border on the pin (plus a dashed coverage
+  // ring drawn separately on the map) so "covers this area" reads differently at a glance.
+  const dash = isMobile ? ' stroke-dasharray="2.5,2"' : '';
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">` +
-    `<circle cx="${c}" cy="${c}" r="${c - 2}" fill="${bg}" stroke="white" stroke-width="2"/>` +
+    `<circle cx="${c}" cy="${c}" r="${c - 2}" fill="${bg}" stroke="white" stroke-width="2"${dash}/>` +
     `<text x="${c}" y="${c + font * 0.38}" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="${font}" font-weight="700">${index}</text>` +
     `</svg>`,
   )}`;
@@ -58,6 +63,8 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<google.maps.Map | null>(null);
   const markerRefs   = useRef<Map<string, google.maps.Marker>>(new Map());
+  const circleRefs   = useRef<Map<string, google.maps.Circle>>(new Map());
+  const ringRefs     = useRef<Map<string, google.maps.Polyline>>(new Map());
   const searchMarkerRef = useRef<google.maps.Marker | null>(null);
   const infoRef      = useRef<google.maps.InfoWindow | null>(null);
   const prevBoundsKey = useRef('');
@@ -135,7 +142,30 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
       seen.add(m.id);
       const selected = m.id === selectedId;
       const size = selected ? 34 : 28;
-      const icon = { url: numberedPinUrl(m.index, m.acceptingReferrals, selected), scaledSize: new window.google.maps.Size(size, size), anchor: new window.google.maps.Point(size / 2, size / 2) };
+      const icon = { url: numberedPinUrl(m.index, m.acceptingReferrals, selected, m.isMobile), scaledSize: new window.google.maps.Size(size, size), anchor: new window.google.maps.Point(size / 2, size / 2) };
+
+      circleRefs.current.get(m.id)?.setMap(null);
+      circleRefs.current.delete(m.id);
+      ringRefs.current.get(m.id)?.setMap(null);
+      ringRefs.current.delete(m.id);
+      if (m.isMobile && m.serviceRadiusMiles) {
+        circleRefs.current.set(m.id, new window.google.maps.Circle({
+          center: { lat: m.latitude, lng: m.longitude },
+          radius: m.serviceRadiusMiles * MILES_TO_METERS,
+          strokeOpacity: 0,
+          fillColor: '#7c3aed', fillOpacity: selected ? 0.1 : 0,
+          clickable: false,
+          map,
+        }));
+        ringRefs.current.set(m.id, new window.google.maps.Polyline({
+          path: circleOutlinePoints(m.latitude, m.longitude, m.serviceRadiusMiles),
+          strokeOpacity: 0,
+          icons: DASHED_RING_ICONS,
+          strokeColor: '#7c3aed',
+          clickable: false,
+          map,
+        }));
+      }
 
       let marker = markerRefs.current.get(m.id);
       if (marker) {
@@ -166,7 +196,9 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
               </div>
               ${identity.secondary ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${esc(identity.secondary)}</p>` : ''}
               ${showFacilityName ? `<p style="font-size:12px;color:#6b7280;margin:0 0 4px">${esc(facilityName)}</p>` : ''}
-              <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${esc(captured.city)}, ${esc(captured.state)}</p>
+              <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">${captured.isMobile
+                ? `Mobile · ${[captured.serviceAreaLabel, `${captured.city}, ${captured.state}`].filter((s): s is string => Boolean(s)).map(esc).join(' · ')}${captured.serviceRadiusMiles ? ` · ${captured.serviceRadiusMiles}mi radius` : ''}`
+                : `${esc(captured.city)}, ${esc(captured.state)}`}</p>
               ${typeof captured.distanceMiles === 'number' ? `<p style="font-size:12px;color:#2563eb;margin:0 0 8px;font-weight:600">${captured.distanceMiles.toFixed(1)} mi away</p>` : ''}
               ${(captured.specialties ?? []).length > 0 ? `<p style="font-size:11px;color:#1d4ed8;margin:0 0 8px">${captured.specialties.map(s => esc(s.name)).join(', ')}</p>` : ''}
               ${captured.acceptingReferrals
@@ -190,12 +222,22 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
     for (const [id, marker] of markerRefs.current) {
       if (!seen.has(id)) { marker.setMap(null); markerRefs.current.delete(id); }
     }
+    for (const [id, circle] of circleRefs.current) {
+      if (!seen.has(id)) { circle.setMap(null); circleRefs.current.delete(id); }
+    }
+    for (const [id, ring] of ringRefs.current) {
+      if (!seen.has(id)) { ring.setMap(null); ringRefs.current.delete(id); }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markers, selectedId, isLoaded, zoomToId, searchLocation]);
 
   useEffect(() => () => {
     for (const m of markerRefs.current.values()) m.setMap(null);
     markerRefs.current.clear();
+    for (const c of circleRefs.current.values()) c.setMap(null);
+    circleRefs.current.clear();
+    for (const r of ringRefs.current.values()) r.setMap(null);
+    ringRefs.current.clear();
     searchMarkerRef.current?.setMap(null);
     infoRef.current?.close();
   }, []);

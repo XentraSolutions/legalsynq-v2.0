@@ -47,7 +47,7 @@ public class FacilityResponse
     public string AddressLine1 { get; init; } = string.Empty;
     public string City { get; init; } = string.Empty;
     public string State { get; init; } = string.Empty;
-    public string PostalCode { get; init; } = string.Empty;
+    public string? PostalCode { get; init; }
     public string? Email { get; init; }
     public string? Phone { get; init; }
     public bool IsActive { get; init; }
@@ -55,6 +55,8 @@ public class FacilityResponse
     public double? Longitude { get; init; }
     public string? GeoPointSource { get; init; }
     public DateTime? GeoUpdatedAtUtc { get; init; }
+    public bool IsMobile { get; init; }
+    public double? ServiceRadiusMiles { get; init; }
 
     // Phase 4: canonical Identity Organization FK. Null for legacy facilities
     // that predate the org-alignment migration.
