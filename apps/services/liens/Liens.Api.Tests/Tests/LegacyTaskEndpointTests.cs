@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -132,6 +133,7 @@ public class LegacyTaskEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             description = "After update",
             assignedTo = "qa.user@example.com",
             priority = "Medium",
+            status = "UPCOMING",
         });
         updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
@@ -145,5 +147,12 @@ public class LegacyTaskEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         updatedTask.GetProperty("description").GetString().Should().Be("After update");
         updatedTask.GetProperty("priority").GetString().Should().Be("Medium");
         updatedTask.GetProperty("priorityId").GetString().Should().Be("MEDIUM");
+        updatedTask.GetProperty("status").GetString().Should().Be("UPCOMING");
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var servicingItem = await db.ServicingItems.FindAsync(Guid.Parse(taskId!));
+        servicingItem.Should().NotBeNull();
+        servicingItem!.Status.Should().Be(ServicingStatus.Pending);
     }
 }

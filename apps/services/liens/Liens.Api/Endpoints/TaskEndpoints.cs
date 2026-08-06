@@ -435,6 +435,15 @@ public static class TaskEndpoints
             noteFields["title"] = request.title.Trim();
         if (!string.IsNullOrWhiteSpace(request.status))
             noteFields["status"] = request.status.Trim();
+        var servicingStatus = ResolveLegacyTaskServicingStatus(request.status, existing.Status);
+        if (!string.IsNullOrWhiteSpace(request.status) && servicingStatus is null)
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = $"Invalid status: '{request.status.Trim()}'.",
+            });
+        }
         var priority = ResolveLegacyTaskPriority(request.priority);
         if (!string.IsNullOrWhiteSpace(request.priority) && priority is null)
         {
@@ -456,7 +465,7 @@ public static class TaskEndpoints
                 AssignedTo = request.assignedTo?.Trim() ?? existing.AssignedTo,
                 AssignedToUserId = existing.AssignedToUserId,
                 Priority = priority?.ServicingValue ?? existing.Priority,
-                Status = request.status?.Trim() ?? existing.Status,
+                Status = servicingStatus ?? existing.Status,
                 CaseId = existing.CaseId,
                 LienId = existing.LienId,
                 DueDate = dueDate,
@@ -620,6 +629,30 @@ public static class TaskEndpoints
             "MEDIUM" or "NORMAL" => (ServicingPriority.Normal, TaskPriorities.Medium),
             "HIGH" => (ServicingPriority.High, TaskPriorities.High),
             "URGENT" => (ServicingPriority.Urgent, TaskPriorities.Urgent),
+            _ => null,
+        };
+    }
+
+    private static string? ResolveLegacyTaskServicingStatus(string? value, string existingStatus)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = value.Trim()
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "1" or "UPCOMING" or "NEW" or "OPEN" or "PENDING" => ServicingStatus.Pending,
+            "2" or "INPROGRESS" => ServicingStatus.InProgress,
+            "3" or "INREVIEW" or "WAITINGBLOCKED" or "ONHOLD" => ServicingStatus.OnHold,
+            "4" or "COMPLETED" or "DONE" => ServicingStatus.Completed,
+            // Legacy task status remains authoritative in Notes. ServicingItem has
+            // no cancelled state, so preserve its current internal status.
+            "CANCELLED" or "CANCELED" => existingStatus,
             _ => null,
         };
     }
