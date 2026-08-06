@@ -11,13 +11,15 @@ import { ActionMenu } from "@/components/lien/action-menu";
 
 interface Props {
   facilityId: string;
+  /** Overrides the default bg-primary styling on the Add Staff button and its modal/delete-confirm actions (e.g. selling's orange brand). */
+  primaryButtonClassName?: string;
 }
 
 const CONTACT_TYPE = "MedicalFacility";
 const CONTACT_SUBTYPE = "FacilityContactPerson";
 const PAGE_SIZE = 12;
 
-export function MedicalFacilityStaffSection({ facilityId }: Props) {
+export function MedicalFacilityStaffSection({ facilityId, primaryButtonClassName }: Props) {
   const addToast = useLienStore((s) => s.addToast);
   const [staff, setStaff] = useState<ContactResponseDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,7 +121,7 @@ export function MedicalFacilityStaffSection({ facilityId }: Props) {
           </button>
           <button
             onClick={openAdd}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90"
+            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 text-white rounded-lg ${primaryButtonClassName ?? 'bg-primary hover:bg-primary/90'}`}
           >
             <i className="ri-add-line" />
             Add Staff
@@ -178,6 +180,7 @@ export function MedicalFacilityStaffSection({ facilityId }: Props) {
           contactSubtype={CONTACT_SUBTYPE}
           facilityId={facilityId}
           editTarget={editTarget}
+          primaryButtonClassName={primaryButtonClassName}
           onSaved={() => {
             setModalOpen(false);
             fetchStaff();
@@ -204,6 +207,7 @@ export function MedicalFacilityStaffSection({ facilityId }: Props) {
           confirmLabel="Delete"
           confirmVariant="danger"
           loading={deleting}
+          primaryButtonClassName={primaryButtonClassName}
           warningTitle="Warning: Deleting this staff member will also remove:"
           warningItems={[
             "All case associations",

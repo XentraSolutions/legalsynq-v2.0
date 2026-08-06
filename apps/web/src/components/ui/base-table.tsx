@@ -99,6 +99,8 @@ export interface BaseTableProps<TData> {
   emptyMessage?: string;
   isLoading?: boolean;
   className?: string;
+  /** Overrides the default bg-primary styling on the active pagination page button (e.g. selling's orange brand). */
+  primaryButtonClassName?: string;
 }
 
 export function BaseTable<TData>({
@@ -134,6 +136,7 @@ export function BaseTable<TData>({
   className,
   onRowClick,
   getRowClassName,
+  primaryButtonClassName,
 }: BaseTableProps<TData>) {
   const selectable = rowSelection !== undefined;
   const expandable = enableExpanding && renderSubRow !== undefined;
@@ -482,6 +485,7 @@ export function BaseTable<TData>({
               page={pageIndex + 1}
               totalPages={pageCountResolved}
               onPageChange={(p) => table.setPageIndex(p - 1)}
+              primaryButtonClassName={primaryButtonClassName}
             />
           )}
         </div>

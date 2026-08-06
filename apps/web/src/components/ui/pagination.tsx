@@ -7,6 +7,8 @@ interface PaginationProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   className?: string;
+  /** Overrides the default border-primary/bg-primary styling on the active page button (e.g. selling's orange brand). */
+  primaryButtonClassName?: string;
 }
 
 const SIBLING_COUNT = 1;
@@ -41,12 +43,14 @@ function PageButton({
   onClick,
   children,
   ariaLabel,
+  primaryButtonClassName,
 }: {
   active?: boolean;
   disabled?: boolean;
   onClick?: () => void;
   children: React.ReactNode;
   ariaLabel?: string;
+  primaryButtonClassName?: string;
 }) {
   return (
     <button
@@ -58,7 +62,7 @@ function PageButton({
       className={cn(
         "inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-2.5 text-xs font-medium transition-colors",
         active
-          ? "border-primary bg-primary text-white"
+          ? (primaryButtonClassName ?? "border-primary bg-primary text-white")
           : "border-gray-200 text-gray-600 hover:bg-gray-50",
         disabled && "opacity-40 cursor-not-allowed hover:bg-transparent",
       )}
@@ -68,7 +72,7 @@ function PageButton({
   );
 }
 
-export function Pagination({ page, totalPages, onPageChange, className }: PaginationProps) {
+export function Pagination({ page, totalPages, onPageChange, className, primaryButtonClassName }: PaginationProps) {
   const items = getPageItems(page, totalPages);
 
   return (
@@ -86,7 +90,12 @@ export function Pagination({ page, totalPages, onPageChange, className }: Pagina
             …
           </span>
         ) : (
-          <PageButton key={item} active={item === page} onClick={() => onPageChange(item)}>
+          <PageButton
+            key={item}
+            active={item === page}
+            onClick={() => onPageChange(item)}
+            primaryButtonClassName={primaryButtonClassName}
+          >
             {item}
           </PageButton>
         ),

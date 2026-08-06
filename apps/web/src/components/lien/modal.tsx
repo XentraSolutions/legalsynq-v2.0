@@ -73,12 +73,14 @@ interface ConfirmDialogProps {
   loading?: boolean;
   warningTitle?: string;
   warningItems?: string[];
+  /** Overrides the default bg-primary styling on the confirm button (e.g. selling's orange brand). Ignored when confirmVariant is 'danger'. */
+  primaryButtonClassName?: string;
 }
 
-export function ConfirmDialog({ open, onClose, onConfirm, title, description, confirmLabel = 'Confirm', confirmVariant = 'primary', loading, warningTitle, warningItems }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, onClose, onConfirm, title, description, confirmLabel = 'Confirm', confirmVariant = 'primary', loading, warningTitle, warningItems, primaryButtonClassName }: ConfirmDialogProps) {
   const btnClass = confirmVariant === 'danger'
     ? 'bg-red-600 hover:bg-red-700 text-white'
-    : 'bg-primary hover:bg-primary/90 text-white';
+    : (primaryButtonClassName ?? 'bg-primary hover:bg-primary/90 text-white');
 
   return (
     <Modal open={open} onClose={loading ? () => {} : onClose} title={title} titleClassName={confirmVariant === 'danger' ? 'text-red-600' : undefined} size="sm" footer={
@@ -118,14 +120,16 @@ interface FormModalProps {
   submitDisabled?: boolean;
   loading?: boolean;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Overrides the default bg-primary styling on the submit button (e.g. selling's orange brand). */
+  primaryButtonClassName?: string;
 }
 
-export function FormModal({ open, onClose, onSubmit, title, subtitle, headerActions, children, submitLabel = 'Save', submitDisabled, loading, size = 'md' }: FormModalProps) {
+export function FormModal({ open, onClose, onSubmit, title, subtitle, headerActions, children, submitLabel = 'Save', submitDisabled, loading, size = 'md', primaryButtonClassName }: FormModalProps) {
   return (
     <Modal open={open} onClose={onClose} title={title} subtitle={subtitle} headerActions={headerActions} size={size} footer={
       <>
         <button onClick={onClose} className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">Cancel</button>
-        <button onClick={onSubmit} disabled={submitDisabled || loading} className="text-sm px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg disabled:opacity-50">
+        <button onClick={onSubmit} disabled={submitDisabled || loading} className={`text-sm px-4 py-2 rounded-lg text-white disabled:opacity-50 ${primaryButtonClassName ?? 'bg-primary hover:bg-primary/90'}`}>
           {loading ? 'Saving...' : submitLabel}
         </button>
       </>
