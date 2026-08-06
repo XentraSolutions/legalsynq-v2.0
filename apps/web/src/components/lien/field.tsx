@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import {
   BaseSelect,
   BaseSelectOption,
@@ -51,7 +51,10 @@ interface CheckboxFieldProps {
   onChange: (value: boolean) => void;
 }
 
-interface SelectFieldProps<TOption extends BaseSelectOption> {
+interface SelectFieldProps<TOption extends BaseSelectOption> extends Omit<
+  BaseSelectProps<TOption>,
+  "value" | "onChange" | "multiple" | "options"
+> {
   type: "select";
   options: TOption[];
 
@@ -60,7 +63,10 @@ interface SelectFieldProps<TOption extends BaseSelectOption> {
   onChange: (value: string, option: TOption) => void;
 }
 
-interface MultiSelectFieldProps<TOption extends BaseSelectOption> {
+interface MultiSelectFieldProps<TOption extends BaseSelectOption> extends Omit<
+  BaseSelectProps<TOption>,
+  "value" | "onChange" | "multiple" | "options"
+> {
   type: "select";
   options: TOption[];
 
@@ -136,6 +142,18 @@ export default function Field<
           placeholder={props.placeholder}
           disabled={props.disabled}
           error={!!props.error}
+          loadingMode={props.loadingMode}
+          isLoading={props.isLoading}
+          isSearching={props.isSearching}
+          isFetchingMore={props.isFetchingMore}
+          hasNextPage={props.hasNextPage}
+          onLoadMore={props.onLoadMore}
+          searchPlaceholder={props.searchPlaceholder}
+          search={props.search}
+          onSearchChange={props.onSearchChange}
+          filterLocally={props.filterLocally}
+          className={props.className}
+          onOpen={props.onOpen}
         />
       ) : props.type === "select" ? (
         <BaseSelect
@@ -145,6 +163,18 @@ export default function Field<
           placeholder={props.placeholder}
           disabled={props.disabled}
           error={!!props.error}
+          loadingMode={props.loadingMode}
+          isLoading={props.isLoading}
+          isSearching={props.isSearching}
+          isFetchingMore={props.isFetchingMore}
+          hasNextPage={props.hasNextPage}
+          onLoadMore={props.onLoadMore}
+          searchPlaceholder={props.searchPlaceholder}
+          search={props.search}
+          onSearchChange={props.onSearchChange}
+          filterLocally={props.filterLocally}
+          className={props.className}
+          onOpen={props.onOpen}
         />
       ) : props.type === "checkbox" ? (
         <input
