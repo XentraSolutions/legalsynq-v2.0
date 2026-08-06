@@ -186,6 +186,166 @@ export interface ReferralSummary {
   // Type of Treatment — set by Referrer at creation.
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
+  // Referral Attribution — who or what originated this referral. Undefined/null = not set.
+  referralAttribution?: ReferralAttributionSummary | null;
+}
+
+// ── Referral Attribution ─────────────────────────────────────────────────────
+
+export interface ReferralAttributionSummary {
+  id:          string;
+  firstName:   string;
+  lastName:    string;
+  isActive:    boolean;
+}
+
+export interface ReferralAttribution {
+  id:                     string;
+  tenantId:               string;
+  firstName:              string;
+  lastName:               string;
+  code:                   string;
+  description?:           string | null;
+  isActive:               boolean;
+  displayOrder?:          number | null;
+  isUsed:                 boolean;
+  activeAccessCodeCount:  number;
+  createdAtUtc:           string;
+  updatedAtUtc:           string;
+}
+
+export interface CreateReferralAttributionRequest {
+  firstName:     string;
+  lastName:      string;
+  code:          string;
+  description?:  string;
+  isActive?:     boolean;
+  displayOrder?: number;
+}
+
+export interface UpdateReferralAttributionRequest {
+  firstName:     string;
+  lastName:      string;
+  description?:  string;
+  displayOrder?: number;
+}
+
+// ── Referral Representative access codes ──────────────────────────────────────
+// Replaces the earlier admin-typed user-linking model: an admin generates a code
+// scoped to one attribution and shares it out of band. There is no login and no
+// "redeemer" — the Representative Portal is fully anonymous and re-checks the raw
+// code on every request (see representative-portal-api.ts). No admin screen ever
+// picks or types a specific user account.
+
+export interface ReferralAttributionAccessCode {
+  id:                              string;
+  tenantId:                        string;
+  referralAttributionId:           string;
+  referralAttributionFullName?:    string | null;
+  isActive:                        boolean;
+  accessStartAtUtc?:               string | null;
+  accessEndAtUtc?:                 string | null;
+  createdAtUtc:                    string;
+  updatedAtUtc:                    string;
+}
+
+/** Returned only from the generate call, only once — the plaintext code can never be retrieved again. */
+export interface GeneratedReferralAttributionAccessCode extends ReferralAttributionAccessCode {
+  code: string;
+}
+
+export interface CreateReferralAttributionAccessCodeRequest {
+  referralAttributionId:  string;
+  accessStartAtUtc?:      string;
+  accessEndAtUtc?:        string;
+}
+
+// ── Referral Representative Portal (restricted DTOs) ──────────────────────────
+
+export interface RepresentativeStatusRef {
+  code:        string;
+  displayName: string;
+}
+
+export interface RepresentativeDisplayRef {
+  displayName: string;
+}
+
+export interface RepresentativeClientRef {
+  firstName:    string;
+  lastName:     string;
+  dateOfBirth?: string | null;
+  phone:        string;
+  email?:       string | null;
+}
+
+export interface RepresentativeFacilityRef {
+  name:         string;
+  addressLine1: string;
+  city:         string;
+  state:        string;
+  postalCode:   string;
+  phone?:       string | null;
+}
+
+export interface RepresentativeMilestone {
+  code:          string;
+  displayName:   string;
+  occurredAtUtc: string;
+}
+
+export interface RepresentativeReferralListItem {
+  referralId:          string;
+  referenceNumber:     string;
+  submittedAtUtc:      string;
+  status:              RepresentativeStatusRef;
+  lawFirm:             RepresentativeDisplayRef;
+  provider:            RepresentativeDisplayRef;
+  providerLocation?:   RepresentativeFacilityRef | null;
+  client:              RepresentativeClientRef;
+  referralAttribution: ReferralAttributionSummary & { id: string };
+  lastUpdatedAtUtc:    string;
+}
+
+export interface RepresentativeReferralDetail {
+  referralId:          string;
+  referenceNumber:     string;
+  submittedAtUtc:      string;
+  status:              RepresentativeStatusRef;
+  lawFirm:             RepresentativeDisplayRef;
+  provider:            RepresentativeDisplayRef;
+  providerLocation?:   RepresentativeFacilityRef | null;
+  client:              RepresentativeClientRef;
+  referralAttribution: ReferralAttributionSummary & { id: string };
+  milestones:          RepresentativeMilestone[];
+  lastUpdatedAtUtc:    string;
+}
+
+export interface RepresentativeReferralMetrics {
+  totalAttributedReferrals: number;
+  pendingReferrals:         number;
+  acceptedReferrals:        number;
+  declinedReferrals:        number;
+  completedReferrals:       number;
+  referralsInRange:         number;
+  referralsByStatus:        Record<string, number>;
+}
+
+export interface RepresentativeReferralSearchParams {
+  submittedFrom?:         string;
+  submittedTo?:           string;
+  status?:                string;
+  providerId?:            string;
+  lawFirmOrganizationId?: string;
+  page?:                  number;
+  pageSize?:              number;
+}
+
+/** Anonymous, stateless code check — see representative-portal-api.ts's verifyRepresentativeCode. */
+export interface VerifyReferralAttributionAccessCodeResult {
+  ok:                            boolean;
+  referralAttributionId?:        string | null;
+  referralAttributionFullName?:  string | null;
 }
 
 // LSCC-005-01 / LSCC-005-02: notification delivery record
@@ -254,6 +414,8 @@ export interface CreateReferralRequest {
   /** LSCC-005: referrer identity for the notification email */
   referrerEmail?:    string;
   referrerName?:     string;
+  /** Optional — who or what originated this referral. Blank/undefined by default. */
+  referralAttributionId?: string;
 }
 
 export interface ReferralSearchParams {

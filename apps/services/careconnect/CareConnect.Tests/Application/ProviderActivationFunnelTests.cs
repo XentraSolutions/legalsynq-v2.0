@@ -461,6 +461,7 @@ public class ProviderActivationFunnelTests
             auditClient,
             NullLogger<ReferralService>.Instance,
             new Mock<Microsoft.AspNetCore.Http.IHttpContextAccessor>().Object,
-            referralAttachments);
+            referralAttachments,
+            new Mock<IReferralAttributionRepository>().Object);
     }
 }

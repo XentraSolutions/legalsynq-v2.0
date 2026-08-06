@@ -133,6 +133,15 @@ export interface NavItem {
    * but should stay visible in the nav (e.g. "Coming soon").
    */
   disabledMessage?: string;
+  /**
+   * Hides this item when the current subdomain resolves to a restricted,
+   * single-product portal (see lib/portal.ts's PORTAL_CONFIGS — e.g. the
+   * CareConnect-only "common portal" subdomain used by CareConnect-only
+   * customers). Use for tenant-configuration screens that only make sense
+   * in the full multi-product tenant portal, not a white-labeled single-
+   * product entry point.
+   */
+  hiddenInProductPortal?: boolean;
 }
 
 export interface NavSection {

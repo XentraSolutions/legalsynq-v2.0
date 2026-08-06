@@ -23,6 +23,13 @@ public class CreateReferralRequest
     public DateOnly? DateOfAccident { get; set; }
     public string? Notes { get; set; }
 
+    /// <summary>
+    /// Optional Referral Attribution — who or what originated this referral. Blank/null by
+    /// default; never auto-selected. Must resolve to an active attribution in the caller's
+    /// own tenant, or the request is rejected — see ReferralService.ResolveAttributionAsync.
+    /// </summary>
+    public Guid? ReferralAttributionId { get; set; }
+
     // Phase C: optional multi-org context.
     // When both are supplied, the service attempts to resolve the active
     // OrganizationRelationship in Identity and set it on the created referral.

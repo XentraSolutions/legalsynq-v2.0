@@ -44,6 +44,16 @@ public static class DependencyInjection
                 "DocumentsService:DocumentTypeId must be configured in non-Development environments. " +
                 "Set the 'DocumentsService:DocumentTypeId' configuration key to a valid UUID. " +
                 $"Current environment: '{environment}'.");
+
+        // Referral Attribution access codes are hashed with SHA-256 + this server-side pepper
+        // before storage (never persisted in plaintext). Without a strong pepper in
+        // non-Development environments, the hash would be a bare SHA-256 of the code alone.
+        var accessCodePepper = configuration["ReferralAttributionAccessCode:Pepper"];
+        if (string.IsNullOrWhiteSpace(accessCodePepper) && !isDev)
+            throw new InvalidOperationException(
+                "ReferralAttributionAccessCode:Pepper must be configured in non-Development environments. " +
+                "Set the 'ReferralAttributionAccessCode:Pepper' configuration key to a strong random value. " +
+                $"Current environment: '{environment}'.");
     }
 
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
@@ -101,6 +111,9 @@ public static class DependencyInjection
         services.AddScoped<INotificationRepository, NotificationRepository>();
         // LSCC-009: Provider activation queue
         services.AddScoped<IActivationRequestRepository, ActivationRequestRepository>();
+        // Referral Attribution + Referral Representative access
+        services.AddScoped<IReferralAttributionRepository, ReferralAttributionRepository>();
+        services.AddScoped<IReferralAttributionAccessCodeRepository, ReferralAttributionAccessCodeRepository>();
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IReferralService, ReferralService>();
@@ -120,6 +133,10 @@ public static class DependencyInjection
         services.AddScoped<INotificationService, NotificationService>();
         // LSCC-009: Provider activation queue service
         services.AddScoped<IActivationRequestService, ActivationRequestService>();
+        // Referral Attribution + Referral Representative access
+        services.AddScoped<IReferralAttributionService, ReferralAttributionService>();
+        services.AddScoped<IReferralAttributionAccessCodeService, ReferralAttributionAccessCodeService>();
+        services.AddScoped<IRepresentativeReferralService, RepresentativeReferralService>();
 
         // LSCC-010: Auto-provisioning — Identity org HTTP client + orchestration service
         services.AddScoped<IIdentityOrganizationService, HttpIdentityOrganizationService>();

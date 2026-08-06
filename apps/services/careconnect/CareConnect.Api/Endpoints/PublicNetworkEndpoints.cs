@@ -6,16 +6,9 @@ using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Application.Repositories;
 using CareConnect.Domain;
-using LegalSynq.AuditClient;
-using LegalSynq.AuditClient.DTOs;
-using LegalSynq.AuditClient.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using System.Net.Mail;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
-using AuditVisibility = LegalSynq.AuditClient.Enums.VisibilityScope;
 
 namespace CareConnect.Api.Endpoints;
 
@@ -54,7 +47,7 @@ public static class PublicNetworkEndpoints
             IMemoryCache       cache,
             CancellationToken  ct) =>
         {
-            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
+            var tenantId = CareConnect.Api.Helpers.PublicTrustBoundary.ValidateAndResolveTenantId(http, config, "public-network");
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
@@ -88,7 +81,7 @@ public static class PublicNetworkEndpoints
             IMemoryCache        cache,
             CancellationToken   ct) =>
         {
-            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
+            var tenantId = CareConnect.Api.Helpers.PublicTrustBoundary.ValidateAndResolveTenantId(http, config, "public-network");
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
@@ -124,7 +117,7 @@ public static class PublicNetworkEndpoints
             IMemoryCache        cache,
             CancellationToken   ct) =>
         {
-            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
+            var tenantId = CareConnect.Api.Helpers.PublicTrustBoundary.ValidateAndResolveTenantId(http, config, "public-network");
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
@@ -164,7 +157,7 @@ public static class PublicNetworkEndpoints
             IMemoryCache        cache,
             CancellationToken   ct) =>
         {
-            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
+            var tenantId = CareConnect.Api.Helpers.PublicTrustBoundary.ValidateAndResolveTenantId(http, config, "public-network");
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
@@ -214,7 +207,7 @@ public static class PublicNetworkEndpoints
             CareConnect.Infrastructure.Data.CareConnectDbContext db,
             CancellationToken ct) =>
         {
-            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
+            var tenantId = CareConnect.Api.Helpers.PublicTrustBoundary.ValidateAndResolveTenantId(http, config, "public-network");
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
@@ -260,6 +253,33 @@ public static class PublicNetworkEndpoints
             }
         }).AllowAnonymous().RequireRateLimiting("public-read-limit");
 
+        // ── GET /api/public/referral-attributions ───────────────────────────
+        // Anonymous mirror of GET /api/referral-attributions/options — the authenticated
+        // in-app referral form and this anonymous public one must offer the same active
+        // Referral Attribution options for a given tenant. Trust-boundary validated (same
+        // as other public endpoints), never exposes inactive attributions.
+        app.MapGet("/api/public/referral-attributions", async (
+            HttpContext                    http,
+            IConfiguration                 config,
+            IReferralAttributionService    service,
+            CancellationToken              ct) =>
+        {
+            var tenantId = CareConnect.Api.Helpers.PublicTrustBoundary.ValidateAndResolveTenantId(http, config, "public-network");
+            if (tenantId == null)
+                return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                    detail: "Request origin could not be verified.");
+
+            var result = await service.ListAsync(tenantId.Value, activeOnly: true, ct);
+            var options = result.Select(a => new ReferralAttributionSummary
+            {
+                Id = a.Id,
+                FirstName = a.FirstName,
+                LastName = a.LastName,
+                IsActive = a.IsActive,
+            });
+            return Results.Ok(options);
+        }).AllowAnonymous().RequireRateLimiting("public-read-limit");
+
         // ── POST /api/public/referrals ──────────────────────────────────────
         // CC2-INT-B08 — Public referral initiation.
         // Accepts an unauthenticated referral submission from the public network directory.
@@ -302,7 +322,7 @@ public static class PublicNetworkEndpoints
         {
             var logger = loggerFactory.CreateLogger("CareConnect.PublicReferrals");
 
-            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
+            var tenantId = CareConnect.Api.Helpers.PublicTrustBoundary.ValidateAndResolveTenantId(http, config, "public-network");
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
@@ -382,7 +402,7 @@ public static class PublicNetworkEndpoints
             IIdentityOrganizationService identityOrgs,
             CancellationToken          ct) =>
         {
-            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
+            var tenantId = CareConnect.Api.Helpers.PublicTrustBoundary.ValidateAndResolveTenantId(http, config, "public-network");
             if (tenantId is null)
                 return Results.StatusCode(403);
 
@@ -467,7 +487,7 @@ public static class PublicNetworkEndpoints
         ILogger                      logger,
         CancellationToken            ct)
     {
-            var tenantId = ValidateTrustBoundaryAndResolveTenantId(http, config);
+            var tenantId = CareConnect.Api.Helpers.PublicTrustBoundary.ValidateAndResolveTenantId(http, config, "public-network");
             if (tenantId == null)
                 return Results.Problem(statusCode: StatusCodes.Status403Forbidden,
                     detail: "Request origin could not be verified.");
@@ -584,6 +604,7 @@ public static class PublicNetworkEndpoints
                                             ? req.Urgency
                                             : Referral.ValidUrgencies.Normal,
                 TreatmentTypeId         = req.TreatmentTypeId,
+                ReferralAttributionId   = req.ReferralAttributionId,
                 DateOfAccident          = req.PatientDateOfAccident,
                 Notes                   = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
                 ReferrerFirstName       = req.SenderFirstName.Trim(),
@@ -630,143 +651,7 @@ public static class PublicNetworkEndpoints
             }
     }
 
-    // ── Trust Boundary Validation (BLK-SEC-02-02) ─────────────────────────
-
-    /// <summary>
-    /// Validates the two-layer public trust boundary and returns the resolved TenantId.
-    ///
-    /// Layer 1 — X-Internal-Gateway-Secret:
-    ///   Proves the request was forwarded by the trusted YARP gateway.
-    ///   The gateway strips any client-supplied value and injects its own configured secret.
-    ///   A direct caller bypassing the gateway cannot supply the correct value.
-    ///
-    /// Layer 2 — X-Tenant-Id-Sig (HMAC-SHA256):
-    ///   Proves X-Tenant-Id was signed by the trusted Next.js BFF.
-    ///   HMAC-SHA256(X-Tenant-Id, InternalRequestSecret) computed server-side by the BFF.
-    ///   A caller going through the gateway but supplying an arbitrary X-Tenant-Id
-    ///   cannot forge the signature without knowing the shared secret.
-    ///
-    /// Returns null and logs a warning if validation fails.
-    /// The fallback path (validation disabled / secret not configured) is intentionally
-    /// limited to environments where the secret is not set — logged as a warning.
-    /// </summary>
-    private static Guid? ValidateTrustBoundaryAndResolveTenantId(
-        HttpContext    http,
-        IConfiguration config)
-    {
-        var logger = http.RequestServices
-            .GetRequiredService<ILoggerFactory>()
-            .CreateLogger("CareConnect.PublicTrustBoundary");
-
-        var secret = config["PublicTrustBoundary:InternalRequestSecret"];
-
-        // BLK-OBS-01: resolve correlation/request ID for all security-event log entries.
-        var requestId = http.Items["CorrelationId"]?.ToString() ?? http.TraceIdentifier;
-
-        if (string.IsNullOrWhiteSpace(secret))
-        {
-            logger.LogWarning(
-                "PublicTrustBoundary:InternalRequestSecret is not configured — " +
-                "trust boundary validation is DISABLED. Set this value in all non-dev environments. " +
-                "Path={Path} RequestId={RequestId}", http.Request.Path, requestId);
-            return ResolveTenantIdRaw(http);
-        }
-
-        // Layer 1: validate gateway origin marker
-        var gatewaySecret = http.Request.Headers["X-Internal-Gateway-Secret"].FirstOrDefault();
-        if (gatewaySecret != secret)
-        {
-            logger.LogWarning(
-                "Public request rejected: X-Internal-Gateway-Secret mismatch (Layer 1). " +
-                "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
-                http.Connection.RemoteIpAddress, http.Request.Path, requestId);
-            EmitTrustBoundaryRejectedAudit(http, "layer1-gateway-secret-mismatch", requestId);
-            return null;
-        }
-
-        // Layer 2: validate HMAC signature of X-Tenant-Id
-        var tenantIdRaw = http.Request.Headers["X-Tenant-Id"].FirstOrDefault();
-        var sig         = http.Request.Headers["X-Tenant-Id-Sig"].FirstOrDefault();
-
-        if (string.IsNullOrWhiteSpace(tenantIdRaw))
-        {
-            logger.LogWarning(
-                "Public request rejected: X-Tenant-Id header missing (Layer 2). " +
-                "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
-                http.Connection.RemoteIpAddress, http.Request.Path, requestId);
-            EmitTrustBoundaryRejectedAudit(http, "layer2-tenant-id-missing", requestId);
-            return null;
-        }
-
-        if (string.IsNullOrWhiteSpace(sig))
-        {
-            logger.LogWarning(
-                "Public request rejected: X-Tenant-Id-Sig header missing (Layer 2). " +
-                "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
-                http.Connection.RemoteIpAddress, http.Request.Path, requestId);
-            EmitTrustBoundaryRejectedAudit(http, "layer2-tenant-id-sig-missing", requestId);
-            return null;
-        }
-
-        if (!TryValidateHmac(tenantIdRaw, sig, secret))
-        {
-            logger.LogWarning(
-                "Public request rejected: X-Tenant-Id-Sig HMAC validation failed (Layer 2). " +
-                "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
-                http.Connection.RemoteIpAddress, http.Request.Path, requestId);
-            EmitTrustBoundaryRejectedAudit(http, "layer2-hmac-validation-failed", requestId);
-            return null;
-        }
-
-        if (!Guid.TryParse(tenantIdRaw, out var tenantId))
-        {
-            logger.LogWarning(
-                "Public request rejected: X-Tenant-Id is not a valid GUID. " +
-                "RemoteIp={RemoteIp} Path={Path} RequestId={RequestId}",
-                http.Connection.RemoteIpAddress, http.Request.Path, requestId);
-            EmitTrustBoundaryRejectedAudit(http, "layer2-tenant-id-invalid-guid", requestId);
-            return null;
-        }
-
-        return tenantId;
-    }
-
-    /// <summary>
-    /// Validates HMAC-SHA256(data, secret) against the provided base64-encoded signature.
-    /// Uses constant-time comparison to prevent timing side-channel attacks.
-    /// </summary>
-    private static bool TryValidateHmac(string data, string sig, string secret)
-    {
-        try
-        {
-            byte[] sigBytes;
-            try { sigBytes = Convert.FromBase64String(sig); }
-            catch { return false; }
-
-            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-            var expected = hmac.ComputeHash(Encoding.UTF8.GetBytes(data));
-
-            if (sigBytes.Length != expected.Length) return false;
-            return CryptographicOperations.FixedTimeEquals(expected, sigBytes);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     // ── Helpers ──────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Raw tenant ID extraction — used only when trust boundary validation is disabled
-    /// (unconfigured secret, typically in local dev without the full gateway stack).
-    /// </summary>
-    private static Guid? ResolveTenantIdRaw(HttpContext http)
-    {
-        var raw = http.Request.Headers["X-Tenant-Id"].FirstOrDefault();
-        if (string.IsNullOrWhiteSpace(raw)) return null;
-        return Guid.TryParse(raw, out var id) ? id : null;
-    }
 
     /// <summary>
     /// CC2-INT-B08: Validates a public referral submission.
@@ -919,51 +804,4 @@ public static class PublicNetworkEndpoints
 
     private static string? PrimarySpecialtyName(Provider provider) =>
         MapSpecialties(provider).FirstOrDefault()?.Name;
-
-    // ── BLK-COMP-01: Trust boundary rejection audit ───────────────────────────
-    // Emits security.trust_boundary.rejected to the Audit Service for every failed
-    // validation so that direct-service probes and header spoofing attempts are
-    // permanently reconstructable under SOC 2 / HIPAA audit.
-    //
-    // Fire-and-observe: caller does NOT await — this never gates the 403 response
-    // on audit delivery success ("persist-first, audit-second" rule).
-    //
-    // Resolution is optional via GetService<IAuditEventClient>() so the helper is
-    // safe to call even in environments that have not registered the audit client
-    // (e.g. unit-test hosts).
-    private static void EmitTrustBoundaryRejectedAudit(
-        HttpContext http,
-        string      reason,
-        string      requestId)
-    {
-        var auditClient = http.RequestServices.GetService<IAuditEventClient>();
-        if (auditClient is null) return;
-
-        _ = auditClient.IngestAsync(new IngestAuditEventRequest
-        {
-            EventType     = "security.trust_boundary.rejected",
-            EventCategory = EventCategory.Security,
-            SourceSystem  = "care-connect",
-            SourceService = "public-network",
-            Visibility    = AuditVisibility.Platform,
-            Severity      = SeverityLevel.Warn,
-            OccurredAtUtc = DateTimeOffset.UtcNow,
-            Action        = "TrustBoundaryRejected",
-            Description   = $"Public request rejected at trust boundary: {reason}.",
-            Outcome       = "denied",
-            Actor = new AuditEventActorDto
-            {
-                Type      = ActorType.Anonymous,
-                IpAddress = http.Connection.RemoteIpAddress?.ToString(),
-            },
-            Scope         = new AuditEventScopeDto { ScopeType = ScopeType.Service },
-            CorrelationId = requestId,
-            Metadata      = JsonSerializer.Serialize(new
-            {
-                reason = reason,
-                path   = http.Request.Path.Value,
-            }),
-            Tags = ["security", "trust-boundary", "rejection"],
-        });
-    }
 }

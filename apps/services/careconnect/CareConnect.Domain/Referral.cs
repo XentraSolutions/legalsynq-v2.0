@@ -106,9 +106,13 @@ public class Referral : AuditableEntity
     // mismatched version are rejected as revoked.
     public int TokenVersion { get; private set; } = 1;
 
+    // ── Referral Attribution (optional; who/what originated the referral) ─
+    public Guid? ReferralAttributionId { get; private set; }
+
     public Provider? Provider { get; private set; }
     public Facility? Facility { get; private set; }
     public Party? SubjectParty { get; private set; }
+    public ReferralAttribution? ReferralAttribution { get; private set; }
 
     private Referral() { }
 
@@ -145,7 +149,8 @@ public class Referral : AuditableEntity
         string? referrerPhone = null,
         Guid? treatmentTypeId = null,
         DateOnly? dateOfAccident = null,
-        Guid? facilityId = null)
+        Guid? facilityId = null,
+        Guid? referralAttributionId = null)
     {
         var now = DateTime.UtcNow;
 
@@ -190,6 +195,7 @@ public class Referral : AuditableEntity
             ReferrerFirmName           = referrerFirmName?.Trim(),
             ReferrerPhone              = referrerPhone?.Trim(),
             TokenVersion               = 1,
+            ReferralAttributionId      = referralAttributionId,
             CreatedByUserId            = createdByUserId,
             UpdatedByUserId            = createdByUserId,
             CreatedAtUtc               = now,

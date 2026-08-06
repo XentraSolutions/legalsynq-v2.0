@@ -294,6 +294,7 @@ export interface PublicReferralRequest {
   notes?:                string;
   urgency?:              string;
   treatmentTypeId?:      string;
+  referralAttributionId?: string;
 }
 
 export interface PublicReferralResponse {

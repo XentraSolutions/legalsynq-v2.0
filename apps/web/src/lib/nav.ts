@@ -52,6 +52,16 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           requiredRoles: [ProductRole.CareConnectNetworkManager],
           hiddenForOrgTypes: [OrgType.LienOwner],
         },
+        // Referral Attribution configuration — tenant admin only. Tenant-portal
+        // configuration, not part of the restricted single-product CareConnect
+        // common portal (careconnect-demo.* / PORTAL_CARECONNECT_SUBDOMAIN).
+        {
+          href: "/careconnect/referral-attributions",
+          label: "Referral Attributions",
+          icon: "ri-price-tag-3-line",
+          adminOnly: true,
+          hiddenInProductPortal: true,
+        },
       ],
     },
   ],
@@ -485,6 +495,7 @@ export function filterNavByAccess(
   isSellMode: boolean,
   orgType?: OrgTypeValue | null,
   isTenantAdmin = false,
+  isProductPortal = false,
 ): NavSection[] {
   return filterNavByRoles(sections, userRoles, isTenantAdmin, orgType)
     .filter((s) => !s.sellModeOnly || isSellMode)
@@ -498,6 +509,7 @@ export function filterNavByAccess(
           item.hiddenForOrgTypes.includes(orgType)
         )
           return false;
+        if (item.hiddenInProductPortal && isProductPortal) return false;
         return true;
       }),
     }))

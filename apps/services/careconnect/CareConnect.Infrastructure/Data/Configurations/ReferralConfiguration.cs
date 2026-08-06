@@ -54,6 +54,9 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         builder.Property(r => r.CreatedByUserId);
         builder.Property(r => r.UpdatedByUserId);
 
+        // Referral Attribution (optional)
+        builder.Property(r => r.ReferralAttributionId);
+
         // Indexes
         builder.HasIndex(r => new { r.TenantId, r.Status })
             .HasDatabaseName("IX_Referrals_TenantId_Status");
@@ -74,6 +77,16 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         builder.HasIndex(r => r.SubjectPartyId)
             .HasDatabaseName("IX_Referrals_SubjectPartyId");
 
+        // Referral Attribution — representative visibility scope hot paths.
+        builder.HasIndex(r => r.ReferralAttributionId)
+            .HasDatabaseName("IX_Referrals_ReferralAttributionId");
+        builder.HasIndex(r => new { r.TenantId, r.ReferralAttributionId })
+            .HasDatabaseName("IX_Referrals_TenantId_ReferralAttributionId");
+        builder.HasIndex(r => new { r.TenantId, r.ReferralAttributionId, r.Status })
+            .HasDatabaseName("IX_Referrals_TenantId_ReferralAttributionId_Status");
+        builder.HasIndex(r => new { r.TenantId, r.ReferralAttributionId, r.CreatedAtUtc })
+            .HasDatabaseName("IX_Referrals_TenantId_ReferralAttributionId_CreatedAtUtc");
+
         // Relationships
         builder.HasOne(r => r.Provider)
                .WithMany()
@@ -88,6 +101,11 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         builder.HasOne(r => r.SubjectParty)
                .WithMany()
                .HasForeignKey(r => r.SubjectPartyId)
+               .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(r => r.ReferralAttribution)
+               .WithMany()
+               .HasForeignKey(r => r.ReferralAttributionId)
                .OnDelete(DeleteBehavior.Restrict);
     }
 }

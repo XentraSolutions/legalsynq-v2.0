@@ -164,6 +164,19 @@ public class ReferralRepository : IReferralRepository
                 r.ReceivingOrganizationId == query.ReceivingOrgId.Value ||
                 (r.Provider != null && r.Provider.OrganizationId == query.ReceivingOrgId.Value));
 
+        if (query.ReferralAttributionId.HasValue)
+            q = q.Where(r => r.ReferralAttributionId == query.ReferralAttributionId.Value);
+
+        // Referral Representative visibility scope — applied last, unconditionally, on top of
+        // whichever branch built `q` above. This is the single enforcement point: every caller
+        // of SearchAsync that sets RestrictedToAttributionIds is scoped here, with no code path
+        // that can reach the return below without passing through this filter.
+        if (query.RestrictedToAttributionIds is not null)
+        {
+            var allowedIds = query.RestrictedToAttributionIds;
+            q = q.Where(r => r.ReferralAttributionId != null && allowedIds.Contains(r.ReferralAttributionId.Value));
+        }
+
         var totalCount = await q.CountAsync(ct);
 
         var skip = (query.Page - 1) * query.PageSize;
@@ -173,6 +186,7 @@ public class ReferralRepository : IReferralRepository
             .Take(query.PageSize)
             .Include(r => r.Provider)
             .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
             .ToListAsync(ct);
 
         return (items, totalCount);
@@ -210,6 +224,24 @@ public class ReferralRepository : IReferralRepository
             .Where(r => r.TenantId == tenantId && r.Id == id)
             .Include(r => r.Provider)
             .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<Referral?> GetByIdForAttributionsAsync(Guid tenantId, Guid id, IReadOnlyList<Guid> allowedAttributionIds, CancellationToken ct = default)
+    {
+        if (allowedAttributionIds.Count == 0)
+            return null;
+
+        return await _db.Referrals
+            .AsNoTracking()
+            .Where(r => r.TenantId == tenantId
+                     && r.Id == id
+                     && r.ReferralAttributionId != null
+                     && allowedAttributionIds.Contains(r.ReferralAttributionId.Value))
+            .Include(r => r.Provider)
+            .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
             .FirstOrDefaultAsync(ct);
     }
 
@@ -220,6 +252,7 @@ public class ReferralRepository : IReferralRepository
             .Where(r => r.Id == id)
             .Include(r => r.Provider)
             .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
             .FirstOrDefaultAsync(ct);
     }
 

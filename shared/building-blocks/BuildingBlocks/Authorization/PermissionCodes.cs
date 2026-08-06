@@ -20,6 +20,10 @@ public static class PermissionCodes
     public const string ScheduleManage         = "SYNQ_CARECONNECT.schedule:manage";
     public const string DashboardRead          = "SYNQ_CARECONNECT.dashboard:read";
 
+    // ── CareConnect: Referral Attribution configuration (tenant admin) ──────────
+    public const string ReferralAttributionManage = "SYNQ_CARECONNECT.referral_attribution:manage";
+    public const string ReferralRepresentativeAccessManage = "SYNQ_CARECONNECT.referral_representative_access:manage";
+
     // ── SynqLien ─────────────────────────────────────────────────────────────
     public const string LienCreate    = "SYNQ_LIENS.lien:create";
     public const string LienOffer     = "SYNQ_LIENS.lien:offer";

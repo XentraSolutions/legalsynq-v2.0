@@ -321,6 +321,105 @@ public sealed class HttpTenantServiceClient : ITenantServiceClient
         }
     }
 
+    // ── GET /api/v1/public/resolve/by-code/{code} ───────────────────────────
+
+    public async Task<Guid?> ResolveTenantIdByCodeAsync(
+        string            tenantCode,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+        {
+            _logger.LogDebug("BLK-CC-01 ResolveTenantIdByCode skipped (BaseUrl not configured) for code '{TenantCode}'.", tenantCode);
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(tenantCode))
+            return null;
+
+        try
+        {
+            using var client = BuildClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.GetAsync(
+                $"api/v1/public/resolve/by-code/{Uri.EscapeDataString(tenantCode)}", cts.Token);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "BLK-CC-01 ResolveTenantIdByCode returned HTTP {Status} for code '{TenantCode}'.",
+                    (int)response.StatusCode, tenantCode);
+                return null;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<TenantByCodeResolutionResponse>(
+                cancellationToken: cts.Token);
+
+            return result is null || result.TenantId == Guid.Empty ? null : result.TenantId;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("BLK-CC-01 ResolveTenantIdByCode timed out for code '{TenantCode}'.", tenantCode);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "BLK-CC-01 ResolveTenantIdByCode failed for code '{TenantCode}'.", tenantCode);
+            return null;
+        }
+    }
+
+    // ── GET /api/v1/public/tenants/{tenantId}/capabilities/{capabilityKey} ─────
+
+    public async Task<bool> IsCapabilityEnabledAsync(
+        Guid              tenantId,
+        string            capabilityKey,
+        CancellationToken ct = default)
+    {
+        if (!_isEnabled)
+        {
+            _logger.LogDebug("BLK-CC-01 IsCapabilityEnabled skipped (BaseUrl not configured) for tenant '{TenantId}', key '{Key}'.", tenantId, capabilityKey);
+            return false;
+        }
+
+        try
+        {
+            using var client = BuildClient();
+            using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+
+            using var response = await client.GetAsync(
+                $"api/v1/public/tenants/{tenantId}/capabilities/{Uri.EscapeDataString(capabilityKey)}", cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "BLK-CC-01 IsCapabilityEnabled returned HTTP {Status} for tenant '{TenantId}', key '{Key}'.",
+                    (int)response.StatusCode, tenantId, capabilityKey);
+                return false;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<CapabilityCheckResponse>(
+                cancellationToken: cts.Token);
+
+            return result?.IsEnabled ?? false;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("BLK-CC-01 IsCapabilityEnabled timed out for tenant '{TenantId}', key '{Key}'.", tenantId, capabilityKey);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "BLK-CC-01 IsCapabilityEnabled failed for tenant '{TenantId}', key '{Key}'.", tenantId, capabilityKey);
+            return false;
+        }
+    }
+
     // ── Shared HTTP client builder ─────────────────────────────────────────────
 
     private HttpClient BuildClient()
@@ -374,6 +473,18 @@ public sealed class HttpTenantServiceClient : ITenantServiceClient
     {
         [JsonPropertyName("displayName")]
         public string? DisplayName { get; set; }
+    }
+
+    private sealed class TenantByCodeResolutionResponse
+    {
+        [JsonPropertyName("tenantId")]
+        public Guid TenantId { get; set; }
+    }
+
+    private sealed class CapabilityCheckResponse
+    {
+        [JsonPropertyName("isEnabled")]
+        public bool IsEnabled { get; set; }
     }
 
     private sealed class TimezoneResponse

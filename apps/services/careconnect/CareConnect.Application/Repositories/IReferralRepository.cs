@@ -8,6 +8,14 @@ public interface IReferralRepository
     Task<(List<Referral> Items, int TotalCount)> SearchAsync(Guid tenantId, GetReferralsQuery query, CancellationToken ct = default);
     Task<Referral?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     /// <summary>
+    /// Referral Representative visibility scope: loads a referral only when it belongs to the
+    /// given tenant AND its ReferralAttributionId is in <paramref name="allowedAttributionIds"/>.
+    /// Returns null for every unauthorized case (not found, wrong tenant, unattributed, attributed
+    /// to a different source) — the caller cannot distinguish "doesn't exist" from "not authorized",
+    /// by design (BuildingBlocks §16: never expose whether an unauthorized referral exists).
+    /// </summary>
+    Task<Referral?> GetByIdForAttributionsAsync(Guid tenantId, Guid id, IReadOnlyList<Guid> allowedAttributionIds, CancellationToken ct = default);
+    /// <summary>
     /// LSCC-005: Loads a referral by ID without tenant scoping.
     /// Used only by public token-based endpoints where no tenant context is available.
     /// </summary>
