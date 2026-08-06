@@ -736,6 +736,7 @@ interface ReferralForm {
   urgency:              ReferralUrgencyValue;
   serviceType:          string;
   treatmentTypeId:      string;
+  referralAttributionId: string;
   notes:                string;
   firmName:             string;
   contactFirstName:     string;
@@ -750,6 +751,7 @@ const EMPTY_FORM: ReferralForm = {
   urgency: 'Normal',
   serviceType: 'General Referral',
   treatmentTypeId: '',
+  referralAttributionId: '',
   notes: '',
   firmName: '', contactFirstName: '', contactLastName: '', email: '', phone: '',
 };
@@ -823,6 +825,7 @@ function ReferralPanel({
   const [hasPortalAccess, setHasPortalAccess] = useState(false);
   const [enrollToken,    setEnrollToken]   = useState<string | null>(null);
   const [treatmentTypes, setTreatmentTypes] = useState<{ id: string; name: string }[]>([]);
+  const [attributionOptions, setAttributionOptions] = useState<{ id: string; firstName: string; lastName: string }[]>([]);
   const [checkingEmail,  setCheckingEmail]  = useState(false);
 
   const hasPhoneValue        = form.phone.trim().length > 0;
@@ -850,6 +853,17 @@ function ReferralPanel({
       .then(r => r.ok ? r.json() : [])
       .then((data: { id: string; name: string }[]) => setTreatmentTypes(data))
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const endpoint = prefillLawFirm
+      ? '/api/careconnect/api/referral-attributions/options'
+      : `/api/public/careconnect/api/public/referral-attributions`;
+    fetch(endpoint, prefillLawFirm ? {} : { headers: { 'X-Tenant-Id': tenantId } })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { id: string; firstName: string; lastName: string }[]) => setAttributionOptions(data))
+      .catch(() => {}); // non-fatal — field simply shows no options
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1014,6 +1028,7 @@ function ReferralPanel({
         serviceType:            form.serviceType || 'General Referral',
         urgency:                form.urgency,
         treatmentTypeId:        form.treatmentTypeId || undefined,
+        referralAttributionId:  form.referralAttributionId || undefined,
         notes:                  form.notes.trim() || undefined,
       } satisfies PublicReferralRequest,
     }));
@@ -1042,6 +1057,7 @@ function ReferralPanel({
             requestedService: payload.serviceType || 'General Referral',
             urgency:          payload.urgency ?? 'Normal',
             treatmentTypeId:  form.treatmentTypeId || undefined,
+            referralAttributionId: form.referralAttributionId || undefined,
             dateOfAccident:   form.patientDateOfAccident || undefined,
             notes:            authNotes,
             referrerScopeSignature,
@@ -1435,6 +1451,21 @@ function ReferralPanel({
                   >
                     <option value="">None</option>
                     {treatmentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </PanelField>
+                <PanelField label="Referral Attribution" hint="optional">
+                  <select
+                    value={form.referralAttributionId}
+                    onChange={e => update('referralAttributionId', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false)}
+                  >
+                    <option value="">Select a referral source</option>
+                    {attributionOptions.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.firstName} {a.lastName}
+                      </option>
+                    ))}
                   </select>
                 </PanelField>
                 <PanelField label="Notes" hint="optional">

@@ -33,6 +33,13 @@ import type {
   AddProviderToNetworkRequest,
   UpdateNetworkProviderRequest,
   SpecialtyOption,
+  ReferralAttribution,
+  ReferralAttributionSummary,
+  CreateReferralAttributionRequest,
+  UpdateReferralAttributionRequest,
+  ReferralAttributionAccessCode,
+  GeneratedReferralAttributionAccessCode,
+  CreateReferralAttributionAccessCodeRequest,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -137,6 +144,53 @@ export const careConnectApi = {
     getAuditTimeline: (id: string) =>
       apiClient.get<ReferralAuditEvent[]>(`/careconnect/api/referrals/${id}/audit`),
   },
+
+  // ── Referral Attribution configuration (tenant admin) ────────────────────────
+  referralAttributions: {
+    /** GET /api/referral-attributions/options — active options for the current tenant (law firm dropdown) */
+    options: () =>
+      apiClient.get<ReferralAttributionSummary[]>(`/careconnect/api/referral-attributions/options`),
+
+    /** GET /api/referral-attributions — full admin list, optionally activeOnly */
+    list: (activeOnly?: boolean) =>
+      apiClient.get<ReferralAttribution[]>(
+        `/careconnect/api/referral-attributions${activeOnly !== undefined ? `?activeOnly=${activeOnly}` : ''}`,
+      ),
+
+    getById: (id: string) =>
+      apiClient.get<ReferralAttribution>(`/careconnect/api/referral-attributions/${id}`),
+
+    create: (body: CreateReferralAttributionRequest) =>
+      apiClient.post<ReferralAttribution>(`/careconnect/api/referral-attributions`, body),
+
+    update: (id: string, body: UpdateReferralAttributionRequest) =>
+      apiClient.patch<ReferralAttribution>(`/careconnect/api/referral-attributions/${id}`, body),
+
+    setActive: (id: string, isActive: boolean) =>
+      apiClient.patch<ReferralAttribution>(`/careconnect/api/referral-attributions/${id}/active`, { isActive }),
+  },
+
+  // ── Referral Representative access codes (tenant admin) ──────────────────────
+  // Admin generates a code scoped to one attribution; the representative enters it
+  // themselves at the anonymous portal — see representative-portal-api.ts, not this
+  // file. No admin-typed user linking. Exactly one active code per attribution —
+  // scoped lookup only, no cross-attribution list.
+  referralAttributionAccessCodes: {
+    /** GET .../by-attribution/{id} — the attribution's single active code, or undefined (204) if none. */
+    getByAttribution: (referralAttributionId: string) =>
+      apiClient.get<ReferralAttributionAccessCode | undefined>(
+        `/careconnect/api/referral-representative-access-codes/by-attribution/${referralAttributionId}`,
+      ),
+
+    generate: (body: CreateReferralAttributionAccessCodeRequest) =>
+      apiClient.post<GeneratedReferralAttributionAccessCode>(`/careconnect/api/referral-representative-access-codes`, body),
+
+    setActive: (id: string, isActive: boolean) =>
+      apiClient.patch<ReferralAttributionAccessCode>(`/careconnect/api/referral-representative-access-codes/${id}/active`, { isActive }),
+  },
+
+  // Referral Representative Portal is fully anonymous (no login) — see
+  // apps/web/src/lib/representative-portal-api.ts for its client, not this file.
 
   adminReferrals: {
     getHistory: (id: string) =>

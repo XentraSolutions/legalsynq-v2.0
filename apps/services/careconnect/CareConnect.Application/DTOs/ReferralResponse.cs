@@ -56,4 +56,7 @@ public class ReferralResponse
     // Type of Treatment — set by Referrer at creation.
     public Guid?   TreatmentTypeId   { get; set; }
     public string? TreatmentTypeName { get; set; }
+
+    // Referral Attribution — who or what originated this referral. Null = "Not specified".
+    public ReferralAttributionSummary? ReferralAttribution { get; set; }
 }

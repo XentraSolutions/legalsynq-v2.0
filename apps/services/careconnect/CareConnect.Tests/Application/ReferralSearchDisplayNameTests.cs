@@ -154,6 +154,7 @@ public class ReferralSearchDisplayNameTests
             NullLogger<ReferralService>.Instance,
             new Mock<IHttpContextAccessor>().Object,
             new Mock<IReferralAttachmentRepository>().Object,
+            new Mock<IReferralAttributionRepository>().Object,
             activationRequests: null);
     }
 

@@ -238,6 +238,8 @@ Common roles include:
 
 - System roles: `PlatformAdmin`, `TenantAdmin`.
 - CareConnect roles: `CARECONNECT_REFERRER`, `CARECONNECT_RECEIVER`, `CARECONNECT_NETWORK_MANAGER`.
+  (The Referral Representative Portal is fully anonymous — no login, no role; access is via a
+  code re-verified on every request, see `apps/services/careconnect/README.md`.)
 - SynqLien roles: `SYNQLIEN_SELLER`, `SYNQLIEN_BUYER`, `SYNQLIEN_HOLDER`.
 - SynqFund roles: `SYNQFUND_REFERRER`, `SYNQFUND_FUNDER`, `SYNQFUND_APPLICANT_PORTAL`.
 - Xenia roles: `XENIA_USER`, `XENIA_ADMIN`.

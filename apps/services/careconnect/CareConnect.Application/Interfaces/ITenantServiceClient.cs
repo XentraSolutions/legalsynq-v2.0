@@ -65,6 +65,35 @@ public interface ITenantServiceClient
     Task<string?> GetTimezoneAsync(
         Guid              tenantId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Resolves a tenant ID from a tenant code.
+    /// Calls GET /api/v1/public/resolve/by-code/{code} on the Tenant service.
+    ///
+    /// Used for idempotent, environment-portable seed operations (e.g. the initial
+    /// Referral Attribution seed) that must not hardcode a tenant GUID.
+    ///
+    /// Returns null when the code does not resolve, the Tenant service is unreachable,
+    /// or BaseUrl is not configured.
+    /// </summary>
+    Task<Guid?> ResolveTenantIdByCodeAsync(
+        string            tenantCode,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Checks a tenant-scoped feature capability via the Tenant service's existing
+    /// capability store (Tenant.Domain.TenantCapability) — the platform's established
+    /// tenant-feature system. Used for gates such as
+    /// "careconnect.referral_representative_portal" rather than a bespoke flag mechanism.
+    ///
+    /// Returns false — never throws — on any infrastructure failure, missing configuration,
+    /// or unconfigured capability, so an unreachable Tenant service fails closed (disabled)
+    /// rather than silently authorizing representative portal access.
+    /// </summary>
+    Task<bool> IsCapabilityEnabledAsync(
+        Guid              tenantId,
+        string            capabilityKey,
+        CancellationToken ct = default);
 }
 
 // ── Result types ───────────────────────────────────────────────────────────────

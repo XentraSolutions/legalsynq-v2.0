@@ -10,6 +10,7 @@ using CareConnect.Api.Endpoints;
 using CareConnect.Api.Middleware;
 using CareConnect.Api.Options;
 using CareConnect.Application.DTOs;
+using CareConnect.Application.Interfaces;
 using CareConnect.Infrastructure;
 using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -235,6 +236,52 @@ app.Logger.LogInformation(
     app.Logger.LogInformation("CareConnect database migrations applied successfully.");
 }
 
+// ── Referral Attribution seed (idempotent) ────────────────────────────────
+// Configured via ReferralAttributionSeed:TenantCode in appsettings/secrets — empty
+// (the default) is a no-op, so this never runs unless an environment explicitly
+// configures the tenant that should receive the initial attribution (e.g. the
+// CareConnect tenant that hired Cam Perry). Resolves the tenant by code via the
+// Tenant service rather than a hardcoded GUID, so the same config works across
+// dev/staging/prod without editing code per environment. Safe to run on every
+// startup — ReferralAttributionService.SeedAsync checks-then-creates on
+// (TenantId, Code) and no-ops if already seeded.
+{
+    var seedTenantCode = builder.Configuration["ReferralAttributionSeed:TenantCode"];
+    if (!string.IsNullOrWhiteSpace(seedTenantCode))
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var tenantClient = scope.ServiceProvider.GetRequiredService<ITenantServiceClient>();
+            var attributionService = scope.ServiceProvider.GetRequiredService<IReferralAttributionService>();
+
+            var seedTenantId = await tenantClient.ResolveTenantIdByCodeAsync(seedTenantCode, CancellationToken.None);
+            if (seedTenantId is null)
+            {
+                app.Logger.LogWarning(
+                    "ReferralAttributionSeed: tenant code '{TenantCode}' did not resolve — skipping seed.", seedTenantCode);
+            }
+            else
+            {
+                await attributionService.SeedAsync(seedTenantId.Value, new CreateReferralAttributionRequest
+                {
+                    FirstName = builder.Configuration["ReferralAttributionSeed:FirstName"] ?? "Cam",
+                    LastName = builder.Configuration["ReferralAttributionSeed:LastName"] ?? "Perry",
+                    Code = builder.Configuration["ReferralAttributionSeed:Code"] ?? "CAM_PERRY",
+                    IsActive = true,
+                    DisplayOrder = int.TryParse(builder.Configuration["ReferralAttributionSeed:DisplayOrder"], out var order) ? order : 1,
+                }, CancellationToken.None);
+                app.Logger.LogInformation(
+                    "ReferralAttributionSeed: seed check completed for tenant '{TenantId}' (code '{TenantCode}').", seedTenantId, seedTenantCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "ReferralAttributionSeed: seed failed (non-fatal) for tenant code '{TenantCode}'.", seedTenantCode);
+        }
+    }
+}
+
 // ── Migration coverage self-test ─────────────────────────────────────────
 // Compares every EF-mapped column against the live schema and logs an ERROR
 // if any are missing. Guards against the regression behind Task #58 —
@@ -351,6 +398,9 @@ app.MapPublicNetworkEndpoints();       // CC2-INT-B07: public network surface (a
 app.MapEnrollmentEndpoints();          // CC2-ENROLL: provider self-enrollment (anonymous)
 app.MapReferralThreadEndpoints();      // Public referral comment thread (token-authenticated)
 app.MapProviderOnboardingEndpoints();  // CC2-INT-B09: provider tenant self-onboarding
+app.MapReferralAttributionEndpoints();          // Referral Attribution configuration (tenant admin)
+app.MapReferralAttributionAccessCodeEndpoints(); // Referral Representative access codes (tenant admin)
+app.MapPublicRepresentativeEndpoints();          // Referral Representative Portal (anonymous, code-gated)
 
 app.Run();
 

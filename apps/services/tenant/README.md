@@ -43,6 +43,7 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 | `PUT` | `/api/internal/sync` | Idempotent upsert from Identity dual-write |
 | `GET` | `/api/resolution/{code}` | Resolve tenant by code |
 | `GET` | `/api/branding/{tenantId}` | Tenant branding |
+| `GET` | `/api/v1/public/tenants/{tenantId}/capabilities/{capabilityKey}` | Public/service-to-service single-capability read (boolean) — used by product services (e.g. CareConnect's Referral Representative Portal flag) to check a tenant feature without AdminOnly credentials |
 
 ## Database
 

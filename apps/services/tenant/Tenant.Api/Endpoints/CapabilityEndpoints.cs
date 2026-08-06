@@ -72,6 +72,22 @@ public static class CapabilityEndpoints
             return Results.NoContent();
         });
 
+        // ── Public/service-to-service: single capability read ───────────────────
+        // Used by product services (e.g. CareConnect) to gate tenant-scoped feature
+        // flags such as "referral_representative_portal_enabled" without requiring
+        // AdminOnly credentials. Exposes only a boolean — never the full capability
+        // catalog — for the one key requested.
+        app.MapGet("/api/v1/public/tenants/{tenantId:guid}/capabilities/{capabilityKey}", async (
+            Guid tenantId,
+            string capabilityKey,
+            ICapabilityService service,
+            CancellationToken ct) =>
+        {
+            var isEnabled = await service.IsEnabledAsync(tenantId, capabilityKey, ct);
+            return Results.Ok(new { capabilityKey, isEnabled });
+        })
+        .AllowAnonymous();
+
         return app;
     }
 }

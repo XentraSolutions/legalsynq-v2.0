@@ -13,13 +13,17 @@ Healthcare provider directory, referral management, and appointment scheduling.
 - Attachment management for referrals and appointments
 - Referral and appointment notes
 - Notification delivery on key lifecycle events
+- Configurable Referral Attribution (referral-source tracking) and the restricted,
+  read-only Referral Representative Portal (see "Referral Attribution & Referral
+  Representative Portal" below)
 
 ## Layer Structure
 
 ```
 CareConnect.Api/           Endpoints, middleware, Program.cs (port 5003)
 CareConnect.Application/   Interfaces, DTOs, services
-CareConnect.Domain/        Provider, Specialty, Referral, Appointment, Availability, Attachment
+CareConnect.Domain/        Provider, Specialty, Referral, Appointment, Availability, Attachment,
+                            ReferralAttribution, ReferralAttributionAccessCode
 CareConnect.Infrastructure/ DbContext, repositories, EF migrations
 CareConnect.Tests/         Tests
 ```
@@ -43,11 +47,97 @@ CareConnect.Tests/         Tests
 | `GET` | `/api/assistant-tools/providers/search` | Bearer | Assistant-only provider lookup |
 | `GET` | `/api/assistant-tools/referrers/search` | Bearer | Assistant-only referrer lookup |
 | `GET` | `/api/careconnect/appointments` | Bearer | List appointments |
+| `GET` | `/api/referral-attributions/options` | Bearer | Active Referral Attribution options for the caller's tenant (Law Firm Portal dropdown) |
+| `GET`/`POST`/`PATCH` | `/api/referral-attributions` | PlatformOrTenantAdmin | Tenant admin CRUD for Referral Attribution options |
+| `POST`/`PATCH`/`DELETE` | `/api/referral-representative-access-codes` | PlatformOrTenantAdmin | Tenant admin: generate/revoke a representative access code (no user selection) |
+| `GET` | `/api/referral-representative-access-codes/by-attribution/{id}` | PlatformOrTenantAdmin | The single active code for one attribution, or 204 if none — exactly one active code per attribution is allowed |
+| `POST` | `/api/public/representative/verify` | Anonymous | Representative Portal — stateless access-code check, returns the named attribution |
+| `GET` | `/api/public/representative/referrals` | Anonymous (`?code=`) | Representative Portal — paginated referral list, code re-verified per request |
+| `GET` | `/api/public/representative/referrals/{id}` | Anonymous (`?code=`) | Representative Portal — restricted referral detail |
+| `GET` | `/api/public/representative/referral-metrics` | Anonymous (`?code=`) | Representative Portal — dashboard metrics |
 | `POST` | `/api/careconnect/appointments` | Bearer | Book appointment |
 | `GET` | `/api/public/careconnect/network` | Anonymous | Public provider network |
 | `PUT` | `/api/networks/{networkId}/providers/{providerId}` | Bearer | Edit a provider from a tenant network after membership validation |
 | `DELETE` | `/api/networks/{networkId}/providers/{id}` | Bearer | Soft-delete a provider-location network membership |
 | `POST` | `/api/networks/{networkId}/providers/import` | Development-only | CSV/XLSX provider migration/import into a tenant network |
+
+### Referral Attribution & Referral Representative Portal
+
+`ReferralAttribution` (`cc_ReferralAttributions`) is a tenant-scoped, configurable label for who or
+what originated a referral (a representative, a campaign, a partner) — set on `referrals.ReferralAttributionId`
+(nullable). It is optional on Law Firm Portal submission (blank default, never auto-selected) and,
+once set, is immutable — set exactly once, at submission time
+(`ReferralService.CreateAsync` / `ResolveAttributionForSubmissionAsync`). There is deliberately no
+admin edit path for it; the admin referral view shows it read-only alongside the rest of the
+referral's details.
+
+`ReferralAttributionAccessCode` (`cc_ReferralAttributionAccessCodes`) grants read-only representative
+access via a generated code, not admin-typed user linking and not a login. A tenant admin generates a
+code scoped to one attribution (optionally bounded by `AccessStartAtUtc`/`AccessEndAtUtc`) and shares
+it with the intended representative out of band; the code is revealed once, in the generate response,
+and hashed (SHA-256 + `ReferralAttributionAccessCode:Pepper`) at rest — the plaintext is never
+persisted. There is no "redeemer" and nothing is stamped when a code is used: the Representative Portal
+is fully anonymous, and the representative simply presents the raw code on every request. The backend
+re-verifies it from scratch each time (`IReferralAttributionAccessCodeService.VerifyAsync`,
+stateless — no mutation), so a revoked code or a deactivated attribution takes effect on the very next
+request, not on next login (there is no login).
+
+**Exactly one active code per attribution.** `GenerateAsync` rejects a new code with
+`ConflictException("ACTIVE_CODE_EXISTS")` (409) when one is already active for that attribution —
+`SetActiveAsync(isActive: false)` (revoke) must run first. MySQL has no filtered unique index to
+enforce this at the schema level, so it's an application-layer check (`CountActiveAsync`); there is a
+narrow TOCTOU window if two generate requests for the same attribution land concurrently.
+
+**Deactivating an attribution cuts off its code's access immediately**, even if the code is otherwise
+active and within its date window — `IsValidAt(nowUtc, attributionIsActive)` takes the attribution's
+current state as an explicit parameter (resolved via `IReferralAttributionRepository` in
+`ReferralAttributionAccessCodeService.VerifyAsync`, never through the entity's own private-set
+`ReferralAttribution` navigation property, which only EF's `Include()` can populate and would otherwise
+make this check silently dependent on query shape). Reactivating the attribution restores access
+without a new code.
+
+There is no product role, no login, and no platform session anywhere on this surface — the access
+code is the sole credential, checked on every single request. `PublicRepresentativeEndpoints`
+(`/api/public/representative/*`) is modeled directly on `PublicNetworkEndpoints`' anonymous pattern:
+`.AllowAnonymous()`, rate-limited, and gated by the same two-layer trust boundary (gateway-secret +
+HMAC-signed tenant ID) that the public provider directory uses — see `PublicTrustBoundary`
+(`CareConnect.Api/Helpers/PublicTrustBoundary.cs`), extracted from `PublicNetworkEndpoints` so both
+anonymous surfaces share one implementation. Unlike the public network directory — whose access-code
+gate is a one-time, client-side-only UX unlock; the underlying data endpoints stay open regardless of
+whether a code was ever verified — referral data is PII (client name, DOB, phone, email), so every
+representative read re-verifies the caller's code server-side on every single call. Nothing is cached
+and nothing is trusted from a prior request.
+
+The frontend lives at `apps/web/src/app/careconnect/representative/` (`/careconnect/representative/*`
+— a top-level sibling of `apps/web/src/app/careconnect/network/`, not under `app/(platform)/careconnect/`,
+so it never inherits that route group's login-gated layout; structurally isolated from the admin shell —
+it does not import `AppShell`/`PRODUCT_NAV`). It resolves the tenant from the request subdomain the
+same way `/careconnect/network` does, and gates its pages behind `RepresentativeAccessCodeGate`
+(`apps/web/src/components/careconnect/representative-access-code-gate.tsx`), which persists the raw
+code client-side (not just an "unlocked" flag) and resends it on every data call via
+`representative-portal-api.ts`. (An earlier iteration required the caller to be logged in and gated
+the portal behind a `CARECONNECT_REFERRAL_REPRESENTATIVE` product role on top of the access code —
+both were removed: the role reintroduced the same engineering-provisioning step the code model exists
+to eliminate, and the login requirement contradicted the product's own "share a code, no account
+needed" pitch.)
+
+The tenant-admin configuration screen (`/careconnect/referral-attributions`) lives directly in the
+main CareConnect product nav (`PRODUCT_NAV.careconnect` in `apps/web/src/lib/nav.ts`,
+`adminOnly: true`), not under the separate `/careconnect/admin/*` area used by other operational
+tooling (referral monitor, blocked-provider queue, provisioning). There is no separate "Referral
+Representatives" nav item — the list at `/careconnect/referral-attributions` shows only First
+Name / Last Name / Status plus a kebab menu (View, Activate/Deactivate); **View** navigates to
+`/careconnect/referral-attributions/{id}`, which is where the full field set, the Edit action, and
+the access-code widget (generate/revoke) all live. Folding the code-generation UI into the
+attribution's own detail page — rather than a standalone cross-attribution admin page — is what
+lets "one attribution, one active code" be enforced simply, both in the UI (Generate only shows
+when there's no active code) and in the API (the 409 conflict above).
+
+Every representative-facing read is gated by the tenant feature flag before the code is even checked —
+a tenant capability on the platform's existing capability store
+(`careconnect.referral_representative_portal`, read via
+`GET /api/v1/public/tenants/{tenantId}/capabilities/{capabilityKey}` on the Tenant service), disabled
+by default.
 
 ### Provider specialties
 
