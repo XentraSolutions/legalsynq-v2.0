@@ -193,13 +193,18 @@ fall back to tenant email plus provider/facility context. Same NPI plus a differ
 and another network membership, not another provider.
 
 The import accepts canonical headers and workbook-style headers. Required usable location fields are `email`, `phone`,
-address, city, state, and ZIP. `tenantId` is optional when the file is imported through a specific
-network; missing row tenant IDs default to the target network tenant, while supplied mismatched tenant IDs are rejected.
-`Medical Provider` maps to provider title/name parsing. If
-`Medical Provider` is blank, `Medical Facility` becomes the organization-level provider identity. `Medical Facility`
-maps to `Facility.Name` and provider organization name. Address columns map to `Facility`; `Address 2` is appended to
-`Address 1` during parsing because CareConnect currently has one facility street-address field. `NPI` maps only to
-`Provider.Npi`.
+address, city, and state. ZIP is required per row unless that row is a mobile provider (see below), so the ZIP/`postalCode`
+column itself is optional at the file level — a file made up entirely of mobile providers can omit it. `tenantId` is
+optional when the file is imported through a specific network; missing row tenant IDs default to the target network
+tenant, while supplied mismatched tenant IDs are rejected.
+Provider name is recommended as discrete `Title`, `First Name`, and `Last Name` columns (canonical `title`/`firstName`/`lastName`).
+The single-column `Medical Provider`/`providerName` header is still accepted for backward compatibility — when supplied
+without discrete columns, it's split into title/first/last (leading `Dr.`/`Mr.`/`Mrs.`/`Ms.`/`Prof.` becomes `title`, the
+last remaining token becomes `lastName`, everything else becomes `firstName`); discrete `Title`/`First Name`/`Last Name`
+values always take precedence when both are present in the same file. If no provider name is resolved, `Medical Facility`
+becomes the organization-level provider identity. `Medical Facility` maps to `Facility.Name` and provider organization
+name. Address columns map to `Facility`; `Address 2` is appended to `Address 1` during parsing because CareConnect
+currently has one facility street-address field. `NPI` maps only to `Provider.Npi`.
 
 Specialty values may be codes or names such as `Pain`, `Spine`, `Physical Therapy`, `Neuro`, `Imaging`,
 `Chiropractor`, and `Extremities`; `Chiro` is normalized to `Chiropractor`. Category/provider-type columns are still
