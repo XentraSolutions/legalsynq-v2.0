@@ -10,6 +10,7 @@ import {
   useCaseLiens,
   CASE_PAYMENTS_QUERY_KEY,
   SETTLEMENT_PAYMENT_DETAILS_QUERY_KEY,
+  useUpdateServicingDetails,
 } from "@/hooks/use-case-liens";
 import { useSettlementHistory } from "@/hooks/use-settlement-history";
 import { LayoutSplit, type PanelMode } from "@/components/lien/layout-split";
@@ -198,6 +199,8 @@ export function ServicingTab({
     fetchRoleCodes();
   }, []);
 
+  const { mutate: updateCase, isPending: isUpdating } =
+    useUpdateServicingDetails();
   const handleSaveServicingDetails = async () => {
     const payload = {
       caseId: caseDetail.id,
@@ -209,14 +212,17 @@ export function ServicingTab({
       caseManager: currentCaseManager,
     };
 
-    await servicingService.updateDetails(payload);
-    addToast({
-      type: "success",
-      title: "Servicing Details Saved",
-      description: "Your servicing details were saved.",
+    await updateCase(payload, {
+      onSuccess: () => {
+        addToast({
+          type: "success",
+          title: "Servicing Details Saved",
+          description: "Your servicing details were saved.",
+        });
+        setSwitchedLawFirm(false);
+        setSavedCaseStatus(caseStatus);
+      },
     });
-    setSwitchedLawFirm(false);
-    setSavedCaseStatus(caseStatus);
   };
 
   const handleEditPayment = (p: any) => {
@@ -329,6 +335,7 @@ export function ServicingTab({
           caseManagerRoleCode={caseManagerRoleCode}
           canSave={canSaveServicingDetails}
           onSave={handleSaveServicingDetails}
+          isSaving={isUpdating}
         />
       )}
 

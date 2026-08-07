@@ -1,7 +1,11 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { CaseDetail, CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
+import type {
+  CaseDetail,
+  CaseLienItem,
+  CaseLienItemMetadata,
+} from "@/lib/cases";
 import type { PanelMode } from "@/components/lien/layout-split";
 import type { DropdownOption } from "@/lib/lookup/lookup.types";
 import type { PaginationMeta } from "@/lib/billofsale";
@@ -23,7 +27,6 @@ export type CaseDetailContextValue = {
   canEdit: boolean;
   panelMode: PanelMode;
   setPanelMode: (m: PanelMode) => void;
-  fetchCase: () => Promise<void>;
   openMedicalLienModal: (open: boolean) => void;
 };
 
