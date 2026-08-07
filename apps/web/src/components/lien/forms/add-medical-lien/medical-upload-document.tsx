@@ -91,14 +91,13 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     isOpen: boolean;
   }>({ id: "", isOpen: false });
 
-  const documentTypes =
-    lookup?.DocumentCategory.map((d) => {
-      return {
-        key: d.id,
-        value: d.id,
-        label: d.name,
-      };
-    }) ?? [];
+  const documentTypes = lookup?.DocumentCategory.map((d) => {
+    return {
+      key: d.id,
+      value: d.id,
+      label: d.name,
+    };
+  });
   const [documents, setDocuments] = useState<any[]>(data);
   const [files, setFiles] = useState<File[] | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -211,7 +210,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     );
   };
   const getDocumentNameById = (id: string) => {
-    return documentTypes.find((t) => t.key == id)?.label;
+    return documentTypes?.find((t) => t.key == id)?.label;
   };
   useEffect(() => {
     if (data?.length > 0) {
@@ -242,11 +241,8 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         <Field
           label="Document Type"
           value={form.documentType}
-          options={documentTypes}
-          onChange={(v: string) =>
-            setForm({ ...form, documentType: v.toString() })
-          }
-          error={errors.documentType}
+          options={documentTypes ?? []}
+          onChange={(v: string) => setForm({ ...form, documentType: v })}
           placeholder=""
           type="select"
         />
