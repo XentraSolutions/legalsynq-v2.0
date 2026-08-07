@@ -21,6 +21,7 @@ export function ServicingDetailsSection({
   caseManagerRoleCode,
   canSave,
   onSave,
+  isSaving,
 }: {
   caseStatus: string;
   onCaseStatusChange: (v: string) => void;
@@ -39,6 +40,7 @@ export function ServicingDetailsSection({
   caseManagerRoleCode?: string;
   canSave: boolean;
   onSave: () => void;
+  isSaving: boolean;
 }) {
   return (
     <CollapsibleSection title="Servicing Details" icon="ri-settings-3-line">
@@ -137,12 +139,12 @@ export function ServicingDetailsSection({
 
         <div className="pt-2 flex items-center gap-3">
           <button
-            disabled={!canSave}
+            disabled={!canSave || isSaving}
             onClick={onSave}
             className="px-6 py-2.5 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <i className="ri-save-line text-sm" />
-            Save
+            {isSaving ? "Saving..." : "Save"}
           </button>
         </div>
       </div>

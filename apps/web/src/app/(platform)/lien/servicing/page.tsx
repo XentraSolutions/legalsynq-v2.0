@@ -283,35 +283,7 @@ export default function ServicingPage() {
           ) : undefined
         }
       />
-      <FilterToolbar
-        searchPlaceholder="Search tasks..."
-        onSearch={setSearch}
-        filters={[
-          {
-            label: "All Statuses",
-            value: statusFilter,
-            onChange: setStatusFilter,
-            options: [
-              { value: "Pending", label: "Pending" },
-              { value: "InProgress", label: "In Progress" },
-              { value: "Completed", label: "Completed" },
-              { value: "Escalated", label: "Escalated" },
-              { value: "OnHold", label: "On Hold" },
-            ],
-          },
-          {
-            label: "All Priorities",
-            value: priorityFilter,
-            onChange: setPriorityFilter,
-            options: [
-              { value: "Low", label: "Low" },
-              { value: "Normal", label: "Normal" },
-              { value: "High", label: "High" },
-              { value: "Urgent", label: "Urgent" },
-            ],
-          },
-        ]}
-      />
+      <FilterToolbar searchPlaceholder="Search tasks..." onSearch={setSearch} />
 
       <BulkResultBanner
         result={bulkResult}

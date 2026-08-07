@@ -206,7 +206,7 @@ export function useReportFilterOptions({
   reportType,
   filterField,
   keyword = "",
-  enabled = true,
+  enabled,
 }: {
   reportType: "CASES" | "LIENS" | "COMBINE";
   filterField: string;
@@ -214,7 +214,13 @@ export function useReportFilterOptions({
   enabled?: boolean;
 }) {
   const query = useQuery({
-    queryKey: ["report-filter-options", reportType, filterField, keyword],
+    queryKey: [
+      "report-filter-options",
+      reportType,
+      filterField,
+      keyword,
+      enabled,
+    ],
 
     queryFn: async () => {
       const filters = await lienReportsService.getFilterOptions({
@@ -232,8 +238,7 @@ export function useReportFilterOptions({
       );
     },
 
-    enabled: Boolean(filterField),
-
+    enabled: enabled,
     staleTime: 0,
 
     placeholderData: undefined,
@@ -241,9 +246,6 @@ export function useReportFilterOptions({
 
   return {
     options: query.data ?? [],
-
-    loadOptions: query.refetch,
-
     isLoadingFilter: query.isLoading || query.isFetching,
     refetch: query.refetch,
   };

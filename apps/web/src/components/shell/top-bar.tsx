@@ -108,9 +108,12 @@ export function TopBar() {
       <div className="flex-1" />
 
       {/* ── Notification bell ──────────────────────────────────────────── */}
-      {session && hasProductAccess(session, "xenia") && <XeniaAssistantDrawer />}
+      {session && hasProductAccess(session, "xenia") && (
+        <XeniaAssistantDrawer />
+      )}
 
-      <NotificationBell />
+      {/** COMMENTED THIS AS THE FEATURE IS STILL NOT AVAILABLE PER QA TICKET: LSV3-862 Tenant Portal: Hide navigation items for features that are currently under development */}
+      {/* <NotificationBell /> */}
 
       {/* ── User menu ────────────────────────────────────────────────────────── */}
       {/* Always render something so the top-right corner never goes blank:    */}
@@ -129,7 +132,10 @@ export function TopBar() {
   );
 }
 
-function hasProductAccess(session: PlatformSession, productId: string): boolean {
+function hasProductAccess(
+  session: PlatformSession,
+  productId: string,
+): boolean {
   const productList = session.userProducts?.length
     ? session.userProducts
     : (session.enabledProducts ?? []);
@@ -336,7 +342,8 @@ function UserMenu({
 }: UserMenuProps & { logout: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const hideActivityLog = isEligibleForCareConnectCommonPortal(session);
+  /** COMMENTED THIS AS THE FEATURE IS STILL NOT AVAILABLE PER QA TICKET: LSV3-862 Tenant Portal: Hide navigation items for features that are currently under development */
+  const hideActivityLog = true; //isEligibleForCareConnectCommonPortal(session);
 
   useEffect(() => {
     if (!open) return;

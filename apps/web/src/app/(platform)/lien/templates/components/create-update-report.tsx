@@ -324,50 +324,50 @@ export default function CreateUpdateReport({
   const plaintiffFilter = useReportFilterOptions({
     reportType: form.reportType,
     filterField: "plaintiff",
-    keyword: debouncedSearch,
-    enabled: false,
+    keyword: filterField === "plaintiff" ? debouncedSearch : "",
+    enabled: filterField === "plaintiff",
   });
 
   const medicalProviderFilter = useReportFilterOptions({
     reportType: form.reportType,
     filterField: "medicalprovider",
-    keyword: debouncedSearch,
-    enabled: false,
+    keyword: filterField === "medicalprovider" ? debouncedSearch : "",
+    enabled: filterField === "medicalprovider",
   });
 
   const lawFirmFilter = useReportFilterOptions({
     reportType: form.reportType,
     filterField: "lawfirm",
-    keyword: debouncedSearch,
-    enabled: false,
+    keyword: filterField === "lawfirm" ? debouncedSearch : "",
+    enabled: filterField === "lawfirm",
   });
 
   const fundingCompanyFilter = useReportFilterOptions({
     reportType: form.reportType,
     filterField: "fundingcompany",
-    keyword: debouncedSearch,
-    enabled: false,
+    keyword: filterField === "fundingcompany" ? debouncedSearch : "",
+    enabled: filterField === "fundingcompany",
   });
 
   const medicalFacilityFilter = useReportFilterOptions({
     reportType: form.reportType,
     filterField: "medicalfacility",
-    keyword: debouncedSearch,
-    enabled: false,
+    keyword: filterField === "medicalfacility" ? debouncedSearch : "",
+    enabled: filterField === "medicalfacility",
   });
 
   const caseManagerFilter = useReportFilterOptions({
     reportType: form.reportType,
     filterField: "casemanager",
-    keyword: debouncedSearch,
-    enabled: false,
+    keyword: filterField === "casemanager" ? debouncedSearch : "",
+    enabled: filterField === "casemanager",
   });
 
   const attorneyFilter = useReportFilterOptions({
     reportType: form.reportType,
     filterField: "attorney",
-    keyword: debouncedSearch,
-    enabled: false,
+    keyword: filterField === "attorney" ? debouncedSearch : "",
+    enabled: filterField === "attorney",
   });
   const fetchData = useCallback(async () => {
     const [caseStatusRes, liensStatusRes] = await Promise.allSettled([
@@ -400,7 +400,6 @@ export default function CreateUpdateReport({
     fetchData();
     fetchConfig();
   }, [mode]);
-  useEffect(() => {}, [data]);
 
   useEffect(() => {
     if (currentStep == 0) {
@@ -855,7 +854,9 @@ export default function CreateUpdateReport({
                   })
                 }
                 type="select"
-                onOpen={() => setfilterField("lienStatus")}
+                onOpen={() => {
+                  // setfilterField("lienStatus");
+                }}
                 onSearchChange={(e) => {
                   setSearchSelectInput(e);
                 }}
@@ -890,6 +891,7 @@ export default function CreateUpdateReport({
               multiple
               onOpen={() => {
                 setSearchSelectInput("");
+                setfilterField("lawfirm");
                 lawFirmFilter.refetch();
               }}
               onSearchChange={setSearchSelectInput}
@@ -911,6 +913,7 @@ export default function CreateUpdateReport({
               multiple
               onOpen={() => {
                 setSearchSelectInput("");
+                setfilterField("plaintiff");
                 plaintiffFilter.refetch();
               }}
               onSearchChange={setSearchSelectInput}
@@ -932,6 +935,7 @@ export default function CreateUpdateReport({
               multiple
               onOpen={() => {
                 setSearchSelectInput("");
+                setfilterField("attorney");
                 attorneyFilter.refetch();
               }}
               onSearchChange={setSearchSelectInput}
@@ -953,6 +957,7 @@ export default function CreateUpdateReport({
               multiple
               onOpen={() => {
                 setSearchSelectInput("");
+                setfilterField("fundingcompany");
                 fundingCompanyFilter.refetch();
               }}
               onSearchChange={setSearchSelectInput}
@@ -973,6 +978,7 @@ export default function CreateUpdateReport({
               multiple
               onOpen={() => {
                 setSearchSelectInput("");
+                setfilterField("medicalfacility");
                 medicalFacilityFilter.refetch();
               }}
               onSearchChange={setSearchSelectInput}
@@ -994,6 +1000,7 @@ export default function CreateUpdateReport({
               multiple
               onOpen={() => {
                 setSearchSelectInput("");
+                setfilterField("casemanager");
                 caseManagerFilter.refetch();
               }}
               onSearchChange={setSearchSelectInput}
@@ -1014,6 +1021,7 @@ export default function CreateUpdateReport({
               multiple
               onOpen={() => {
                 setSearchSelectInput("");
+                setfilterField("medicalprovider");
                 medicalProviderFilter.refetch();
               }}
               onSearchChange={setSearchSelectInput}

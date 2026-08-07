@@ -158,12 +158,6 @@ export default function CasesPage() {
     return `CASE-${year}-${paddedCount}`;
   }, [showCreate, pagination]);
 
-  const fetchCases = () => {
-    queryClient.invalidateQueries({
-      queryKey: ["cases"],
-    });
-  };
-
   const exportCases = async () => {
     const response = await casesService.exportCases({
       caseId: null,
@@ -195,9 +189,7 @@ export default function CasesPage() {
     setPagination((p) => ({ ...p, page: 1 }));
   }, [sorting]);
 
-  useEffect(() => {
-    // fetchCases();
-  }, [pagination.page, search]);
+  useEffect(() => {}, [pagination.page, search]);
 
   const canEdit = ra.can("case:edit");
 
@@ -214,32 +206,6 @@ export default function CasesPage() {
 
   const handleApplyFilter = (next: CasesFilterValues) => {
     setFilters(next);
-  };
-
-  const handleBulkAction = (actionKey: string) => {
-    const action = BULK_ACTIONS.find((a) => a.key === actionKey);
-    if (action) setBulkAction(action);
-  };
-
-  const executeBulkAction = async () => {
-    if (!bulkAction) return;
-    if (!cases) return;
-    setBulkLoading(true);
-    const result = await executeBulk(selection.ids, async (id) => {
-      const caseItem = cases.items.find((c) => c.id === id);
-      if (!caseItem) throw new Error("Case not found in current list");
-      const idx = STATUSES.indexOf(caseItem.status);
-      if (idx >= STATUSES.length - 1)
-        throw new Error(
-          `Case is already "${STATUS_LABELS[caseItem.status] || caseItem.status}"`,
-        );
-      await casesService.updateCaseStatus(id, STATUSES[idx + 1]);
-    });
-    setBulkLoading(false);
-    setBulkAction(null);
-    setBulkResult(result);
-    selection.clear();
-    fetchCases();
   };
 
   const allIds = cases?.items.map((c) => c.id) ?? [];
