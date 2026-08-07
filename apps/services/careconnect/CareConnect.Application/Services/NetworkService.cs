@@ -908,69 +908,35 @@ public class NetworkService : INetworkService
         providersByEmail[provider.Email] = provider;
     }
 
-    private async Task<FacilityResolution> ResolveImportFacilityAsync(
+    // Every import row gets its own Facility row, even when name/address/city/state/ZIP match
+    // a facility created earlier in the same (or a prior) import — unlike EnsureFacilityAsync
+    // (used by the manual "Add provider" flow), which intentionally dedups by address. Provider
+    // CSV rows are per-provider-per-location records; two providers sharing a building (e.g. two
+    // physicians in the same practice) must not be collapsed onto one shared Facility.
+    private Task<FacilityResolution> ResolveImportFacilityAsync(
         Guid tenantId,
         Guid? userId,
         ProviderImportNormalizedRow normalized,
         CancellationToken ct)
     {
-        var facility = await _networks.FindFacilityAsync(
+        var facility = Facility.Create(
             tenantId,
             normalized.FacilityName,
             normalized.AddressLine1,
             normalized.City,
             normalized.State,
             normalized.PostalCode,
-            ct);
+            normalized.Phone,
+            normalized.IsActive,
+            userId,
+            normalized.Email,
+            normalized.Latitude,
+            normalized.Longitude,
+            normalized.GeoPointSource,
+            normalized.IsMobile,
+            normalized.ServiceRadiusMiles);
 
-        if (facility is null)
-        {
-            return new FacilityResolution(
-                Facility.Create(
-                    tenantId,
-                    normalized.FacilityName,
-                    normalized.AddressLine1,
-                    normalized.City,
-                    normalized.State,
-                    normalized.PostalCode,
-                    normalized.Phone,
-                    normalized.IsActive,
-                    userId,
-                    normalized.Email,
-                    normalized.Latitude,
-                    normalized.Longitude,
-                    normalized.GeoPointSource,
-                    normalized.IsMobile,
-                    normalized.ServiceRadiusMiles),
-                "created");
-        }
-
-        var status = "existing";
-        if ((normalized.Latitude.HasValue && normalized.Longitude.HasValue) ||
-            !string.Equals(facility.Email, normalized.Email, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(facility.Phone, normalized.Phone, StringComparison.Ordinal) ||
-            facility.IsMobile != normalized.IsMobile ||
-            facility.ServiceRadiusMiles != normalized.ServiceRadiusMiles)
-        {
-            facility.Update(
-                normalized.FacilityName,
-                normalized.AddressLine1,
-                normalized.City,
-                normalized.State,
-                normalized.PostalCode,
-                normalized.Phone,
-                normalized.IsActive,
-                userId,
-                normalized.Email,
-                normalized.Latitude ?? facility.Latitude,
-                normalized.Longitude ?? facility.Longitude,
-                normalized.Latitude.HasValue ? normalized.GeoPointSource : facility.GeoPointSource,
-                normalized.IsMobile,
-                normalized.ServiceRadiusMiles);
-            status = "updated";
-        }
-
-        return new FacilityResolution(facility, status);
+        return Task.FromResult(new FacilityResolution(facility, "created"));
     }
 
     private async Task<Facility> EnsureFacilityAsync(
@@ -1115,7 +1081,16 @@ public class NetworkService : INetworkService
         var firstName = NormalizeOptional(parsedRow.FirstName) ?? providerNameParts.FirstName;
         var lastName = NormalizeOptional(parsedRow.LastName) ?? providerNameParts.LastName;
         var email = NormalizeRequired(parsedRow.Email, "Provider email is required.", errors, NormalizeEmail);
-        var phone = NormalizeRequired(parsedRow.Phone, "Provider phone is required.", errors);
+        string? phone;
+        if (string.IsNullOrWhiteSpace(parsedRow.Phone))
+        {
+            errors.Add("Provider phone is required.");
+            phone = null;
+        }
+        else if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(parsedRow.Phone, out phone))
+        {
+            errors.Add("Provider phone must be a valid 10-digit US phone number.");
+        }
         var addressLine1 = NormalizeRequired(parsedRow.AddressLine1, "Address is required.", errors);
         var city = NormalizeRequired(parsedRow.City, "City is required.", errors);
         var state = NormalizeRequired(parsedRow.State, "State is required.", errors, v => v.Trim().ToUpperInvariant());

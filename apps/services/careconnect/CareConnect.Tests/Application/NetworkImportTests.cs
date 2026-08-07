@@ -86,6 +86,7 @@ public class NetworkImportTests
         Assert.Equal("created", row.Status);
         Assert.NotNull(createdProvider);
         Assert.Equal("jane@example.com", createdProvider!.Email);
+        Assert.Equal("3125550100", createdProvider.Phone);
         Assert.Equal("Dr.", createdProvider.Title);
         Assert.Equal("Dr. Jane Smith", createdProvider.Name);
         Assert.Equal("IL", createdProvider.State);
@@ -378,7 +379,47 @@ public class NetworkImportTests
     }
 
     [Fact]
-    public async Task ImportProvidersAsync_ReusesByNpiAndMarksAlreadyInNetwork()
+    public async Task ImportProvidersAsync_RowWithInvalidPhone_FailsRowWithoutWriting()
+    {
+        var tenantId = Guid.CreateVersion7();
+        var networkId = Guid.CreateVersion7();
+        var parser = new Mock<IProviderImportParser>();
+        parser.Setup(p => p.ParseAsync(It.IsAny<Stream>(), "providers.csv", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProviderImportParseResult(
+                "providers.csv",
+                1,
+                [ImportRow(tenantId, phone: "555-01", SpecialtyCodesRaw: "Chiropractor")]));
+        var chiropractor = Specialty.Create("Chiropractor", "CHIROPRACTOR");
+
+        var networks = BuildRepositoryMock();
+        networks.Setup(r => r.GetByIdGlobalAsync(networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ProviderNetwork.Create(tenantId, "My Network", string.Empty));
+        networks.Setup(r => r.GetProvidersByNpisAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
+        networks.Setup(r => r.GetProvidersByTenantEmailsAsync(tenantId, It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal));
+        networks.Setup(r => r.GetNetworkProviderLocationKeysAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var specialties = new Mock<ISpecialtyRepository>();
+        specialties.Setup(r => r.GetActiveByCodesAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([chiropractor]);
+
+        var sut = new NetworkService(networks.Object, Mock.Of<ICategoryRepository>(), specialties.Object, parser.Object, NullLogger<NetworkService>.Instance);
+
+        await using var stream = new MemoryStream();
+        var result = await sut.ImportProvidersAsync(networkId, stream, "providers.csv", dryRun: false, userId: null, CancellationToken.None);
+
+        var row = Assert.Single(result.Rows);
+        Assert.Equal("failed", row.Status);
+        Assert.Contains("Provider phone must be a valid 10-digit US phone number.", row.Errors);
+        networks.Verify(r => r.AddProviderToRegistryAsync(It.IsAny<Provider>(), It.IsAny<CancellationToken>()), Times.Never);
+        networks.Verify(r => r.AddProviderAsync(It.IsAny<NetworkProvider>(), It.IsAny<CancellationToken>()), Times.Never);
+        networks.Verify(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ImportProvidersAsync_ReusesProviderByNpi_AlwaysCreatesNewFacility()
     {
         var tenantId = Guid.CreateVersion7();
         var networkId = Guid.CreateVersion7();
@@ -423,6 +464,7 @@ public class NetworkImportTests
                     npi: "1234567890",
                     SpecialtyCodesRaw: "Chiropractor")]));
 
+        Facility? createdFacility = null;
         var networks = BuildRepositoryMock();
         networks.Setup(r => r.GetByIdGlobalAsync(networkId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ProviderNetwork.Create(tenantId, "My Network", string.Empty));
@@ -432,15 +474,15 @@ public class NetworkImportTests
             .ReturnsAsync(new Dictionary<string, Provider>(StringComparer.Ordinal) { ["jane@example.com"] = existingProvider });
         networks.Setup(r => r.GetNetworkProviderLocationKeysAsync(tenantId, networkId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([existingProvider.Id.ToString() + "|" + existingFacility.Id.ToString()]);
-        networks.Setup(r => r.FindFacilityAsync(
-                tenantId,
-                "Smith Family Practice",
-                "123 Main St",
-                "Chicago",
-                "IL",
-                "60601",
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(existingFacility);
+        networks.Setup(r => r.AddFacilityAsync(It.IsAny<Facility>(), It.IsAny<CancellationToken>()))
+            .Callback<Facility, CancellationToken>((facility, _) => createdFacility = facility)
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.AddProviderAsync(It.IsAny<NetworkProvider>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SyncProviderSpecialtiesAsync(It.IsAny<Guid>(), It.IsAny<List<Guid>>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        networks.Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         var specialty = Specialty.Create("Chiropractor", "CHIROPRACTOR");
         var specialties = new Mock<ISpecialtyRepository>();
         specialties.Setup(r => r.GetActiveByCodesAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
@@ -451,10 +493,19 @@ public class NetworkImportTests
         await using var stream = new MemoryStream();
         var result = await sut.ImportProvidersAsync(networkId, stream, "providers.csv", dryRun: false, userId: null, CancellationToken.None);
 
-        Assert.Equal(1, result.AlreadyInNetwork);
-        Assert.Equal(0, result.ReusedByNpi);
-        Assert.Equal("already_in_network", Assert.Single(result.Rows).Status);
-        networks.Verify(r => r.AddProviderAsync(It.IsAny<NetworkProvider>(), It.IsAny<CancellationToken>()), Times.Never);
+        // Even though this provider+address already has a membership, facility resolution never
+        // reuses an existing Facility during import (see ResolveImportFacilityAsync), so this
+        // is treated as reused-by-NPI plus a brand-new facility/membership rather than a no-op.
+        Assert.Equal(0, result.AlreadyInNetwork);
+        Assert.Equal(1, result.ReusedByNpi);
+        Assert.Equal(1, result.CreatedFacilities);
+        Assert.Equal("reused_npi", Assert.Single(result.Rows).Status);
+        Assert.NotNull(createdFacility);
+        Assert.NotEqual(existingFacility.Id, createdFacility!.Id);
+        networks.Verify(r => r.AddProviderAsync(It.IsAny<NetworkProvider>(), It.IsAny<CancellationToken>()), Times.Once);
+        networks.Verify(r => r.FindFacilityAsync(
+            It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -541,7 +592,7 @@ public class NetworkImportTests
         string? organizationName = "Smith Family Practice",
         string? npi = null,
         string? email = "jane@example.com",
-        string? phone = "555-0100",
+        string? phone = "312-555-0100",
         string? addressLine1 = "123 Main St",
         string? city = "Chicago",
         string? state = "IL",
