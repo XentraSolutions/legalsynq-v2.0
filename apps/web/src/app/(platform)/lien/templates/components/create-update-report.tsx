@@ -369,19 +369,38 @@ export default function CreateUpdateReport({
     keyword: debouncedSearch,
     enabled: false,
   });
-  // const { caseManagers } = useDemandLookups({
-  //   type: "caseManagers",
-  //   pageSize: 10,
-  //   search: searchSelectInput,
-  // });
+  const fetchData = useCallback(async () => {
+    const [caseStatusRes, liensStatusRes] = await Promise.allSettled([
+      lookupService.getCaseStatus(),
+      lookupService.getLiensStatus(),
+    ]);
+    setData((prev: any) => ({
+      ...prev,
+      statusView:
+        caseStatusRes.status === "fulfilled"
+          ? [
+              { key: "all", value: "", label: "All" },
+              ...caseStatusRes.value.items.map((c) => {
+                return { key: c.id, value: c.code, label: c.name };
+              }),
+            ]
+          : [{ key: "all", value: "", label: "All" }],
+      liensStatus:
+        liensStatusRes.status === "fulfilled"
+          ? [
+              { key: "all", value: "", label: "All" },
+              ...liensStatusRes.value.items.map((c) => {
+                return { key: c.id, value: c.id, label: c.name };
+              }),
+            ]
+          : [{ key: "all", value: "", label: "All" }],
+    }));
+  }, []);
   useEffect(() => {
-    // fetchData();
+    fetchData();
     fetchConfig();
   }, [mode]);
-  useEffect(() => {
-    // fetchData();
-    console.log(data);
-  }, [data]);
+  useEffect(() => {}, [data]);
 
   useEffect(() => {
     if (currentStep == 0) {
@@ -827,7 +846,7 @@ export default function CreateUpdateReport({
                 label="Lien Status"
                 required
                 value={form.lienStatusIds}
-                options={data.lienStatus ?? []}
+                options={data.liensStatus ?? []}
                 placeholder="Select one status"
                 onChange={(v: string) =>
                   setForm({
