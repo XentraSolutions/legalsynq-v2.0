@@ -58,6 +58,8 @@ interface AddPaymentFormProps {
   onRefreshLiens?: () => void;
   isLiensFetching?: boolean;
   onSaved: () => void;
+  selectedPayment?: any;
+  isEditing?: boolean;
 }
 
 const INITIAL_FORM = {

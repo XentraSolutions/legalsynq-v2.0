@@ -6,7 +6,10 @@ import { useLienStore } from "@/stores/lien-store";
 import { settlementService } from "@/lib/settlement";
 import { liensService } from "@/lib/liens";
 import { ApiError } from "@/lib/api-client";
-import { CreateLienSettlementRequest, UpdateSettlementRequest } from "@/lib/settlement/settlement.types";
+import {
+  CreateLienSettlementRequest,
+  UpdateSettlementRequest,
+} from "@/lib/settlement/settlement.types";
 
 interface CreateSettlementFormProps {
   caseId: string;
@@ -56,7 +59,7 @@ export function CreateSettlementForm({
     const fetchLiens = async () => {
       setLoadingLiens(true);
       try {
-        const result = await liensService.getLiens({caseId});
+        const result = await liensService.getLiens({ caseId });
         setLiens(result?.items || (Array.isArray(result) ? result : []));
       } catch (err) {
       } finally {
@@ -107,9 +110,11 @@ export function CreateSettlementForm({
         amount: noRecovery ? "" : form.amount,
         amountToSettle: noRecovery ? "" : form.amount,
         checkAmount: noRecovery ? "" : form.checkAmount,
-        checkDate: !noRecovery && form.checkDate ? formatDate(form.checkDate) : "",
+        checkDate:
+          !noRecovery && form.checkDate ? formatDate(form.checkDate) : "",
         checkNumber: noRecovery ? "" : form.checkNumber,
-        closedDate: noRecovery && form.closedDate ? formatDate(form.closedDate) : "",
+        closedDate:
+          noRecovery && form.closedDate ? formatDate(form.closedDate) : "",
         lienId: noRecovery ? "" : checkedLienIds.join(","),
         lienStatus: form.lienStatus,
         netProfit: "",
@@ -124,7 +129,7 @@ export function CreateSettlementForm({
         requests.push(settlementService.createPayment(paymentPayload));
         const allocationPayload: UpdateSettlementRequest = {
           caseId,
-          payments: checkedLienIds.map((id) => String(lienAmounts[id] || "0"))
+          payments: checkedLienIds.map((id) => String(lienAmounts[id] || "0")),
         };
         requests.push(settlementService.updateSettlement(allocationPayload));
       }
@@ -145,7 +150,11 @@ export function CreateSettlementForm({
       if (err instanceof ApiError) {
         addToast({ type: "error", title: "Error", description: err.message });
       } else {
-        addToast({ type: "error", title: "Error", description: "An unexpected error occurred" });
+        addToast({
+          type: "error",
+          title: "Error",
+          description: "An unexpected error occurred",
+        });
       }
     } finally {
       setSubmitting(false);
@@ -181,7 +190,9 @@ export function CreateSettlementForm({
       onClose={handleResetClose}
       onSubmit={handleSubmit}
       title={noRecovery ? "No Recovery Setup" : "Payment"}
-      submitLabel={submitting ? "Saving..." : noRecovery ? "Save" : "Save Payment"}
+      submitLabel={
+        submitting ? "Saving..." : noRecovery ? "Save" : "Save Payment"
+      }
       submitDisabled={submitting || isFormInvalid()}
     >
       <div className="space-y-5">
@@ -193,7 +204,9 @@ export function CreateSettlementForm({
               </label>
               <select
                 value={form.lienStatus}
-                onChange={(e) => setForm({ ...form, lienStatus: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, lienStatus: e.target.value })
+                }
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="1">Open</option>
@@ -218,7 +231,9 @@ export function CreateSettlementForm({
               </label>
               <select
                 value={form.lienStatus}
-                onChange={(e) => setForm({ ...form, lienStatus: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, lienStatus: e.target.value })
+                }
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary mb-1"
               >
                 <option value="1">Open</option>
@@ -271,9 +286,13 @@ export function CreateSettlementForm({
                   onChange={(e) => setForm({ ...form, type: e.target.value })}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 >
-                  <option value="" disabled>Please select</option>
+                  <option value="" disabled>
+                    Please select
+                  </option>
                   {lookups.settlementType.map((s) => (
-                    <option key={s.id} value={s.id}>{s.description}</option>
+                    <option key={s.id} value={s.id}>
+                      {s.description}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -287,9 +306,13 @@ export function CreateSettlementForm({
                   onChange={(e) => setForm({ ...form, status: e.target.value })}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 >
-                  <option value="" disabled>Please select</option>
+                  <option value="" disabled>
+                    Please select
+                  </option>
                   {lookups.settlementStatus.map((s) => (
-                    <option key={s.id} value={s.id}>{s.description}</option>
+                    <option key={s.id} value={s.id}>
+                      {s.description}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -335,7 +358,10 @@ export function CreateSettlementForm({
                   {liens.map((lien) => {
                     const isChecked = checkedLienIds.includes(lien.id);
                     return (
-                      <tr key={lien.id} className={`hover:bg-gray-50/50 transition-colors ${isChecked ? "bg-primary/5" : ""}`}>
+                      <tr
+                        key={lien.id}
+                        className={`hover:bg-gray-50/50 transition-colors ${isChecked ? "bg-primary/5" : ""}`}
+                      >
                         <td className="px-4 py-2 text-center">
                           <input
                             type="checkbox"
@@ -345,11 +371,22 @@ export function CreateSettlementForm({
                           />
                         </td>
                         <td className="px-4 py-2 font-medium text-gray-700">
-                          <div>{lien.providerName || lien.provider || "Unknown Provider"}</div>
-                          <div className="text-[11px] text-gray-400 font-normal">{lien.categoryName || lien.category || "Uncategorized"}</div>
+                          <div>
+                            {lien.providerName ||
+                              lien.provider ||
+                              "Unknown Provider"}
+                          </div>
+                          <div className="text-[11px] text-gray-400 font-normal">
+                            {lien.categoryName ||
+                              lien.category ||
+                              "Uncategorized"}
+                          </div>
                         </td>
                         <td className="px-4 py-2 text-gray-600 font-medium">
-                          {lien.lienAmount !== undefined && lien.lienAmount !== null ? `$${Number(lien.lienAmount).toLocaleString()}` : "—"}
+                          {lien.lienAmount !== undefined &&
+                          lien.lienAmount !== null
+                            ? `$${Number(lien.lienAmount).toLocaleString()}`
+                            : "—"}
                         </td>
                         <td className="px-4 py-2">
                           <input
@@ -357,7 +394,9 @@ export function CreateSettlementForm({
                             disabled={!isChecked}
                             placeholder="0.00"
                             value={lienAmounts[lien.id] || ""}
-                            onChange={(e) => handleAmountChange(lien.id, e.target.value)}
+                            onChange={(e) =>
+                              handleAmountChange(lien.id, e.target.value)
+                            }
                             className={`w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary ${!isChecked ? "bg-gray-50 opacity-60 cursor-not-allowed" : "bg-white"}`}
                           />
                         </td>

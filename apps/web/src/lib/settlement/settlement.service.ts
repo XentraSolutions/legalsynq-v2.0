@@ -58,7 +58,7 @@ export const settlementService = {
     return Promise.all(forms.map((form) => this.createReduction(form)));
   },
   async updateSettlement(
-    form: CreateSettlementPaymentRequest,
+    form: CreateSettlementPaymentRequest | UpdateSettlementRequest,
   ): Promise<UpdateSettlementResponse> {
     const { data } = await settlementApi.updateSettlement(form);
     return data;

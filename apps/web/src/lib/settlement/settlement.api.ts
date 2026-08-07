@@ -50,7 +50,9 @@ export const settlementApi = {
       form,
     );
   },
-  updateSettlement(form: CreateSettlementPaymentRequest) {
+  updateSettlement(
+    form: CreateSettlementPaymentRequest | UpdateSettlementRequest,
+  ) {
     return apiClient.post<UpdateSettlementResponse>(
       `${BASE}/liens/update/settlement`,
       form,
