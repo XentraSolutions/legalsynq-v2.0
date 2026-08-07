@@ -52,11 +52,12 @@ export function mapServicingToListItem(
     name: safeString(dto.plaintiffName ?? dto.description ?? dto.taskNumber),
     lawfirm: safeString(dto.lawfirm),
     currentStatus: safeString(dto.status),
-    settlementStatus: safeString(dto.settlementStatus),
-    settlementDate:
-      formattedSettlementDate !== "" ? formattedSettlementDate : "---",
+    settlementStatus: dto.settlementStatus
+      ? safeString(dto.settlementStatus)
+      : "---",
+    settlementDate: dto.settlementDate ? safeString(dto.settlementDate) : "---",
     settlementAmount: dto.settlementAmount ?? 0,
-    billingAmount: dto.billingAmount ?? 0,
+    billingAmount: Number(dto.billingAmount) ?? 0, //dto.billingAmount ?? 0,
     purchaseAmount: dto.purchaseAmount ?? 0,
   };
 }
