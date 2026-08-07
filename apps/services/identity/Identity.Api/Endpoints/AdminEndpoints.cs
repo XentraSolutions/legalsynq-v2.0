@@ -7999,7 +7999,7 @@ public static partial class AdminEndpointsLscc010
     /// <summary>
     /// POST /api/admin/organizations
     /// Creates a minimal PROVIDER Organization for a CareConnect provider.
-    /// Idempotent — returns the existing org if one was already created for this provider.
+    /// Always creates a new organization — no lookup/reuse of an existing org by name.
     /// </summary>
     public static async Task<IResult> CreateProviderOrganization(
         CreateProviderOrgRequest body,
@@ -8034,21 +8034,6 @@ public static partial class AdminEndpointsLscc010
         }
 
         var providerNameNorm = body.ProviderName.Trim();
-
-        // Idempotency: check both the legacy "[cc:guid]" name format and the clean name.
-        var legacyName = $"{providerNameNorm} [cc:{body.ProviderCcId:D}]";
-        var orgTenantId = body.GlobalScope ? (Guid?)null : body.TenantId;
-
-        var existing = await db.Organizations
-            .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.TenantId == orgTenantId
-                                   && o.OrgType   == "PROVIDER"
-                                   && (o.Name == legacyName || o.Name == providerNameNorm), ct);
-
-        if (existing is not null)
-        {
-            return Results.Ok(new CreateProviderOrgResponse(existing.Id, existing.DisplayName ?? existing.Name, IsNew: false));
-        }
 
         // Create with the clean name; fall back to a short disambiguator on
         // unique-constraint collision (two providers in the same tenant with
