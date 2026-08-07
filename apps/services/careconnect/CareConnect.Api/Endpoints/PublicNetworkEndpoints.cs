@@ -759,6 +759,7 @@ public static class PublicNetworkEndpoints
             f.Name,
             f.AddressLine1,
             f.Phone ?? p.Phone,
+            f.Email ?? p.Email,
             f.City,
             f.State,
             f.PostalCode,

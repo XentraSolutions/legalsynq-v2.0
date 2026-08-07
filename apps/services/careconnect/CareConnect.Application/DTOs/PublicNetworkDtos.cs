@@ -29,6 +29,7 @@ public sealed record PublicProviderItem(
     string  FacilityName,
     string  AddressLine1,
     string  Phone,
+    string? Email,
     string  City,
     string  State,
     string? PostalCode,

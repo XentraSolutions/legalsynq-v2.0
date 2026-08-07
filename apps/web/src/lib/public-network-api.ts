@@ -77,6 +77,7 @@ export interface PublicProviderItem {
   facilityName:    string;
   addressLine1:    string;
   phone:            string;
+  email?:           string | null;
   city:             string;
   state:            string;
   postalCode:       string | null;
