@@ -242,8 +242,8 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           label="Document Type"
           value={form.documentType}
           options={documentTypes ?? []}
-          onChange={(v: string) => setForm({ ...form, documentType: v })}
           placeholder=""
+          onChange={(v: string) => setForm({ ...form, documentType: v })}
           type="select"
         />
         <div className="mt-4">

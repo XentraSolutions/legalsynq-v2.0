@@ -149,14 +149,12 @@ export function CreateCaseForm({
   );
 
   const updateField = (field: keyof typeof INITIAL_FORM, value: string) => {
-    console.log(field, value);
     setForm((prev) => ({ ...prev, [field]: value }));
     setTouched((prev) => ({ ...prev, [field]: true }));
   };
 
   const validate = () => {
     const newErrors = getCreateCaseFormErrors(form);
-
     setErrors(newErrors);
     const valid = Object.keys(newErrors).length === 0;
     setIsValid(valid);
@@ -396,9 +394,7 @@ export function CreateCaseForm({
               required
               value={form.clientFirstName}
               onChange={(v) => updateField("clientFirstName", v.toString())}
-              error={
-                touched.clientFirstName ? errors.clientFirstName : undefined
-              }
+              error={touched.clientFirstName ? errors.clientFirstName : ""}
               placeholder="First name"
             />
             <Field
@@ -406,7 +402,7 @@ export function CreateCaseForm({
               required
               value={form.clientLastName}
               onChange={(v) => updateField("clientLastName", v.toString())}
-              error={touched.clientLastName ? errors.clientLastName : undefined}
+              error={touched.clientLastName ? errors.clientLastName : ""}
               placeholder="Last name"
             />
           </div>
@@ -418,7 +414,7 @@ export function CreateCaseForm({
               console.log(v);
               updateField("clientDob", v.toString());
             }}
-            error={touched.clientDob ? errors.clientDob : undefined}
+            error={touched.clientDob ? errors.clientDob : ""}
             type="date"
             maxDate={new Date()}
           />
@@ -427,14 +423,14 @@ export function CreateCaseForm({
               label="Address"
               value={form.clientAddress}
               onChange={(v) => updateField("clientAddress", v.toString())}
-              error={touched.clientAddress ? errors.clientAddress : undefined}
+              error={touched.clientAddress ? errors.clientAddress : ""}
               placeholder="Address"
             />
             <Field
               label="City"
               value={form.clientCity}
               onChange={(v) => updateField("clientCity", v.toString())}
-              error={touched.clientCity ? errors.clientCity : undefined}
+              error={touched.clientCity ? errors.clientCity : ""}
               placeholder="City"
             />
           </div>
@@ -445,7 +441,6 @@ export function CreateCaseForm({
               value={form.clientState}
               options={data.state}
               onChange={(v: string) => updateField("clientState", v.toString())}
-              error={touched.clientState ? errors.clientState : undefined}
               placeholder="State"
               type="select"
             />
@@ -454,7 +449,7 @@ export function CreateCaseForm({
               label="Zipcode"
               value={form.clientZipcode}
               onChange={(v) => updateField("clientZipcode", v.toString())}
-              error={touched.clientZipcode ? errors.clientZipcode : undefined}
+              error={touched.clientZipcode ? errors.clientZipcode : ""}
               placeholder="Zipcode"
             />
           </div>
