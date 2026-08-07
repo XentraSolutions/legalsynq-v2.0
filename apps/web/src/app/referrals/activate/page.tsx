@@ -56,47 +56,16 @@ interface PublicThreadData {
   referrerName:  string | null;
 }
 
-function splitName(value: string | null | undefined): { firstName: string; lastName: string } {
-  const trimmed = value?.trim() ?? '';
-  if (!trimmed) return { firstName: '', lastName: '' };
-
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  return {
-    firstName: toDisplayCase(parts[0] ?? ''),
-    lastName: toDisplayCase(parts.slice(1).join(' ')),
-  };
-}
-
-function toDisplayCase(value: string): string {
-  return value
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ');
-}
-
-function deriveNameFromEmail(email: string | undefined): { firstName: string; lastName: string } {
-  const local = email?.split('@')[0] ?? '';
-  const normalized = local
-    .replace(/\+.*/, '')
-    .replace(/[._-]+/g, ' ')
-    .replace(/\d+/g, ' ')
-    .trim();
-
-  return splitName(normalized);
-}
-
 function toEnrollmentPrefill(data: PublicThreadData, fallbackCompanyName?: string): EnrollmentPrefill {
   const companyName = data.providerName.trim() || fallbackCompanyName?.trim() || '';
 
-  // Prefer the provider's actual stored First/Last name (captured directly when the
-  // provider record was created) over guessing from the email address — only fall
-  // back to the email-derived heuristic for providers created before that split existed.
-  const storedFirstName = data.providerFirstName?.trim() ?? '';
-  const storedLastName  = data.providerLastName?.trim() ?? '';
-  const providerContact = storedFirstName || storedLastName
-    ? { firstName: storedFirstName, lastName: storedLastName }
-    : deriveNameFromEmail(data.providerEmail);
+  // Only prefill from the provider's actual stored First/Last name. If neither is on
+  // record, leave both blank — guessing a name from the email address risks writing a
+  // wrong, unreviewable name onto the provider's account (the field is locked once prefilled).
+  const providerContact = {
+    firstName: data.providerFirstName?.trim() ?? '',
+    lastName: data.providerLastName?.trim() ?? '',
+  };
 
   return {
     providerId: data.providerId,
