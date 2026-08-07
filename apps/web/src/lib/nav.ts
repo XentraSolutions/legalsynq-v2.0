@@ -514,30 +514,32 @@ export function orgTypeLabel(orgType: string | undefined): string {
 export const GLOBAL_BOTTOM_NAV: NavSection = {
   heading: "ACCOUNT",
   items: [
-    {
-      href: "/my-work",
-      label: "My Work",
-      icon: "ri-task-line",
-      adminOnly: true,
-    },
+    /** COMMENTED THIS AS THE FEATURE IS STILL NOT AVAILABLE PER QA TICKET: LSV3-862 Tenant Portal: Hide navigation items for features that are currently under development */
+    // {
+    //   href: "/my-work",
+    //   label: "My Work",
+    //   icon: "ri-task-line",
+    //   adminOnly: true,
+    // },
     {
       href: "/notifications",
       label: "Notifications",
       icon: "ri-mail-send-line",
       adminOnly: true,
     },
-    {
-      href: "/activity",
-      label: "Activity Log",
-      icon: "ri-history-line",
-      adminOnly: true,
-    },
-    {
-      href: "/support",
-      label: "Support",
-      icon: "ri-customer-service-2-line",
-      adminOnly: true,
-    },
+    /** COMMENTED THIS AS THE FEATURE IS STILL NOT AVAILABLE PER QA TICKET: LSV3-862 Tenant Portal: Hide navigation items for features that are currently under development */
+    // {
+    //   href: "/activity",
+    //   label: "Activity Log",
+    //   icon: "ri-history-line",
+    //   adminOnly: true,
+    // },
+    // {
+    //   href: "/support",
+    //   label: "Support",
+    //   icon: "ri-customer-service-2-line",
+    //   adminOnly: true,
+    // },
     {
       href: "/tenant/authorization/users",
       label: "User Management",
