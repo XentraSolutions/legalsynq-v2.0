@@ -86,6 +86,7 @@ public class ReferralThreadService : IReferralThreadService
             LocationCity = location.City,
             LocationState = location.State,
             LocationPostalCode = location.PostalCode,
+            LocationIsMobile = location.IsMobile,
             ReferrerFirmName = referrerFirmName,
             ReferrerPhone = referral.ReferrerPhone,
             ReferrerName = referral.ReferrerName,

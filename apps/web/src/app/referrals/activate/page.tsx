@@ -47,10 +47,11 @@ interface PublicThreadData {
   providerLastName?:  string | null;
   providerEmail?: string;
   providerPhone?: string;
-  providerAddressLine1?: string;
-  providerCity?: string;
-  providerState?: string;
-  providerPostalCode?: string;
+  locationAddressLine1?: string;
+  locationCity?: string;
+  locationState?: string;
+  locationPostalCode?: string;
+  locationIsMobile?: boolean;
   providerHasAccount?: boolean;
   referrerName:  string | null;
 }
@@ -106,10 +107,13 @@ function toEnrollmentPrefill(data: PublicThreadData, fallbackCompanyName?: strin
     title: data.providerTitle?.trim() ?? '',
     firstName: providerContact.firstName,
     lastName: providerContact.lastName,
-    addressLine1: data.providerAddressLine1 ?? '',
-    city: data.providerCity ?? '',
-    state: data.providerState ?? '',
-    postalCode: data.providerPostalCode ?? '',
+    // Mobile/roaming providers have no fixed street address — LocationAddressLine1 holds a
+    // human-readable service-area label instead (e.g. "Greater Las Vegas Metro"), so it must
+    // not be prefilled/locked into the account's street address field.
+    addressLine1: data.locationIsMobile ? '' : data.locationAddressLine1 ?? '',
+    city: data.locationIsMobile ? '' : data.locationCity ?? '',
+    state: data.locationState ?? '',
+    postalCode: data.locationIsMobile ? '' : data.locationPostalCode ?? '',
   };
 }
 

@@ -27,7 +27,8 @@ public static class ReferralLocationResolver
                 AddressLine1:  facility.AddressLine1,
                 City:          facility.City,
                 State:         facility.State,
-                PostalCode:    facility.PostalCode ?? string.Empty);
+                PostalCode:    facility.PostalCode ?? string.Empty,
+                IsMobile:      facility.IsMobile);
         }
 
         var provider = referral.Provider ?? providerFallback;
@@ -36,7 +37,8 @@ public static class ReferralLocationResolver
             AddressLine1:  provider?.AddressLine1 ?? string.Empty,
             City:          provider?.City ?? string.Empty,
             State:         provider?.State ?? string.Empty,
-            PostalCode:    provider?.PostalCode ?? string.Empty);
+            PostalCode:    provider?.PostalCode ?? string.Empty,
+            IsMobile:      false);
     }
 }
 
@@ -45,4 +47,5 @@ public sealed record ReferralLocation(
     string  AddressLine1,
     string  City,
     string  State,
-    string  PostalCode);
+    string  PostalCode,
+    bool    IsMobile = false);
