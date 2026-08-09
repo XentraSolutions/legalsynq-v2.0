@@ -2,6 +2,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using CareConnect.Api.Options;
+using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using Microsoft.AspNetCore.Mvc;
@@ -51,8 +52,12 @@ public static class AttachmentEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var isAdmin  = ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
+            var useGlobalLookup = CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(
+                ctx,
+                CareConnectParticipantHelper.IsReceiverContext(ctx));
 
-            var result = await service.GetByReferralAsync(tenantId, referralId, ctx.OrgId, isAdmin, ct, ctx.Email);
+            var result = await service.GetByReferralAsync(
+                tenantId, referralId, ctx.OrgId, isAdmin, ct, ctx.Email, useGlobalLookup);
             return Results.Ok(result);
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
@@ -82,6 +87,9 @@ public static class AttachmentEndpoints
             CancellationToken ct) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var useGlobalLookup = CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(
+                ctx,
+                CareConnectParticipantHelper.IsReceiverContext(ctx));
 
             if (!httpRequest.HasFormContentType)
                 return Results.BadRequest(new { error = "Request must be multipart/form-data." });
@@ -113,7 +121,8 @@ public static class AttachmentEndpoints
                 file.ContentType ?? "application/octet-stream",
                 file.Length,
                 uploadRequest,
-                ct);
+                ct,
+                useGlobalLookup: useGlobalLookup);
 
             return Results.Created($"/api/referrals/{referralId}/attachments/{result.Id}", result);
         })
@@ -133,6 +142,9 @@ public static class AttachmentEndpoints
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var isAdmin  = ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
+            var useGlobalLookup = CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(
+                ctx,
+                CareConnectParticipantHelper.IsReceiverContext(ctx));
 
             try
             {
@@ -144,7 +156,8 @@ public static class AttachmentEndpoints
                     callerOrgType: ctx.OrgType,
                     isAdmin:       isAdmin,
                     isDownload:    download ?? false,
-                    ct:            ct);
+                    ct:            ct,
+                    useGlobalLookup: useGlobalLookup);
 
                 if (result is null)
                     // Note: 503 covers both "document not found" and transient Documents service failures.
