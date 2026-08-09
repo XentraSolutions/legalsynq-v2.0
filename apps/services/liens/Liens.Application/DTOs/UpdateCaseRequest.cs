@@ -33,5 +33,7 @@ public sealed class UpdateCaseRequest
     public string? LawFirmId { get; init; }
     public string? AccidentTypeId { get; init; }
     public string? CaseManagerId { get; init; }
+    public string? AttorneyId { get; init; }
+    public string? SwitchedDate { get; init; }
     public string? StatusLabel { get; init; }
 }

@@ -227,7 +227,7 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         recordedPayment.GetProperty("amountToSettle").GetString().Should().Be("1000.00");
         recordedPayment.GetProperty("checkAmount").GetString().Should().Be("1000.00");
         recordedPayment.GetProperty("lienStatus").GetString().Should().Be("Closed");
-        recordedPayment.GetProperty("lienStatusId").GetString().Should().Be(LienStatus.Settled);
+        recordedPayment.GetProperty("lienStatusId").GetString().Should().Be("Closed");
         recordedPayment.GetProperty("typeId").GetString().Should().Be("by_attorney");
         recordedPayment.GetProperty("type").GetString().Should().Be("By Attorney");
         recordedPayment.GetProperty("statusId").GetString().Should().Be("full_payment");
@@ -454,6 +454,8 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var payment = details!.RootElement.GetProperty("data").EnumerateArray().Single(item =>
             item.GetProperty("checkNumber").GetString() == checkNumber);
 
+        payment.GetProperty("lienStatus").GetString().Should().Be("Open");
+        payment.GetProperty("lienStatusId").GetString().Should().Be("Open");
         payment.GetProperty("typeId").GetString().Should().Be(settlementType);
         payment.GetProperty("type").GetString().Should().Be(expectedDisplayName);
     }

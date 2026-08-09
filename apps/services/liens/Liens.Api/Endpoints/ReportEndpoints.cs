@@ -684,8 +684,8 @@ public static class ReportEndpoints
                 contactService, tenantId, ContactType.LawFirm, search, normalizedLimit, ct),
             "fundingcompany" => await GetLegacyContactFilterOptionsAsync(
                 contactService, tenantId, ContactType.FundingCompany, search, normalizedLimit, ct),
-            "casemanager" => await GetLegacyContactFilterOptionsAsync(
-                contactService, tenantId, ContactType.CaseManager, search, normalizedLimit, ct),
+            "casemanager" => await GetLegacyCaseManagerFilterOptionsAsync(
+                contactService, tenantId, search, normalizedLimit, ct),
             "medicalprovider" => await GetLegacyContactFilterOptionsAsync(
                 contactService, tenantId, ContactType.Provider, search, normalizedLimit, ct),
             "medicalfacility" => (await facilityService.SearchAsync(
@@ -724,6 +724,46 @@ public static class ReportEndpoints
             ct: ct);
 
         return result.Items
+            .Select(item => (object)new
+            {
+                id = item.Id.ToString(),
+                name = string.IsNullOrWhiteSpace(item.DisplayName)
+                    ? item.Organization ?? $"{item.FirstName} {item.LastName}".Trim()
+                    : item.DisplayName,
+            })
+            .ToList();
+    }
+
+    private static async Task<List<object>> GetLegacyCaseManagerFilterOptionsAsync(
+        IContactService contactService,
+        Guid tenantId,
+        string? search,
+        int limit,
+        CancellationToken ct)
+    {
+        var standaloneCaseManagers = await contactService.SearchAsync(
+            tenantId,
+            search,
+            ContactType.CaseManager,
+            isActive: true,
+            page: 1,
+            pageSize: limit,
+            ct: ct);
+        var lawFirmCaseManagers = await contactService.SearchAsync(
+            tenantId,
+            search,
+            ContactType.LawFirm,
+            isActive: true,
+            page: 1,
+            pageSize: limit,
+            contactSubtype: ContactSubtype.LawFirmCaseManager,
+            ct: ct);
+
+        return standaloneCaseManagers.Items
+            .Concat(lawFirmCaseManagers.Items)
+            .DistinctBy(item => item.Id)
+            .OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Take(limit)
             .Select(item => (object)new
             {
                 id = item.Id.ToString(),

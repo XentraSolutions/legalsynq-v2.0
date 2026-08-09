@@ -351,7 +351,9 @@ public sealed class CaseService : ICaseService
             request.IsUccFiled,
             request.LawFirmId,
             request.AccidentTypeId,
-            request.CaseManagerId);
+            request.CaseManagerId,
+            request.AttorneyId,
+            request.SwitchedDate);
         ApplyStatusLabelMetadata(mergedMetadata, request.Status, request.StatusLabel);
 
         entity.Update(
@@ -575,6 +577,10 @@ public sealed class CaseService : ICaseService
             LawFirm = lawFirmName,
             CaseManagerId = caseManagerId,
             CaseManager = caseManagerName,
+            AttorneyId = FirstNonEmpty(
+                GetMetadataValue(metadata, "attorneyId"),
+                GetMetadataValue(metadata, "attorney")),
+            SwitchedDate = GetMetadataValue(metadata, "switchedDate"),
             AccidentTypeId = accidentTypeId,
             AccidentType = accidentType,
             OpenedAtUtc = entity.OpenedAtUtc,
@@ -638,7 +644,9 @@ public sealed class CaseService : ICaseService
         string? isUccFiled,
         string? lawFirmId,
         string? accidentTypeId,
-        string? caseManagerId)
+        string? caseManagerId,
+        string? attorneyId,
+        string? switchedDate)
     {
         var metadata = new Dictionary<string, string>(existing, StringComparer.Ordinal);
         if (sex is not null)
@@ -672,6 +680,13 @@ public sealed class CaseService : ICaseService
             SetMetadataValue(metadata, "lawFirmId", lawFirmId);
         if (caseManagerId is not null)
             SetMetadataValue(metadata, "caseManagerId", caseManagerId);
+        if (attorneyId is not null)
+        {
+            metadata.Remove("attorney");
+            SetMetadataValue(metadata, "attorneyId", attorneyId);
+        }
+        if (switchedDate is not null)
+            SetMetadataValue(metadata, "switchedDate", switchedDate);
         return metadata;
     }
 

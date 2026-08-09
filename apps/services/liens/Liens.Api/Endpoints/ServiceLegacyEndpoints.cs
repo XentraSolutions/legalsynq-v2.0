@@ -97,6 +97,26 @@ public static class ServiceLegacyEndpoints
         public string? caseManagerId { get; init; }
     }
 
+    private readonly record struct LegacyServiceCaseMetrics(
+        string? SettlementStatus = null,
+        string? SettlementDate = null,
+        decimal SettlementAmount = 0m,
+        decimal BillingAmount = 0m,
+        decimal PurchaseAmount = 0m);
+
+    private readonly record struct LegacyMedicalAmounts(
+        decimal PurchaseAmount = 0m,
+        bool HasPurchaseAmount = false,
+        decimal BillingAmount = 0m,
+        bool HasBillingAmount = false)
+    {
+        public LegacyMedicalAmounts Add(LegacyMedicalAmounts other) => new(
+            PurchaseAmount + other.PurchaseAmount,
+            HasPurchaseAmount || other.HasPurchaseAmount,
+            BillingAmount + other.BillingAmount,
+            HasBillingAmount || other.HasBillingAmount);
+    }
+
     public static void MapServiceLegacyEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/service")
@@ -162,6 +182,7 @@ public static class ServiceLegacyEndpoints
     private static async Task<IResult> GetServiceCaseV3Legacy(
         LegacyCaseV3FilterRequest filter,
         ICaseService caseService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -182,15 +203,215 @@ public static class ServiceLegacyEndpoints
             lawFirmIds: filter.lawFirmId,
             ct: ct);
 
+        var metricsByCaseId = await GetLegacyServiceCaseMetricsAsync(
+            db,
+            tenantId,
+            result.Items.Select(item => item.Id).ToArray(),
+            ct);
+
         return Results.Ok(new
         {
             isSuccess = true,
             message = "List of Case",
-            data = result.Items.Select(MapLegacyServiceCase).ToList(),
+            data = result.Items.Select(item =>
+            {
+                metricsByCaseId.TryGetValue(item.Id, out var metrics);
+                return MapLegacyServiceCaseV3(item, metrics);
+            }).ToList(),
             page = result.Page,
             limit = result.PageSize,
             totalCount = result.TotalCount,
         });
+    }
+
+    private static async Task<IReadOnlyDictionary<Guid, LegacyServiceCaseMetrics>> GetLegacyServiceCaseMetricsAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        IReadOnlyCollection<Guid> caseIds,
+        CancellationToken ct)
+    {
+        var distinctCaseIds = caseIds.ToHashSet(EqualityComparer<Guid>.Default);
+        if (distinctCaseIds.Count == 0)
+            return new Dictionary<Guid, LegacyServiceCaseMetrics>();
+
+        var liens = await db.Liens.AsNoTracking()
+            .Where(lien =>
+                lien.TenantId == tenantId &&
+                lien.CaseId.HasValue &&
+                distinctCaseIds.Contains(lien.CaseId.Value))
+            .Select(lien => new
+            {
+                lien.Id,
+                CaseId = lien.CaseId!.Value,
+                lien.OriginalAmount,
+                lien.PurchasePrice,
+            })
+            .ToListAsync(ct);
+
+        var lienIds = liens
+            .Select(lien => lien.Id)
+            .ToHashSet(EqualityComparer<Guid>.Default);
+        var medicalCodeItems = await db.ServicingItems.AsNoTracking()
+            .Where(item =>
+                item.TenantId == tenantId &&
+                item.LienId.HasValue &&
+                lienIds.Contains(item.LienId.Value) &&
+                item.TaskType == "LegacyMedicalCode")
+            .Select(item => new { LienId = item.LienId!.Value, item.Notes })
+            .ToListAsync(ct);
+        var medicalAmountsByLienId = medicalCodeItems
+            .GroupBy(item => item.LienId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Aggregate(
+                    new LegacyMedicalAmounts(),
+                    (amounts, item) => amounts.Add(ParseLegacyMedicalAmounts(item.Notes))));
+
+        var settlements = await db.LienSettlements.AsNoTracking()
+            .Where(settlement =>
+                settlement.TenantId == tenantId &&
+                !settlement.IsDeleted &&
+                distinctCaseIds.Contains(settlement.CaseId))
+            .Select(settlement => new
+            {
+                settlement.Id,
+                settlement.CaseId,
+                settlement.LienId,
+                settlement.PaymentNumber,
+                settlement.Amount,
+                settlement.SettlementDate,
+                settlement.Status,
+                settlement.Note,
+                settlement.CreatedAtUtc,
+            })
+            .ToListAsync(ct);
+        var settlementsByCaseId = settlements
+            .GroupBy(settlement => settlement.CaseId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+        var settlementsByPayment = settlements
+            .GroupBy(settlement => (settlement.LienId, settlement.PaymentNumber))
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(settlement => settlement.CreatedAtUtc)
+                    .ThenByDescending(settlement => settlement.Id)
+                    .First());
+
+        var payments = await db.SettlementPaymentDetails.AsNoTracking()
+            .Where(payment =>
+                payment.TenantId == tenantId &&
+                !payment.IsDeleted &&
+                distinctCaseIds.Contains(payment.CaseId))
+            .Select(payment => new
+            {
+                payment.Id,
+                payment.CaseId,
+                payment.LienId,
+                payment.PaymentNumber,
+                payment.Amount,
+                payment.Note,
+                payment.CreatedAtUtc,
+            })
+            .ToListAsync(ct);
+        var latestPaymentsByCaseId = payments
+            .GroupBy(payment => payment.CaseId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(payment => payment.CreatedAtUtc)
+                    .ThenByDescending(payment => payment.Id)
+                    .First());
+
+        var paymentLookups = await db.LookupValues.AsNoTracking()
+            .Where(lookup =>
+                lookup.IsActive &&
+                (lookup.TenantId == null || lookup.TenantId == tenantId) &&
+                (lookup.Category == LookupCategory.SettlementType ||
+                 lookup.Category == LookupCategory.SettlementStatus))
+            .ToListAsync(ct);
+
+        var result = new Dictionary<Guid, LegacyServiceCaseMetrics>(distinctCaseIds.Count);
+        foreach (var caseId in distinctCaseIds)
+        {
+            var caseLiens = liens.Where(lien => lien.CaseId == caseId).ToList();
+            var billingAmount = caseLiens.Sum(lien =>
+                medicalAmountsByLienId.TryGetValue(lien.Id, out var medicalAmounts) &&
+                medicalAmounts.HasBillingAmount
+                    ? medicalAmounts.BillingAmount
+                    : lien.OriginalAmount);
+            var purchaseAmount = caseLiens.Sum(lien =>
+                medicalAmountsByLienId.TryGetValue(lien.Id, out var medicalAmounts) &&
+                medicalAmounts.HasPurchaseAmount
+                    ? medicalAmounts.PurchaseAmount
+                    : lien.PurchasePrice ?? 0m);
+
+            settlementsByCaseId.TryGetValue(caseId, out var caseSettlements);
+            var settlementAmount = caseSettlements?.Sum(settlement =>
+                ResolveLegacySettlementAmount(settlement.Amount, settlement.Note)) ?? 0m;
+            if (settlementAmount == 0m)
+            {
+                settlementAmount = payments
+                    .Where(payment => payment.CaseId == caseId)
+                    .Sum(payment => payment.Amount);
+            }
+            var settlementDate = caseSettlements?
+                .Where(settlement => settlement.SettlementDate.HasValue)
+                .Max(settlement => settlement.SettlementDate);
+
+            string? settlementStatusId = null;
+            if (latestPaymentsByCaseId.TryGetValue(caseId, out var latestPayment))
+            {
+                settlementsByPayment.TryGetValue(
+                    (latestPayment.LienId, latestPayment.PaymentNumber),
+                    out var matchingSettlement);
+                var metadata = ParseSettlementPaymentMetadata(latestPayment.Note);
+                var storedTypeId = metadata.GetValueOrDefault("type") ?? string.Empty;
+                var storedStatusId = metadata.GetValueOrDefault("status") ??
+                                     matchingSettlement?.Status ??
+                                     caseSettlements?
+                                         .OrderByDescending(settlement => settlement.CreatedAtUtc)
+                                         .ThenByDescending(settlement => settlement.Id)
+                                         .FirstOrDefault()?.Status ??
+                                     string.Empty;
+                settlementStatusId = IsLegacyLienStatus(storedStatusId) &&
+                                     IsSettlementPaymentStatus(paymentLookups, storedTypeId)
+                    ? storedTypeId
+                    : storedStatusId;
+
+                if (!settlementDate.HasValue)
+                {
+                    result[caseId] = new LegacyServiceCaseMetrics(
+                        ResolvePaymentLookupName(
+                            paymentLookups,
+                            LookupCategory.SettlementType,
+                            settlementStatusId),
+                        PacificTimeHelper.FormatDate(latestPayment.CreatedAtUtc),
+                        settlementAmount,
+                        billingAmount,
+                        purchaseAmount);
+                    continue;
+                }
+            }
+            else
+            {
+                settlementStatusId = caseSettlements?
+                    .OrderByDescending(settlement => settlement.CreatedAtUtc)
+                    .ThenByDescending(settlement => settlement.Id)
+                    .FirstOrDefault()?.Status;
+            }
+
+            result[caseId] = new LegacyServiceCaseMetrics(
+                ResolvePaymentLookupName(
+                    paymentLookups,
+                    LookupCategory.SettlementType,
+                    settlementStatusId ?? string.Empty),
+                settlementDate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
+                settlementAmount,
+                billingAmount,
+                purchaseAmount);
+        }
+
+        return result;
     }
 
     private static async Task<IResult> GetServiceLiensLegacy(
@@ -362,12 +583,6 @@ public static class ServiceLegacyEndpoints
             return Results.BadRequest(new { isSuccess = false, message = "Case not found" });
         }
 
-        var metadata = ParseLegacyNoteFields(existing.Notes);
-        SetMetadata(metadata, "isUCCFiled", request.isUCCFiled);
-        SetMetadata(metadata, "switchedDate", request.switchedDate);
-        SetMetadata(metadata, "caseManagerId", request.caseManager);
-        SetMetadata(metadata, "attorney", request.attorney);
-
         var update = new UpdateCaseRequest
         {
             ClientFirstName = existing.ClientFirstName,
@@ -383,18 +598,18 @@ public static class ServiceLegacyEndpoints
             PolicyNumber = existing.PolicyNumber,
             ClaimNumber = existing.ClaimNumber,
             Description = existing.Description,
-            Notes = SerializeLegacyNoteFields(metadata),
+            Notes = existing.Notes,
             Status = string.IsNullOrWhiteSpace(request.caseStatusId) ? existing.Status : request.caseStatusId,
             DemandAmount = existing.DemandAmount,
             SettlementAmount = existing.SettlementAmount,
+            IsUccFiled = request.isUCCFiled,
+            LawFirmId = request.lawFirmId,
+            CaseManagerId = request.caseManager,
+            AttorneyId = request.attorney,
+            SwitchedDate = request.switchedDate,
         };
 
         await caseService.UpdateAsync(tenantId, caseId, userId, update, ct);
-
-        if (Guid.TryParse(request.lawFirmId, out var lawFirmId))
-            await caseService.ReassignLawFirmAsync(tenantId, caseId, lawFirmId, userId, ct);
-        if (Guid.TryParse(request.caseManager, out var caseManagerId))
-            await caseService.ReassignCaseManagerAsync(tenantId, caseId, caseManagerId, userId, ct);
 
         return Results.Ok(new { isSuccess = true, message = "Successfully updated servicing details." });
     }
@@ -451,14 +666,15 @@ public static class ServiceLegacyEndpoints
                     ? settlement.Amount
                     : lien?.CurrentBalance ?? settlement?.Amount ?? 0m;
             var checkAmount = payment.Amount == 0m ? amountToSettle : payment.Amount;
+            var legacyLienStatus = ResolveLegacyLienStatus(lien?.Status);
             return new
             {
                 id = payment.Id.ToString(),
                 caseId = payment.CaseId.ToString(),
                 lienId = payment.LienId.ToString(),
                 lienCode = lien?.LienNumber ?? string.Empty,
-                lienStatus = ResolveLegacyLienStatus(lien?.Status),
-                lienStatusId = lien?.Status ?? string.Empty,
+                lienStatus = legacyLienStatus,
+                lienStatusId = legacyLienStatus,
                 amount = payment.Amount.ToString("0.00", CultureInfo.InvariantCulture),
                 checkAmount = checkAmount.ToString("0.00", CultureInfo.InvariantCulture),
                 checkDate = payment.PaymentDate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
@@ -530,6 +746,9 @@ public static class ServiceLegacyEndpoints
     {
         if (string.IsNullOrWhiteSpace(status))
             return string.Empty;
+
+        if (LienStatus.Open.Contains(status))
+            return "Open";
 
         return string.Equals(status, LienStatus.Settled, StringComparison.OrdinalIgnoreCase)
             ? "Closed"
@@ -853,6 +1072,28 @@ public static class ServiceLegacyEndpoints
         dateOfLoss = item.DateOfIncident?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
     };
 
+    private static object MapLegacyServiceCaseV3(
+        CaseResponse item,
+        LegacyServiceCaseMetrics metrics) => new
+    {
+        caseId = item.Id.ToString(),
+        caseCode = item.CaseNumber,
+        plaintiffName = item.ClientDisplayName,
+        firstName = item.ClientFirstName,
+        lastName = item.ClientLastName,
+        lawfirm = item.LawFirm ?? string.Empty,
+        lawFirmId = item.LawFirmId ?? string.Empty,
+        caseManager = item.CaseManager ?? string.Empty,
+        caseManagerId = item.CaseManagerId ?? string.Empty,
+        status = item.Status,
+        dateOfLoss = item.DateOfIncident?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
+        settlementStatus = metrics.SettlementStatus ?? string.Empty,
+        settlementDate = metrics.SettlementDate ?? string.Empty,
+        settlementAmount = metrics.SettlementAmount,
+        billingAmount = metrics.BillingAmount,
+        purchaseAmount = metrics.PurchaseAmount,
+    };
+
     private static object MapLegacyServiceLien(LienResponse item) => new
     {
         liensId = item.Id.ToString(),
@@ -863,6 +1104,79 @@ public static class ServiceLegacyEndpoints
         purchaseAmount = item.PurchasePrice?.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00",
         currentBalance = item.CurrentBalance?.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00",
     };
+
+    private static LegacyMedicalAmounts ParseLegacyMedicalAmounts(string? notes)
+    {
+        var amounts = new LegacyMedicalAmounts();
+        if (string.IsNullOrWhiteSpace(notes))
+            return amounts;
+
+        foreach (var segment in notes.Split(
+                     ';',
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0 ||
+                !decimal.TryParse(
+                    segment[(separator + 1)..].Trim(),
+                    NumberStyles.Any,
+                    CultureInfo.InvariantCulture,
+                    out var amount))
+            {
+                continue;
+            }
+
+            var key = segment[..separator].Trim();
+            if (string.Equals(key, "purchaseAmount", StringComparison.Ordinal))
+                amounts = amounts with { PurchaseAmount = amount, HasPurchaseAmount = true };
+            else if (string.Equals(key, "billingAmount", StringComparison.Ordinal))
+                amounts = amounts with { BillingAmount = amount, HasBillingAmount = true };
+        }
+
+        return amounts;
+    }
+
+    private static decimal ResolveLegacySettlementAmount(decimal amount, string? notes)
+    {
+        var fields = ParseLegacyNoteFields(notes);
+        return fields.TryGetValue("totalSettledAmount", out var legacyAmount) &&
+               decimal.TryParse(
+                   legacyAmount,
+                   NumberStyles.Any,
+                   CultureInfo.InvariantCulture,
+                   out var parsedLegacyAmount)
+            ? parsedLegacyAmount
+            : amount;
+    }
+
+    private static Dictionary<string, string> ParseSettlementPaymentMetadata(string? notes)
+    {
+        const string legacyMetadataMarker = "[legacy-meta]";
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(notes))
+            return metadata;
+
+        var rawMetadata = notes;
+        var markerIndex = notes.IndexOf(legacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+            rawMetadata = notes[(markerIndex + legacyMetadataMarker.Length)..];
+
+        foreach (var segment in rawMetadata.Split(
+                     ';',
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0)
+                continue;
+
+            var key = segment[..separator].Trim();
+            var value = segment[(separator + 1)..].Trim();
+            if (!string.IsNullOrWhiteSpace(key))
+                metadata[key] = value;
+        }
+
+        return metadata;
+    }
 
     private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
     {
@@ -878,17 +1192,6 @@ public static class ServiceLegacyEndpoints
         }
 
         return result;
-    }
-
-    private static string SerializeLegacyNoteFields(Dictionary<string, string> fields)
-        => string.Join("; ", fields.Select(pair => $"{pair.Key}={pair.Value}"));
-
-    private static void SetMetadata(Dictionary<string, string> metadata, string key, string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            metadata.Remove(key);
-        else
-            metadata[key] = value.Trim();
     }
 
     private static string CsvEscape(string? value)

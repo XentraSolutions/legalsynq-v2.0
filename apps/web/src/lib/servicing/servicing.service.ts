@@ -21,6 +21,7 @@ import type {
   CreateServicingItemRequestDto,
   UpdateServicingItemRequestDto,
   UpdateServicingDetailsRequestDto,
+  UpdateServicingDetailsResponseDto,
   ServicingListItemResponseDto,
   ExportResponse,
   ServicingPaginationData,
@@ -73,9 +74,9 @@ export const servicingService = {
   },
   async updateDetails(
     request: UpdateServicingDetailsRequestDto,
-  ): Promise<ServicingDetail> {
+  ): Promise<UpdateServicingDetailsResponseDto> {
     const { data } = await servicingApi.updateDetails(request);
-    return mapServicingToDetail(data);
+    return data;
   },
 
   async updateStatus(

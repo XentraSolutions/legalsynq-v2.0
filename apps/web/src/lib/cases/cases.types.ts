@@ -28,6 +28,8 @@ export interface CaseResponseDto {
   lawFirm?: string | null;
   caseManagerId?: string | null;
   caseManager?: string | null;
+  attorneyId?: string | null;
+  switchedDate?: string | null;
   accidentTypeId?: string | null;
   accidentType?: string | null;
   insuranceCarrier?: string | null;
@@ -268,6 +270,8 @@ export interface CaseDetail {
   lawFirmId: string;
   caseManager: string;
   caseManagerId: string;
+  attorneyId: string;
+  switchedDate: string;
   accidentType: string;
   shareCase: string;
   minorComp: string;

@@ -20,6 +20,7 @@ import type {
 } from "@/lib/cases";
 import { contactsService } from "@/lib/contacts";
 import { servicingService } from "@/lib/servicing";
+import { ApiError } from "@/lib/api-client";
 import type { SettlementHistoryItemV3 } from "@/lib/settlement/settlement.types";
 import { SetupReductionForm } from "../../components/setup-reduction-form";
 import { NoRecoveryForm } from "../../components/no-recovery-form";
@@ -36,6 +37,18 @@ import { ClosedLiensSection } from "./settlement-details/sections/closed-liens-s
 import { ServicingHistorySection } from "./history/sections/servicing-history-section";
 import { SERVICING_SUB_TABS, type ServicingSubTab } from "./types";
 
+function toDateInputValue(value: string): string {
+  if (!value) return "";
+
+  const isoDate = /^(\d{4}-\d{2}-\d{2})/.exec(value);
+  if (isoDate) return isoDate[1];
+
+  const legacyDate = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  return legacyDate
+    ? `${legacyDate[3]}-${legacyDate[1]}-${legacyDate[2]}`
+    : "";
+}
+
 export function ServicingTab({
   caseDetail,
   liensList,
@@ -48,6 +61,7 @@ export function ServicingTab({
   isPaymentsFetching,
   panelMode,
   onPanelModeChange,
+  onRefreshCase,
 }: {
   caseDetail: CaseDetail;
   liensList: (CaseLienItem & CaseLienItemMetadata)[];
@@ -60,6 +74,7 @@ export function ServicingTab({
   isPaymentsFetching: boolean;
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
+  onRefreshCase: () => Promise<void>;
 }) {
   const addToast = useLienStore((s) => s.addToast);
   const { data } = useCaseLiens(caseDetail.id, {}, "all-liens");
@@ -113,11 +128,15 @@ export function ServicingTab({
   const [caseStatus, setCaseStatus] = useState(initialCaseStatus);
   const [savedCaseStatus, setSavedCaseStatus] = useState(initialCaseStatus);
   const [switchedLawFirm, setSwitchedLawFirm] = useState(false);
-  const [switchedDate, setSwitchedDate] = useState("");
+  const [switchedDate, setSwitchedDate] = useState(
+    toDateInputValue(caseDetail.switchedDate),
+  );
   const [currentLawFirm, setCurrentLawFirm] = useState(
     caseDetail.lawFirmId || "",
   );
-  const [currentLawyer, setCurrentLawyer] = useState("");
+  const [currentLawyer, setCurrentLawyer] = useState(
+    caseDetail.attorneyId || "",
+  );
   const [currentCaseManager, setCurrentCaseManager] = useState(
     caseDetail.caseManagerId || "",
   );
@@ -127,6 +146,8 @@ export function ServicingTab({
   const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<
     string | undefined
   >();
+  const [isSavingServicingDetails, setIsSavingServicingDetails] =
+    useState(false);
 
   let openLiens = liens.filter((i) => i.closedAtUtc === null);
   let closedLiens = liens.filter((i) => i.closedAtUtc !== null);
@@ -194,21 +215,37 @@ export function ServicingTab({
     const payload = {
       caseId: caseDetail.id,
       caseStatusId: caseStatus,
-      isUCCFiled: switchedLawFirm ? "Yes" : "No",
-      switchedDate: switchedDate || new Date().toISOString(),
-      lawFirmId: currentLawFirm,
-      attorney: currentLawyer,
-      caseManager: currentCaseManager,
+      switchedDate: switchedLawFirm
+        ? switchedDate || new Date().toISOString().slice(0, 10)
+        : undefined,
+      lawFirmId: switchedLawFirm ? currentLawFirm : undefined,
+      attorney: switchedLawFirm ? currentLawyer : undefined,
+      caseManager: switchedLawFirm ? currentCaseManager : undefined,
     };
 
-    await servicingService.updateDetails(payload);
-    addToast({
-      type: "success",
-      title: "Servicing Details Saved",
-      description: "Your servicing details were saved.",
-    });
-    setSwitchedLawFirm(false);
-    setSavedCaseStatus(caseStatus);
+    setIsSavingServicingDetails(true);
+    try {
+      await servicingService.updateDetails(payload);
+      addToast({
+        type: "success",
+        title: "Servicing Details Saved",
+        description: "Your servicing details were saved.",
+      });
+      setSwitchedLawFirm(false);
+      setSavedCaseStatus(caseStatus);
+      await onRefreshCase();
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Save Failed",
+        description:
+          err instanceof ApiError
+            ? err.message
+            : "Failed to save servicing details.",
+      });
+    } finally {
+      setIsSavingServicingDetails(false);
+    }
   };
 
   useEffect(() => {
@@ -284,7 +321,7 @@ export function ServicingTab({
           onCurrentCaseManagerChange={setCurrentCaseManager}
           attorneyRoleCode={attorneyRoleCode}
           caseManagerRoleCode={caseManagerRoleCode}
-          canSave={canSaveServicingDetails}
+          canSave={canSaveServicingDetails && !isSavingServicingDetails}
           onSave={handleSaveServicingDetails}
         />
       )}

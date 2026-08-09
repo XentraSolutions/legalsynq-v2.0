@@ -137,6 +137,8 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     updatedAt: formatDateField(dto.updatedAtUtc),
     caseManager: safeString(dto.caseManager),
     caseManagerId: safeString(dto.caseManagerId),
+    attorneyId: safeString(dto.attorneyId),
+    switchedDate: safeString(dto.switchedDate),
     lawFirm: safeString(dto.lawFirm),
     lawFirmId: safeString(dto.lawFirmId),
     accidentType: safeString(dto.accidentType),
