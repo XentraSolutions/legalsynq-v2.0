@@ -271,6 +271,18 @@ CareConnect owns its grounded assistant contract for referral and provider workf
 - Return tool-shaped JSON for referral lookup/history, referral search, provider search, referrer search, and queue/KPI summaries
 - Keep product-specific lookup composition inside CareConnect instead of in Xenia
 
+### Referral documents and cross-tenant access
+
+Authenticated referral document endpoints support the same authorized cross-tenant participant lookup as referral
+details and comments. This is required when a multi-tenant referrer submits to a provider network whose tenant differs
+from the referrer's currently selected JWT tenant. After the referral is resolved and participant access is verified,
+CareConnect uses the referral's owning `TenantId` for Documents service calls and `cc_ReferralAttachments` persistence.
+Tenant administrators remain scoped to their selected tenant; only platform administrators have an administrative
+global lookup bypass.
+
+This behavior applies consistently to document upload, document listing, and signed-URL retrieval under
+`/api/referrals/{referralId}/attachments/*`.
+
 ### Referral message attachments
 
 Referral comment endpoints accept both the existing JSON body for text-only comments and `multipart/form-data` when

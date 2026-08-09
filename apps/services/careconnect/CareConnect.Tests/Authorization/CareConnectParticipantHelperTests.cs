@@ -34,6 +34,7 @@ public class CareConnectParticipantHelperTests
         Guid? orgId = null,
         string? orgType = null,
         string? email = null,
+        IReadOnlyList<Guid>? tenantIds = null,
         params string[] productRoles)
     {
         var mock = new Mock<ICurrentRequestContext>();
@@ -42,6 +43,8 @@ public class CareConnectParticipantHelperTests
         mock.Setup(c => c.OrgType).Returns(orgType);
         mock.Setup(c => c.Email).Returns(email);
         mock.Setup(c => c.ProductRoles).Returns(productRoles);
+        mock.Setup(c => c.TenantId).Returns(tenantIds?.FirstOrDefault() ?? TenantId);
+        mock.Setup(c => c.TenantIds).Returns(tenantIds ?? [TenantId]);
 
         var roles = tenantAdminRole is not null
             ? new[] { tenantAdminRole }
@@ -131,6 +134,51 @@ public class CareConnectParticipantHelperTests
         var ctx = MakeCtx(orgId: OrgA, orgType: OrgType.LawFirm);
 
         Assert.False(CareConnectParticipantHelper.IsReceiverContext(ctx));
+    }
+
+    [Fact]
+    public void ShouldUseGlobalReferralLookup_MultiTenantReferrer_ReturnsTrue()
+    {
+        var ctx = MakeCtx(
+            orgId: OrgA,
+            orgType: OrgType.LawFirm,
+            tenantIds: [TenantId, Guid.CreateVersion7()],
+            productRoles: ["SYNQ_CARECONNECT:CARECONNECT_REFERRER"]);
+
+        Assert.True(CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(ctx, isProviderOrg: false));
+    }
+
+    [Fact]
+    public void ShouldUseGlobalReferralLookup_SingleTenantReferrer_ReturnsFalse()
+    {
+        var ctx = MakeCtx(
+            orgId: OrgA,
+            orgType: OrgType.LawFirm,
+            tenantIds: [TenantId],
+            productRoles: ["SYNQ_CARECONNECT:CARECONNECT_REFERRER"]);
+
+        Assert.False(CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(ctx, isProviderOrg: false));
+    }
+
+    [Fact]
+    public void ShouldUseGlobalReferralLookup_Receiver_ReturnsTrue()
+    {
+        var ctx = MakeCtx(orgId: OrgA, orgType: OrgType.Provider);
+
+        Assert.True(CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(ctx, isProviderOrg: true));
+    }
+
+    [Fact]
+    public void ShouldUseGlobalReferralLookup_MultiTenantTenantAdmin_ReturnsFalse()
+    {
+        var ctx = MakeCtx(
+            tenantAdminRole: Roles.TenantAdmin,
+            orgId: OrgA,
+            orgType: OrgType.LawFirm,
+            tenantIds: [TenantId, Guid.CreateVersion7()],
+            productRoles: ["SYNQ_CARECONNECT:CARECONNECT_REFERRER"]);
+
+        Assert.False(CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(ctx, isProviderOrg: false));
     }
 
     // ── IsReferralParticipant ─────────────────────────────────────────────────

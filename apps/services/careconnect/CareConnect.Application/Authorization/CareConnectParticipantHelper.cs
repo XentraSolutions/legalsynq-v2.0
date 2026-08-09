@@ -123,6 +123,40 @@ public static class CareConnectParticipantHelper
         return ctx.OrgId.HasValue || !string.IsNullOrWhiteSpace(ctx.Email);
     }
 
+    /// <summary>
+    /// Returns true when an authenticated referral operation may resolve the record outside
+    /// the caller's currently selected tenant. Row-level participant checks must still run
+    /// after the global lookup.
+    /// </summary>
+    public static bool ShouldUseGlobalReferralLookup(ICurrentRequestContext ctx, bool isProviderOrg)
+    {
+        if (ctx.IsPlatformAdmin)
+            return true;
+
+        // TenantAdmin bypass applies only inside the selected tenant. Combining it with
+        // a global lookup would allow an admin from one tenant to bypass participant checks
+        // on another tenant's referral.
+        if (IsAdmin(ctx))
+            return false;
+
+        if (isProviderOrg)
+            return true;
+
+        var tenantIds = ctx.TenantIds
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        if (tenantIds.Count == 0 && ctx.TenantId.HasValue)
+            tenantIds.Add(ctx.TenantId.Value);
+
+        if (tenantIds.Count <= 1)
+            return false;
+
+        return ctx.ProductRoles.Any(role =>
+            role.EndsWith(":CARECONNECT_REFERRER", StringComparison.OrdinalIgnoreCase));
+    }
+
     // ── Appointment participant checks ────────────────────────────────────────
 
     /// <summary>
