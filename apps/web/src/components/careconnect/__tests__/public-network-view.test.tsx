@@ -61,6 +61,7 @@ const DETAIL: PublicNetworkDetail = {
       primarySpecialtyId: 'specialty-1',
       primarySpecialty: 'Physical Therapy',
       distanceMiles: null,
+      isMobile: false,
     },
   ],
   markers: [
@@ -89,6 +90,7 @@ const DETAIL: PublicNetworkDetail = {
       primarySpecialtyId: 'specialty-1',
       primarySpecialty: 'Physical Therapy',
       distanceMiles: null,
+      isMobile: false,
     },
   ],
 };
@@ -127,6 +129,7 @@ const MULTI_PROVIDER_DETAIL: PublicNetworkDetail = {
       primarySpecialtyId: CHIRO_SPECIALTY.id,
       primarySpecialty: CHIRO_SPECIALTY.name,
       distanceMiles: null,
+      isMobile: false,
     },
   ],
   markers: [
@@ -148,6 +151,7 @@ const MULTI_PROVIDER_DETAIL: PublicNetworkDetail = {
       primarySpecialtyId: CHIRO_SPECIALTY.id,
       primarySpecialty: CHIRO_SPECIALTY.name,
       distanceMiles: null,
+      isMobile: false,
     },
   ],
 };

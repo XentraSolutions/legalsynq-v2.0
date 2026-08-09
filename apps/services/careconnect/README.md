@@ -59,7 +59,7 @@ CareConnect.Tests/         Tests
 | `GET` | `/api/public/careconnect/network` | Anonymous | Public provider network |
 | `PUT` | `/api/networks/{networkId}/providers/{providerId}` | Bearer | Edit a provider from a tenant network after membership validation |
 | `DELETE` | `/api/networks/{networkId}/providers/{id}` | Bearer | Soft-delete a provider-location network membership |
-| `POST` | `/api/networks/{networkId}/providers/import` | Development-only | CSV/XLSX provider migration/import into a tenant network |
+| `POST` | `/api/networks/{networkId}/providers/import` | Anonymous, loopback-only | CSV/XLSX provider migration/import into a tenant network |
 
 ### Referral Attribution & Referral Representative Portal
 
@@ -186,29 +186,45 @@ provider-location memberships whose provider and facility are also active.
 
 ### Provider import
 
-The development-only provider import endpoint accepts CSV or XLSX uploads at `POST /api/networks/{networkId}/providers/import`.
+The provider import endpoint accepts CSV or XLSX uploads at `POST /api/networks/{networkId}/providers/import`.
+It is intentionally unauthenticated (`.AllowAnonymous()`) and gated instead on the caller's raw TCP peer address —
+only requests whose physical connection originates from loopback (`127.0.0.1`/`::1`) are allowed; everything else
+gets `403`. The raw peer address is captured in `Program.cs` *before* `UseForwardedHeaders()` runs, so the gate
+can't be bypassed by sending a spoofed `X-Forwarded-For: 127.0.0.1` through the trusted reverse proxy. In practice
+this means: `curl` it directly on the box the service runs on (dev or prod), never through the gateway/LAN.
 Each valid row creates or reuses a provider identity, creates or reuses a facility location, links the provider to
 that facility, and links that provider-location pair to the network. Matching uses exact NPI first. Blank NPI rows
 fall back to tenant email plus provider/facility context. Same NPI plus a different address creates another facility
 and another network membership, not another provider.
 
 The import accepts canonical headers and workbook-style headers. Required usable location fields are `email`, `phone`,
-address, city, state, and ZIP. `tenantId` is optional when the file is imported through a specific
-network; missing row tenant IDs default to the target network tenant, while supplied mismatched tenant IDs are rejected.
-`Medical Provider` maps to provider title/name parsing. If
-`Medical Provider` is blank, `Medical Facility` becomes the organization-level provider identity. `Medical Facility`
-maps to `Facility.Name` and provider organization name. Address columns map to `Facility`; `Address 2` is appended to
-`Address 1` during parsing because CareConnect currently has one facility street-address field. `NPI` maps only to
-`Provider.Npi`.
+address, city, and state. ZIP is required per row unless that row is a mobile provider (see below), so the ZIP/`postalCode`
+column itself is optional at the file level — a file made up entirely of mobile providers can omit it. `tenantId` is
+optional when the file is imported through a specific network; missing row tenant IDs default to the target network
+tenant, while supplied mismatched tenant IDs are rejected.
+Provider name is recommended as discrete `Title`, `First Name`, and `Last Name` columns (canonical `title`/`firstName`/`lastName`).
+The single-column `Medical Provider`/`providerName` header is still accepted for backward compatibility — when supplied
+without discrete columns, it's split into title/first/last (leading `Dr.`/`Mr.`/`Mrs.`/`Ms.`/`Prof.` becomes `title`, the
+last remaining token becomes `lastName`, everything else becomes `firstName`); discrete `Title`/`First Name`/`Last Name`
+values always take precedence when both are present in the same file. If no provider name is resolved, `Medical Facility`
+becomes the organization-level provider identity. `Medical Facility` maps to `Facility.Name` and provider organization
+name. Address columns map to `Facility`; `Address 2` is appended to `Address 1` during parsing because CareConnect
+currently has one facility street-address field. `NPI` maps only to `Provider.Npi`.
 
 Specialty values may be codes or names such as `Pain`, `Spine`, `Physical Therapy`, `Neuro`, `Imaging`,
 `Chiropractor`, and `Extremities`; `Chiro` is normalized to `Chiropractor`. Category/provider-type columns are still
 accepted for compatibility and are used as a specialty fallback when no specialty column is supplied.
 
 Optional import columns include `title`, `categoryCodes`, `primaryCategoryCode`, `primarySpecialtyCode`, `latitude`,
-`longitude`, and `geoPointSource`. `geoPointSource` is normalized to the supported values `Manual`, `Geocoded`, or
-`Imported`; common geocoder labels such as `nominatim` are treated as `Geocoded`, and coordinate rows with no source
-default to `Imported`. The current sample is `artifacts/postman/careconnect-provider-import.sample.csv`.
+`longitude`, and `geoPointSource`. `geoPointSource` is normalized to the supported values `Manual`, `Geocoded`,
+`Imported`, or `CityCentroid`; common geocoder labels such as `nominatim` are treated as `Geocoded`, and coordinate
+rows with no source default to `Imported`. The current sample is `artifacts/postman/careconnect-provider-import.sample.csv`.
+
+A row for a mobile/roaming provider with no fixed street address (e.g. a mobile clinic that
+covers a metro area) can set `Mobile` to `Y`/`true` — this makes ZIP optional for that row (still
+required otherwise) and stores the address column as a free-text service-area label (e.g.
+"Greater Las Vegas Metro") instead of a street address. `ServiceRadius` (miles) is optional and
+defaults to 25; both are capped at `ProviderGeoHelper.ServiceRadiusMilesCap` (60 miles).
 
 ### Provider search and distance
 

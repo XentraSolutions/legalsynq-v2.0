@@ -36,7 +36,7 @@ public sealed record NetworkProviderItem(
     string City,
     string State,
     string AddressLine1,
-    string PostalCode,
+    string? PostalCode,
     bool   IsActive,
     bool   AcceptingReferrals,
     string AccessStage,
@@ -51,7 +51,10 @@ public sealed record NetworkProviderItem(
     /// last active membership referencing it). A membership can be manually toggled
     /// IsActive=false while FacilityIsActive stays true, and vice versa is not possible.
     /// </summary>
-    bool   FacilityIsActive = true);
+    bool   FacilityIsActive = true,
+    bool    IsMobile = false,
+    double? ServiceRadiusMiles = null,
+    string? ServiceAreaLabel = null);
 
 // ── Map markers ───────────────────────────────────────────────────────────────
 
@@ -67,7 +70,7 @@ public sealed record NetworkProviderMarker(
     string City,
     string State,
     string AddressLine1,
-    string PostalCode,
+    string? PostalCode,
     string Email,
     string Phone,
     bool   AcceptingReferrals,
@@ -77,7 +80,10 @@ public sealed record NetworkProviderMarker(
     string? GeoPointSource,
     List<SpecialtyResponse> Specialties,
     Guid? PrimarySpecialtyId,
-    string? PrimarySpecialty);
+    string? PrimarySpecialty,
+    bool    IsMobile = false,
+    double? ServiceRadiusMiles = null,
+    string? ServiceAreaLabel = null);
 
 // ── Shared provider search ────────────────────────────────────────────────────
 
@@ -94,14 +100,17 @@ public sealed record ProviderSearchResult(
     string  City,
     string  State,
     string  AddressLine1,
-    string  PostalCode,
+    string? PostalCode,
     string? Npi,
     bool    IsActive,
     bool    AcceptingReferrals,
     string  AccessStage,
     List<SpecialtyResponse> Specialties,
     Guid? PrimarySpecialtyId,
-    string? PrimarySpecialty);
+    string? PrimarySpecialty,
+    bool    IsMobile = false,
+    double? ServiceRadiusMiles = null,
+    string? ServiceAreaLabel = null);
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
@@ -133,7 +142,7 @@ public sealed record NewProviderData(
     string  AddressLine1,
     string  City,
     string  State,
-    string  PostalCode,
+    string? PostalCode,
     bool    IsActive,
     bool    AcceptingReferrals,
     string? Npi,
@@ -148,7 +157,11 @@ public sealed record NewProviderData(
     double? Latitude = null,
     double? Longitude = null,
     string? GeoPointSource = null,
-    string? Title = null);
+    string? Title = null,
+    /// <summary>True for a roaming provider with no fixed address (AddressLine1 holds a service-area label instead).</summary>
+    bool    IsMobile = false,
+    /// <summary>Coverage radius in miles from the geocoded city centroid. Required when IsMobile is true.</summary>
+    double? ServiceRadiusMiles = null);
 
 public sealed record UpdateNetworkProviderRequest(
     string  FirstName,
@@ -160,14 +173,16 @@ public sealed record UpdateNetworkProviderRequest(
     string  AddressLine1,
     string  City,
     string  State,
-    string  PostalCode,
+    string? PostalCode,
     bool    IsActive,
     bool    AcceptingReferrals,
     List<Guid> SpecialtyIds,
     double? Latitude = null,
     double? Longitude = null,
     string? GeoPointSource = null,
-    string? Title = null);
+    string? Title = null,
+    bool    IsMobile = false,
+    double? ServiceRadiusMiles = null);
 
 // ── Provider import ──────────────────────────────────────────────────────────
 
@@ -196,7 +211,11 @@ public sealed record ProviderImportParsedRow(
     string? PrimarySpecialtyCode = null,
     string? LatitudeRaw = null,
     string? LongitudeRaw = null,
-    string? GeoPointSource = null);
+    string? GeoPointSource = null,
+    /// <summary>"Y"/"true"/"1" flags a mobile/roaming provider with no fixed address.</summary>
+    string? IsMobileRaw = null,
+    /// <summary>Coverage radius in miles; required when IsMobileRaw is truthy.</summary>
+    string? ServiceRadiusMilesRaw = null);
 
 public sealed record ProviderImportNormalizedRow(
     Guid    TenantId,
@@ -211,7 +230,7 @@ public sealed record ProviderImportNormalizedRow(
     string  AddressLine1,
     string  City,
     string  State,
-    string  PostalCode,
+    string? PostalCode,
     bool    IsActive,
     bool    AcceptingReferrals,
     List<string> CategoryCodes,
@@ -220,7 +239,9 @@ public sealed record ProviderImportNormalizedRow(
     string? PrimarySpecialtyCode,
     double? Latitude,
     double? Longitude,
-    string? GeoPointSource);
+    string? GeoPointSource,
+    bool    IsMobile = false,
+    double? ServiceRadiusMiles = null);
 
 public sealed record ProviderImportParseResult(
     string FileName,

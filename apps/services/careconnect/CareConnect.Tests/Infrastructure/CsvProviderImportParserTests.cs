@@ -35,6 +35,56 @@ tenantId,firstName,lastName,organization,npiNumber,email,phone,addressLine1,city
     }
 
     [Fact]
+    public async Task ParseAsync_Windows1252CsvWithNonBreakingSpace_DoesNotCorruptAmpersandText()
+    {
+        // Excel's plain "CSV (Comma delimited)" save format defaults to the system codepage
+        // (Windows-1252) rather than UTF-8. A non-breaking space (U+00A0, byte 0xA0 in cp1252,
+        // often pasted in from Word/Outlook) force-decoded as UTF-8 turns into a U+FFFD
+        // replacement character.
+        var organizationName = OrgNameWithNonBreakingSpace();
+        var cp1252 = Encoding.GetEncoding(1252);
+        var csv = "tenantId,firstName,lastName,organization,email,phone,addressLine1,city,state,zip\n" +
+                   $"11111111-1111-1111-1111-111111111111,Jane,Smith,{organizationName},jane@example.com,555-0100,123 Main St,Chicago,IL,60601\n";
+
+        await using var stream = new MemoryStream(cp1252.GetBytes(csv));
+
+        var result = await _parser.ParseAsync(stream, "providers.csv");
+
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(organizationName, row.OrganizationName);
+        Assert.DoesNotContain('�', row.OrganizationName!);
+    }
+
+    [Fact]
+    public async Task ParseAsync_MacRomanCsvWithNonBreakingSpace_DoesNotCorruptAmpersandText()
+    {
+        // Excel-for-Mac's plain "CSV" export defaults to Mac OS Roman, not UTF-8 or Windows-1252.
+        // Byte 0xCA is a non-breaking space (U+00A0) in Mac OS Roman but "E-circumflex" (U+00CA)
+        // in Windows-1252 -- a fixed single-fallback guess decodes this "successfully" either
+        // way, just silently wrong for whichever encoding it guessed incorrectly.
+        // PickLegacyEncoding resolves this by preferring whichever candidate turns the stray
+        // byte into a plausible autocorrect artifact (a non-breaking space) rather than a
+        // random accented letter.
+        var organizationName = OrgNameWithNonBreakingSpace();
+        var macRoman = Encoding.GetEncoding(10000);
+        var csv = "tenantId,firstName,lastName,organization,email,phone,addressLine1,city,state,zip\n" +
+                   $"11111111-1111-1111-1111-111111111111,Jane,Smith,{organizationName},jane@example.com,555-0100,123 Main St,Chicago,IL,60601\n";
+
+        await using var stream = new MemoryStream(macRoman.GetBytes(csv));
+
+        var result = await _parser.ParseAsync(stream, "providers.csv");
+
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(organizationName, row.OrganizationName);
+        Assert.DoesNotContain('\u00CA', row.OrganizationName!);
+    }
+
+    // Built with an explicit (char)0xA0 concatenation rather than a non-breaking space typed
+    // directly into source, so the test byte can't drift depending on how this file gets edited.
+    private static string OrgNameWithNonBreakingSpace()
+        => "Spine &" + (char)0xA0 + "Orthopedic Interventionalists";
+
+    [Fact]
     public async Task ParseAsync_ParsesXlsxWorkbookStyleHeadersWithoutTenantId()
     {
         await using var stream = BuildXlsx(
@@ -100,14 +150,32 @@ tenantId,firstName,lastName,organization,npiNumber,email,phone,addressLine1,city
     public async Task ParseAsync_MissingRequiredHeader_ThrowsValidationException()
     {
         const string csv = """
-tenantId,firstName,lastName,email,phone,addressLine1,city,state
-11111111-1111-1111-1111-111111111111,Jane,Smith,jane@example.com,555-0100,123 Main St,Chicago,IL
+tenantId,firstName,lastName,email,phone,addressLine1,city
+11111111-1111-1111-1111-111111111111,Jane,Smith,jane@example.com,555-0100,123 Main St,Chicago
 """;
 
         await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csv));
 
         var ex = await Assert.ThrowsAsync<ValidationException>(() => _parser.ParseAsync(stream, "providers.csv"));
         Assert.Contains("headers", ex.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task ParseAsync_MissingPostalCodeHeader_ParsesMobileProviderRow()
+    {
+        const string csv = """
+tenantId,firstName,lastName,email,phone,addressLine1,city,state,mobile,serviceRadius
+11111111-1111-1111-1111-111111111111,Jane,Smith,jane@example.com,555-0100,Greater Chicago Metro,Chicago,IL,true,30
+""";
+
+        await using var stream = new MemoryStream(Encoding.UTF8.GetBytes(csv));
+
+        var result = await _parser.ParseAsync(stream, "providers.csv");
+
+        var row = Assert.Single(result.Rows);
+        Assert.Null(row.PostalCode);
+        Assert.Equal("true", row.IsMobileRaw);
+        Assert.Equal("30", row.ServiceRadiusMilesRaw);
     }
 
     [Fact]

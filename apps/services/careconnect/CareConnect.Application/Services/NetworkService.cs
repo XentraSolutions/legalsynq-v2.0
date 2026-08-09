@@ -428,6 +428,8 @@ public class NetworkService : INetworkService
                     location.Latitude,
                     location.Longitude,
                     location.GeoPointSource,
+                    location.IsMobile,
+                    location.ServiceRadiusMiles,
                     ct);
                 isActive = location.IsActive;
                 acceptingReferrals = location.AcceptingReferrals;
@@ -461,6 +463,8 @@ public class NetworkService : INetworkService
                 np.Latitude,
                 np.Longitude,
                 np.GeoPointSource,
+                np.IsMobile,
+                np.ServiceRadiusMiles,
                 ct);
             isActive = np.IsActive;
             acceptingReferrals = np.AcceptingReferrals;
@@ -564,7 +568,10 @@ public class NetworkService : INetworkService
                     f.GeoPointSource ?? p.GeoPointSource,
                     specialties,
                     primarySpecialty?.Id,
-                    primarySpecialty?.Name);
+                    primarySpecialty?.Name,
+                    f.IsMobile,
+                    f.ServiceRadiusMiles,
+                    f.IsMobile ? f.AddressLine1 : null);
             })
             .ToList();
     }
@@ -592,7 +599,9 @@ public class NetworkService : INetworkService
             request.City,
             request.State,
             request.PostalCode,
-            request.Title);
+            request.Title,
+            request.IsMobile,
+            request.ServiceRadiusMiles);
         ValidateGeoFields(request.Latitude, request.Longitude, request.GeoPointSource);
         var specialtyIds = await ValidateSpecialtyIdsAsync(request.SpecialtyIds, ct);
 
@@ -611,7 +620,9 @@ public class NetworkService : INetworkService
             addressLine1: request.AddressLine1,
             city: request.City,
             state: request.State.Trim().ToUpperInvariant(),
-            postalCode: request.PostalCode,
+            // Provider's own address is the legacy pre-Facility location; the real, nullable
+            // PostalCode for mobile providers lives on the Facility updated below.
+            postalCode: request.PostalCode ?? string.Empty,
             isActive: provider.IsActive,
             acceptingReferrals: provider.AcceptingReferrals,
             updatedByUserId: userId,
@@ -637,7 +648,9 @@ public class NetworkService : INetworkService
             email: request.Email.Trim().ToLowerInvariant(),
             latitude: request.Latitude ?? facility.Latitude,
             longitude: request.Longitude ?? facility.Longitude,
-            geoPointSource: request.Latitude.HasValue ? request.GeoPointSource : facility.GeoPointSource);
+            geoPointSource: request.Latitude.HasValue ? request.GeoPointSource : facility.GeoPointSource,
+            isMobile: request.IsMobile,
+            serviceRadiusMiles: request.ServiceRadiusMiles);
         membership.UpdateStatus(request.IsActive, request.AcceptingReferrals);
 
         await _networks.UpdateProviderInRegistryAsync(provider, ct);
@@ -676,7 +689,10 @@ public class NetworkService : INetworkService
             specialties,
             primarySpecialty?.Id,
             primarySpecialty?.Name,
-            f.IsActive);
+            f.IsActive,
+            f.IsMobile,
+            f.ServiceRadiusMiles,
+            f.IsMobile ? f.AddressLine1 : null);
     }
 
     private static IEnumerable<ProviderSearchResult> ToSearchResults(Provider p)
@@ -709,7 +725,10 @@ public class NetworkService : INetworkService
             p.Npi, p.IsActive, p.AcceptingReferrals, p.AccessStage,
             specialties,
             primarySpecialty?.Id,
-            primarySpecialty?.Name);
+            primarySpecialty?.Name,
+            facility.IsMobile,
+            facility.ServiceRadiusMiles,
+            facility.IsMobile ? facility.AddressLine1 : null);
         }
     }
 
@@ -754,7 +773,10 @@ public class NetworkService : INetworkService
             addressLine1: np.AddressLine1,
             city: np.City,
             state: np.State,
-            postalCode: np.PostalCode,
+            // Provider's own address fields are the legacy pre-Facility location (kept for
+            // backward compat / fallback search) — the real, nullable PostalCode for mobile
+            // providers lives on the Facility created below via EnsureFacilityAsync.
+            postalCode: np.PostalCode ?? string.Empty,
             isActive: np.IsActive,
             acceptingReferrals: np.AcceptingReferrals,
             createdByUserId: userId,
@@ -856,7 +878,9 @@ public class NetworkService : INetworkService
             addressLine1: normalized.AddressLine1,
             city: normalized.City,
             state: normalized.State,
-            postalCode: normalized.PostalCode,
+            // Provider's own address is the legacy pre-Facility location; the real, nullable
+            // PostalCode for mobile providers lives on the Facility resolved separately below.
+            postalCode: normalized.PostalCode ?? string.Empty,
             isActive: normalized.IsActive,
             acceptingReferrals: normalized.AcceptingReferrals,
             createdByUserId: userId,
@@ -884,63 +908,35 @@ public class NetworkService : INetworkService
         providersByEmail[provider.Email] = provider;
     }
 
-    private async Task<FacilityResolution> ResolveImportFacilityAsync(
+    // Every import row gets its own Facility row, even when name/address/city/state/ZIP match
+    // a facility created earlier in the same (or a prior) import — unlike EnsureFacilityAsync
+    // (used by the manual "Add provider" flow), which intentionally dedups by address. Provider
+    // CSV rows are per-provider-per-location records; two providers sharing a building (e.g. two
+    // physicians in the same practice) must not be collapsed onto one shared Facility.
+    private Task<FacilityResolution> ResolveImportFacilityAsync(
         Guid tenantId,
         Guid? userId,
         ProviderImportNormalizedRow normalized,
         CancellationToken ct)
     {
-        var facility = await _networks.FindFacilityAsync(
+        var facility = Facility.Create(
             tenantId,
             normalized.FacilityName,
             normalized.AddressLine1,
             normalized.City,
             normalized.State,
             normalized.PostalCode,
-            ct);
+            normalized.Phone,
+            normalized.IsActive,
+            userId,
+            normalized.Email,
+            normalized.Latitude,
+            normalized.Longitude,
+            normalized.GeoPointSource,
+            normalized.IsMobile,
+            normalized.ServiceRadiusMiles);
 
-        if (facility is null)
-        {
-            return new FacilityResolution(
-                Facility.Create(
-                    tenantId,
-                    normalized.FacilityName,
-                    normalized.AddressLine1,
-                    normalized.City,
-                    normalized.State,
-                    normalized.PostalCode,
-                    normalized.Phone,
-                    normalized.IsActive,
-                    userId,
-                    normalized.Email,
-                    normalized.Latitude,
-                    normalized.Longitude,
-                    normalized.GeoPointSource),
-                "created");
-        }
-
-        var status = "existing";
-        if ((normalized.Latitude.HasValue && normalized.Longitude.HasValue) ||
-            !string.Equals(facility.Email, normalized.Email, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(facility.Phone, normalized.Phone, StringComparison.Ordinal))
-        {
-            facility.Update(
-                normalized.FacilityName,
-                normalized.AddressLine1,
-                normalized.City,
-                normalized.State,
-                normalized.PostalCode,
-                normalized.Phone,
-                normalized.IsActive,
-                userId,
-                normalized.Email,
-                normalized.Latitude ?? facility.Latitude,
-                normalized.Longitude ?? facility.Longitude,
-                normalized.Latitude.HasValue ? normalized.GeoPointSource : facility.GeoPointSource);
-            status = "updated";
-        }
-
-        return new FacilityResolution(facility, status);
+        return Task.FromResult(new FacilityResolution(facility, "created"));
     }
 
     private async Task<Facility> EnsureFacilityAsync(
@@ -949,7 +945,7 @@ public class NetworkService : INetworkService
         string addressLine1,
         string city,
         string state,
-        string postalCode,
+        string? postalCode,
         string phone,
         bool isActive,
         Guid? userId,
@@ -957,6 +953,8 @@ public class NetworkService : INetworkService
         double? latitude,
         double? longitude,
         string? geoPointSource,
+        bool isMobile,
+        double? serviceRadiusMiles,
         CancellationToken ct)
     {
         var facility = await _networks.FindFacilityAsync(tenantId, name, addressLine1, city, state, postalCode, ct);
@@ -974,7 +972,9 @@ public class NetworkService : INetworkService
                 email.Trim().ToLowerInvariant(),
                 latitude ?? facility.Latitude,
                 longitude ?? facility.Longitude,
-                latitude.HasValue ? geoPointSource : facility.GeoPointSource);
+                latitude.HasValue ? geoPointSource : facility.GeoPointSource,
+                isMobile,
+                serviceRadiusMiles);
             await _networks.UpdateFacilityAsync(facility, ct);
             return facility;
         }
@@ -992,7 +992,9 @@ public class NetworkService : INetworkService
             email.Trim().ToLowerInvariant(),
             latitude,
             longitude,
-            geoPointSource);
+            geoPointSource,
+            isMobile,
+            serviceRadiusMiles);
         await _networks.AddFacilityAsync(facility, ct);
         return facility;
     }
@@ -1017,6 +1019,8 @@ public class NetworkService : INetworkService
             provider.Latitude,
             provider.Longitude,
             provider.GeoPointSource,
+            isMobile: false,
+            serviceRadiusMiles: null,
             ct);
 
         await EnsureProviderFacilityAsync(provider.Id, facility.Id, isPrimary: true, ct);
@@ -1076,17 +1080,40 @@ public class NetworkService : INetworkService
         var facilityName = NormalizeRequired(parsedRow.FacilityName ?? parsedRow.OrganizationName, "Medical facility is required.", errors);
         var firstName = NormalizeOptional(parsedRow.FirstName) ?? providerNameParts.FirstName;
         var lastName = NormalizeOptional(parsedRow.LastName) ?? providerNameParts.LastName;
-        if (string.IsNullOrWhiteSpace(firstName) && string.IsNullOrWhiteSpace(lastName))
-        {
-            firstName = facilityName;
-            lastName = string.Empty;
-        }
         var email = NormalizeRequired(parsedRow.Email, "Provider email is required.", errors, NormalizeEmail);
-        var phone = NormalizeRequired(parsedRow.Phone, "Provider phone is required.", errors);
+        string? phone;
+        if (string.IsNullOrWhiteSpace(parsedRow.Phone))
+        {
+            errors.Add("Provider phone is required.");
+            phone = null;
+        }
+        else if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(parsedRow.Phone, out phone))
+        {
+            errors.Add("Provider phone must be a valid 10-digit US phone number.");
+        }
         var addressLine1 = NormalizeRequired(parsedRow.AddressLine1, "Address is required.", errors);
         var city = NormalizeRequired(parsedRow.City, "City is required.", errors);
         var state = NormalizeRequired(parsedRow.State, "State is required.", errors, v => v.Trim().ToUpperInvariant());
-        var postalCode = NormalizeRequired(parsedRow.PostalCode, "Postal code is required.", errors);
+
+        // Explicit opt-in only — a blank ZIP alone does not imply mobile, so ordinary bad-data
+        // rows still fail the way they always have.
+        if (!TryParseOptionalBoolean(parsedRow.IsMobileRaw, defaultValue: false, out var isMobile, out var isMobileError))
+            errors.Add(isMobileError);
+
+        var postalCode = isMobile
+            ? NormalizeOptional(parsedRow.PostalCode)
+            : NormalizeRequired(parsedRow.PostalCode, "Postal code is required.", errors);
+
+        double? serviceRadiusMiles = null;
+        if (isMobile)
+        {
+            serviceRadiusMiles = ParseOptionalDouble(parsedRow.ServiceRadiusMilesRaw, "Service radius", errors)
+                ?? ProviderGeoHelper.DefaultServiceRadiusMiles;
+            var serviceAreaErrors = new Dictionary<string, string[]>();
+            ProviderGeoHelper.ValidateServiceArea(isMobile, serviceRadiusMiles, serviceAreaErrors);
+            errors.AddRange(serviceAreaErrors.Values.SelectMany(v => v));
+        }
+
         var categoryCodes = NormalizeCodeList(parsedRow.CategoryCodesRaw);
         var specialtyCodes = NormalizeCodeList(parsedRow.SpecialtyCodesRaw);
         if (specialtyCodes.Count == 0 && categoryCodes.Count > 0)
@@ -1124,9 +1151,9 @@ public class NetworkService : INetworkService
         normalized = new ProviderImportNormalizedRow(
             TenantId: tenantId,
             Title: title,
-            FirstName: firstName!,
+            FirstName: firstName ?? string.Empty,
             LastName: lastName ?? string.Empty,
-            OrganizationName: NormalizeOptional(parsedRow.OrganizationName),
+            OrganizationName: NormalizeOptional(parsedRow.OrganizationName) ?? facilityName,
             FacilityName: facilityName!,
             Npi: NormalizeOptional(parsedRow.Npi),
             Email: email!,
@@ -1134,7 +1161,7 @@ public class NetworkService : INetworkService
             AddressLine1: addressLine1!,
             City: city!,
             State: state!,
-            PostalCode: postalCode!,
+            PostalCode: postalCode,
             IsActive: isActive,
             AcceptingReferrals: acceptingReferrals,
             CategoryCodes: categoryCodes,
@@ -1143,7 +1170,9 @@ public class NetworkService : INetworkService
             PrimarySpecialtyCode: primarySpecialtyCode,
             Latitude: latitude,
             Longitude: longitude,
-            GeoPointSource: geoPointSource);
+            GeoPointSource: geoPointSource,
+            IsMobile: isMobile,
+            ServiceRadiusMiles: isMobile ? serviceRadiusMiles : null);
 
         return true;
     }
@@ -1339,12 +1368,13 @@ public class NetworkService : INetworkService
             errors["city"] = ["City is required."];
         if (string.IsNullOrWhiteSpace(np.State))
             errors["state"] = ["State is required."];
-        if (string.IsNullOrWhiteSpace(np.PostalCode))
+        if (!np.IsMobile && string.IsNullOrWhiteSpace(np.PostalCode))
             errors["postalCode"] = ["Postal code is required."];
         if (np.Title?.Trim().Length > 50)
             errors["title"] = ["Title must be 50 characters or fewer."];
         if (np.SpecialtyCodes is null || np.SpecialtyCodes.Count == 0)
             errors["specialtyCodes"] = ["Select at least one specialty."];
+        ProviderGeoHelper.ValidateServiceArea(np.IsMobile, np.ServiceRadiusMiles, errors);
         if (errors.Count > 0)
             throw new ValidationException("Validation failed.", errors);
     }
@@ -1362,8 +1392,9 @@ public class NetworkService : INetworkService
             errors["city"] = ["City is required."];
         if (string.IsNullOrWhiteSpace(np.State))
             errors["state"] = ["State is required."];
-        if (string.IsNullOrWhiteSpace(np.PostalCode))
+        if (!np.IsMobile && string.IsNullOrWhiteSpace(np.PostalCode))
             errors["postalCode"] = ["Postal code is required."];
+        ProviderGeoHelper.ValidateServiceArea(np.IsMobile, np.ServiceRadiusMiles, errors);
         if (errors.Count > 0)
             throw new ValidationException("Validation failed.", errors);
     }
@@ -1376,8 +1407,10 @@ public class NetworkService : INetworkService
         string addressLine1,
         string city,
         string state,
-        string postalCode,
-        string? title)
+        string? postalCode,
+        string? title,
+        bool isMobile,
+        double? serviceRadiusMiles)
     {
         var errors = new Dictionary<string, string[]>();
         if (string.IsNullOrWhiteSpace(firstName))
@@ -1394,10 +1427,11 @@ public class NetworkService : INetworkService
             errors["city"] = ["City is required."];
         if (string.IsNullOrWhiteSpace(state))
             errors["state"] = ["State is required."];
-        if (string.IsNullOrWhiteSpace(postalCode))
+        if (!isMobile && string.IsNullOrWhiteSpace(postalCode))
             errors["postalCode"] = ["Postal code is required."];
         if (title?.Trim().Length > 50)
             errors["title"] = ["Title must be 50 characters or fewer."];
+        ProviderGeoHelper.ValidateServiceArea(isMobile, serviceRadiusMiles, errors);
         if (errors.Count > 0)
             throw new ValidationException("Validation failed.", errors);
     }

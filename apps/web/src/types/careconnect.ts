@@ -15,9 +15,10 @@ export interface ProviderSummary {
   organizationName?:  string;
   email:              string;
   phone:              string;
+  addressLine1?:      string;
   city:               string;
   state:              string;
-  postalCode:         string;
+  postalCode?:        string | null;
   isActive:           boolean;
   acceptingReferrals: boolean;
   categories:         string[];
@@ -32,6 +33,9 @@ export interface ProviderSummary {
   hasGeoLocation:     boolean;
   latitude?:          number;
   longitude?:         number;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 // ProviderDetail — same DTO as list (backend returns same shape for both)
@@ -66,7 +70,7 @@ export interface ProviderMarker {
   city:               string;
   state:              string;
   addressLine1:       string;
-  postalCode:         string;
+  postalCode?:        string | null;
   email:              string;
   phone:              string;
   acceptingReferrals: boolean;
@@ -80,6 +84,9 @@ export interface ProviderMarker {
   primarySpecialty?:  string | null;
   primarySpecialtyId?: string | null;
   distanceMiles?:     number | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 // ── Referral history ─────────────────────────────────────────────────────────
@@ -284,8 +291,11 @@ export interface RepresentativeFacilityRef {
   addressLine1: string;
   city:         string;
   state:        string;
-  postalCode:   string;
+  postalCode?:  string | null;
   phone?:       string | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 export interface RepresentativeMilestone {
@@ -834,7 +844,7 @@ export interface ProviderSearchResult {
   city:              string;
   state:             string;
   addressLine1:      string;
-  postalCode:        string;
+  postalCode?:       string | null;
   npi?:              string;
   isActive:          boolean;
   acceptingReferrals: boolean;
@@ -843,6 +853,9 @@ export interface ProviderSearchResult {
   primarySpecialtyId?: string | null;
   primarySpecialty?: string | null;
   distanceMiles?:    number | null;
+  isMobile?:            boolean;
+  serviceRadiusMiles?:  number | null;
+  serviceAreaLabel?:    string | null;
 }
 
 /**
@@ -864,7 +877,7 @@ export interface AddProviderToNetworkRequest {
     addressLine1:        string;
     city:                string;
     state:               string;
-    postalCode:          string;
+    postalCode?:         string | null;
     isActive:            boolean;
     acceptingReferrals:  boolean;
     npi?:                string;
@@ -875,6 +888,8 @@ export interface AddProviderToNetworkRequest {
     latitude?:           number | null;
     longitude?:          number | null;
     geoPointSource?:     string | null;
+    isMobile?:           boolean;
+    serviceRadiusMiles?: number | null;
   };
 }
 
@@ -890,13 +905,15 @@ export interface UpdateNetworkProviderRequest {
   addressLine1:        string;
   city:                string;
   state:               string;
-  postalCode:          string;
+  postalCode?:         string | null;
   isActive:            boolean;
   acceptingReferrals:  boolean;
   specialtyIds:        string[];
   latitude?:           number | null;
   longitude?:          number | null;
   geoPointSource?:     string | null;
+  isMobile?:           boolean;
+  serviceRadiusMiles?: number | null;
 }
 
 export interface NetworkSummary {
@@ -930,7 +947,7 @@ export interface NetworkProviderItem {
   city:              string;
   state:             string;
   addressLine1:      string;
-  postalCode:        string;
+  postalCode?:       string | null;
   isActive:          boolean;
   acceptingReferrals: boolean;
   /**
@@ -945,6 +962,9 @@ export interface NetworkProviderItem {
   primarySpecialtyId?: string | null;
   primarySpecialty?: string | null;
   distanceMiles?:    number | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 export interface NetworkDetail {
@@ -968,7 +988,7 @@ export interface NetworkProviderMarker {
   city:              string;
   state:             string;
   addressLine1:      string;
-  postalCode:        string;
+  postalCode?:       string | null;
   email:             string;
   phone:             string;
   acceptingReferrals: boolean;
@@ -980,6 +1000,9 @@ export interface NetworkProviderMarker {
   primarySpecialtyId?: string | null;
   primarySpecialty?: string | null;
   distanceMiles?:    number | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 export interface CreateNetworkRequest {

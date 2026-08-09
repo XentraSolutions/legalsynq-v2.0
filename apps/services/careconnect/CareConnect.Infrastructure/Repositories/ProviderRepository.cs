@@ -37,7 +37,8 @@ public class ProviderRepository : IProviderRepository
 
             var distanceRows = candidates
                 .SelectMany(p => ExpandLocationRows(p, query.Latitude!.Value, query.Longitude!.Value))
-                .Where(row => row.DistanceMiles.HasValue && row.DistanceMiles.Value <= query.RadiusMiles!.Value)
+                .Where(row => row.DistanceMiles.HasValue &&
+                    row.DistanceMiles.Value <= query.RadiusMiles!.Value + MobileCoverageAllowance(row.Facility))
                 .OrderBy(row => row.DistanceMiles!.Value)
                 .ThenBy(row => row.Provider.Name)
                 .ThenBy(row => row.Facility?.Name)
@@ -83,7 +84,8 @@ public class ProviderRepository : IProviderRepository
 
             return candidates
                 .SelectMany(p => ExpandLocationRows(p, query.Latitude!.Value, query.Longitude!.Value))
-                .Where(row => row.DistanceMiles.HasValue && row.DistanceMiles.Value <= query.RadiusMiles!.Value)
+                .Where(row => row.DistanceMiles.HasValue &&
+                    row.DistanceMiles.Value <= query.RadiusMiles!.Value + MobileCoverageAllowance(row.Facility))
                 .OrderBy(row => row.DistanceMiles!.Value)
                 .ThenBy(row => row.Provider.Name)
                 .ThenBy(row => row.Facility?.Name)
@@ -249,6 +251,14 @@ public class ProviderRepository : IProviderRepository
             var (minLat, maxLat, minLon, maxLon) = ProviderGeoHelper.BoundingBox(
                 query.Latitude.Value, query.Longitude.Value, query.RadiusMiles.Value);
 
+            // Mobile facilities get a wider pre-filter box (+ the max allowed coverage
+            // radius) so one whose centroid sits just outside the raw search radius, but
+            // whose coverage circle overlaps it, isn't excluded before the precise
+            // overlap check in ExpandLocationRows runs.
+            var (mobMinLat, mobMaxLat, mobMinLon, mobMaxLon) = ProviderGeoHelper.BoundingBox(
+                query.Latitude.Value, query.Longitude.Value,
+                query.RadiusMiles.Value + ProviderGeoHelper.ServiceRadiusMilesCap);
+
             q = q.Where(p =>
                 (p.Latitude  != null && p.Longitude != null &&
                  p.Latitude  >= minLat && p.Latitude  <= maxLat &&
@@ -256,13 +266,24 @@ public class ProviderRepository : IProviderRepository
                 p.ProviderFacilities.Any(pf =>
                     pf.Facility != null &&
                     pf.Facility.Latitude != null && pf.Facility.Longitude != null &&
-                    pf.Facility.Latitude >= minLat && pf.Facility.Latitude <= maxLat &&
-                    pf.Facility.Longitude >= minLon && pf.Facility.Longitude <= maxLon));
+                    (pf.Facility.IsMobile
+                        ? (pf.Facility.Latitude >= mobMinLat && pf.Facility.Latitude <= mobMaxLat &&
+                           pf.Facility.Longitude >= mobMinLon && pf.Facility.Longitude <= mobMaxLon)
+                        : (pf.Facility.Latitude >= minLat && pf.Facility.Latitude <= maxLat &&
+                           pf.Facility.Longitude >= minLon && pf.Facility.Longitude <= maxLon))));
         }
 
         if (query.NorthLat.HasValue && query.SouthLat.HasValue &&
             query.EastLng.HasValue  && query.WestLng.HasValue)
         {
+            var midLat = (query.NorthLat.Value + query.SouthLat.Value) / 2.0;
+            var latBuffer = ProviderGeoHelper.MilesToLatDegrees(ProviderGeoHelper.ServiceRadiusMilesCap);
+            var lonBuffer = ProviderGeoHelper.MilesToLonDegrees(ProviderGeoHelper.ServiceRadiusMilesCap, midLat);
+            var mobNorth = query.NorthLat.Value + latBuffer;
+            var mobSouth = query.SouthLat.Value - latBuffer;
+            var mobEast  = query.EastLng.Value  + lonBuffer;
+            var mobWest  = query.WestLng.Value  - lonBuffer;
+
             q = q.Where(p =>
                 (p.Latitude  != null && p.Longitude != null &&
                  p.Latitude  >= query.SouthLat.Value && p.Latitude  <= query.NorthLat.Value &&
@@ -270,8 +291,11 @@ public class ProviderRepository : IProviderRepository
                 p.ProviderFacilities.Any(pf =>
                     pf.Facility != null &&
                     pf.Facility.Latitude != null && pf.Facility.Longitude != null &&
-                    pf.Facility.Latitude >= query.SouthLat.Value && pf.Facility.Latitude <= query.NorthLat.Value &&
-                    pf.Facility.Longitude >= query.WestLng.Value && pf.Facility.Longitude <= query.EastLng.Value));
+                    (pf.Facility.IsMobile
+                        ? (pf.Facility.Latitude >= mobSouth && pf.Facility.Latitude <= mobNorth &&
+                           pf.Facility.Longitude >= mobWest && pf.Facility.Longitude <= mobEast)
+                        : (pf.Facility.Latitude >= query.SouthLat.Value && pf.Facility.Latitude <= query.NorthLat.Value &&
+                           pf.Facility.Longitude >= query.WestLng.Value && pf.Facility.Longitude <= query.EastLng.Value))));
         }
 
         return q;
@@ -310,6 +334,14 @@ public class ProviderRepository : IProviderRepository
                 facility);
         }
     }
+
+    /// <summary>
+    /// A mobile facility should match a radius search once the search circle overlaps its
+    /// coverage circle, not only when its centroid falls inside the raw radius — so its
+    /// coverage radius is added as slack on the distance check.
+    /// </summary>
+    private static double MobileCoverageAllowance(Facility? facility) =>
+        facility is { IsMobile: true, ServiceRadiusMiles: not null } ? facility.ServiceRadiusMiles.Value : 0.0;
 
     private static Facility? PrimaryFacility(Provider provider)
     {

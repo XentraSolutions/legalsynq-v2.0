@@ -338,6 +338,15 @@ catch (Exception ex)
 
 app.UseMiddleware<CorrelationIdMiddleware>();    // BLK-OBS-01: assign X-Correlation-Id first
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.Use(async (context, next) =>
+{
+    // BLK-SEC-06: capture the raw physical TCP peer address before UseForwardedHeaders can
+    // rewrite Connection.RemoteIpAddress from a client-supplied X-Forwarded-For header. The
+    // provider-import endpoint's loopback-only gate reads this so it can't be spoofed by a
+    // caller setting X-Forwarded-For: 127.0.0.1 upstream of the trusted proxy.
+    context.Items[CareConnect.Api.Endpoints.NetworkEndpoints.RawRemoteIpAddressKey] = context.Connection.RemoteIpAddress;
+    await next();
+});
 app.UseForwardedHeaders();                      // BLK-SEC-05: rewrite RemoteIpAddress from X-Forwarded-For before rate limiting
 app.UseRateLimiter();                           // BLK-SEC-04: shed excess traffic before authentication runs
 app.UseAuthentication();

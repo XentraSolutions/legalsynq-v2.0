@@ -19,7 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ContactDetailContextProvider } from "./contact-detail-context";
+import { ContactDetailContextProvider } from "./context";
 
 // Contact types with a known case-lookup API (mirrors ContactCasesSection) —
 // the Cases tab only makes sense for these.
@@ -37,9 +37,15 @@ function staffTabLabel(contact: ContactDetail): string | null {
 
 export function ContactDetailShell({
   id,
+  basePath,
+  primaryButtonClassName,
   children,
 }: {
   id: string;
+  /** Route prefix for this product's contacts feature (e.g. "/lien/contacts" or "/selling/contacts"). */
+  basePath: string;
+  /** Overrides the default bg-primary styling on primary action buttons (e.g. selling's orange brand). */
+  primaryButtonClassName?: string;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -87,7 +93,7 @@ export function ContactDetailShell({
         <i className="ri-error-warning-line text-3xl text-gray-300" />
         <p className="text-sm text-gray-500">Contact not found.</p>
         <Link
-          href="/lien/contacts"
+          href={basePath}
           className="text-sm text-primary hover:underline"
         >
           Back to Contacts
@@ -115,7 +121,7 @@ export function ContactDetailShell({
         description: `${contact.displayName} has been deleted.`,
       });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      router.push("/lien/contacts");
+      router.push(basePath);
     } catch (err) {
       addToast({
         type: "error",
@@ -131,7 +137,7 @@ export function ContactDetailShell({
     <div className="space-y-5">
       <div className="text-xs text-gray-400 flex items-center gap-1">
         <Link
-          href="/lien/contacts"
+          href={basePath}
           className="hover:text-gray-600 transition-colors"
         >
           Contacts
@@ -181,7 +187,7 @@ export function ContactDetailShell({
               <div className="flex items-center">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
+                    <button className={`flex items-center gap-1.5 text-sm font-medium text-white rounded-lg px-4 py-2 transition-colors ${primaryButtonClassName ?? 'bg-primary hover:bg-primary/90'}`}>
                       Actions
                       <i className="ri-arrow-down-s-line text-base" />
                     </button>
@@ -219,7 +225,7 @@ export function ContactDetailShell({
         <div className="border-t border-gray-100 px-6">
           <nav className="flex flex-wrap gap-4 -mb-px">
             {tabs.map((tab) => {
-              const href = `/lien/contacts/${id}/${tab.key}`;
+              const href = `${basePath}/${id}/${tab.key}`;
               const isActive = pathname?.startsWith(href);
               return (
                 <Link
@@ -241,7 +247,7 @@ export function ContactDetailShell({
       </div>
 
       <ContactDetailContextProvider
-        value={{ id, contact, canEdit, refetch: fetchContact }}
+        value={{ id, contact, canEdit, refetch: fetchContact, basePath, primaryButtonClassName }}
       >
         {children}
       </ContactDetailContextProvider>
@@ -251,6 +257,7 @@ export function ContactDetailShell({
           open={editOpen}
           title="Edit Contact"
           editTarget={contact}
+          primaryButtonClassName={primaryButtonClassName}
           onClose={() => setEditOpen(false)}
           onSaved={() => {
             setEditOpen(false);

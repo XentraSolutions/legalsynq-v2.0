@@ -2,11 +2,15 @@ namespace CareConnect.Application.Helpers;
 
 public static class ProviderGeoHelper
 {
-    private const double MilesPerDegreeLat = 69.0;
-    private const double MaxRadiusMiles    = 100.0;
-    private const int    MaxMarkers        = 500;
+    private const double MilesPerDegreeLat    = 69.0;
+    private const double MaxRadiusMiles       = 100.0;
+    private const int    MaxMarkers           = 500;
+    private const double MaxServiceRadiusMiles = 60.0;
+    private const double DefaultServiceRadius  = 25.0;
 
     public static int MarkerLimit => MaxMarkers;
+    public static double ServiceRadiusMilesCap => MaxServiceRadiusMiles;
+    public static double DefaultServiceRadiusMiles => DefaultServiceRadius;
 
     public static (double MinLat, double MaxLat, double MinLon, double MaxLon)
         BoundingBox(double centerLat, double centerLon, double radiusMiles)
@@ -21,6 +25,16 @@ public static class ProviderGeoHelper
             centerLon + deltaLon
         );
     }
+
+    /// <summary>
+    /// Degrees-of-latitude equivalent of a mileage buffer — used to widen a viewport/bounding
+    /// box so a mobile facility's coverage circle is considered even when its own centroid sits
+    /// just outside the raw search area.
+    /// </summary>
+    public static double MilesToLatDegrees(double miles) => miles / MilesPerDegreeLat;
+
+    public static double MilesToLonDegrees(double miles, double atLatitude) =>
+        miles / (MilesPerDegreeLat * Math.Cos(atLatitude * Math.PI / 180.0));
 
     public static void ValidateGeoSearch(double? latitude, double? longitude, double? radiusMiles,
         Dictionary<string, string[]> errors)
@@ -107,5 +121,17 @@ public static class ProviderGeoHelper
                 $"'{geoPointSource}' is not a valid geo point source. " +
                 $"Allowed: {string.Join(", ", Domain.GeoPointSource.All)}."
             };
+    }
+
+    public static void ValidateServiceArea(bool isMobile, double? serviceRadiusMiles,
+        Dictionary<string, string[]> errors)
+    {
+        if (!isMobile)
+            return;
+
+        if (!serviceRadiusMiles.HasValue || serviceRadiusMiles <= 0)
+            errors["serviceRadiusMiles"] = new[] { "Service radius is required for mobile providers." };
+        else if (serviceRadiusMiles > MaxServiceRadiusMiles)
+            errors["serviceRadiusMiles"] = new[] { $"Service radius must not exceed {MaxServiceRadiusMiles} miles." };
     }
 }

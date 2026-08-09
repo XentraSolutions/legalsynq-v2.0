@@ -65,6 +65,9 @@ public class PublicReferralThreadResponse
     public string LocationCity { get; init; } = string.Empty;
     public string LocationState { get; init; } = string.Empty;
     public string LocationPostalCode { get; init; } = string.Empty;
+    // True when the referral's location is a mobile/roaming facility — LocationAddressLine1
+    // holds a human-readable service-area label rather than a real street address in that case.
+    public bool LocationIsMobile { get; init; }
     public string? ReferrerFirmName { get; init; }
     public string? ReferrerPhone { get; init; }
     public string? ReferrerName { get; init; }

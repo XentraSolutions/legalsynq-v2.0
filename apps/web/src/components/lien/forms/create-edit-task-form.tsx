@@ -113,10 +113,11 @@ export function CreateEditTaskForm({
   const [priority, setPriority] = useState<TaskPriority>(
     editTask?.priorityId ?? "MEDIUM",
   );
-  console.log(editTask);
   const [status, setStatus] = useState<TaskStatus>(
-    editTask?.status ?? "UPCOMING",
+    editTask?.statusId ?? "UPCOMING",
   );
+  console.log(editTask, status);
+
   const [dueDate, setDueDate] = useState(
     editTask?.dueDate
       ? dateConvertertoIso(editTask?.dueDate?.split("T")[0])

@@ -220,98 +220,17 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
 
   selling: [
     {
-      items: [
-        {
-          href: "/selling/dashboard",
-          label: "Dashboard",
-          icon: "ri-dashboard-line",
-        },
-      ],
-    },
-    {
       heading: "Lien Portfolio",
       items: [
         {
           href: "/selling/portfolio",
           label: "Portfolio",
           icon: "ri-folder-3-line",
-          children: [
-            {
-              href: "/selling/cases",
-              label: "Cases",
-              icon: "ri-briefcase-line",
-              disabledMessage: "Cases is coming soon",
-            },
-            {
-              href: "/selling/liens",
-              label: "Liens",
-              icon: "ri-file-transfer-line",
-              disabledMessage: "Liens is coming soon",
-            },
-          ],
-        },
-        {
-          href: "/selling/documents",
-          label: "LOP / Documents",
-          icon: "ri-file-text-line",
-          disabledMessage: "LOP / Documents is coming soon",
-        },
-        {
-          href: "/selling/reductions",
-          label: "Reductions",
-          icon: "ri-line-chart-line",
-          disabledMessage: "Reductions is coming soon",
-        },
-        {
-          href: "/selling/settlements",
-          label: "Settlements",
-          icon: "ri-scales-line",
-          disabledMessage: "Settlements is coming soon",
         },
         {
           href: "/selling/contacts",
           label: "Contacts",
           icon: "ri-contacts-book-line",
-        },
-      ],
-    },
-    {
-      heading: "Receivables",
-      items: [
-        {
-          href: "/selling/receivables",
-          label: "Receivables",
-          icon: "ri-file-list-2-line",
-          disabledMessage: "Receivables is coming soon",
-        },
-        {
-          href: "/selling/aging",
-          label: "Aging",
-          icon: "ri-time-line",
-          disabledMessage: "Aging is coming soon",
-        },
-        {
-          href: "/selling/payments",
-          label: "Payments",
-          icon: "ri-money-dollar-circle-line",
-          disabledMessage: "Payments is coming soon",
-        },
-      ],
-    },
-    {
-      heading: "Reports",
-      items: [
-        {
-          href: "/selling/analytics",
-          label: "Analytics",
-          icon: "ri-pie-chart-line",
-          disabledMessage: "Analytics is coming soon",
-        },
-        {
-          href: "/selling/reports",
-          label: "Reports",
-          icon: "ri-file-chart-line",
-          disabledMessage: "Reports is coming soon",
         },
       ],
     },
@@ -595,30 +514,32 @@ export function orgTypeLabel(orgType: string | undefined): string {
 export const GLOBAL_BOTTOM_NAV: NavSection = {
   heading: "ACCOUNT",
   items: [
-    {
-      href: "/my-work",
-      label: "My Work",
-      icon: "ri-task-line",
-      adminOnly: true,
-    },
+    /** COMMENTED THIS AS THE FEATURE IS STILL NOT AVAILABLE PER QA TICKET: LSV3-862 Tenant Portal: Hide navigation items for features that are currently under development */
+    // {
+    //   href: "/my-work",
+    //   label: "My Work",
+    //   icon: "ri-task-line",
+    //   adminOnly: true,
+    // },
     {
       href: "/notifications",
       label: "Notifications",
       icon: "ri-mail-send-line",
       adminOnly: true,
     },
-    {
-      href: "/activity",
-      label: "Activity Log",
-      icon: "ri-history-line",
-      adminOnly: true,
-    },
-    {
-      href: "/support",
-      label: "Support",
-      icon: "ri-customer-service-2-line",
-      adminOnly: true,
-    },
+    /** COMMENTED THIS AS THE FEATURE IS STILL NOT AVAILABLE PER QA TICKET: LSV3-862 Tenant Portal: Hide navigation items for features that are currently under development */
+    // {
+    //   href: "/activity",
+    //   label: "Activity Log",
+    //   icon: "ri-history-line",
+    //   adminOnly: true,
+    // },
+    // {
+    //   href: "/support",
+    //   label: "Support",
+    //   icon: "ri-customer-service-2-line",
+    //   adminOnly: true,
+    // },
     {
       href: "/tenant/authorization/users",
       label: "User Management",

@@ -86,6 +86,7 @@ const BASE_PROVIDER: NetworkProviderItem = {
   primarySpecialtyId: null,
   primarySpecialty: null,
   distanceMiles: null,
+  isMobile: false,
 };
 
 const BASE_SEARCH_RESULT: ProviderSearchResult = {

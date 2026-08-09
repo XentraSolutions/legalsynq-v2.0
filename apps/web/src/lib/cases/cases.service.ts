@@ -77,12 +77,6 @@ export const casesService = {
   async updateCasePersonal(
     request: UpdateCasePersonalRequestDto,
   ): Promise<CaseDetail> {
-    // const dto: UpdateCaseDetailsRequestDto = {
-    //   firstname: request.firstName,
-    //   lastname: request.lastName,
-    //   request.dob && { dateOfIncident: request.dob }),
-    // };
-    console.log(request);
     const { data } = await casesApi.updatePersonal(request);
     return mapCaseToDetail(data);
   },
@@ -167,9 +161,7 @@ export const casesService = {
     };
   },
 
-  async getTotalLienReportRows(
-    request: CaseAllocationReportRequest,
-  ) {
+  async getTotalLienReportRows(request: CaseAllocationReportRequest) {
     const { data } = await casesApi.getTotalLienReport(request);
     const items = data.items ?? [];
     return {
@@ -182,24 +174,19 @@ export const casesService = {
       totalBillingAmount:
         data.totalBillingAmount ??
         items.reduce((sum, item) => sum + (item.totalBillingAmount ?? 0), 0),
-      statusCounts:
-        data.statusCounts ?? countBy(items, (item) => item.status),
-      statusAmounts:
-        data.statusAmounts ?? amountByStatus(items),
+      statusCounts: data.statusCounts ?? countBy(items, (item) => item.status),
+      statusAmounts: data.statusAmounts ?? amountByStatus(items),
     };
   },
 
-  async getTotalCaseReportRows(
-    request: CaseAllocationReportRequest,
-  ) {
+  async getTotalCaseReportRows(request: CaseAllocationReportRequest) {
     const { data } = await casesApi.getTotalCaseReport(request);
     const items = data.items ?? [];
     return {
       ...data,
       items,
       totalCount: data.totalCount ?? 0,
-      statusCounts:
-        data.statusCounts ?? countBy(items, (item) => item.status),
+      statusCounts: data.statusCounts ?? countBy(items, (item) => item.status),
     };
   },
 
@@ -446,8 +433,6 @@ function hasSummaryCounts(
   return counts !== undefined;
 }
 
-function countsToSegments(
-  counts: Record<string, number>,
-): AllocationSegment[] {
+function countsToSegments(counts: Record<string, number>): AllocationSegment[] {
   return Object.entries(counts).map(([label, value]) => ({ label, value }));
 }

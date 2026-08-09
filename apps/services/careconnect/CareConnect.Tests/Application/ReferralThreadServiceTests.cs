@@ -192,6 +192,54 @@ public class ReferralThreadServiceTests
     }
 
     [Fact]
+    public async Task GetPublicThreadAccessAsync_MobileFacility_ReturnsServiceAreaLabelAndIsMobileFlag()
+    {
+        var referral = BuildReferral(referringOrganizationId: null);
+        var provider = new ProviderStub
+        {
+            Name = "Dr. Gray",
+            OrganizationName = "Gray Clinic",
+            Email = "intake@gray.example",
+            AccessStage = ProviderAccessStage.Url,
+        }.ToDomain(null);
+        SetProvider(referral, provider);
+
+        var facility = Facility.Create(
+            TenantId,
+            name: "Gray Clinic - Mobile",
+            addressLine1: "Greater Las Vegas Metro",
+            city: "Las Vegas",
+            state: "NV",
+            postalCode: "89101",
+            phone: null,
+            isActive: true,
+            createdByUserId: null,
+            isMobile: true,
+            serviceRadiusMiles: 25);
+        typeof(Referral).GetProperty(nameof(Referral.Facility))!.SetValue(referral, facility);
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var emailService = Mock.Of<IReferralEmailService>(e =>
+            e.ValidateViewTokenDetailed("valid-token") ==
+            CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
+
+        var sut = BuildService(repo, commentsRepo, emailService);
+
+        var result = await sut.GetPublicThreadAccessAsync("valid-token");
+
+        Assert.NotNull(result.Data);
+        Assert.True(result.Data!.LocationIsMobile);
+        Assert.Equal("Greater Las Vegas Metro", result.Data.LocationAddressLine1);
+    }
+
+    [Fact]
     public async Task GetPublicThreadAccessAsync_TreatsLegacyOrgLinkedProviderAsHavingAccount()
     {
         var referral = BuildReferral(referringOrganizationId: null);

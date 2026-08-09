@@ -84,10 +84,10 @@ describe('ActivatePage', () => {
         providerTitle: 'Dr.',
         providerEmail: 'provider@example.com',
         providerPhone: '555-0101',
-        providerAddressLine1: '123 Main',
-        providerCity: 'Las Vegas',
-        providerState: 'NV',
-        providerPostalCode: '89101',
+        locationAddressLine1: '123 Main',
+        locationCity: 'Las Vegas',
+        locationState: 'NV',
+        locationPostalCode: '89101',
         referrerName: 'Demo Firm',
       }),
     });
@@ -113,7 +113,7 @@ describe('ActivatePage', () => {
           email: 'provider@example.com',
           phone: '555-0101',
           title: 'Dr.',
-          firstName: 'Provider',
+          firstName: '',
           lastName: '',
           addressLine1: '123 Main',
           city: 'Las Vegas',
@@ -162,10 +162,10 @@ describe('ActivatePage', () => {
         providerName: '',
         providerEmail: 'provider@example.com',
         providerPhone: '555-0101',
-        providerAddressLine1: '123 Main',
-        providerCity: 'Las Vegas',
-        providerState: 'NV',
-        providerPostalCode: '89101',
+        locationAddressLine1: '123 Main',
+        locationCity: 'Las Vegas',
+        locationState: 'NV',
+        locationPostalCode: '89101',
         referrerName: 'Demo Firm',
       }),
     }));
@@ -184,7 +184,7 @@ describe('ActivatePage', () => {
     );
   });
 
-  test('derives first and last name prefill from the provider email when available', async () => {
+  test('leaves first and last name prefill blank when the provider has no stored name (no email-derived backfill)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -198,10 +198,49 @@ describe('ActivatePage', () => {
         providerName: 'Demo Provider',
         providerEmail: 'ralph.lopez+12@xentragroup.com',
         providerPhone: '555-0101',
-        providerAddressLine1: '123 Main',
-        providerCity: 'Las Vegas',
-        providerState: 'NV',
-        providerPostalCode: '89101',
+        locationAddressLine1: '123 Main',
+        locationCity: 'Las Vegas',
+        locationState: 'NV',
+        locationPostalCode: '89101',
+        referrerName: 'Demo Firm',
+      }),
+    }));
+
+    const result = await ActivatePage({
+      searchParams: Promise.resolve({ referralId: 'ref-123', token: 'abc123' }),
+    });
+
+    const enrollmentForm = findElementByType(result, enrollmentFormMock);
+    expect(enrollmentForm?.props).toEqual(
+      expect.objectContaining({
+        prefill: expect.objectContaining({
+          firstName: '',
+          lastName: '',
+        }),
+      }),
+    );
+  });
+
+  test('prefills first and last name from stored provider values when available', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        referralId: 'ref-123',
+        tenantId: 'tenant-123',
+        providerId: 'provider-123',
+        status: 'New',
+        providerHasAccount: false,
+        clientName: 'Jane Doe',
+        service: 'Physical Therapy',
+        providerName: 'Demo Provider',
+        providerFirstName: 'Ralph',
+        providerLastName: 'Lopez',
+        providerEmail: 'someone-else@xentragroup.com',
+        providerPhone: '555-0101',
+        locationAddressLine1: '123 Main',
+        locationCity: 'Las Vegas',
+        locationState: 'NV',
+        locationPostalCode: '89101',
         referrerName: 'Demo Firm',
       }),
     }));
@@ -221,6 +260,46 @@ describe('ActivatePage', () => {
     );
   });
 
+  test('does not prefill the street address from a mobile/roaming provider service-area label', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        referralId: 'ref-123',
+        tenantId: 'tenant-123',
+        providerId: 'provider-123',
+        status: 'New',
+        providerHasAccount: false,
+        clientName: 'Jane Doe',
+        service: 'Physical Therapy',
+        providerName: 'Demo Provider',
+        providerEmail: 'provider@example.com',
+        providerPhone: '555-0101',
+        locationAddressLine1: 'Greater Las Vegas Metro',
+        locationCity: 'Las Vegas',
+        locationState: 'NV',
+        locationPostalCode: '89101',
+        locationIsMobile: true,
+        referrerName: 'Demo Firm',
+      }),
+    }));
+
+    const result = await ActivatePage({
+      searchParams: Promise.resolve({ referralId: 'ref-123', token: 'abc123' }),
+    });
+
+    const enrollmentForm = findElementByType(result, enrollmentFormMock);
+    expect(enrollmentForm?.props).toEqual(
+      expect.objectContaining({
+        prefill: expect.objectContaining({
+          addressLine1: '',
+          city: '',
+          postalCode: '',
+          state: 'NV',
+        }),
+      }),
+    );
+  });
+
   test('still renders the activation form when the referral is already accepted', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
@@ -235,10 +314,10 @@ describe('ActivatePage', () => {
         providerName: 'Demo Provider',
         providerEmail: 'provider@example.com',
         providerPhone: '555-0101',
-        providerAddressLine1: '123 Main',
-        providerCity: 'Las Vegas',
-        providerState: 'NV',
-        providerPostalCode: '89101',
+        locationAddressLine1: '123 Main',
+        locationCity: 'Las Vegas',
+        locationState: 'NV',
+        locationPostalCode: '89101',
         referrerName: 'Demo Firm',
       }),
     }));

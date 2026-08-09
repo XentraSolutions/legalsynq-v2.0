@@ -348,7 +348,10 @@ public class ProviderService : IProviderService
             AddressLine1     = facility?.AddressLine1 ?? p.AddressLine1,
             City             = city,
             State            = state,
-            PostalCode       = facility?.PostalCode ?? p.PostalCode,
+            PostalCode       = facility is { IsMobile: true } ? facility.PostalCode : (facility?.PostalCode ?? p.PostalCode),
+            IsMobile         = facility?.IsMobile ?? false,
+            ServiceRadiusMiles = facility?.ServiceRadiusMiles,
+            ServiceAreaLabel = facility is { IsMobile: true } ? facility.AddressLine1 : null,
             IsActive         = p.IsActive,
             AcceptingReferrals = p.AcceptingReferrals,
             Categories       = categories,
@@ -403,7 +406,7 @@ public class ProviderService : IProviderService
             City             = city,
             State            = state,
             AddressLine1     = facility?.AddressLine1 ?? p.AddressLine1,
-            PostalCode       = facility?.PostalCode ?? p.PostalCode,
+            PostalCode       = facility is { IsMobile: true } ? facility.PostalCode : (facility?.PostalCode ?? p.PostalCode),
             Email            = facility?.Email ?? p.Email,
             Phone            = facility?.Phone ?? p.Phone,
             AcceptingReferrals = p.AcceptingReferrals,
@@ -416,7 +419,10 @@ public class ProviderService : IProviderService
             Specialties      = specialties,
             PrimarySpecialty = primarySpecialty?.Name,
             PrimarySpecialtyId = primarySpecialty?.Id,
-            DistanceMiles    = distanceMiles
+            DistanceMiles    = distanceMiles,
+            IsMobile         = facility?.IsMobile ?? false,
+            ServiceRadiusMiles = facility?.ServiceRadiusMiles,
+            ServiceAreaLabel = facility is { IsMobile: true } ? facility.AddressLine1 : null
         };
     }
 

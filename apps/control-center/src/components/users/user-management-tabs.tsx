@@ -1,42 +1,54 @@
-'use client';
+"use client";
 
-import { useState }              from 'react';
-import { useRouter }             from 'next/navigation';
-import type { TenantUserSummary, RoleSummary } from '@/types/control-center';
-import { TenantUserTable }       from '@/components/tenant-users/tenant-user-table';
-import { AddUserToTenantModal }  from '@/components/tenant-users/add-user-to-tenant-modal';
-import { TenantGroupsPanel }     from './tenant-groups-panel';
-import { TenantPermissionsPanel} from './tenant-permissions-panel';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import type { TenantUserSummary, RoleSummary } from "@/types/control-center";
+import { TenantUserTable } from "@/components/tenant-users/tenant-user-table";
+import { AddUserToTenantModal } from "@/components/tenant-users/add-user-to-tenant-modal";
+import { TenantGroupsPanel } from "./tenant-groups-panel";
+import { TenantPermissionsPanel } from "./tenant-permissions-panel";
 
-type SubTab = 'users' | 'groups' | 'permissions';
+type SubTab = "users" | "groups" | "permissions";
 
 interface Props {
-  tenantId:    string;
+  tenantId: string;
   tenantUsers: TenantUserSummary[];
-  totalCount:  number;
-  page:        number;
-  pageSize:    number;
-  search:      string;
-  hasError:    boolean;
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  search: string;
+  hasError: boolean;
   tenantRoles: RoleSummary[];
 }
 
 function SubTabButton({
-  id, label, count, active, onClick,
-}: { id: SubTab; label: string; count?: number; active: boolean; onClick: () => void }) {
+  id,
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  id: SubTab;
+  label: string;
+  count?: number;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
       className={[
-        'inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+        "inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
         active
-          ? 'border-indigo-600 text-indigo-700'
-          : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300',
-      ].join(' ')}
+          ? "border-indigo-600 text-indigo-700"
+          : "border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300",
+      ].join(" ")}
     >
       {label}
       {count != null && (
-        <span className={`inline-flex items-center justify-center min-w-[18px] px-1 py-0.5 rounded text-[11px] font-semibold ${active ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
+        <span
+          className={`inline-flex items-center justify-center min-w-[18px] px-1 py-0.5 rounded text-[11px] font-semibold ${active ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-500"}`}
+        >
           {count}
         </span>
       )}
@@ -54,31 +66,42 @@ export function UserManagementTabs({
   hasError,
   tenantRoles,
 }: Props) {
-  const router                        = useRouter();
-  const [tab, setTab]                 = useState<SubTab>('users');
+  const router = useRouter();
+  const [tab, setTab] = useState<SubTab>("users");
   const [showAddUser, setShowAddUser] = useState(false);
 
-  const baseHref = search ? `?search=${encodeURIComponent(search)}&` : '?';
+  const baseHref = search ? `?search=${encodeURIComponent(search)}&` : "?";
 
   return (
     <div className="space-y-4 min-w-0 overflow-x-hidden">
-
+      {/** COMMENTED THIS AS THE FEATURE IS STILL NOT AVAILABLE PER QA TICKET: LSV3-862 Tenant Portal: Hide navigation items for features that are currently under development */}
       {/* ── Sub-tab nav ────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-0 border-b border-gray-200">
+      {/* <div className="flex items-center gap-0 border-b border-gray-200">
         <SubTabButton id="users"       label="Users"       count={totalCount} active={tab === 'users'}       onClick={() => setTab('users')} />
         <SubTabButton id="groups"      label="Groups"                         active={tab === 'groups'}      onClick={() => setTab('groups')} />
         <SubTabButton id="permissions" label="Permissions"                    active={tab === 'permissions'} onClick={() => setTab('permissions')} />
-      </div>
+      </div> */}
 
       {/* ── Users tab ─────────────────────────────────────────────────────── */}
-      {tab === 'users' && (
+      {tab === "users" && (
         <div className="space-y-4">
-
           {/* Controls */}
           <div className="flex items-center justify-between gap-4 flex-wrap min-w-0">
             <form method="GET" className="flex items-center gap-2 min-w-0">
               <div className="relative min-w-0">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <svg
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
+                </svg>
                 <input
                   type="text"
                   name="search"
@@ -94,7 +117,12 @@ export function UserManagementTabs({
                 Search
               </button>
               {search && (
-                <a href="?" className="text-xs text-gray-400 hover:text-gray-700 underline">Clear</a>
+                <a
+                  href="?"
+                  className="text-xs text-gray-400 hover:text-gray-700 underline"
+                >
+                  Clear
+                </a>
               )}
             </form>
 
@@ -110,9 +138,9 @@ export function UserManagementTabs({
           {/* Result summary */}
           {!hasError && (
             <p className="text-xs text-gray-400">
-              {totalCount} user{totalCount !== 1 ? 's' : ''}
-              {search ? ` matching "${search}"` : ''}
-              {' '}— PlatformInternal users excluded
+              {totalCount} user{totalCount !== 1 ? "s" : ""}
+              {search ? ` matching "${search}"` : ""} — PlatformInternal users
+              excluded
             </p>
           )}
 
@@ -139,14 +167,10 @@ export function UserManagementTabs({
       )}
 
       {/* ── Groups tab ────────────────────────────────────────────────────── */}
-      {tab === 'groups' && (
-        <TenantGroupsPanel tenantId={tenantId} />
-      )}
+      {tab === "groups" && <TenantGroupsPanel tenantId={tenantId} />}
 
       {/* ── Permissions tab ───────────────────────────────────────────────── */}
-      {tab === 'permissions' && (
-        <TenantPermissionsPanel tenantId={tenantId} />
-      )}
+      {tab === "permissions" && <TenantPermissionsPanel tenantId={tenantId} />}
 
       {/* ── Add existing user modal ────────────────────────────────────────── */}
       <AddUserToTenantModal
@@ -154,7 +178,10 @@ export function UserManagementTabs({
         tenantId={tenantId}
         tenantRoles={tenantRoles}
         onClose={() => setShowAddUser(false)}
-        onSuccess={() => { setShowAddUser(false); router.refresh(); }}
+        onSuccess={() => {
+          setShowAddUser(false);
+          router.refresh();
+        }}
       />
     </div>
   );

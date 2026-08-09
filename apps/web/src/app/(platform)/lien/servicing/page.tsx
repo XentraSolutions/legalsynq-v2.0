@@ -28,6 +28,14 @@ import {
 
 export const dynamic = "force-dynamic";
 
+function formatCurrency(amount: number | null): string {
+  if (amount === null || amount === undefined) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(amount);
+}
+
 const BULK_ACTIONS: BulkActionConfig[] = [
   {
     key: "complete",
@@ -232,7 +240,7 @@ export default function ServicingPage() {
         header: "Billing Amount",
         cell: ({ row }) => (
           <span className="text-sm text-gray-500">
-            {row.original.billingAmount}
+            {formatCurrency(row.original.billingAmount)}
           </span>
         ),
       },
@@ -241,7 +249,7 @@ export default function ServicingPage() {
         header: "Purchase Amount",
         cell: ({ row }) => (
           <span className="text-sm text-gray-500">
-            {row.original.purchaseAmount}
+            {formatCurrency(row.original.purchaseAmount)}
           </span>
         ),
       },
@@ -250,7 +258,7 @@ export default function ServicingPage() {
         header: "Amount Settled",
         cell: ({ row }) => (
           <span className="text-sm text-gray-500">
-            {row.original.settlementAmount}
+            {formatCurrency(row.original.settlementAmount)}
           </span>
         ),
       },
@@ -283,35 +291,7 @@ export default function ServicingPage() {
           ) : undefined
         }
       />
-      <FilterToolbar
-        searchPlaceholder="Search tasks..."
-        onSearch={setSearch}
-        filters={[
-          {
-            label: "All Statuses",
-            value: statusFilter,
-            onChange: setStatusFilter,
-            options: [
-              { value: "Pending", label: "Pending" },
-              { value: "InProgress", label: "In Progress" },
-              { value: "Completed", label: "Completed" },
-              { value: "Escalated", label: "Escalated" },
-              { value: "OnHold", label: "On Hold" },
-            ],
-          },
-          {
-            label: "All Priorities",
-            value: priorityFilter,
-            onChange: setPriorityFilter,
-            options: [
-              { value: "Low", label: "Low" },
-              { value: "Normal", label: "Normal" },
-              { value: "High", label: "High" },
-              { value: "Urgent", label: "Urgent" },
-            ],
-          },
-        ]}
-      />
+      <FilterToolbar searchPlaceholder="Search tasks..." onSearch={setSearch} />
 
       <BulkResultBanner
         result={bulkResult}

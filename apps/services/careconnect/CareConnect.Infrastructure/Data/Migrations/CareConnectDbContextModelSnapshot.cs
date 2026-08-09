@@ -730,6 +730,11 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<bool>("IsMobile")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
+
                     b.Property<decimal?>("Latitude")
                         .HasColumnType("decimal(10,7)");
 
@@ -749,9 +754,11 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasColumnType("varchar(50)");
 
                     b.Property<string>("PostalCode")
-                        .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<decimal?>("ServiceRadiusMiles")
+                        .HasColumnType("decimal(5,1)");
 
                     b.Property<string>("State")
                         .IsRequired()
