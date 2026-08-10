@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Modal, ConfirmDialog } from "@/components/lien/modal";
+import { Modal, ConfirmDialog } from "@/components/selling/modal";
+import { Button } from "@/components/ui/button";
 import { LienDetail, LienListItem, liensService } from "@/lib/selling";
 import { useToast } from "@/lib/toast-context";
 
@@ -17,6 +18,9 @@ interface LienRowActionsMenuProps {
   /** Show the Keep/Sell decision modal automatically when this lien loads. */
   autoOpenDecision?: boolean;
 }
+
+// Selling's brand accent, matching the convention used on other selling pages.
+const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 
 const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
   "prepare-sale": { label: "Sell Lien", icon: "ri-hand-coin-line" },
@@ -145,13 +149,14 @@ export function LienRowActionsMenu({
       {trigger ? (
         trigger({ onClick: () => setMenuOpen((v) => !v) })
       ) : (
-        <button
+        <Button
+          variant="ghost"
+          className="w-8 h-8 p-0 rounded-lg text-gray-500"
           onClick={() => setMenuOpen((v) => !v)}
-          className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
           aria-label="Lien actions"
         >
           <i className="ri-more-2-fill text-lg" />
-        </button>
+        </Button>
       )}
       {menuOpen && (
         <div
@@ -181,23 +186,23 @@ export function LienRowActionsMenu({
         size="sm"
         footer={
           <>
-            <button
+            <Button
+              variant="secondary"
+              loading={keepLoading}
               onClick={keepAsInternalAsset}
-              disabled={keepLoading}
-              className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
             >
               {keepLoading ? "Keeping..." : "Keep"}
-            </button>
-            <button
+            </Button>
+            <Button
+              className={PRIMARY_BUTTON_CLASSNAME}
+              disabled={keepLoading}
               onClick={() => {
                 setShowDecisionModal(false);
                 router.push(`/selling/portfolio/${lienId}/sell`);
               }}
-              disabled={keepLoading}
-              className="text-sm px-4 py-2 bg-[#EE7132] hover:bg-[#EE7132]/90 text-white rounded-lg disabled:opacity-50"
             >
               Sell
-            </button>
+            </Button>
           </>
         }
       >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FundingOfferedLienResponseAction } from "@/lib/synqlien-funding-portal/client-actions";
 
 interface OfferedLienResponseDialogProps {
@@ -56,20 +56,20 @@ export function OfferedLienResponseDialog({
         aria-labelledby="offered-lien-response-title"
         className="w-full max-w-[512px] overflow-hidden rounded-[16px] border border-[#e5e5e5] bg-white shadow-[0_24px_60px_rgba(0,0,0,0.24)]"
       >
-        <div className="flex items-start gap-3 px-6 py-5">
+        <div className="relative flex items-start gap-4 px-6 pb-4 pt-6">
           <span
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] ${
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] ${
               accepting ? "bg-[#f5f5f5] text-[#0a0a0a]" : "bg-[#fee2e2] text-[#ef4444]"
             }`}
           >
-            <i className={`${accepting ? "ri-file-check-line" : "ri-file-close-line"} text-[18px]`} />
+            <i className={`${accepting ? "ri-file-check-line" : "ri-file-close-line"} text-[24px]`} />
           </span>
 
-          <div className="min-w-0 flex-1">
-            <h2 id="offered-lien-response-title" className="text-[18px] font-semibold leading-7 text-[#0a0a0a]">
+          <div className="min-w-0 flex-1 space-y-2 pr-4 text-left">
+            <h2 id="offered-lien-response-title" className="text-[20px] font-semibold leading-7 text-[#0a0a0a]">
               {accepting ? "Accept This Lien?" : "Decline This Lien?"}
             </h2>
-            <p className="mt-1 text-[14px] font-normal leading-[1.6] text-[#737373]">
+            <p className="text-[16px] font-normal leading-[1.6] text-[#737373]">
               You&apos;re about to {action} lien <span className="font-medium text-[#0a0a0a]">{lienNumber}</span>, submitted by{" "}
               <span className="font-medium text-[#0a0a0a]">{party}</span>
               {askAmount ? <> worth <span className="font-medium text-[#0a0a0a]">{askAmount}</span></> : null}.
@@ -86,18 +86,18 @@ export function OfferedLienResponseDialog({
             aria-label="Close confirmation"
             disabled={submitting}
             onClick={onCancel}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[#525252] transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
+            className="absolute right-4 top-4 flex h-5 w-5 items-center justify-center rounded-[4px] text-[#525252] transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
           >
             <i className="ri-close-line text-[18px]" />
           </button>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-[#e5e5e5] bg-[#fafafa] px-6 py-4">
+        <div className="flex justify-end gap-2 border-t border-[#e5e5e5] bg-[#f5f5f5] px-6 pb-6 pt-4">
           <button
             type="button"
             disabled={submitting}
             onClick={onCancel}
-            className="inline-flex h-9 items-center justify-center rounded-[8px] border border-[#e5e5e5] bg-white px-4 text-[14px] font-medium text-[#0a0a0a] shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-colors hover:bg-[#f5f5f5] disabled:opacity-50"
+            className="inline-flex h-[38px] items-center justify-center rounded-[10px] border border-[#e5e5e5] bg-white px-4 text-[14px] font-medium text-[#0a0a0a] shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-colors hover:bg-[#fafafa] disabled:opacity-50"
           >
             Cancel
           </button>
@@ -106,7 +106,7 @@ export function OfferedLienResponseDialog({
             type="button"
             disabled={submitting}
             onClick={onConfirm}
-            className={`inline-flex h-9 min-w-[96px] items-center justify-center gap-2 rounded-[8px] px-4 text-[14px] font-medium text-white shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-colors disabled:cursor-wait disabled:opacity-70 ${
+            className={`inline-flex h-[38px] min-w-[96px] items-center justify-center gap-2 rounded-[10px] px-4 text-[14px] font-medium text-white shadow-[0_1px_2px_rgba(0,0,0,0.08)] transition-colors disabled:cursor-wait disabled:opacity-70 ${
               accepting ? "bg-[#ee7132] hover:bg-[#d85f25]" : "bg-[#ef7f86] hover:bg-[#dc626b]"
             }`}
           >
@@ -127,21 +127,40 @@ export function OfferedLienResponseAlert({
   onDismiss: () => void;
 }) {
   const accepted = action === "accept";
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const fadeTimer = window.setTimeout(() => setVisible(false), 4500);
+    const dismissTimer = window.setTimeout(onDismiss, 4800);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(dismissTimer);
+    };
+  }, [onDismiss]);
+
   return (
     <div
       role="status"
-      className="fixed right-6 top-6 z-40 flex w-[min(512px,calc(100vw-3rem))] items-start gap-3 rounded-[10px] border border-[#e5e5e5] bg-white px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.14)]"
+      className={`fixed right-6 top-6 z-40 flex w-[min(512px,calc(100vw-3rem))] items-start gap-0.5 rounded-[10px] border border-[#e5e5e5] bg-white px-4 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.14)] transition-all duration-300 ease-out ${
+        visible ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
+      }`}
     >
-      <i className={`${accepted ? "ri-checkbox-circle-line text-[#22c55e]" : "ri-close-circle-line text-[#ef4444]"} mt-0.5 text-[18px]`} />
-      <div className="min-w-0 flex-1">
-        <p className={`text-[14px] font-medium leading-[1.6] ${accepted ? "text-[#15803d]" : "text-[#dc2626]"}`}>
-          Lien {accepted ? "Accepted" : "Declined"}
-        </p>
-        <p className="text-[14px] font-normal leading-[1.6] text-[#0a0a0a]">
-          The lien offer was successfully {accepted ? "accepted" : "declined"}.
-        </p>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
+        <div className="grid w-full grid-cols-[16px_minmax(0,1fr)] items-center gap-3">
+          <i className={`${accepted ? "ri-checkbox-circle-line text-[#22c55e]" : "ri-close-circle-line text-[#ef4444]"} text-[16px] leading-none`} />
+          <p className={`min-w-0 text-[14px] font-medium leading-[1.6] ${accepted ? "text-[#22c55e]" : "text-[#ef4444]"}`}>
+            Lien {accepted ? "Accepted" : "Declined"}!
+          </p>
+        </div>
+        <div className="grid w-full grid-cols-[16px_minmax(0,1fr)] items-center gap-3">
+          <span aria-hidden="true" className="size-4" />
+          <p className="min-w-0 text-[14px] font-normal leading-[1.6] text-[#0a0a0a]">
+            Offered lien has been successfully {accepted ? "purchased and accepted" : "declined"}.
+          </p>
+        </div>
       </div>
-      <button type="button" aria-label="Dismiss notification" onClick={onDismiss} className="text-[#525252] hover:text-[#0a0a0a]">
+      <button type="button" aria-label="Dismiss notification" onClick={onDismiss} className="flex size-4 shrink-0 items-center justify-center text-[#525252] hover:text-[#0a0a0a]">
         <i className="ri-close-line text-[16px]" />
       </button>
     </div>

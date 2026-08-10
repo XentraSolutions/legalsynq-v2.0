@@ -45,6 +45,9 @@ export const STATUS_LABELS: Record<string, string> = {
   CaseSettled: "Case Settled",
   InProgress: "In Progress",
   OnHold: "On Hold",
+  "Litigation(Open)": "Litigation (Open)",
+  "Litigation(Pending)": "Litigation (Pending)",
+  "Litigation(Closed)": "Litigation (Closed)",
 };
 
 export function StatusBadge({ status, label, size = "sm" }: StatusBadgeProps) {

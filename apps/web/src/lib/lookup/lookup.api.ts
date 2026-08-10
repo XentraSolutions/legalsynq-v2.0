@@ -129,6 +129,17 @@ export const lookupApi = {
     return apiClient.get<LookupData[]>(`${BASE}/contact/lawfirm/role`);
   },
 
+  // Generic contact staff/sub-contact roles (system defaults like Case
+  // Manager/Attorney/Other, plus tenant-created custom roles). Backs the
+  // "Add Contact Staff" Role select and its "+ Add New Role" action.
+  getContactRoles() {
+    return apiClient.get<LookupData[]>(`${BASE}/contact/role`);
+  },
+
+  createContactRole(name: string) {
+    return apiClient.post<LookupData>(`${BASE}/contact/role`, { name });
+  },
+
   getTasks() {
     return apiClient.get<any>(`/lien/api/liens/cases/dashboard/task-summary`);
   },

@@ -2,12 +2,20 @@
 
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { Check, ChevronDown, X } from "lucide-react";
+import { Check, ChevronDown, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ComboboxOption {
   value: string;
   label: string;
+}
+
+export interface ComboboxCreateAction {
+  /** Label shown in the trigger row, e.g. "Add New Role". */
+  label: string;
+  /** Opens the caller's own create form/modal. Combobox does not render it. */
+  onSelect: () => void;
+  icon?: React.ReactNode;
 }
 
 interface ComboboxProps {
@@ -20,6 +28,8 @@ interface ComboboxProps {
   disabled?: boolean;
   error?: boolean;
   footer?: React.ReactNode;
+  /** Renders a "+ Add …" row below the option list that hands off to the caller. */
+  createAction?: ComboboxCreateAction;
   className?: string;
   /** Shows a clear (X) button when a value is selected. */
   clearable?: boolean;
@@ -39,6 +49,7 @@ export function Combobox({
   disabled,
   error,
   footer,
+  createAction,
   className,
   clearable,
   onSearchChange,
@@ -135,6 +146,20 @@ export function Combobox({
               <div className="p-3 text-sm text-gray-500">{emptyText}</div>
             )}
           </div>
+          {createAction && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setSearch("");
+                createAction.onSelect();
+              }}
+              className="flex w-full items-center gap-1.5 text-left px-3 py-2 text-sm font-semibold text-primary border-t border-gray-100 hover:bg-gray-50"
+            >
+              {createAction.icon ?? <Plus className="h-3.5 w-3.5" />}
+              {createAction.label}
+            </button>
+          )}
           {footer}
         </PopoverPrimitive.Content>
       </PopoverPrimitive.Portal>

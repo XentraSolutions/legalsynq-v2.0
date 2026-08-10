@@ -8,7 +8,7 @@ import { MedicalCodesInformationPanel } from "./lien-detail/medical-codes-inform
 import { EditLienInformationModal } from "./lien-detail/edit-lien-information-modal";
 import { EditCaseInformationModal } from "./lien-detail/edit-case-information-modal";
 import { EditMedicalPricingModal } from "./lien-detail/edit-medical-pricing-modal";
-import { ConfirmDialog, FormModal } from "@/components/lien/modal";
+import { ConfirmDialog, FormModal } from "@/components/selling/modal";
 import { liensService } from "@/lib/selling";
 import { documentsService } from "@/lib/documents";
 import { useSession } from "@/hooks/use-session";
@@ -23,6 +23,7 @@ import {
 import { useToast } from "@/lib/toast-context";
 import { Tabs } from "@/components/ui/tabs";
 import { LienRowActionsMenu } from "./lien-row-actions-menu";
+import { Button } from "@/components/ui/button";
 
 interface LienDetailPanelProps {
   lien: LienDetailsResult;
@@ -93,13 +94,13 @@ export function PortfolioDetailPanel({
               onActionComplete={onRefresh}
               autoOpenDecision={sellerStatus === "Pending"}
               trigger={({ onClick }) => (
-                <button
+                <Button
+                  className="bg-[#EE7132] hover:bg-[#EE7132]/90 text-white"
+                  rightIcon={<i className="ri-arrow-down-s-line text-base" />}
                   onClick={onClick}
-                  className="flex items-center gap-1.5 text-sm font-medium text-white bg-[#EE7132] hover:bg-[#EE7132]/90 rounded-lg px-4 py-2 transition-colors"
                 >
                   Manage Lien
-                  <i className="ri-arrow-down-s-line text-base" />
-                </button>
+                </Button>
               )}
             />
           </div>
@@ -269,13 +270,14 @@ function DocumentsTab({
       <div className="px-6 py-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-md font-semibold">Documents</h3>
-          <button
+          <Button
+            variant="secondary"
+            className="px-3 py-1.5"
+            rightIcon={<i className="ri-upload-cloud-2-line text-sm" />}
             onClick={() => setShowUpload(true)}
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700"
           >
             Upload Document
-            <i className="ri-upload-cloud-2-line text-sm" />
-          </button>
+          </Button>
         </div>
 
         {lien.documents.length === 0 ? (
@@ -305,12 +307,13 @@ function DocumentsTab({
                         data.documentType}
                     </p>
                   </div>
-                  <button
+                  <Button
+                    variant="icon-square"
+                    className="w-8 h-8 border-red-100 text-red-500 hover:bg-red-50 shrink-0"
                     onClick={() => setDeleteTarget(doc.id)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg border border-red-100 text-red-500 hover:bg-red-50 shrink-0"
                   >
                     <i className="ri-delete-bin-6-line text-sm" />
-                  </button>
+                  </Button>
                 </div>
               );
             })}

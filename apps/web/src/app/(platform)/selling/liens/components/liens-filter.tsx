@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FormModal } from "@/components/lien/modal";
+import { FormModal } from "@/components/selling/modal";
 import { DatePicker } from "@/components/ui/date-picker";
 import { BaseSelect } from "@/components/ui/base-select";
 import { useLienStatusOptions } from "@/hooks/use-selling-portfolio";
@@ -11,6 +11,7 @@ import {
   InfiniteFilterList,
 } from "@/components/lien/filter-section";
 import { useInfiniteContactOptions } from "@/hooks/use-filter-options";
+import { Button } from "@/components/ui/button";
 
 export interface LiensFilterValues {
   tab: string;
@@ -111,14 +112,15 @@ export function LiensFilter({
       submitLabel="Apply Filters"
       size="lg"
       headerActions={
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          leftIcon={<i className="ri-refresh-line text-sm" />}
+          className="text-xs px-3 py-1.5 text-primary border border-primary/30 hover:bg-primary/5"
           onClick={handleClear}
-          className="flex items-center gap-1.5 text-xs font-medium text-primary border border-primary/30 rounded-lg px-3 py-1.5 hover:bg-primary/5 transition-colors"
         >
-          <i className="ri-refresh-line text-sm" />
           Clear Filter
-        </button>
+        </Button>
       }
     >
       <div className="space-y-5">

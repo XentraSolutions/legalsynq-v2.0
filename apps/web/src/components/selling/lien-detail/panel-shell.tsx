@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 
 interface PanelShellProps {
   title: string;
@@ -31,19 +32,21 @@ export function PanelShell({
         </button>
         {onEdit && (
           <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden shrink-0">
-            <button
+            <Button
+              variant="ghost"
+              className="rounded-none shadow-none px-3 py-1.5 text-gray-700"
               onClick={onEdit}
-              className="text-sm px-3 py-1.5 hover:bg-gray-50 text-gray-700"
             >
               Edit
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              className="rounded-none shadow-none w-8 h-8 p-0 border-l border-gray-200 text-gray-700"
               onClick={onEdit}
               aria-label="Edit"
-              className="w-8 h-8 flex items-center justify-center border-l border-gray-200 hover:bg-gray-50 text-gray-700"
             >
               <i className="ri-edit-line text-sm" />
-            </button>
+            </Button>
           </div>
         )}
       </div>

@@ -8,6 +8,7 @@ import { liensService } from "@/lib/selling";
 import { liensApi } from "@/lib/selling/selling-liens.api";
 import { useToast } from "@/lib/toast-context";
 import { ApiError } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
 
 interface BulkUploadFormProps {
   open: boolean;
@@ -168,16 +169,17 @@ export function BulkUploadForm({
                   {(file.size / 1024).toFixed(0)} KB
                 </p>
               </div>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                className="w-7 h-7 p-0 text-gray-400 hover:text-gray-600"
                 onClick={(e) => {
                   e.stopPropagation();
                   setFile(null);
                 }}
-                className="text-gray-400 hover:text-gray-600"
               >
                 <i className="ri-close-line" />
-              </button>
+              </Button>
             </div>
           ) : (
             <>
@@ -191,13 +193,14 @@ export function BulkUploadForm({
                   supported file. Review your data to ensure all required
                   information is included.
                 </p>
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  className="border-gray-400 mt-2"
                   onClick={() => fileInputRef.current?.click()}
-                  className="rounded-lg border-gray-400 border-1 p-2 mt-2 hover:text-gray-600"
                 >
                   Choose File
-                </button>
+                </Button>
               </div>
             </>
           )}

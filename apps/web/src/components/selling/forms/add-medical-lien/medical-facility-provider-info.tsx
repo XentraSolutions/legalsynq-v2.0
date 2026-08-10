@@ -101,7 +101,6 @@ export default function MedicalFacilityProviderInfo(
               searchPlaceholder="Search facilities..."
               allowCreate
               createLabel="Add New Medical Facility"
-              createContactType="MedicalFacility"
             />
           </div>
 

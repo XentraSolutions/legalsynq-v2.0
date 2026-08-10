@@ -1,85 +1,105 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useQueryClient, useQueries } from "@tanstack/react-query";
 import Link from "next/link";
 import { toast } from "sonner";
+import { Building2 } from "lucide-react";
 import { PageHeader } from "@/components/lien/page-header";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ActionMenu } from "@/components/lien/action-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SideDrawer } from "@/components/lien/side-drawer";
-import { AddContactModal } from "@/components/lien/add-contact-modal";
-import { useLienStore } from "@/stores/lien-store";
+import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
+import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
+import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
+import { ContactPersonsDirectoryView } from "@/components/selling/contacts/contact-persons-directory-view";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import {
-  contactsService,
-  CASE_REASSIGN_CONFIG,
-  type ContactListItem,
-} from "@/lib/contacts";
-import {
-  useContacts,
-  useContactTypes,
-  useDeleteContact,
-  useBatchReassignContact,
-  CONTACTS_QUERY_KEY,
-} from "@/hooks/use-contacts";
-import { useSessionContext } from "@/providers/session-provider";
-import { ConfirmDialog, Modal } from "@/components/lien/modal";
-import { ContactPicker } from "@/components/lien/contact-picker";
+  useCompanies,
+  useCompanyTypes,
+  useDeactivateCompany,
+  useReactivateCompany,
+} from "@/hooks/use-selling-companies";
+import { ConfirmDialog } from "@/components/selling/modal";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
+import { Button } from "@/components/ui/button";
+import type { Company } from "@/lib/selling/companies.types";
 
-const PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 10;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 // Selling's brand accent — used on every primary action button on this page
-// and everything opened from it (Add/Edit Contact, Delete, Reassign),
-// instead of the tenant bg-primary blue used on the lien side.
+// and everything opened from it, instead of the tenant bg-primary blue used
+// on the lien side.
 const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 
-function pluralize(name: string): string {
-  if (/s$/i.test(name)) return name;
-  if (/[^aeiou]y$/i.test(name)) return `${name.slice(0, -1)}ies`;
-  return `${name}s`;
-}
+const VIEWS = [
+  { key: "companies", label: "Companies" },
+  { key: "contacts", label: "Contact Person" },
+] as const;
 
 export const dynamic = "force-dynamic";
 
 export default function SellingContactsPage() {
-  const addToast = useLienStore((s) => s.addToast);
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const ra = useRoleAccess();
-  const queryClient = useQueryClient();
+  const view = searchParams.get("view") === "contacts" ? "contacts" : "companies";
 
-  const [contactData, setContactData] = useState<ContactListItem>();
-  const { lookup } = useSessionContext();
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Contacts"
+        subtitle="Keep your company and contact person records organized and easily accessible."
+      />
+
+      <div className="flex flex-wrap gap-1 bg-[#FAFAFA] rounded-md p-1">
+        {VIEWS.map((tab) => (
+          <Link
+            key={tab.key}
+            href={tab.key === "companies" ? "/selling/contacts" : `/selling/contacts?view=${tab.key}`}
+            className={`flex-1 text-center px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+              view === tab.key
+                ? "bg-white shadow-sm text-gray-900"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {tab.label}
+          </Link>
+        ))}
+      </div>
+
+      {view === "companies" ? <CompaniesListView /> : <ContactPersonsDirectoryView />}
+    </div>
+  );
+}
+
+function CompaniesListView() {
+  const router = useRouter();
+  const ra = useRoleAccess();
 
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  // Driven by the ?type= query param (see the tabs below) so tab links are
-  // real navigable links rather than plain state-setting buttons.
-  const typeFilter = searchParams.get("type") ?? "";
-  const [showCreate, setShowCreate] = useState<{
-    open: boolean;
-    mode?: "create" | "edit" | undefined;
-  }>({ open: false, mode: "create" });
+  const [typeFilter, setTypeFilter] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [newCompany, setNewCompany] = useState<Company | null>(null);
+  const [contactPersonTarget, setContactPersonTarget] = useState<Company | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
-
   const [confirmAction, setConfirmAction] = useState<{
-    id: string;
-    action: string;
-    label: string;
-    contact: ContactListItem;
+    action: "deactivate" | "reactivate";
+    company: Company;
   } | null>(null);
 
-  const [reassignTarget, setReassignTarget] = useState<ContactListItem | null>(
-    null,
-  );
-  const [newContactId, setNewContactId] = useState("");
-  const [reassignModalOpen, setReassignModalOpen] = useState(false);
-  const batchReassignMutation = useBatchReassignContact();
+  const deactivateCompanyMutation = useDeactivateCompany();
+  const reactivateCompanyMutation = useReactivateCompany();
 
   // Debounce search input before it drives the query, so we don't refetch on every keystroke.
   useEffect(() => {
@@ -89,104 +109,73 @@ export default function SellingContactsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, typeFilter]);
+  }, [search, typeFilter, pageSize]);
 
-  const contactsQuery = useContacts({
+  const companyTypesQuery = useCompanyTypes();
+  const companyTypes = useMemo(
+    () => companyTypesQuery.data ?? [],
+    [companyTypesQuery.data],
+  );
+
+  const companiesQuery = useCompanies({
     search: search || undefined,
-    ContactType: typeFilter || undefined,
-    // Main list only shows top-level contacts, not sub-contacts (e.g. law
-    // firm staff, facility staff) — those live under their parent's detail page.
-    ContactSubtype: "",
+    companyTypeId: typeFilter || undefined,
+    isActive: true,
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
   });
-  const contactTypesQuery = useContactTypes();
-  const knownContactTypesQuery = useContactTypes({ knownOnly: true });
-  const deleteContactMutation = useDeleteContact();
 
-  const contacts = useMemo(
-    () => contactsQuery.data?.items ?? [],
-    [contactsQuery.data],
+  const companies = useMemo(
+    () => companiesQuery.data?.items ?? [],
+    [companiesQuery.data],
   );
-  const totalCount = contactsQuery.data?.pagination.totalCount ?? 0;
-  const totalPages = contactsQuery.data?.pagination.totalPages ?? 0;
-  // isLoading only covers the very first fetch (no cached/placeholder data yet);
-  // isFetching also covers refetches, so the table can stay mounted and just show a subtle refreshing state.
-  const loading = contactsQuery.isLoading;
-  const refreshing = contactsQuery.isFetching && !contactsQuery.isLoading;
-  const contactTypes = useMemo(
-    () => contactTypesQuery.data?.items ?? [],
-    [contactTypesQuery.data],
-  );
-  const knownContactTypes = useMemo(
-    () => knownContactTypesQuery.data?.items ?? [],
-    [knownContactTypesQuery.data],
-  );
+  const totalCount = companiesQuery.data?.totalCount ?? 0;
+  const totalPages = companiesQuery.data
+    ? Math.ceil(companiesQuery.data.totalCount / pageSize)
+    : 0;
+  const loading = companiesQuery.isLoading;
+  const refreshing = companiesQuery.isFetching && !companiesQuery.isLoading;
 
   useEffect(() => {
-    if (contactsQuery.isError) {
-      addToast({
-        type: "error",
-        title: "Load Failed",
+    if (companiesQuery.isError) {
+      toast.error("Load failed", {
         description:
-          contactsQuery.error instanceof Error
-            ? contactsQuery.error.message
-            : "Failed to load contacts",
+          companiesQuery.error instanceof Error
+            ? companiesQuery.error.message
+            : "Failed to load companies",
       });
     }
-  }, [contactsQuery.isError, contactsQuery.error, addToast]);
+  }, [companiesQuery.isError, companiesQuery.error]);
 
-  const previewContact = previewId
-    ? contacts.find((c) => c.id === previewId)
+  const previewCompany = previewId
+    ? companies.find((c) => c.id === previewId)
     : null;
 
-  const showCreateForm = async (mode: "create" | "edit") => {
-    setShowCreate({ open: true, mode: mode });
-  };
-
-  const exportContacts = async () => {
-    const response = await contactsService.exportContacts(typeFilter);
-    const csv = atob(response.data);
-
-    const now = new Date();
-    const date = now.toISOString().split("T")[0];
-    const time = now.toTimeString().split(" ")[0].replace(/:/g, "-");
-    const filename = `contacts_${date}_${time}.csv`;
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
-  };
-
-  // Runs (and retries) the delete request, driving a single toast through
-  // loading -> success/error like a background job. Passing the same toast
-  // id updates it in place; if the user already dismissed it, sonner just
-  // creates a fresh one instead, so completion is never silently lost.
-  const runDeleteContact = (contact: ContactListItem) => {
-    const toastId = toast.loading(`Deleting ${contact.displayName}...`);
-    deleteContactMutation.mutate(contact.id, {
+  const runDeactivate = (company: Company) => {
+    const toastId = toast.loading(`Deactivating ${company.name}...`);
+    deactivateCompanyMutation.mutate(company.id, {
       onSuccess: () => {
-        toast.success("Contact deleted", {
-          id: toastId,
-          description: contact.displayName,
-        });
+        toast.success("Company deactivated", { id: toastId, description: company.name });
       },
       onError: (err) => {
-        toast.error("Couldn't delete contact", {
+        toast.error("Couldn't deactivate company", {
           id: toastId,
-          description: err instanceof Error ? err.message : contact.displayName,
-          action: {
-            label: "Retry",
-            onClick: () =>
-              setConfirmAction({
-                id: contact.id,
-                action: "delete",
-                label: "Delete",
-                contact,
-              }),
-          },
+          description: err instanceof Error ? err.message : company.name,
+        });
+      },
+    });
+  };
+
+  const runReactivate = (company: Company) => {
+    const toastId = toast.loading(`Reactivating ${company.name}...`);
+    reactivateCompanyMutation.mutate(company.id, {
+      onSuccess: () => {
+        toast.success("Company reactivated", { id: toastId, description: company.name });
+      },
+      onError: (err) => {
+        toast.error("Couldn't reactivate company", {
+          id: toastId,
+          description: err instanceof Error ? err.message : company.name,
         });
       },
     });
@@ -194,150 +183,26 @@ export default function SellingContactsPage() {
 
   const handleConfirmAction = () => {
     if (!confirmAction) return;
-    if (confirmAction.action === "delete") {
-      const { contact } = confirmAction;
-      // Close the dialog immediately so deletion feels instant; the toast
-      // takes over as the processing indicator from here.
-      setConfirmAction(null);
-      runDeleteContact(contact);
-    }
+    const { action, company } = confirmAction;
+    setConfirmAction(null);
+    if (action === "deactivate") runDeactivate(company);
+    else runReactivate(company);
   };
 
-  const runBatchReassign = () => {
-    if (!reassignTarget || !newContactId) return;
-    const target = reassignTarget;
-    const targetTypeLabel =
-      contactTypeMap[target.contactType]?.toLowerCase() ?? "contact";
-    // Close the modal immediately so reassigning feels instant; the toast
-    // takes over as the processing indicator. The selection is kept in
-    // state (reassignTarget/newContactId aren't cleared) so that if it
-    // fails, the modal can reopen pre-filled instead of losing the input.
-    setReassignModalOpen(false);
-    const toastId = toast.loading(
-      `Reassigning cases from ${target.displayName}...`,
-    );
-    batchReassignMutation.mutate(
-      {
-        contactType: target.contactType,
-        oldId: target.id,
-        newId: newContactId,
-      },
-      {
-        onSuccess: () => {
-          toast.success("Cases reassigned", {
-            id: toastId,
-            description: `All cases have been moved to the new ${targetTypeLabel}.`,
-          });
-          setReassignTarget(null);
-          setNewContactId("");
-        },
-        onError: (err) => {
-          toast.error("Couldn't reassign cases", {
-            id: toastId,
-            description:
-              err instanceof Error ? err.message : target.displayName,
-          });
-          // Reopen with the same selection so the user can retry — never
-          // automatically resubmit the request.
-          setReassignModalOpen(true);
-        },
-      },
-    );
-  };
-
-  const activeContactTypes = useMemo(
-    () =>
-      contactTypes
-        .filter((t) => t.isActive)
-        .sort((a, b) => a.sortOrder - b.sortOrder),
-    [contactTypes],
-  );
-
-  const contactTypeMap = useMemo(
-    () => Object.fromEntries(activeContactTypes.map((t) => [t.code, t.name])),
-    [activeContactTypes],
-  );
-
-  const activeKnownContactTypes = useMemo(
-    () =>
-      knownContactTypes
-        .filter((t) => t.isActive)
-        .sort((a, b) => a.sortOrder - b.sortOrder),
-    [knownContactTypes],
-  );
-
-  const tabs = useMemo(
-    () =>
-      activeKnownContactTypes.map((t) => ({
-        key: t.code,
-        label: pluralize(t.name),
-      })),
-    [activeKnownContactTypes],
-  );
-
-  // Fetches each tab's first page up front. This both powers the "(n)" count
-  // shown on each tab and, since it uses the same query key/params the main
-  // list uses for page 1 with no search, warms the cache so switching tabs
-  // is instant instead of showing a loading state.
-  const tabContactsQueries = useQueries({
-    queries: tabs.map((tab) => ({
-      queryKey: CONTACTS_QUERY_KEY({
-        ContactType: tab.key,
-        ContactSubtype: "",
-        page: 1,
-        pageSize: PAGE_SIZE,
-      }),
-      queryFn: () =>
-        contactsService.getContacts({
-          ContactType: tab.key,
-          ContactSubtype: "",
-          page: 1,
-          pageSize: PAGE_SIZE,
-        }),
-      staleTime: 0,
-      refetchOnWindowFocus: false,
-    })),
-  });
-
-  const tabCounts = useMemo(() => {
-    const map: Record<string, number> = {};
-    tabs.forEach((tab, i) => {
-      const data = tabContactsQueries[i]?.data;
-      if (data) map[tab.key] = data.pagination.totalCount;
-    });
-    return map;
-  }, [tabs, tabContactsQueries]);
-
-  // Preselect the first tab once contact types load, since there's no more "All" tab.
-  useEffect(() => {
-    if (!typeFilter && tabs.length > 0) {
-      router.replace(`/selling/contacts?type=${tabs[0].key}`);
-    }
-  }, [tabs, typeFilter, router]);
-
-  const nameColumnLabel = typeFilter
-    ? (contactTypeMap[typeFilter] ?? "Contact Name")
-    : "Contact Name";
-
-  const columns = useMemo<ColumnDef<ContactListItem, any>[]>(
+  const columns = useMemo<ColumnDef<Company, any>[]>(
     () => [
       {
         id: "name",
-        header: nameColumnLabel,
+        header: "Company Name",
         cell: ({ row }) => {
           const c = row.original;
-          const isDeleting =
-            deleteContactMutation.isPending &&
-            deleteContactMutation.variables === c.id;
           return (
             <Link
               href={`/selling/contacts/${c.id}`}
               onClick={(e) => e.stopPropagation()}
-              className={`text-sm font-medium text-gray-700 hover:text-primary ${
-                isDeleting ? "line-through" : ""
-              }`}
+              className="text-sm font-medium text-gray-700 hover:text-primary"
             >
-              {c.displayName}
+              {c.name}
             </Link>
           );
         },
@@ -346,19 +211,21 @@ export default function SellingContactsPage() {
         id: "email",
         header: "Email",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">
-            {row.original.email || "—"}
-          </span>
+          <span className="text-sm text-gray-500">{row.original.email || "—"}</span>
+        ),
+      },
+      {
+        id: "type",
+        header: "Type",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-500">{row.original.companyTypeName || "—"}</span>
         ),
       },
       {
         id: "activeCases",
         header: "Active Cases",
-        cell: ({ row }) => (
-          <span className="text-sm text-gray-500">
-            {row.original.activeCases}
-          </span>
-        ),
+        // No case-linkage API exists for companies yet — placeholder until it does.
+        cell: () => <span className="text-sm text-gray-400">—</span>,
       },
       {
         id: "actions",
@@ -366,14 +233,6 @@ export default function SellingContactsPage() {
         meta: { align: "right" },
         cell: ({ row }) => {
           const c = row.original;
-          const isDeleting =
-            deleteContactMutation.isPending &&
-            deleteContactMutation.variables === c.id;
-          if (isDeleting) {
-            return (
-              <i className="ri-loader-4-line animate-spin text-gray-400" />
-            );
-          }
           return (
             <div onClick={(e) => e.stopPropagation()}>
               <ActionMenu
@@ -383,34 +242,17 @@ export default function SellingContactsPage() {
                     icon: "ri-eye-line",
                     onClick: () => router.push(`/selling/contacts/${c.id}`),
                   },
-                  {
-                    label: "Reassign",
-                    icon: "ri-exchange-line",
-                    onClick: () => {
-                      setReassignTarget(c);
-                      setNewContactId("");
-                      setReassignModalOpen(true);
-                    },
-                  },
-                  {
-                    label: "Edit Contact",
-                    icon: "ri-pencil-line",
-                    onClick: () => {
-                      setContactData(c);
-                      showCreateForm("edit");
-                    },
-                  },
-                  {
-                    label: "Delete",
-                    icon: "ri-delete-bin-line",
-                    onClick: () =>
-                      setConfirmAction({
-                        id: c.id,
-                        action: "delete",
-                        label: "Delete",
-                        contact: c,
-                      }),
-                  },
+                  c.isActive
+                    ? {
+                        label: "Deactivate",
+                        icon: "ri-forbid-line",
+                        onClick: () => setConfirmAction({ action: "deactivate", company: c }),
+                      }
+                    : {
+                        label: "Reactivate",
+                        icon: "ri-check-line",
+                        onClick: () => setConfirmAction({ action: "reactivate", company: c }),
+                      },
                 ]}
               />
             </div>
@@ -418,247 +260,195 @@ export default function SellingContactsPage() {
         },
       },
     ],
-    [nameColumnLabel, contactTypeMap, deleteContactMutation, router],
+    [router],
+  );
+
+  const hasActiveFilters = Boolean(search) || Boolean(typeFilter);
+  const showEmptyState = !loading && totalCount === 0 && !hasActiveFilters;
+
+  const toolbar = (
+    <FilterToolbar
+      searchPlaceholder="Search companies by name, email..."
+      onSearch={setSearchInput}
+      filters={[
+        {
+          label: "All Types",
+          value: typeFilter,
+          onChange: setTypeFilter,
+          options: companyTypes.map((t) => ({ value: t.id, label: t.name })),
+        },
+      ]}
+    >
+      <Button
+        variant="secondary"
+        iconDivider
+        rightIcon={<i className="ri-upload-2-line text-base" />}
+        onClick={() =>
+          toast.info("Coming Soon", {
+            description: "Exporting companies isn't available yet.",
+          })
+        }
+      >
+        Export
+      </Button>
+      {ra.can("contact:create") && (
+        <Button
+          iconDivider
+          rightIcon={<i className="ri-add-line text-base" />}
+          className={PRIMARY_BUTTON_CLASSNAME}
+          onClick={() => setShowCreate(true)}
+        >
+          Add Company
+        </Button>
+      )}
+    </FilterToolbar>
   );
 
   return (
-    <div className="space-y-5">
-      <PageHeader
-        title="Contacts"
-        subtitle={`${totalCount} contacts`}
-        actions={
-          ra.can("contact:create") ? (
-            <button
-              onClick={() => showCreateForm("create")}
-              className={`flex items-center gap-1.5 text-sm font-medium rounded-lg px-4 py-2 transition-colors ${PRIMARY_BUTTON_CLASSNAME}`}
-            >
-              <i className="ri-add-line text-base" />
-              Add Contact
-            </button>
-          ) : undefined
-        }
-      />
+    <>
+      {showEmptyState ? (
+        <div className="bg-white border border-gray-200 rounded-xl">
+          <ContactsEmptyState
+            icon="ri-building-4-line"
+            title="No Company Yet"
+            description="No companies have been added yet. Add your first company to get started."
+            actionLabel={ra.can("contact:create") ? "Add Company" : undefined}
+            onAction={ra.can("contact:create") ? () => setShowCreate(true) : undefined}
+          />
+        </div>
+      ) : (
+        <div className="relative">
+          {refreshing && (
+            <div className="absolute top-2 right-3 z-10 flex items-center gap-1.5 text-xs text-gray-400">
+              <i className="ri-loader-4-line animate-spin text-sm" />
+              Refreshing...
+            </div>
+          )}
+          <BaseTable
+            data={companies}
+            columns={columns}
+            getRowId={(c) => c.id}
+            isLoading={loading}
+            emptyMessage="No companies found."
+            onRowClick={(c) => setPreviewId(c.id)}
+            toolbar={toolbar}
+            manualPagination
+            pageCount={totalPages}
+            totalCount={totalCount}
+            pagination={{ pageIndex: page - 1, pageSize }}
+            onPaginationChange={(updater) => {
+              const next =
+                typeof updater === "function"
+                  ? updater({ pageIndex: page - 1, pageSize })
+                  : updater;
+              setPage(next.pageIndex + 1);
+              if (next.pageSize !== pageSize) setPageSize(next.pageSize);
+            }}
+            pageSizeOptions={[10, 25, 50, 100]}
+            className="bg-white border-gray-200 rounded-xl"
+            primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
+          />
+        </div>
+      )}
 
-      {/* Contact type tabs — pill style, matching the Portfolio page's <Tabs bordered={false} /> */}
-      <div className="flex flex-wrap gap-1 bg-[#FAFAFA] rounded-md p-1">
-        {tabs.map((tab) => (
-          <Link
-            key={tab.key}
-            href={`/selling/contacts?type=${tab.key}`}
-            className={`flex-1 text-center px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
-              typeFilter === tab.key
-                ? "bg-white shadow-sm text-gray-900"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {tab.label}
-            {tabCounts[tab.key] !== undefined && (
-              <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-semibold rounded-full bg-primary/10 text-primary">
-                {tabCounts[tab.key]}
-              </span>
-            )}
-          </Link>
-        ))}
-      </div>
-
-      <FilterToolbar
-        searchPlaceholder="Search contacts by name, org, or email..."
-        onSearch={setSearchInput}
-        filters={[]}
-      >
-        <button
-          onClick={() => exportContacts()}
-          className={`flex items-center gap-1.5 text-sm font-medium rounded-lg px-4 py-2 transition-colors ${PRIMARY_BUTTON_CLASSNAME}`}
-        >
-          Export
-        </button>
-      </FilterToolbar>
-
-      <div className="relative">
-        {refreshing && (
-          <div className="absolute top-2 right-3 z-10 flex items-center gap-1.5 text-xs text-gray-400">
-            <i className="ri-loader-4-line animate-spin text-sm" />
-            Refreshing...
-          </div>
-        )}
-        <BaseTable
-          data={contacts}
-          columns={columns}
-          getRowId={(c) => c.id}
-          isLoading={loading}
-          emptyMessage="No contacts found."
-          onRowClick={(c) => setPreviewId(c.id)}
-          getRowClassName={(c) =>
-            deleteContactMutation.isPending &&
-            deleteContactMutation.variables === c.id
-              ? "opacity-40 bg-red-50/60 pointer-events-none"
-              : undefined
-          }
-          manualPagination
-          pageCount={totalPages}
-          totalCount={totalCount}
-          pagination={{ pageIndex: page - 1, pageSize: PAGE_SIZE }}
-          onPaginationChange={(updater) => {
-            const next =
-              typeof updater === "function"
-                ? updater({ pageIndex: page - 1, pageSize: PAGE_SIZE })
-                : updater;
-            setPage(next.pageIndex + 1);
-          }}
-          className="bg-white border-gray-200 rounded-xl"
-          primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
-        />
-      </div>
-
-      {showCreate.open && (
-        <AddContactModal
-          open={showCreate.open}
-          title={showCreate.mode === "edit" ? "Edit Contact" : "Add New Contact"}
-          contactType={
-            showCreate.mode === "create" ? typeFilter || undefined : undefined
-          }
-          contactTypeOptions={activeKnownContactTypes}
-          editTarget={showCreate.mode === "edit" ? contactData : null}
-          primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
-          onClose={() => setShowCreate({ open: false })}
-          onSaved={() => {
-            setShowCreate({ open: false });
-            queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      {showCreate && (
+        <CompanyFormModal
+          open={showCreate}
+          title="Add Company"
+          companyTypeId={typeFilter || companyTypes[0]?.id}
+          onClose={() => setShowCreate(false)}
+          onSaved={(company) => {
+            setShowCreate(false);
+            setNewCompany(company);
           }}
         />
       )}
 
-      {confirmAction && confirmAction.action === "delete" && (
+      {newCompany && (
+        <ConfirmDialog
+          open
+          onClose={() => setNewCompany(null)}
+          onConfirm={() => {
+            setContactPersonTarget(newCompany);
+            setNewCompany(null);
+          }}
+          icon={
+            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+              <Building2 className="w-5 h-5 text-gray-700" />
+            </div>
+          }
+          title="New Company Added"
+          description="The new company has been added. Would you like to add contact person associated with this company? You can always do this later."
+          confirmLabel="Add Contact Person"
+          cancelLabel="Maybe Later"
+          primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
+        />
+      )}
+
+      {contactPersonTarget && (
+        <ContactPersonFormModal
+          open
+          title="Add Contact Person"
+          companyId={contactPersonTarget.id}
+          companyName={contactPersonTarget.name}
+          companyTypeId={contactPersonTarget.companyTypeId}
+          allowCompanySelect
+          onClose={() => setContactPersonTarget(null)}
+          onSaved={() => setContactPersonTarget(null)}
+        />
+      )}
+
+      {confirmAction && (
         <ConfirmDialog
           open
           onClose={() => setConfirmAction(null)}
           onConfirm={handleConfirmAction}
-          title="Delete Contact"
+          title={confirmAction.action === "deactivate" ? "Deactivate Company" : "Reactivate Company"}
           description={
             <>
-              Are you sure you want to delete{" "}
-              <span className="font-semibold text-primary">
-                {confirmAction.contact.displayName}
-              </span>
-              ? This action cannot be undone and will permanently remove all
-              associated data.
+              Are you sure you want to{" "}
+              {confirmAction.action === "deactivate" ? "deactivate" : "reactivate"}{" "}
+              <span className="font-semibold text-primary">{confirmAction.company.name}</span>?
             </>
           }
-          confirmLabel="Delete"
-          confirmVariant="danger"
-          loading={deleteContactMutation.isPending}
-          warningTitle="Warning: Deleting this contact will also remove:"
-          warningItems={[
-            ...(["LawFirm", "MedicalFacility"].includes(
-              confirmAction.contact.contactType,
-            ) &&
-            !(
-              confirmAction.contact.lawFirmId ||
-              confirmAction.contact.facilityId
-            )
-              ? ["All associated staff/sub-contacts"]
-              : []),
-            "All case associations",
-            "All uploaded documents",
-            "All activity history",
-          ]}
+          confirmLabel={confirmAction.action === "deactivate" ? "Deactivate" : "Reactivate"}
+          confirmVariant={confirmAction.action === "deactivate" ? "danger" : "primary"}
+          loading={deactivateCompanyMutation.isPending || reactivateCompanyMutation.isPending}
         />
       )}
 
-      {/* Batch Reassign Modal */}
-      {reassignTarget && (
-        <Modal
-          open={reassignModalOpen}
-          onClose={() => {
-            setReassignModalOpen(false);
-            setReassignTarget(null);
-          }}
-          title="Re-Assign Case"
-          size="sm"
-          footer={
-            <div className="flex items-center justify-between w-full">
-              <button
-                onClick={() => {
-                  setReassignModalOpen(false);
-                  setReassignTarget(null);
-                }}
-                disabled={batchReassignMutation.isPending}
-                className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={runBatchReassign}
-                disabled={!newContactId || batchReassignMutation.isPending}
-                className={`px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors ${PRIMARY_BUTTON_CLASSNAME}`}
-              >
-                {batchReassignMutation.isPending
-                  ? "Assigning..."
-                  : "Assign Case"}
-              </button>
-            </div>
-          }
-        >
-          <div className="flex items-center gap-2 mb-4">
-            <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary text-white shrink-0">
-              <i className="ri-exchange-line text-sm" />
-            </span>
-            <span className="text-sm font-semibold text-primary">
-              Case Assignment Details
-            </span>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              <span className="text-red-500 mr-0.5">*</span>
-              {CASE_REASSIGN_CONFIG[reassignTarget.contactType]?.fieldLabel ??
-                `Available ${
-                  contactTypeMap[reassignTarget.contactType] ?? "Contact"
-                }`}
-            </label>
-            <ContactPicker
-              contactType={reassignTarget.contactType}
-              excludeId={reassignTarget.id}
-              value={newContactId}
-              onChange={setNewContactId}
-              placeholder="Please select"
-              disabled={batchReassignMutation.isPending}
-            />
-          </div>
-        </Modal>
-      )}
-
       <SideDrawer
-        open={!!previewContact}
+        open={!!previewCompany}
         onClose={() => setPreviewId(null)}
-        title={previewContact?.displayName || ""}
-        subtitle={previewContact?.organization}
+        title={previewCompany?.name || ""}
+        subtitle={previewCompany?.companyTypeName}
       >
-        {previewContact && (
+        {previewCompany && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <p className="text-xs text-gray-400">Email</p>
-                <p className="text-gray-700">{previewContact.email || "—"}</p>
+                <p className="text-gray-700">{previewCompany.email || "—"}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-400">Phone</p>
-                <p className="text-gray-700">{previewContact.phone || "—"}</p>
+                <p className="text-gray-700">{previewCompany.phone || "—"}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-400">Location</p>
                 <p className="text-gray-700">
-                  {previewContact.city}
-                  {previewContact.city && previewContact.state ? ", " : ""}
-                  {previewContact.state || "—"}
+                  {previewCompany.city}
+                  {previewCompany.city && previewCompany.state ? ", " : ""}
+                  {previewCompany.state || "—"}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-gray-400">Active Cases</p>
-                <p className="text-gray-700">{previewContact.activeCases}</p>
+                <p className="text-xs text-gray-400">Status</p>
+                <p className="text-gray-700">{previewCompany.isActive ? "Active" : "Inactive"}</p>
               </div>
             </div>
             <Link
-              href={`/selling/contacts/${previewContact.id}`}
+              href={`/selling/contacts/${previewCompany.id}`}
               className={`block text-center text-sm px-4 py-2 rounded-lg ${PRIMARY_BUTTON_CLASSNAME}`}
             >
               View Full Details
@@ -666,6 +456,6 @@ export default function SellingContactsPage() {
           </div>
         )}
       </SideDrawer>
-    </div>
+    </>
   );
 }

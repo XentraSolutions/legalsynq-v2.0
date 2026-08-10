@@ -211,8 +211,10 @@ authenticated buyer contact matched by email. Matching contacts must be active, 
 `FundingCompany` or `LienHolder` contact type; access links are filtered by `BuyerContactId`. It supports
 `status=Pending|Accepted|Declined`, free-text `search`, `page`, `pageSize`, `sort`, and
 `direction` query parameters for the `/funding/offered-liens` page. Pending rows return `view`, `accept`, and `decline`
-actions only while the underlying lien remains actionable by the public buyer-response rules; accepted, declined, or
-otherwise non-actionable rows return `view` only. Row `detailHref` values point to the authenticated tenant portal route
+actions only while the underlying lien remains actionable by the public buyer-response rules. When a sibling access
+link has already completed the lien workflow, the terminal lien state is projected instead of leaving an unanswered
+link labeled as pending; accepted, declined, or otherwise non-actionable rows return `view` only. Row `detailHref`
+values point to the authenticated tenant portal route
 `/funding/offered-liens/{accessLinkId}`. The portal backs that route with
 `GET /api/liens/selling/buyer/liens/{accessLinkId}`, which returns persisted seller/lien fields plus real servicing
 documents, portal messages, and response activity for the funding company. Missing documents, messages, or activity are
