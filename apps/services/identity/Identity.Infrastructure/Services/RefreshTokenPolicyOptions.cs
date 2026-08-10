@@ -14,7 +14,7 @@ public sealed class RefreshTokenPolicyOptions
     /// <summary>Optional cap on active device sessions per user; 0 disables the cap.</summary>
     public int MaxActiveSessionsPerUser { get; set; } = 10;
 
-    /// <summary>SEC-014: how recent DeviceSession.LastSuccessfulAuthAtUtc must be to satisfy step-up checks on logout-all and cross-device revocation.</summary>
+    /// <summary>SEC-014: how recent primary authentication must be to satisfy step-up checks.</summary>
     public int StepUpWindowMinutes { get; set; } = 15;
 
     /// <summary>

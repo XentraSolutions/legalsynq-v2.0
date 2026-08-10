@@ -54,6 +54,9 @@ Identity.Api.Tests/      Integration and unit tests
 
 `IdentityDb` (MySQL) — all tables prefixed `idt_`.
 
+Biometric device sessions are installed by EF migration
+`20260810113000_AddBiometricDeviceSessions`; startup does not create these tables manually.
+
 `idt_Users` includes an optional `Title` column (`varchar(50)`) for professional titles captured during
 CareConnect portal enrollment and exposed on user DTOs. Existing rows may leave it `NULL`.
 

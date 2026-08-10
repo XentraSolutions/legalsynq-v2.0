@@ -26,7 +26,10 @@ import type {
 } from "@/lib/settlement/settlement.types";
 import { contactsService } from "@/lib/contacts";
 import { lookupService } from "@/lib/lookup";
-import { servicingService } from "@/lib/servicing";
+import {
+  servicingService,
+  type UpdateServicingDetailsRequestDto,
+} from "@/lib/servicing";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -268,15 +271,8 @@ export function useUpdateServicingDetails() {
 
   // Example mutation function
   return useMutation({
-    mutationFn: (updatedData: {
-      caseId: string;
-      caseStatusId: string;
-      isUCCFiled: string;
-      switchedDate: string;
-      lawFirmId: string;
-      attorney: string;
-      caseManager: string;
-    }) => servicingService.updateDetails(updatedData),
+    mutationFn: (updatedData: UpdateServicingDetailsRequestDto) =>
+      servicingService.updateDetails(updatedData),
 
     onSuccess: (data, variables) => {
       // Invalidate and refetch the specific case detail

@@ -48,6 +48,7 @@ public class RefreshTokenLedgerEntryConfiguration : IEntityTypeConfiguration<Ref
         builder.HasOne(e => e.DeviceSession)
             .WithMany()
             .HasForeignKey(e => e.DeviceSessionId)
+            .HasConstraintName("FK_idt_RTLE_DeviceSession")
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

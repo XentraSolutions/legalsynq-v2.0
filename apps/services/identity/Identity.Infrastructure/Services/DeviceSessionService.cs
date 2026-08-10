@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Diagnostics;
 using Identity.Application.DTOs;
+using Identity.Application;
 using Identity.Application.Errors;
 using Identity.Application.Interfaces;
 using Identity.Domain;
@@ -28,6 +30,8 @@ public class DeviceSessionService : IDeviceSessionService
 {
     private readonly IdentityDbContext _db;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IUserRepository? _userRepository;
+    private readonly IEffectiveAccessService? _effectiveAccessService;
     private readonly IAuditEventClient _auditClient;
     private readonly RefreshTokenPolicyOptions _policy;
     private readonly ILogger<DeviceSessionService> _logger;
@@ -35,16 +39,25 @@ public class DeviceSessionService : IDeviceSessionService
     public DeviceSessionService(
         IdentityDbContext db,
         IJwtTokenService jwtTokenService,
+        IUserRepository userRepository,
+        IEffectiveAccessService effectiveAccessService,
         IAuditEventClient auditClient,
         IOptions<RefreshTokenPolicyOptions> policy,
         ILogger<DeviceSessionService> logger)
     {
         _db = db;
         _jwtTokenService = jwtTokenService;
+        _userRepository = userRepository;
+        _effectiveAccessService = effectiveAccessService;
         _auditClient = auditClient;
         _policy = policy.Value;
         _logger = logger;
     }
+
+    public DeviceSessionService(IdentityDbContext db, IJwtTokenService jwtTokenService,
+        IAuditEventClient auditClient, IOptions<RefreshTokenPolicyOptions> policy,
+        ILogger<DeviceSessionService> logger)
+        : this(db, jwtTokenService, null!, null!, auditClient, policy, logger) { }
 
     public async Task<RefreshTokenResponse> CreateDeviceSessionAsync(
         Guid userId,
@@ -76,6 +89,7 @@ public class DeviceSessionService : IDeviceSessionService
             await EnforceSessionCapAsync(userId, ct);
 
         await _db.SaveChangesAsync(ct);
+        DeviceSessionMetrics.RecordCreated(deviceInfo.Platform);
 
         EmitAudit(
             eventType: "identity.session.device_created",
@@ -122,6 +136,7 @@ public class DeviceSessionService : IDeviceSessionService
         string? ipAddress,
         CancellationToken ct = default)
     {
+        var refreshTimer = Stopwatch.StartNew();
         var submittedHash = ComputeHash(rawRefreshToken);
 
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
@@ -229,6 +244,8 @@ public class DeviceSessionService : IDeviceSessionService
                 }
 
                 ledgerHit.MarkReused();
+                DeviceSessionMetrics.RecordReuse();
+                _logger.LogCritical("SECURITY ALERT: refresh-token reuse detected for device session {DeviceSessionId} and family {TokenFamilyId}.", session.Id, session.TokenFamilyId);
                 await RevokeFamilyWithinTransactionAsync(session, "ReuseDetected", ct);
                 await _db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
@@ -286,6 +303,7 @@ public class DeviceSessionService : IDeviceSessionService
                 description: "Refresh token rotated successfully.",
                 tags: ["auth", "refresh"],
                 ipAddress: reqIpAddress);
+            DeviceSessionMetrics.RecordRefresh("success", refreshTimer.Elapsed.TotalMilliseconds);
 
             return await BuildResponseAsync(activeSession, activeUser, newRawToken);
         }
@@ -313,7 +331,25 @@ public class DeviceSessionService : IDeviceSessionService
                 return DeviceSessionRefreshResult.Failure(AuthErrorCodes.DeviceSessionNotFound);
             }
 
-            var (accessToken, accessTokenExpiresAtUtc) = _jwtTokenService.GenerateRefreshedAccessToken(activeUser, tenant, activeSession.Id);
+            if (_userRepository is null || _effectiveAccessService is null)
+            {
+                var fallback = _jwtTokenService.GenerateRefreshedAccessToken(activeUser, tenant, activeSession.Id);
+                return DeviceSessionRefreshResult.Success(new RefreshTokenResponse(fallback.Token, fallback.ExpiresAtUtc,
+                    newRawToken, EarliestExpiry(activeSession), activeSession.Id));
+            }
+            var userWithRoles = await _userRepository.GetByIdWithRolesAsync(activeUser.Id, ct);
+            if (userWithRoles is null) return DeviceSessionRefreshResult.Failure(AuthErrorCodes.AccountDisabled);
+            var organization = (await _userRepository.GetPrimaryOrgMembershipAsync(activeUser.Id, tenant.Id, ct))?.Organization;
+            var effectiveAccess = await _effectiveAccessService.GetEffectiveAccessAsync(tenant.Id, activeUser.Id, ct);
+            var memberships = await _userRepository.GetActiveTenantMembershipsAsync(activeUser.Id, ct);
+            var roles = userWithRoles.ScopedRoleAssignments
+                .Where(s => s.ScopeType == ScopedRoleAssignment.ScopeTypes.Global
+                         && s.Role.Scope is RoleScopes.Platform or RoleScopes.Tenant)
+                .Select(s => s.Role.Name);
+            var (accessToken, accessTokenExpiresAtUtc) = _jwtTokenService.GenerateRefreshedAccessToken(
+                userWithRoles, tenant, activeSession.Id, roles, organization,
+                effectiveAccess.ProductRolesFlat, tenant.SessionTimeoutMinutes ?? 30,
+                effectiveAccess.Products, effectiveAccess.Permissions, memberships.Select(m => m.TenantId));
 
             return DeviceSessionRefreshResult.Success(new RefreshTokenResponse(
                 accessToken,
@@ -382,19 +418,21 @@ public class DeviceSessionService : IDeviceSessionService
         return true; // idempotent — true whether or not it was already disabled/revoked
     }
 
-    public async Task<bool> LogoutCurrentAsync(Guid userId, Guid deviceSessionId, CancellationToken ct = default)
+    public async Task LogoutCurrentAsync(string rawRefreshToken, Guid deviceSessionId, CancellationToken ct = default)
     {
+        var submittedHash = ComputeHash(rawRefreshToken);
         var session = await _db.DeviceSessions
-            .FirstOrDefaultAsync(s => s.Id == deviceSessionId && s.UserId == userId, ct);
-        if (session is null) return false;
+            .FirstOrDefaultAsync(s => s.Id == deviceSessionId, ct);
+        if (session is null || !ConstantTimeEquals(submittedHash, session.RefreshTokenHash)) return;
 
         var wasActive = session.Revoke("UserLogout");
+        if (wasActive) DeviceSessionMetrics.RecordRevoked("UserLogout");
         await _db.SaveChangesAsync(ct);
 
         EmitAudit(
             eventType: "identity.user.logged_out",
             severity: SeverityLevel.Info,
-            userId: userId,
+            userId: session.UserId,
             tenantId: session.TenantId,
             deviceSessionId: session.Id,
             action: "Logout",
@@ -406,7 +444,7 @@ public class DeviceSessionService : IDeviceSessionService
             EmitAudit(
                 eventType: "identity.session.device_revoked",
                 severity: SeverityLevel.Info,
-                userId: userId,
+                userId: session.UserId,
                 tenantId: session.TenantId,
                 deviceSessionId: session.Id,
                 action: "DeviceSessionRevoked",
@@ -414,12 +452,12 @@ public class DeviceSessionService : IDeviceSessionService
                 tags: ["auth", "device-session"]);
         }
 
-        return true; // idempotent
     }
 
     public async Task<int> LogoutAllAsync(Guid userId, CancellationToken ct = default)
     {
         var count = await RevokeAllActiveSessionsAsync(userId, "UserLogoutAll", ct);
+        if (count > 0) DeviceSessionMetrics.RecordRevoked("UserLogoutAll");
 
         EmitAudit(
             eventType: "identity.user.logged_out_all_sessions",
@@ -524,12 +562,12 @@ public class DeviceSessionService : IDeviceSessionService
             tags: ["auth", "device-session", "security"]);
     }
 
-    public async Task<DateTime?> GetLastSuccessfulAuthAsync(Guid userId, Guid deviceSessionId, CancellationToken ct = default)
+    public async Task<DateTime?> GetLastPrimaryAuthenticationAsync(Guid userId, Guid deviceSessionId, CancellationToken ct = default)
     {
         return await _db.DeviceSessions
             .AsNoTracking()
             .Where(s => s.Id == deviceSessionId && s.UserId == userId)
-            .Select(s => (DateTime?)s.LastSuccessfulAuthAtUtc)
+            .Select(s => (DateTime?)s.LastPrimaryAuthenticationAtUtc)
             .FirstOrDefaultAsync(ct);
     }
 

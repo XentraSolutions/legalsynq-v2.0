@@ -50,8 +50,8 @@ public class DeviceSession
     /// </summary>
     public bool BiometricEnabled { get; private set; }
 
-    /// <summary>Updated on session creation and every successful refresh; drives step-up ("recent primary auth") checks.</summary>
-    public DateTime LastSuccessfulAuthAtUtc { get; private set; }
+    /// <summary>Set only by primary authentication; refresh rotation must not extend the step-up window.</summary>
+    public DateTime LastPrimaryAuthenticationAtUtc { get; private set; }
 
     /// <summary>Reserved for future risk/alerting use (BE-BIO-023); not actively computed in v1.</summary>
     public string RiskState { get; private set; } = "Normal";
@@ -96,7 +96,7 @@ public class DeviceSession
             OsVersion                = (osVersion ?? string.Empty).Trim(),
             DeviceDisplayName        = string.IsNullOrWhiteSpace(deviceDisplayName) ? "Unknown device" : deviceDisplayName.Trim(),
             BiometricEnabled         = false,
-            LastSuccessfulAuthAtUtc  = now,
+            LastPrimaryAuthenticationAtUtc = now,
             RiskState                = "Normal",
             RowVersion               = 0,
         };
@@ -104,7 +104,7 @@ public class DeviceSession
 
     /// <summary>
     /// BE-BIO-006: applies a successful rotation — overwrites the current hash,
-    /// bumps LastUsedAtUtc/InactivityExpiresAtUtc/LastSuccessfulAuthAtUtc. Does
+    /// bumps LastUsedAtUtc/InactivityExpiresAtUtc. Does
     /// not touch AbsoluteExpiresAtUtc or TokenFamilyId, which are immutable for
     /// the life of the session.
     /// </summary>
@@ -116,7 +116,6 @@ public class DeviceSession
         RefreshTokenHash         = newRefreshTokenHash;
         LastUsedAtUtc            = now;
         InactivityExpiresAtUtc   = now.AddDays(inactivityExpiryDays);
-        LastSuccessfulAuthAtUtc  = now;
         RowVersion++;
     }
 

@@ -32,7 +32,7 @@ public interface IDeviceSessionService
     Task<bool> DisableBiometricAsync(Guid userId, Guid deviceSessionId, CancellationToken ct = default);
 
     /// <summary>BE-BIO-013: idempotent — returns true whether or not the session was already revoked.</summary>
-    Task<bool> LogoutCurrentAsync(Guid userId, Guid deviceSessionId, CancellationToken ct = default);
+    Task LogoutCurrentAsync(string rawRefreshToken, Guid deviceSessionId, CancellationToken ct = default);
 
     /// <summary>BE-BIO-014: user-initiated logout-all. Caller must have already enforced step-up (recent primary auth).</summary>
     Task<int> LogoutAllAsync(Guid userId, CancellationToken ct = default);
@@ -50,7 +50,7 @@ public interface IDeviceSessionService
     Task RevokeByTokenFamilyAsync(Guid tokenFamilyId, string reason, CancellationToken ct = default);
 
     /// <summary>SEC-014: IDOR-checked lookup used by the endpoint layer's step-up ("recent primary auth") gate on logout-all and cross-device revocation. Null if not found/not owned.</summary>
-    Task<DateTime?> GetLastSuccessfulAuthAsync(Guid userId, Guid deviceSessionId, CancellationToken ct = default);
+    Task<DateTime?> GetLastPrimaryAuthenticationAsync(Guid userId, Guid deviceSessionId, CancellationToken ct = default);
 }
 
 /// <summary>Discriminated result for RefreshAsync — exactly one of Success/ErrorCode is set.</summary>

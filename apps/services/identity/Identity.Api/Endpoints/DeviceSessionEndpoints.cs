@@ -139,11 +139,11 @@ public static class DeviceSessionEndpoints
     }
 
     /// <summary>
-    /// SEC-014: step-up gate — requires DeviceSession.LastSuccessfulAuthAtUtc for
+    /// SEC-014: step-up gate — requires recent primary authentication for
     /// the CALLING device session to be within the configured window. The calling
     /// session is resolved from the `device_session_id` JWT claim (present only on
-    /// tokens minted by GenerateRefreshedAccessToken — i.e. tokens obtained via a
-    /// biometric-gated refresh). Absent that claim, step-up cannot be satisfied and
+    /// tokens minted by GenerateRefreshedAccessToken. Refresh does not advance the
+    /// primary-authentication timestamp. Absent the claim, step-up cannot be satisfied and
     /// the caller must complete primary authentication again.
     /// </summary>
     private static async Task<IResult?> CheckStepUpAsync(
@@ -156,7 +156,7 @@ public static class DeviceSessionEndpoints
         if (!TryGetDeviceSessionIdClaim(httpContext, out var deviceSessionId))
             return ProblemForErrorCode(AuthErrorCodes.SessionReauthenticationRequired);
 
-        var lastAuth = await deviceSessionService.GetLastSuccessfulAuthAsync(userId, deviceSessionId, ct);
+        var lastAuth = await deviceSessionService.GetLastPrimaryAuthenticationAsync(userId, deviceSessionId, ct);
         if (lastAuth is null)
             return ProblemForErrorCode(AuthErrorCodes.SessionReauthenticationRequired);
 

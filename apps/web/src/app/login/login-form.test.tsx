@@ -6,7 +6,9 @@ import { LoginForm } from './login-form';
 
 const push = vi.fn();
 const refresh = vi.fn();
-const getSearchParam = vi.fn((key: string) => (key === 'returnTo' ? '/careconnect/dashboard' : null));
+const getSearchParam = vi.fn<(key: string) => string | null>(
+  (key) => (key === 'returnTo' ? '/careconnect/dashboard' : null),
+);
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push }),

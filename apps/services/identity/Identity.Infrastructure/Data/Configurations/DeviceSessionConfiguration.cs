@@ -70,7 +70,7 @@ public class DeviceSessionConfiguration : IEntityTypeConfiguration<DeviceSession
         builder.Property(s => s.BiometricEnabled)
             .IsRequired();
 
-        builder.Property(s => s.LastSuccessfulAuthAtUtc)
+        builder.Property(s => s.LastPrimaryAuthenticationAtUtc)
             .IsRequired();
 
         builder.Property(s => s.RiskState)

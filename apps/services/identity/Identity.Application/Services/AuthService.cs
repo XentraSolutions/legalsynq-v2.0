@@ -28,6 +28,7 @@ public class AuthService : IAuthService
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuditEventClient _auditClient;
     private readonly IEffectiveAccessService _effectiveAccessService;
+    private readonly IDeviceSessionService _deviceSessionService;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<AuthService> _logger;
 
@@ -38,6 +39,7 @@ public class AuthService : IAuthService
         IJwtTokenService jwtTokenService,
         IAuditEventClient auditClient,
         IEffectiveAccessService effectiveAccessService,
+        IDeviceSessionService deviceSessionService,
         IHttpContextAccessor httpContextAccessor,
         ILogger<AuthService> logger)
     {
@@ -47,6 +49,7 @@ public class AuthService : IAuthService
         _jwtTokenService = jwtTokenService;
         _auditClient = auditClient;
         _effectiveAccessService = effectiveAccessService;
+        _deviceSessionService = deviceSessionService;
         _httpContextAccessor = httpContextAccessor;
         _logger = logger;
     }
@@ -527,7 +530,32 @@ public class AuthService : IAuthService
             "LoginPerf userId={UserId} tenantId={TenantId} elapsedMs={ElapsedMs} accessVersion={AccessVersion}",
             userWithRoles.Id, tenant.Id, sw.ElapsedMilliseconds, userWithRoles.AccessVersion);
 
-        return new LoginResponse(token, expiresAtUtc, userResponse, tenantSummaries);
+        // BE-BIO: opt-in device-session/refresh-token issuance for biometric login.
+        // Absent DeviceInfo (every existing caller today), the response shape below
+        // is byte-for-byte identical to before this feature existed (BE-BIO-024).
+        // Best-effort: a failure here must not fail the primary login the user is
+        // actually waiting on — the client simply won't receive a refresh token and
+        // biometric enrollment stays unavailable this session.
+        string? refreshToken = null;
+        DateTime? refreshTokenExpiresAtUtc = null;
+        Guid? deviceSessionId = null;
+        if (request.DeviceInfo is not null)
+        {
+            try
+            {
+                var deviceSession = await _deviceSessionService.CreateDeviceSessionAsync(
+                    userWithRoles.Id, tenant.Id, request.DeviceInfo, token, expiresAtUtc, ct);
+                refreshToken = deviceSession.RefreshToken;
+                refreshTokenExpiresAtUtc = deviceSession.RefreshTokenExpiresAtUtc;
+                deviceSessionId = deviceSession.DeviceSessionId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "BE-BIO: failed to create device session for user {UserId} during login. Login proceeds without a refresh token.", userWithRoles.Id);
+            }
+        }
+
+        return new LoginResponse(token, expiresAtUtc, userResponse, tenantSummaries, refreshToken, refreshTokenExpiresAtUtc, deviceSessionId);
     }
 
     /// <summary>

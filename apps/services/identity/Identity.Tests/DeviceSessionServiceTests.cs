@@ -237,18 +237,15 @@ public sealed class DeviceSessionServiceTests : IAsyncLifetime
     // ── Idempotency (BE-BIO-019) ─────────────────────────────────────────────
 
     [Fact]
-    public async Task LogoutCurrentAsync_CalledTwice_BothReturnTrueWithoutError()
+    public async Task LogoutCurrentAsync_CalledTwice_DoesNotThrow()
     {
         await using var db = BuildDbContext();
         var (userId, tenantId) = await SeedUserAndTenantAsync(db);
         var service = BuildService(db);
         var created = await service.CreateDeviceSessionAsync(userId, tenantId, TestDevice, "access-token", DateTime.UtcNow.AddMinutes(15));
 
-        var first = await service.LogoutCurrentAsync(userId, created.DeviceSessionId);
-        var second = await service.LogoutCurrentAsync(userId, created.DeviceSessionId);
-
-        Assert.True(first);
-        Assert.True(second);
+        await service.LogoutCurrentAsync(created.RefreshToken, created.DeviceSessionId);
+        await service.LogoutCurrentAsync(created.RefreshToken, created.DeviceSessionId);
     }
 
     [Fact]
