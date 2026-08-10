@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { Check, ChevronDown, Plus } from "lucide-react";
+import { Check, ChevronDown, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -58,6 +58,8 @@ interface BaseSelectCommonProps<
 
   /** Render each row with a leading checkbox instead of the trailing check icon. */
   showCheckboxes?: boolean;
+  /** Allow clearing the current selection from the trigger. */
+  clearable?: boolean;
   /**
    * Render the search input + option list directly in the page flow
    * (always visible, no trigger/popover) — for filter panels where the
@@ -79,7 +81,7 @@ interface BaseSelectCommonProps<
 type SingleSelectProps<TOption extends BaseSelectOption> = {
   multiple?: false;
   value?: string | null;
-  onChange: (value: string, option: TOption) => void;
+  onChange: (value: string, option: TOption | null) => void;
 };
 
 type MultiSelectProps<TOption extends BaseSelectOption> = {
@@ -213,6 +215,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     renderOption,
     createAction,
     showCheckboxes = false,
+    clearable = false,
     inline = false,
     placeholder = "Select…",
     searchPlaceholder = "Search...",
@@ -298,6 +301,17 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
       handleSearchChange("");
       setActiveIndex(0);
     }
+  };
+
+  const handleClear = (event: React.MouseEvent | React.KeyboardEvent) => {
+    event.stopPropagation();
+
+    if (props.multiple) {
+      props.onChange([], []);
+      return;
+    }
+
+    props.onChange("", selectedOption ?? null);
   };
 
   const isSelected = React.useCallback(
@@ -510,8 +524,17 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
         >
           <span className={cn("truncate", !selectedLabel && "text-gray-400")}>
             {selectedLabel || placeholder}
-          </span>{" "}
-          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+          </span>
+          <span className="flex items-center gap-1 shrink-0">
+            {clearable && !disabled && ((props.multiple && selectedOptions.length > 0) || (!props.multiple && Boolean(selectedLabel))) && (
+              <X
+                aria-label="Clear selection"
+                className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600"
+                onClick={handleClear}
+              />
+            )}
+            <ChevronDown className="h-4 w-4 opacity-50" />
+          </span>
         </button>
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>

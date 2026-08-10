@@ -205,6 +205,26 @@ describe('BaseSelect eager single-select', () => {
     ).toBeInTheDocument();
   });
 
+  test('clearable single-select emits an empty value without leaving stale selection', async () => {
+    const onChange = vi.fn();
+
+    render(
+      <BaseSelect
+        value="2"
+        clearable
+        onChange={onChange}
+        options={OPTIONS}
+        placeholder="Select a code"
+      />,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Anderson & Baxter Law Offices/ }));
+    await user.click(screen.getByLabelText('Clear selection'));
+
+    expect(onChange).toHaveBeenCalledWith('', OPTIONS[1]);
+  });
+
   test('the create-action row hands off to the caller without rendering its own modal', async () => {
     const onSelect = vi.fn();
 
