@@ -7,6 +7,7 @@ import { formatDate, formatDateTime } from '@/lib/lien-utils';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { ConfirmDialog } from '@/components/lien/modal';
+import { Button } from '@/components/ui/button';
 
 export function UserDetailClient({ id }: { id: string }) {
   const users = useLienStore((s) => s.users);
@@ -35,10 +36,10 @@ export function UserDetailClient({ id }: { id: string }) {
         ]}
         actions={isAdmin ? (
           <div className="flex gap-2">
-            <button onClick={() => addToast({ type: 'info', title: 'Edit', description: 'Edit mode simulated' })} className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600">Edit</button>
-            {d.status === 'Locked' && <button onClick={() => { updateUser(id, { status: 'Active' }); addToast({ type: 'success', title: 'User Unlocked' }); }} className="text-sm px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90">Unlock</button>}
-            {d.status === 'Active' && <button onClick={() => setConfirmAction({ status: 'Inactive', label: 'Deactivate' })} className="text-sm px-3 py-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Deactivate</button>}
-            {d.status === 'Inactive' && <button onClick={() => { updateUser(id, { status: 'Active' }); addToast({ type: 'success', title: 'User Activated' }); }} className="text-sm px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90">Activate</button>}
+            <Button variant="secondary" className="px-3 py-1.5" onClick={() => addToast({ type: 'info', title: 'Edit', description: 'Edit mode simulated' })}>Edit</Button>
+            {d.status === 'Locked' && <Button className="px-3 py-1.5" onClick={() => { updateUser(id, { status: 'Active' }); addToast({ type: 'success', title: 'User Unlocked' }); }}>Unlock</Button>}
+            {d.status === 'Active' && <Button variant="secondary" className="px-3 py-1.5 border-red-200 text-red-600 hover:bg-red-50" onClick={() => setConfirmAction({ status: 'Inactive', label: 'Deactivate' })}>Deactivate</Button>}
+            {d.status === 'Inactive' && <Button className="px-3 py-1.5" onClick={() => { updateUser(id, { status: 'Active' }); addToast({ type: 'success', title: 'User Activated' }); }}>Activate</Button>}
           </div>
         ) : undefined}
       />

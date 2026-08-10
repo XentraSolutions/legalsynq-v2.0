@@ -78,6 +78,15 @@ export interface CreateContactRequestDto {
   contactSubtype?: string;
   lawFirmId?: string;
   facilityId?: string;
+  /**
+   * TODO(backend): speculative generic parent-contact link, for contact
+   * types other than LawFirm/MedicalFacility (which use lawFirmId/
+   * facilityId above). Not yet supported by the API — wired up ahead of
+   * the backend change so "Contact Person" creation for any contact type
+   * (see components/selling/contact-person-section.tsx) just needs the
+   * API to start reading this field. Sent as undefined until then.
+   */
+  parentContactId?: string;
 }
 
 export interface UpdateContactRequestDto {
@@ -100,6 +109,8 @@ export interface UpdateContactRequestDto {
   contactSubtype?: string;
   lawFirmId?: string;
   facilityId?: string;
+  /** TODO(backend): see the matching field on CreateContactRequestDto. */
+  parentContactId?: string;
 }
 
 export interface ContactsQuery {
@@ -110,6 +121,12 @@ export interface ContactsQuery {
   pageSize?: number;
   LawFirmId?: string;
   FacilityId?: string;
+  /**
+   * TODO(backend): speculative generic parent-contact filter, the query
+   * counterpart of CreateContactRequestDto.parentContactId above. Not yet
+   * supported by the API.
+   */
+  ParentContactId?: string;
   // Explicit "" (as opposed to omitting the field) tells the API to only
   // return contacts with no subtype — i.e. main contacts, not sub-contacts
   // like law firm staff or facility staff.

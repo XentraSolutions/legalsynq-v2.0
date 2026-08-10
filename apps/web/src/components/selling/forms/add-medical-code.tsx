@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FormModal } from "@/components/lien/modal";
+import { FormModal } from "@/components/selling/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { casesService, type CreateCaseRequestDto } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";

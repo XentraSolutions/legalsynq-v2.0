@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FormModal } from "@/components/lien/modal";
+import { FormModal } from "@/components/selling/modal";
 import { BaseSelect } from "@/components/ui/base-select";
 import Field from "@/components/lien/field";
 import { liensService } from "@/lib/selling";
@@ -10,6 +10,7 @@ import { useToast } from "@/lib/toast-context";
 import { parsePricingRow } from "@/lib/selling/selling-detail.mapper";
 import type { MedicalPricingRowDetail } from "@/types/lien-selling";
 import type { SellingMedicalPricingRowRequest } from "@/lib/selling/liens.types";
+import { Button } from "@/components/ui/button";
 
 type PricingRow = SellingMedicalPricingRowRequest & { key: string };
 
@@ -89,14 +90,15 @@ function PricingRowFields({
         />
       </td>
       <td className="text-center">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          className="w-7 h-7 p-0 text-gray-300 hover:text-red-500"
           onClick={onRemove}
           aria-label="Remove row"
-          className="text-gray-300 hover:text-red-500"
         >
           <i className="ri-close-line" />
-        </button>
+        </Button>
       </td>
     </tr>
   );

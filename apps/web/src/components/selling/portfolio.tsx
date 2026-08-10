@@ -23,6 +23,7 @@ import { BulkUploadForm } from "./forms/bulk-upload-form";
 import { PaginationMeta } from "@/lib/liens";
 import { SortingState } from "@tanstack/react-table";
 import { useLienStore } from "@/stores/lien-store";
+import { Button } from "@/components/ui/button";
 
 const PORTFOLIO_STATUSES = [
   { key: "Pending", label: "Pending" },
@@ -179,15 +180,15 @@ export default function PortfolioClient() {
 
           <div className="flex items-end">
             <div className="relative">
-              <button
+              <Button
+                className="bg-[#EE7132] hover:bg-[#EE7132]/90 text-white"
+                rightIcon={<i className="ri-arrow-down-s-line text-base" />}
                 onClick={() => {
                   setActionOpen(!actionOpen);
                 }}
-                className="flex items-center gap-1.5 text-sm font-medium text-white bg-[#EE7132] hover:bg-[#EE7132]/90 rounded-lg px-4 py-2 transition-colors"
               >
                 Add New Lien
-                <i className="ri-arrow-down-s-line text-base" />
-              </button>
+              </Button>
               {actionOpen && (
                 <div
                   className={`absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden divide-y divide-gray-100`}
@@ -273,18 +274,19 @@ export default function PortfolioClient() {
                 className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
-            <button
+            <Button
+              variant="secondary"
+              className="relative min-w-[150px] border-gray-300"
+              leftIcon={<i className="ri-filter-3-line text-base" />}
               onClick={() => setShowFilter(true)}
-              className="relative min-w-[150px] flex items-center gap-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg px-4 py-2 hover:bg-gray-50 transition-colors"
             >
-              <i className="ri-filter-3-line text-base" />
               Filter
               {activeFilterCount > 0 && (
                 <span className="ml-0.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold">
                   {activeFilterCount}
                 </span>
               )}
-            </button>
+            </Button>
           </div>
           <LiensFilter
             open={showFilter}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FormModal } from "@/components/lien/modal";
+import { FormModal } from "@/components/selling/modal";
 import Field from "@/components/lien/field";
 import { liensService } from "@/lib/selling";
 import { useToast } from "@/lib/toast-context";

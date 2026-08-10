@@ -10,6 +10,10 @@ import { parsePricingRow } from "@/lib/selling/selling-detail.mapper";
 import Link from "next/link";
 import { useToast } from "@/lib/toast-context";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+
+// Selling's brand accent, matching the convention used on other selling pages.
+const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white disabled:bg-[#EE7132]/70";
 export interface AddLienComponentProps {
   // Existing draft lien to resume (from the /selling/add-liens/[lienId] route).
   // Omitted when starting a brand-new lien from /selling/add-liens.
@@ -111,8 +115,8 @@ export default function AddLienComponent(props: AddLienComponentProps) {
           {
             fundingCompanyId: lien.fundingCompany?.id ?? "",
             fundingCompany: lien.fundingCompany?.name ?? "",
-            facilityContactId: lien.fundingCompany?.contact?.id ?? "",
-            facilityContact: lien.fundingCompany?.contact?.name ?? "",
+            fundingCompanyContactId: lien.fundingCompany?.contact?.id ?? "",
+            fundingCompanyContact: lien.fundingCompany?.contact?.name ?? "",
             lawfirmId: lien.caseInformation?.lawFirmId ?? "",
             caseManagerId: lien.caseInformation?.caseManagerId ?? "",
           },
@@ -243,7 +247,7 @@ export default function AddLienComponent(props: AddLienComponentProps) {
     try {
       await liensService.saveCaseInformation(liensId, {
         fundingCompanyId: payload?.fundingCompanyId || undefined,
-        fundingCompanyContactId: payload?.facilityContactId || undefined,
+        fundingCompanyContactId: payload?.fundingCompanyContactId || undefined,
         handlingLawFirmId: payload?.lawfirmId || undefined,
         caseManagerId: payload?.caseManagerId || undefined,
         caseId: caseId || undefined,
@@ -381,21 +385,19 @@ export default function AddLienComponent(props: AddLienComponentProps) {
 
         <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-end gap-2">
           {/* LEFT BUTTON */}
-          <button
-            onClick={handleBackOrCancel}
-            className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
-          >
+          <Button variant="secondary" onClick={handleBackOrCancel}>
             {currentStep === 0 ? "Cancel" : "Back"}
-          </button>
+          </Button>
 
           {/* RIGHT BUTTON */}
-          <button
+          <Button
+            className={PRIMARY_BUTTON_CLASSNAME}
             onClick={handleNextOrSubmit}
-            className="text-sm px-4 py-2 bg-[#EE7132] text-white rounded-lg hover:bg-[#EE7132]/90 disabled:bg-[#EE7132]/70"
+            loading={submitting}
             disabled={notComplete || submitting}
           >
             {isLastStep ? "Add Lien" : "Continue"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

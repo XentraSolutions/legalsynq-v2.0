@@ -7,10 +7,11 @@ import UploadDocumentComponent, {
   FileDropzoneRef,
 } from "@/components/lien/upload-document";
 import Field from "@/components/lien/field";
-import { ConfirmDialog } from "@/components/lien/modal";
+import { ConfirmDialog } from "@/components/selling/modal";
 import { useToast } from "@/lib/toast-context";
 import { parseDocumentReference } from "@/lib/selling/selling-detail.mapper";
 import type { SellingDocumentReferenceRequest } from "@/lib/selling/liens.types";
+import { Button } from "@/components/ui/button";
 
 export interface UploadDocumentsProps {
   caseId?: string;
@@ -246,14 +247,15 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                     {new Date(doc.createdAt).toLocaleTimeString()}
                   </p>
                 )}
-                <button
+                <Button
                   type="button"
+                  variant="icon-square"
+                  className="w-8 h-8 border-red-100 text-red-500 hover:bg-red-50 shrink-0"
                   onClick={() => setDeleteTarget(doc.documentId)}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-red-100 text-red-500 hover:bg-red-50 shrink-0"
                   aria-label="Delete document"
                 >
                   <i className="ri-delete-bin-6-line text-sm" />
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -271,15 +273,16 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
             )}
           </div>
         ) : (
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            className="mt-4"
             disabled={uploading}
+            rightIcon={<i className="ri-upload-cloud-2-line text-sm" />}
             onClick={() => setShowDropzone(true)}
-            className="mt-4 inline-flex items-center gap-1.5 text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-700 disabled:opacity-50"
           >
             Upload More
-            <i className="ri-upload-cloud-2-line text-sm" />
-          </button>
+          </Button>
         )}
       </div>
 

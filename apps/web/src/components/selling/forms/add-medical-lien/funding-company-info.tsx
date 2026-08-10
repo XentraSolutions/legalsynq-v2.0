@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
 import { useSessionContext } from "@/providers/session-provider";
 import { BaseSelectOption } from "@/components/ui/base-select";
-import { contactsService } from "@/lib/contacts";
 
 export interface FundingCompanyInfoProps {
   caseId?: string;
@@ -17,8 +16,6 @@ const INITIAL_FORM = {
   fundingCompany: "",
 };
 
-const FUNDING_CONTACT_SUBTYPE = "FundingCompanyContactPerson";
-
 type DropdownData = {
   status: Array<Record<string, string>>;
 };
@@ -28,7 +25,6 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
   const { data, onFormValid } = props;
   const [form, setForm] = useState(!data ? { ...INITIAL_FORM } : data);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<string>();
 
   const statusList =
     lookup?.LienStatus.map((c) => {
@@ -63,10 +59,6 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form]);
 
-  useEffect(() => {
-    contactsService.getCaseManagerRoleCode().then(setCaseManagerRoleCode);
-  }, []);
-
   return (
     <div className="row mt-5">
       <div className="col-12 mb-2">
@@ -100,7 +92,6 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
                 searchPlaceholder="Search funding companies..."
                 allowCreate
                 createLabel="Add Funding Company"
-                createContactType="FundingCompany"
               />
             </div>
 
@@ -113,20 +104,18 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
                 fundingCompanyId={form.fundingCompanyId}
                 requireParent
                 parentHint="Select a funding company first"
-                value={form.facilityContactId}
+                value={form.fundingCompanyContactId}
                 onChange={(v, option) =>
                   setForm({
                     ...form,
-                    facilityContactId: v,
-                    facilityContact: option.label,
+                    fundingCompanyContactId: v,
+                    fundingCompanyContact: option.label,
                   })
                 }
                 placeholder="Select contact person..."
                 searchPlaceholder="Search contacts..."
                 allowCreate
                 createLabel="Add New Contact Person"
-                createContactType="FundingCompany"
-                createContactSubtype={FUNDING_CONTACT_SUBTYPE}
               />
             </div>
           </div>
@@ -151,7 +140,6 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
               searchPlaceholder="Search law firms..."
               allowCreate
               createLabel="Add New Law Firm"
-              createContactType="LawFirm"
             />
           </div>
           <div>
@@ -169,8 +157,6 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
               searchPlaceholder="Search case managers..."
               allowCreate
               createLabel="Add Case Manager"
-              createContactType="LawFirm"
-              createContactSubtype={caseManagerRoleCode}
             />
           </div>
         </div>

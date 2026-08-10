@@ -1,1 +1,1 @@
-export { ContactOverviewTab as default } from "@/components/lien/contact-detail/overview-tab";
+export { CompanyOverviewTab as default } from "@/components/selling/contacts/overview-tab";
