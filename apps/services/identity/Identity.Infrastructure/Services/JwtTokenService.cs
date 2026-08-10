@@ -109,4 +109,69 @@ public class JwtTokenService : IJwtTokenService
 
         return (new JwtSecurityTokenHandler().WriteToken(token), expiresAtUtc);
     }
+
+    public (string Token, DateTime ExpiresAtUtc) GenerateRefreshedAccessToken(
+        User user, Tenant tenant, Guid deviceSessionId) =>
+        GenerateRefreshedAccessToken(user, tenant, deviceSessionId, [], null, [], tenant.SessionTimeoutMinutes ?? 30, [], [], []);
+
+    public (string Token, DateTime ExpiresAtUtc) GenerateRefreshedAccessToken(
+        User user,
+        Tenant tenant,
+        Guid deviceSessionId,
+        IEnumerable<string> roles,
+        Organization? organization,
+        IEnumerable<string> productRoles,
+        int sessionTimeoutMinutes,
+        IEnumerable<string> productCodes,
+        IEnumerable<string> permissions,
+        IEnumerable<Guid> tenantIds)
+    {
+        var section = _configuration.GetSection("Jwt");
+
+        var issuer = section["Issuer"] ?? "legalsynq-identity";
+        var audience = section["Audience"] ?? "legalsynq-platform";
+        var signingKey = section["SigningKey"]
+            ?? throw new InvalidOperationException("Jwt:SigningKey is not configured.");
+        var expiryMinutes = int.TryParse(section["RefreshedAccessTokenExpiryMinutes"], out var m) ? m : 15;
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.UserTokenKeyId };
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var claims = BuildClaims(user, tenant, roles, organization, productRoles,
+            sessionTimeoutMinutes, productCodes, permissions, tenantIds);
+        claims.Add(new Claim("device_session_id", deviceSessionId.ToString()));
+
+        var expiresAtUtc = DateTime.UtcNow.AddMinutes(expiryMinutes);
+        var token = new JwtSecurityToken(issuer, audience, claims, DateTime.UtcNow, expiresAtUtc, credentials);
+
+        return (new JwtSecurityTokenHandler().WriteToken(token), expiresAtUtc);
+    }
+
+    private static List<Claim> BuildClaims(User user, Tenant tenant, IEnumerable<string> roles,
+        Organization? organization, IEnumerable<string> productRoles, int sessionTimeoutMinutes,
+        IEnumerable<string> productCodes, IEnumerable<string> permissions, IEnumerable<Guid> tenantIds)
+    {
+        var claims = new List<Claim>
+        {
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()), new(JwtRegisteredClaimNames.Email, user.Email),
+            new(JwtRegisteredClaimNames.Name, $"{user.FirstName} {user.LastName}".Trim()), new(JwtRegisteredClaimNames.Jti, Guid.CreateVersion7().ToString()),
+            new("tenant_id", tenant.Id.ToString()), new("tenant_code", tenant.Code),
+            new("session_version", user.SessionVersion.ToString()), new("access_version", user.AccessVersion.ToString()),
+            new("session_timeout_minutes", sessionTimeoutMinutes.ToString())
+        };
+        claims.AddRange(roles.Select(v => new Claim("role", v)));
+        claims.AddRange(productRoles.Select(v => new Claim("product_roles", v)));
+        claims.AddRange(productCodes.Select(v => new Claim("product_codes", v)));
+        claims.AddRange(permissions.Select(v => new Claim("permissions", v)));
+        claims.AddRange(tenantIds.Select(v => new Claim("tenant_ids", v.ToString())));
+        if (organization is not null)
+        {
+            claims.Add(new Claim("org_id", organization.Id.ToString()));
+            claims.Add(new Claim("org_type", OrgTypeMapper.TryResolveCode(organization.OrganizationTypeId) ?? organization.OrgType));
+            if (organization.OrganizationTypeId.HasValue) claims.Add(new Claim("org_type_id", organization.OrganizationTypeId.Value.ToString()));
+            claims.Add(new Claim("provider_mode", ProviderModes.Normalize(organization.ProviderMode)));
+            if (!string.IsNullOrWhiteSpace(organization.DisplayName ?? organization.Name)) claims.Add(new Claim("org_name", organization.DisplayName ?? organization.Name));
+        }
+        return claims;
+    }
 }

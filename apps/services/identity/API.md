@@ -1,5 +1,9 @@
 # Identity Service API Documentation
 
+> **Biometric login / device sessions:** the `/api/v1/auth/...` refresh-token,
+> device-session, and biometric-enable/disable endpoints are documented
+> separately in [BIOMETRIC-LOGIN-API.md](./BIOMETRIC-LOGIN-API.md).
+
 ## Table of Contents
 
 - [Overview](#overview)

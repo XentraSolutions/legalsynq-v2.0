@@ -65,7 +65,6 @@ export function ServicingTab({
   isPaymentsFetching,
   panelMode,
   onPanelModeChange,
-  onRefreshCase,
 }: {
   caseDetail: CaseDetail;
   liensList: (CaseLienItem & CaseLienItemMetadata)[];
@@ -78,7 +77,6 @@ export function ServicingTab({
   isPaymentsFetching: boolean;
   panelMode: PanelMode;
   onPanelModeChange: (m: PanelMode) => void;
-  onRefreshCase: () => Promise<void>;
 }) {
   const addToast = useLienStore((s) => s.addToast);
   const { data } = useCaseLiens(caseDetail.id, {}, "all-liens");

@@ -1830,6 +1830,7 @@ public static class AdminEndpoints
         ClaimsPrincipal           caller,
         IdentityDbContext         db,
         IAuditEventClient         auditClient,
+        IDeviceSessionService     deviceSessionService,
         INotificationsCacheClient notificationsCache,
         CancellationToken         ct)
     {
@@ -1867,6 +1868,7 @@ public static class AdminEndpoints
         if (!changed) return Results.NoContent();
 
         await db.SaveChangesAsync(ct);
+        await deviceSessionService.RevokeAllForUserAsync(user.Id, "AccountDeactivated", ct);
 
         // Canonical audit: identity.user.deactivated — fire-and-observe.
         var now = DateTimeOffset.UtcNow;
@@ -2002,6 +2004,7 @@ public static class AdminEndpoints
         ClaimsPrincipal           caller,
         IdentityDbContext         db,
         IAuditEventClient         auditClient,
+        IDeviceSessionService     deviceSessionService,
         INotificationsCacheClient notificationsCache,
         CancellationToken         ct)
     {
@@ -2019,6 +2022,7 @@ public static class AdminEndpoints
         if (!changed) return Results.NoContent();
 
         await db.SaveChangesAsync(ct);
+        await deviceSessionService.RevokeAllForUserAsync(user.Id, "AccountLocked", ct);
 
         var now = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest
@@ -2143,6 +2147,7 @@ public static class AdminEndpoints
         ClaimsPrincipal   caller,
         IdentityDbContext db,
         IAuditEventClient auditClient,
+        IDeviceSessionService deviceSessionService,
         CancellationToken ct)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
@@ -2153,6 +2158,7 @@ public static class AdminEndpoints
         var opTenantId = await GetOperationalTenantIdAsync(caller, user.Id, db, ct);
         user.IncrementSessionVersion();
         await db.SaveChangesAsync(ct);
+        await deviceSessionService.RevokeAllForUserAsync(user.Id, "AdministrativeForceLogout", ct);
 
         var callerIdStr = caller.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)
                        ?? caller.FindFirstValue("sub");
@@ -4582,7 +4588,8 @@ public static class AdminEndpoints
                 user.Id, emailLower, body.TenantId);
             return Results.Problem(
                 "User created but invitation email could not be sent: portal URL is not configured. " +
-                "Configure NotificationsService:PortalBaseDomain so invitation links can be generated.",
+                "Configure NotificationsService:PortalBaseDomain or NotificationsService:PortalBaseUrl " +
+                "so invitation links can be generated.",
                 statusCode: 503);
         }
         var displayNameStr = $"{user.FirstName} {user.LastName}".Trim();
@@ -4865,7 +4872,8 @@ public static class AdminEndpoints
                 id, user.Email, opTenantId);
             return Results.Problem(
                 "Invitation refreshed but email could not be sent: portal URL is not configured. " +
-                "Configure NotificationsService:PortalBaseDomain so invitation links can be generated.",
+                "Configure NotificationsService:PortalBaseDomain or NotificationsService:PortalBaseUrl " +
+                "so invitation links can be generated.",
                 statusCode: 503);
         }
         var displayNameStr = $"{user.FirstName} {user.LastName}".Trim();

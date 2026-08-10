@@ -5,6 +5,7 @@ using System.Text.Encodings.Web;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
 using Identity.Infrastructure.Services;
+using LegalSynq.AuditClient;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -92,6 +93,8 @@ public class InviteDeliveryErrorTests
                 foreach (var d in existing) services.Remove(d);
                 services.AddScoped<INotificationsEmailClient>(_ =>
                     new StubNotificationsEmailClient(emailResult));
+                services.RemoveAll<IAuditEventClient>();
+                services.AddSingleton<IAuditEventClient, NoOpAuditEventClient>();
             });
         });
     }

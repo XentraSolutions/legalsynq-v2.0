@@ -16,7 +16,6 @@ export default function CaseServicingPage() {
     isPaymentsFetching,
     panelMode,
     setPanelMode,
-    fetchCase,
   } = useCaseDetailContext();
 
   return (
@@ -32,7 +31,6 @@ export default function CaseServicingPage() {
       isPaymentsFetching={isPaymentsFetching}
       panelMode={panelMode}
       onPanelModeChange={setPanelMode}
-      onRefreshCase={fetchCase}
     />
   );
 }
