@@ -1,6 +1,6 @@
 ---
 name: pr-description-generator
-description: Generate a pull request summary and full PR description from local Git branch changes, including untracked files in the current working tree. Use when the user wants a PR description, pull request body, PR summary, or release-ready change summary for a source branch compared with a target/base branch. Inspect only local Git history, diffs, and untracked files, ask for the ticket/JIRA link when missing, infer change and test categories conservatively, and output a short copyable description followed by the required Markdown PR template. Do not require GitHub, GitLab, or other repository-service APIs.
+description: Generate a pull request summary and full PR description from local Git branch changes, including untracked files in the current working tree. Use when the user wants a PR description, pull request body, PR summary, or release-ready change summary for a source branch compared with a target/base branch. Inspect only local Git history, diffs, and untracked files, ask for the ticket/JIRA link when missing, infer change and test categories conservatively, and output a commit-style PR title/message followed by the required Markdown PR template. Do not require GitHub, GitLab, or other repository-service APIs.
 ---
 
 # PR Description Generator
@@ -93,11 +93,43 @@ git diff --no-index /dev/null "<untracked-file>" || true
 
 9. Produce exactly two deliverables in this order. Do not omit the first deliverable unless the user explicitly asks for only the full PR body.
 
-   **Deliverable 1 — Short description**
-   - Always print the literal label `Short description` first.
-   - On the next line, provide a compact, copyable PR summary in 1-3 sentences.
-   - Keep it outcome-focused and independent from the full PR body.
-   - Do not replace it with the first bullet from `What does this PR do?`; write a standalone summary suitable for a PR title/summary field or quick sharing.
+   **Deliverable 1 — PR commit message / title**
+   - Always print the literal label `PR commit message` first.
+   - On the next line, provide exactly one copyable Conventional Commit-style line using this format:
+
+```text
+<type>(<scope>): <ticket-key> <title>
+```
+
+   - Derive `<type>` primarily from the source branch prefix, case-insensitively:
+     - `chore`, `maintenance`, `deps`, `dependency` -> `chore`
+     - `feature`, `feat` -> `feat`
+     - `bugfix`, `bug`, `fix`, `hotfix` -> `fix`
+     - `refactor` -> `refactor`
+     - `test`, `tests` -> `test`
+     - `docs`, `doc` -> `docs`
+     - `ci` -> `ci`
+     - `build` -> `build`
+     - `perf`, `performance` -> `perf`
+   - If the branch prefix is not recognizable, infer the narrowest supported type from the observed diff. Prefer `feat` for new behavior, `fix` for corrective behavior, and `chore` for maintenance/tooling/configuration changes.
+   - Derive `<scope>` from the actual affected platform/workspace/module, especially in monorepos. Treat examples such as `app/portal/api` as illustrative only; never hardcode that scope.
+   - Prefer changed-path evidence over branch wording when the repository is a monorepo. Inspect the changed files and identify the narrowest meaningful workspace or platform boundary, such as `apps/<app>`, `packages/<package>`, `services/<service>`, `libs/<library>`, or another repository-specific top-level workspace convention.
+   - Normalize common monorepo path prefixes into concise scopes while preserving the platform identity. Examples: `apps/portal/api/...` -> `app/portal/api`; `apps/admin/web/...` -> `app/admin/web`; `services/auth/...` -> `auth`; `packages/ui/...` -> `ui`.
+   - If all meaningful changes are within one platform/workspace, use that platform/workspace as the scope even when the branch name is generic.
+   - If changes span multiple submodules inside one platform, use their nearest meaningful shared platform scope. Example: changes in both `apps/portal/api/...` and `apps/portal/web/...` should usually use `app/portal` rather than arbitrarily choosing `api` or `web`.
+   - If changes span multiple independent platforms/workspaces, do not fabricate a combined slash path. Use the smallest defensible shared domain when one exists; otherwise omit the scope parentheses and use `<type>: <ticket-key> <title>`.
+   - Use the branch path as a secondary hint when it clearly names the affected workspace and agrees with the changed files. Remove branch-control segments from scope candidates, including the type prefix, ticket key, and obvious title words. Normalize separators to `/` and keep the scope concise.
+   - For untracked files, include their paths when determining the intended affected platform/workspace, while remembering they are not part of the branch until committed.
+   - Derive `<ticket-key>` from the supplied ticket/JIRA link first. Accept common keys such as `ABC-123`. If the link does not expose a recognizable key, look for one in the source branch name. Do not invent a ticket key.
+   - Derive `<title>` in this order: (1) a clear human-readable title encoded in the source branch slug after type/scope/ticket segments, (2) a concise title inferred from the branch diff and commits. Do not copy noisy branch separators verbatim; convert slugs such as `add-user-filter` into `add user filter`.
+   - Keep the title concise and sentence-cased after the ticket key: capitalize the first word of the title while preserving intentional acronyms and proper nouns. Do not end it with a period.
+   - Example outputs:
+
+```text
+chore(app/portal/api): ABC-123 Update portal API dependencies
+feat(app/portal): ABC-456 Add account filters
+fix(auth): ABC-789 Prevent expired token reuse
+```
 
    **Deliverable 2 — Full PR description (Markdown)**
    - Always print the literal label `Full PR description` before the Markdown body.
@@ -106,8 +138,8 @@ git diff --no-index /dev/null "<untracked-file>" || true
    Use this exact outer structure:
 
 ```text
-Short description
-<1-3 sentence copyable summary>
+PR commit message
+<type>(<scope>): <ticket-key> <title>
 
 Full PR description
 <full Markdown template>
@@ -147,8 +179,9 @@ Replace checkbox markers with `[x]` only when supported by the observed diff. Po
 
 ## Output Quality Rules
 
-- Keep the short description shorter than the full PR body.
-- Never return only the full PR template when the normal workflow is requested; the standalone `Short description` must appear first.
+- Keep the PR commit message to one concise line.
+- Never return only the full PR template when the normal workflow is requested; the standalone `PR commit message` must appear first.
+- Do not use a prose summary as the first deliverable; use the required Conventional Commit-style title/message format.
 - Make `What does this PR do?` specific enough for a reviewer to understand the purpose without reading every changed file.
 - Prefer 1-5 concise bullets in `What does this PR do?` depending on scope.
 - Put migration steps, config requirements, follow-up work, known limitations, or validation caveats in `Notes` when relevant.
