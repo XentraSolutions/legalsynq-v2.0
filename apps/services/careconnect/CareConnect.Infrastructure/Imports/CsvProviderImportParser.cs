@@ -15,6 +15,30 @@ public sealed class CsvProviderImportParser : IProviderImportParser
     private static readonly XNamespace DocumentRelationshipsNs = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private static readonly XNamespace PackageRelationshipsNs = "http://schemas.openxmlformats.org/package/2006/relationships";
 
+    // Legacy single-byte code pages (Windows-1252, Mac OS Roman, ...) aren't registered by
+    // default outside .NET Framework. See DetectTextEncoding/PickLegacyEncoding for why we need
+    // both and how we choose between them. Declared as the first static field initializer (not
+    // an explicit static constructor) because an explicit static constructor's body always runs
+    // *after* every static field initializer regardless of source order — LegacyEncodingCandidates
+    // below calls Encoding.GetEncoding at class-init time and needs the provider registered first.
+    private static readonly bool CodePagesRegistered = RegisterCodePagesProvider();
+
+    private static bool RegisterCodePagesProvider()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        return true;
+    }
+
+    // Without an explicit static constructor, the compiler marks this type `beforefieldinit`,
+    // letting the CLR defer running the field initializers above until the first *static field*
+    // of this type is touched — not necessarily before the first instance is constructed. An
+    // explicit static constructor (even an empty one) removes that laziness, guaranteeing the
+    // CodePagesEncodingProvider registration above has already run by the time any
+    // CsvProviderImportParser instance is constructed.
+    static CsvProviderImportParser()
+    {
+    }
+
     private static readonly Dictionary<string, string> HeaderAliases = new(StringComparer.OrdinalIgnoreCase)
     {
         ["tenantid"] = "tenantId",
@@ -82,7 +106,7 @@ public sealed class CsvProviderImportParser : IProviderImportParser
 
     private static readonly string[] RequiredHeaders =
     [
-        "email", "phone", "addressLine1", "city", "state", "postalCode"
+        "email", "phone", "addressLine1", "city", "state"
     ];
 
     public Task<ProviderImportParseResult> ParseAsync(Stream stream, string fileName, CancellationToken ct = default)
@@ -111,7 +135,7 @@ public sealed class CsvProviderImportParser : IProviderImportParser
 
     private static ProviderImportParseResult ParseCsv(byte[] bytes, string fileName, CancellationToken ct)
     {
-        using var parser = new TextFieldParser(new MemoryStream(bytes), Encoding.UTF8)
+        using var parser = new TextFieldParser(new MemoryStream(bytes), DetectTextEncoding(bytes))
         {
             TextFieldType = FieldType.Delimited,
             HasFieldsEnclosedInQuotes = true,
@@ -299,6 +323,86 @@ public sealed class CsvProviderImportParser : IProviderImportParser
                 new() { ["headers"] = [$"Missing required headers: {string.Join(", ", missing)}."] });
 
         return headerMap;
+    }
+
+    /// <summary>
+    /// CSV has no built-in encoding marker. Honor a UTF-8/UTF-16 BOM when present; otherwise
+    /// try strict UTF-8 first (the vast majority of modern exports) and only fall back to
+    /// Windows-1252 — the default codepage for Excel's plain "CSV" save format — if the bytes
+    /// aren't valid UTF-8. This avoids silently mangling non-ASCII bytes (smart quotes, em
+    /// dashes, non-breaking spaces) into U+FFFD replacement characters.
+    /// </summary>
+    private static Encoding DetectTextEncoding(byte[] bytes)
+    {
+        if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            return Encoding.UTF8;
+        if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+            return Encoding.Unicode;
+        if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+            return Encoding.BigEndianUnicode;
+
+        try
+        {
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(bytes);
+            return Encoding.UTF8;
+        }
+        catch (DecoderFallbackException)
+        {
+            return PickLegacyEncoding(bytes);
+        }
+    }
+
+    // Windows-1252 (Excel-on-Windows plain "CSV" export default) and Mac OS Roman (Excel-for-Mac
+    // plain "CSV" export default) are both single-byte codepages where every byte 0x00-0xFF maps
+    // to *some* character, so neither one ever fails to decode — a wrong guess "succeeds" while
+    // silently corrupting the text instead of throwing. A general statistical charset detector
+    // doesn't help here either: these import files are overwhelmingly plain ASCII business text
+    // with only one or two stray high bytes (almost always a non-breaking space, curly quote, or
+    // dash pasted in from Word/Outlook/Excel autocorrect), and that little signal isn't enough
+    // for a statistical detector to beat its own "this is just ASCII" default — verified directly
+    // against UTF.Unknown (a chardet port), which mis-detects exactly this shape of file.
+    // Instead, decode the stray bytes under each candidate and prefer whichever candidate turns
+    // them into a plausible autocorrect artifact rather than an arbitrary accented letter — real
+    // corruption in real business data comes from those autocorrect substitutions, not from a
+    // company name containing a random "Ê".
+    private static readonly Encoding[] LegacyEncodingCandidates =
+    [
+        Encoding.GetEncoding(1252),  // Windows-1252
+        Encoding.GetEncoding(10000), // Mac OS Roman
+    ];
+
+    private static readonly HashSet<char> CommonTypographyArtifacts =
+    [
+        ' ', // non-breaking space
+        '‘', '’', '“', '”', // curly single/double quotes
+        '–', '—', // en dash, em dash
+        '…', // ellipsis
+        '•', // bullet
+    ];
+
+    private static Encoding PickLegacyEncoding(byte[] bytes)
+    {
+        var best = LegacyEncodingCandidates[0];
+        var bestScore = -1;
+
+        foreach (var candidate in LegacyEncodingCandidates)
+        {
+            var score = 0;
+            foreach (var b in bytes)
+            {
+                if (b < 0x80) continue;
+                if (CommonTypographyArtifacts.Contains(candidate.GetString([b])[0]))
+                    score++;
+            }
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+
+        return best;
     }
 
     private static string NormalizeHeader(string? value)

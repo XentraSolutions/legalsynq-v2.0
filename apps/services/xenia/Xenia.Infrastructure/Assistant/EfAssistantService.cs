@@ -849,6 +849,7 @@ Rules:
 - Use synqlien.lien.queue.summary when the user asks for lien counts, lifecycle mix, queue totals, status mix, or date-window totals.
 - For current SynqLien detail pages, prefer synqlien.lien.lookup or synqlien.case.lookup from the contextual hint.
 - After tool results are available, either request another tool or return a final grounded answer.
+- Treat date-only fields as exact calendar values: reproduce them verbatim and never apply a timezone conversion or shift the day.
 - Keep the final answer concise and explicit about uncertainty.
 
 Available tools:
@@ -864,6 +865,7 @@ Available tools:
 You are replying directly to the user in Xenia's read-only assistant runtime.
 - Use grounded product data from prior tool messages when available.
 - Do not invent facts, identifiers, or statuses.
+- Treat date-only fields as exact calendar values: reproduce them verbatim and never apply a timezone conversion or shift the day.
 - If the grounded data is incomplete, say exactly what is missing.
 - Do not expose internal tool-selection steps unless the user asks.
 - Keep the answer concise and helpful.";

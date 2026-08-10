@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
+using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
@@ -19,6 +20,8 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
     private static readonly Guid ActiveDashboardLienId = new("70000000-0000-0000-0000-000000000100");
     private static readonly Guid CancelledDashboardLienId = new("70000000-0000-0000-0000-000000000101");
     private static readonly Guid SettledDashboardLienId = new("70000000-0000-0000-0000-000000000102");
+    private static readonly Guid ForeignDashboardLienId = new("70000000-0000-0000-0000-000000000103");
+    private static readonly Guid ForeignOrgId = new("30000000-0000-0000-0000-000000000099");
 
     private readonly LiensApiFactory _factory;
     private HttpClient _client = null!;
@@ -59,6 +62,59 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         data.GetProperty("totalCases").GetInt32().Should().Be(caseStatusTotal);
         data.GetProperty("totalLiens").GetInt32().Should().Be(lienStatusTotal);
         data.GetProperty("totalLienValue").GetDouble().Should().BeGreaterThan(0d);
+    }
+
+    [Fact]
+    public async Task DashboardPiechart_matches_assistant_total_for_organization_scoped_user()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var foreignLien = Lien.Create(
+            SeedHelper.TenantId,
+            ForeignOrgId,
+            "LIEN-DASH-FOREIGN",
+            LienType.MedicalLien,
+            2500m,
+            SeedHelper.UserId);
+        SetId(foreignLien, ForeignDashboardLienId);
+        db.Liens.Add(foreignLien);
+        await db.SaveChangesAsync();
+
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTokenHelper.CreateToken(
+                SeedHelper.TenantId,
+                SeedHelper.UserId,
+                [LiensPermissions.CaseRead, LiensPermissions.LienReadOwn],
+                SeedHelper.OrgId));
+
+        try
+        {
+            var dashboardResponse = await _client.GetAsync("/api/liens/cases/dashboard/piechart");
+            var assistantResponse = await _client.GetAsync("/api/assistant-tools/liens/queue-summary");
+
+            dashboardResponse.StatusCode.Should().Be(HttpStatusCode.OK, await dashboardResponse.Content.ReadAsStringAsync());
+            assistantResponse.StatusCode.Should().Be(HttpStatusCode.OK, await assistantResponse.Content.ReadAsStringAsync());
+
+            using var dashboardPayload = JsonDocument.Parse(await dashboardResponse.Content.ReadAsStringAsync());
+            using var assistantPayload = JsonDocument.Parse(await assistantResponse.Content.ReadAsStringAsync());
+
+            var dashboardTotal = dashboardPayload.RootElement
+                .GetProperty("data")
+                .GetProperty("totalLiens")
+                .GetInt32();
+            var assistantTotal = assistantPayload.RootElement
+                .GetProperty("totalVisibleLiens")
+                .GetInt32();
+
+            dashboardTotal.Should().Be(assistantTotal);
+            dashboardTotal.Should().BeGreaterThan(0);
+        }
+        finally
+        {
+            db.Liens.Remove(foreignLien);
+            await db.SaveChangesAsync();
+        }
     }
 
     [Fact]

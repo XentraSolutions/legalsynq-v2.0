@@ -1332,6 +1332,52 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
+    public async Task GetFilterOptions_returns_standalone_and_law_firm_case_managers()
+    {
+        var lawFirmCaseManager = Contact.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            ContactType.LawFirm,
+            "Report",
+            "Manager",
+            SeedHelper.UserId,
+            lawFirmId: SeedHelper.LawFirmId,
+            contactSubtype: ContactSubtype.LawFirmCaseManager,
+            organization: "Smith & Associates LLP");
+        var standaloneCaseManager = Contact.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            ContactType.CaseManager,
+            "Legacy Report",
+            "Manager",
+            SeedHelper.UserId);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Contacts.AddRange(lawFirmCaseManager, standaloneCaseManager);
+            await db.SaveChangesAsync();
+        }
+
+        var resp = await _client.PostAsJsonAsync("/report/diy/filter-options", new
+        {
+            filterField = "caseManager",
+            keyword = "Report",
+            limit = 10,
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        var data = doc!.RootElement.GetProperty("data").EnumerateArray().ToList();
+        data.Should().Contain(item =>
+            item.GetProperty("id").GetString() == lawFirmCaseManager.Id.ToString() &&
+            item.GetProperty("name").GetString() == "Report Manager");
+        data.Should().Contain(item =>
+            item.GetProperty("id").GetString() == standaloneCaseManager.Id.ToString() &&
+            item.GetProperty("name").GetString() == "Legacy Report Manager");
+    }
+
+    [Fact]
     public async Task GetAllFilterOptions_returns_grouped_filter_payload()
     {
         var resp = await _client.GetAsync("/report/diy/all-filters?reportType=CASES&limit=10");

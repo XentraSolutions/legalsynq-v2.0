@@ -1792,8 +1792,8 @@ function ReferralConfirmModal({
                     <i className="ri-briefcase-line" /> Law Firm
                   </p>
                   <div className="space-y-1.5 pl-1">
-                    <ConfirmRow label="Firm name"    value={form.firmName}    />
-                    <ConfirmRow label="Contact name" value={`${form.contactFirstName} ${form.contactLastName}`.trim()} />
+                    <ConfirmRow label="Firm"    value={form.firmName}    />
+                    <ConfirmRow label="Contact" value={`${form.contactFirstName} ${form.contactLastName}`.trim()} />
                     <ConfirmRow label="Email"        value={form.email}       />
                     <ConfirmRow label="Phone"        value={form.phone}       />
                   </div>
@@ -1830,19 +1830,29 @@ function ReferralConfirmModal({
                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1.5">
                   <i className="ri-hospital-line" /> Providers
                 </p>
-                <div className="space-y-1.5 pl-1">
+                <div className="space-y-3">
                   {providers.map(p => {
                     const entryId = providerEntryId(p);
                     const file = providerFiles[entryId];
+                    const identity = getProviderIdentity(p);
+                    const facilityName = p.facilityName?.trim() ?? '';
+                    const showFacilityName =
+                      facilityName.length > 0 &&
+                      facilityName.toLowerCase() !== identity.primary.toLowerCase() &&
+                      facilityName.toLowerCase() !== (identity.secondary ?? '').toLowerCase();
+                    const location = [
+                      showFacilityName ? facilityName : null,
+                      [p.city, p.state].filter(Boolean).join(', '),
+                    ].filter(Boolean).join(' · ');
+
                     return (
-                      <div key={entryId} className="flex items-center gap-2 text-xs text-gray-800 dark:text-gray-100">
-                        <i className="ri-checkbox-circle-fill text-blue-500 flex-shrink-0" />
-                        <span className="font-medium">{p.name}</span>
-                        {file && (
-                          <span className="ml-auto text-gray-400 flex items-center gap-1">
-                            <i className="ri-attachment-line" />{file.name.length > 18 ? file.name.slice(0, 18) + '…' : file.name}
-                          </span>
-                        )}
+                      <div key={entryId} className="space-y-1.5 pl-1">
+                        <ConfirmRow label="Provider" value={identity.primary} />
+                        {identity.secondary && <ConfirmRow label="Contact"  value={identity.secondary} />}
+                        <ConfirmRow label="Location" value={location} />
+                        <ConfirmRow label="Email"     value={p.email ?? undefined} />
+                        <ConfirmRow label="Phone"     value={p.phone} />
+                        <ConfirmRow label="Attachment" value={file?.name} />
                       </div>
                     );
                   })}

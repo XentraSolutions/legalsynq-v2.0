@@ -42,6 +42,8 @@ public sealed class CaseResponse
     public string? LawFirm { get; init; }
     public string? CaseManagerId { get; init; }
     public string? CaseManager { get; init; }
+    public string? AttorneyId { get; init; }
+    public string? SwitchedDate { get; init; }
     public string? AccidentTypeId { get; init; }
     public string? AccidentType { get; init; }
     public DateTime? OpenedAtUtc { get; init; }

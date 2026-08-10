@@ -38,7 +38,10 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `GET` | `/api/liens/portfolio` | Buyer/holder portfolio |
 | `GET` | `/api/liens/cases` | Case list |
 | `GET` | `/api/liens/cases/{id}` | Case detail |
-| `GET` | `/api/liens/cases/dashboard/task-summary` | Legacy-compatible, assignee-scoped task dashboard. Returns the `isSuccess`/`message`/`data` envelope with total, upcoming, in-progress, in-review, and completed counts plus the task list. |
+| `GET` | `/api/assistant-tools/liens/{id}`, `/api/assistant-tools/liens/by-number/{lienNumber}` | Tenant- and visibility-scoped lien details for Xenia. `reductionAmount` is the latest persisted lien reduction by reduction date and creation time, matching the tenant portal; it is not derived from billing and purchase amounts. Date-only values such as `purchaseDate` are returned as ISO `yyyy-MM-dd` calendar dates and must not be timezone-shifted. |
+| `POST` | `/service/case/v3` | Returns the paginated legacy servicing case list with settlement status/date, total settled amount, and case-level billing/purchase totals. The settled total prefers imported `totalSettledAmount` metadata, falls back to the current settlement-row amount, and then uses recorded payment amounts when no settlement total exists. Billing and purchase amounts aggregate linked legacy medical-code records and fall back to lien-level values; settlement dates use the latest recorded settlement date with a payment-record fallback for historical rows. |
+| `PATCH` | `/service/update-details` | Updates servicing status and case metadata without replacing the case's user-authored notes. Law-firm, attorney, and case-manager values are contact IDs; law-firm updates do not change the case organization/tenant scope. Omitted relationship fields remain unchanged, while explicit empty values clear their metadata. |
+| `GET` | `/api/liens/cases/dashboard/task-summary` | Legacy-compatible, assignee-scoped task dashboard. Returns the `isSuccess`/`message`/`data` envelope with total, upcoming, in-progress, in-review, and completed counts plus the task list. Counts recognize legacy numeric IDs, task-service codes, UI codes, and display names. Each task's `status` is normalized to `UPCOMING`, `INPROGRESS`, `INREVIEW`, `COMPLETED`, or `CANCELLED`; `statusId` preserves the stored value. |
 | `POST` | `/api/liens/cases/task/create`, `/api/liens/cases/tasks/create` | Creates a legacy case task. Priority accepts `High`, `Medium`, and `Low` case-insensitively; `Medium` maps to the servicing-domain `Normal` value while remaining `Medium` in legacy responses. |
 | `POST`, `PATCH` | `/api/liens/cases/task/update` | Updates a legacy case task. Both methods are supported for compatibility with deployed clients. Status accepts legacy IDs/names and current UI codes such as `UPCOMING`, `INPROGRESS`, `INREVIEW`, `COMPLETED`, and `CANCELLED`; the compatibility value is preserved while the backing servicing item receives a valid canonical status. |
 | `DELETE` | `/api/liens/cases/delete/{id}` | Legacy case deletion; blocks when a linked lien is active, and detaches terminal/rejected liens before removing the case |
@@ -50,7 +53,7 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `POST` | `/api/liens/cases/dashboard/lawfirm-case-report-export/v3` | Returns case/law-firm allocation and filters cases by the purchase date of any linked lien |
 | `POST` | `/api/liens/cases/dashboard/medical-provider-report-export/v3` | Returns lien/facility allocation filtered by lien purchase date |
 | `POST` | `/api/liens/cases/dashboard/deployed` | Sums lien purchase amounts with a persisted `PurchaseDate`; undated liens are excluded |
-| `POST` | `/api/liens/cases/dashboard/cash-received` | Sums non-deleted lien settlement amounts with a persisted `SettlementDate`; undated settlements are excluded |
+| `POST` | `/api/liens/cases/dashboard/cash-received` | Without a date range, matches the DIY report's returned amount per lien: imported `totalSettledAmount` metadata, then lien payoff amount, then non-deleted payment allocations. Date-filtered requests retain the legacy settlement-date calculation. |
 
 All four V3 report endpoints return paginated rows plus full-result summaries. When paging is
 missing or invalid, JSON requests default to `page: 1` and return all matching rows; positive
@@ -64,6 +67,7 @@ report's detailed breakdown in server-paginated pages of 10 rows. This keeps the
 bounded while preserving uncapped CSV exports and access to every report page.
 
 DIY reports treat the legacy UI sentinel `isBulk: "N"` as no bulk filter, matching the legacy report SQL. Explicit `Y`/`Yes` selects bulk liens, while canonical `No`/`False`/`0` selects non-bulk and unset liens. Legacy relationship filters for law firm, attorney, funding company, medical facility, case manager, and medical provider are applied before pagination and summary calculation. Lien-status filter values may be either status codes or IDs from the lien-status lookup category.
+The legacy DIY `filter-options` endpoint returns both standalone case-manager contacts and case managers stored as law-firm subcontacts.
 
 The DIY `ALL` status view includes every non-deleted lifecycle state, including rejected and cancelled liens; `CLOSED` includes settled liens and `REJECTED` includes declined, withdrawn, and cancelled liens. Report previews honor `page` and `limit`, while `/api/liens/reports/diy/export` exports every row that matches the filters.
 
@@ -85,6 +89,8 @@ amount uses the linked amount-to-settle as `checkAmount` instead of displaying
 Historical zero-number rows receive deterministic non-zero display numbers. The payment-details
 `amountToSettle` uses the recorded payment allocation before falling back to a linked settlement or
 the lien's current balance, so closing a lien does not replace its payment-time amount with zero.
+The legacy payment-details response returns the grouped legacy value (`Open` or `Closed`) in both
+`lienStatus` and `lienStatusId` rather than exposing the canonical persisted lien status.
 
 List filters accept both canonical persisted statuses and the legacy/UI lifecycle groups: `Open` expands to all active lien states, `Closed` expands to `Settled`, and `Rejected` expands to `Declined`, `Withdrawn`, and `Cancelled`. Historical rows literally persisted as `Rejected` remain hidden by default. Status/date-only lien-list filters are counted and paged in the database before per-lien detail and servicing enrichment, so broad status selections do not enrich the entire matching result set. The V3 case filter accepts comma-separated status, law-firm, case-manager, and accident-type selections. Case status filtering uses the saved legacy status label to distinguish `New`, `Processing`, and `Pre-Demand` cases that share the canonical `PreDemand` state, and to distinguish `Litigation` from `Negotiations` cases that share `InNegotiation`. The complete SL-CORE import preserves those labels, and the guarded relationship backfill repairs them for already-imported cases that have not since changed status. Law-firm values match the contact ID saved in case metadata and continue to accept legacy organization IDs.
 
@@ -282,6 +288,9 @@ SynqLien exposes read-only assistant tool endpoints for Xenia under `/api/assist
 bearer token, SynqLien product access, and the matching read permission; Xenia forwards the caller's token so Liens
 remains the authorization boundary. Lien lookups/searches accept broad lien read or scoped seller/buyer/holder read
 permissions and apply visibility filters before returning results.
+The tenant portal's `GET /api/liens/cases/dashboard/piechart` lien totals use the same visibility policy as the
+assistant queue summary, so organization-scoped users see consistent Total Liens values on both surfaces. Broad lien
+read, tenant-admin, and platform-admin access continue to produce tenant-wide totals.
 
 | Method | Path | Permission | Description |
 |---|---|---|---|
@@ -289,7 +298,7 @@ permissions and apply visibility filters before returning results.
 | `GET` | `/api/assistant-tools/liens/queue-summary` | Lien read, read-own, browse, or read-held | Return visible lien queue totals, status counts, KPI windows, and recent liens |
 | `GET` | `/api/assistant-tools/liens/{id}` | Lien read, read-own, browse, or read-held | Lookup one visible lien by id |
 | `GET` | `/api/assistant-tools/liens/by-number/{lienNumber}` | Lien read, read-own, browse, or read-held | Lookup one visible lien by lien number |
-| `GET` | `/api/assistant-tools/cases/search` | `SYNQ_LIENS.case:read` | Search cases by client, case number, law firm, case manager, type, accident type, state, status, and opened date window |
+| `GET` | `/api/assistant-tools/cases/search` | `SYNQ_LIENS.case:read` | Search cases by client, case number, law firm, case manager, type, accident type, state, status, and opened date window. Law-firm names are resolved tenant-locally and filtered before pagination so `totalCount` reflects every matching case rather than only the returned sample. |
 | `GET` | `/api/assistant-tools/cases/{id}` | `SYNQ_LIENS.case:read` | Lookup one case by id with linked liens and client/case metadata |
 | `GET` | `/api/assistant-tools/cases/by-number/{caseNumber}` | `SYNQ_LIENS.case:read` | Lookup one case by case number with linked liens and client/case metadata |
 | `GET` | `/api/assistant-tools/cases/{id}/insights` | `SYNQ_LIENS.case:read` | Return a case snapshot with linked liens, financial totals, documents, notes, servicing, tasks, activity, capability flags, and optional Excel-ready sheets |
@@ -339,12 +348,17 @@ single-use apply requirements.
 The complete SQL procedure requires migration
 `20260731000001_AddLienPurchaseAndSettlementDates`. It preserves
 `LM_PURCHASE_DATE` on the lien, preserves settlement amount/date rows for the
-Cash Received metric, and excludes source rows marked deleted (`CASE_IS_DELETED
+date-filtered Cash Received metric, and excludes source rows marked deleted (`CASE_IS_DELETED
 = 'Y'`, `LM_IS_DELETED = 'Y'`, or `SLSPD_IS_DELETED = 'Y'`). Medical-code
 amounts and servicing rows are imported only when `LMC_STATUS = 'A'`, matching
-the legacy dashboard calculations. Cash Received excludes settlement headers
-whose persisted `SettlementDate` is empty, whether or not a date range is
-supplied.
+the legacy dashboard calculations. Cash Deployed includes only liens with a
+persisted `PurchaseDate` and uses the same per-lien purchase precedence as the
+DIY report: aggregated legacy medical-code purchase amounts, then the lien's
+`PurchasePrice`. All-time Cash Received uses the same
+per-lien returned-amount precedence as the DIY report and therefore includes
+undated imported `totalSettledAmount` metadata. Date-filtered Cash Received
+continues to include only non-deleted settlement rows whose persisted
+`SettlementDate` is within the requested range.
 
 ## Workflow Engine (Flow)
 

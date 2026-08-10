@@ -3822,6 +3822,7 @@ public static class CaseEndpoints
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
+        var lienVisibility = LienVisibilityPolicy.Resolve(ctx);
 
         var caseStatusRows = await db.Cases
             .AsNoTracking()
@@ -3834,9 +3835,12 @@ public static class CaseEndpoints
             })
             .ToListAsync(ct);
 
-        var lienStatusRows = await db.Liens
+        var visibleLiens = LienVisibilityPolicy.Apply(
+            db.Liens.AsNoTracking().Where(item => item.TenantId == tenantId),
+            lienVisibility);
+
+        var lienStatusRows = await visibleLiens
             .AsNoTracking()
-            .Where(item => item.TenantId == tenantId)
             .GroupBy(item => item.Status)
             .Select(group => new
             {
@@ -6406,14 +6410,43 @@ public static class CaseEndpoints
         if (orgId.HasValue)
             query = query.Where(l => l.OrgId == orgId.Value || l.SellingOrgId == orgId.Value || l.BuyingOrgId == orgId.Value || l.HoldingOrgId == orgId.Value);
 
-        var aggregate = await query
-            .GroupBy(_ => 1)
-            .Select(group => new
+        var eligibleLiens = await query
+            .Select(lien => new
             {
-                TotalAmount = group.Sum(item => item.PurchasePrice ?? 0m),
-                TotalCount = group.Count(),
+                lien.Id,
+                lien.PurchasePrice,
             })
-            .SingleOrDefaultAsync(ct);
+            .ToListAsync(ct);
+
+        var medicalPurchaseRows = await (
+            from servicingItem in db.ServicingItems.AsNoTracking()
+            join lien in query on servicingItem.LienId equals (Guid?)lien.Id
+            where servicingItem.TenantId == tenantId &&
+                  servicingItem.TaskType == "LegacyMedicalCode"
+            select new
+            {
+                LienId = lien.Id,
+                servicingItem.Notes,
+            })
+            .ToListAsync(ct);
+
+        var medicalPurchaseAmountsByLienId = medicalPurchaseRows
+            .Select(row => new
+            {
+                row.LienId,
+                HasPurchaseAmount = TryGetLegacyMedicalPurchaseAmount(row.Notes, out var amount),
+                Amount = amount,
+            })
+            .Where(row => row.HasPurchaseAmount)
+            .GroupBy(row => row.LienId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Sum(row => row.Amount));
+
+        var totalAmount = eligibleLiens.Sum(lien =>
+            medicalPurchaseAmountsByLienId.TryGetValue(lien.Id, out var medicalPurchaseAmount)
+                ? medicalPurchaseAmount
+                : lien.PurchasePrice ?? 0m);
 
         return Results.Ok(new
         {
@@ -6423,8 +6456,8 @@ public static class CaseEndpoints
             {
                 periodStart = periodStart?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
                 periodEnd = periodEnd?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
-                totalAmount = (aggregate?.TotalAmount ?? 0m).ToString("0.00", CultureInfo.InvariantCulture),
-                totalCount = aggregate?.TotalCount ?? 0,
+                totalAmount = totalAmount.ToString("0.00", CultureInfo.InvariantCulture),
+                totalCount = eligibleLiens.Count,
             },
         });
     }
@@ -6440,6 +6473,85 @@ public static class CaseEndpoints
         if (!TryResolveDashboardCashReceivedPeriod(request, out var periodStart, out var periodEnd, out var validationMessage))
         {
             return Results.BadRequest(new { isSuccess = false, message = validationMessage });
+        }
+
+        if (!periodStart.HasValue && !periodEnd.HasValue)
+        {
+            var liens = await db.Liens
+                .AsNoTracking()
+                .Where(lien => lien.TenantId == tenantId)
+                .Select(lien => new
+                {
+                    lien.Id,
+                    lien.PayoffAmount,
+                })
+                .ToListAsync(ct);
+
+            var settlementNotes = await db.LienSettlements
+                .AsNoTracking()
+                .Where(settlement =>
+                    settlement.TenantId == tenantId &&
+                    !settlement.IsDeleted &&
+                    settlement.Note != null)
+                .Select(settlement => new
+                {
+                    settlement.LienId,
+                    settlement.Note,
+                })
+                .ToListAsync(ct);
+
+            var importedReturnedAmountsByLienId = settlementNotes
+                .Select(settlement => new
+                {
+                    settlement.LienId,
+                    HasReturnedAmount = TryGetLegacyTotalSettledAmount(settlement.Note, out var amount),
+                    Amount = amount,
+                })
+                .Where(settlement => settlement.HasReturnedAmount)
+                .GroupBy(settlement => settlement.LienId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Sum(settlement => settlement.Amount));
+
+            var paymentAmountsByLienId = await db.SettlementPaymentDetails
+                .AsNoTracking()
+                .Where(payment => payment.TenantId == tenantId && !payment.IsDeleted)
+                .GroupBy(payment => payment.LienId)
+                .Select(group => new
+                {
+                    LienId = group.Key,
+                    Amount = group.Sum(payment => payment.Amount),
+                })
+                .ToDictionaryAsync(group => group.LienId, group => group.Amount, ct);
+
+            var returnedAmounts = liens
+                .Select(lien =>
+                {
+                    if (importedReturnedAmountsByLienId.TryGetValue(lien.Id, out var importedReturnedAmount))
+                        return (HasSource: true, Amount: importedReturnedAmount);
+
+                    if (lien.PayoffAmount.HasValue)
+                        return (HasSource: true, Amount: lien.PayoffAmount.Value);
+
+                    return paymentAmountsByLienId.TryGetValue(lien.Id, out var paymentAmount)
+                        ? (HasSource: true, Amount: paymentAmount)
+                        : (HasSource: false, Amount: 0m);
+                })
+                .Where(result => result.HasSource)
+                .ToList();
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Dashboard cash received metric retrieved successfully.",
+                data = new
+                {
+                    periodStart = string.Empty,
+                    periodEnd = string.Empty,
+                    totalAmount = returnedAmounts.Sum(result => result.Amount).ToString("0.00", CultureInfo.InvariantCulture),
+                    totalCount = returnedAmounts.Count,
+                },
+            });
         }
 
         var settlementsQuery = db.LienSettlements.AsNoTracking()
@@ -6477,6 +6589,66 @@ public static class CaseEndpoints
                 totalCount = aggregate?.TotalCount ?? 0,
             },
         });
+    }
+
+    private static bool TryGetLegacyTotalSettledAmount(string? notes, out decimal amount)
+    {
+        amount = 0m;
+        if (string.IsNullOrWhiteSpace(notes))
+            return false;
+
+        var rawMetadata = notes;
+        var markerIndex = notes.IndexOf(LegacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+            rawMetadata = notes[(markerIndex + LegacyMetadataMarker.Length)..].Trim();
+
+        var found = false;
+        foreach (var segment in rawMetadata.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0 ||
+                !string.Equals(segment[..separator].Trim(), "totalSettledAmount", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            found = true;
+            decimal.TryParse(
+                segment[(separator + 1)..].Trim(),
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out amount);
+        }
+
+        return found;
+    }
+
+    private static bool TryGetLegacyMedicalPurchaseAmount(string? notes, out decimal amount)
+    {
+        amount = 0m;
+        if (string.IsNullOrWhiteSpace(notes))
+            return false;
+
+        var found = false;
+        foreach (var segment in notes.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0 ||
+                !string.Equals(segment[..separator].Trim(), "purchaseAmount", StringComparison.Ordinal) ||
+                !decimal.TryParse(
+                    segment[(separator + 1)..].Trim(),
+                    NumberStyles.Any,
+                    CultureInfo.InvariantCulture,
+                    out var parsedAmount))
+            {
+                continue;
+            }
+
+            found = true;
+            amount = parsedAmount;
+        }
+
+        return found;
     }
 
     private static async Task<IResult> GetDashboardTaskSummary(
@@ -6551,12 +6723,18 @@ public static class CaseEndpoints
                 title = fields.GetValueOrDefault("title", item.Description),
                 description = item.Description,
                 dueDate = item.DueDate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
-                status = GetLegacyTaskStatusName(statusId),
+                status = GetLegacyTaskStatusCode(statusId),
                 statusId,
                 priority = GetLegacyTaskPriorityName(priorityId),
                 priorityId,
             };
         }).ToList();
+
+        var statusCounts = responseTasks
+            .Select(task => ResolveLegacyTaskStatus(task.statusId))
+            .Where(status => status is not null)
+            .GroupBy(status => status!)
+            .ToDictionary(group => group.Key, group => group.Count());
 
         return Results.Ok(new
         {
@@ -6565,30 +6743,44 @@ public static class CaseEndpoints
             data = new
             {
                 totalTasks = responseTasks.Count,
-                upcomingTasks = responseTasks.Count(task => IsLegacyTaskStatus(task.statusId, "1", TaskStatuses.New)),
-                inProgressTasks = responseTasks.Count(task => IsLegacyTaskStatus(task.statusId, "2", TaskStatuses.InProgress)),
-                inReviewTasks = responseTasks.Count(task => IsLegacyTaskStatus(task.statusId, "3", TaskStatuses.WaitingBlocked)),
-                completedTasks = responseTasks.Count(task => IsLegacyTaskStatus(task.statusId, "4", TaskStatuses.Completed)),
+                upcomingTasks = statusCounts.GetValueOrDefault(TaskStatuses.New),
+                inProgressTasks = statusCounts.GetValueOrDefault(TaskStatuses.InProgress),
+                inReviewTasks = statusCounts.GetValueOrDefault(TaskStatuses.WaitingBlocked),
+                completedTasks = statusCounts.GetValueOrDefault(TaskStatuses.Completed),
                 tasks = responseTasks,
             },
         });
     }
 
-    private static bool IsLegacyTaskStatus(string? statusId, string legacyId, string currentStatus) =>
-        string.Equals(statusId, legacyId, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(statusId, currentStatus, StringComparison.OrdinalIgnoreCase);
-
-    private static string GetLegacyTaskStatusName(string? statusId) => statusId switch
+    private static string? ResolveLegacyTaskStatus(string? status)
     {
-        "1" => "Upcoming",
-        "2" => "In Progress",
-        "3" => "In Review",
-        "4" => "Completed",
-        TaskStatuses.New => "Upcoming",
-        TaskStatuses.InProgress => "In Progress",
-        TaskStatuses.WaitingBlocked => "In Review",
-        TaskStatuses.Completed => "Completed",
-        TaskStatuses.Cancelled => "Cancelled",
+        if (string.IsNullOrWhiteSpace(status))
+            return null;
+
+        var normalized = status.Trim()
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "1" or "UPCOMING" or "NEW" or "OPEN" or "PENDING" => TaskStatuses.New,
+            "2" or "INPROGRESS" => TaskStatuses.InProgress,
+            "3" or "INREVIEW" or "WAITINGBLOCKED" or "ONHOLD" => TaskStatuses.WaitingBlocked,
+            "4" or "COMPLETE" or "COMPLETED" or "DONE" => TaskStatuses.Completed,
+            "CANCELLED" or "CANCELED" => TaskStatuses.Cancelled,
+            _ => null,
+        };
+    }
+
+    private static string GetLegacyTaskStatusCode(string? statusId) => ResolveLegacyTaskStatus(statusId) switch
+    {
+        TaskStatuses.New => "UPCOMING",
+        TaskStatuses.InProgress => "INPROGRESS",
+        TaskStatuses.WaitingBlocked => "INREVIEW",
+        TaskStatuses.Completed => "COMPLETED",
+        TaskStatuses.Cancelled => "CANCELLED",
         _ => statusId ?? string.Empty,
     };
 

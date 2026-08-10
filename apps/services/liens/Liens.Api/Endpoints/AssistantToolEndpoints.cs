@@ -31,7 +31,7 @@ public static class AssistantToolEndpoints
             CancellationToken ct) =>
         {
             var tenantId = RequireTenantId(ctx);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             if (!visibility.CanReadAnyLien)
                 return Results.Forbid();
 
@@ -72,7 +72,7 @@ public static class AssistantToolEndpoints
             CancellationToken ct) =>
         {
             var tenantId = RequireTenantId(ctx);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             if (!visibility.CanReadAnyLien)
                 return Results.Forbid();
 
@@ -188,11 +188,12 @@ public static class AssistantToolEndpoints
             Guid id,
             ILienService liens,
             ICaseService cases,
+            ISettlementService settlements,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
             var tenantId = RequireTenantId(ctx);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             if (!visibility.CanReadAnyLien)
                 return Results.Forbid();
 
@@ -203,18 +204,19 @@ public static class AssistantToolEndpoints
             if (!CanReadLien(lien, visibility))
                 return Results.Forbid();
 
-            return Results.Ok(new SynqLienLienLookupOutcome(true, "completed", null, await ToLienLookupResultAsync(lien, cases, tenantId, ct)));
+            return Results.Ok(new SynqLienLienLookupOutcome(true, "completed", null, await ToLienLookupResultAsync(lien, cases, settlements, tenantId, ct)));
         });
 
         group.MapGet("/liens/by-number/{lienNumber}", async (
             string lienNumber,
             ILienService liens,
             ICaseService cases,
+            ISettlementService settlements,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
             var tenantId = RequireTenantId(ctx);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             if (!visibility.CanReadAnyLien)
                 return Results.Forbid();
 
@@ -225,12 +227,13 @@ public static class AssistantToolEndpoints
             if (!CanReadLien(lien, visibility))
                 return Results.Forbid();
 
-            return Results.Ok(new SynqLienLienLookupOutcome(true, "completed", null, await ToLienLookupResultAsync(lien, cases, tenantId, ct)));
+            return Results.Ok(new SynqLienLienLookupOutcome(true, "completed", null, await ToLienLookupResultAsync(lien, cases, settlements, tenantId, ct)));
         });
 
         group.MapGet("/cases/search", async (
             [AsParameters] AssistantCaseSearchParams p,
             ICaseService cases,
+            IContactService contacts,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
@@ -246,6 +249,17 @@ public static class AssistantToolEndpoints
                     single is null ? [] : [ToCaseSearchResult(single)]));
             }
 
+            var lawFirmIds = await ResolveLawFirmFilterIdsAsync(contacts, tenantId, p.LawFirm, ct);
+            if (!string.IsNullOrWhiteSpace(p.LawFirm) && string.IsNullOrWhiteSpace(lawFirmIds))
+            {
+                return Results.Ok(new SynqLienCaseSearchOutcome(
+                    true,
+                    "completed",
+                    null,
+                    0,
+                    []));
+            }
+
             var result = await cases.SearchV3Async(
                 tenantId,
                 keyword: p.ClientName ?? p.Search,
@@ -257,6 +271,7 @@ public static class AssistantToolEndpoints
                 lawFirmOrgId: null,
                 accidentTypeId: null,
                 caseManagerId: null,
+                lawFirmIds: lawFirmIds,
                 ct: ct);
 
             var (openedFromUtc, openedToUtc) = ResolveDateWindow(
@@ -265,7 +280,6 @@ public static class AssistantToolEndpoints
                 p.OpenedTo);
 
             var filtered = result.Items
-                .Where(item => MatchesText(NullIfWhiteSpace(item.LawFirm), p.LawFirm))
                 .Where(item => MatchesText(NullIfWhiteSpace(item.CaseManager), p.CaseManager))
                 .Where(item => MatchesText(NullIfWhiteSpace(item.CaseType), p.CaseType))
                 .Where(item => MatchesText(NullIfWhiteSpace(item.AccidentType), p.AccidentType))
@@ -274,11 +288,19 @@ public static class AssistantToolEndpoints
                 .Take(Math.Clamp(p.Top ?? 8, 1, 25))
                 .ToList();
 
+            var hasInMemoryFilters =
+                !string.IsNullOrWhiteSpace(p.CaseManager) ||
+                !string.IsNullOrWhiteSpace(p.CaseType) ||
+                !string.IsNullOrWhiteSpace(p.AccidentType) ||
+                !string.IsNullOrWhiteSpace(p.State) ||
+                openedFromUtc.HasValue ||
+                openedToUtc.HasValue;
+
             return Results.Ok(new SynqLienCaseSearchOutcome(
                 true,
                 "completed",
                 null,
-                filtered.Count == result.Items.Count ? result.TotalCount : filtered.Count,
+                hasInMemoryFilters ? filtered.Count : result.TotalCount,
                 filtered.Select(ToCaseSearchResult).ToList()));
         })
         .RequirePermission(LiensPermissions.CaseRead);
@@ -293,7 +315,7 @@ public static class AssistantToolEndpoints
         {
             var tenantId = RequireTenantId(ctx);
             var item = await cases.GetByIdAsync(tenantId, id, ct);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             return item is null
                 ? Results.NotFound()
                 : Results.Ok(new SynqLienCaseLookupOutcome(true, "completed", null, await ToCaseLookupResultAsync(item, liens, tenantId, visibility, p.LiensTop, ct)));
@@ -310,7 +332,7 @@ public static class AssistantToolEndpoints
         {
             var tenantId = RequireTenantId(ctx);
             var item = await cases.GetByCaseNumberAsync(tenantId, caseNumber, ct);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             return item is null
                 ? Results.NotFound()
                 : Results.Ok(new SynqLienCaseLookupOutcome(true, "completed", null, await ToCaseLookupResultAsync(item, liens, tenantId, visibility, p.LiensTop, ct)));
@@ -333,7 +355,7 @@ public static class AssistantToolEndpoints
             if (item is null)
                 return Results.NotFound();
 
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             var insights = await BuildCaseInsightsAsync(
                 item,
                 p,
@@ -366,7 +388,7 @@ public static class AssistantToolEndpoints
             if (item is null)
                 return Results.NotFound();
 
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             var insights = await BuildCaseInsightsAsync(
                 item,
                 p,
@@ -415,7 +437,7 @@ public static class AssistantToolEndpoints
             CancellationToken ct) =>
         {
             var tenantId = RequireTenantId(ctx);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             if (!visibility.CanReadAnyLien)
                 return Results.Forbid();
 
@@ -427,30 +449,6 @@ public static class AssistantToolEndpoints
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx)
         => ctx.TenantId ?? throw new UnauthorizedAccessException("Tenant context is required.");
-
-    private static LienVisibilityScope BuildLienVisibilityScope(ICurrentRequestContext ctx)
-    {
-        if (IsTenantAdminOrAbove(ctx) || HasPermission(ctx, LiensPermissions.LienRead))
-            return LienVisibilityScope.All;
-
-        var canReadOwn = HasPermission(ctx, LiensPermissions.LienReadOwn);
-        var canBrowse = HasPermission(ctx, LiensPermissions.LienBrowse);
-        var canReadHeld = HasPermission(ctx, LiensPermissions.LienReadHeld);
-
-        if (!canReadOwn && !canBrowse && !canReadHeld)
-            return LienVisibilityScope.None;
-
-        if (ctx.OrgId is not { } orgId || orgId == Guid.Empty)
-            return LienVisibilityScope.None;
-
-        return new LienVisibilityScope(
-            CanReadAnyLien: true,
-            OrgId: orgId,
-            IncludeSellerOrg: canReadOwn,
-            IncludeBuyerOrg: canReadHeld,
-            IncludeHolderOrg: canReadHeld,
-            IncludeMarketplace: canBrowse);
-    }
 
     private static bool CanReadLien(LienResponse lien, LienVisibilityScope visibility)
     {
@@ -467,11 +465,11 @@ public static class AssistantToolEndpoints
                (visibility.IncludeMarketplace && MarketplaceStatusGroup.Contains(lien.Status, StringComparer.OrdinalIgnoreCase));
     }
 
-    private static bool IsTenantAdminOrAbove(ICurrentRequestContext ctx)
-        => ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
-
     private static bool HasPermission(ICurrentRequestContext ctx, string permission)
         => ctx.Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsTenantAdminOrAbove(ICurrentRequestContext ctx)
+        => ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
 
     private static async Task<Guid?> ResolveCaseIdAsync(
         ICaseService cases,
@@ -486,15 +484,39 @@ public static class AssistantToolEndpoints
         return item?.Id;
     }
 
+    private static async Task<string?> ResolveLawFirmFilterIdsAsync(
+        IContactService contacts,
+        Guid tenantId,
+        string? lawFirm,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(lawFirm))
+            return null;
+
+        var filterIds = await contacts.FindLawFirmFilterIdsAsync(tenantId, lawFirm, ct);
+        if (filterIds.Count == 0)
+            return null;
+
+        return string.Join(",", filterIds);
+    }
+
     private static async Task<SynqLienLienLookupResult> ToLienLookupResultAsync(
         LienResponse lien,
         ICaseService cases,
+        ISettlementService settlements,
         Guid tenantId,
         CancellationToken ct)
     {
         CaseResponse? caseItem = null;
         if (lien.CaseId.HasValue)
             caseItem = await cases.GetByIdAsync(tenantId, lien.CaseId.Value, ct);
+
+        var reductions = await settlements.GetReductionsByLienAsync(tenantId, lien.Id, ct);
+        var reductionAmount = reductions
+            .OrderByDescending(item => item.ReductionDate)
+            .ThenByDescending(item => item.CreatedAtUtc)
+            .Select(item => (decimal?)item.Amount)
+            .FirstOrDefault();
 
         return new SynqLienLienLookupResult(
             lien.Id,
@@ -515,12 +537,12 @@ public static class AssistantToolEndpoints
             lien.CreatedAtUtc,
             lien.UpdatedAtUtc,
             lien.IncidentDate,
-            NullIfWhiteSpace(lien.PurchaseDate),
+            ParseDateOnly(lien.PurchaseDate),
             lien.InitialServiceDate,
             lien.EndServiceDate,
             lien.TotalPurchase,
             lien.TotalBilling,
-            ComputeReductionAmount(lien.TotalBilling, lien.TotalPurchase),
+            reductionAmount,
             ParseBooleanish(lien.IsServicing),
             NullIfWhiteSpace(lien.Description),
             0);
@@ -590,7 +612,7 @@ public static class AssistantToolEndpoints
             lien.CurrentBalance,
             lien.CreatedAtUtc,
             lien.UpdatedAtUtc,
-            NullIfWhiteSpace(lien.PurchaseDate),
+            ParseDateOnly(lien.PurchaseDate),
             lien.TotalPurchase,
             lien.TotalBilling,
             0);
@@ -1194,7 +1216,7 @@ public static class AssistantToolEndpoints
             totalBilling = lien.TotalBilling ?? lien.OriginalAmount;
 
         var reduction = Math.Max(totalBilling - totalPurchase, 0m);
-        var purchaseDate = NullIfWhiteSpace(lien.PurchaseDate);
+        var purchaseDate = ParseDateOnly(lien.PurchaseDate);
         var isMedical = string.Equals(lien.LienType, LienType.MedicalLien, StringComparison.OrdinalIgnoreCase);
 
         return new SynqLienLienInsight(
@@ -1217,7 +1239,7 @@ public static class AssistantToolEndpoints
                 string.Equals(lien.Status, LienStatus.Sold, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(lien.Status, LienStatus.Active, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(lien.Status, LienStatus.Disputed, StringComparison.OrdinalIgnoreCase),
-            string.IsNullOrWhiteSpace(purchaseDate),
+            !purchaseDate.HasValue,
             supportingDocumentCount == 0,
             supportingDocumentCount,
             lien.CreatedAtUtc,
@@ -1528,11 +1550,6 @@ public static class AssistantToolEndpoints
     private static decimal ParseDecimal(string? value)
         => decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
-            : 0m;
-
-    private static decimal ComputeReductionAmount(decimal? totalBilling, decimal? totalPurchase)
-        => totalBilling.HasValue && totalPurchase.HasValue
-            ? Math.Max(totalBilling.Value - totalPurchase.Value, 0m)
             : 0m;
 
     private static bool ParseBooleanish(string? value)
@@ -2035,33 +2052,24 @@ public static class AssistantToolEndpoints
         };
     }
 
+    private static DateOnly? ParseDateOnly(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return DateOnly.TryParseExact(
+            value.Trim(),
+            ["MM/dd/yyyy", "M/d/yyyy", "yyyy-MM-dd"],
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsed)
+            ? parsed
+            : null;
+    }
+
     private static string? NullIfWhiteSpace(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private readonly record struct LienVisibilityScope(
-        bool CanReadAnyLien,
-        Guid? OrgId,
-        bool IncludeSellerOrg,
-        bool IncludeBuyerOrg,
-        bool IncludeHolderOrg,
-        bool IncludeMarketplace)
-    {
-        public static LienVisibilityScope All { get; } = new(
-            CanReadAnyLien: true,
-            OrgId: null,
-            IncludeSellerOrg: false,
-            IncludeBuyerOrg: false,
-            IncludeHolderOrg: false,
-            IncludeMarketplace: false);
-
-        public static LienVisibilityScope None { get; } = new(
-            CanReadAnyLien: false,
-            OrgId: Guid.Empty,
-            IncludeSellerOrg: false,
-            IncludeBuyerOrg: false,
-            IncludeHolderOrg: false,
-            IncludeMarketplace: false);
-    }
 }
 
 internal sealed class AssistantLienSearchParams

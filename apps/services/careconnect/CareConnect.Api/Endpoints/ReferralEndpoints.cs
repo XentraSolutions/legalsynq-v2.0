@@ -884,33 +884,8 @@ public static class ReferralEndpoints
         }
     }
 
-    private static IReadOnlyList<Guid>? GetReferrerTenantScope(ICurrentRequestContext ctx)
-    {
-        var tenantIds = ctx.TenantIds
-            .Where(id => id != Guid.Empty)
-            .Distinct()
-            .ToList();
-
-        if (tenantIds.Count > 0)
-            return tenantIds;
-
-        return ctx.TenantId.HasValue
-            ? [ctx.TenantId.Value]
-            : null;
-    }
-
     private static bool ShouldUseGlobalReferralLookup(ICurrentRequestContext ctx, bool isProviderOrg)
-    {
-        if (ctx.IsPlatformAdmin || isProviderOrg)
-            return true;
-
-        var tenantScope = GetReferrerTenantScope(ctx);
-        if (tenantScope is null || tenantScope.Count <= 1)
-            return false;
-
-        return ctx.ProductRoles.Any(role =>
-            role.EndsWith(":CARECONNECT_REFERRER", StringComparison.OrdinalIgnoreCase));
-    }
+        => CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(ctx, isProviderOrg);
 }
 
 internal sealed class ReferralSearchParams

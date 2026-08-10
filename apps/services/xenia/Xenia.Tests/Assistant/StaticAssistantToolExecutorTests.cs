@@ -299,7 +299,8 @@ public sealed class StaticAssistantToolExecutorTests
                     "CA",
                     false,
                     DateTime.UtcNow.AddDays(-3),
-                    DateTime.UtcNow)));
+                    DateTime.UtcNow,
+                    PurchaseDate: new DateOnly(2026, 7, 14))));
 
         var sut = new StaticAssistantToolExecutor(
             new StaticAssistantToolRegistry(),
@@ -315,6 +316,7 @@ public sealed class StaticAssistantToolExecutorTests
 
         Assert.True(result.Succeeded);
         Assert.Contains("LN-1001", result.OutputJson);
+        Assert.Contains("\"purchaseDate\":\"2026-07-14\"", result.OutputJson, StringComparison.Ordinal);
         Assert.Single(result.Citations);
         Assert.Equal("synqlien.lien", result.Citations[0].SourceType);
         Assert.Equal($"/lien/liens/{lienId}", result.Citations[0].Url);

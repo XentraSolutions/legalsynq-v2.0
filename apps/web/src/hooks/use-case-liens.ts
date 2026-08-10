@@ -26,6 +26,10 @@ import type {
 } from "@/lib/settlement/settlement.types";
 import { contactsService } from "@/lib/contacts";
 import { lookupService } from "@/lib/lookup";
+import {
+  servicingService,
+  type UpdateServicingDetailsRequestDto,
+} from "@/lib/servicing";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -251,6 +255,32 @@ export function useCaseLiens(
   });
 
   return activeTab == "liens" ? pagedQuery : allQuery;
+}
+
+export function useCaseDetail(caseId: string) {
+  return useQuery({
+    queryKey: ["caseDetail", caseId],
+    queryFn: () => casesService.getCase(caseId),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useUpdateServicingDetails() {
+  const queryClient = useQueryClient();
+
+  // Example mutation function
+  return useMutation({
+    mutationFn: (updatedData: UpdateServicingDetailsRequestDto) =>
+      servicingService.updateDetails(updatedData),
+
+    onSuccess: (data, variables) => {
+      // Invalidate and refetch the specific case detail
+      queryClient.invalidateQueries({
+        queryKey: ["caseDetail", variables.caseId],
+      });
+    },
+  });
 }
 
 export function useCases(query: CasesQuery) {

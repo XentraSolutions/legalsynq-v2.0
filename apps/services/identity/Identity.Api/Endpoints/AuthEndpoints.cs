@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Identity.Api.Helpers;
 using Identity.Application;
 using Identity.Application.DTOs;
+using Identity.Application.Errors;
 using Identity.Application.Exceptions;
 using Identity.Application.Interfaces;
 using Identity.Domain;
@@ -246,6 +247,56 @@ public static class AuthEndpoints
             return Results.NoContent();
         })
         .AllowAnonymous();
+
+        // ── POST /api/v1/auth/session/refresh ──────────────────────────────────
+        // BE-BIO-004. Anonymous (the access token may be expired — that's the
+        // point of a refresh call). Exchanges a device-specific refresh token for
+        // a rotated pair. See DeviceSessionService.RefreshAsync for the full
+        // rotation/reuse-detection algorithm. SEC-006: this endpoint never
+        // accepts or trusts a client-asserted "biometric succeeded" claim —
+        // authorization is based solely on possession of a valid, unrevoked,
+        // correctly-rotated refresh token.
+        app.MapPost("/api/v1/auth/session/refresh", async (
+            RefreshRequest        request,
+            HttpContext           httpContext,
+            IDeviceSessionService deviceSessionService,
+            CancellationToken     ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.RefreshToken))
+                return Results.Problem("refreshToken is required.", statusCode: 400);
+
+            var ip = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
+                  ?? httpContext.Connection.RemoteIpAddress?.ToString();
+
+            var result = await deviceSessionService.RefreshAsync(request.RefreshToken, request.DeviceSessionId, ip, ct);
+
+            if (!result.IsSuccess)
+                return ProblemForErrorCode(result.ErrorCode!);
+
+            return Results.Ok(result.Response);
+        })
+        .AllowAnonymous()
+        .RequireRateLimiting("auth-refresh");
+
+        // ── POST /api/v1/auth/logout ────────────────────────────────────────────
+        // BE-BIO-013. Anonymous — the access token may already be expired at
+        // logout time, same rationale as the legacy /api/auth/logout above.
+        // Unlike the legacy endpoint (which is a stateless no-op left untouched
+        // for backward compatibility — BE-BIO-024), this endpoint performs real
+        // device-session revocation for callers that hold a deviceSessionId.
+        // Idempotent (BE-BIO-019).
+        app.MapPost("/api/v1/auth/logout", async (
+            LogoutV1Request        request,
+            HttpContext            httpContext,
+            IDeviceSessionService  deviceSessionService,
+            CancellationToken      ct) =>
+        {
+            if (!string.IsNullOrWhiteSpace(request.RefreshToken))
+                await deviceSessionService.LogoutCurrentAsync(request.RefreshToken, request.DeviceSessionId, ct);
+            return Results.NoContent();
+        })
+        .AllowAnonymous()
+        .RequireRateLimiting("auth-logout-v1");
 
         // ── GET /api/organizations/my/config ──────────────────────────────────
         // Authenticated. Returns org-level configuration for the caller's organization.
@@ -649,6 +700,7 @@ public static class AuthEndpoints
             PasswordResetConfirmRequest body,
             IdentityDbContext           db,
             IPasswordHasher             passwordHasher,
+            IDeviceSessionService       deviceSessionService,
             IAuditEventClient           auditClient,
             CancellationToken           ct) =>
         {
@@ -690,6 +742,7 @@ public static class AuthEndpoints
             resetToken.MarkUsed();
 
             await db.SaveChangesAsync(ct);
+            await deviceSessionService.RevokeAllForUserAsync(user.Id, "PasswordReset", ct);
 
             var resetTenantId = await db.UserTenants
                 .Where(ut => ut.UserId == user.Id && ut.IsActive)
@@ -1126,4 +1179,37 @@ public static class AuthEndpoints
     private record SetAvatarRequest(string DocumentId);
     private record SetPhoneRequest(string? Phone);
     private record ForgotPasswordRequest(string TenantCode, string Email, string? Subdomain = null, Guid? TenantId = null, bool ResolveByEmail = false);
+
+    // BE-BIO
+    private record RefreshRequest(string RefreshToken, Guid DeviceSessionId);
+    private record LogoutV1Request(string RefreshToken, Guid DeviceSessionId);
+
+    /// <summary>
+    /// BE-BIO-018/SEC-010: maps an AuthErrorCodes constant to a standardized,
+    /// non-leaking Results.Problem response with a machine-readable `errorCode`
+    /// extension so mobile clients can branch without string-matching the
+    /// human-readable detail message. Production responses never reveal
+    /// sensitive token-validation internals (e.g. reuse detection is exposed
+    /// identically to a generic invalid token).
+    /// </summary>
+    private static IResult ProblemForErrorCode(string errorCode)
+    {
+        var (statusCode, detail) = errorCode switch
+        {
+            AuthErrorCodes.RefreshTokenInvalid  => (401, "The saved session is no longer valid."),
+            AuthErrorCodes.RefreshTokenExpired  => (401, "The saved session has expired."),
+            AuthErrorCodes.RefreshTokenRevoked  => (401, "The saved session is no longer valid."),
+            AuthErrorCodes.DeviceSessionRevoked => (401, "The saved session is no longer valid."),
+            AuthErrorCodes.DeviceSessionNotFound => (404, "The saved session is no longer valid."),
+            AuthErrorCodes.AccountDisabled      => (403, "This account is disabled."),
+            AuthErrorCodes.AccountLocked        => (403, "This account is locked."),
+            AuthErrorCodes.SessionReauthenticationRequired => (403, "Please sign in again to continue."),
+            _ => (400, "The request could not be completed."),
+        };
+
+        return Results.Problem(
+            detail: detail,
+            statusCode: statusCode,
+            extensions: new Dictionary<string, object?> { ["errorCode"] = errorCode });
+    }
 }

@@ -7,6 +7,7 @@ import type {
   UpdateServicingStatusRequestDto,
   ServicingQuery,
   UpdateServicingDetailsRequestDto,
+  UpdateServicingDetailsResponseDto,
   ServicingListItem,
   ExportResponse,
   ServicingListItemResponseDto,
@@ -86,7 +87,7 @@ export const servicingApi = {
   },
 
   updateDetails(request: UpdateServicingDetailsRequestDto) {
-    return apiClient.patch<ServicingItemResponseDto>(
+    return apiClient.patch<UpdateServicingDetailsResponseDto>(
       `${BASE}/update-details`,
       request,
     );

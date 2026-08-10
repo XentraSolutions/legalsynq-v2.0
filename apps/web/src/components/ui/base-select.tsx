@@ -73,6 +73,7 @@ interface BaseSelectCommonProps<
   error?: boolean;
   className?: string;
   contentClassName?: string;
+  onOpen?: () => void;
 }
 
 type SingleSelectProps<TOption extends BaseSelectOption> = {
@@ -197,6 +198,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
   props: BaseSelectProps<TOption>,
 ) {
   const {
+    multiple,
     options,
     loadingMode = "eager",
     isLoading = false,
@@ -219,6 +221,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     error,
     className,
     contentClassName,
+    onOpen,
   } = props;
   const [open, setOpen] = React.useState(false);
   const [internalSearch, setInternalSearch] = React.useState("");
@@ -232,22 +235,24 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
   // below would see `sentinelEl` as null forever and never attach its
   // IntersectionObserver. Using state for the ref makes that mount a
   // dependency the effect can react to.
-  const [sentinelEl, setSentinelEl] = React.useState<HTMLDivElement | null>(null);
+  const [sentinelEl, setSentinelEl] = React.useState<HTMLDivElement | null>(
+    null,
+  );
 
   const selectedValues = React.useMemo(
     () =>
       new Set(
-        props.multiple ? (props.value ?? []) : props.value ? [props.value] : [],
+        multiple ? (props.value ?? []) : props.value ? [props.value] : [],
       ),
-    [props.multiple, props.value],
+    [multiple, props.value],
   );
 
   const selected = React.useMemo(
     () =>
-      props.multiple
+      multiple
         ? options.filter((o) => selectedValues.has(o.value))
         : options.find((o) => o.value === props.value),
-    [props.multiple, props.value, options, selectedValues],
+    [multiple, props.value, options, selectedValues],
   );
 
   const selectedOptions = React.useMemo(
@@ -287,6 +292,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
+    onOpen?.();
 
     if (!next) {
       handleSearchChange("");
@@ -322,7 +328,12 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
   const listVisible = inline || open;
 
   React.useEffect(() => {
-    if (loadingMode !== "infinite" || !listVisible || !hasNextPage || !onLoadMore)
+    if (
+      loadingMode !== "infinite" ||
+      !listVisible ||
+      !hasNextPage ||
+      !onLoadMore
+    )
       return;
     const root = listRef.current;
     if (!sentinelEl || !root) return;
@@ -335,7 +346,14 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     );
     observer.observe(sentinelEl);
     return () => observer.disconnect();
-  }, [loadingMode, listVisible, hasNextPage, onLoadMore, isFetchingMore, sentinelEl]);
+  }, [
+    loadingMode,
+    listVisible,
+    hasNextPage,
+    onLoadMore,
+    isFetchingMore,
+    sentinelEl,
+  ]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
@@ -353,7 +371,8 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     }
   };
 
-  const showSkeleton = isSearching || (isLoading && filteredOptions.length === 0);
+  const showSkeleton =
+    isSearching || (isLoading && filteredOptions.length === 0);
 
   const searchInput = (
     <input

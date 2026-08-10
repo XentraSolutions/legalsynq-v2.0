@@ -201,3 +201,70 @@ export function useFetchReportColumns(
     columnsError,
   };
 }
+
+export function useReportFilterOptions({
+  reportType,
+  filterField,
+  keyword = "",
+  enabled,
+}: {
+  reportType: "CASES" | "LIENS" | "COMBINE";
+  filterField: string;
+  keyword?: string;
+  enabled?: boolean;
+}) {
+  const query = useQuery({
+    queryKey: [
+      "report-filter-options",
+      reportType,
+      filterField,
+      keyword,
+      enabled,
+    ],
+
+    queryFn: async () => {
+      const filters = await lienReportsService.getFilterOptions({
+        reportType: "COMBINE",
+        filterField: filterField,
+        keyword,
+      });
+
+      return (
+        filters?.map((item: any) => ({
+          key: item.id,
+          value: item.id,
+          label: item.name,
+        })) ?? []
+      );
+    },
+
+    enabled: enabled,
+    staleTime: 0,
+
+    placeholderData: undefined,
+  });
+
+  return {
+    options: query.data ?? [],
+    isLoadingFilter: query.isLoading || query.isFetching,
+    refetch: query.refetch,
+  };
+}
+
+import { useEffect } from "react";
+
+export function useDebounce<T>(value: T, delay = 500) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}

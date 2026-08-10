@@ -110,6 +110,179 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
+    public async Task ServiceCase_v3_returns_settlement_and_financial_fields()
+    {
+        var caseNumber = $"CASE-SVC-METRICS-{Guid.CreateVersion7():N}"[..30];
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                caseNumber,
+                "Settlement",
+                "Plaintiff",
+                SeedHelper.UserId);
+            var firstLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-SVC-METRICS-A-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1_000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            var secondLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-SVC-METRICS-B-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                400m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            var firstMedicalCode = ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LMC-SVC-METRICS-A-{Guid.CreateVersion7():N}"[..40],
+                "LegacyMedicalCode",
+                "First medical code amount",
+                "system",
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                lienId: firstLien.Id,
+                notes: "billingAmount=600.75; purchaseAmount=275.50");
+            var secondMedicalCode = ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LMC-SVC-METRICS-B-{Guid.CreateVersion7():N}"[..40],
+                "LegacyMedicalCode",
+                "Second medical code amount",
+                "system",
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                lienId: firstLien.Id,
+                notes: "billingAmount=99.25; purchaseAmount=24.50");
+            var firstSettlement = LienSettlement.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                firstLien.Id,
+                1,
+                0m,
+                SeedHelper.UserId,
+                "full_payment",
+                note: "legacySettlementId=123; totalSettledAmount=180",
+                settlementDate: new DateOnly(2025, 4, 1));
+            var secondSettlement = LienSettlement.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                secondLien.Id,
+                1,
+                20m,
+                SeedHelper.UserId,
+                "full_payment",
+                settlementDate: new DateOnly(2025, 4, 2));
+            var payment = SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                secondLien.Id,
+                1,
+                20m,
+                SeedHelper.UserId,
+                new DateOnly(2025, 4, 2),
+                "Test Payor",
+                "CHK-SVC-METRICS",
+                "[legacy-meta]\nnetProfit=0.00; type=by_attorney; status=full_payment");
+
+            db.Cases.Add(caseEntity);
+            db.Liens.AddRange(firstLien, secondLien);
+            db.ServicingItems.AddRange(firstMedicalCode, secondMedicalCode);
+            db.LienSettlements.AddRange(firstSettlement, secondSettlement);
+            db.SettlementPaymentDetails.Add(payment);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            keyword = caseNumber,
+            page = 1,
+            limit = 10,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        var item = body["data"]!.AsArray().Single(node =>
+            node!["caseCode"]!.GetValue<string>() == caseNumber)!;
+
+        item["settlementStatus"]!.GetValue<string>().Should().Be("Full Payment");
+        item["settlementDate"]!.GetValue<string>().Should().Be("04/02/2025");
+        item["settlementAmount"]!.GetValue<decimal>().Should().Be(200m);
+        item["billingAmount"]!.GetValue<decimal>().Should().Be(1_100m);
+        item["purchaseAmount"]!.GetValue<decimal>().Should().Be(300m);
+    }
+
+    [Fact]
+    public async Task ServiceCase_v3_uses_payment_amount_when_no_settlement_exists()
+    {
+        var caseNumber = $"CASE-SVC-PAYMENT-{Guid.CreateVersion7():N}"[..30];
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                caseNumber,
+                "Payment",
+                "Fallback",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-SVC-PAYMENT-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                3_295m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            var payment = SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                1,
+                750m,
+                SeedHelper.UserId,
+                new DateOnly(2026, 8, 6),
+                "Test Payor",
+                "CHK-SVC-PAYMENT",
+                "[legacy-meta]\nnetProfit=0.00; type=by_attorney; status=full_payment");
+
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.SettlementPaymentDetails.Add(payment);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            keyword = caseNumber,
+            page = 1,
+            limit = 10,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        var item = body["data"]!.AsArray().Single(node =>
+            node!["caseCode"]!.GetValue<string>() == caseNumber)!;
+
+        item["settlementStatus"]!.GetValue<string>().Should().Be("Full Payment");
+        item["settlementDate"]!.GetValue<string>().Should().NotBeEmpty();
+        item["settlementAmount"]!.GetValue<decimal>().Should().Be(750m);
+    }
+
+    [Fact]
     public async Task ServiceCase_v3_returns_empty_success_payload_when_no_cases_match()
     {
         var response = await _client.PostAsJsonAsync("/service/case/v3", new
@@ -457,7 +630,7 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
-    public async Task LegacyDashboardMetric_routes_without_date_range_return_only_dated_history()
+    public async Task LegacyDashboardMetric_routes_keep_purchase_and_filtered_settlement_date_history()
     {
         using (var scope = _factory.Services.CreateScope())
         {
@@ -499,16 +672,277 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
 
         var cashReceivedResponse = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/cash-received", new
         {
-            page = 1,
-            limit = 1000,
+            startDate = "02/01/2025",
+            endDate = "02/01/2025",
         });
         cashReceivedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await cashReceivedResponse.Content.ReadAsStringAsync()}");
 
         var cashReceived = JsonNode.Parse(await cashReceivedResponse.Content.ReadAsStringAsync())!["data"]!;
-        cashReceived["periodStart"]!.GetValue<string>().Should().BeEmpty();
-        cashReceived["periodEnd"]!.GetValue<string>().Should().BeEmpty();
+        cashReceived["periodStart"]!.GetValue<string>().Should().Be("02/01/2025");
+        cashReceived["periodEnd"]!.GetValue<string>().Should().Be("02/01/2025");
         cashReceived["totalAmount"]!.GetValue<string>().Should().Be("750.00");
         cashReceived["totalCount"]!.GetValue<int>().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task LegacyDashboardDeployed_uses_diy_purchase_precedence_for_dated_liens()
+    {
+        var otherTenantId = Guid.CreateVersion7();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var medicalCodeLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-DASHBOARD-PURCHASE-MEDICAL",
+                LienType.MedicalLien,
+                1_000m,
+                SeedHelper.UserId,
+                purchaseDate: new DateOnly(2025, 2, 1));
+            medicalCodeLien.SetFinancials(1_000m, SeedHelper.UserId, purchasePrice: 100m);
+
+            var fallbackLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-DASHBOARD-PURCHASE-FALLBACK",
+                LienType.MedicalLien,
+                500m,
+                SeedHelper.UserId,
+                purchaseDate: new DateOnly(2025, 2, 1));
+            fallbackLien.SetFinancials(500m, SeedHelper.UserId, purchasePrice: 300m);
+
+            var outsideRangeLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-DASHBOARD-PURCHASE-OUTSIDE",
+                LienType.MedicalLien,
+                600m,
+                SeedHelper.UserId,
+                purchaseDate: new DateOnly(2025, 1, 31));
+            outsideRangeLien.SetFinancials(600m, SeedHelper.UserId, purchasePrice: 400m);
+
+            var otherTenantLien = Lien.Create(
+                otherTenantId,
+                SeedHelper.OrgId,
+                "LIEN-DASHBOARD-PURCHASE-OTHER",
+                LienType.MedicalLien,
+                10_000m,
+                SeedHelper.UserId,
+                purchaseDate: new DateOnly(2025, 2, 1));
+            otherTenantLien.SetFinancials(10_000m, SeedHelper.UserId, purchasePrice: 10_000m);
+
+            db.Liens.AddRange(medicalCodeLien, fallbackLien, outsideRangeLien, otherTenantLien);
+            db.ServicingItems.AddRange(
+                ServicingItem.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    "LMC-DASHBOARD-PURCHASE-1",
+                    "LegacyMedicalCode",
+                    "First purchase amount",
+                    "system",
+                    SeedHelper.UserId,
+                    lienId: medicalCodeLien.Id,
+                    notes: "billingAmount=1,500; purchaseAmount=250"),
+                ServicingItem.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    "LMC-DASHBOARD-PURCHASE-2",
+                    "LegacyMedicalCode",
+                    "Second purchase amount",
+                    "system",
+                    SeedHelper.UserId,
+                    lienId: medicalCodeLien.Id,
+                    notes: "billingAmount=500; purchaseAmount=50"),
+                ServicingItem.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    "LMC-DASHBOARD-PURCHASE-OUTSIDE",
+                    "LegacyMedicalCode",
+                    "Outside-range purchase amount",
+                    "system",
+                    SeedHelper.UserId,
+                    lienId: outsideRangeLien.Id,
+                    notes: "billingAmount=600; purchaseAmount=500"),
+                ServicingItem.Create(
+                    otherTenantId,
+                    SeedHelper.OrgId,
+                    "LMC-DASHBOARD-PURCHASE-OTHER",
+                    "LegacyMedicalCode",
+                    "Other-tenant purchase amount",
+                    "system",
+                    SeedHelper.UserId,
+                    lienId: otherTenantLien.Id,
+                    notes: "billingAmount=10,000; purchaseAmount=10,000"));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/deployed", new
+        {
+            startDate = "02/01/2025",
+            endDate = "02/01/2025",
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var deployed = JsonNode.Parse(await response.Content.ReadAsStringAsync())!["data"]!;
+        deployed["periodStart"]!.GetValue<string>().Should().Be("02/01/2025");
+        deployed["periodEnd"]!.GetValue<string>().Should().Be("02/01/2025");
+        deployed["totalAmount"]!.GetValue<string>().Should().Be("600.00");
+        deployed["totalCount"]!.GetValue<int>().Should().Be(2);
+    }
+
+    [Fact]
+    public async Task LegacyDashboardCashReceived_without_date_range_matches_diy_returned_amount_precedence()
+    {
+        var otherTenantId = Guid.CreateVersion7();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var metadataLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-DASHBOARD-METADATA",
+                LienType.MedicalLien,
+                1_000m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            metadataLien.SetFinancials(1_000m, SeedHelper.UserId, payoffAmount: 900m);
+
+            var payoffLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-DASHBOARD-PAYOFF",
+                LienType.MedicalLien,
+                500m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            payoffLien.SetFinancials(500m, SeedHelper.UserId, payoffAmount: 220m);
+
+            var paymentLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-DASHBOARD-PAYMENT",
+                LienType.MedicalLien,
+                600m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+
+            var otherTenantLien = Lien.Create(
+                otherTenantId,
+                SeedHelper.OrgId,
+                "LIEN-DASHBOARD-OTHER-TENANT",
+                LienType.MedicalLien,
+                10_000m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+
+            var deletedMetadata = LienSettlement.Create(
+                SeedHelper.TenantId,
+                SeedHelper.CaseId,
+                paymentLien.Id,
+                2,
+                700m,
+                SeedHelper.UserId,
+                note: "legacySettlementId=deleted; totalSettledAmount=700");
+            deletedMetadata.SoftDelete(SeedHelper.UserId);
+
+            var deletedPayment = SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                SeedHelper.CaseId,
+                paymentLien.Id,
+                3,
+                900m,
+                SeedHelper.UserId);
+            deletedPayment.SoftDelete(SeedHelper.UserId);
+
+            db.Liens.AddRange(metadataLien, payoffLien, paymentLien, otherTenantLien);
+            db.LienSettlements.AddRange(
+                LienSettlement.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.CaseId,
+                    metadataLien.Id,
+                    1,
+                    50m,
+                    SeedHelper.UserId,
+                    note: "legacySettlementId=1; totalSettledAmount=180"),
+                LienSettlement.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.CaseId,
+                    metadataLien.Id,
+                    2,
+                    25m,
+                    SeedHelper.UserId,
+                    note: "legacySettlementId=2; totalSettledAmount=20"),
+                LienSettlement.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.CaseId,
+                    payoffLien.Id,
+                    1,
+                    60m,
+                    SeedHelper.UserId),
+                LienSettlement.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.CaseId,
+                    paymentLien.Id,
+                    1,
+                    500m,
+                    SeedHelper.UserId),
+                deletedMetadata);
+            db.SettlementPaymentDetails.AddRange(
+                SettlementPaymentDetail.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.CaseId,
+                    metadataLien.Id,
+                    1,
+                    1_000m,
+                    SeedHelper.UserId),
+                SettlementPaymentDetail.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.CaseId,
+                    payoffLien.Id,
+                    1,
+                    800m,
+                    SeedHelper.UserId),
+                SettlementPaymentDetail.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.CaseId,
+                    paymentLien.Id,
+                    1,
+                    300m,
+                    SeedHelper.UserId),
+                SettlementPaymentDetail.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.CaseId,
+                    paymentLien.Id,
+                    2,
+                    45m,
+                    SeedHelper.UserId),
+                deletedPayment,
+                SettlementPaymentDetail.Create(
+                    otherTenantId,
+                    SeedHelper.CaseId,
+                    otherTenantLien.Id,
+                    1,
+                    10_000m,
+                    SeedHelper.UserId));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/cash-received", new
+        {
+            page = 1,
+            limit = 1000,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var cashReceived = JsonNode.Parse(await response.Content.ReadAsStringAsync())!["data"]!;
+        cashReceived["periodStart"]!.GetValue<string>().Should().BeEmpty();
+        cashReceived["periodEnd"]!.GetValue<string>().Should().BeEmpty();
+        cashReceived["totalAmount"]!.GetValue<string>().Should().Be("5265.00");
+        cashReceived["totalCount"]!.GetValue<int>().Should().Be(4);
     }
 }

@@ -656,6 +656,9 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 isConfidential = lien.IsConfidential,
                 createdAtUtc = lien.CreatedAtUtc,
                 updatedAtUtc = lien.UpdatedAtUtc,
+                purchaseDate = lien.PurchaseDate,
+                initialServiceDate = lien.InitialServiceDate,
+                endServiceDate = lien.EndServiceDate,
                 url = BuildLienUrl(lien.LienId),
             },
             note = lookup.SafeError,
@@ -750,6 +753,7 @@ internal sealed class StaticAssistantToolExecutor : IAssistantToolExecutor
                 currentBalance = lien.CurrentBalance,
                 createdAtUtc = lien.CreatedAtUtc,
                 updatedAtUtc = lien.UpdatedAtUtc,
+                purchaseDate = lien.PurchaseDate,
                 url = BuildLienUrl(lien.LienId),
             }),
         }, JsonOptions);

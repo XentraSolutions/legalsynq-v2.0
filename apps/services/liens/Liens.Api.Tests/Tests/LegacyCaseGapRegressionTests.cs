@@ -247,16 +247,55 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
     [Fact]
     public async Task Service_update_details_and_lien_status_legacy_routes_apply_changes()
     {
+        const string originalNote = "Original servicing note";
+        using (var setupScope = _factory.Services.CreateScope())
+        {
+            var setupDb = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var seededCase = await setupDb.Cases.FindAsync(SeedHelper.CaseId);
+            seededCase.Should().NotBeNull();
+            seededCase!.Update(
+                seededCase.ClientFirstName,
+                seededCase.ClientLastName,
+                SeedHelper.UserId,
+                seededCase.Title,
+                seededCase.ExternalReference,
+                seededCase.ClientDob,
+                seededCase.ClientPhone,
+                seededCase.ClientEmail,
+                seededCase.ClientAddress,
+                seededCase.DateOfIncident,
+                seededCase.InsuranceCarrier,
+                seededCase.PolicyNumber,
+                seededCase.ClaimNumber,
+                seededCase.Description,
+                originalNote);
+            await setupDb.SaveChangesAsync();
+        }
+
         var updateDetailsResponse = await _client.PatchAsJsonAsync("/service/update-details", new
         {
             caseId = SeedHelper.CaseId,
             caseStatusId = "Closed",
             isUCCFiled = "Y",
             switchedDate = "06/10/2026",
-            attorney = "Legacy Counsel",
+            lawFirmId = SeedHelper.LawFirmId,
+            attorney = SeedHelper.FacilityContactId,
+            caseManager = SeedHelper.MedicalProviderId,
         });
         updateDetailsResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await updateDetailsResponse.Content.ReadAsStringAsync()}");
+
+        var caseResponse = await _client.GetAsync($"/api/liens/cases/{SeedHelper.CaseId}");
+        caseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await caseResponse.Content.ReadAsStringAsync()}");
+        var caseBody = JsonNode.Parse(await caseResponse.Content.ReadAsStringAsync())!;
+        caseBody["status"]!.GetValue<string>().Should().Be("Closed");
+        caseBody["isUccFiled"]!.GetValue<string>().Should().Be("Yes");
+        caseBody["switchedDate"]!.GetValue<string>().Should().Be("06/10/2026");
+        caseBody["lawFirmId"]!.GetValue<string>().Should().Be(SeedHelper.LawFirmId.ToString());
+        caseBody["attorneyId"]!.GetValue<string>().Should().Be(SeedHelper.FacilityContactId.ToString());
+        caseBody["caseManagerId"]!.GetValue<string>().Should().Be(SeedHelper.MedicalProviderId.ToString());
+        caseBody["notes"]!.GetValue<string>().Should().Be(originalNote);
 
         var lienStatusResponse = await _client.PatchAsJsonAsync("/service/liens/update/status", new
         {
@@ -283,9 +322,14 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
         var caseEntity = await db.Cases.FindAsync(SeedHelper.CaseId);
         caseEntity.Should().NotBeNull();
         caseEntity!.Status.Should().Be("Closed");
-        caseEntity.Notes.Should().Contain("isUCCFiled=Y");
+        caseEntity.OrgId.Should().Be(SeedHelper.OrgId);
+        caseEntity.Notes.Should().StartWith(originalNote);
+        caseEntity.Notes.Should().Contain("[legacy-meta]");
+        caseEntity.Notes.Should().Contain("isUccFiled=Yes");
         caseEntity.Notes.Should().Contain("switchedDate=06/10/2026");
-        caseEntity.Notes.Should().Contain("attorney=Legacy Counsel");
+        caseEntity.Notes.Should().Contain($"lawFirmId={SeedHelper.LawFirmId}");
+        caseEntity.Notes.Should().Contain($"attorneyId={SeedHelper.FacilityContactId}");
+        caseEntity.Notes.Should().Contain($"caseManagerId={SeedHelper.MedicalProviderId}");
 
         var lien = await db.Liens.FindAsync(SeedHelper.LienId);
         lien.Should().NotBeNull();

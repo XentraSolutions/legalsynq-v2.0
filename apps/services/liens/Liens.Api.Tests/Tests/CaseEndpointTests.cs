@@ -44,6 +44,7 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 CreateLegacyDashboardTask($"{prefix}-IP", "2", "In progress task"),
                 CreateLegacyDashboardTask($"{prefix}-IR", "3", "In review task"),
                 CreateLegacyDashboardTask($"{prefix}-CO", "4", "Completed task"),
+                CreateLegacyDashboardTask($"{prefix}-CA", "CANCELLED", "Cancelled task"),
                 ServicingItem.Create(
                     SeedHelper.TenantId,
                     SeedHelper.OrgId,
@@ -68,7 +69,7 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         root.GetProperty("message").GetString().Should().Be("Successfully retrieved all tasks.");
 
         var data = root.GetProperty("data");
-        data.GetProperty("totalTasks").GetInt32().Should().Be(4);
+        data.GetProperty("totalTasks").GetInt32().Should().Be(5);
         data.GetProperty("upcomingTasks").GetInt32().Should().Be(1);
         data.GetProperty("inProgressTasks").GetInt32().Should().Be(1);
         data.GetProperty("inReviewTasks").GetInt32().Should().Be(1);
@@ -79,23 +80,81 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         completed.GetProperty("caseId").GetString().Should().Be(SeedHelper.CaseId.ToString());
         completed.GetProperty("caseCode").GetString().Should().NotBeNullOrEmpty();
         completed.GetProperty("caseName").GetString().Should().NotBeNullOrEmpty();
-        completed.GetProperty("status").GetString().Should().Be("Completed");
+        completed.GetProperty("status").GetString().Should().Be("COMPLETED");
         completed.GetProperty("statusId").GetString().Should().Be("4");
         completed.GetProperty("priority").GetString().Should().Be("Normal");
         completed.GetProperty("priorityId").GetString().Should().Be("Normal");
+
+        var cancelled = data.GetProperty("tasks").EnumerateArray()
+            .Single(task => task.GetProperty("title").GetString() == "Cancelled task");
+        cancelled.GetProperty("status").GetString().Should().Be("CANCELLED");
+        cancelled.GetProperty("statusId").GetString().Should().Be("CANCELLED");
     }
 
-    private static ServicingItem CreateLegacyDashboardTask(string taskNumber, string status, string title) =>
+    [Fact]
+    public async Task DashboardTaskSummary_counts_mixed_legacy_and_ui_status_values()
+    {
+        var dashboardUserId = Guid.CreateVersion7();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var prefix = $"MIXED-{Guid.CreateVersion7():N}"[..20];
+
+            db.ServicingItems.AddRange(
+                CreateLegacyDashboardTask($"{prefix}-UP1", "Upcoming", "Upcoming display task", dashboardUserId),
+                CreateLegacyDashboardTask($"{prefix}-IP1", "In Progress", "In progress display task", dashboardUserId),
+                CreateLegacyDashboardTask($"{prefix}-UP2", "UPCOMING", "Upcoming UI-code task", dashboardUserId),
+                CreateLegacyDashboardTask($"{prefix}-IP2", "INPROGRESS", "In progress UI-code task", dashboardUserId),
+                CreateLegacyDashboardTask($"{prefix}-IR1", "In Review", "In review display task", dashboardUserId));
+            await db.SaveChangesAsync();
+        }
+
+        using var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer",
+                JwtTokenHelper.CreateFullAccessToken(SeedHelper.TenantId, dashboardUserId));
+
+        var response = await client.GetAsync("/api/liens/cases/dashboard/task-summary");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var data = document.RootElement.GetProperty("data");
+        data.GetProperty("totalTasks").GetInt32().Should().Be(5);
+        data.GetProperty("upcomingTasks").GetInt32().Should().Be(2);
+        data.GetProperty("inProgressTasks").GetInt32().Should().Be(2);
+        data.GetProperty("inReviewTasks").GetInt32().Should().Be(1);
+        data.GetProperty("completedTasks").GetInt32().Should().Be(0);
+
+        var tasks = data.GetProperty("tasks").EnumerateArray().ToList();
+        tasks.Single(task => task.GetProperty("title").GetString() == "Upcoming display task")
+            .GetProperty("status").GetString().Should().Be("UPCOMING");
+        tasks.Single(task => task.GetProperty("title").GetString() == "In progress display task")
+            .GetProperty("status").GetString().Should().Be("INPROGRESS");
+        var uiCodeTask = tasks.Single(task =>
+            task.GetProperty("title").GetString() == "Upcoming UI-code task");
+        uiCodeTask.GetProperty("status").GetString().Should().Be("UPCOMING");
+        uiCodeTask.GetProperty("statusId").GetString().Should().Be("UPCOMING");
+        tasks.Single(task => task.GetProperty("title").GetString() == "In review display task")
+            .GetProperty("status").GetString().Should().Be("INREVIEW");
+    }
+
+    private static ServicingItem CreateLegacyDashboardTask(
+        string taskNumber,
+        string status,
+        string title,
+        Guid? assignedToUserId = null) =>
         ServicingItem.Create(
             SeedHelper.TenantId,
             SeedHelper.OrgId,
             taskNumber,
             "LegacyCaseTask",
             $"{title} description",
-            SeedHelper.UserId.ToString(),
+            (assignedToUserId ?? SeedHelper.UserId).ToString(),
             SeedHelper.UserId,
             caseId: SeedHelper.CaseId,
-            assignedToUserId: SeedHelper.UserId,
+            assignedToUserId: assignedToUserId ?? SeedHelper.UserId,
             notes: $"title={title}; status={status}");
 
     [Fact]

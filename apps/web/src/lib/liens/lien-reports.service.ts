@@ -89,7 +89,7 @@ export const lienReportsService = {
 
   async getFilterOptions(query: FilterQuery): Promise<ApiResponse[]> {
     const { data } = await lienReportsApi.getFilterOptions(query);
-    return data;
+    return data.data;
   },
   async getAllFilterOptions(viewBy: ViewType): Promise<ApiResponse[]> {
     const { data } = await lienReportsApi.getAllFilterOptions(viewBy);

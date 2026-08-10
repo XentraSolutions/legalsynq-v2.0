@@ -427,21 +427,6 @@ export default function TaskManagerPage() {
               editTask={editTask}
             />
           )}
-
-          {/* <TaskDetailDrawer
-            task={detailTask}
-            onClose={() => setDetailTask(null)}
-            onEdit={(t) => {
-              setDetailTask(null);
-              setEditTask(t);
-            }}
-            onStatusChange={(updated) => {
-              setTasks((prev) =>
-                prev.map((t) => (t.id === updated.id ? updated : t)),
-              );
-              setDetailTask(updated);
-            }}
-          /> */}
         </>
       ) : (
         <></>
