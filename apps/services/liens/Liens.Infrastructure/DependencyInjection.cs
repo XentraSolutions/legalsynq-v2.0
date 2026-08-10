@@ -7,6 +7,7 @@ using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
 using Liens.Application.Services;
 using Liens.Infrastructure.Audit;
+using Liens.Infrastructure.Compatibility;
 using Liens.Infrastructure.Documents;
 using Liens.Infrastructure.Identity;
 using Liens.Infrastructure.Notifications;
@@ -41,6 +42,7 @@ public static class DependencyInjection
         services.AddScoped<IContactRepository, ContactRepository>();
         services.AddScoped<IFacilityRepository, FacilityRepository>();
         services.AddScoped<IFacilityContactPersonRepository, FacilityContactPersonRepository>();
+        services.AddScoped<ICompanyRepository, CompanyRepository>();
         services.AddScoped<ILookupValueRepository, LookupValueRepository>();
         services.AddScoped<ILienRepository, LienRepository>();
         services.AddScoped<ILienStatusHistoryRepository, LienStatusHistoryRepository>();
@@ -77,6 +79,11 @@ public static class DependencyInjection
         services.AddScoped<ILookupValueService, LookupValueService>();
         services.AddScoped<IContactService, ContactService>();
         services.AddScoped<IFacilityService, FacilityService>();
+        services.AddScoped<ICompanyService, CompanyService>();
+        services.Configure<SellingPartyCompatibilityOptions>(
+            configuration.GetSection(SellingPartyCompatibilityOptions.SectionName));
+        services.AddScoped<ISellingPartyCompatibilityService, SellingPartyCompatibilityService>();
+        services.AddHostedService<SellingPartyBackfillHostedService>();
         services.AddScoped<ILienTaskService, LienTaskService>();
         services.AddScoped<ILienWorkflowConfigService, LienWorkflowConfigService>();
         services.AddScoped<IWorkflowTransitionValidationService, WorkflowTransitionValidationService>();

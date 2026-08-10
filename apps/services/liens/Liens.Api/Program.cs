@@ -181,6 +181,7 @@ app.MapLienOfferEndpoints();
 app.MapSellingPublicEndpoints();
 app.MapSellingEndpoints();
 app.MapSellingV2Endpoints();
+app.MapSellingCompanyEndpoints();
 app.MapSellingAnalyticsEndpoints();
 app.MapBillOfSaleEndpoints();
 app.MapBatchUploadEndpoints();

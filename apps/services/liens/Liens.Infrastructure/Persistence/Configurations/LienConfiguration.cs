@@ -105,6 +105,10 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
 
         builder.Property(l => l.FundingCompanyId);
         builder.Property(l => l.FundingCompanyContactId);
+        builder.Property(l => l.FundingCompanyCompanyId);
+        builder.Property(l => l.FundingCompanyContactPersonId);
+        builder.Property(l => l.MedicalProviderCompanyId);
+        builder.Property(l => l.MedicalFacilityCompanyId);
 
         builder.Property(l => l.AskAmount)
             .HasColumnType("decimal(18,2)");
@@ -186,5 +190,10 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
             .WithMany()
             .HasForeignKey(l => l.FacilityId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Company>().WithMany().HasForeignKey(l => l.FundingCompanyCompanyId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<CompanyContactPerson>().WithMany().HasForeignKey(l => l.FundingCompanyContactPersonId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Company>().WithMany().HasForeignKey(l => l.MedicalProviderCompanyId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Company>().WithMany().HasForeignKey(l => l.MedicalFacilityCompanyId).OnDelete(DeleteBehavior.Restrict);
     }
 }

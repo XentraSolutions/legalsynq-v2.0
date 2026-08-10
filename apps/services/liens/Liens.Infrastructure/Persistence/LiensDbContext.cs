@@ -12,6 +12,13 @@ public class LiensDbContext : DbContext
     public DbSet<Contact> Contacts => Set<Contact>();
     public DbSet<Facility> Facilities => Set<Facility>();
     public DbSet<FacilityContactPerson>   FacilityContactPersons   => Set<FacilityContactPerson>();
+    public DbSet<CompanyType> CompanyTypes => Set<CompanyType>();
+    public DbSet<ContactPersonType> ContactPersonTypes => Set<ContactPersonType>();
+    public DbSet<Company> Companies => Set<Company>();
+    public DbSet<CompanyContactPerson> CompanyContactPersons => Set<CompanyContactPerson>();
+    public DbSet<SellingPartyAlias> SellingPartyAliases => Set<SellingPartyAlias>();
+    public DbSet<SellingPartyBackfillCheckpoint> SellingPartyBackfillCheckpoints => Set<SellingPartyBackfillCheckpoint>();
+    public DbSet<SellingPartyBackfillQuarantine> SellingPartyBackfillQuarantines => Set<SellingPartyBackfillQuarantine>();
     public DbSet<LienReduction>           LienReductions           => Set<LienReduction>();
     public DbSet<LienSettlement>          LienSettlements          => Set<LienSettlement>();
     public DbSet<SettlementPaymentDetail> SettlementPaymentDetails => Set<SettlementPaymentDetail>();

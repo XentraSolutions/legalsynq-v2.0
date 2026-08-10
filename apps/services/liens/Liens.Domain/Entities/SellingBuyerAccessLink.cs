@@ -13,6 +13,8 @@ public class SellingBuyerAccessLink : AuditableEntity
     public Guid SellerOrgId { get; private set; }
     public Guid BuyerOrgId { get; private set; }
     public Guid BuyerContactId { get; private set; }
+    public Guid? BuyerCompanyId { get; private set; }
+    public Guid? BuyerCompanyContactPersonId { get; private set; }
     public string TokenHash { get; private set; } = string.Empty;
     public string Purpose { get; private set; } = string.Empty;
     public string Route { get; private set; } = string.Empty;
@@ -33,6 +35,14 @@ public class SellingBuyerAccessLink : AuditableEntity
     public DateTime? AccountActivatedAtUtc { get; private set; }
 
     private SellingBuyerAccessLink() { }
+
+    public void LinkCanonicalBuyer(Guid? companyId, Guid? contactPersonId)
+    {
+        if (companyId == Guid.Empty) throw new ArgumentException("Canonical buyer company id cannot be empty.", nameof(companyId));
+        if (contactPersonId == Guid.Empty) throw new ArgumentException("Canonical buyer contact id cannot be empty.", nameof(contactPersonId));
+        BuyerCompanyId = companyId;
+        BuyerCompanyContactPersonId = contactPersonId;
+    }
 
     public static SellingBuyerAccessLink Create(
         Guid tenantId,

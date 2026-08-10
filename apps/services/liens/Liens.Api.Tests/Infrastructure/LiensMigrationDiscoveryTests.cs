@@ -28,6 +28,8 @@ public class LiensMigrationDiscoveryTests
         Assert.Contains("20260731000001_AddLienPurchaseAndSettlementDates", migrationIds);
         Assert.Contains("20260729163919_SecureSellingBuyerAccessAndAddIdempotencyRecords", migrationIds);
         Assert.Contains("20260729163918_RecordPublicBuyerAccountActivation", migrationIds);
+        Assert.Contains("20260809105501_AddSellingCompanyDirectory", migrationIds);
+        Assert.Contains("20260809185312_AddSellingPartyCompatibility", migrationIds);
     }
 
     [Fact]
@@ -45,6 +47,8 @@ public class LiensMigrationDiscoveryTests
             typeof(Liens.Infrastructure.Persistence.Migrations.AddLienPurchaseAndSettlementDates),
             typeof(Liens.Infrastructure.Persistence.Migrations.SecureSellingBuyerAccessAndAddIdempotencyRecords),
             typeof(Liens.Infrastructure.Persistence.Migrations.RecordPublicBuyerAccountActivation),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddSellingCompanyDirectory),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddSellingPartyCompatibility),
         };
 
         foreach (var migrationType in migrationTypes)

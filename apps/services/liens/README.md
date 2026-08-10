@@ -118,6 +118,38 @@ resolution uses bounded parallelism so multiple seller organizations do not seri
 | `GET` | `/api/liens/selling/bulk-import-template` | Downloads the current CSV template for a staged selling-lien bulk import. |
 | `POST` | `/api/liens/selling/bulk-imports` | Uploads a CSV, XLS, or XLSX selling-lien import using `multipart/form-data`. The import is staged tenant-scoped for subsequent validation and confirmation; it does not create liens directly. Confirmation rejects an import with `INVALID` rows until it is corrected and validated again; otherwise it creates rows independently and reports `PARTIAL` with failed-row reasons when an individual row cannot be persisted. Each valid row creates one lien with collision-resistant lien and servicing identifiers; rows with the same Case Code link to one existing seller case or create one shared case. Funding Company, Facility Name, and Medical Provider Name are matched case-insensitively to active records when there is exactly one match; otherwise their imported text is retained without a linked record. Medical Code & Description creates both Selling pricing and legacy medical-code records. |
 
+### Selling company directory
+
+The Selling API includes a seller-organization-scoped company directory. Companies are always owned by the authenticated
+tenant and seller organization; callers cannot assign that ownership through the request body. `linkedTenantId` is an
+optional logical association with another LegalSynq tenant and is not a cross-service database foreign key. Company types
+and their contact-person types are deterministic read-only reference data for Law Firm, Funding Company, Medical Provider,
+and Medical Facility. Each company contact has one contact-person type from the company's type-specific role list.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/liens/selling/lookups/company-types` | Lists the four active company types. |
+| `GET` | `/api/liens/selling/lookups/contact-person-types?companyTypeId={id}` | Lists the active contact roles for one company type. |
+| `GET`, `POST` | `/api/liens/selling/companies` | Searches or creates companies for the authenticated tenant and seller organization. Search supports `search`, `companyTypeId`, `isActive`, `page`, and `pageSize` (maximum 200). |
+| `GET`, `PUT`, `DELETE` | `/api/liens/selling/companies/{companyId}` | Reads, updates, or soft-deactivates a scoped company. Company type is immutable after creation. |
+| `PUT` | `/api/liens/selling/companies/{companyId}/reactivate` | Reactivates a company without changing its contact activation states. |
+| `GET`, `POST` | `/api/liens/selling/companies/{companyId}/contacts` | Lists or creates company contacts. New contacts require an active company and a role belonging to its company type. |
+| `GET`, `PUT`, `DELETE` | `/api/liens/selling/companies/{companyId}/contacts/{contactId}` | Reads, updates, or soft-deactivates a company contact. |
+| `PUT` | `/api/liens/selling/companies/{companyId}/contacts/{contactId}/reactivate` | Reactivates a contact when its parent company is active. |
+
+All company-directory mutations require `Idempotency-Key`. Reads require `lien_sale:read`, creates require
+`lien_sale:create`, and updates/deactivation/reactivation require `lien_sale:update`. The directory intentionally remains
+independent from the existing funding-company, law-firm, case-manager, and facility Selling lookups, whose identifiers are
+still consumed by lien intake, imports, reports, notifications, and sale confirmation.
+
+The additive compatibility schema stores namespace-, scope-, and workflow-specific aliases plus nullable canonical
+sidecar references while legacy identifiers and `Case.Notes` remain authoritative. Rollout controls are independent and
+default off: `SellingPartyCompatibility:BackfillEnabled`, `DualWriteEnabled`, `ShadowReadEnabled`, and
+`CanonicalReadEnabled`; `BackfillBatchSize` defaults to 100. Enabling backfill creates deterministic, resumable
+checkpoints and immutable preferred aliases for existing directory companies. Transient batches use fresh service scopes
+and are bounded by `BackfillMaxRetries` (default 3) and `BackfillRetryDelayMilliseconds` (default 250). Do not enable canonical reads until each
+Selling workflow has zero unexplained contract diffs and its dual-write/shadow-read coverage has been completed.
+
 Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. The request only confirms
 seller acceptance; notification delivery is mandatory and cannot be opted out through request payload. On every
 confirmation, the service validates real buyer/seller contact data, creates a 30-day buyer response link and a separate

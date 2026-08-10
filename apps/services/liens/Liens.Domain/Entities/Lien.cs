@@ -51,6 +51,10 @@ public class Lien : AuditableEntity
     public string? ListingVisibility { get; private set; }
     public Guid? FundingCompanyId { get; private set; }
     public Guid? FundingCompanyContactId { get; private set; }
+    public Guid? FundingCompanyCompanyId { get; private set; }
+    public Guid? FundingCompanyContactPersonId { get; private set; }
+    public Guid? MedicalProviderCompanyId { get; private set; }
+    public Guid? MedicalFacilityCompanyId { get; private set; }
     public decimal? AskAmount { get; private set; }
     public decimal? HighestBidAmount { get; private set; }
     public DateTime? SubmittedForSaleAtUtc { get; private set; }
@@ -60,6 +64,21 @@ public class Lien : AuditableEntity
     public string? ArchivedReason { get; private set; }
 
     private Lien() { }
+
+    public void LinkCanonicalSellingParties(
+        Guid? fundingCompanyCompanyId,
+        Guid? fundingCompanyContactPersonId,
+        Guid? medicalProviderCompanyId,
+        Guid? medicalFacilityCompanyId)
+    {
+        FundingCompanyCompanyId = NormalizeOptionalId(fundingCompanyCompanyId, nameof(fundingCompanyCompanyId));
+        FundingCompanyContactPersonId = NormalizeOptionalId(fundingCompanyContactPersonId, nameof(fundingCompanyContactPersonId));
+        MedicalProviderCompanyId = NormalizeOptionalId(medicalProviderCompanyId, nameof(medicalProviderCompanyId));
+        MedicalFacilityCompanyId = NormalizeOptionalId(medicalFacilityCompanyId, nameof(medicalFacilityCompanyId));
+    }
+
+    private static Guid? NormalizeOptionalId(Guid? id, string parameterName)
+        => id == Guid.Empty ? throw new ArgumentException("Canonical id cannot be empty.", parameterName) : id;
 
     public static Lien Create(
         Guid tenantId,

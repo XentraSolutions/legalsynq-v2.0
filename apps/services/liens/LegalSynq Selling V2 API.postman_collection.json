@@ -23,7 +23,11 @@
     { "key": "facilityId", "value": "00000000-0000-0000-0000-000000000000" },
     { "key": "documentId", "value": "00000000-0000-0000-0000-000000000000" },
     { "key": "contactId", "value": "00000000-0000-0000-0000-000000000000" },
-    { "key": "targetContactId", "value": "00000000-0000-0000-0000-000000000000" }
+    { "key": "targetContactId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "companyTypeId", "value": "10000000-0000-0000-0000-000000000001" },
+    { "key": "contactPersonTypeId", "value": "20000000-0000-0000-0000-000000000001" },
+    { "key": "companyId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "companyContactId", "value": "00000000-0000-0000-0000-000000000000" }
   ],
   "item": [
     {
@@ -199,7 +203,41 @@
       ]
     },
     {
-      "name": "05 - Authenticated Buyer",
+      "name": "05 - Company Directory",
+      "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}", "type": "string" }] },
+      "item": [
+        { "name": "Company Types", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/lookups/company-types" } },
+        { "name": "Contact Person Types", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/lookups/contact-person-types?companyTypeId={{companyTypeId}}" } },
+        { "name": "List Companies", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/companies?search=&companyTypeId=&isActive=true&page=1&pageSize=20" } },
+        {
+          "name": "Create Company",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.id) pm.collectionVariables.set('companyId', body.id);"] } }],
+          "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"companyTypeId\": \"{{companyTypeId}}\",\n  \"name\": \"Postman Company\",\n  \"addressLine1\": \"100 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90001\",\n  \"phone\": \"+15555550100\",\n  \"email\": \"company@example.test\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/companies" }
+        },
+        { "name": "Get Company", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}" } },
+        {
+          "name": "Update Company",
+          "request": { "method": "PUT", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"linkedTenantId\": null,\n  \"name\": \"Postman Company Updated\",\n  \"addressLine1\": \"200 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90002\",\n  \"phone\": \"+15555550101\",\n  \"email\": \"company.updated@example.test\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}" }
+        },
+        {
+          "name": "Create Company Contact",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.id) pm.collectionVariables.set('companyContactId', body.id);"] } }],
+          "request": { "method": "POST", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"contactPersonTypeId\": \"{{contactPersonTypeId}}\",\n  \"firstName\": \"Alex\",\n  \"lastName\": \"Contact\",\n  \"email\": \"alex@example.test\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts" }
+        },
+        { "name": "List Company Contacts", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts?isActive=true" } },
+        { "name": "Get Company Contact", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts/{{companyContactId}}" } },
+        {
+          "name": "Update Company Contact",
+          "request": { "method": "PUT", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"contactPersonTypeId\": \"{{contactPersonTypeId}}\",\n  \"firstName\": \"Alex\",\n  \"lastName\": \"Contact Updated\",\n  \"addressLine1\": \"200 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90002\",\n  \"phone\": \"+15555550102\",\n  \"email\": \"alex.updated@example.test\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts/{{companyContactId}}" }
+        },
+        { "name": "Deactivate Company Contact", "request": { "method": "DELETE", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }], "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts/{{companyContactId}}" } },
+        { "name": "Reactivate Company Contact", "request": { "method": "PUT", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }], "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts/{{companyContactId}}/reactivate" } },
+        { "name": "Deactivate Company", "request": { "method": "DELETE", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }], "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}" } },
+        { "name": "Reactivate Company", "request": { "method": "PUT", "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }], "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/reactivate" } }
+      ]
+    },
+    {
+      "name": "06 - Authenticated Buyer",
       "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{buyerToken}}", "type": "string" }] },
       "item": [
         { "name": "View Submitted Lien", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/buyer/liens/by-lien/{{sellerLienId}}" } },
@@ -214,7 +252,7 @@
       ]
     },
     {
-      "name": "06 - Public Buyer Token",
+      "name": "07 - Public Buyer Token",
       "item": [
         { "name": "View Public Lien", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/selling/public/{{buyerAccessToken}}" } },
         {
@@ -236,7 +274,7 @@
       ]
     },
     {
-      "name": "07 - Contacts",
+      "name": "08 - Contacts",
       "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}", "type": "string" }] },
       "item": [
         { "name": "List Contacts", "request": { "method": "GET", "url": "{{baseUrl}}/api/liens/contacts?search=&contactType=&isActive=true&page=1&pageSize=25" } },

@@ -18,6 +18,8 @@ public class SellingBuyerAccessLinkConfiguration : IEntityTypeConfiguration<Sell
         builder.Property(l => l.SellerOrgId).IsRequired();
         builder.Property(l => l.BuyerOrgId).IsRequired();
         builder.Property(l => l.BuyerContactId).IsRequired();
+        builder.Property(l => l.BuyerCompanyId);
+        builder.Property(l => l.BuyerCompanyContactPersonId);
 
         builder.Property(l => l.TokenHash)
             .IsRequired(false)
@@ -96,5 +98,8 @@ public class SellingBuyerAccessLinkConfiguration : IEntityTypeConfiguration<Sell
             .WithMany()
             .HasForeignKey(l => l.LienId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Company>().WithMany().HasForeignKey(l => l.BuyerCompanyId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<CompanyContactPerson>().WithMany().HasForeignKey(l => l.BuyerCompanyContactPersonId).OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -1,0 +1,318 @@
+{
+  "info": {
+    "_postman_id": "6d1a3a65-3bbf-4c95-873b-a26e647d658f",
+    "name": "LegalSynq Company and Contact Person API",
+    "description": "Standalone collection for all Selling Company and Company Contact Person endpoints. Set sellerToken before use. Change idempotencyKey before starting a new mutation run; keep it unchanged only when retrying the same requests and payloads.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{sellerToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "01 - Lookups",
+      "item": [
+        {
+          "name": "Get Company Types",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/selling/lookups/company-types",
+            "description": "Returns the available company types. Requires lien_sale:read."
+          }
+        },
+        {
+          "name": "Get Contact Person Types",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/selling/lookups/contact-person-types?companyTypeId={{companyTypeId}}",
+            "description": "Returns contact person types valid for the selected company type. Requires lien_sale:read."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Companies",
+      "item": [
+        {
+          "name": "List Companies",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/selling/companies?search=&isActive=true&page=1&pageSize=20",
+            "description": "Searches active companies in the current tenant and organization scope. Add companyTypeId={{companyTypeId}} to filter by type. Requires lien_sale:read."
+          }
+        },
+        {
+          "name": "Create Company",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('companyId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-create-company",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyTypeId\": \"{{companyTypeId}}\",\n  \"linkedTenantId\": null,\n  \"name\": \"Postman Company\",\n  \"addressLine1\": \"100 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90001\",\n  \"phone\": \"+15555550100\",\n  \"email\": \"company@example.test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/selling/companies",
+            "description": "Creates a company and saves its response ID to companyId. linkedTenantId is optional. Requires lien_sale:create."
+          }
+        },
+        {
+          "name": "Get Company",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}",
+            "description": "Returns one company in the current tenant and organization scope. Requires lien_sale:read."
+          }
+        },
+        {
+          "name": "Update Company",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-update-company",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"linkedTenantId\": null,\n  \"name\": \"Postman Company Updated\",\n  \"addressLine1\": \"200 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90002\",\n  \"phone\": \"+15555550101\",\n  \"email\": \"company.updated@example.test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}",
+            "description": "Updates the selected company. Company type and ownership scope cannot be changed here. Requires lien_sale:update."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Company Contact Persons",
+      "item": [
+        {
+          "name": "List Company Contact Persons",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts?isActive=true",
+            "description": "Lists active contact persons for the selected company. Set isActive=false to list inactive contacts. Requires lien_sale:read."
+          }
+        },
+        {
+          "name": "Create Company Contact Person",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.id) pm.collectionVariables.set('companyContactId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-create-contact",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactPersonTypeId\": \"{{contactPersonTypeId}}\",\n  \"firstName\": \"Alex\",\n  \"lastName\": \"Contact\",\n  \"addressLine1\": \"100 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90001\",\n  \"phone\": \"+15555550102\",\n  \"email\": \"alex@example.test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts",
+            "description": "Creates a contact person and saves its response ID to companyContactId. contactPersonTypeId must belong to the company's type. Requires lien_sale:create."
+          }
+        },
+        {
+          "name": "Get Company Contact Person",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts/{{companyContactId}}",
+            "description": "Returns one contact person belonging to the selected company. Requires lien_sale:read."
+          }
+        },
+        {
+          "name": "Update Company Contact Person",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-update-contact",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactPersonTypeId\": \"{{contactPersonTypeId}}\",\n  \"firstName\": \"Alex\",\n  \"lastName\": \"Contact Updated\",\n  \"addressLine1\": \"200 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90002\",\n  \"phone\": \"+15555550103\",\n  \"email\": \"alex.updated@example.test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts/{{companyContactId}}",
+            "description": "Updates the selected contact person. contactPersonTypeId must belong to the company's type. Requires lien_sale:update."
+          }
+        },
+        {
+          "name": "Deactivate Company Contact Person",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-deactivate-contact",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts/{{companyContactId}}",
+            "description": "Soft-deactivates the selected contact person. Requires lien_sale:update."
+          }
+        },
+        {
+          "name": "Reactivate Company Contact Person",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-reactivate-contact",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts/{{companyContactId}}/reactivate",
+            "description": "Reactivates the selected contact person. Requires lien_sale:update."
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Company Status",
+      "item": [
+        {
+          "name": "Deactivate Company",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-deactivate-company",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}",
+            "description": "Soft-deactivates the selected company. Requires lien_sale:update."
+          }
+        },
+        {
+          "name": "Reactivate Company",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}-reactivate-company",
+                "type": "text"
+              }
+            ],
+            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/reactivate",
+            "description": "Reactivates the selected company. Requires lien_sale:update."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5010"
+    },
+    {
+      "key": "sellerToken",
+      "value": ""
+    },
+    {
+      "key": "idempotencyKey",
+      "value": "company-api-postman-001"
+    },
+    {
+      "key": "companyTypeId",
+      "value": "10000000-0000-0000-0000-000000000001"
+    },
+    {
+      "key": "contactPersonTypeId",
+      "value": "20000000-0000-0000-0000-000000000001"
+    },
+    {
+      "key": "companyId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "companyContactId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}
