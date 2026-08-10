@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { xeniaClient } from '@/lib/xenia/client';
+import { formatShortTimestamp } from '@/lib/format-date';
+import { useTimezone } from '@/lib/use-timezone';
 import {
   Select,
   SelectContent,
@@ -47,6 +49,7 @@ interface XeniaAssistantProps {
 export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistantProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const timezone = useTimezone();
   const [bootstrap, setBootstrap] = useState<XeniaBootstrap | null>(null);
   const [conversations, setConversations] = useState<XeniaConversationSummary[]>([]);
   const [activeConversation, setActiveConversation] = useState<XeniaConversation | null>(null);
@@ -313,9 +316,15 @@ export function XeniaAssistant({ mode = 'page', initialContext }: XeniaAssistant
                 <button
                   type="button"
                   onClick={() => selectConversation(conversation.id)}
-                  className="min-w-0 flex-1 truncate text-left"
+                  className="min-w-0 flex-1 text-left"
                 >
-                  {conversation.title}
+                  <span className="block truncate">{conversation.title}</span>
+                  <time
+                    dateTime={conversation.createdAtUtc}
+                    className="mt-0.5 block text-xs text-gray-400"
+                  >
+                    {formatShortTimestamp(conversation.createdAtUtc, timezone)}
+                  </time>
                 </button>
                 <button
                   type="button"
