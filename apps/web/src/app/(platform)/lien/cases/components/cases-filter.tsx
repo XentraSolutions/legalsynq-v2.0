@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { FormModal } from "@/components/lien/modal";
 import { BaseSelect } from "@/components/ui/base-select";
-import { FilterSection, InfiniteFilterList } from "@/components/lien/filter-section";
+import {
+  FilterSection,
+  InfiniteFilterList,
+} from "@/components/lien/filter-section";
 import {
   useInfiniteContactOptions,
   useInfiniteCaseManagerOptions,
@@ -34,12 +37,20 @@ interface CasesFilterProps {
   primaryReady?: boolean;
 }
 
-export function CasesFilter({ open, onClose, value, onApplyFilter, primaryReady }: CasesFilterProps) {
+export function CasesFilter({
+  open,
+  onClose,
+  value,
+  onApplyFilter,
+  primaryReady,
+}: CasesFilterProps) {
   const [draft, setDraft] = useState<CasesFilterValues>(value);
 
   const listsEnabled = open || !!primaryReady;
 
-  const lawFirms = useInfiniteContactOptions("LawFirm", { enabled: listsEnabled });
+  const lawFirms = useInfiniteContactOptions("LawFirm", {
+    enabled: listsEnabled,
+  });
   // Scoped to the law firm(s) currently selected in this draft, same as LiensFilter.
   const caseManagers = useInfiniteCaseManagerOptions({
     enabled: listsEnabled,
@@ -47,7 +58,47 @@ export function CasesFilter({ open, onClose, value, onApplyFilter, primaryReady 
   });
   const accidentTypes = useAccidentTypeOptions();
   const statuses = useCaseStatusOptions();
+  const casesStatuses = {
+    ...statuses,
+    options: (() => {
+      // 1. Map the statuses with the updated Litigation (Open) value
+      const mappedOptions = statuses.options.map((s) =>
+        s.value.includes("Litigation")
+          ? { ...s, value: "Litigation(Open)", label: `Litigation (Open)` }
+          : s,
+      );
 
+      // 2. Remove any existing Litigation items from the main flow to place them explicitly
+      const filtered = mappedOptions.filter(
+        (s) =>
+          ![
+            "Litigation(Open)",
+            "Litigation(Pending)",
+            "Litigation(Closed)",
+          ].includes(s.value),
+      );
+
+      // Find where Litigation (Open) was originally located, or fallback to the end
+      const openIndex = mappedOptions.findIndex(
+        (s) => s.value === "Litigation(Open)",
+      );
+      const insertIndex = openIndex !== -1 ? openIndex : filtered.length;
+
+      // 3. Insert Pending, Open, and Closed together at that exact spot
+      filtered.splice(
+        insertIndex,
+        0,
+        {
+          value: "Litigation(Pending)",
+          label: "Litigation (Pending)",
+        },
+        mappedOptions[openIndex], // This is the updated Litigation (Open)
+        { value: "Litigation(Closed)", label: "Litigation (Closed)" },
+      );
+
+      return filtered;
+    })(),
+  };
   // Re-sync the draft with the page's active filters every time the modal opens.
   useEffect(() => {
     if (open) setDraft(value);
@@ -131,7 +182,9 @@ export function CasesFilter({ open, onClose, value, onApplyFilter, primaryReady 
                 showCheckboxes
                 options={accidentTypes.options}
                 value={draft.accidentTypeId}
-                onChange={(values) => setDraft({ ...draft, accidentTypeId: values })}
+                onChange={(values) =>
+                  setDraft({ ...draft, accidentTypeId: values })
+                }
                 isLoading={accidentTypes.isLoading}
                 searchPlaceholder="Search Accident Type…"
                 emptyText="No results found"
@@ -139,7 +192,7 @@ export function CasesFilter({ open, onClose, value, onApplyFilter, primaryReady 
             </FilterSection>
             <FilterSection
               label="Status"
-              source={statuses}
+              source={casesStatuses}
               selected={draft.statusId}
               onChange={(v) => setDraft({ ...draft, statusId: v })}
             >
@@ -147,7 +200,7 @@ export function CasesFilter({ open, onClose, value, onApplyFilter, primaryReady 
                 multiple
                 inline
                 showCheckboxes
-                options={statuses.options}
+                options={casesStatuses.options}
                 value={draft.statusId}
                 onChange={(values) => setDraft({ ...draft, statusId: values })}
                 isLoading={statuses.isLoading}
