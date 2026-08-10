@@ -22,6 +22,7 @@ interface DateRangePickerProps {
   /** Renders a quick-select preset sidebar (Today/Yesterday/.../Last Year) alongside a two-month calendar. */
   presets?: boolean;
   disableFutureDates?: boolean;
+  onClear?: () => void;
 }
 
 function parseDate(value?: string): Date | undefined {
@@ -168,6 +169,7 @@ export function DateRangePicker({
   disabled,
   presets = false,
   disableFutureDates = false,
+  onClear,
 }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false);
   const [maxDate] = React.useState(() =>
@@ -408,6 +410,17 @@ export function DateRangePicker({
               }}
             />
           </div>
+          {onClear && (
+            <button
+              type="button"
+              className={cn(
+                "h-9 rounded-lg  bg-white px-3 py-1 text-xs text-left text-primary cursor-pointer",
+              )}
+              onClick={onClear}
+            >
+              Clear
+            </button>
+          )}
         </PopoverPrimitive.Content>
       </PopoverPrimitive.Portal>
     </PopoverPrimitive.Root>

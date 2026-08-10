@@ -96,10 +96,16 @@ export default function LienDashboardPage() {
   const [reportPage, setReportPage] = useState(1);
 
   const { data: dashboardStats } = useDashboardStats();
-  const { data: reports, isLoading: reportLoading } =
-    useDashboardReports(dashboardRange);
-  const { data: reportDetails, isLoading: reportDetailsLoading } =
-    useDashboardReportDetails(activeReport, dashboardRange, reportPage);
+  const {
+    data: reports,
+    isLoading: reportLoading,
+    refetch,
+  } = useDashboardReports(dashboardRange);
+  const {
+    data: reportDetails,
+    isLoading: reportDetailsLoading,
+    refetch: refetchReportDetails,
+  } = useDashboardReportDetails(activeReport, dashboardRange, reportPage);
 
   const lawFirmAllocation = reports?.lawFirms.segments ?? [];
   const lawFirmRows = reports?.lawFirms.rows ?? [];
@@ -320,9 +326,7 @@ export default function LienDashboardPage() {
         { label: "Law Firm", render: (r: CaseReportItem) => r.lawFirm ?? "—" },
       ],
       rows:
-        activeReport === "lawFirm"
-          ? (reportDetails?.rows ?? [])
-          : lawFirmRows,
+        activeReport === "lawFirm" ? (reportDetails?.rows ?? []) : lawFirmRows,
       rowKey: (r: CaseReportItem) => r.id,
     },
     facility: {
@@ -390,6 +394,11 @@ export default function LienDashboardPage() {
             value={dashboardRange}
             onChange={setDashboardRange}
             placeholder="Filter by date range"
+            onClear={() => {
+              setDashboardRange({});
+              refetch();
+              refetchReportDetails();
+            }}
           />
         </div>
       </div>
