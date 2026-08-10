@@ -28,6 +28,12 @@ export type MainStackParamList = {
   SellLien: undefined;
   MyLiens: undefined;
   Servicing: undefined;
+  Contacts: undefined;
+  ContactDetail: { contactId: string };
+  ContactForm: { contactId?: string; contactType?: string };
+  ReassignContactCases: { contactId: string };
+  FacilityDetail: { facilityId: string };
+  FacilityForm: { facilityId?: string };
   OfferDetail: { offerId: string };
   CaseDetail: { caseId: string; initialTab?: 'servicing' };
   CaseTaskForm: { caseId: string; taskId?: string };

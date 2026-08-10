@@ -10,6 +10,13 @@ import {
 } from '@/features/cases';
 import { DashboardReportDetailScreen } from '@/features/dashboard';
 import {
+  ContactDetailScreen,
+  ContactFormScreen,
+  ContactsScreen,
+  ReassignContactCasesScreen,
+} from '@/features/contacts';
+import { FacilityDetailScreen, FacilityFormScreen } from '@/features/contacts';
+import {
   CreateLienScreen,
   EditLienScreen,
   LienDetailScreen,
@@ -39,6 +46,12 @@ export function MainStack() {
       <Stack.Screen component={SellLienScreen} name="SellLien" />
       <Stack.Screen component={MyLiensScreen} name="MyLiens" />
       <Stack.Screen component={ServicingListScreen} name="Servicing" />
+      <Stack.Screen component={ContactsScreen} name="Contacts" />
+      <Stack.Screen component={ContactDetailScreen} name="ContactDetail" />
+      <Stack.Screen component={ContactFormScreen} name="ContactForm" />
+      <Stack.Screen component={ReassignContactCasesScreen} name="ReassignContactCases" />
+      <Stack.Screen component={FacilityDetailScreen} name="FacilityDetail" />
+      <Stack.Screen component={FacilityFormScreen} name="FacilityForm" />
       <Stack.Screen component={OfferDetailScreen} name="OfferDetail" />
       <Stack.Screen component={CaseDetailScreen} name="CaseDetail" />
       <Stack.Screen component={CaseTaskFormScreen} name="CaseTaskForm" />

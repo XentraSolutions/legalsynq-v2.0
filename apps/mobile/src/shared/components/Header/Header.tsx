@@ -15,9 +15,18 @@ export interface HeaderProps {
   showMenu?: boolean;
   onBack?: () => void;
   rightAction?: ReactNode;
+  rightActionContainerClassName?: string;
 }
 
-export function Header({ title, subtitle, showBack = false, showMenu, onBack, rightAction }: HeaderProps) {
+export function Header({
+  title,
+  subtitle,
+  showBack = false,
+  showMenu,
+  onBack,
+  rightAction,
+  rightActionContainerClassName,
+}: HeaderProps) {
   const [menuVisible, setMenuVisible] = useState(false);
   const { colorScheme } = useNativeWindColorScheme();
   const isDark = colorScheme === 'dark';
@@ -48,18 +57,29 @@ export function Header({ title, subtitle, showBack = false, showMenu, onBack, ri
           ) : null}
         </View>
         <View className={cx('flex-1', showBack ? 'items-center' : 'ml-3 items-start')}>
-          <Text className={cx(FIGMA_TEXT.cardTitle, 'text-[#202228] dark:text-white')} numberOfLines={1}>
+          <Text
+            className={cx(FIGMA_TEXT.cardTitle, 'text-[#202228] dark:text-white')}
+            numberOfLines={1}
+          >
             {title}
           </Text>
           {subtitle ? (
-            <Text className={cx(FIGMA_TEXT.dashboardSubtitle, 'mt-0.5 text-[#8a8d96] dark:text-[#8d9099]')} numberOfLines={1}>
+            <Text
+              className={cx(
+                FIGMA_TEXT.dashboardSubtitle,
+                'mt-0.5 text-[#8a8d96] dark:text-[#8d9099]'
+              )}
+              numberOfLines={1}
+            >
               {subtitle}
             </Text>
           ) : null}
         </View>
-        <View className="w-10 items-end">{rightAction}</View>
+        <View className={cx('w-10 items-end', rightActionContainerClassName)}>{rightAction}</View>
       </View>
-      {shouldShowMenu ? <AppMenu visible={menuVisible} onClose={() => setMenuVisible(false)} /> : null}
+      {shouldShowMenu ? (
+        <AppMenu visible={menuVisible} onClose={() => setMenuVisible(false)} />
+      ) : null}
     </SafeAreaView>
   );
 }

@@ -159,6 +159,18 @@ export function normalizePagedResult<TItem>(payload: unknown): PagedResult<TItem
 }
 
 export const CasesApi = {
+  async batchReassignContact(body: {
+    contactType: string;
+    oldId: string;
+    newId: string;
+  }): Promise<{ isSuccess: boolean; message: string }> {
+    const response = await apiClient.post<{ isSuccess: boolean; message: string }>(
+      `${CASES_BASE_PATH}/batch-reassign`,
+      body
+    );
+    return response.data;
+  },
+
   async listCases(params: CaseQueryParams): Promise<PagedResult<Case>> {
     const response = await apiClient.get<PagedResult<Case>>(CASES_BASE_PATH, { params });
     return response.data;
@@ -228,8 +240,7 @@ export const CasesApi = {
       ...update,
       title: update.title ?? update.action ?? 'Lien Update',
       updatedAt:
-        update.updatedAt ??
-        (typeof update.timestamp === 'string' ? update.timestamp : undefined),
+        update.updatedAt ?? (typeof update.timestamp === 'string' ? update.timestamp : undefined),
     }));
   },
 

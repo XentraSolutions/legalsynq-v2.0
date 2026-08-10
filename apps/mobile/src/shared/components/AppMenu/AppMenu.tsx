@@ -26,6 +26,7 @@ type DirectRoute = keyof Pick<
   MainStackParamList,
   | 'Dashboard'
   | 'Cases'
+  | 'Contacts'
   | 'Marketplace'
   | 'MyLiens'
   | 'Offers'
@@ -75,7 +76,7 @@ const MENU_SECTIONS: Record<AccountMode, MenuSection[]> = {
         },
         {
           label: 'Contacts',
-          subtitle: 'Contact management will be added in a future pass.',
+          route: 'Contacts',
           visibilityKey: 'contacts',
         },
       ],
@@ -133,7 +134,7 @@ const MENU_SECTIONS: Record<AccountMode, MenuSection[]> = {
         },
         {
           label: 'Contacts',
-          subtitle: 'Contact management will be added in a future pass.',
+          route: 'Contacts',
           visibilityKey: 'contacts',
         },
       ],
@@ -220,6 +221,9 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
         break;
       case 'Cases':
         navigation.navigate('Cases');
+        break;
+      case 'Contacts':
+        navigation.navigate('Contacts');
         break;
       case 'Marketplace':
         navigation.navigate('Marketplace');
