@@ -1,5 +1,6 @@
 export * from './authentication';
 export * from './cases';
+export * from './contacts';
 export * from './dashboard';
 export * from './liens';
 export * from './offers';

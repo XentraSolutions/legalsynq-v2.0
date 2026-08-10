@@ -2,6 +2,7 @@ export * from './Authentication';
 export * from './BillOfSales';
 export * from './Cases';
 export * from './Contacts';
+export * from './Facilities';
 export * from './Documents';
 export * from './LegacyPsa';
 export * from './Liens';

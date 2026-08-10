@@ -53,4 +53,11 @@ export const ContactsApi = {
     const response = await apiClient.get<Contact[]>(`${BASE_PATH}/${TYPE_PATHS[type]}`);
     return response.data;
   },
+
+  async exportCsv(contactType?: string): Promise<string> {
+    const response = await apiClient.post<{ data: string }>(`${BASE_PATH}/export-csv`, {
+      contactType,
+    });
+    return response.data.data;
+  },
 };
