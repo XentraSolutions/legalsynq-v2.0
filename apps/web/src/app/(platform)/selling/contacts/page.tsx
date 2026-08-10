@@ -268,6 +268,7 @@ function CompaniesListView() {
 
   const toolbar = (
     <FilterToolbar
+      bare
       searchPlaceholder="Search companies by name, email..."
       onSearch={setSearchInput}
       filters={[

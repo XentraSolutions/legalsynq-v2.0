@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { BaseSelect } from '@/components/ui/base-select';
+import { cn } from '@/lib/utils';
 
 interface FilterOption {
   value: string;
@@ -16,13 +18,20 @@ interface FilterToolbarProps {
   onSearchFocus?: () => void;
   onSearchBlur?: () => void;
   dropdown?: React.ReactNode;
+  /** Skip the outer card chrome (background/border/rounding) — for embedding inside another bordered container, e.g. BaseTable's `toolbar` slot. */
+  bare?: boolean;
 }
 
-export function FilterToolbar({ searchPlaceholder = 'Search...', filters, onSearch, searchValue = '', children, onSearchFocus, onSearchBlur, dropdown }: FilterToolbarProps) {
+export function FilterToolbar({ searchPlaceholder = 'Search...', filters, onSearch, searchValue = '', children, onSearchFocus, onSearchBlur, dropdown, bare }: FilterToolbarProps) {
   const [query, setQuery] = useState(searchValue);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-3',
+        bare ? 'px-4 py-3 border-b border-gray-100' : 'bg-white border border-gray-200 rounded-xl px-4 py-3',
+      )}
+    >
       <div className="relative flex-1 min-w-[200px]">
         <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
         <input
@@ -37,17 +46,15 @@ export function FilterToolbar({ searchPlaceholder = 'Search...', filters, onSear
         {dropdown}
       </div>
       {filters?.map((filter, i) => (
-        <select
+        <BaseSelect
           key={i}
           value={filter.value}
-          onChange={(e) => filter.onChange(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary/20"
-        >
-          <option value="">{filter.label}</option>
-          {filter.options.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+          onChange={(v) => filter.onChange(v)}
+          options={filter.options}
+          placeholder={filter.label}
+          clearable
+          className="w-auto min-w-[130px]"
+        />
       ))}
       {children}
     </div>
