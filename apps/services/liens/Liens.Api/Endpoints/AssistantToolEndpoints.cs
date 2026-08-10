@@ -188,6 +188,7 @@ public static class AssistantToolEndpoints
             Guid id,
             ILienService liens,
             ICaseService cases,
+            ISettlementService settlements,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
@@ -203,13 +204,14 @@ public static class AssistantToolEndpoints
             if (!CanReadLien(lien, visibility))
                 return Results.Forbid();
 
-            return Results.Ok(new SynqLienLienLookupOutcome(true, "completed", null, await ToLienLookupResultAsync(lien, cases, tenantId, ct)));
+            return Results.Ok(new SynqLienLienLookupOutcome(true, "completed", null, await ToLienLookupResultAsync(lien, cases, settlements, tenantId, ct)));
         });
 
         group.MapGet("/liens/by-number/{lienNumber}", async (
             string lienNumber,
             ILienService liens,
             ICaseService cases,
+            ISettlementService settlements,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
@@ -225,7 +227,7 @@ public static class AssistantToolEndpoints
             if (!CanReadLien(lien, visibility))
                 return Results.Forbid();
 
-            return Results.Ok(new SynqLienLienLookupOutcome(true, "completed", null, await ToLienLookupResultAsync(lien, cases, tenantId, ct)));
+            return Results.Ok(new SynqLienLienLookupOutcome(true, "completed", null, await ToLienLookupResultAsync(lien, cases, settlements, tenantId, ct)));
         });
 
         group.MapGet("/cases/search", async (
@@ -489,12 +491,20 @@ public static class AssistantToolEndpoints
     private static async Task<SynqLienLienLookupResult> ToLienLookupResultAsync(
         LienResponse lien,
         ICaseService cases,
+        ISettlementService settlements,
         Guid tenantId,
         CancellationToken ct)
     {
         CaseResponse? caseItem = null;
         if (lien.CaseId.HasValue)
             caseItem = await cases.GetByIdAsync(tenantId, lien.CaseId.Value, ct);
+
+        var reductions = await settlements.GetReductionsByLienAsync(tenantId, lien.Id, ct);
+        var reductionAmount = reductions
+            .OrderByDescending(item => item.ReductionDate)
+            .ThenByDescending(item => item.CreatedAtUtc)
+            .Select(item => (decimal?)item.Amount)
+            .FirstOrDefault();
 
         return new SynqLienLienLookupResult(
             lien.Id,
@@ -520,7 +530,7 @@ public static class AssistantToolEndpoints
             lien.EndServiceDate,
             lien.TotalPurchase,
             lien.TotalBilling,
-            ComputeReductionAmount(lien.TotalBilling, lien.TotalPurchase),
+            reductionAmount,
             ParseBooleanish(lien.IsServicing),
             NullIfWhiteSpace(lien.Description),
             0);
@@ -1528,11 +1538,6 @@ public static class AssistantToolEndpoints
     private static decimal ParseDecimal(string? value)
         => decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
-            : 0m;
-
-    private static decimal ComputeReductionAmount(decimal? totalBilling, decimal? totalPurchase)
-        => totalBilling.HasValue && totalPurchase.HasValue
-            ? Math.Max(totalBilling.Value - totalPurchase.Value, 0m)
             : 0m;
 
     private static bool ParseBooleanish(string? value)
