@@ -39,6 +39,7 @@ public sealed class CaseResponse
     public string? ChildSupportLiens { get; init; }
     public string? IsUccFiled { get; init; }
     public string? LawFirmId { get; init; }
+    public string? PendingLawFirmId { get; init; }
     public string? LawFirm { get; init; }
     public string? CaseManagerId { get; init; }
     public string? CaseManager { get; init; }

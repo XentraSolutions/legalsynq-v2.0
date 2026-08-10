@@ -227,6 +227,183 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         payload.RootElement.GetProperty("statusCounts").GetProperty("Closed").GetInt32().Should().Be(1);
     }
 
+    [Fact]
+    public async Task TotalLienReportV3_applies_purchase_dates_before_paging_and_summaries_and_defaults_no_date_to_completed_history()
+    {
+        var orgId = Guid.NewGuid();
+        var rangeStart = new DateOnly(2020, 6, 1);
+        var rangeEnd = new DateOnly(2020, 6, 30);
+        var liens = new[]
+        {
+            CreateDateParityLien(orgId, "LIEN-DATE-IN-START", rangeStart, LienStatus.Draft, 100m),
+            CreateDateParityLien(orgId, "LIEN-DATE-IN-END", rangeEnd, LienStatus.Settled, 200m),
+            CreateDateParityLien(orgId, "LIEN-DATE-PAST", rangeStart.AddDays(-1), LienStatus.Cancelled, 300m),
+            CreateDateParityLien(orgId, "LIEN-DATE-FUTURE", new DateOnly(2099, 1, 1), LienStatus.Draft, 400m),
+            CreateDateParityLien(orgId, "LIEN-DATE-NULL", null, LienStatus.Draft, 500m),
+        };
+        var servicingItems = new[]
+        {
+            CreateDateParityMedicalCode(orgId, liens[0], 100m, 200m),
+            CreateDateParityMedicalCode(orgId, liens[1], 50m, 80m),
+            CreateDateParityMedicalCode(orgId, liens[2], 700m, 900m),
+            CreateDateParityMedicalCode(orgId, liens[3], 1_100m, 1_500m),
+            CreateDateParityMedicalCode(orgId, liens[4], 1_300m, 1_700m),
+        };
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.Liens.AddRange(liens);
+        db.ServicingItems.AddRange(servicingItems);
+        await db.SaveChangesAsync();
+
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTokenHelper.CreateFullAccessToken(SeedHelper.TenantId, SeedHelper.UserId, orgId));
+
+        try
+        {
+            var filteredResponse = await _client.PostAsJsonAsync(
+                "/api/liens/cases/dashboard/total-lien-report-export/v3",
+                new
+                {
+                    page = 1,
+                    limit = 1,
+                    startDate = rangeStart.ToString("yyyy-MM-dd"),
+                    endDate = rangeEnd.ToString("yyyy-MM-dd"),
+                });
+
+            filteredResponse.StatusCode.Should().Be(HttpStatusCode.OK, await filteredResponse.Content.ReadAsStringAsync());
+            using (var filteredPayload = JsonDocument.Parse(await filteredResponse.Content.ReadAsStringAsync()))
+            {
+                var root = filteredPayload.RootElement;
+                root.GetProperty("items").GetArrayLength().Should().Be(1);
+                root.GetProperty("totalCount").GetInt32().Should().Be(2);
+                root.GetProperty("totalPurchaseAmount").GetDecimal().Should().Be(150m);
+                root.GetProperty("totalBillingAmount").GetDecimal().Should().Be(280m);
+                root.GetProperty("statusCounts").GetProperty("Open").GetInt32().Should().Be(1);
+                root.GetProperty("statusCounts").GetProperty("Closed").GetInt32().Should().Be(1);
+                root.GetProperty("statusAmounts").GetProperty("Open").GetProperty("purchase").GetDecimal().Should().Be(100m);
+                root.GetProperty("statusAmounts").GetProperty("Closed").GetProperty("billing").GetDecimal().Should().Be(80m);
+            }
+
+            var completedHistoryResponse = await _client.PostAsJsonAsync(
+                "/api/liens/cases/dashboard/total-lien-report-export/v3",
+                new { page = 1, limit = 10 });
+
+            completedHistoryResponse.StatusCode.Should().Be(
+                HttpStatusCode.OK,
+                await completedHistoryResponse.Content.ReadAsStringAsync());
+            using var completedHistoryPayload = JsonDocument.Parse(await completedHistoryResponse.Content.ReadAsStringAsync());
+            var completedHistoryRoot = completedHistoryPayload.RootElement;
+            completedHistoryRoot.GetProperty("totalCount").GetInt32().Should().Be(3);
+            completedHistoryRoot.GetProperty("items").EnumerateArray()
+                .Select(item => item.GetProperty("lienNumber").GetString())
+                .Should().BeEquivalentTo(liens.Take(3).Select(item => item.LienNumber));
+            completedHistoryRoot.GetProperty("totalPurchaseAmount").GetDecimal().Should().Be(850m);
+            completedHistoryRoot.GetProperty("totalBillingAmount").GetDecimal().Should().Be(1_180m);
+            completedHistoryRoot.GetProperty("statusCounts").GetProperty("Open").GetInt32().Should().Be(1);
+            completedHistoryRoot.GetProperty("statusCounts").GetProperty("Closed").GetInt32().Should().Be(1);
+            completedHistoryRoot.GetProperty("statusCounts").GetProperty("Rejected").GetInt32().Should().Be(1);
+        }
+        finally
+        {
+            db.ServicingItems.RemoveRange(servicingItems);
+            db.Liens.RemoveRange(liens);
+            await db.SaveChangesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task TotalCaseReportV3_filters_cases_by_linked_purchase_dates_and_defaults_no_date_to_completed_history()
+    {
+        var orgId = Guid.NewGuid();
+        var rangeStart = new DateOnly(2020, 6, 1);
+        var rangeEnd = new DateOnly(2020, 6, 30);
+        var cases = new[]
+        {
+            CreateDateParityCase(orgId, "CASE-DATE-IN-START", CaseStatus.PreDemand),
+            CreateDateParityCase(orgId, "CASE-DATE-IN-END", CaseStatus.Closed),
+            CreateDateParityCase(orgId, "CASE-DATE-PAST", CaseStatus.DemandSent),
+            CreateDateParityCase(orgId, "CASE-DATE-FUTURE", CaseStatus.CaseSettled),
+            CreateDateParityCase(orgId, "CASE-DATE-NULL", CaseStatus.InNegotiation),
+        };
+        var liens = new[]
+        {
+            CreateDateParityLien(orgId, "LIEN-CASE-IN-START", rangeStart, LienStatus.Draft, 1_000m, cases[0].Id),
+            CreateDateParityLien(orgId, "LIEN-CASE-IN-END", rangeEnd, LienStatus.Draft, 2_000m, cases[1].Id),
+            CreateDateParityLien(orgId, "LIEN-CASE-PAST", rangeStart.AddDays(-1), LienStatus.Draft, 3_000m, cases[2].Id),
+            CreateDateParityLien(orgId, "LIEN-CASE-FUTURE", new DateOnly(2099, 1, 1), LienStatus.Draft, 4_000m, cases[3].Id),
+            CreateDateParityLien(orgId, "LIEN-CASE-NULL", null, LienStatus.Draft, 5_000m, cases[4].Id),
+        };
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.Cases.AddRange(cases);
+        db.Liens.AddRange(liens);
+        await db.SaveChangesAsync();
+
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTokenHelper.CreateFullAccessToken(SeedHelper.TenantId, SeedHelper.UserId, orgId));
+
+        try
+        {
+            var filteredResponse = await _client.PostAsJsonAsync(
+                "/api/liens/cases/dashboard/total-case-report-export/v3",
+                new
+                {
+                    page = 1,
+                    limit = 10,
+                    purchaseDateFrom = rangeStart.ToString("MM/dd/yyyy"),
+                    purchaseDateTo = rangeEnd.ToString("MM/dd/yyyy"),
+                });
+
+            filteredResponse.StatusCode.Should().Be(HttpStatusCode.OK, await filteredResponse.Content.ReadAsStringAsync());
+            using (var filteredPayload = JsonDocument.Parse(await filteredResponse.Content.ReadAsStringAsync()))
+            {
+                var root = filteredPayload.RootElement;
+                root.GetProperty("totalCount").GetInt32().Should().Be(2);
+                root.GetProperty("items").EnumerateArray()
+                    .Select(item => item.GetProperty("caseNumber").GetString())
+                    .Should().BeEquivalentTo(["CASE-DATE-IN-START", "CASE-DATE-IN-END"]);
+                root.GetProperty("statusCounts").GetProperty(CaseStatus.PreDemand).GetInt32().Should().Be(1);
+                root.GetProperty("statusCounts").GetProperty(CaseStatus.Closed).GetInt32().Should().Be(1);
+                root.GetProperty("items").EnumerateArray()
+                    .Single(item => item.GetProperty("caseNumber").GetString() == "CASE-DATE-IN-START")
+                    .GetProperty("totalLienAmount").GetDecimal().Should().Be(1_000m);
+            }
+
+            var completedHistoryResponse = await _client.PostAsJsonAsync(
+                "/api/liens/cases/dashboard/total-case-report-export/v3",
+                new { page = 1, limit = 10 });
+
+            completedHistoryResponse.StatusCode.Should().Be(
+                HttpStatusCode.OK,
+                await completedHistoryResponse.Content.ReadAsStringAsync());
+            using var completedHistoryPayload = JsonDocument.Parse(await completedHistoryResponse.Content.ReadAsStringAsync());
+            var completedHistoryRoot = completedHistoryPayload.RootElement;
+            completedHistoryRoot.GetProperty("totalCount").GetInt32().Should().Be(3);
+            completedHistoryRoot.GetProperty("items").EnumerateArray()
+                .Select(item => item.GetProperty("caseNumber").GetString())
+                .Should().BeEquivalentTo(cases.Take(3).Select(item => item.CaseNumber));
+            foreach (var status in new[]
+                     {
+                         CaseStatus.PreDemand,
+                         CaseStatus.Closed,
+                         CaseStatus.DemandSent,
+                     })
+            {
+                completedHistoryRoot.GetProperty("statusCounts").GetProperty(status).GetInt32().Should().Be(1);
+            }
+        }
+        finally
+        {
+            db.Liens.RemoveRange(liens);
+            db.Cases.RemoveRange(cases);
+            await db.SaveChangesAsync();
+        }
+    }
+
     [Theory]
     [InlineData("/api/liens/cases/dashboard/total-lien-report-export/v3")]
     [InlineData("/api/liens/cases/dashboard/total-case-report-export/v3")]
@@ -381,6 +558,42 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
+    public async Task MedicalProviderReportV3_pages_rows_and_preserves_full_allocation_counts()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/medical-provider-report-export/v3",
+            new { page = 1, limit = 1 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = payload.RootElement;
+        root.GetProperty("items").GetArrayLength().Should().Be(1);
+        root.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(1);
+        root.GetProperty("allocationCounts").EnumerateObject()
+            .Sum(property => property.Value.GetInt32())
+            .Should().Be(root.GetProperty("totalCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task LawFirmCaseReportV3_pages_rows_and_preserves_full_allocation_counts()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/lawfirm-case-report-export/v3",
+            new { page = 1, limit = 1 });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = payload.RootElement;
+        root.GetProperty("items").GetArrayLength().Should().Be(1);
+        root.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(1);
+        root.GetProperty("allocationCounts").EnumerateObject()
+            .Sum(property => property.Value.GetInt32())
+            .Should().Be(root.GetProperty("totalCount").GetInt32());
+    }
+
+    [Fact]
     public async Task LawFirmCaseReportV3_filters_cases_by_any_lien_purchase_date()
     {
         var purchaseDate = new DateOnly(2024, 6, 15).ToString("MM/dd/yyyy");
@@ -429,7 +642,7 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
-    public async Task Dashboard_metrics_without_date_range_include_all_dated_history()
+    public async Task Dashboard_metrics_without_date_range_include_completed_dated_history()
     {
         var deployedResponse = await _client.PostAsJsonAsync(
             "/api/liens/cases/dashboard/deployed",
@@ -698,7 +911,8 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
                 2500m,
                 SeedHelper.UserId,
                 caseId: AliasedLawFirmCaseId,
-                facilityId: SeedHelper.FacilityId);
+                facilityId: SeedHelper.FacilityId,
+                purchaseDate: new DateOnly(2024, 6, 14));
             SetId(aliasedLien, AliasedProviderLienId);
             db.Liens.Add(aliasedLien);
         }
@@ -713,7 +927,8 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
                 1500m,
                 SeedHelper.UserId,
                 caseId: SeedHelper.CaseId,
-                facilityId: SeedHelper.FacilityId);
+                facilityId: SeedHelper.FacilityId,
+                purchaseDate: new DateOnly(2024, 6, 14));
             SetId(activeLien, ActiveDashboardLienId);
             activeLien.ListForSale(1000m, SeedHelper.UserId);
             activeLien.MarkSold(1000m, SeedHelper.OrgId, SeedHelper.UserId);
@@ -731,7 +946,8 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
                 1600m,
                 SeedHelper.UserId,
                 caseId: SeedHelper.CaseId,
-                facilityId: SeedHelper.FacilityId);
+                facilityId: SeedHelper.FacilityId,
+                purchaseDate: new DateOnly(2024, 6, 14));
             SetId(cancelledLien, CancelledDashboardLienId);
             cancelledLien.TransitionStatus(LienStatus.Cancelled, SeedHelper.UserId);
             db.Liens.Add(cancelledLien);
@@ -747,7 +963,8 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
                 1700m,
                 SeedHelper.UserId,
                 caseId: SeedHelper.CaseId,
-                facilityId: SeedHelper.FacilityId);
+                facilityId: SeedHelper.FacilityId,
+                purchaseDate: new DateOnly(2024, 6, 14));
             SetId(settledLien, SettledDashboardLienId);
             settledLien.ListForSale(1100m, SeedHelper.UserId);
             settledLien.MarkSold(1100m, SeedHelper.OrgId, SeedHelper.UserId);
@@ -789,6 +1006,61 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
 
         await db.SaveChangesAsync();
     }
+
+    private static Case CreateDateParityCase(Guid orgId, string caseNumber, string status)
+    {
+        var caseEntity = Case.Create(
+            SeedHelper.TenantId,
+            orgId,
+            caseNumber,
+            "Date",
+            "Parity",
+            SeedHelper.UserId);
+        if (!string.Equals(status, CaseStatus.PreDemand, StringComparison.Ordinal))
+            caseEntity.TransitionStatus(status, SeedHelper.UserId);
+
+        return caseEntity;
+    }
+
+    private static Lien CreateDateParityLien(
+        Guid orgId,
+        string lienNumber,
+        DateOnly? purchaseDate,
+        string status,
+        decimal originalAmount,
+        Guid? caseId = null)
+    {
+        var lien = Lien.Create(
+            SeedHelper.TenantId,
+            orgId,
+            lienNumber,
+            LienType.MedicalLien,
+            originalAmount,
+            SeedHelper.UserId,
+            caseId: caseId,
+            purchaseDate: purchaseDate);
+        if (!string.Equals(status, LienStatus.Draft, StringComparison.Ordinal))
+            lien.SetLegacyMedicalStatus(status, SeedHelper.UserId);
+
+        return lien;
+    }
+
+    private static ServicingItem CreateDateParityMedicalCode(
+        Guid orgId,
+        Lien lien,
+        decimal purchaseAmount,
+        decimal billingAmount) =>
+        ServicingItem.Create(
+            SeedHelper.TenantId,
+            orgId,
+            $"SVC-{lien.LienNumber}",
+            "LegacyMedicalCode",
+            "Medical code for dashboard date parity",
+            "system",
+            SeedHelper.UserId,
+            lienId: lien.Id,
+            notes: FormattableString.Invariant(
+                $"purchaseAmount={purchaseAmount:0.00}; billingAmount={billingAmount:0.00}"));
 
     private static void SetId<T>(T entity, Guid id) where T : class
     {

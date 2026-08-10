@@ -495,21 +495,23 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         var oldLawFirmOrgId = Guid.Parse("30000000-0000-0000-0000-000000000101");
         var newLawFirmOrgId = Guid.Parse("30000000-0000-0000-0000-000000000102");
 
-        Guid caseId;
+        List<Guid> caseIds;
 
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-            var caseEntity = Case.Create(
-                SeedHelper.TenantId,
-                oldLawFirmOrgId,
-                $"CASE-{Guid.NewGuid():N}"[..20],
-                "Batch",
-                "Reassign",
-                SeedHelper.UserId);
+            var cases = Enumerable.Range(0, 201)
+                .Select(index => Case.Create(
+                    SeedHelper.TenantId,
+                    oldLawFirmOrgId,
+                    $"CASE-{index:D3}-{Guid.NewGuid():N}"[..20],
+                    "Batch",
+                    "Reassign",
+                    SeedHelper.UserId))
+                .ToList();
 
-            caseId = caseEntity.Id;
-            db.Cases.Add(caseEntity);
+            caseIds = cases.Select(item => item.Id).ToList();
+            db.Cases.AddRange(cases);
             await db.SaveChangesAsync();
         }
 
@@ -525,10 +527,19 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
 
         using var verifyScope = _factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
-        var updatedCase = await verifyDb.Cases.FindAsync(caseId);
+        var updatedCases = await verifyDb.Cases
+            .Where(item => caseIds.Contains(item.Id) && item.OrgId == newLawFirmOrgId)
+            .CountAsync();
+        updatedCases.Should().Be(caseIds.Count);
 
-        updatedCase.Should().NotBeNull();
-        updatedCase!.OrgId.Should().Be(newLawFirmOrgId);
+        var historyNotes = await verifyDb.LienCaseNotes.Where(note =>
+            note.TenantId == SeedHelper.TenantId &&
+            caseIds.Contains(note.CaseId) &&
+            note.Category == CaseNoteCategory.SettlementHistory).ToListAsync();
+        historyNotes.Should().HaveCount(caseIds.Count);
+        historyNotes.Should().OnlyContain(note =>
+            note.Content.Contains(oldLawFirmOrgId.ToString(), StringComparison.Ordinal) &&
+            note.Content.Contains(newLawFirmOrgId.ToString(), StringComparison.Ordinal));
     }
 
     [Fact]

@@ -3,10 +3,12 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Liens.Api.Endpoints;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -472,6 +474,388 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
+    public async Task ServiceSettlementHistory_v3_returns_legacy_law_firm_change_history_without_duplicates()
+    {
+        var oldLawFirmId = Guid.CreateVersion7();
+        var newLawFirmId = Guid.CreateVersion7();
+        Guid caseId;
+
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTokenHelper.CreateFullAccessToken(
+                SeedHelper.TenantId,
+                SeedHelper.UserId,
+                email: "demo.user@legalsynq.test"));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var oldLawFirm = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.LawFirm,
+                "Legacy",
+                "Old",
+                SeedHelper.UserId,
+                organization: "Legacy Old Law LLP");
+            var newLawFirm = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.LawFirm,
+                "Legacy",
+                "New",
+                SeedHelper.UserId,
+                organization: "Legacy New Law LLP");
+            typeof(Contact).GetProperty(nameof(Contact.Id))!.SetValue(oldLawFirm, oldLawFirmId);
+            typeof(Contact).GetProperty(nameof(Contact.Id))!.SetValue(newLawFirm, newLawFirmId);
+
+            var caseNumber = $"CASE-LF-HISTORY-{Guid.CreateVersion7():N}"[..30];
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                caseNumber,
+                "LawFirm",
+                "History",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={oldLawFirmId}");
+            caseId = caseEntity.Id;
+
+            db.Contacts.AddRange(oldLawFirm, newLawFirm);
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var scheduledUpdate = await _client.PatchAsJsonAsync("/service/update-details", new
+        {
+            caseId,
+            lawFirmId = newLawFirmId,
+            switchedDate = "2099-01-15",
+        });
+        scheduledUpdate.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await scheduledUpdate.Content.ReadAsStringAsync()}");
+
+        var scheduledRetry = await _client.PatchAsJsonAsync("/service/update-details", new
+        {
+            caseId,
+            lawFirmId = newLawFirmId,
+            switchedDate = "01/15/2099",
+        });
+        scheduledRetry.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await scheduledRetry.Content.ReadAsStringAsync()}");
+
+        var scheduledCaseResponse = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        scheduledCaseResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var scheduledCase = JsonNode.Parse(await scheduledCaseResponse.Content.ReadAsStringAsync())!;
+        scheduledCase["lawFirmId"]!.GetValue<string>().Should().Be(oldLawFirmId.ToString());
+        scheduledCase["pendingLawFirmId"]!.GetValue<string>().Should().Be(newLawFirmId.ToString());
+        scheduledCase["switchedDate"]!.GetValue<string>().Should().Be("2099-01-15");
+
+        var immediateUpdate = await _client.PatchAsJsonAsync("/service/update-details", new
+        {
+            caseId,
+            lawFirmId = newLawFirmId,
+            switchedDate = "2025-01-15",
+        });
+        immediateUpdate.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await immediateUpdate.Content.ReadAsStringAsync()}");
+
+        var duplicateUpdate = await _client.PatchAsJsonAsync("/service/update-details", new
+        {
+            caseId,
+            lawFirmId = newLawFirmId,
+            switchedDate = "2025-01-15",
+        });
+        duplicateUpdate.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await duplicateUpdate.Content.ReadAsStringAsync()}");
+
+        var clearUpdate = await _client.PatchAsJsonAsync("/service/update-details", new
+        {
+            caseId,
+            lawFirmId = string.Empty,
+            switchedDate = "2025-01-15",
+        });
+        clearUpdate.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await clearUpdate.Content.ReadAsStringAsync()}");
+
+        var historyResponse = await _client.PostAsJsonAsync("/service/settlement/history/v3", new
+        {
+            caseId,
+            page = 1,
+            limit = 10,
+        });
+        historyResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await historyResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await historyResponse.Content.ReadAsStringAsync())!;
+        body["totalCount"]!.GetValue<int>().Should().Be(3);
+        var items = body["data"]!.AsArray();
+        items.Should().OnlyContain(item =>
+            item!["type"]!.GetValue<string>() == "law-firm-change" &&
+            item["updatedBy"]!.GetValue<string>() == "Demo User" &&
+            item["user"]!.GetValue<string>() == "Demo User" &&
+            !string.IsNullOrWhiteSpace(item["date"]!.GetValue<string>()));
+        items.Should().Contain(item =>
+            item!["description"]!.GetValue<string>() ==
+            "Scheduled law firm switch from Legacy Old Law LLP to Legacy New Law LLP on 01/15/2099 by demo.user@legalsynq.test");
+        items.Should().Contain(item =>
+            item!["description"]!.GetValue<string>() ==
+            "Law firm switched from Legacy Old Law LLP to Legacy New Law LLP by demo.user@legalsynq.test");
+        items.Should().Contain(item =>
+            item!["description"]!.GetValue<string>() ==
+            "Law firm switched from Legacy New Law LLP to Unassigned by demo.user@legalsynq.test");
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        verificationDb.LienCaseNotes.Count(note =>
+            note.TenantId == SeedHelper.TenantId &&
+            note.CaseId == caseId &&
+            note.Category == CaseNoteCategory.SettlementHistory).Should().Be(3);
+    }
+
+    [Fact]
+    public async Task ServiceSettlementHistory_v3_records_law_firm_change_when_legacy_ids_have_no_contact_name()
+    {
+        var oldLawFirmId = Guid.CreateVersion7();
+        var newLawFirmId = Guid.CreateVersion7();
+        Guid caseId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-LF-UNRESOLVED-{Guid.CreateVersion7():N}"[..30],
+                "Unresolved",
+                "LawFirm",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={oldLawFirmId}");
+            caseId = caseEntity.Id;
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var updateResponse = await _client.PatchAsJsonAsync("/service/update-details", new
+        {
+            caseId,
+            lawFirmId = newLawFirmId,
+            switchedDate = "2025-01-15",
+        });
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
+
+        var historyResponse = await _client.PostAsJsonAsync("/service/settlement/history/v3", new
+        {
+            caseId,
+            page = 1,
+            limit = 10,
+        });
+        historyResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await historyResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await historyResponse.Content.ReadAsStringAsync())!;
+        body["totalCount"]!.GetValue<int>().Should().Be(1);
+        var historyItem = body["data"]!.AsArray().Single()!;
+        historyItem["type"]!.GetValue<string>().Should().Be("law-firm-change");
+        historyItem["description"]!.GetValue<string>().Should().Contain(oldLawFirmId.ToString());
+        historyItem["description"]!.GetValue<string>().Should().Contain(newLawFirmId.ToString());
+    }
+
+    [Fact]
+    public async Task Case_update_routes_record_law_firm_changes_in_servicing_history()
+    {
+        var oldLawFirmId = Guid.CreateVersion7();
+        var legacyUpdateLawFirmId = Guid.CreateVersion7();
+        var putUpdateLawFirmId = Guid.CreateVersion7();
+        Guid caseId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-LF-ROUTES-{Guid.CreateVersion7():N}"[..30],
+                "Route",
+                "History",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={oldLawFirmId}");
+            caseId = caseEntity.Id;
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var legacyUpdate = await _client.PatchAsJsonAsync($"/api/liens/cases/update/{caseId}", new
+        {
+            firstname = "Route",
+            lastname = "History",
+            lawFirmId = legacyUpdateLawFirmId,
+        });
+        legacyUpdate.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await legacyUpdate.Content.ReadAsStringAsync()}");
+
+        var putUpdate = await _client.PutAsJsonAsync($"/api/liens/cases/{caseId}", new
+        {
+            clientFirstName = "Route",
+            clientLastName = "History",
+            lawFirmId = putUpdateLawFirmId,
+        });
+        putUpdate.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await putUpdate.Content.ReadAsStringAsync()}");
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var history = await verificationDb.LienCaseNotes
+            .Where(note =>
+                note.TenantId == SeedHelper.TenantId &&
+                note.CaseId == caseId &&
+                note.Category == CaseNoteCategory.SettlementHistory)
+            .OrderBy(note => note.CreatedAtUtc)
+            .ToListAsync();
+
+        history.Should().HaveCount(2);
+        history[0].Content.Should().Contain(oldLawFirmId.ToString());
+        history[0].Content.Should().Contain(legacyUpdateLawFirmId.ToString());
+        history[1].Content.Should().Contain(legacyUpdateLawFirmId.ToString());
+        history[1].Content.Should().Contain(putUpdateLawFirmId.ToString());
+    }
+
+    [Fact]
+    public async Task Generic_case_update_schedules_and_promotes_due_law_firm_switch()
+    {
+        var oldLawFirmId = Guid.CreateVersion7();
+        var newLawFirmId = Guid.CreateVersion7();
+        Guid caseId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-LF-DUE-{Guid.CreateVersion7():N}"[..30],
+                "Scheduled",
+                "Switch",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={oldLawFirmId}");
+            caseId = caseEntity.Id;
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var scheduleResponse = await _client.PutAsJsonAsync($"/api/liens/cases/{caseId}", new
+        {
+            clientFirstName = "Scheduled",
+            clientLastName = "Switch",
+            pendingLawFirmId = newLawFirmId,
+            switchedDate = "2099-01-15",
+        });
+        scheduleResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await scheduleResponse.Content.ReadAsStringAsync()}");
+
+        var scheduledCase = JsonNode.Parse(await scheduleResponse.Content.ReadAsStringAsync())!;
+        scheduledCase["lawFirmId"]!.GetValue<string>().Should().Be(oldLawFirmId.ToString());
+        scheduledCase["pendingLawFirmId"]!.GetValue<string>().Should().Be(newLawFirmId.ToString());
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var applied = await LawFirmChangeHistory.ApplyDueScheduledSwitchesAsync(
+                db,
+                new DateOnly(2099, 1, 15),
+                CancellationToken.None);
+            applied.Should().Be(1);
+        }
+
+        var promotedResponse = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        promotedResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var promotedCase = JsonNode.Parse(await promotedResponse.Content.ReadAsStringAsync())!;
+        promotedCase["lawFirmId"]!.GetValue<string>().Should().Be(newLawFirmId.ToString());
+        promotedCase["pendingLawFirmId"].Should().BeNull();
+        promotedCase["switchedDate"].Should().BeNull();
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var history = await verificationDb.LienCaseNotes.SingleAsync(note =>
+            note.TenantId == SeedHelper.TenantId &&
+            note.CaseId == caseId &&
+            note.Category == CaseNoteCategory.SettlementHistory);
+        history.Content.Should().Contain("Scheduled law firm switch");
+        history.Content.Should().Contain(oldLawFirmId.ToString());
+        history.Content.Should().Contain(newLawFirmId.ToString());
+    }
+
+    [Fact]
+    public async Task ServiceSettlementHistory_v3_includes_case_reassign_law_firm_changes()
+    {
+        var oldLawFirmOrgId = Guid.CreateVersion7();
+        var newLawFirmOrgId = Guid.CreateVersion7();
+        Guid caseId;
+
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTokenHelper.CreateFullAccessToken(
+                SeedHelper.TenantId,
+                SeedHelper.UserId,
+                email: "demo.user@legalsynq.test"));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var oldLawFirm = Contact.Create(
+                SeedHelper.TenantId,
+                oldLawFirmOrgId,
+                ContactType.LawFirm,
+                "Old",
+                "Firm",
+                SeedHelper.UserId,
+                organization: "Old Reassignment Law LLP");
+            var newLawFirm = Contact.Create(
+                SeedHelper.TenantId,
+                newLawFirmOrgId,
+                ContactType.LawFirm,
+                "New",
+                "Firm",
+                SeedHelper.UserId,
+                organization: "New Reassignment Law LLP");
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                oldLawFirmOrgId,
+                $"CASE-LF-REASSIGN-{Guid.CreateVersion7():N}"[..30],
+                "Reassign",
+                "History",
+                SeedHelper.UserId);
+            caseId = caseEntity.Id;
+
+            db.Contacts.AddRange(oldLawFirm, newLawFirm);
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var reassignResponse = await _client.PostAsJsonAsync("/api/liens/cases/reassign/lawfirm", new
+        {
+            caseId,
+            lawfirm = newLawFirmOrgId,
+        });
+        reassignResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await reassignResponse.Content.ReadAsStringAsync()}");
+
+        var historyResponse = await _client.PostAsJsonAsync("/service/settlement/history/v3", new
+        {
+            caseId,
+            page = 1,
+            limit = 10,
+        });
+        historyResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await historyResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await historyResponse.Content.ReadAsStringAsync())!;
+        body["totalCount"]!.GetValue<int>().Should().Be(1);
+        body["data"]!.AsArray().Single()!["description"]!.GetValue<string>().Should().Be(
+            "Law firm switched from Old Reassignment Law LLP to New Reassignment Law LLP by demo.user@legalsynq.test");
+    }
+
+    [Fact]
     public async Task ServiceDeletePayment_post_route_deletes_payment()
     {
         var createResponse = await _client.PostAsJsonAsync("/service/liens/settlement/payment", new
@@ -646,6 +1030,16 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
                 purchaseDate: new DateOnly(2025, 2, 1));
 
             db.Liens.Add(datedLien);
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LMC-DATED-DASHBOARD",
+                "LegacyMedicalCode",
+                "Dashboard deployed amount",
+                "system",
+                SeedHelper.UserId,
+                lienId: datedLien.Id,
+                notes: "billingAmount=750; purchaseAmount=750"));
             db.LienSettlements.Add(LienSettlement.Create(
                 SeedHelper.TenantId,
                 SeedHelper.CaseId,
@@ -686,16 +1080,18 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
-    public async Task LegacyDashboardDeployed_uses_diy_purchase_precedence_for_dated_liens()
+    public async Task LegacyDashboardDeployed_uses_active_medical_code_purchase_amounts()
     {
+        var tenantId = Guid.CreateVersion7();
+        var orgId = Guid.CreateVersion7();
         var otherTenantId = Guid.CreateVersion7();
 
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
             var medicalCodeLien = Lien.Create(
-                SeedHelper.TenantId,
-                SeedHelper.OrgId,
+                tenantId,
+                orgId,
                 "LIEN-DASHBOARD-PURCHASE-MEDICAL",
                 LienType.MedicalLien,
                 1_000m,
@@ -704,8 +1100,8 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
             medicalCodeLien.SetFinancials(1_000m, SeedHelper.UserId, purchasePrice: 100m);
 
             var fallbackLien = Lien.Create(
-                SeedHelper.TenantId,
-                SeedHelper.OrgId,
+                tenantId,
+                orgId,
                 "LIEN-DASHBOARD-PURCHASE-FALLBACK",
                 LienType.MedicalLien,
                 500m,
@@ -713,19 +1109,27 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
                 purchaseDate: new DateOnly(2025, 2, 1));
             fallbackLien.SetFinancials(500m, SeedHelper.UserId, purchasePrice: 300m);
 
-            var outsideRangeLien = Lien.Create(
-                SeedHelper.TenantId,
-                SeedHelper.OrgId,
-                "LIEN-DASHBOARD-PURCHASE-OUTSIDE",
+            var futureLien = Lien.Create(
+                tenantId,
+                orgId,
+                "LIEN-DASHBOARD-PURCHASE-FUTURE",
                 LienType.MedicalLien,
                 600m,
                 SeedHelper.UserId,
-                purchaseDate: new DateOnly(2025, 1, 31));
-            outsideRangeLien.SetFinancials(600m, SeedHelper.UserId, purchasePrice: 400m);
+                purchaseDate: new DateOnly(2099, 1, 1));
+            futureLien.SetFinancials(600m, SeedHelper.UserId, purchasePrice: 400m);
+
+            var undatedLien = Lien.Create(
+                tenantId,
+                orgId,
+                "LIEN-DASHBOARD-PURCHASE-UNDATED",
+                LienType.MedicalLien,
+                700m,
+                SeedHelper.UserId);
 
             var otherTenantLien = Lien.Create(
                 otherTenantId,
-                SeedHelper.OrgId,
+                orgId,
                 "LIEN-DASHBOARD-PURCHASE-OTHER",
                 LienType.MedicalLien,
                 10_000m,
@@ -733,11 +1137,11 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
                 purchaseDate: new DateOnly(2025, 2, 1));
             otherTenantLien.SetFinancials(10_000m, SeedHelper.UserId, purchasePrice: 10_000m);
 
-            db.Liens.AddRange(medicalCodeLien, fallbackLien, outsideRangeLien, otherTenantLien);
+            db.Liens.AddRange(medicalCodeLien, fallbackLien, futureLien, undatedLien, otherTenantLien);
             db.ServicingItems.AddRange(
                 ServicingItem.Create(
-                    SeedHelper.TenantId,
-                    SeedHelper.OrgId,
+                    tenantId,
+                    orgId,
                     "LMC-DASHBOARD-PURCHASE-1",
                     "LegacyMedicalCode",
                     "First purchase amount",
@@ -746,8 +1150,8 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
                     lienId: medicalCodeLien.Id,
                     notes: "billingAmount=1,500; purchaseAmount=250"),
                 ServicingItem.Create(
-                    SeedHelper.TenantId,
-                    SeedHelper.OrgId,
+                    tenantId,
+                    orgId,
                     "LMC-DASHBOARD-PURCHASE-2",
                     "LegacyMedicalCode",
                     "Second purchase amount",
@@ -756,18 +1160,28 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
                     lienId: medicalCodeLien.Id,
                     notes: "billingAmount=500; purchaseAmount=50"),
                 ServicingItem.Create(
-                    SeedHelper.TenantId,
-                    SeedHelper.OrgId,
-                    "LMC-DASHBOARD-PURCHASE-OUTSIDE",
+                    tenantId,
+                    orgId,
+                    "LMC-DASHBOARD-PURCHASE-FUTURE",
                     "LegacyMedicalCode",
-                    "Outside-range purchase amount",
+                    "Future purchase amount",
                     "system",
                     SeedHelper.UserId,
-                    lienId: outsideRangeLien.Id,
+                    lienId: futureLien.Id,
                     notes: "billingAmount=600; purchaseAmount=500"),
                 ServicingItem.Create(
+                    tenantId,
+                    orgId,
+                    "LMC-DASHBOARD-PURCHASE-UNDATED",
+                    "LegacyMedicalCode",
+                    "Undated purchase amount",
+                    "system",
+                    SeedHelper.UserId,
+                    lienId: undatedLien.Id,
+                    notes: "billingAmount=700; purchaseAmount=600"),
+                ServicingItem.Create(
                     otherTenantId,
-                    SeedHelper.OrgId,
+                    orgId,
                     "LMC-DASHBOARD-PURCHASE-OTHER",
                     "LegacyMedicalCode",
                     "Other-tenant purchase amount",
@@ -778,144 +1192,191 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
             await db.SaveChangesAsync();
         }
 
-        var response = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/deployed", new
-        {
-            startDate = "02/01/2025",
-            endDate = "02/01/2025",
-        });
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                JwtTokenHelper.CreateFullAccessToken(tenantId, SeedHelper.UserId, orgId));
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/deployed", new { });
         response.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await response.Content.ReadAsStringAsync()}");
 
         var deployed = JsonNode.Parse(await response.Content.ReadAsStringAsync())!["data"]!;
-        deployed["periodStart"]!.GetValue<string>().Should().Be("02/01/2025");
-        deployed["periodEnd"]!.GetValue<string>().Should().Be("02/01/2025");
-        deployed["totalAmount"]!.GetValue<string>().Should().Be("600.00");
-        deployed["totalCount"]!.GetValue<int>().Should().Be(2);
+        deployed["periodStart"]!.GetValue<string>().Should().BeEmpty();
+        deployed["periodEnd"]!.GetValue<string>().Should().BeEmpty();
+        deployed["totalAmount"]!.GetValue<string>().Should().Be("300.00");
+        deployed["totalCount"]!.GetValue<int>().Should().Be(1);
     }
 
     [Fact]
-    public async Task LegacyDashboardCashReceived_without_date_range_matches_diy_returned_amount_precedence()
+    public async Task LegacyDashboardCashReceived_without_date_range_uses_completed_settlement_amounts()
     {
+        var tenantId = Guid.CreateVersion7();
+        var orgId = Guid.CreateVersion7();
         var otherTenantId = Guid.CreateVersion7();
+        var settlementDate = new DateOnly(2025, 2, 1);
 
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var dashboardCase = Case.Create(
+                tenantId,
+                orgId,
+                $"CASE-DASH-CASH-{Guid.CreateVersion7():N}",
+                "Dashboard",
+                "Cash",
+                SeedHelper.UserId);
+            var otherTenantCase = Case.Create(
+                otherTenantId,
+                orgId,
+                $"CASE-DASH-OTHER-{Guid.CreateVersion7():N}",
+                "Dashboard",
+                "Other",
+                SeedHelper.UserId);
             var metadataLien = Lien.Create(
-                SeedHelper.TenantId,
-                SeedHelper.OrgId,
+                tenantId,
+                orgId,
                 "LIEN-DASHBOARD-METADATA",
                 LienType.MedicalLien,
                 1_000m,
                 SeedHelper.UserId,
-                caseId: SeedHelper.CaseId);
+                caseId: dashboardCase.Id);
             metadataLien.SetFinancials(1_000m, SeedHelper.UserId, payoffAmount: 900m);
 
             var payoffLien = Lien.Create(
-                SeedHelper.TenantId,
-                SeedHelper.OrgId,
+                tenantId,
+                orgId,
                 "LIEN-DASHBOARD-PAYOFF",
                 LienType.MedicalLien,
                 500m,
                 SeedHelper.UserId,
-                caseId: SeedHelper.CaseId);
+                caseId: dashboardCase.Id);
             payoffLien.SetFinancials(500m, SeedHelper.UserId, payoffAmount: 220m);
 
             var paymentLien = Lien.Create(
-                SeedHelper.TenantId,
-                SeedHelper.OrgId,
+                tenantId,
+                orgId,
                 "LIEN-DASHBOARD-PAYMENT",
                 LienType.MedicalLien,
                 600m,
                 SeedHelper.UserId,
-                caseId: SeedHelper.CaseId);
+                caseId: dashboardCase.Id);
 
             var otherTenantLien = Lien.Create(
                 otherTenantId,
-                SeedHelper.OrgId,
+                orgId,
                 "LIEN-DASHBOARD-OTHER-TENANT",
                 LienType.MedicalLien,
                 10_000m,
                 SeedHelper.UserId,
-                caseId: SeedHelper.CaseId);
+                caseId: otherTenantCase.Id);
 
             var deletedMetadata = LienSettlement.Create(
-                SeedHelper.TenantId,
-                SeedHelper.CaseId,
+                tenantId,
+                dashboardCase.Id,
                 paymentLien.Id,
                 2,
                 700m,
                 SeedHelper.UserId,
+                settlementDate: settlementDate,
                 note: "legacySettlementId=deleted; totalSettledAmount=700");
             deletedMetadata.SoftDelete(SeedHelper.UserId);
 
             var deletedPayment = SettlementPaymentDetail.Create(
-                SeedHelper.TenantId,
-                SeedHelper.CaseId,
+                tenantId,
+                dashboardCase.Id,
                 paymentLien.Id,
                 3,
                 900m,
                 SeedHelper.UserId);
             deletedPayment.SoftDelete(SeedHelper.UserId);
 
+            db.Cases.AddRange(dashboardCase, otherTenantCase);
             db.Liens.AddRange(metadataLien, payoffLien, paymentLien, otherTenantLien);
             db.LienSettlements.AddRange(
                 LienSettlement.Create(
-                    SeedHelper.TenantId,
-                    SeedHelper.CaseId,
+                    tenantId,
+                    dashboardCase.Id,
                     metadataLien.Id,
                     1,
                     50m,
                     SeedHelper.UserId,
+                    settlementDate: settlementDate,
                     note: "legacySettlementId=1; totalSettledAmount=180"),
                 LienSettlement.Create(
-                    SeedHelper.TenantId,
-                    SeedHelper.CaseId,
+                    tenantId,
+                    dashboardCase.Id,
                     metadataLien.Id,
                     2,
                     25m,
                     SeedHelper.UserId,
+                    settlementDate: settlementDate,
                     note: "legacySettlementId=2; totalSettledAmount=20"),
                 LienSettlement.Create(
-                    SeedHelper.TenantId,
-                    SeedHelper.CaseId,
+                    tenantId,
+                    dashboardCase.Id,
                     payoffLien.Id,
                     1,
                     60m,
-                    SeedHelper.UserId),
+                    SeedHelper.UserId,
+                    settlementDate: settlementDate),
                 LienSettlement.Create(
-                    SeedHelper.TenantId,
-                    SeedHelper.CaseId,
+                    tenantId,
+                    dashboardCase.Id,
                     paymentLien.Id,
                     1,
                     500m,
+                    SeedHelper.UserId,
+                    settlementDate: settlementDate),
+                LienSettlement.Create(
+                    otherTenantId,
+                    otherTenantCase.Id,
+                    otherTenantLien.Id,
+                    1,
+                    10_000m,
+                    SeedHelper.UserId,
+                    settlementDate: settlementDate),
+                LienSettlement.Create(
+                    tenantId,
+                    dashboardCase.Id,
+                    paymentLien.Id,
+                    3,
+                    1_000m,
+                    SeedHelper.UserId,
+                    settlementDate: new DateOnly(2099, 1, 1)),
+                LienSettlement.Create(
+                    tenantId,
+                    dashboardCase.Id,
+                    paymentLien.Id,
+                    4,
+                    2_000m,
                     SeedHelper.UserId),
                 deletedMetadata);
             db.SettlementPaymentDetails.AddRange(
                 SettlementPaymentDetail.Create(
-                    SeedHelper.TenantId,
-                    SeedHelper.CaseId,
+                    tenantId,
+                    dashboardCase.Id,
                     metadataLien.Id,
                     1,
                     1_000m,
                     SeedHelper.UserId),
                 SettlementPaymentDetail.Create(
-                    SeedHelper.TenantId,
-                    SeedHelper.CaseId,
+                    tenantId,
+                    dashboardCase.Id,
                     payoffLien.Id,
                     1,
                     800m,
                     SeedHelper.UserId),
                 SettlementPaymentDetail.Create(
-                    SeedHelper.TenantId,
-                    SeedHelper.CaseId,
+                    tenantId,
+                    dashboardCase.Id,
                     paymentLien.Id,
                     1,
                     300m,
                     SeedHelper.UserId),
                 SettlementPaymentDetail.Create(
-                    SeedHelper.TenantId,
-                    SeedHelper.CaseId,
+                    tenantId,
+                    dashboardCase.Id,
                     paymentLien.Id,
                     2,
                     45m,
@@ -923,13 +1384,18 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
                 deletedPayment,
                 SettlementPaymentDetail.Create(
                     otherTenantId,
-                    SeedHelper.CaseId,
+                    otherTenantCase.Id,
                     otherTenantLien.Id,
                     1,
                     10_000m,
                     SeedHelper.UserId));
             await db.SaveChangesAsync();
         }
+
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                JwtTokenHelper.CreateFullAccessToken(tenantId, SeedHelper.UserId));
 
         var response = await _client.PostAsJsonAsync("/api/liens/cases/dashboard/cash-received", new
         {
@@ -942,7 +1408,7 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
         var cashReceived = JsonNode.Parse(await response.Content.ReadAsStringAsync())!["data"]!;
         cashReceived["periodStart"]!.GetValue<string>().Should().BeEmpty();
         cashReceived["periodEnd"]!.GetValue<string>().Should().BeEmpty();
-        cashReceived["totalAmount"]!.GetValue<string>().Should().Be("5265.00");
+        cashReceived["totalAmount"]!.GetValue<string>().Should().Be("635.00");
         cashReceived["totalCount"]!.GetValue<int>().Should().Be(4);
     }
 }

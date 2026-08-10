@@ -350,6 +350,7 @@ public sealed class CaseService : ICaseService
             request.ChildSupportLiens,
             request.IsUccFiled,
             request.LawFirmId,
+            request.PendingLawFirmId,
             request.AccidentTypeId,
             request.CaseManagerId,
             request.AttorneyId,
@@ -574,6 +575,7 @@ public sealed class CaseService : ICaseService
                     GetMetadataValue(metadata, "isUccFiled"),
                     GetMetadataValue(metadata, "isUCCFiled"))),
             LawFirmId = lawFirmId,
+            PendingLawFirmId = GetMetadataValue(metadata, "pendingLawFirmId"),
             LawFirm = lawFirmName,
             CaseManagerId = caseManagerId,
             CaseManager = caseManagerName,
@@ -643,6 +645,7 @@ public sealed class CaseService : ICaseService
         string? childSupportLiens,
         string? isUccFiled,
         string? lawFirmId,
+        string? pendingLawFirmId,
         string? accidentTypeId,
         string? caseManagerId,
         string? attorneyId,
@@ -677,7 +680,12 @@ public sealed class CaseService : ICaseService
             SetMetadataValue(metadata, "isUccFiled", NormalizeCaseFlagForStorage(isUccFiled));
         }
         if (lawFirmId is not null)
+        {
+            metadata.Remove("lawFirm");
             SetMetadataValue(metadata, "lawFirmId", lawFirmId);
+        }
+        if (pendingLawFirmId is not null)
+            SetMetadataValue(metadata, "pendingLawFirmId", pendingLawFirmId);
         if (caseManagerId is not null)
             SetMetadataValue(metadata, "caseManagerId", caseManagerId);
         if (attorneyId is not null)

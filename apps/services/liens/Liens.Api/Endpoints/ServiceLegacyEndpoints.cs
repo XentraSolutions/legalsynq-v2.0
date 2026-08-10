@@ -530,6 +530,7 @@ public static class ServiceLegacyEndpoints
         LegacySettlementHistoryRequest request,
         ISettlementService settlementService,
         ILienService lienService,
+        LiensDbContext db,
         IHttpClientFactory httpClientFactory,
         HttpContext httpContext,
         ICurrentRequestContext ctx,
@@ -546,6 +547,7 @@ public static class ServiceLegacyEndpoints
             caseId,
             settlementService,
             lienService,
+            db,
             httpClientFactory,
             httpContext.Request.Headers.Authorization,
             ct);
@@ -567,6 +569,7 @@ public static class ServiceLegacyEndpoints
     private static async Task<IResult> UpdateServicingDetailsLegacy(
         LegacyServicingDetailsRequest request,
         ICaseService caseService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -583,6 +586,17 @@ public static class ServiceLegacyEndpoints
             return Results.BadRequest(new { isSuccess = false, message = "Case not found" });
         }
 
+        var schedulesLawFirmSwitch =
+            request.lawFirmId is not null && LawFirmChangeHistory.IsFutureSwitch(request.switchedDate);
+        var repeatsScheduledSwitch = schedulesLawFirmSwitch &&
+            await LawFirmChangeHistory.IsSamePendingSwitchAsync(
+                db,
+                tenantId,
+                existing.PendingLawFirmId,
+                existing.SwitchedDate,
+                request.lawFirmId,
+                request.switchedDate,
+                ct);
         var update = new UpdateCaseRequest
         {
             ClientFirstName = existing.ClientFirstName,
@@ -603,13 +617,37 @@ public static class ServiceLegacyEndpoints
             DemandAmount = existing.DemandAmount,
             SettlementAmount = existing.SettlementAmount,
             IsUccFiled = request.isUCCFiled,
-            LawFirmId = request.lawFirmId,
+            LawFirmId = schedulesLawFirmSwitch ? existing.LawFirmId : request.lawFirmId,
+            PendingLawFirmId = schedulesLawFirmSwitch
+                ? request.lawFirmId
+                : request.lawFirmId is not null ? string.Empty : null,
             CaseManagerId = request.caseManager,
             AttorneyId = request.attorney,
-            SwitchedDate = request.switchedDate,
+            SwitchedDate = schedulesLawFirmSwitch
+                ? repeatsScheduledSwitch ? existing.SwitchedDate : request.switchedDate
+                : request.lawFirmId is not null ? string.Empty : request.switchedDate,
         };
 
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await caseService.UpdateAsync(tenantId, caseId, userId, update, ct);
+
+        if (request.lawFirmId is not null)
+        {
+            await LawFirmChangeHistory.RecordAsync(
+                db,
+                tenantId,
+                caseId,
+                existing.LawFirmId,
+                request.lawFirmId,
+                request.switchedDate,
+                userId,
+                ctx.Name ?? ctx.Email ?? userId.ToString(),
+                ct,
+                existing.PendingLawFirmId,
+                existing.SwitchedDate);
+        }
+
+        await transaction.CommitAsync(ct);
 
         return Results.Ok(new { isSuccess = true, message = "Successfully updated servicing details." });
     }
@@ -950,6 +988,7 @@ public static class ServiceLegacyEndpoints
         Guid caseId,
         ISettlementService settlementService,
         ILienService lienService,
+        LiensDbContext db,
         IHttpClientFactory httpClientFactory,
         StringValues authorizationHeader,
         CancellationToken ct)
@@ -958,12 +997,28 @@ public static class ServiceLegacyEndpoints
         var reductions = await settlementService.GetReductionsByCaseAsync(tenantId, caseId, ct);
         var settlements = await settlementService.GetSettlementsByCaseAsync(tenantId, caseId, ct);
         var payments = await settlementService.GetPaymentsByCaseAsync(tenantId, caseId, ct);
+        var lawFirmChanges = await db.LienCaseNotes.AsNoTracking()
+            .Where(item =>
+                item.TenantId == tenantId &&
+                item.CaseId == caseId &&
+                !item.IsDeleted &&
+                item.Category == CaseNoteCategory.SettlementHistory)
+            .Select(item => new
+            {
+                item.Id,
+                item.Content,
+                item.CreatedByUserId,
+                item.CreatedByName,
+                item.CreatedAtUtc,
+            })
+            .ToListAsync(ct);
         var liens = await SearchLiensByCaseAsync(lienService, tenantId, caseId, ct);
         var lienNumbersById = liens.ToDictionary(lien => lien.Id, lien => lien.LienNumber);
         var updatedByNames = await ResolveUserNamesAsync(
             reductions.Select(item => item.UpdatedByUserId ?? item.CreatedByUserId)
                 .Concat(settlements.Select(item => item.UpdatedByUserId ?? item.CreatedByUserId))
-                .Concat(payments.Select(item => item.UpdatedByUserId ?? item.CreatedByUserId)),
+                .Concat(payments.Select(item => item.UpdatedByUserId ?? item.CreatedByUserId))
+                .Concat(lawFirmChanges.Select(item => (Guid?)item.CreatedByUserId)),
             httpClientFactory,
             authorizationHeader,
             ct);
@@ -1006,6 +1061,27 @@ public static class ServiceLegacyEndpoints
             note = item.Note ?? string.Empty,
             createdAt = item.CreatedAtUtc,
             updatedBy = ResolveUpdatedByName(item.UpdatedByUserId ?? item.CreatedByUserId, updatedByNames),
+        }));
+        results.AddRange(lawFirmChanges.Select(item =>
+        {
+            var updatedBy = ResolveUpdatedByName(item.CreatedByUserId, updatedByNames);
+            if (string.IsNullOrWhiteSpace(updatedBy))
+                updatedBy = item.CreatedByName;
+
+            return (object)new
+            {
+                id = item.Id.ToString(),
+                type = "law-firm-change",
+                lienId = string.Empty,
+                lienCode = string.Empty,
+                amount = 0m,
+                description = item.Content,
+                note = item.Content,
+                date = PacificTimeHelper.FormatTimestamp(item.CreatedAtUtc),
+                user = updatedBy,
+                createdAt = item.CreatedAtUtc,
+                updatedBy,
+            };
         }));
 
         return results.OrderByDescending(item => ((dynamic)item).createdAt).ToList();

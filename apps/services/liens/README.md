@@ -47,21 +47,23 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `DELETE` | `/api/liens/cases/delete/{id}` | Legacy case deletion; blocks when a linked lien is active, and detaches terminal/rejected liens before removing the case |
 | `POST` | `/api/liens/cases/generate-csv` | Exports cases as Base64-encoded CSV using canonical case fields plus raw migrated metadata and contact/audit enrichment for legacy-only columns; its accident-type and case-manager filters use canonical IDs with legacy metadata fallback |
 | `GET` | `/service/liens/settlement/payment-details/{caseId}` | Returns complete legacy payment details, including check/reference number, payment method/payor, note, settlement type/status IDs and display names, and net profit from current or migrated payment metadata. Canonical settled liens are displayed as `Closed`, and legacy snake-case settlement type codes are returned as human-readable names while their original IDs are preserved. |
+| `POST` | `/service/settlement/history/v3` | Returns paged payment, reduction, settlement, and legacy-compatible law-firm change history. Servicing-detail updates plus direct case-update, single-case, and batch law-firm reassignment routes atomically write a `law-firm-change` item only when the law firm actually changes, including unresolved legacy identifiers, the immediate or scheduled-switch description, actor, and timestamp. Future-dated switches retain the current firm and expose the requested firm as `pendingLawFirmId`; a startup-and-minute scheduled processor promotes due assignments. |
 | `POST` | `/api/liens/reports/diy/export` | Export a DIY report as Base64-encoded CSV in the legacy `data` export envelope |
-| `POST` | `/api/liens/cases/dashboard/total-lien-report-export/v3` | Returns all legacy-eligible liens with full-result status and billing/purchase summaries; paged JSON requests calculate summaries from compact database projections and enrich only the requested page, while CSV still loads every matching export row; the legacy V3 request has no date filter |
-| `POST` | `/api/liens/cases/dashboard/total-case-report-export/v3` | Returns all legacy-eligible cases with full-result status counts; paged, unfiltered JSON requests aggregate statuses in the database and enrich only the requested page; the legacy V3 request has no date filter |
-| `POST` | `/api/liens/cases/dashboard/lawfirm-case-report-export/v3` | Returns case/law-firm allocation and filters cases by the purchase date of any linked lien |
-| `POST` | `/api/liens/cases/dashboard/medical-provider-report-export/v3` | Returns lien/facility allocation filtered by lien purchase date |
-| `POST` | `/api/liens/cases/dashboard/deployed` | Sums lien purchase amounts with a persisted `PurchaseDate`; undated liens are excluded |
-| `POST` | `/api/liens/cases/dashboard/cash-received` | Without a date range, matches the DIY report's returned amount per lien: imported `totalSettledAmount` metadata, then lien payoff amount, then non-deleted payment allocations. Date-filtered requests retain the legacy settlement-date calculation. |
+| `POST` | `/api/liens/cases/dashboard/total-lien-report-export/v3` | Returns legacy-eligible liens with full-result status and billing/purchase summaries; a valid inclusive `startDate`/`endDate` or `purchaseDateFrom`/`purchaseDateTo` range filters lien purchase dates before summaries and paging, while an omitted range defaults through the previous Pacific calendar day and excludes future or undated liens; paged JSON requests calculate summaries from compact database projections and enrich only the requested page, while CSV still loads every matching export row |
+| `POST` | `/api/liens/cases/dashboard/total-case-report-export/v3` | Returns legacy-eligible cases with full-result status counts; a valid inclusive `startDate`/`endDate` or `purchaseDateFrom`/`purchaseDateTo` range includes cases having at least one linked lien purchased in range before status aggregation and paging, while an omitted range requires a linked dated lien purchased no later than the previous Pacific calendar day; paged, unfiltered JSON requests aggregate statuses in the database and enrich only the requested page |
+| `POST` | `/api/liens/cases/dashboard/lawfirm-case-report-export/v3` | Returns case/law-firm allocation and filters cases by the purchase date of any linked lien; unfiltered paged JSON requests stream the full allocation summary from compact metadata and enrich only the requested page |
+| `POST` | `/api/liens/cases/dashboard/medical-provider-report-export/v3` | Returns lien/facility allocation filtered by lien purchase date; paged JSON requests stream full-result medical-code and facility summaries from compact projections and enrich only the requested page, without selecting selling-party compatibility columns that are unrelated to the report |
+| `POST` | `/api/liens/cases/dashboard/deployed` | Sums active imported legacy medical-code purchase amounts for liens with a persisted `PurchaseDate`; it does not fall back to lien-level `PurchasePrice`. An omitted range defaults through the previous Pacific calendar day. |
+| `POST` | `/api/liens/cases/dashboard/cash-received` | Sums non-deleted settlement-row amounts by persisted `SettlementDate`. An explicit range is inclusive; an omitted range defaults through the previous Pacific calendar day and excludes undated or future settlements. |
 
 All four V3 report endpoints return paginated rows plus full-result summaries. When paging is
 missing or invalid, JSON requests default to `page: 1` and return all matching rows; positive
 `page` and `limit` values are honored for the returned `items` array.
 Set `isCsv: true` or `isCsv: "yes"` for an uncapped Base64-encoded CSV export.
-Dashboard pie-chart and deployed/cash-received metrics use database grouping and aggregation instead of
-materializing every matching case, lien, or settlement. Report contact enrichment is restricted to referenced
-contacts, organization law firms, providers, and facilities rather than loading the tenant-wide contact table.
+Dashboard pie-chart and deployed/cash-received metrics use database grouping, aggregation, and streaming note
+processing instead of retaining every matching case, lien, servicing note, or settlement in memory. Report contact
+enrichment is restricted to referenced contacts, organization law firms, providers, and facilities rather than
+loading the tenant-wide contact table.
 The tenant dashboard requests one report row alongside the full-result summaries, then loads a selected
 report's detailed breakdown in server-paginated pages of 10 rows. This keeps the initial four V3 JSON responses
 bounded while preserving uncapped CSV exports and access to every report page.
@@ -155,6 +157,14 @@ default off: `SellingPartyCompatibility:BackfillEnabled`, `DualWriteEnabled`, `S
 checkpoints and immutable preferred aliases for existing directory companies. Transient batches use fresh service scopes
 and are bounded by `BackfillMaxRetries` (default 3) and `BackfillRetryDelayMilliseconds` (default 250). Do not enable canonical reads until each
 Selling workflow has zero unexplained contract diffs and its dual-write/shadow-read coverage has been completed.
+
+The company-directory and selling-party compatibility migrations are restart-safe on MySQL. If a deployment stops after
+MySQL auto-commits only part of either migration, the next Liens startup detects existing tables, columns, indexes,
+constraints, and lookup seeds, creates only the missing objects, and lets EF record the migration normally. The same
+guarded recovery also repairs environments where migration history was recorded before the schema completed, using a
+database advisory lock so concurrent Liens instances do not race the DDL. Runtime and design-time Liens DbContexts enable
+MySqlConnector user variables for this guarded DDL; callers do not need to append that option to
+`ConnectionStrings:LiensDb` themselves.
 
 Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. The request only confirms
 seller acceptance; notification delivery is mandatory and cannot be opted out through request payload. On every
@@ -352,13 +362,12 @@ date-filtered Cash Received metric, and excludes source rows marked deleted (`CA
 = 'Y'`, `LM_IS_DELETED = 'Y'`, or `SLSPD_IS_DELETED = 'Y'`). Medical-code
 amounts and servicing rows are imported only when `LMC_STATUS = 'A'`, matching
 the legacy dashboard calculations. Cash Deployed includes only liens with a
-persisted `PurchaseDate` and uses the same per-lien purchase precedence as the
-DIY report: aggregated legacy medical-code purchase amounts, then the lien's
-`PurchasePrice`. All-time Cash Received uses the same
-per-lien returned-amount precedence as the DIY report and therefore includes
-undated imported `totalSettledAmount` metadata. Date-filtered Cash Received
-continues to include only non-deleted settlement rows whose persisted
-`SettlementDate` is within the requested range.
+persisted `PurchaseDate` and sums their imported active legacy medical-code
+purchase amounts without a lien-level fallback. Cash Received sums only
+non-deleted settlement rows with a persisted `SettlementDate`. When the
+dashboard omits a range, both metrics and all four V3 reports default through
+the previous Pacific calendar day, matching the legacy portal's completed-day
+reporting window; explicit date ranges remain inclusive.
 
 ## Workflow Engine (Flow)
 

@@ -32,7 +32,7 @@ public static class DependencyInjection
 
         services.AddDbContext<LiensDbContext>(options =>
             options.UseMySql(
-                connectionString,
+                LiensMySqlConnectionString.Configure(connectionString),
                 new MySqlServerVersion(new Version(8, 0, 0))));
 
         services.AddHttpContextAccessor();

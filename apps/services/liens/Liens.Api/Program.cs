@@ -66,6 +66,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 builder.Services.AddLiensServices(builder.Configuration);
+builder.Services.AddHostedService<ScheduledLawFirmSwitchHostedService>();
 builder.Services.AddHttpClient("Identity", client =>
 {
     var baseUrl = builder.Configuration["ExternalServices:Identity:BaseUrl"];
@@ -99,6 +100,20 @@ try
 catch (Exception ex)
 {
     app.Logger.LogWarning(ex, "Could not apply Liens database migrations on startup — schema may be out of sync.");
+}
+
+// Repair selling schema drift even when migration history was recorded before
+// MySQL finished all non-transactional DDL. Normal startups perform read-only
+// checks and skip the guarded recovery operations.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+    await Liens.Infrastructure.Persistence.Migrations.SellingSchemaRepair.EnsureAsync(db, app.Logger);
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Selling schema recovery could not complete — selling APIs may be unavailable.");
 }
 
 // ── Migration coverage self-test ─────────────────────────────────────────

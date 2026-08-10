@@ -30,10 +30,11 @@ public sealed class UpdateCaseRequest
     public string? CaseDropped { get; init; }
     public string? ChildSupportLiens { get; init; }
     public string? IsUccFiled { get; init; }
-    public string? LawFirmId { get; init; }
+    public string? LawFirmId { get; set; }
+    public string? PendingLawFirmId { get; set; }
     public string? AccidentTypeId { get; init; }
     public string? CaseManagerId { get; init; }
     public string? AttorneyId { get; init; }
-    public string? SwitchedDate { get; init; }
+    public string? SwitchedDate { get; set; }
     public string? StatusLabel { get; init; }
 }

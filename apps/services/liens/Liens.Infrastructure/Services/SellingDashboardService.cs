@@ -62,7 +62,28 @@ public sealed class SellingDashboardService : ISellingDashboardService
             lienQuery = lienQuery.Where(l => l.InitialServiceDate.HasValue &&
                 l.InitialServiceDate.Value <= normalizedQuery.InitialServiceDateTo.Value);
 
-        var liens = await lienQuery.ToListAsync(ct);
+        // Keep the seller dashboard read model deliberately narrow. Materializing the
+        // full Lien entity makes this read path depend on every newly mapped column,
+        // including compatibility columns that the dashboard does not use. A partial
+        // production migration would then take both dashboard and list endpoints down.
+        var liens = await lienQuery
+            .Select(l => new DashboardLien(
+                l.Id,
+                l.LienNumber,
+                l.ExternalReference,
+                l.SubjectFirstName,
+                l.SubjectLastName,
+                l.CaseId,
+                l.FacilityId,
+                l.FundingCompanyId,
+                l.InitialServiceDate,
+                l.OriginalAmount,
+                l.AskAmount,
+                l.HighestBidAmount,
+                l.PurchasePrice,
+                l.SellerStatus,
+                l.Status))
+            .ToListAsync(ct);
 
         var context = await LoadContextAsync(tenantId, liens, ct);
         var rows = liens
@@ -109,7 +130,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
 
     private async Task<DashboardContext> LoadContextAsync(
         Guid tenantId,
-        IReadOnlyCollection<Lien> liens,
+        IReadOnlyCollection<DashboardLien> liens,
         CancellationToken ct)
     {
         var caseIds = liens
@@ -127,11 +148,13 @@ public sealed class SellingDashboardService : ISellingDashboardService
             ? []
             : await _db.Cases.AsNoTracking()
                 .Where(c => c.TenantId == tenantId && caseIds.Contains(c.Id))
+                .Select(c => new DashboardCase(c.Id, c.OrgId, c.CaseNumber, c.Notes))
                 .ToListAsync(ct);
         var facilities = facilityIds.Count == 0
             ? []
             : await _db.Facilities.AsNoTracking()
                 .Where(f => f.TenantId == tenantId && facilityIds.Contains(f.Id))
+                .Select(f => new DashboardFacility(f.Id, f.Name))
                 .ToListAsync(ct);
 
         var caseById = cases.ToDictionary(c => c.Id);
@@ -198,7 +221,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
             row => offerBids.GetValueOrDefault(row.Lien.Id, row.Lien.HighestBidAmount ?? 0m));
     }
 
-    private static DashboardRow CreateRow(Lien lien, DashboardContext context)
+    private static DashboardRow CreateRow(DashboardLien lien, DashboardContext context)
     {
         context.CasesById.TryGetValue(lien.CaseId ?? Guid.Empty, out var caseEntity);
         context.FacilitiesById.TryGetValue(lien.FacilityId ?? Guid.Empty, out var facility);
@@ -427,7 +450,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         };
     }
 
-    private static string StatusFor(Lien lien)
+    private static string StatusFor(DashboardLien lien)
     {
         if (!string.IsNullOrWhiteSpace(lien.SellerStatus))
         {
@@ -495,13 +518,38 @@ public sealed class SellingDashboardService : ISellingDashboardService
     }
 
     private sealed record DashboardContext(
-        IReadOnlyDictionary<Guid, Case> CasesById,
-        IReadOnlyDictionary<Guid, Facility> FacilitiesById,
+        IReadOnlyDictionary<Guid, DashboardCase> CasesById,
+        IReadOnlyDictionary<Guid, DashboardFacility> FacilitiesById,
         IReadOnlyDictionary<Guid, Contact> ContactsById,
         IReadOnlyDictionary<Guid, Contact> ContactsByOrgId);
 
+    private sealed record DashboardLien(
+        Guid Id,
+        string LienNumber,
+        string? ExternalReference,
+        string? SubjectFirstName,
+        string? SubjectLastName,
+        Guid? CaseId,
+        Guid? FacilityId,
+        Guid? FundingCompanyId,
+        DateOnly? InitialServiceDate,
+        decimal OriginalAmount,
+        decimal? AskAmount,
+        decimal? HighestBidAmount,
+        decimal? PurchasePrice,
+        string? SellerStatus,
+        string Status);
+
+    private sealed record DashboardCase(
+        Guid Id,
+        Guid OrgId,
+        string CaseNumber,
+        string? Notes);
+
+    private sealed record DashboardFacility(Guid Id, string Name);
+
     private sealed record DashboardRow(
-        Lien Lien,
+        DashboardLien Lien,
         string? CaseNumber,
         Guid? LawFirmId,
         string? LawFirm,
