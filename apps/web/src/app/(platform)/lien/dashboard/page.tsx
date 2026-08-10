@@ -78,6 +78,7 @@ const CASE_STATUS_ORDER = [
   "Closed",
   "Litigation(Open)",
   "Litigation(Pending)",
+  "Litigation(Closed)",
 ];
 
 export default function LienDashboardPage() {
