@@ -39,10 +39,16 @@ interface AddContactModalProps {
   contactTypeOptions?: LookupData[];
   lawFirmId?: string;
   facilityId?: string;
+  /** Generic parent-contact link for contact-person flows not represented by lawFirmId/facilityId. */
+  parentContactId?: string;
   /** Fixed sub-contact role. Ignored when `roleOptions` is passed. */
   contactSubtype?: string;
   /** Renders a Role select bound to contactSubtype. */
   roleOptions?: LookupData[];
+  /** Allows creating a new role inline from the picker, if the caller supports it. */
+  allowCreateRole?: boolean;
+  /** Called when a new role is created and should be added to the current options list. */
+  onRoleCreated?: (role: LookupData) => void;
   title: string;
   subtitle?: string;
   /** Presence => edit mode: prefills the form and calls updateContact. */
@@ -170,8 +176,11 @@ export function AddContactModal({
   contactTypeOptions,
   lawFirmId,
   facilityId,
+  parentContactId,
   contactSubtype,
   roleOptions,
+  allowCreateRole,
+  onRoleCreated,
   title,
   subtitle,
   editTarget,
@@ -304,6 +313,7 @@ export function AddContactModal({
         contactSubtype: form.contactSubtype || undefined,
         lawFirmId: lawFirmId || undefined,
         facilityId: facilityId || undefined,
+        parentContactId: parentContactId || undefined,
         ...(isMainContact
           ? { fullName: form.fullName.trim() }
           : {
