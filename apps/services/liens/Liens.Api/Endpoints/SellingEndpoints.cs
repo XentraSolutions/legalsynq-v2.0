@@ -1193,7 +1193,7 @@ public static class SellingEndpoints
         IReadOnlyList<BuyerOfferedLienDocument> documents,
         IReadOnlyList<SellingPortalMessage> messages)
     {
-        var status = GetBuyerOfferedLienStatus(accessLink.ResponseStatus);
+        var status = GetBuyerOfferedLienStatus(accessLink.ResponseStatus, lien.Status, lien.SellerStatus);
         var askAmount = lien.AskAmount ?? lien.OfferPrice;
         var submittedAtUtc = accessLink.NotificationSubmittedAtUtc ?? lien.SubmittedForSaleAtUtc ?? accessLink.CreatedAtUtc;
         var sellerName = FirstNonEmpty(new[] { sellerDisplay.Name, sellerDisplay.Company, "Seller unavailable" }) ?? "Seller unavailable";
@@ -1277,7 +1277,7 @@ public static class SellingEndpoints
         IReadOnlyDictionary<SellerDisplayKey, SellerOrganizationDisplay> sellerDisplays,
         IReadOnlyDictionary<Guid, string> providerNames)
     {
-        var status = GetBuyerOfferedLienStatus(source.ResponseStatus);
+        var status = GetBuyerOfferedLienStatus(source.ResponseStatus, source.LienStatus, source.SellerStatus);
         var askAmount = source.AskAmount ?? source.OfferPrice;
         var offeredAmount = source.ResponseAmount ?? askAmount ?? 0m;
         var receivedAtUtc = source.NotificationSubmittedAtUtc ?? source.SubmittedForSaleAtUtc ?? source.CreatedAtUtc;
@@ -1413,15 +1413,28 @@ public static class SellingEndpoints
             _ => 3,
         };
 
-    private static string GetBuyerOfferedLienStatus(string? responseStatus)
-        => responseStatus switch
-        {
-            var value when string.Equals(value, SellingBuyerResponseStatus.Accepted, StringComparison.OrdinalIgnoreCase)
-                => BuyerOfferedLienStatuses.Accepted,
-            var value when string.Equals(value, SellingBuyerResponseStatus.Declined, StringComparison.OrdinalIgnoreCase)
-                => BuyerOfferedLienStatuses.Declined,
-            _ => BuyerOfferedLienStatuses.Pending,
-        };
+    private static string GetBuyerOfferedLienStatus(
+        string? responseStatus,
+        string? lienStatus,
+        string? sellerStatus)
+    {
+        if (string.Equals(responseStatus, SellingBuyerResponseStatus.Accepted, StringComparison.OrdinalIgnoreCase))
+            return BuyerOfferedLienStatuses.Accepted;
+        if (string.Equals(responseStatus, SellingBuyerResponseStatus.Declined, StringComparison.OrdinalIgnoreCase))
+            return BuyerOfferedLienStatuses.Declined;
+
+        // A lien can have more than one access link (for example after a notification
+        // is reissued). Once any link completes the lien workflow, unanswered sibling
+        // links are no longer actionable and must not continue to appear as Pending.
+        if (string.Equals(sellerStatus, SellingLienStatus.Accepted, StringComparison.Ordinal) ||
+            string.Equals(lienStatus, LienStatus.Accepted, StringComparison.Ordinal))
+            return BuyerOfferedLienStatuses.Accepted;
+        if (string.Equals(sellerStatus, SellingLienStatus.Declined, StringComparison.Ordinal) ||
+            string.Equals(lienStatus, LienStatus.Declined, StringComparison.Ordinal))
+            return BuyerOfferedLienStatuses.Declined;
+
+        return BuyerOfferedLienStatuses.Pending;
+    }
 
     private static bool IsBuyerResponseActionableOffer(string? lienStatus, string? sellerStatus)
         => string.Equals(sellerStatus, SellingLienStatus.SubmittedForSale, StringComparison.Ordinal) ||

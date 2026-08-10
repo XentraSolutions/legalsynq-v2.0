@@ -1975,7 +1975,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             $"Body: {await listResponse.Content.ReadAsStringAsync()}");
         var listJson = await listResponse.Content.ReadFromJsonAsync<JsonElement>();
         var row = listJson.GetProperty("rows").EnumerateArray().Single();
-        row.GetProperty("status").GetString().Should().Be("Pending");
+        row.GetProperty("status").GetString().Should().Be("Accepted");
         row.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
             .Should().Equal("view");
 
@@ -1984,6 +1984,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         detailResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await detailResponse.Content.ReadAsStringAsync()}");
         var detail = await detailResponse.Content.ReadFromJsonAsync<JsonElement>();
+        detail.GetProperty("status").GetString().Should().Be("Accepted");
         detail.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
             .Should().Equal("view");
     }
