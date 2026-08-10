@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useTimezone } from '@/lib/use-timezone';
+import { DateDisplay } from '@/components/ui/date-display';
 import { lienTaskGovernanceService } from '@/lib/liens/lien-task-governance.service';
 import { lienWorkflowApi } from '@/lib/liens/lien-workflow.api';
 import type {
@@ -57,7 +57,6 @@ function ToggleCard({
 
 export default function TaskGovernancePage() {
   const addToast = useLienStore((s) => s.addToast);
-  const timezone = useTimezone();
 
   const [settings, setSettings]   = useState<TaskGovernanceSettings | null>(null);
   const [stages, setStages]       = useState<WorkflowStageDto[]>([]);
@@ -239,7 +238,7 @@ export default function TaskGovernancePage() {
               <> · Last updated by <strong>{settings.lastUpdatedByName}</strong></>
             )}
             {settings.lastUpdatedAt && (
-              <> · {new Date(settings.lastUpdatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: timezone })}</>
+              <> · <DateDisplay value={settings.lastUpdatedAt} format="date" /></>
             )}
           </p>
           <p>Source: <span className="font-mono">{settings.lastUpdatedSource}</span></p>

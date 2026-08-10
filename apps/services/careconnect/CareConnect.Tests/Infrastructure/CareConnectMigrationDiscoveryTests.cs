@@ -28,6 +28,7 @@ public class CareConnectMigrationDiscoveryTests
         Assert.Contains("20260423230000_AddProviderOnboardingRecoveryState", migrationIds);
         Assert.Contains("20260429120000_AddReferralComments", migrationIds);
         Assert.Contains("20260501000000_AddMissingProviderCategories", migrationIds);
+        Assert.Contains("20260719000000_AddReferralMessageAttachments", migrationIds);
     }
 
     [Fact]
@@ -43,6 +44,7 @@ public class CareConnectMigrationDiscoveryTests
             typeof(CareConnect.Infrastructure.Data.Migrations.AddProviderOnboardingRecoveryState),
             typeof(CareConnect.Infrastructure.Data.Migrations.AddReferralComments),
             typeof(CareConnect.Infrastructure.Data.Migrations.AddMissingProviderCategories),
+            typeof(CareConnect.Infrastructure.Data.Migrations.AddReferralMessageAttachments),
         };
 
         foreach (var migrationType in migrationTypes)

@@ -13,9 +13,12 @@ interface FilterToolbarProps {
   onSearch?: (query: string) => void;
   searchValue?: string;
   children?: React.ReactNode;
+  onSearchFocus?: () => void;
+  onSearchBlur?: () => void;
+  dropdown?: React.ReactNode;
 }
 
-export function FilterToolbar({ searchPlaceholder = 'Search...', filters, onSearch, searchValue = '', children }: FilterToolbarProps) {
+export function FilterToolbar({ searchPlaceholder = 'Search...', filters, onSearch, searchValue = '', children, onSearchFocus, onSearchBlur, dropdown }: FilterToolbarProps) {
   const [query, setQuery] = useState(searchValue);
 
   return (
@@ -27,8 +30,11 @@ export function FilterToolbar({ searchPlaceholder = 'Search...', filters, onSear
           placeholder={searchPlaceholder}
           value={query}
           onChange={(e) => { setQuery(e.target.value); onSearch?.(e.target.value); }}
+          onFocus={onSearchFocus}
+          onBlur={onSearchBlur}
           className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
         />
+        {dropdown}
       </div>
       {filters?.map((filter, i) => (
         <select

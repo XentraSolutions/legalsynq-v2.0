@@ -5,7 +5,7 @@
  * Access is enforced at the CareConnect API level (403 if not receiver).
  *
  * Components reused from Tenant Portal where appropriate.
- * AttachmentPanel: canUpload=false — providers cannot upload documents.
+ * AttachmentPanel: canUpload=false — providers cannot upload general documents.
  */
 
 import { notFound } from 'next/navigation';
@@ -18,6 +18,8 @@ import { ReferralStatusActions } from '@/components/careconnect/referral-status-
 import { ReferralTimeline } from '@/components/careconnect/referral-timeline';
 import { ReferralAuditTimeline } from '@/components/careconnect/referral-audit-timeline';
 import { AttachmentPanel } from '@/components/careconnect/attachment-panel';
+import { ReferralMessageThread } from '@/components/careconnect/referral-message-thread';
+import type { ReferralComment } from '@/types/careconnect';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -51,6 +53,8 @@ export default async function ProviderReferralDetailPage({ params }: Props) {
 
   let referral = null;
   let fetchError: string | null = null;
+  let comments: ReferralComment[] = [];
+  let commentsError: string | null = null;
 
   try {
     referral = await careConnectServerApi.referrals.getById(id);
@@ -62,6 +66,20 @@ export default async function ProviderReferralDetailPage({ params }: Props) {
         : err.message;
     } else {
       fetchError = 'Failed to load referral.';
+    }
+  }
+
+  if (referral) {
+    try {
+      comments = await careConnectServerApi.referrals.getComments(id);
+    } catch (err) {
+      if (err instanceof ServerApiError) {
+        commentsError = err.isForbidden
+          ? 'You do not have access to this referral conversation.'
+          : err.message;
+      } else {
+        commentsError = 'Failed to load messages.';
+      }
     }
   }
 
@@ -112,6 +130,12 @@ export default async function ProviderReferralDetailPage({ params }: Props) {
               entityId={referral.id}
               canUpload={false}
               readOnly
+            />
+
+            <ReferralMessageThread
+              referralId={referral.id}
+              initialComments={comments}
+              initialError={commentsError}
             />
 
             {/* Operational audit timeline */}

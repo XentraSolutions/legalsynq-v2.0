@@ -70,7 +70,14 @@ public class CurrentRequestContext : ICurrentRequestContext
         string.Equals(ProviderMode, "manage", StringComparison.OrdinalIgnoreCase);
 
     public IReadOnlyCollection<string> Roles =>
-        User?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList().AsReadOnly()
+        User?
+            .FindAll(ClaimTypes.Role)
+            .Concat(User.FindAll("role"))
+            .Select(c => c.Value)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList()
+            .AsReadOnly()
         ?? (IReadOnlyCollection<string>)Array.Empty<string>();
 
     public IReadOnlyCollection<string> ProductRoles =>

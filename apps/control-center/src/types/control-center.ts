@@ -21,11 +21,12 @@ export interface TenantSummary {
   orgCount:           number;
   createdAtUtc:       string;
   subdomain?:         string;
+  url:               string;
   provisioningStatus?: ProvisioningStatus;
 }
 
 /**
- * Full tenant record returned by GET /identity/api/admin/tenants/{id}.
+ * Full tenant record returned by GET /tenant/api/v1/admin/tenants/{id}.
  * Extends TenantSummary with enriched fields not present in the list view.
  */
 export interface TenantDetail extends TenantSummary {
@@ -69,6 +70,8 @@ export type ProductCode =
   | 'SynqBill'
   | 'SynqRx'
   | 'SynqPayout'
+  | 'Xenia'
+  | 'SynqAI'
   | 'CareConnect';
 
 /** Live status of a product entitlement for a tenant. */
@@ -823,8 +826,13 @@ export interface SupportCase {
   userName?:        string;
   requesterEmail?:  string;
   status:           SupportCaseStatus;
+  caseStatus:       SupportCaseStatus;
   category:         string;
+  caseType:         string;
   priority:         SupportCasePriority;
+  caseManagerUserId?: string;
+  caseManagerName?:   string;
+  caseManagerEmail?:  string;
   assignedUserId?:  string;
   createdAtUtc:     string;
   updatedAtUtc:     string;

@@ -133,11 +133,15 @@ public static class AdminEndpoints
         // Idempotent: returns the existing org if already provisioned.
         routes.MapGet("/api/admin/organizations",                                    ListOrganizations);
         routes.MapPost("/api/admin/organizations",                                   AdminEndpointsLscc010.CreateProviderOrganization);
+        // SYNQLIEN-BUYER-ORG: Public buyer activation — ensure Identity LIEN_OWNER org exists.
+        routes.MapPost("/api/admin/organizations/synqlien-buyer",                    AdminEndpointsLscc010.CreateSynqLienBuyerOrganization);
         routes.MapGet("/api/admin/organizations/{id:guid}",                          AdminEndpointsLscc010.GetOrganizationById);
         // CC2-INT-B04: M2M user provisioning for provider activation (no permission gate — internal only)
         routes.MapPost("/api/admin/organizations/{id:guid}/provision-user",          AdminEndpointsLscc010.ProvisionProviderUser);
         // CC2-ENROLL: Self-enrollment — creates active user with direct password (no invitation email)
         routes.MapPost("/api/admin/organizations/{id:guid}/self-register",           AdminEndpointsLscc010.SelfRegisterUser);
+        // SYNQLIEN-BUYER-ENROLL: Public buyer offer account activation — creates/links SYNQLIEN_BUYER access.
+        routes.MapPost("/api/admin/organizations/{id:guid}/synqlien-buyer-self-register", AdminEndpointsLscc010.SelfRegisterSynqLienBuyer);
         // CC2-ENROLL-FIRM: Law firm self-enrollment — creates a LAW_FIRM org (keyed on tenantId + email)
         routes.MapPost("/api/admin/organizations/law-firm",                          AdminEndpointsLscc010.CreateLawFirmOrganization);
         routes.MapPut("/api/admin/organizations/{id:guid}", UpdateOrganization);
@@ -631,8 +635,8 @@ public static class AdminEndpoints
         {
             foreach (var rawCode in body.Products)
             {
-                var dbCode = FrontendToDbProductCode.TryGetValue(rawCode, out var mapped)
-                    ? mapped : rawCode;
+                var dbCode = await ResolveExistingDbProductCodeAsync(rawCode, db, ct)
+                    ?? GetDbProductCodeCandidates(rawCode).First();
                 try
                 {
                     var pr = await productProvisioningEngine.ProvisionAsync(
@@ -1415,6 +1419,8 @@ public static class AdminEndpoints
         ["SynqFund"]      = "SYNQ_FUND",
         ["SynqLien"]      = "SYNQ_LIENS",
         ["CareConnect"]   = "SYNQ_CARECONNECT",
+        ["Xenia"]         = "SYNQ_AI",
+        ["SynqAI"]        = "SYNQ_AI",
         ["SynqInsights"]  = "SYNQ_INSIGHTS",
     };
 
@@ -1424,8 +1430,48 @@ public static class AdminEndpoints
         ["SYNQ_FUND"]        = "SynqFund",
         ["SYNQ_LIENS"]       = "SynqLien",
         ["SYNQ_CARECONNECT"] = "CareConnect",
+        ["SYNQ_AI"]          = "Xenia",
+        ["XENIA"]           = "Xenia",
         ["SYNQ_INSIGHTS"]    = "SynqInsights",
     };
+
+    private static IEnumerable<string> GetDbProductCodeCandidates(string productCode)
+    {
+        if (string.Equals(productCode, "Xenia", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(productCode, "SynqAI", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(productCode, "SYNQ_AI", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(productCode, "XENIA", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return "SYNQ_AI";
+            yield return "XENIA";
+            yield break;
+        }
+
+        if (FrontendToDbProductCode.TryGetValue(productCode, out var mapped))
+        {
+            yield return mapped;
+            yield break;
+        }
+
+        yield return productCode.Trim().ToUpperInvariant();
+    }
+
+    private static async Task<string?> ResolveExistingDbProductCodeAsync(
+        string productCode,
+        IdentityDbContext db,
+        CancellationToken ct = default,
+        bool requireActive = false)
+    {
+        foreach (var candidate in GetDbProductCodeCandidates(productCode))
+        {
+            var exists = requireActive
+                ? await db.Products.AnyAsync(p => p.Code == candidate && p.IsActive, ct)
+                : await db.Products.AnyAsync(p => p.Code == candidate, ct);
+            if (exists) return candidate;
+        }
+
+        return null;
+    }
 
     private static async Task<IResult> UpdateEntitlement(
         Guid   id,
@@ -1433,16 +1479,14 @@ public static class AdminEndpoints
         IdentityDbContext db,
         EntitlementRequest body,
         IAuditEventClient auditClient,
-        IProductProvisioningService provisioningEngine)
+        IProductProvisioningService provisioningEngine,
+        CancellationToken ct)
     {
-        if (!FrontendToDbProductCode.TryGetValue(productCode, out var dbCode))
-            dbCode = productCode;
-
         var tenantExists = await db.Tenants.AnyAsync(t => t.Id == id);
         if (!tenantExists) return Results.NotFound();
 
-        var productExists = await db.Products.AnyAsync(p => p.Code == dbCode);
-        if (!productExists)
+        var dbCode = await ResolveExistingDbProductCodeAsync(productCode, db, ct);
+        if (dbCode is null)
             return Results.NotFound(new { error = $"Product '{productCode}' not found." });
 
         var result = await provisioningEngine.ProvisionAsync(
@@ -7064,17 +7108,7 @@ public static class AdminEndpoints
     /// </summary>
     private static async Task<string?> ResolveProductCode(string productKey, IdentityDbContext db, CancellationToken ct = default)
     {
-        // Try the frontend-to-DB alias map first
-        if (FrontendToDbProductCode.TryGetValue(productKey, out var mapped))
-        {
-            var exists = await db.Products.AnyAsync(p => p.Code == mapped && p.IsActive, ct);
-            return exists ? mapped : null;
-        }
-
-        // Otherwise uppercase + trim the raw key and look it up directly
-        var code = productKey.ToUpperInvariant().Trim();
-        var found = await db.Products.AnyAsync(p => p.Code == code && p.IsActive, ct);
-        return found ? code : null;
+        return await ResolveExistingDbProductCodeAsync(productKey, db, ct, requireActive: true);
     }
 
     /// <summary>
@@ -7631,9 +7665,8 @@ public static class AdminEndpoints
         // productKey filter — join via UserProductAccessRecords
         if (!string.IsNullOrWhiteSpace(productKey))
         {
-            var filterCode = FrontendToDbProductCode.TryGetValue(productKey, out var mapped)
-                ? mapped
-                : productKey.ToUpperInvariant().Trim();
+            var filterCode = await ResolveExistingDbProductCodeAsync(productKey, db, ct, requireActive: true)
+                ?? productKey.ToUpperInvariant().Trim();
             q = q.Where(u => db.UserProductAccessRecords.Any(a =>
                 a.UserId == u.Id && a.ProductCode == filterCode &&
                 a.AccessStatus == AccessStatus.Granted));
@@ -7827,6 +7860,8 @@ public static class AdminEndpoints
 public static partial class AdminEndpointsLscc010
 {
     private const string CareConnectProductCode = "SYNQ_CARECONNECT";
+    private const string SynqLienProductCode = "SYNQ_LIENS";
+    private const string SynqLienBuyerRoleCode = "SYNQLIEN_BUYER";
 
     private static async Task EnsureCareConnectUserProductAccessAsync(
         Guid tenantId,
@@ -7882,6 +7917,61 @@ public static partial class AdminEndpointsLscc010
             userId: userId,
             roleCode: roleCode,
             productCode: CareConnectProductCode,
+            organizationId: orgId,
+            createdByUserId: actorUserId));
+
+        user.IncrementAccessVersion();
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task EnsureSynqLienBuyerUserProductAccessAsync(
+        Guid tenantId,
+        Guid userId,
+        IProductProvisioningService provisioningEngine,
+        IUserProductAccessService userProductAccessService,
+        Guid? actorUserId,
+        CancellationToken ct)
+    {
+        await provisioningEngine.ProvisionAsync(
+            new ProvisionProductRequest(tenantId, SynqLienProductCode, true),
+            ct);
+
+        await userProductAccessService.GrantAsync(
+            tenantId,
+            userId,
+            SynqLienProductCode,
+            actorUserId,
+            ct);
+    }
+
+    private static async Task EnsureSynqLienBuyerRoleAsync(
+        IdentityDbContext db,
+        Guid tenantId,
+        Guid userId,
+        Guid orgId,
+        Guid? actorUserId,
+        CancellationToken ct)
+    {
+        var alreadyAssigned = await db.UserRoleAssignments
+            .AnyAsync(a =>
+                a.TenantId == tenantId &&
+                a.UserId == userId &&
+                a.ProductCode == SynqLienProductCode &&
+                a.RoleCode == SynqLienBuyerRoleCode &&
+                a.OrganizationId == orgId &&
+                a.AssignmentStatus == AssignmentStatus.Active,
+                ct);
+        if (alreadyAssigned)
+            return;
+
+        var user = await db.Users.FindAsync([userId], ct)
+            ?? throw new InvalidOperationException($"User {userId} does not exist.");
+
+        db.UserRoleAssignments.Add(UserRoleAssignment.Create(
+            tenantId: tenantId,
+            userId: userId,
+            roleCode: SynqLienBuyerRoleCode,
+            productCode: SynqLienProductCode,
             organizationId: orgId,
             createdByUserId: actorUserId));
 
@@ -8019,6 +8109,104 @@ public static partial class AdminEndpointsLscc010
             .FirstOrDefaultAsync(ct);
 
         return org is null ? Results.NotFound() : Results.Ok(org);
+    }
+
+    /// <summary>
+    /// POST /api/admin/organizations/synqlien-buyer
+    ///
+    /// M2M endpoint called by SynqLien public buyer activation before user
+    /// self-registration. Liens buyer organization ids are source-system ids,
+    /// so this creates or resolves the corresponding Identity LIEN_OWNER org.
+    /// </summary>
+    public static async Task<IResult> CreateSynqLienBuyerOrganization(
+        CreateSynqLienBuyerOrgRequest body,
+        IdentityDbContext             db,
+        CancellationToken             ct)
+    {
+        if (body.TenantId == Guid.Empty)
+            return Results.BadRequest(new { error = "tenantId is required." });
+        if (body.SourceBuyerOrgId == Guid.Empty)
+            return Results.BadRequest(new { error = "sourceBuyerOrgId is required." });
+        if (string.IsNullOrWhiteSpace(body.BuyerCompanyName))
+            return Results.BadRequest(new { error = "buyerCompanyName is required." });
+
+        var tenantExists = await db.Tenants.AnyAsync(t => t.Id == body.TenantId, ct);
+        if (!tenantExists)
+        {
+            try
+            {
+                var code = body.TenantId.ToString("N")[..12];
+                var rehydrated = Tenant.Rehydrate(id: body.TenantId, code: code, status: "Active");
+                db.Tenants.Add(rehydrated);
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                db.ChangeTracker.Clear();
+                tenantExists = await db.Tenants.AnyAsync(t => t.Id == body.TenantId, ct);
+                if (!tenantExists)
+                {
+                    return Results.Problem(
+                        $"Could not rehydrate tenant '{body.TenantId}' in Identity. " +
+                        "The tenant must be provisioned before creating an organization.");
+                }
+            }
+        }
+
+        var companyName = body.BuyerCompanyName.Trim();
+        var sourceName = BuildSynqLienBuyerOrganizationName(companyName, body.SourceBuyerOrgId);
+
+        var existing = await db.Organizations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(o =>
+                o.TenantId == body.TenantId &&
+                o.OrgType == OrgType.LienOwner &&
+                (o.Name == sourceName || o.Name == companyName),
+                ct);
+
+        if (existing is not null)
+        {
+            return Results.Ok(new CreateSynqLienBuyerOrgResponse(
+                existing.Id,
+                existing.DisplayName ?? existing.Name,
+                IsNew: false));
+        }
+
+        var org = Organization.Create(
+            tenantId: body.TenantId,
+            name: sourceName,
+            orgType: OrgType.LienOwner,
+            displayName: companyName);
+
+        db.Organizations.Add(org);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            existing = await db.Organizations
+                .AsNoTracking()
+                .FirstOrDefaultAsync(o =>
+                    o.TenantId == body.TenantId &&
+                    o.OrgType == OrgType.LienOwner &&
+                    (o.Name == sourceName || o.Name == companyName),
+                    ct);
+
+            if (existing is null)
+                throw;
+
+            return Results.Ok(new CreateSynqLienBuyerOrgResponse(
+                existing.Id,
+                existing.DisplayName ?? existing.Name,
+                IsNew: false));
+        }
+
+        return Results.Created(
+            $"/api/admin/organizations/{org.Id}",
+            new CreateSynqLienBuyerOrgResponse(org.Id, org.DisplayName ?? org.Name, IsNew: true));
     }
 
     /// <summary>
@@ -8553,6 +8741,156 @@ public static partial class AdminEndpointsLscc010
     }
 
     // =========================================================================
+    // SYNQLIEN-BUYER-ENROLL: buyer self-enrollment from public lien offer link
+    // =========================================================================
+
+    /// <summary>
+    /// POST /api/admin/organizations/{orgId}/synqlien-buyer-self-register
+    ///
+    /// M2M endpoint called by SynqLien during public buyer account activation.
+    /// Creates an active user, grants SYNQ_LIENS product access, and assigns
+    /// SYNQLIEN_BUYER scoped to the buyer organization. Existing accounts are
+    /// rejected so the public activation flow cannot silently reuse a login.
+    /// </summary>
+    public static async Task<IResult> SelfRegisterSynqLienBuyer(
+        Guid                    id,
+        SelfRegisterUserRequest body,
+        IdentityDbContext       db,
+        IPasswordHasher         passwordHasher,
+        IProductProvisioningService provisioningEngine,
+        IUserProductAccessService userProductAccessService,
+        IAuditEventClient       auditClient,
+        ILoggerFactory          loggerFactory,
+        CancellationToken       ct)
+    {
+        var logger = loggerFactory.CreateLogger("AdminEndpointsLscc010.SelfRegisterSynqLienBuyer");
+
+        if (string.IsNullOrWhiteSpace(body.Email))
+            return Results.BadRequest(new { error = "email is required." });
+        if (string.IsNullOrWhiteSpace(body.Password))
+            return Results.BadRequest(new { error = "password is required." });
+        if (string.IsNullOrWhiteSpace(body.FirstName))
+            return Results.BadRequest(new { error = "firstName is required." });
+
+        var org = await db.Organizations
+            .AsNoTracking()
+            .Where(o => o.Id == id)
+            .Select(o => new { o.Id, o.TenantId, o.Name })
+            .FirstOrDefaultAsync(ct);
+
+        if (org is null)
+            return Results.NotFound(new { error = $"Organization '{id}' not found." });
+
+        var targetTenantId = body.TenantId ?? org.TenantId;
+        if (!targetTenantId.HasValue || targetTenantId.Value == Guid.Empty)
+            return Results.BadRequest(new { error = "tenantId is required for SynqLien buyer self-registration." });
+
+        var emailLower = body.Email.ToLowerInvariant().Trim();
+        var (phoneOk, normalisedPhone, phoneError) = PhoneNumber.TryNormalise(body.Phone);
+        if (!phoneOk)
+            return Results.BadRequest(new { error = phoneError });
+
+        var tenantOwnerUserId = await db.Tenants
+            .AsNoTracking()
+            .Where(t => t.Id == targetTenantId.Value)
+            .Select(t => t.OwnerUserId)
+            .FirstOrDefaultAsync(ct);
+
+        var emailUserIdForOwnerCheck = await db.Users
+            .AsNoTracking()
+            .Where(u => u.Email.Trim().ToLower() == emailLower)
+            .Select(u => (Guid?)u.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (tenantOwnerUserId.HasValue &&
+            emailUserIdForOwnerCheck.HasValue &&
+            emailUserIdForOwnerCheck.Value == tenantOwnerUserId.Value)
+        {
+            logger.LogWarning(
+                "SynqLien buyer self-registration blocked because email {Email} belongs to tenant owner of {TenantId}.",
+                emailLower,
+                targetTenantId.Value);
+            return Results.Conflict(new
+            {
+                error = "This email address is associated with the account that owns this tenant and cannot be enrolled as a SynqLien buyer.",
+                code = "OWNER_ENROLLMENT_BLOCKED",
+            });
+        }
+
+        var existingUser = await db.Users
+            .Where(u => u.Email.Trim().ToLower() == emailLower)
+            .FirstOrDefaultAsync(ct);
+
+        if (existingUser is not null)
+        {
+            logger.LogInformation(
+                "SynqLien buyer self-registration rejected existing user {UserId} for tenant {TenantId} org {OrgId}.",
+                existingUser.Id,
+                targetTenantId.Value,
+                id);
+            return Results.Conflict(new
+            {
+                error = "An account with this email already exists. Log in with your existing account instead.",
+                code = "ACCOUNT_ALREADY_EXISTS",
+            });
+        }
+
+        var lastName = body.LastName?.Trim() ?? string.Empty;
+        var hash = passwordHasher.Hash(body.Password);
+        var user = User.Create(targetTenantId.Value, emailLower, hash, body.FirstName.Trim(), lastName);
+        user.SetPhone(normalisedPhone);
+        db.Users.Add(user);
+        db.UserTenants.Add(UserTenant.Create(user.Id, targetTenantId.Value));
+
+        await EnsureUserOrganizationMembershipAsync(db, user.Id, id, ct);
+        await db.SaveChangesAsync(ct);
+
+        await EnsureSynqLienBuyerUserProductAccessAsync(
+            targetTenantId.Value,
+            user.Id,
+            provisioningEngine,
+            userProductAccessService,
+            actorUserId: null,
+            ct);
+
+        await EnsureSynqLienBuyerRoleAsync(
+            db,
+            targetTenantId.Value,
+            user.Id,
+            org.Id,
+            actorUserId: null,
+            ct);
+
+        _ = auditClient.IngestAsync(new IngestAuditEventRequest
+        {
+            EventType = "identity.user.synqlien-buyer.self.enrolled",
+            EventCategory = EventCategory.Administrative,
+            SourceSystem = "identity-service",
+            SourceService = "admin-api",
+            Visibility = VisibilityScope.Tenant,
+            Severity = SeverityLevel.Info,
+            OccurredAtUtc = DateTimeOffset.UtcNow,
+            Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = targetTenantId.Value.ToString() },
+            Actor = new AuditEventActorDto { Type = ActorType.System, Name = "synqlien-buyer-enrollment" },
+            Entity = new AuditEventEntityDto { Type = "User", Id = user.Id.ToString() },
+            Action = "SelfEnrolled",
+            Description = $"User '{emailLower}' self-enrolled as a SynqLien buyer (org {id}).",
+            IdempotencyKey = IdempotencyKey.For("identity-service", "identity.user.synqlien-buyer.self.enrolled", user.Id.ToString()),
+            Tags = ["user-management", "synqlien", "buyer", "self-enrollment"],
+        });
+
+        logger.LogInformation(
+            "SynqLien buyer self-registration created user {UserId} ({Email}) in org {OrgId}.",
+            user.Id,
+            emailLower,
+            id);
+
+        return Results.Created(
+            $"/api/admin/users/{user.Id}",
+            new SelfRegisterUserResponse(user.Id, IsNew: true));
+    }
+
+    // =========================================================================
     // CC2-ENROLL-FIRM: Law firm self-enrollment — create LAW_FIRM org
     // =========================================================================
 
@@ -8673,6 +9011,18 @@ public static partial class AdminEndpointsLscc010
         return membership;
     }
 
+    private static string BuildSynqLienBuyerOrganizationName(string companyName, Guid sourceBuyerOrgId)
+    {
+        const int maxOrganizationNameLength = 200;
+        var suffix = $" [synqlien:{sourceBuyerOrgId:D}]";
+        var trimmedCompanyName = companyName.Trim();
+        var maxCompanyLength = maxOrganizationNameLength - suffix.Length;
+        if (trimmedCompanyName.Length > maxCompanyLength)
+            trimmedCompanyName = trimmedCompanyName[..maxCompanyLength].TrimEnd();
+
+        return trimmedCompanyName + suffix;
+    }
+
     // Keep the request/response records accessible to the route registration above
     public record CreateLawFirmOrgRequest(
         Guid   TenantId,
@@ -8691,6 +9041,17 @@ public static partial class AdminEndpointsLscc010
         bool   GlobalScope = false);
 
     private record CreateProviderOrgResponse(
+        Guid   Id,
+        string Name,
+        bool   IsNew);
+
+    public record CreateSynqLienBuyerOrgRequest(
+        Guid    TenantId,
+        Guid    SourceBuyerOrgId,
+        string  BuyerCompanyName,
+        string? ContactEmail = null);
+
+    private record CreateSynqLienBuyerOrgResponse(
         Guid   Id,
         string Name,
         bool   IsNew);

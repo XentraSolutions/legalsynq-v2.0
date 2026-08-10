@@ -8,6 +8,8 @@ const IS_PROD                 = process.env.NODE_ENV === 'production';
 // Matches CC_COMMON_PORTAL_HOSTNAME in middleware.ts.
 const CC_COMMON_PORTAL_HOSTNAME =
   normalizeCareConnectPortalHost(process.env.CC_COMMON_PORTAL_HOSTNAME);
+const SYNQLIEN_COMMON_PORTAL_HOSTNAME =
+  normalizeCareConnectPortalHost(process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME);
 
 interface RateLimitEntry {
   count: number;
@@ -18,6 +20,11 @@ const loginRateLimit  = new Map<string, RateLimitEntry>();
 const LOGIN_LIMIT     = 20;
 const LOGIN_WINDOW    = 5 * 60 * 1000;
 const CARECONNECT_PORTAL_RESTRICTED_TITLE = 'CareConnectPortalRoleRestricted';
+const SYNQLIEN_PORTAL_RESTRICTED_TITLE = 'SynqLienPortalRoleRestricted';
+const SYNQLIEN_PRODUCT_CODE = 'SYNQ_LIENS';
+const SYNQLIEN_BUYER_ROLE = `${SYNQLIEN_PRODUCT_CODE}:SYNQLIEN_BUYER`;
+const SYNQLIEN_PORTAL_RESTRICTED_MESSAGE =
+  'This account is not eligible to access the SynqLien funding portal.';
 
 function checkLoginRateLimit(ip: string): boolean {
   const now   = Date.now();
@@ -92,7 +99,14 @@ export async function POST(request: NextRequest) {
   // email.  This covers the case where CC_COMMON_PORTAL_HOSTNAME has no subdomain
   // (e.g. bare "localhost") so extractRawSubdomain returns null.
   const isCommonPortalHost =
-    !!CC_COMMON_PORTAL_HOSTNAME && incomingHost === CC_COMMON_PORTAL_HOSTNAME;
+    (!!CC_COMMON_PORTAL_HOSTNAME && incomingHost === CC_COMMON_PORTAL_HOSTNAME) ||
+    (!!SYNQLIEN_COMMON_PORTAL_HOSTNAME && incomingHost === SYNQLIEN_COMMON_PORTAL_HOSTNAME);
+  const portalProductCode =
+    !!SYNQLIEN_COMMON_PORTAL_HOSTNAME && incomingHost === SYNQLIEN_COMMON_PORTAL_HOSTNAME
+      ? SYNQLIEN_PRODUCT_CODE
+      : isCommonPortalHost
+        ? 'SYNQ_CARECONNECT'
+        : null;
 
   const tenantCode = isCommonPortalHost
     ? 'common-portal'                          // placeholder — not sent to Identity
@@ -118,7 +132,7 @@ export async function POST(request: NextRequest) {
   let resolveByEmail = isCommonPortalHost;
 
   if (isCommonPortalHost) {
-    console.log(`[login] AUTH-CC01 common portal host detected (${incomingHost}) — resolving by email`);
+    console.log(`[login] AUTH-CC01 common portal host detected (${incomingHost}) product=${portalProductCode} — resolving by email`);
   } else if (rawSubdomain) {
     try {
       const tenantRes = await fetch(
@@ -136,6 +150,9 @@ export async function POST(request: NextRequest) {
         // Common portal — subdomain is not a tenant identifier.
         // Identity will resolve the tenant from the user's email.
         resolveByEmail = true;
+        // Historical CareConnect fallback: unknown tenant subdomains under the
+        // portal namespace resolve by email unless a hostname explicitly selected
+        // another common-portal product above.
         console.log(`[login] AUTH-CC01 subdomain=${rawSubdomain} not found in Tenant service — resolving by email`);
       } else {
         console.log(`[login] AUTH-B01 tenant resolve by-subdomain returned ${tenantRes.status}, proceeding without tenantId fallback`);
@@ -153,6 +170,7 @@ export async function POST(request: NextRequest) {
     subdomain: rawSubdomain,
     tenantId: resolvedTenantId,
     resolveByEmail,
+    portalProductCode,
   });
   const outgoingBytes = new TextEncoder().encode(outgoingBody);
 
@@ -183,6 +201,13 @@ export async function POST(request: NextRequest) {
     if (isCommonPortalHost && upstreamTitle === CARECONNECT_PORTAL_RESTRICTED_TITLE) {
       return NextResponse.json(
         { message: upstreamMessage ?? 'This account cannot sign in to the CareConnect portal.' },
+        { status: 403 },
+      );
+    }
+
+    if (isCommonPortalHost && upstreamTitle === SYNQLIEN_PORTAL_RESTRICTED_TITLE) {
+      return NextResponse.json(
+        { message: upstreamMessage ?? SYNQLIEN_PORTAL_RESTRICTED_MESSAGE },
         { status: 403 },
       );
     }
@@ -230,6 +255,16 @@ export async function POST(request: NextRequest) {
 
   const data = await identityRes.json();
   const { accessToken, expiresAtUtc, user } = data;
+
+  if (
+    portalProductCode === SYNQLIEN_PRODUCT_CODE &&
+    !isSynqLienFundingPortalLoginEligible(user?.productRoles, user?.roles)
+  ) {
+    return NextResponse.json(
+      { message: SYNQLIEN_PORTAL_RESTRICTED_MESSAGE },
+      { status: 403 },
+    );
+  }
 
   // Compute Max-Age in seconds
   const expiresDate = new Date(expiresAtUtc);
@@ -300,4 +335,26 @@ function extractRawSubdomain(rawHost: string): string | null {
   if (parts.length === 2 && parts[1] === 'localhost') return parts[0];
 
   return null;
+}
+
+function isSynqLienFundingPortalLoginEligible(
+  productRoles: unknown,
+  systemRoles: unknown,
+): boolean {
+  const roleNames = toStringList(systemRoles);
+  if (roleNames.length > 0) return false;
+
+  const synqLienRoles = toStringList(productRoles).filter(role =>
+    role.startsWith('SYNQLIEN_') ||
+    role.startsWith(`${SYNQLIEN_PRODUCT_CODE}:`),
+  );
+
+  return synqLienRoles.length > 0
+    && synqLienRoles.every(role => role === SYNQLIEN_BUYER_ROLE || role === 'SYNQLIEN_BUYER');
+}
+
+function toStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }

@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api-client';
+import { appendCareConnectMessageFiles, type SelectedCareConnectMessageFile } from '@/lib/careconnect-message-attachments';
 import type {
   ProviderSummary,
   ProviderDetail,
@@ -84,6 +85,17 @@ export const careConnectApi = {
 
     postComment: (id: string, body: CreateReferralCommentRequest) =>
       apiClient.post<ReferralComment>(`/careconnect/api/referrals/${id}/comments`, body),
+
+    postCommentWithAttachments: (
+      id: string,
+      message: string,
+      files: SelectedCareConnectMessageFile[],
+    ) => {
+      const form = new FormData();
+      form.append('message', message);
+      appendCareConnectMessageFiles(form, files);
+      return apiClient.postForm<ReferralComment>(`/careconnect/api/referrals/${id}/comments`, form);
+    },
 
     /** PUT /api/referrals/{id} — update status, fields, or treatment type. Omit status for treatment-type-only updates. */
     update: (id: string, body: { requestedService?: string; urgency: string; status?: string; notes?: string; declineNotes?: string; treatmentTypeId?: string | null }) =>

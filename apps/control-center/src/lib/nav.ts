@@ -168,6 +168,13 @@ export const CC_NAV: NavSection[] = [
   },
 
   {
+    heading: 'AUTOMATION',
+    items: [
+      { href: '/xenia/settings', label: 'Xenia Assistant Settings', icon: 'ri-settings-3-line' },
+    ],
+  },
+
+  {
     heading: 'SYSTEM',
     items: [
       { href: '/settings', label: 'Platform Settings', icon: 'ri-settings-3-line', badge: 'IN PROGRESS' },

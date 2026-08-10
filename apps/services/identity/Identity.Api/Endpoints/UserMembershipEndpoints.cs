@@ -139,6 +139,40 @@ public static class UserMembershipEndpoints
             }
         });
 
+        // ── GET /api/internal/users/account-exists?email=xxx ────────────────
+        //
+        // Internal account existence signal for trusted product-service UX, such
+        // as replacing create-account CTAs on token-scoped public links.
+        //
+        // Always HTTP 200 for valid internal callers.
+        //
+        // Auth: X-Provisioning-Token (same pattern as assign-tenant / assign-roles).
+
+        group.MapGet("/account-exists", async (
+            HttpContext       httpContext,
+            string?           email,
+            Guid?             tenantId,
+            IdentityDbContext db,
+            IConfiguration    configuration,
+            ILoggerFactory    loggerFactory,
+            CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Identity.Api.UserMembership.AccountExists");
+
+            if (!ValidateProvisioningToken(httpContext, configuration, log, "account-exists"))
+                return Results.Unauthorized();
+
+            if (string.IsNullOrWhiteSpace(email))
+                return CreateAccountExistsResult(false, tenantId);
+
+            var emailNorm = email.Trim().ToLowerInvariant();
+            var exists = await db.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.Email.Trim().ToLower() == emailNorm, ct);
+
+            return CreateAccountExistsResult(exists, tenantId);
+        });
+
         // ── GET /api/internal/users/portal-access?tenantId=xxx&email=xxx ─────
         //
         // CC-PORTAL-CHECK: Returns the tenant-scoped CareConnect referrer status
@@ -419,6 +453,14 @@ public static class UserMembershipEndpoints
             JsonSerializer.Serialize(new { status }),
             "application/json",
             statusCode: StatusCodes.Status200OK);
+
+    private static IResult CreateAccountExistsResult(bool exists, Guid? tenantId) =>
+        Results.Text(
+            JsonSerializer.Serialize(new AccountExistsResponse(exists, tenantId)),
+            "application/json",
+            statusCode: StatusCodes.Status200OK);
+
+    private sealed record AccountExistsResponse(bool Exists, Guid? TenantId);
 
     // ── Shared token guard ────────────────────────────────────────────────────
 

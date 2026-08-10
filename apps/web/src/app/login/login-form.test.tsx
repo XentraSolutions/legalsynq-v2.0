@@ -48,4 +48,29 @@ describe('LoginForm', () => {
     expect(refresh).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
   });
+
+  test('uses the provided default return target when no returnTo is present', async () => {
+    getSearchParam.mockReturnValue(null);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    }));
+
+    render(<LoginForm defaultReturnTo="/funding/dashboard" />);
+
+    const inputs = screen.getAllByRole('textbox');
+    fireEvent.change(inputs[0], {
+      target: { value: 'buyer@example.com' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('••••••••'), {
+      target: { value: 'Password123!' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(refresh).toHaveBeenCalled();
+      expect(push).toHaveBeenCalledWith('/funding/dashboard');
+    });
+  });
 });

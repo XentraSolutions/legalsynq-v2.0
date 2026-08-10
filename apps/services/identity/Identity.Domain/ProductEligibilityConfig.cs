@@ -14,10 +14,10 @@ public static class ProductEligibilityConfig
     private static readonly Dictionary<string, HashSet<string>> _orgTypeToProducts =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            [OrgType.LawFirm] = [ProductCodes.SynqCareConnect, ProductCodes.SynqFund, ProductCodes.SynqLiens],
-            [OrgType.Provider] = [ProductCodes.SynqCareConnect],
-            [OrgType.Funder] = [ProductCodes.SynqFund],
-            [OrgType.LienOwner] = [ProductCodes.SynqLiens],
+            [OrgType.LawFirm] = [ProductCodes.SynqCareConnect, ProductCodes.SynqFund, ProductCodes.SynqLiens, ProductCodes.SynqAI],
+            [OrgType.Provider] = [ProductCodes.SynqCareConnect, ProductCodes.SynqAI],
+            [OrgType.Funder] = [ProductCodes.SynqFund, ProductCodes.SynqAI],
+            [OrgType.LienOwner] = [ProductCodes.SynqLiens, ProductCodes.SynqAI],
             [OrgType.Internal] = [ProductCodes.SynqCareConnect, ProductCodes.SynqFund, ProductCodes.SynqLiens, ProductCodes.SynqPay, ProductCodes.SynqAI],
         };
 

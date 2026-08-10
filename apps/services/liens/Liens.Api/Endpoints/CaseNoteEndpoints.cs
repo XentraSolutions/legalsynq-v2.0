@@ -4,7 +4,9 @@ using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
+using Liens.Api.Serialization;
 using Liens.Domain;
+using Liens.Domain.Enums;
 using System.Globalization;
 
 namespace Liens.Api.Endpoints;
@@ -15,6 +17,17 @@ namespace Liens.Api.Endpoints;
 /// </summary>
 public static class CaseNoteEndpoints
 {
+    private sealed class LegacyCreateCaseNoteRequest
+    {
+        public string? caseId { get; init; }
+        public string? note { get; init; }
+    }
+
+    private sealed class LegacyDeleteCaseNoteRequest
+    {
+        public string? noteId { get; init; }
+    }
+
     private sealed class LegacyCaseNotesRequest
     {
         public string? caseId { get; init; }
@@ -29,6 +42,8 @@ public static class CaseNoteEndpoints
         public string note { get; init; } = string.Empty;
         public string isDeleted { get; init; } = "N";
         public string created { get; init; } = string.Empty;
+        // Preserve the canonical UTC instant for consumers that need it.
+        public string createdAtUtc { get; init; } = string.Empty;
         public string createdBy { get; init; } = string.Empty;
         public string userId { get; init; } = string.Empty;
         public bool canDelete { get; init; }
@@ -72,6 +87,14 @@ public static class CaseNoteEndpoints
         // Legacy: POST /case/get-notes
         legacyGroup.MapPost("/get-notes", GetCaseNotesFilteredLegacy)
             .RequirePermission(LiensPermissions.CaseRead);
+
+        // Legacy: POST /case/add-note
+        legacyGroup.MapPost("/add-note", AddCaseNoteLegacy)
+            .RequirePermission(LiensPermissions.CaseNoteManage);
+
+        // Legacy: POST /case/delete-note
+        legacyGroup.MapPost("/delete-note", DeleteCaseNoteLegacy)
+            .RequirePermission(LiensPermissions.CaseNoteManage);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -81,7 +104,7 @@ public static class CaseNoteEndpoints
         ctx.UserId ?? throw new UnauthorizedAccessException("User context is required.");
 
     private static string FormatLegacyTimestamp(DateTime value)
-        => value.ToString("MM/dd/yyyy hh:mm tt", CultureInfo.InvariantCulture);
+        => PacificTimeHelper.FormatTimestamp(value);
 
     private static async Task<IResult> GetCaseNotesLegacy(
         Guid caseId,
@@ -93,7 +116,7 @@ public static class CaseNoteEndpoints
 
         try
         {
-            var notes = await repo.GetByCaseIdAsync(tenantId, caseId, ct);
+            var notes = await repo.GetByCaseIdIncludingDeletedAsync(tenantId, caseId, ct);
             if (notes.Count == 0)
             {
                 return Results.NotFound(new
@@ -104,6 +127,7 @@ public static class CaseNoteEndpoints
             }
 
             var data = notes
+                .Where(n => string.Equals(n.Category, CaseNoteCategory.General, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(n => n.CreatedAtUtc)
                 .Select(n => new LegacyCaseNoteResponseItem
                 {
@@ -112,6 +136,8 @@ public static class CaseNoteEndpoints
                     note = n.Content,
                     isDeleted = n.IsDeleted ? "Y" : "N",
                     created = FormatLegacyTimestamp(n.CreatedAtUtc),
+                    createdAtUtc = DateTime.SpecifyKind(n.CreatedAtUtc, DateTimeKind.Utc)
+                        .ToString("O", CultureInfo.InvariantCulture),
                     createdBy = n.CreatedByName,
                     userId = n.CreatedByUserId.ToString(),
                     canDelete = false,
@@ -169,7 +195,9 @@ public static class CaseNoteEndpoints
             var showDeletedOnly = string.Equals(request.showDeleted, "true", StringComparison.OrdinalIgnoreCase);
             var sortOldest = string.Equals(request.sort, "oldest", StringComparison.OrdinalIgnoreCase);
 
-            var query = notes.Where(n => showDeletedOnly ? n.IsDeleted : !n.IsDeleted);
+            var query = notes
+                .Where(n => string.Equals(n.Category, CaseNoteCategory.Feed, StringComparison.OrdinalIgnoreCase))
+                .Where(n => showDeletedOnly ? n.IsDeleted : !n.IsDeleted);
             query = sortOldest
                 ? query.OrderBy(n => n.CreatedAtUtc)
                 : query.OrderByDescending(n => n.CreatedAtUtc);
@@ -181,6 +209,8 @@ public static class CaseNoteEndpoints
                 note = n.Content,
                 isDeleted = n.IsDeleted ? "Y" : "N",
                 created = FormatLegacyTimestamp(n.CreatedAtUtc),
+                createdAtUtc = DateTime.SpecifyKind(n.CreatedAtUtc, DateTimeKind.Utc)
+                    .ToString("O", CultureInfo.InvariantCulture),
                 createdBy = n.CreatedByName,
                 userId = n.CreatedByUserId.ToString(),
                 canDelete = n.CreatedByUserId == userId,
@@ -278,5 +308,79 @@ public static class CaseNoteEndpoints
         var userId   = RequireUserId(ctx);
         var note     = await svc.UnpinNoteAsync(tenantId, caseId, noteId, userId, ct);
         return Results.Ok(note);
+    }
+
+    private static async Task<IResult> AddCaseNoteLegacy(
+        LegacyCreateCaseNoteRequest request,
+        ILienCaseNoteService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.caseId, out var caseId) || string.IsNullOrWhiteSpace(request.note))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "caseId and note are required.",
+            });
+        }
+
+        await svc.CreateNoteAsync(
+            tenantId,
+            caseId,
+            userId,
+            new CreateCaseNoteRequest
+            {
+                Content = request.note.Trim(),
+                Category = CaseNoteCategory.Feed,
+                CreatedByName = ctx.Name ?? ctx.Email ?? userId.ToString(),
+            },
+            ct);
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Note added successfully.",
+        });
+    }
+
+    private static async Task<IResult> DeleteCaseNoteLegacy(
+        LegacyDeleteCaseNoteRequest request,
+        ILienCaseNoteRepository repo,
+        ILienCaseNoteService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(request.noteId, out var noteId))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "noteId is required.",
+            });
+        }
+
+        var note = await repo.GetByIdAsync(tenantId, noteId, ct);
+        if (note is null)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No notes found",
+            });
+        }
+
+        await svc.DeleteNoteAsync(tenantId, note.CaseId, noteId, userId, ct);
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Note deleted successfully.",
+        });
     }
 }

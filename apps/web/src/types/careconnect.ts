@@ -80,6 +80,15 @@ export interface ReferralComment {
   senderName: string;
   message:    string;
   createdAtUtc: string;
+  attachments?: ReferralMessageAttachment[];
+}
+
+export interface ReferralMessageAttachment {
+  id:            string;
+  fileName:      string;
+  contentType:   string;
+  fileSizeBytes: number;
+  createdAtUtc?: string;
 }
 
 // ── Referral ──────────────────────────────────────────────────────────────────

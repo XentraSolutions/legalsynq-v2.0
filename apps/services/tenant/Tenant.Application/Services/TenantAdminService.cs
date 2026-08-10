@@ -17,8 +17,9 @@ namespace Tenant.Application.Services;
 /// B12: Adds canonical tenant creation (Tenant-first) and entitlement toggle.
 ///      CreateTenantAsync: creates canonical Tenant record, then calls
 ///      IIdentityProvisioningAdapter to handle downstream auth/provisioning work.
-///      ToggleEntitlementAsync: upserts TenantProductEntitlement, then best-effort
-///      syncs to Identity via IIdentityCompatAdapter/sync path.
+///      ToggleEntitlementAsync: upserts TenantProductEntitlement, then syncs to
+///      Identity via IIdentityCompatAdapter. Failed syncs are rolled back so
+///      admin state does not drift from portal auth state.
 ///
 /// LS-COMMERCE-ECO-02: Commerce lifecycle notifications wired for tenant created
 ///      and status transitions (activated/suspended).  Notifications are noop-first
@@ -47,6 +48,9 @@ public class TenantAdminService : ITenantAdminService
         ["synqliens"] = "SynqLien",
         ["synq_liens"] = "SynqLien",
         ["synqlien"] = "SynqLien",
+        ["xenia"] = "Xenia",
+        ["synqai"] = "Xenia",
+        ["synq_ai"] = "Xenia",
         ["synqbill"] = "SynqBill",
         ["synq_bill"] = "SynqBill",
         ["synqrx"] = "SynqRx",
@@ -91,7 +95,13 @@ public class TenantAdminService : ITenantAdminService
         if (pageSize > 200) pageSize = 200;
 
         var (tenants, total) = await _tenantRepo.ListAsync(page, pageSize, ct);
-        var items = tenants.Select(ToSummary).ToList();
+        var items = new List<TenantAdminSummaryResponse>(tenants.Count);
+        foreach (var tenant in tenants)
+        {
+            var compat = await _identityCompat.GetTenantAdminSnapshotAsync(tenant.Id, ct);
+            items.Add(ToSummary(tenant, compat));
+        }
+
         return (items, total);
     }
 
@@ -107,7 +117,8 @@ public class TenantAdminService : ITenantAdminService
         var domains        = await _domainRepo.ListByTenantAsync(id, ct);
         var capabilities   = await _capabilityRepo.ListByTenantAsync(id, ct);
         var settings       = await _settingRepo.ListByTenantAsync(id, ct);
-        var sessionTimeout = await _identityCompat.GetSessionTimeoutMinutesAsync(id, ct);
+        var compatSnapshot = await _identityCompat.GetTenantAdminSnapshotAsync(id, ct);
+        var sessionTimeout = compatSnapshot?.SessionTimeoutMinutes;
 
         var logoDocumentId      = branding?.LogoDocumentId      ?? tenant.LogoDocumentId;
         var logoWhiteDocumentId = branding?.LogoWhiteDocumentId ?? tenant.LogoWhiteDocumentId;
@@ -144,14 +155,15 @@ public class TenantAdminService : ITenantAdminService
             DisplayName:         tenant.DisplayName,
             Status:              tenant.Status.ToString(),
             IsActive:            tenant.Status == TenantStatus.Active,
-            Type:                "LawFirm",
-            PrimaryContactName:  "",
+            Type:                NormalizeTenantType(compatSnapshot?.Type),
+            PrimaryContactName:  compatSnapshot?.PrimaryContactName ?? "",
             UserCount:           0,
             OrgCount:            0,
             ActiveUserCount:     0,
             LinkedOrgCount:      0,
             Email:               tenant.SupportEmail,
             Subdomain:           tenant.Subdomain,
+            Url:                 BuildTenantUrl(compatSnapshot?.Hostname, domains, tenant.Subdomain),
             CreatedAtUtc:        tenant.CreatedAtUtc,
             UpdatedAtUtc:        tenant.UpdatedAtUtc,
             LogoDocumentId:      logoDocumentId,
@@ -204,7 +216,8 @@ public class TenantAdminService : ITenantAdminService
                 ["newStatus"]   = parsed.ToString()
             }), ct);
 
-        return ToSummary(tenant);
+        var compat = await _identityCompat.GetTenantAdminSnapshotAsync(id, ct);
+        return ToSummary(tenant, compat);
     }
 
     // ── B12: Canonical Tenant Create (Tenant-first) ───────────────────────────
@@ -380,6 +393,9 @@ public class TenantAdminService : ITenantAdminService
         var normalizedKey = productCode.Trim().ToLowerInvariant();
 
         var entitlement = await _entitlementRepo.GetByTenantAndProductKeyAsync(tenantId, normalizedKey, ct);
+        var wasCreated = false;
+        var previousEnabled = entitlement?.IsEnabled;
+        var previousDefault = entitlement?.IsDefault;
         DateTime? enabledAtUtc = null;
 
         if (entitlement is null)
@@ -394,6 +410,7 @@ public class TenantAdminService : ITenantAdminService
                 effectiveFromUtc:   enabled ? DateTime.UtcNow : null);
 
             await _entitlementRepo.AddAsync(entitlement, ct);
+            wasCreated = true;
             enabledAtUtc = entitlement.EffectiveFromUtc;
         }
         else
@@ -411,6 +428,40 @@ public class TenantAdminService : ITenantAdminService
             productCode,
             enabled,
             ct);
+
+        if (!identitySynced)
+        {
+            _logger.LogWarning(
+                "Tenant entitlement toggle rolled back because Identity sync failed: TenantId={TenantId}, ProductCode={ProductCode}, Enabled={Enabled}",
+                tenantId,
+                productCode,
+                enabled);
+
+            if (wasCreated)
+            {
+                await _entitlementRepo.DeleteAsync(entitlement, ct);
+            }
+            else
+            {
+                if (previousEnabled == true) entitlement.Enable();
+                else entitlement.Disable();
+
+                if (previousDefault == true && !entitlement.IsDefault) entitlement.SetDefault();
+                if (previousDefault != true && entitlement.IsDefault) entitlement.ClearDefault();
+
+                await _entitlementRepo.UpdateAsync(entitlement, ct);
+            }
+
+            return new AdminEntitlementToggleResponse(
+                EntitlementId: entitlement.Id,
+                TenantId: tenantId,
+                ProductCode: ToCanonicalProductCode(productCode),
+                ProductName: entitlement.ProductDisplayName ?? ToCanonicalProductCode(productCode),
+                Enabled: previousEnabled ?? false,
+                Status: (previousEnabled ?? false) ? "Active" : "Disabled",
+                EnabledAtUtc: previousEnabled == true ? entitlement.EffectiveFromUtc?.ToString("o") : null,
+                IdentitySynced: false);
+        }
 
         return new AdminEntitlementToggleResponse(
             EntitlementId: entitlement.Id,
@@ -455,17 +506,63 @@ public class TenantAdminService : ITenantAdminService
 
     // ── Mapping ───────────────────────────────────────────────────────────────
 
-    private static TenantAdminSummaryResponse ToSummary(Domain.Tenant t) =>
+    private static TenantAdminSummaryResponse ToSummary(
+        Domain.Tenant t,
+        TenantIdentityCompatSnapshot? compat) =>
         new(
             Id:                 t.Id,
             Code:               t.Code,
             DisplayName:        t.DisplayName,
             Status:             t.Status.ToString(),
             IsActive:           t.Status == TenantStatus.Active,
-            Type:               "LawFirm",
-            PrimaryContactName: "",
+            Type:               NormalizeTenantType(compat?.Type),
+            PrimaryContactName: compat?.PrimaryContactName ?? "",
             UserCount:          0,
             OrgCount:           0,
             Subdomain:          t.Subdomain,
+            Url:                BuildTenantUrl(compat?.Hostname, null, t.Subdomain),
             CreatedAtUtc:       t.CreatedAtUtc);
+
+    private static string NormalizeTenantType(string? tenantType)
+    {
+        var normalized = tenantType?.Trim();
+        return string.IsNullOrWhiteSpace(normalized)
+            ? "LAW_FIRM"
+            : normalized;
+    }
+
+    private static string BuildTenantUrl(
+        string? hostname,
+        IEnumerable<TenantDomain>? domains,
+        string? subdomain)
+    {
+        var host = NormalizeHost(hostname);
+        if (string.IsNullOrWhiteSpace(host) && domains is not null)
+        {
+            host = domains
+                .Where(d => d is not null)
+                .Where(d => d.Status == TenantDomainStatus.Active)
+                .OrderByDescending(d => d.IsPrimary)
+                .ThenBy(d => d.DomainType == TenantDomainType.Subdomain ? 0 : 1)
+                .Select(d => d.Host)
+                .FirstOrDefault();
+        }
+
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            var normalizedSubdomain = NormalizeHost(subdomain);
+            if (!string.IsNullOrWhiteSpace(normalizedSubdomain) && normalizedSubdomain.Contains('.'))
+                host = normalizedSubdomain;
+        }
+
+        return string.IsNullOrWhiteSpace(host) ? string.Empty : $"https://{host}";
+    }
+
+    private static string? NormalizeHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return null;
+
+        return TenantDomain.NormalizeHost(host);
+    }
 }

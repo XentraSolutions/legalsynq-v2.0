@@ -331,6 +331,7 @@ app.MapActivationAdminEndpoints(); // LSCC-009
 app.MapAnalyticsEndpoints();      // LSCC-011
 // LS-FLOW-MERGE-P4 — product → Flow integration endpoints.
 app.MapWorkflowEndpoints();
+app.MapAssistantToolEndpoints();
 app.MapProviderEndpoints();
 app.MapReferralEndpoints();
 app.MapCategoryEndpoints();
@@ -395,6 +396,15 @@ static async Task EnsureSchemaObjectsAsync(
         cmd.CommandText =
             $"SELECT COUNT(*) FROM information_schema.columns " +
             $"WHERE table_schema='{dbName}' AND table_name='{table}' AND column_name='{column}'";
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+    }
+
+    async Task<bool> IndexExists(string table, string index)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            $"SELECT COUNT(*) FROM information_schema.statistics " +
+            $"WHERE table_schema='{dbName}' AND table_name='{table}' AND index_name='{index}'";
         return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
     }
 
@@ -530,9 +540,9 @@ static async Task EnsureSchemaObjectsAsync(
     if (!await TableExists("cc_ReferralComments"))
         if (await Exec("""
             CREATE TABLE `cc_ReferralComments` (
-                `Id`         char(36)      NOT NULL,
-                `TenantId`   char(36)      NOT NULL,
-                `ReferralId` char(36)      NOT NULL,
+                `Id`         char(36) COLLATE ascii_general_ci NOT NULL,
+                `TenantId`   char(36) COLLATE ascii_general_ci NOT NULL,
+                `ReferralId` char(36) COLLATE ascii_general_ci NOT NULL,
                 `SenderType` varchar(20)   NOT NULL,
                 `SenderName` varchar(200)  NOT NULL,
                 `Message`    varchar(4000) NOT NULL,
@@ -541,6 +551,22 @@ static async Task EnsureSchemaObjectsAsync(
                 KEY `IX_ReferralComments_TenantId_ReferralId_CreatedAt` (`TenantId`, `ReferralId`, `CreatedAt`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
             """, "cc_ReferralComments")) applied++;
+
+    // ── 20260719000000_AddReferralMessageAttachments ───────────────────────
+    if (await TableExists("cc_ReferralAttachments"))
+    {
+        if (!await ColumnExists("cc_ReferralAttachments", "ReferralCommentId"))
+            if (await Exec("ALTER TABLE `cc_ReferralAttachments` ADD COLUMN `ReferralCommentId` char(36) COLLATE ascii_general_ci NULL",
+                "cc_ReferralAttachments.ReferralCommentId")) applied++;
+
+        if (!await IndexExists("cc_ReferralAttachments", "IX_cc_ReferralAttachments_ReferralCommentId"))
+            if (await Exec("CREATE INDEX `IX_cc_ReferralAttachments_ReferralCommentId` ON `cc_ReferralAttachments` (`ReferralCommentId`)",
+                "cc_ReferralAttachments.ReferralCommentId index")) applied++;
+
+        if (!await IndexExists("cc_ReferralAttachments", "IX_cc_ReferralAttachments_ReferralComment"))
+            if (await Exec("CREATE INDEX `IX_cc_ReferralAttachments_ReferralComment` ON `cc_ReferralAttachments` (`TenantId`, `ReferralId`, `ReferralCommentId`, `CreatedAtUtc`)",
+                "cc_ReferralAttachments referral-comment index")) applied++;
+    }
 
     // ── 20260429130000_AddTreatmentTypes ────────────────────────────────────
     if (!await TableExists("cc_TreatmentTypes"))

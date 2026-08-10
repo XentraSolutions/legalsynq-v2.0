@@ -99,6 +99,54 @@ public class ProductProvisioningServiceTests
         Assert.Equal(AccessStatus.Granted, rows[0].AccessStatus);
     }
 
+    [Fact]
+    public async Task ProvisionAsync_Enable_BumpsAccessVersionForTenantMembersWhenEntitlementChanges()
+    {
+        await using var db = BuildDbContext();
+
+        var product = Product.Create("Xenia", "SYNQ_AI");
+        var tenant = Tenant.Create("Acme Law", "acme-law");
+        var org = Organization.Create(tenant.Id, "Acme Law", OrgType.LawFirm, displayName: "Acme Law");
+        var owner = User.Create(tenant.Id, "owner@acme.test", "password-hash", "Owner", "User");
+        var member = User.Create(tenant.Id, "member@acme.test", "password-hash", "Member", "User");
+
+        tenant.SetOwner(owner.Id);
+
+        db.Products.Add(product);
+        db.Tenants.Add(tenant);
+        db.Organizations.Add(org);
+        db.Users.AddRange(owner, member);
+        db.UserTenants.AddRange(
+            UserTenant.Create(owner.Id, tenant.Id),
+            UserTenant.Create(member.Id, tenant.Id));
+        await db.SaveChangesAsync();
+
+        var ownerInitialAccessVersion = owner.AccessVersion;
+        var memberInitialAccessVersion = member.AccessVersion;
+
+        var userProductAccessService = new UserProductAccessService(
+            db,
+            new StubAuditPublisher(),
+            NullLogger<UserProductAccessService>.Instance);
+
+        var sut = new ProductProvisioningService(
+            db,
+            [],
+            userProductAccessService,
+            NullLogger<ProductProvisioningService>.Instance,
+            new StubCommerceLifecycleNotifier());
+
+        await sut.ProvisionAsync(
+            new ProvisionProductRequest(tenant.Id, product.Code, true),
+            CancellationToken.None);
+
+        await db.Entry(owner).ReloadAsync();
+        await db.Entry(member).ReloadAsync();
+
+        Assert.True(owner.AccessVersion > ownerInitialAccessVersion);
+        Assert.True(member.AccessVersion > memberInitialAccessVersion);
+    }
+
     private static IdentityDbContext BuildDbContext()
     {
         var options = new DbContextOptionsBuilder<IdentityDbContext>()

@@ -1,7 +1,10 @@
+'use client';
+
 import Link from 'next/link';
 import type { LienSummary } from '@/types/lien';
 import { LIEN_TYPE_LABELS } from '@/types/lien';
 import { LienStatusBadge } from './lien-status-badge';
+import { DateDisplay } from '@/components/ui/date-display';
 
 interface LienListTableProps {
   liens:     LienSummary[];
@@ -13,10 +16,6 @@ function formatCurrency(amount?: number): string {
   if (amount == null) return '—';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
     .format(amount);
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function LienListTable({ liens, basePath = '/lien/my-liens', emptyText = 'No liens found.' }: LienListTableProps) {
@@ -69,7 +68,7 @@ export function LienListTable({ liens, basePath = '/lien/my-liens', emptyText = 
                     <LienStatusBadge status={lien.status} />
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                    {formatDate(lien.createdAtUtc)}
+                    <DateDisplay value={lien.createdAtUtc} format="date" />
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link

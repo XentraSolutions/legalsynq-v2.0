@@ -29,6 +29,15 @@ public static class PermissionCodes
     public const string LienReadHeld  = "SYNQ_LIENS.lien:read:held";
     public const string LienService   = "SYNQ_LIENS.lien:service";
     public const string LienSettle    = "SYNQ_LIENS.lien:settle";
+    public const string LienSaleRead          = "SYNQ_LIENS.lien_sale:read";
+    public const string LienSaleCreate        = "SYNQ_LIENS.lien_sale:create";
+    public const string LienSaleUpdate        = "SYNQ_LIENS.lien_sale:update";
+    public const string LienSalePublish       = "SYNQ_LIENS.lien_sale:publish";
+    public const string LienSaleWithdraw      = "SYNQ_LIENS.lien_sale:withdraw";
+    public const string LienSaleViewAnalytics = "SYNQ_LIENS.lien_sale:view_analytics";
+    public const string CaseRead      = "SYNQ_LIENS.case:read";
+    public const string CaseCreate    = "SYNQ_LIENS.case:create";
+    public const string CaseUpdate    = "SYNQ_LIENS.case:update";
     /// <summary>
     /// LS-FLOW-MERGE-P4 — capability claim required to start a Flow workflow
     /// for a SynqLien sale path (mapped to the <c>CanSellLien</c> policy).
@@ -76,4 +85,9 @@ public static class PermissionCodes
     public const string InsightsReportsBuild    = "SYNQ_INSIGHTS.reports:build";
     public const string InsightsSchedulesManage = "SYNQ_INSIGHTS.schedules:manage";
     public const string InsightsSchedulesRun    = "SYNQ_INSIGHTS.schedules:run";
+
+    // ── Xenia / SynqAI ───────────────────────────────────────────────────────
+    public const string XeniaAssistantUse    = "SYNQ_AI.assistant:use";
+    public const string XeniaAssistantManage = "SYNQ_AI.assistant:manage";
+    public const string XeniaUsageRead       = "SYNQ_AI.usage:read";
 }

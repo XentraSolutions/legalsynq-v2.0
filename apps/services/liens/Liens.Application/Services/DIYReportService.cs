@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Liens.Application.DTOs;
@@ -13,15 +14,18 @@ public class DIYReportService : IDIYReportService
     private readonly IDIYReportConfigRepository _repo;
     private readonly ILienRepository            _lienRepo;
     private readonly ICaseRepository            _caseRepo;
+    private readonly IServicingItemRepository   _servicingItemRepo;
 
     public DIYReportService(
         IDIYReportConfigRepository repo,
         ILienRepository lienRepo,
-        ICaseRepository caseRepo)
+        ICaseRepository caseRepo,
+        IServicingItemRepository servicingItemRepo)
     {
-        _repo        = repo;
-        _lienRepo    = lienRepo;
-        _caseRepo    = caseRepo;
+        _repo              = repo;
+        _lienRepo          = lienRepo;
+        _caseRepo          = caseRepo;
+        _servicingItemRepo = servicingItemRepo;
     }
 
     public async Task<List<DIYReportConfigResponse>> GetSavedReportsAsync(
@@ -42,7 +46,7 @@ public class DIYReportService : IDIYReportService
     public async Task<DIYReportConfigResponse> SaveReportAsync(
         Guid tenantId, Guid userId, SaveDIYReportRequest request, CancellationToken ct = default)
     {
-        var configJson = request.Config.GetRawText();
+        var configJson = BuildPersistedConfigJson(request);
         var entity = DIYReportConfig.Create(tenantId, userId, request.Name, configJson, userId);
         await _repo.AddAsync(entity, ct);
         return Map(entity);
@@ -67,41 +71,69 @@ public class DIYReportService : IDIYReportService
     {
         // Extract known filters from the config payload
         string? search = null;
-        var statuses = new List<string>();
+        var lienStatuses = new List<string>();
+        var caseStatuses = new List<string>();
+        var reportType = GetReportString(request, "reportType")?.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(reportType))
+            reportType = "LIENS";
+        var isLiensReport = string.Equals(reportType, "LIENS", StringComparison.OrdinalIgnoreCase);
+        var isCombinedReport = string.Equals(reportType, "COMBINED", StringComparison.OrdinalIgnoreCase);
+        var isCasesReport = !isLiensReport && !isCombinedReport;
 
-        if (request.Config.ValueKind == JsonValueKind.Object)
+        if (HasReportProperty(request, "status", out var s) && s.ValueKind == JsonValueKind.String)
         {
-            if (request.Config.TryGetProperty("status", out var s) && s.ValueKind == JsonValueKind.String)
-            {
-                var status = s.GetString();
-                if (!string.IsNullOrWhiteSpace(status))
-                    statuses.Add(status.Trim());
-            }
-            if (request.Config.TryGetProperty("lienStatusIds", out var statusIds) && statusIds.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in statusIds.EnumerateArray())
-                {
-                    if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString()))
-                        statuses.Add(item.GetString()!.Trim());
-                }
-            }
-            if (request.Config.TryGetProperty("search", out var k) && k.ValueKind == JsonValueKind.String)
-                search = k.GetString();
+            var status = s.GetString();
+            if (!string.IsNullOrWhiteSpace(status))
+                lienStatuses.Add(status.Trim());
         }
+        if (HasReportProperty(request, "statusView", out var statusView) && statusView.ValueKind == JsonValueKind.String)
+        {
+            var status = statusView.GetString();
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                ApplyStatusView(status.Trim(), isLiensReport || isCombinedReport, lienStatuses, caseStatuses);
+            }
+        }
+        if (HasReportProperty(request, "lienStatusIds", out var statusIds) && statusIds.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in statusIds.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString()))
+                    lienStatuses.Add(item.GetString()!.Trim());
+            }
+        }
+        if (HasReportProperty(request, "search", out var k) && k.ValueKind == JsonValueKind.String)
+            search = k.GetString();
+        var purchaseDateFrom = GetReportDateOnly(request, "purchaseDateFrom");
+        var purchaseDateTo = GetReportDateOnly(request, "purchaseDateTo");
+        var closedDateFrom = GetReportDateTime(request, "closedDateFrom", endOfDay: false);
+        var closedDateTo = GetReportDateTime(request, "closedDateTo", endOfDay: true);
+        var isBulk = GetReportString(request, "isBulk");
+        var filterCaseIds = GetReportGuidList(request, "plaintiffCaseIds");
 
-        var page = request.Page < 1 ? 1 : request.Page;
-        var limit = request.Limit < 1 ? 50 : request.Limit;
+        var page = GetReportInt(request, "page", request.Page);
+        if (page < 1) page = 1;
+        var limit = GetReportInt(request, "limit", request.Limit);
+        if (limit < 1) limit = 50;
         if (limit > 500) limit = 500;
 
         var reportData = await _lienRepo.SearchReportAsync(
             tenantId,
             search,
-            statuses.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            lienStatuses.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            caseStatuses.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            purchaseDateFrom,
+            purchaseDateTo,
+            closedDateFrom,
+            closedDateTo,
+            NormalizeLegacyBooleanFilter(isBulk),
+            filterCaseIds,
             page,
             limit,
             ct);
 
-        var caseIds = reportData.PageItems
+        var rowSource = isCasesReport ? reportData.AllItems : reportData.PageItems;
+        var caseIds = rowSource
             .Select(l => l.CaseId)
             .Where(id => id.HasValue)
             .Select(id => id!.Value)
@@ -115,55 +147,267 @@ public class DIYReportService : IDIYReportService
                 casesById[caseId] = caseEntity;
         }
 
-        var rows = reportData.PageItems.Select(l =>
-        {
-            Case? caseEntity = null;
-            if (l.CaseId.HasValue)
-                casesById.TryGetValue(l.CaseId.Value, out caseEntity);
+        var legacyMedicalAmounts = await GetLegacyMedicalAmountsByLienIdAsync(
+            tenantId,
+            reportData.AllItems,
+            ct);
 
-            return new DIYReportRow
-            {
-                CaseId = l.CaseId,
-                LienId = l.Id,
-                CaseNumber = caseEntity?.CaseNumber ?? string.Empty,
-                LienNumber = l.LienNumber,
-                PlaintiffFirstName = caseEntity?.ClientFirstName ?? l.SubjectFirstName ?? string.Empty,
-                PlaintiffLastName = caseEntity?.ClientLastName ?? l.SubjectLastName ?? string.Empty,
-                ClientName = caseEntity is null
-                    ? string.Join(" ", new[] { l.SubjectFirstName, l.SubjectLastName }.Where(v => !string.IsNullOrWhiteSpace(v)))
-                    : $"{caseEntity.ClientFirstName} {caseEntity.ClientLastName}".Trim(),
-                Status = l.Status,
-                CaseStatus = caseEntity?.Status,
-                DateOfLoss = caseEntity?.DateOfIncident ?? l.IncidentDate,
-                DateClosed = l.ClosedAtUtc ?? caseEntity?.ClosedAtUtc,
-                InitialServiceDate = l.IncidentDate,
-                BillingAmount = l.OriginalAmount,
-                PurchaseAmount = l.PurchasePrice,
-                ReturnedAmount = l.PayoffAmount,
-                LienTotal = l.CurrentBalance,
-                Extra = new Dictionary<string, object?>(),
-            };
-        }).ToList();
+        var rows = isCasesReport
+            ? BuildCaseRows(reportData.AllItems, casesById, legacyMedicalAmounts, page, limit)
+            : reportData.PageItems.Select(l => BuildLienRow(l, casesById, legacyMedicalAmounts)).ToList();
 
-        var summary = await BuildSummaryAsync(tenantId, reportData.AllItems, ct);
+        var totalCount = isCasesReport
+            ? reportData.AllItems.Select(l => l.CaseId).Where(id => id.HasValue).Distinct().Count()
+            : reportData.TotalCount;
+
+        var summary = await BuildSummaryAsync(tenantId, reportData.AllItems, legacyMedicalAmounts, ct);
 
         return new DIYReportResult
         {
+            ReportType = reportType,
             Items      = rows,
-            TotalCount = reportData.TotalCount,
+            TotalCount = totalCount,
             Page       = page,
             PageSize   = limit,
             SummaryTotals = summary,
         };
     }
 
+    private static void ApplyStatusView(
+        string statusView,
+        bool isLienLevel,
+        List<string> lienStatuses,
+        List<string> caseStatuses)
+    {
+        switch (statusView.ToUpperInvariant())
+        {
+            case "ALL":
+                return;
+            case "OPEN":
+                if (isLienLevel)
+                    lienStatuses.AddRange(LienStatus.Open);
+                else
+                    caseStatuses.AddRange(CaseStatus.All.Where(s => !IsClosedCaseStatus(s)));
+                return;
+            case "CLOSED":
+                if (isLienLevel)
+                    lienStatuses.AddRange(LienStatus.Terminal);
+                else
+                    caseStatuses.AddRange(CaseStatus.All.Where(IsClosedCaseStatus));
+                return;
+            case "REJECTED":
+                if (isLienLevel)
+                    lienStatuses.Add(LienStatus.Cancelled);
+                return;
+            default:
+                if (isLienLevel && LienStatus.All.Contains(statusView))
+                    lienStatuses.Add(statusView);
+                else if (CaseStatus.All.Contains(statusView))
+                    caseStatuses.Add(statusView);
+                return;
+        }
+    }
+
+    private static DIYReportRow BuildLienRow(
+        Lien l,
+        IReadOnlyDictionary<Guid, Case> casesById,
+        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts)
+    {
+        Case? caseEntity = null;
+        if (l.CaseId.HasValue)
+            casesById.TryGetValue(l.CaseId.Value, out caseEntity);
+
+        return new DIYReportRow
+        {
+            CaseId = l.CaseId,
+            LienId = l.Id,
+            CaseNumber = caseEntity?.CaseNumber ?? string.Empty,
+            LienNumber = l.LienNumber,
+            PlaintiffFirstName = caseEntity?.ClientFirstName ?? l.SubjectFirstName ?? string.Empty,
+            PlaintiffLastName = caseEntity?.ClientLastName ?? l.SubjectLastName ?? string.Empty,
+            ClientName = caseEntity is null
+                ? string.Join(" ", new[] { l.SubjectFirstName, l.SubjectLastName }.Where(v => !string.IsNullOrWhiteSpace(v)))
+                : $"{caseEntity.ClientFirstName} {caseEntity.ClientLastName}".Trim(),
+            Status = l.Status,
+            CaseStatus = caseEntity?.Status,
+            DateOfLoss = caseEntity?.DateOfIncident ?? l.IncidentDate,
+            DateClosed = l.ClosedAtUtc ?? caseEntity?.ClosedAtUtc,
+            InitialServiceDate = l.InitialServiceDate,
+            BillingAmount = ResolveBillingAmount(l, legacyMedicalAmounts),
+            PurchaseAmount = ResolvePurchaseAmount(l, legacyMedicalAmounts),
+            ReturnedAmount = l.PayoffAmount,
+            LienTotal = l.CurrentBalance,
+            NumberOfLiens = 1,
+            ToSettleAmount = l.CurrentBalance,
+            SettledAmount = l.PayoffAmount,
+            Extra = new Dictionary<string, object?>(),
+        };
+    }
+
+    private static bool IsClosedCaseStatus(string? status) =>
+        string.Equals(status, CaseStatus.Closed, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, CaseStatus.CaseSettled, StringComparison.OrdinalIgnoreCase);
+
+    private static List<DIYReportRow> BuildCaseRows(
+        IReadOnlyCollection<Lien> liens,
+        IReadOnlyDictionary<Guid, Case> casesById,
+        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts,
+        int page,
+        int limit)
+    {
+        return liens
+            .Where(l => l.CaseId.HasValue)
+            .GroupBy(l => l.CaseId!.Value)
+            .OrderByDescending(g => g.Key)
+            .Skip((page - 1) * limit)
+            .Take(limit)
+            .Select(g =>
+            {
+                casesById.TryGetValue(g.Key, out var caseEntity);
+                var first = g.First();
+
+                return new DIYReportRow
+                {
+                    CaseId = g.Key,
+                    LienId = null,
+                    CaseNumber = caseEntity?.CaseNumber ?? string.Empty,
+                    LienNumber = string.Empty,
+                    PlaintiffFirstName = caseEntity?.ClientFirstName ?? first.SubjectFirstName ?? string.Empty,
+                    PlaintiffLastName = caseEntity?.ClientLastName ?? first.SubjectLastName ?? string.Empty,
+                    ClientName = caseEntity is null
+                        ? string.Join(" ", new[] { first.SubjectFirstName, first.SubjectLastName }.Where(v => !string.IsNullOrWhiteSpace(v)))
+                        : $"{caseEntity.ClientFirstName} {caseEntity.ClientLastName}".Trim(),
+                    Status = null,
+                    CaseStatus = caseEntity?.Status,
+                    DateOfLoss = caseEntity?.DateOfIncident ?? first.IncidentDate,
+                    DateClosed = caseEntity?.ClosedAtUtc ?? g.Max(l => l.ClosedAtUtc),
+                    InitialServiceDate = g.Min(l => l.InitialServiceDate),
+                    BillingAmount = g.Sum(l => ResolveBillingAmount(l, legacyMedicalAmounts)),
+                    PurchaseAmount = g.Sum(l => ResolvePurchaseAmount(l, legacyMedicalAmounts) ?? 0m),
+                    ReturnedAmount = g.Sum(l => l.PayoffAmount ?? 0m),
+                    LienTotal = g.Sum(l => l.CurrentBalance ?? 0m),
+                    NumberOfLiens = g.Count(),
+                    ToSettleAmount = g.Sum(l => l.CurrentBalance ?? 0m),
+                    SettledAmount = g.Sum(l => l.PayoffAmount ?? 0m),
+                    Extra = new Dictionary<string, object?>(),
+                };
+            })
+            .ToList();
+    }
+
+    private static bool HasReportProperty(DIYReportRunRequest request, string propertyName, out JsonElement value)
+    {
+        if (request.Config.ValueKind == JsonValueKind.Object &&
+            request.Config.TryGetProperty(propertyName, out value))
+        {
+            return true;
+        }
+
+        if (request.ExtensionData is not null &&
+            request.ExtensionData.TryGetValue(propertyName, out value))
+        {
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static int GetReportInt(DIYReportRunRequest request, string propertyName, int fallback)
+    {
+        if (!HasReportProperty(request, propertyName, out var value))
+            return fallback;
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.Number when value.TryGetInt32(out var number) => number,
+            JsonValueKind.String when int.TryParse(value.GetString(), out var number) => number,
+            _ => fallback,
+        };
+    }
+
+    private static string? GetReportString(DIYReportRunRequest request, string propertyName)
+    {
+        if (!HasReportProperty(request, propertyName, out var value) ||
+            value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        if (value.ValueKind == JsonValueKind.String)
+            return value.GetString();
+
+        if (value.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in value.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString()))
+                    return item.GetString();
+            }
+        }
+
+        return null;
+    }
+
+    private static DateOnly? GetReportDateOnly(DIYReportRunRequest request, string propertyName)
+    {
+        var value = GetReportString(request, propertyName);
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+            ? date
+            : null;
+    }
+
+    private static DateTime? GetReportDateTime(DIYReportRunRequest request, string propertyName, bool endOfDay)
+    {
+        var value = GetReportString(request, propertyName);
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        if (!DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            return null;
+
+        return endOfDay ? date.Date.AddDays(1).AddTicks(-1) : date.Date;
+    }
+
+    private static IReadOnlyCollection<Guid> GetReportGuidList(DIYReportRunRequest request, string propertyName)
+    {
+        if (!HasReportProperty(request, propertyName, out var value) ||
+            value.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return value.EnumerateArray()
+            .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : null)
+            .Where(v => Guid.TryParse(v, out _))
+            .Select(v => Guid.Parse(v!))
+            .ToList();
+    }
+
+    private static string? NormalizeLegacyBooleanFilter(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return value.Trim().ToUpperInvariant() switch
+        {
+            "Y" or "YES" or "TRUE" or "1" => "Yes",
+            "N" or "NO" or "FALSE" or "0" => "No",
+            _ => value.Trim(),
+        };
+    }
+
     private async Task<DIYReportSummaryTotals> BuildSummaryAsync(
         Guid tenantId,
         IReadOnlyCollection<Lien> liens,
+        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts,
         CancellationToken ct)
     {
-        var totalPurchase = liens.Sum(l => l.PurchasePrice ?? 0m);
-        var totalBilling = liens.Sum(l => l.OriginalAmount);
+        var totalPurchase = liens.Sum(l => ResolvePurchaseAmount(l, legacyMedicalAmounts) ?? 0m);
+        var totalBilling = liens.Sum(l => ResolveBillingAmount(l, legacyMedicalAmounts));
         var totalReturned = liens.Sum(l => l.PayoffAmount ?? 0m);
         var totalAmtToSettle = liens.Sum(l => l.CurrentBalance ?? 0m);
         var totalGrossProfit = totalReturned - totalPurchase;
@@ -181,7 +425,7 @@ public class DIYReportService : IDIYReportService
         {
             var caseEntity = await _caseRepo.GetByIdAsync(tenantId, caseId, ct);
             if (caseEntity is not null &&
-                string.Equals(caseEntity.Status, CaseStatus.Closed, StringComparison.OrdinalIgnoreCase))
+                IsClosedCaseStatus(caseEntity.Status))
             {
                 closedCases++;
             }
@@ -189,6 +433,7 @@ public class DIYReportService : IDIYReportService
 
         return new DIYReportSummaryTotals
         {
+            TotalCases = uniqueCaseIds.Count,
             TotalLiens = liens.Count,
             TotalPurchaseAmt = totalPurchase,
             TotalBillingAmt = totalBilling,
@@ -201,6 +446,78 @@ public class DIYReportService : IDIYReportService
             TotalOpenLiens = liens.Count - closedLiens,
             TotalClosedLiens = closedLiens,
         };
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, LegacyMedicalAmounts>> GetLegacyMedicalAmountsByLienIdAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Lien> liens,
+        CancellationToken ct)
+    {
+        var lienIds = liens.Select(l => l.Id).Distinct().ToList();
+        var medicalCodeItems = await _servicingItemRepo.GetByLienIdsAsync(tenantId, lienIds, ct);
+
+        return medicalCodeItems
+            .Where(item => item.LienId.HasValue &&
+                           string.Equals(item.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
+            .GroupBy(item => item.LienId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Aggregate(
+                    new LegacyMedicalAmounts(),
+                    (amounts, item) => amounts.Add(ParseLegacyMedicalAmounts(item.Notes))));
+    }
+
+    private static LegacyMedicalAmounts ParseLegacyMedicalAmounts(string? notes)
+    {
+        var amounts = new LegacyMedicalAmounts();
+        if (string.IsNullOrWhiteSpace(notes))
+            return amounts;
+
+        foreach (var segment in notes.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0)
+                continue;
+
+            var key = segment[..separator].Trim();
+            var value = segment[(separator + 1)..].Trim();
+            if (!decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
+                continue;
+
+            if (string.Equals(key, "purchaseAmount", StringComparison.Ordinal))
+                amounts = amounts with { PurchaseAmount = amount, HasPurchaseAmount = true };
+            else if (string.Equals(key, "billingAmount", StringComparison.Ordinal))
+                amounts = amounts with { BillingAmount = amount, HasBillingAmount = true };
+        }
+
+        return amounts;
+    }
+
+    private static decimal ResolveBillingAmount(
+        Lien lien,
+        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts) =>
+        legacyMedicalAmounts.TryGetValue(lien.Id, out var amounts) && amounts.HasBillingAmount
+            ? amounts.BillingAmount
+            : lien.OriginalAmount;
+
+    private static decimal? ResolvePurchaseAmount(
+        Lien lien,
+        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts) =>
+        legacyMedicalAmounts.TryGetValue(lien.Id, out var amounts) && amounts.HasPurchaseAmount
+            ? amounts.PurchaseAmount
+            : lien.PurchasePrice;
+
+    private readonly record struct LegacyMedicalAmounts(
+        decimal PurchaseAmount = 0m,
+        bool HasPurchaseAmount = false,
+        decimal BillingAmount = 0m,
+        bool HasBillingAmount = false)
+    {
+        public LegacyMedicalAmounts Add(LegacyMedicalAmounts other) => new(
+            PurchaseAmount + other.PurchaseAmount,
+            HasPurchaseAmount || other.HasPurchaseAmount,
+            BillingAmount + other.BillingAmount,
+            HasBillingAmount || other.HasBillingAmount);
     }
 
     private static DIYReportConfigResponse Map(DIYReportConfig r)
@@ -216,7 +533,7 @@ public class DIYReportService : IDIYReportService
         }
 
         var reportType = GetString(config, "reportType") ?? "LIENS";
-        var reportConfig = BuildReportConfig(config);
+        var reportConfig = config;
         var columnCount = CountColumns(config);
 
         return new DIYReportConfigResponse
@@ -240,32 +557,26 @@ public class DIYReportService : IDIYReportService
         };
     }
 
-    private static JsonElement BuildReportConfig(JsonElement config)
+    private static string BuildPersistedConfigJson(SaveDIYReportRequest request)
     {
-        var node = JsonNode.Parse(config.GetRawText()) as JsonObject ?? new JsonObject();
-        var columns = new JsonArray();
+        var node = request.Config.ValueKind == JsonValueKind.Object
+            ? JsonNode.Parse(request.Config.GetRawText()) as JsonObject ?? new JsonObject()
+            : new JsonObject();
 
-        if (config.ValueKind == JsonValueKind.Object &&
-            config.TryGetProperty("columns", out var configColumns) &&
-            configColumns.ValueKind == JsonValueKind.Array)
+        if (request.ExtensionData is not null)
         {
-            foreach (var column in configColumns.EnumerateArray())
+            foreach (var (key, value) in request.ExtensionData)
             {
-                if (column.ValueKind == JsonValueKind.String)
-                {
-                    columns.Add(column.GetString());
-                }
-                else if (column.ValueKind == JsonValueKind.Object &&
-                         column.TryGetProperty("key", out var key) &&
-                         key.ValueKind == JsonValueKind.String)
-                {
-                    columns.Add(key.GetString());
-                }
+                if (string.Equals(key, "name", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(key, "config", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(key, "description", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                node[key] = JsonNode.Parse(value.GetRawText());
             }
         }
 
-        node["columns"] = columns;
-        return JsonDocument.Parse(node.ToJsonString()).RootElement;
+        return node.ToJsonString();
     }
 
     private static int CountColumns(JsonElement config)

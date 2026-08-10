@@ -1,0 +1,2143 @@
+You are implementing the following Xenia enterprise-hardening and extensibility ticket.
+
+==================================================
+TICKET
+==================================================
+
+Ticket ID:
+XENIA-P1-T5
+
+Parent Ticket:
+XENIA-P1 — Xenia Platform Foundation & Email Automation
+
+Related Tickets:
+- XENIA-P1-T1 — Core Service Foundation
+- XENIA-P1-T1-V1 — Core Foundation Validation and Remediation
+- XENIA-P1-T1-V2 — Core Portability and Runtime Closure
+- XENIA-P1-T2 — Tenant Email Module Foundation and Source Connectivity
+- XENIA-P1-T2-V1 — Email Source Connectivity and Administration Closure
+- XENIA-P1-T3 — Email Ingestion Engine and Message Persistence Foundation
+- XENIA-P1-T3-V1 — Ingestion Runtime Validation and Provider Completion
+- XENIA-P1-T4 — Email Administration, Monitoring, and Operational Control
+
+Task Type:
+🟦 XenIA
+
+Title:
+Enterprise Hardening, Production Validation, AI Readiness, and Extensibility Foundation
+
+==================================================
+MANDATORY EXECUTION RULES
+==================================================
+
+1. Create the implementation report before making any code changes.
+
+Required report path:
+
+/analysis/XENIA-P1-T5-report.md
+
+2. The report must be created as the first implementation action.
+
+3. Before changing source code, populate the report with:
+
+- Ticket information
+- Prior-report review
+- Initial repository analysis
+- Toolchain and environment
+- Current architecture assessment
+- Current test/build state
+- Open T4 carry-forward items
+- Initial implementation-progress table
+
+4. Update the report incrementally throughout:
+
+- Prior-ticket validation
+- Audit-event completion
+- Security hardening
+- Observability implementation
+- Resilience implementation
+- Diagnostics implementation
+- Performance testing
+- Integration validation
+- Automation framework design
+- Automation framework implementation
+- Email automation-provider migration
+- Database changes
+- API changes
+- Frontend changes
+- Runtime validation
+- Test execution
+- Documentation
+- Final Phase 1 closure assessment
+
+5. Do not create or fully populate the report only after implementation is complete.
+
+6. Do not fabricate:
+
+- Build success
+- Publish success
+- Test success
+- Migration success
+- Provider connectivity
+- Production-like validation
+- Performance results
+- Resilience results
+- Security results
+- Integration success
+- Automation discovery
+- Automation runtime execution
+- Frontend success
+- Tenant-isolation success
+
+7. Classify every material activity as one of:
+
+- Completed
+- Partially completed
+- Failed
+- Blocked
+- Skipped
+- Not applicable
+- Not independently verified
+
+8. For every command, benchmark, test, migration, HTTP request, integration request, failure simulation, and automation execution, record:
+
+- Exact command or request
+- Working directory
+- Environment
+- Exit code or HTTP status
+- Expected result
+- Actual result
+- Relevant output summary
+- Remediation performed
+- Retest result
+
+9. Do not perform GitHub operations.
+
+Do not:
+
+- Run git add
+- Commit
+- Push
+- Create or update pull requests
+- Merge branches
+- Claim GitHub Actions success
+
+10. Do not perform AWS or production infrastructure work.
+
+Do not:
+
+- Deploy to ECS or Fargate
+- Modify production RDS
+- Modify production Secrets Manager
+- Modify IAM
+- Modify Cloud Map
+- Modify Route53
+- Modify ALB
+- Claim production deployment success
+- Claim production runtime success
+
+11. Do not begin any Phase 2 product implementation.
+
+12. Do not implement:
+
+- AI summarization
+- AI classification
+- AI extraction
+- AI OCR
+- Case creation
+- Customer-support automation
+- Workflow business logic
+- Outbound email
+- SMS
+- Slack or Teams integrations
+- Calendar synchronization
+- Contact synchronization
+- LegalSynq lien or funding logic
+
+13. Preserve Xenia as an independent, portable, tenant-aware platform.
+
+14. Keep implementation incremental.
+
+15. Avoid unrelated rewrites.
+
+16. Do not weaken:
+
+- Tenant isolation
+- Authorization
+- TLS
+- SSRF protection
+- Cursor protection
+- Locking and fencing
+- Header or HTML sanitization
+- Secret handling
+- Audit redaction
+- Retention safety
+
+17. Use only local, disposable, test, mock, or approved non-production infrastructure.
+
+18. Do not use production mailboxes or production databases.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Complete Xenia Phase 1 by transforming Xenia from an Email-focused automation service into an enterprise-ready, extensible automation platform.
+
+This ticket must:
+
+- Complete all remaining T4 carry-forward gaps.
+- Complete ingestion audit-event coverage.
+- Validate core external adapter integrations.
+- Add enterprise-grade observability.
+- Add runtime diagnostics and support tooling.
+- Add resilience controls.
+- Establish performance baselines.
+- Strengthen configuration and security validation.
+- Introduce a generic automation framework.
+- Register Email as the first automation provider.
+- Ensure future modules can register without changing Xenia core.
+- Deliver administration APIs and Control Center pages for automation discovery, health, configuration, diagnostics, and runtime state.
+- Produce an evidence-based Phase 1 closure recommendation.
+
+The intended final state is:
+
+XENIA-P1 complete
+and
+Xenia ready for Phase 2 feature modules.
+
+==================================================
+SOURCE MATERIAL
+==================================================
+
+Review before modifying code:
+
+/analysis/XENIA-P1-T1-report.md
+/analysis/XENIA-P1-T1-V1-report.md
+/analysis/XENIA-P1-T1-V2-report.md
+/analysis/XENIA-P1-T2-report.md
+/analysis/XENIA-P1-T2-V1-report.md
+/analysis/XENIA-P1-T3-report.md
+/analysis/XENIA-P1-T3-V1-report.md
+/analysis/XENIA-P1-T4-report.md
+
+Treat all prior reports as evidence requiring repository verification.
+
+Verify:
+
+- Reported files exist.
+- Reported services compile.
+- Reported APIs exist.
+- Reported UI pages exist.
+- Reported migrations exist.
+- Reported tests exist.
+- Reported test counts are accurate.
+- T4 audit-event gaps remain or were already fixed.
+- Runtime validation gaps remain or were already fixed.
+- Provider classifications remain accurate.
+- Adapter contracts remain portable.
+- No LegalSynq product-domain dependencies entered Xenia core.
+- No credentials, raw cursors, raw headers, or attachment binaries are stored improperly.
+
+Record discrepancies in:
+
+/analysis/XENIA-P1-T5-report.md
+
+==================================================
+LOCKED ARCHITECTURE
+==================================================
+
+1. Xenia remains an independent, separately deployable automation platform.
+
+2. Email remains a Xenia module and becomes the first registered automation provider.
+
+3. LegalSynq remains the first host platform, not the owner of Xenia core.
+
+4. Xenia core remains platform-neutral.
+
+5. Xenia remains tenant-aware.
+
+6. Platform services are consumed through generic adapters.
+
+7. Xenia must not directly access another service's database.
+
+8. Xenia core must not contain:
+
+- LegalSynq lien logic
+- Funding logic
+- Case models
+- Patient models
+- Provider models
+- Settlement models
+- Customer-support business rules
+
+9. Xenia owns:
+
+- Automation registration
+- Automation discovery
+- Automation manifests
+- Automation capabilities
+- Automation dependencies
+- Automation lifecycle
+- Automation configuration
+- Automation runtime state
+- Automation execution contracts
+- Automation diagnostics
+- Automation health
+- Automation events
+- Automation scheduling contracts
+- Module-level operational metadata
+
+10. Host platforms own:
+
+- Host navigation
+- Host-specific session integration
+- Host-specific permissions bridge
+- Host-specific UI composition
+- Product-domain consumers
+
+11. Audit Service owns durable audit storage.
+
+12. Notification Service owns outbound notification delivery.
+
+13. Documents Service owns attachment and document binaries.
+
+14. Secret Provider owns credentials and tokens.
+
+15. Workflow Service owns workflow execution.
+
+16. AI adapter remains an integration boundary only.
+
+17. GitHub and AWS remain separate task types.
+
+==================================================
+INITIAL ANALYSIS
+==================================================
+
+Before source changes:
+
+1. Inspect:
+
+- Xenia.Domain
+- Xenia.Application
+- Xenia.Infrastructure
+- Xenia.Api
+- Xenia.Tests
+- Email module
+- Email ingestion
+- Operations domain
+- Audit integration
+- Notification integration
+- Documents integration
+- Identity integration
+- Tenant integration
+- Workflow adapter
+- AI adapter
+- Storage adapter
+- Existing module registry
+- Existing adapter registry
+- Existing event framework
+- Existing metrics/logging framework
+- Existing health/readiness implementation
+- Existing diagnostics
+- Existing Control Center Xenia pages
+- Existing proxy
+- Existing migrations and model snapshot
+- Existing documentation
+
+2. Run and record:
+
+dotnet --info
+dotnet --list-sdks
+dotnet tool list
+node --version
+pnpm --version
+mysql --version
+docker --version
+docker compose version
+
+3. Confirm:
+
+- Compatible .NET SDK
+- EF CLI availability
+- Disposable MySQL strategy
+- Existing OpenTelemetry or metrics libraries
+- Existing logging conventions
+- Existing resilience libraries
+- Existing HTTP client patterns
+- Existing background-worker patterns
+- Existing frontend scripts
+- Current test count
+- Current build and publish state
+
+4. Create and populate the report before code changes.
+
+==================================================
+PHASE A — CLOSE T4 CARRY-FORWARD GAPS
+==================================================
+
+--------------------------------------------------
+1. COMPLETE INGESTION AUDIT EVENTS
+--------------------------------------------------
+
+Implement and test all required events:
+
+- xenia.email.sync.queued
+- xenia.email.sync.started
+- xenia.email.sync.completed
+- xenia.email.sync.completed_with_errors
+- xenia.email.sync.failed
+- xenia.email.sync.cancelled
+- xenia.email.sync.resumed
+- xenia.email.sync.reset
+- xenia.email.sync.retry_queued
+- xenia.email.message.imported
+- xenia.email.message.updated
+- xenia.email.message.duplicate
+- xenia.email.message.failed
+- xenia.email.attachment.dispatched
+- xenia.email.attachment.failed
+- xenia.email.attachment.retry_queued
+- xenia.email.cursor.invalidated
+- xenia.email.source.health_changed
+- xenia.email.alert.opened
+- xenia.email.alert.resolved
+
+Validate:
+
+- Tenant ID
+- Actor ID where applicable
+- Source ID
+- Run ID
+- Message ID where applicable
+- Attachment reference where applicable
+- Provider
+- Result
+- Counts
+- Correlation ID
+- Timestamp
+- Safe error category
+
+Prove absence of:
+
+- Message body
+- Raw headers
+- Credentials
+- Secret references
+- Tokens
+- Raw cursors
+- Attachment content
+- Raw provider exceptions
+
+--------------------------------------------------
+2. COMPLETE LIVE-LIKE LOCAL VALIDATION
+--------------------------------------------------
+
+Where the environment permits, execute:
+
+- Disposable MySQL migration apply
+- Xenia startup
+- Authenticated API requests
+- Operations API status validation
+- Proxy validation
+- Controlled IMAP or protocol-harness ingestion
+- Test Documents adapter attachment upload
+- Test Audit adapter submission
+- Test Notification adapter submission
+
+If any validation cannot execute:
+
+- Record the blocker.
+- Do not mark it complete.
+- Do not claim production readiness from static analysis alone.
+
+==================================================
+PHASE B — ENTERPRISE OBSERVABILITY
+==================================================
+
+--------------------------------------------------
+3. IMPLEMENT STRUCTURED TELEMETRY
+--------------------------------------------------
+
+Add or complete OpenTelemetry-compatible instrumentation.
+
+Instrument:
+
+- HTTP requests
+- Background workers
+- Automation executions
+- Email sync runs
+- Provider calls
+- Database calls where supported
+- Adapter calls
+- Retry attempts
+- Circuit-breaker state
+- Lock acquisition and renewal
+- Retention execution
+- Alert evaluation
+- Notification submission
+
+Required dimensions must be bounded.
+
+Safe dimensions may include:
+
+- Provider type
+- Automation key
+- Automation version
+- Run status
+- Trigger type
+- Adapter name
+- Error category
+- Environment
+
+Do not use unbounded metric labels such as:
+
+- Tenant ID
+- Source ID
+- Message ID
+- Run ID
+- Correlation ID
+- Email address
+
+Tracing and logs may include IDs where policy permits, but must not include message bodies, credentials, or raw cursors.
+
+--------------------------------------------------
+4. IMPLEMENT HEALTH AND READINESS EXPANSION
+--------------------------------------------------
+
+Expand health/readiness for:
+
+- Database
+- Durable source lock
+- Cursor protector
+- Audit adapter
+- Notification adapter
+- Documents adapter
+- Tenant adapter
+- Identity adapter
+- Storage adapter
+- Workflow adapter
+- AI adapter
+- Automation registry
+- Automation discovery
+- Automation runtime
+- Background worker
+- Retention worker
+- Alert evaluator
+- Provider connector registry
+
+Support:
+
+- Healthy
+- Degraded
+- Unhealthy
+- Disabled
+- Unknown
+
+Preserve:
+
+- Liveness independent from optional dependency failure
+- Readiness failure for mandatory dependencies
+- Degraded readiness for optional dependencies
+
+--------------------------------------------------
+5. IMPLEMENT DIAGNOSTIC SNAPSHOTS
+--------------------------------------------------
+
+Create safe diagnostic APIs for authorized support users.
+
+Suggested endpoints:
+
+GET /diagnostics/runtime
+GET /diagnostics/dependencies
+GET /diagnostics/workers
+GET /diagnostics/locks
+GET /diagnostics/queues
+GET /diagnostics/automations
+GET /diagnostics/configuration
+GET /diagnostics/health-snapshot
+
+Requirements:
+
+- Authorized only
+- Tenant-scoped where applicable
+- Platform scope explicit
+- No secrets
+- No message bodies
+- No raw headers
+- No raw cursors
+- No credentials
+- No raw connection strings
+- Safe error summaries only
+
+--------------------------------------------------
+6. IMPLEMENT SUPPORT BUNDLE GENERATION
+--------------------------------------------------
+
+Create support-bundle generation.
+
+Suggested endpoint:
+
+POST /diagnostics/support-bundle
+
+Bundle may include:
+
+- Service version
+- Environment
+- Health snapshot
+- Adapter status
+- Automation registry
+- Automation versions
+- Worker status
+- Safe lock summaries
+- Safe queue summaries
+- Recent safe error categories
+- Configuration-key names without secret values
+- Recent run summaries
+- Database migration identifiers
+- Correlation references
+- Redacted logs if safely available
+
+Bundle must exclude:
+
+- Secrets
+- Tokens
+- Raw cursors
+- Message bodies
+- Raw headers
+- Attachment contents
+- Full connection strings
+- Personally identifiable message content
+
+Store bundle temporarily or return as a streamed archive according to existing patterns.
+
+Add size limits and expiration.
+
+==================================================
+PHASE C — ENTERPRISE RESILIENCE
+==================================================
+
+--------------------------------------------------
+7. IMPLEMENT RESILIENCE POLICIES
+--------------------------------------------------
+
+Use the repository-standard resilience mechanism or a compatible narrow dependency.
+
+Add:
+
+- Retry
+- Exponential backoff
+- Jitter
+- Timeout
+- Circuit breaker
+- Bulkhead or concurrency limit where appropriate
+- Rate-limit handling
+- Retry-After support
+
+Apply to:
+
+- Provider HTTP calls
+- IMAP/POP3 connection operations
+- Audit adapter
+- Notification adapter
+- Documents adapter
+- Storage adapter
+- Workflow adapter
+- AI adapter
+- Other external adapters where appropriate
+
+Do not retry:
+
+- Invalid credentials
+- Permission denials
+- Invalid tenant
+- Invalid configuration
+- Unsupported operation
+- Non-idempotent action unless explicitly safe
+
+--------------------------------------------------
+8. IMPLEMENT DEAD-LETTER FOUNDATION
+--------------------------------------------------
+
+Create a generic automation dead-letter abstraction.
+
+Suggested contracts:
+
+IAutomationDeadLetterStore
+AutomationDeadLetterEntry
+AutomationFailureClassification
+
+Required fields:
+
+- Id
+- TenantId
+- AutomationKey
+- AutomationVersion
+- ExecutionId
+- TriggerType
+- FailureCategory
+- SafeErrorSummary
+- RetryCount
+- FirstFailedAt
+- LastFailedAt
+- NextEligibleRetryAt
+- Status
+- CorrelationId
+- CreatedAt
+- UpdatedAt
+
+Do not store:
+
+- Secrets
+- Raw provider payloads
+- Message bodies unless explicitly referenced by safe internal ID
+- Raw headers
+- Raw cursors
+- Attachment binaries
+
+Support:
+
+- Open
+- Retrying
+- Resolved
+- Abandoned
+
+Do not build full external queue infrastructure.
+
+Implement a persistence foundation and administration APIs.
+
+--------------------------------------------------
+9. IMPLEMENT POISON-EXECUTION DETECTION
+--------------------------------------------------
+
+Detect repeatedly failing execution items.
+
+Rules:
+
+- Bounded retries
+- Failure categorization
+- Dead-letter after threshold
+- No infinite retry loop
+- Operator-visible status
+- Audited
+- Tenant-scoped
+- Safe diagnostics
+- Manual retry support
+- Abandon action where authorized
+
+==================================================
+PHASE D — PERFORMANCE AND CAPACITY VALIDATION
+==================================================
+
+--------------------------------------------------
+10. CREATE PERFORMANCE HARNESS
+--------------------------------------------------
+
+Create repeatable performance tests for:
+
+- Message normalization
+- Duplicate detection
+- Message persistence
+- Attachment streaming
+- Operations summary queries
+- Message search
+- Run-list queries
+- Automation registration
+- Automation discovery
+- Automation execution dispatch
+
+Use controlled synthetic data.
+
+Do not use production data.
+
+--------------------------------------------------
+11. ESTABLISH BASELINES
+--------------------------------------------------
+
+Measure and record:
+
+- Messages processed per second
+- Sync latency
+- API p50, p95, and p99 latency
+- Database query latency
+- Attachment throughput
+- Memory usage
+- CPU usage
+- Lock contention
+- Worker concurrency
+- Alert-evaluation latency
+- Automation-discovery latency
+- Automation-registration latency
+
+Document:
+
+- Hardware/environment
+- Dataset size
+- Concurrency
+- Test duration
+- Results
+- Bottlenecks
+- Recommended limits
+
+Do not fabricate production capacity claims.
+
+--------------------------------------------------
+12. IMPLEMENT SAFE LIMITS
+--------------------------------------------------
+
+Review and enforce limits for:
+
+- Maximum automation executions per tenant
+- Maximum concurrent workers
+- Maximum source syncs
+- Maximum page size
+- Maximum messages per run
+- Maximum body size
+- Maximum header size
+- Maximum attachment size
+- Maximum support-bundle size
+- Maximum diagnostic-history range
+- Maximum retry attempts
+- Maximum dead-letter replays
+- Maximum automation configuration size
+
+Defaults must be documented and configurable.
+
+==================================================
+PHASE E — SECURITY HARDENING
+==================================================
+
+--------------------------------------------------
+13. COMPLETE SECURITY CONFIGURATION VALIDATION
+--------------------------------------------------
+
+At startup, validate:
+
+- Cursor-protection key
+- JWT configuration
+- Allowed issuers
+- Allowed audiences
+- Tenant-context configuration
+- Database connection configuration
+- Adapter endpoint schemes
+- TLS requirements
+- Secret-reference provider
+- Automation plugin path
+- Diagnostics exposure
+- Development bypasses
+- Logging redaction rules
+
+Production-like environments must fail fast for insecure or missing mandatory configuration.
+
+--------------------------------------------------
+14. IMPLEMENT SENSITIVE-DATA SCANNING TESTS
+--------------------------------------------------
+
+Add automated tests scanning:
+
+- API DTOs
+- Logs
+- Audit payloads
+- Diagnostic payloads
+- Support bundles
+- Dead-letter entries
+- Automation events
+- Automation manifests
+- Configuration responses
+
+Reject or flag:
+
+- Password
+- Token
+- Secret
+- Authorization header
+- Raw cursor
+- Connection string
+- Message body in prohibited contexts
+- Attachment bytes
+
+--------------------------------------------------
+15. DEPENDENCY SECURITY REVIEW
+--------------------------------------------------
+
+Run repository-supported package vulnerability checks.
+
+Examples, depending on repository tooling:
+
+dotnet list package --vulnerable
+pnpm audit
+
+Record:
+
+- Command
+- Exit code
+- Findings
+- Severity
+- Direct or transitive dependency
+- Remediation
+- Accepted risk
+
+Do not claim a clean result if the tool could not execute.
+
+Do not broadly upgrade unrelated packages without review.
+
+==================================================
+PHASE F — EXTERNAL ADAPTER VALIDATION
+==================================================
+
+--------------------------------------------------
+16. VALIDATE DOCUMENTS ADAPTER
+--------------------------------------------------
+
+Using a test or local implementation, validate:
+
+- Streaming upload
+- Large-file handling
+- Retry
+- Timeout
+- Idempotency
+- Tenant propagation
+- Correlation propagation
+- Safe metadata
+- Document reference persistence
+- Failure behavior
+
+Do not require production Documents deployment.
+
+--------------------------------------------------
+17. VALIDATE AUDIT ADAPTER
+--------------------------------------------------
+
+Validate:
+
+- Required event delivery
+- Ordering where required
+- Retry
+- Timeout
+- Degraded fallback
+- Tenant propagation
+- Correlation propagation
+- Redaction
+- Duplicate/replay behavior
+
+--------------------------------------------------
+18. VALIDATE NOTIFICATION ADAPTER
+--------------------------------------------------
+
+Validate:
+
+- Alert submission
+- Retry
+- Timeout
+- Suppression
+- Deduplication
+- Safe payload
+- Tenant propagation
+- Correlation propagation
+- Degraded behavior
+
+No direct email or SMS sending from Xenia.
+
+--------------------------------------------------
+19. VALIDATE IDENTITY AND TENANT ADAPTERS
+--------------------------------------------------
+
+Validate:
+
+- Active tenant
+- Inactive tenant
+- Unknown tenant
+- Authenticated user
+- Permission checks
+- Platform administrator behavior
+- Tenant administrator behavior
+- Cross-tenant denial
+- Development bypass disabled outside Development/Test
+
+==================================================
+PHASE G — GENERIC AUTOMATION FRAMEWORK
+==================================================
+
+--------------------------------------------------
+20. DEFINE AUTOMATION MANIFEST
+--------------------------------------------------
+
+Create a generic AutomationManifest.
+
+Required fields:
+
+- AutomationKey
+- DisplayName
+- Description
+- Version
+- Category
+- Provider
+- Status
+- Capabilities
+- Dependencies
+- Permissions
+- ConfigurationNamespace
+- SupportedTriggers
+- SupportedExecutionModes
+- TenantEnablementSupported
+- SchedulingSupported
+- DiagnosticsSupported
+- HealthSupported
+- MinimumPlatformVersion
+- MetadataVersion
+
+Manifest must be provider-neutral.
+
+No email-specific fields.
+
+--------------------------------------------------
+21. DEFINE AUTOMATION CAPABILITY MODEL
+--------------------------------------------------
+
+Create capability definitions for examples such as:
+
+- Triggerable
+- Schedulable
+- EventDriven
+- ManualExecution
+- BatchExecution
+- Streaming
+- UsesDocuments
+- UsesNotifications
+- UsesWorkflow
+- UsesAI
+- SupportsRetry
+- SupportsCancellation
+- SupportsDiagnostics
+- SupportsTenantConfiguration
+- SupportsPlatformConfiguration
+
+Capabilities must be extensible without schema redesign.
+
+--------------------------------------------------
+22. DEFINE AUTOMATION DEPENDENCY MODEL
+--------------------------------------------------
+
+Define:
+
+- Dependency key
+- Dependency type
+- Criticality
+- Minimum version
+- Optional/mandatory/disabled
+- Health impact
+- Configuration state
+- Availability state
+
+Reuse generic adapter concepts where appropriate.
+
+Do not create direct product dependencies.
+
+--------------------------------------------------
+23. DEFINE AUTOMATION EXECUTION CONTRACTS
+--------------------------------------------------
+
+Create provider-neutral contracts such as:
+
+IAutomationProvider
+IAutomationRegistry
+IAutomationDiscoveryService
+IAutomationExecutionService
+IAutomationLifecycleService
+IAutomationConfigurationService
+IAutomationDiagnosticsService
+IAutomationScheduler
+IAutomationEventPublisher
+
+Create models such as:
+
+AutomationTrigger
+AutomationContext
+AutomationExecutionContext
+AutomationExecutionRequest
+AutomationExecutionResult
+AutomationExecutionStatus
+AutomationExecutionMetadata
+AutomationExecutionError
+AutomationLifecycleState
+AutomationScheduleDefinition
+
+Requirements:
+
+- Tenant context
+- Actor context
+- Correlation ID
+- Cancellation token
+- Versioning
+- Safe metadata
+- Idempotency key
+- Trigger information
+- Dependency status
+- Execution timestamps
+- Result status
+- Safe errors
+
+--------------------------------------------------
+24. IMPLEMENT AUTOMATION REGISTRY
+--------------------------------------------------
+
+Create a registry that supports:
+
+- Registration
+- Duplicate prevention
+- Version coexistence where allowed
+- Enable/disable
+- Global state
+- Tenant state
+- Effective state
+- Manifest lookup
+- Capability lookup
+- Dependency lookup
+- Health lookup
+- Discovery
+
+Registry operations must be idempotent.
+
+Automation providers must register through interfaces, not by modifying central switch statements.
+
+--------------------------------------------------
+25. IMPLEMENT AUTOMATION DISCOVERY
+--------------------------------------------------
+
+Discover providers through:
+
+- Dependency injection
+- Assembly registration
+- Explicit manifest registration
+- Optional controlled plugin directory if safe and supported
+
+Do not load arbitrary untrusted assemblies.
+
+If implementing a plugin loader:
+
+- Use explicit allowlist
+- Validate manifest
+- Validate assembly identity
+- Validate platform compatibility
+- Disable dynamic loading in production unless configured
+- Document trust boundary
+- Prevent path traversal
+- Prevent arbitrary execution from writable directories
+
+A static DI-based discovery model is acceptable for Phase 1 if plugin contracts and extension documentation are complete.
+
+--------------------------------------------------
+26. IMPLEMENT AUTOMATION LIFECYCLE
+--------------------------------------------------
+
+Support lifecycle states:
+
+- Registered
+- Disabled
+- Enabled
+- Degraded
+- Unavailable
+- Retired
+
+Support lifecycle operations:
+
+- Register
+- Validate
+- Enable globally
+- Disable globally
+- Enable for tenant
+- Disable for tenant
+- Start
+- Stop where applicable
+- Retire
+- Upgrade version
+- Roll back version where supported
+
+Do not implement deployment orchestration.
+
+--------------------------------------------------
+27. IMPLEMENT AUTOMATION CONFIGURATION
+--------------------------------------------------
+
+Provide:
+
+- Platform configuration
+- Tenant configuration
+- Automation configuration
+- Tenant-automation override
+- Effective value resolution
+- Secret-reference support
+- Configuration validation
+- Configuration versioning
+- Audit on change
+
+Reuse Xenia's existing configuration framework where possible.
+
+Do not duplicate configuration systems unnecessarily.
+
+--------------------------------------------------
+28. IMPLEMENT AUTOMATION EVENTS
+--------------------------------------------------
+
+Define generic events such as:
+
+- automation.registered
+- automation.enabled
+- automation.disabled
+- automation.execution.queued
+- automation.execution.started
+- automation.execution.completed
+- automation.execution.failed
+- automation.execution.cancelled
+- automation.execution.dead_lettered
+- automation.health.changed
+- automation.configuration.changed
+- automation.version.changed
+
+Events must contain:
+
+- Tenant ID where applicable
+- Automation key
+- Automation version
+- Execution ID where applicable
+- Correlation ID
+- Timestamp
+- Safe result metadata
+
+Do not include secrets or business payloads by default.
+
+--------------------------------------------------
+29. IMPLEMENT AUTOMATION SCHEDULING CONTRACTS
+--------------------------------------------------
+
+Create scheduling interfaces and persistence models.
+
+Support metadata for:
+
+- Manual
+- Interval
+- Cron-like expression
+- Event-triggered
+- Retry
+- One-time execution
+
+Phase 1 may implement contracts and disabled-by-default hosted scheduling.
+
+Do not build a full distributed scheduler unless existing architecture supports it safely.
+
+--------------------------------------------------
+30. REGISTER EMAIL AS AUTOMATION PROVIDER
+--------------------------------------------------
+
+Implement an EmailAutomationProvider that adapts existing Email capabilities to the generic automation framework.
+
+Email manifest should describe:
+
+- Automation key
+- Version
+- Capabilities
+- Dependencies
+- Permissions
+- Configuration namespace
+- Triggers
+- Execution modes
+- Health
+- Diagnostics
+
+Do not rewrite Email ingestion.
+
+Use an adapter/facade between the automation framework and existing Email services.
+
+Prove:
+
+- Email registers without modifying automation runtime internals.
+- Email can be discovered.
+- Email capabilities display.
+- Email health displays.
+- Email tenant enablement maps correctly.
+- Email manual execution can route through the generic automation execution contract where appropriate.
+- Existing Email APIs remain backward compatible.
+
+==================================================
+PHASE H — AUTOMATION PERSISTENCE
+==================================================
+
+--------------------------------------------------
+31. CREATE AUTOMATION TABLES
+--------------------------------------------------
+
+Create or equivalent persistence models:
+
+- xn_automation_registry
+- xn_automation_capabilities
+- xn_automation_versions
+- xn_automation_configuration
+- xn_automation_dependencies
+- xn_automation_events
+- xn_automation_runtime_state
+- xn_automation_health
+- xn_automation_dead_letters
+- xn_automation_schedules if scheduling persistence is implemented
+
+Do not create a table solely because it was listed if the existing module/configuration framework can safely own the data.
+
+Document the final persistence design and avoid duplication.
+
+Required characteristics:
+
+- Tenant scoping where applicable
+- Platform-level rows explicit
+- Versioning
+- Concurrency
+- Safe JSON metadata
+- No credentials
+- No raw business payloads
+- No cross-service foreign keys
+
+Update:
+
+- EF configurations
+- Migrations
+- Migration designer
+- Model snapshot
+
+Validate on disposable MySQL.
+
+==================================================
+PHASE I — AUTOMATION APIS
+==================================================
+
+--------------------------------------------------
+32. IMPLEMENT AUTOMATION ADMINISTRATION APIS
+--------------------------------------------------
+
+Suggested endpoints:
+
+GET /automations
+GET /automations/{key}
+GET /automations/{key}/versions
+GET /automations/{key}/capabilities
+GET /automations/{key}/dependencies
+GET /automations/{key}/health
+GET /automations/{key}/configuration
+PUT /automations/{key}/configuration
+POST /automations/{key}/enable
+POST /automations/{key}/disable
+POST /automations/{key}/execute
+POST /automations/{key}/cancel/{executionId}
+GET /automations/executions
+GET /automations/executions/{executionId}
+GET /automations/dead-letters
+POST /automations/dead-letters/{id}/retry
+POST /automations/dead-letters/{id}/abandon
+GET /automations/diagnostics
+POST /automations/support-bundle
+
+Use route conventions consistent with the repository.
+
+Expected statuses:
+
+- 200
+- 201 where applicable
+- 202
+- 400
+- 401
+- 403
+- 404
+- 409
+- 422
+- 503
+
+--------------------------------------------------
+33. AUTOMATION AUTHORIZATION
+--------------------------------------------------
+
+Add or validate permissions such as:
+
+- xenia.automations.read
+- xenia.automations.manage
+- xenia.automations.execute
+- xenia.automations.diagnostics
+- xenia.automations.deadletters.manage
+- xenia.automations.configuration.manage
+
+Tenant boundaries remain mandatory.
+
+Platform administrator behavior must be explicit.
+
+==================================================
+PHASE J — CONTROL CENTER UI
+==================================================
+
+--------------------------------------------------
+34. IMPLEMENT AUTOMATION DASHBOARD
+--------------------------------------------------
+
+Create:
+
+/xenia/automations
+
+Display:
+
+- Total automations
+- Enabled automations
+- Degraded automations
+- Failed automations
+- Active executions
+- Failed executions
+- Dead-letter count
+- Capability distribution
+- Dependency health
+- Recent execution trends
+
+--------------------------------------------------
+35. IMPLEMENT AUTOMATION REGISTRY UI
+--------------------------------------------------
+
+Create:
+
+/xenia/automations/registry
+/xenia/automations/{key}
+
+Display:
+
+- Manifest
+- Version
+- Provider
+- Category
+- Status
+- Global enablement
+- Tenant enablement
+- Effective state
+- Capabilities
+- Dependencies
+- Permissions
+- Configuration namespace
+- Trigger types
+- Execution modes
+- Health
+- Diagnostics
+
+--------------------------------------------------
+36. IMPLEMENT AUTOMATION EXECUTION UI
+--------------------------------------------------
+
+Create:
+
+/xenia/automations/executions
+/xenia/automations/executions/{executionId}
+
+Display:
+
+- Automation key
+- Version
+- Tenant
+- Trigger
+- Status
+- Queued/start/end timestamps
+- Duration
+- Retry count
+- Correlation ID
+- Safe result
+- Safe error
+- Dependency state
+- Dead-letter state
+
+Actions:
+
+- Execute manually
+- Cancel where supported
+- Retry where supported
+
+--------------------------------------------------
+37. IMPLEMENT AUTOMATION DIAGNOSTICS UI
+--------------------------------------------------
+
+Create:
+
+/xenia/automations/diagnostics
+/xenia/automations/dead-letters
+/xenia/automations/configuration
+
+Display:
+
+- Health
+- Dependencies
+- Workers
+- Runtime state
+- Schedules
+- Dead letters
+- Safe diagnostics
+- Support bundle generation
+- Configuration
+- Versions
+
+No secrets or raw business payloads.
+
+--------------------------------------------------
+38. FRONTEND VALIDATION
+--------------------------------------------------
+
+Run:
+
+pnpm --filter control-center type-check
+pnpm --filter control-center lint
+pnpm --filter control-center test
+pnpm --filter control-center build
+
+Validate:
+
+- Dashboard
+- Registry
+- Automation detail
+- Executions
+- Execution detail
+- Diagnostics
+- Dead letters
+- Configuration
+- Loading
+- Empty
+- Error
+- Unauthorized
+- Forbidden
+- Backend unavailable
+- Degraded
+- Conflict
+
+No Xenia-related frontend error may remain.
+
+==================================================
+VALIDATION REQUIREMENTS
+==================================================
+
+--------------------------------------------------
+39. BACKEND VALIDATION
+--------------------------------------------------
+
+Run:
+
+dotnet restore
+dotnet build
+dotnet publish
+dotnet test
+
+Record:
+
+- Total discovered tests
+- Total executed
+- Passed
+- Failed
+- Skipped
+- Duration
+- Exit code
+
+--------------------------------------------------
+40. MIGRATION VALIDATION
+--------------------------------------------------
+
+Run:
+
+dotnet ef migrations list
+dotnet ef migrations script
+dotnet ef database update
+
+Validate:
+
+- Clean database
+- Upgrade from T4 schema
+- Snapshot consistency
+- New automation tables
+- Constraints
+- Indexes
+- JSON fields
+- Enum mappings
+- Concurrency fields
+- No credential columns
+- No cross-service foreign keys
+
+--------------------------------------------------
+41. RUNTIME API VALIDATION
+--------------------------------------------------
+
+Start Xenia locally and validate:
+
+- Health/readiness
+- Diagnostics
+- Support bundle
+- Automation registry
+- Automation discovery
+- Email automation registration
+- Automation health
+- Automation configuration
+- Manual execution
+- Execution history
+- Cancellation
+- Dead-letter list
+- Dead-letter retry
+- Permissions
+- Tenant isolation
+- Correlation IDs
+- Error statuses
+
+Record actual HTTP statuses.
+
+--------------------------------------------------
+42. TENANT-ISOLATION VALIDATION
+--------------------------------------------------
+
+Use Tenant A and Tenant B.
+
+Prove:
+
+- Tenant A cannot view Tenant B automation configuration.
+- Tenant A cannot execute Tenant B automation.
+- Tenant A cannot view Tenant B execution.
+- Tenant A cannot view Tenant B dead letter.
+- Tenant A cannot retry Tenant B dead letter.
+- Tenant A cannot view Tenant B diagnostics.
+- Body, route, query, and header overrides fail.
+- Platform administrator behavior is explicit.
+- Automation events preserve tenant.
+- Adapter calls preserve tenant.
+
+Use relational tests.
+
+--------------------------------------------------
+43. AUTOMATION FRAMEWORK TESTS
+--------------------------------------------------
+
+Test:
+
+- Registration
+- Duplicate registration
+- Version registration
+- Discovery
+- Capability lookup
+- Dependency lookup
+- Global enablement
+- Tenant enablement
+- Effective state
+- Configuration precedence
+- Lifecycle transitions
+- Manual execution
+- Cancellation
+- Retry
+- Dead-letter creation
+- Dead-letter retry
+- Event emission
+- Health state
+- Diagnostics
+- Scheduling metadata
+- Email provider registration
+- Email backward compatibility
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+The ticket is complete only when:
+
+1. All remaining Email ingestion audit events are implemented.
+
+2. Audit payloads contain no bodies, raw headers, credentials, tokens, or raw cursors.
+
+3. Backend restore succeeds.
+
+4. Backend build succeeds.
+
+5. API publish succeeds.
+
+6. All critical tests execute.
+
+7. Final test counts are documented.
+
+8. Migration list succeeds.
+
+9. Migration script succeeds.
+
+10. Clean migration succeeds.
+
+11. Upgrade migration succeeds.
+
+12. Model snapshot matches.
+
+13. Structured telemetry is implemented.
+
+14. Health checks cover required runtime components.
+
+15. Diagnostics APIs exist.
+
+16. Diagnostics expose no secrets.
+
+17. Support bundle generation works.
+
+18. Support bundles contain no sensitive content.
+
+19. Retry policies are bounded.
+
+20. Circuit breakers exist where appropriate.
+
+21. Rate-limit and Retry-After behavior are handled.
+
+22. Generic dead-letter persistence exists.
+
+23. Poison execution detection works.
+
+24. Manual dead-letter retry works.
+
+25. Performance harness exists.
+
+26. Performance baseline is documented.
+
+27. API latency baseline is documented.
+
+28. Ingestion throughput baseline is documented.
+
+29. Safe concurrency limits are enforced.
+
+30. Startup security validation exists.
+
+31. Production-like insecure configuration fails fast.
+
+32. Sensitive-data scanning tests exist.
+
+33. Dependency vulnerability checks execute or blockers are documented.
+
+34. Documents adapter validation is executed.
+
+35. Audit adapter validation is executed.
+
+36. Notification adapter validation is executed.
+
+37. Identity and Tenant adapter validation is executed.
+
+38. Generic AutomationManifest exists.
+
+39. Generic capability model exists.
+
+40. Generic dependency model exists.
+
+41. Generic execution contracts exist.
+
+42. Automation registry exists.
+
+43. Automation discovery exists.
+
+44. Duplicate registration is prevented.
+
+45. Version registration works.
+
+46. Automation lifecycle works.
+
+47. Automation configuration works.
+
+48. Automation configuration supports tenant scope.
+
+49. Automation events exist.
+
+50. Scheduling interfaces exist.
+
+51. Dead-letter integration exists.
+
+52. Email registers as an automation provider.
+
+53. Email discovery works.
+
+54. Email capabilities display.
+
+55. Email dependencies display.
+
+56. Email health maps to automation health.
+
+57. Existing Email APIs remain compatible.
+
+58. Automation persistence is implemented without unnecessary duplication.
+
+59. Automation APIs exist.
+
+60. Automation permissions are enforced.
+
+61. Tenant A cannot access Tenant B automation data.
+
+62. Tenant override attacks fail.
+
+63. Automation dashboard renders.
+
+64. Automation registry UI renders.
+
+65. Automation detail UI renders.
+
+66. Execution list renders.
+
+67. Execution detail renders.
+
+68. Diagnostics UI renders.
+
+69. Dead-letter UI renders.
+
+70. Configuration UI renders.
+
+71. Control Center Xenia code type-checks.
+
+72. Control Center lint executes.
+
+73. Control Center tests execute where configured.
+
+74. Control Center production build succeeds or unrelated blockers are isolated.
+
+75. No AI business behavior is implemented.
+
+76. No case creation is implemented.
+
+77. No customer-support automation is implemented.
+
+78. No workflow business implementation is added.
+
+79. No outbound email is implemented.
+
+80. `/analysis/XENIA-P1-T5-report.md` exists.
+
+81. The report was created before code changes.
+
+82. The report was updated incrementally.
+
+83. Validation commands include exit codes.
+
+84. Runtime API validation includes actual statuses.
+
+85. Performance results include environment and dataset details.
+
+86. Acceptance matrix is complete.
+
+87. Completion percentage is evidence-based.
+
+88. The report states whether XENIA-P1 may close.
+
+89. The report states whether Xenia is ready for Phase 2.
+
+==================================================
+OUT OF SCOPE
+==================================================
+
+Do not implement:
+
+- AI summarization
+- AI classification
+- AI extraction
+- OCR
+- Case creation
+- Customer-support automation
+- Workflow business rules
+- Email sending
+- Email replies
+- Auto responses
+- SMS
+- Slack
+- Teams
+- Calendar synchronization
+- Contact synchronization
+- LegalSynq lien or funding logic
+- GitHub operations
+- GitHub Actions
+- AWS deployment
+- Production RDS changes
+- Production Secrets Manager changes
+- Production ECS/Fargate changes
+- Production Route53 changes
+- Production Cloud Map changes
+- Production ALB changes
+- Production runtime claims
+
+==================================================
+KNOWN RESTRICTIONS
+==================================================
+
+- Keep implementation incremental.
+- Do not rewrite existing Email ingestion.
+- Do not duplicate existing module or configuration frameworks unnecessarily.
+- Do not weaken tenant isolation.
+- Do not weaken authorization.
+- Do not weaken security controls.
+- Do not load arbitrary untrusted plugins.
+- Do not store credentials.
+- Do not store attachment binaries.
+- Do not log message bodies.
+- Do not log raw headers.
+- Do not log raw cursors.
+- Do not fabricate performance or integration results.
+- Do not use production data.
+- Do not begin Phase 2 features.
+
+==================================================
+REQUIRED REPORT STRUCTURE
+==================================================
+
+Create before any code changes:
+
+/analysis/XENIA-P1-T5-report.md
+
+Use at least:
+
+# XENIA-P1-T5 Enterprise Hardening, Production Validation, AI Readiness, and Extensibility Foundation Report
+
+## 1. Executive Summary
+
+## 2. Ticket Information
+- Ticket ID
+- Parent ticket
+- Related tickets
+- Task type
+- Objective
+- Current status
+
+## 3. Prior Report Review
+- Confirmed claims
+- Incorrect claims
+- Unverified claims
+- Missing evidence
+
+## 4. Initial Repository Analysis
+
+## 5. Toolchain and Environment
+
+## 6. Implementation Progress
+Maintain:
+- Not started
+- In progress
+- Completed
+- Partially completed
+- Blocked
+- Failed
+
+## 7. Files Inspected
+
+## 8. T4 Carry-Forward Closure
+
+## 9. Audit Event Completion
+
+## 10. Observability Architecture
+
+## 11. Logging and Tracing
+
+## 12. Metrics
+
+## 13. Health and Readiness
+
+## 14. Diagnostics
+
+## 15. Support Bundle
+
+## 16. Resilience Policies
+
+## 17. Dead-Letter Foundation
+
+## 18. Poison Execution Detection
+
+## 19. Performance Harness
+
+## 20. Performance Results
+
+## 21. Capacity and Limits
+
+## 22. Security Configuration Validation
+
+## 23. Sensitive-Data Scanning
+
+## 24. Dependency Vulnerability Review
+
+## 25. Documents Adapter Validation
+
+## 26. Audit Adapter Validation
+
+## 27. Notification Adapter Validation
+
+## 28. Identity and Tenant Adapter Validation
+
+## 29. Automation Architecture
+
+## 30. Automation Manifest
+
+## 31. Automation Capabilities
+
+## 32. Automation Dependencies
+
+## 33. Automation Execution Contracts
+
+## 34. Automation Registry
+
+## 35. Automation Discovery
+
+## 36. Automation Lifecycle
+
+## 37. Automation Configuration
+
+## 38. Automation Events
+
+## 39. Automation Scheduling
+
+## 40. Email Automation Provider
+
+## 41. Automation Persistence
+
+## 42. Migration Validation
+- Migration list
+- Script generation
+- Clean apply
+- Upgrade apply
+- Snapshot validation
+- Schema inspection
+
+## 43. Automation APIs
+
+## 44. Authorization
+
+## 45. Tenant Isolation
+
+## 46. Runtime API Validation
+For every request:
+- Method
+- URL
+- Authentication
+- Permissions
+- Tenant
+- Expected status
+- Actual status
+- Correlation ID
+- Safe response summary
+- Result
+
+## 47. Automation Dashboard UI
+
+## 48. Automation Registry UI
+
+## 49. Automation Execution UI
+
+## 50. Diagnostics UI
+
+## 51. Dead-Letter UI
+
+## 52. Configuration UI
+
+## 53. Frontend API Client
+
+## 54. Frontend Validation
+
+## 55. Tests Added or Updated
+
+## 56. Test Execution Results
+- Total discovered
+- Total executed
+- Passed
+- Failed
+- Skipped
+- Duration
+- Command
+- Exit code
+
+## 57. Security Review
+
+## 58. Sensitive-Content Review
+
+## 59. Acceptance Criteria Matrix
+For every criterion:
+- Criterion
+- Status
+- Evidence
+- Notes
+
+## 60. Issues Found
+
+## 61. Remediation Performed
+
+## 62. Remaining Gaps
+
+## 63. Risks and Architecture Concerns
+
+## 64. Environmental Limitations
+
+## 65. Out-of-Scope Confirmation
+
+## 66. Documentation Updated
+
+## 67. XENIA-P1 Closure Recommendation
+Use one:
+- Close
+- Close with accepted limitations
+- Keep open
+- Blocked
+
+## 68. Phase 2 Readiness
+Use one:
+- Ready to begin
+- Ready with prerequisites
+- Not ready
+- Blocked
+
+## 69. Final Status
+Use one:
+- Complete
+- Complete with limitations
+- Partially complete
+- Blocked
+- Failed
+
+## 70. Completion Percentage
+
+## 71. Follow-Up Recommendations
+
+==================================================
+FINAL RESPONSE REQUIREMENTS
+==================================================
+
+When implementation and validation are complete:
+
+1. Fully update the report.
+
+2. Remove or resolve placeholders such as:
+
+- In progress
+- To be recorded
+- Estimated
+- Expected
+- Will be completed
+
+unless the item genuinely remains blocked and is documented with evidence.
+
+3. Provide a concise final response containing:
+
+- Ticket ID
+- Final status
+- Completion percentage
+- Build result
+- Publish result
+- Test result
+- Migration result
+- Audit result
+- Observability result
+- Diagnostics result
+- Support-bundle result
+- Resilience result
+- Dead-letter result
+- Performance result
+- Security-validation result
+- Dependency-review result
+- Adapter-validation result
+- Automation framework result
+- Email automation-provider result
+- Tenant-isolation result
+- Runtime API result
+- Frontend result
+- Documentation result
+- Known limitations
+- XENIA-P1 closure recommendation
+- Phase 2 readiness
+- Exact report path
+
+4. Do not claim GitHub success.
+
+5. Do not claim AWS success.
+
+6. Do not claim production deployment success.
+
+7. Stop after XENIA-P1-T5.
+
+Do not begin Phase 2 implementation.

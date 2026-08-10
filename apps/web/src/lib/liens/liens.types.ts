@@ -6,10 +6,20 @@ export interface LienResponseDto {
   status: string;
   caseId?: string | null;
   facilityId?: string | null;
+  facility: string | null;
+  facilityName?: string | null;
+  medicalFacility?: string | null;
+  plaintiff?: string | null;
+  lawFirm?: string | null;
+  caseManager?: string | null;
+  serviceDate?: string | null;
+  purchaseDate?: string | null;
+  purchaseAmount?: number | null;
   originalAmount: number;
   currentBalance?: number | null;
   offerPrice?: number | null;
   purchasePrice?: number | null;
+  initialServiceDate: string;
   payoffAmount?: number | null;
   jurisdiction?: string | null;
   isConfidential: boolean;
@@ -21,6 +31,9 @@ export interface LienResponseDto {
   buyingOrgId?: string | null;
   holdingOrgId?: string | null;
   incidentDate?: string | null;
+  totalPurchase?: number | null;
+  totalBilling?: number | null;
+  isServicing?: string | boolean | null;
   description?: string | null;
   openedAtUtc?: string | null;
   closedAtUtc?: string | null;
@@ -106,26 +119,86 @@ export interface CreateLienOfferRequestDto {
   expiresAtUtc?: string;
 }
 
+export interface ReassignFacilityRequestDto {
+  liensId: string;
+  facility: string;
+}
+
+export interface ReassignContactPersonRequestDto {
+  liensId: string;
+  facilityContactPerson: string;
+}
+
+export interface ReassignFundingCompanyRequestDto {
+  liensId: string;
+  fundingCompany: string;
+}
+
+export interface ReassignMedicalProviderRequestDto {
+  liensId: string;
+  medicalProvider: string;
+}
+
 export interface LiensQuery {
   search?: string;
   status?: string;
   lienType?: string;
   caseId?: string;
+  facilityId?: string;
+  lawFirmIds?: string[];
+  medicalFacilityIds?: string[];
+  caseManagerIds?: string[];
+  lienStatusIds?: string[];
+  purchaseDateFrom?: string;
+  purchaseDateTo?: string;
+  closedDateFrom?: string;
+  closedDateTo?: string;
   page?: number;
   pageSize?: number;
+  // TODO: ListLiens (Liens.Api/Endpoints/LienEndpoints.cs) currently only
+  // accepts search/status/lienType/caseId/facilityId/page/pageSize — the
+  // fields below match the filter shape ReportTemplate already uses for
+  // DIY Reports (lien-report.types.ts) and are sent assuming the backend
+  // will be extended to accept them on this endpoint too. Until then they
+  // are silently ignored server-side. Revisit once that lands.
+  initialServiceDateFrom?: string;
+  initialServiceDateTo?: string;
+  // Same situation as the filter fields above — not yet in ListLiens'
+  // documented parameter list, sent on the assumption the backend will
+  // recognize them once wired up. sortBy is expected to be a LienResponse
+  // field name (see the SORT_BY_MAP comment in liens/page.tsx).
+  sortBy?: string;
+  sortDirection?: "asc" | "desc";
 }
 
+// mapLienToListItem only carries over the subset of LienResponseDto that the
+// liens list and case-liens views actually read. The backend response has
+// more fields than this (see LienResponseDto) — originalAmount, currentBalance,
+// offerPrice, purchasePrice, etc. are real DTO fields, deliberately left out
+// here because nothing on this list-item path consumes them. A lien can
+// bundle multiple medical billing line items, so purchaseAmount/totalBilling
+// are the server-aggregated sums across those items, not a single line's
+// price — that's the only "amount" shape this view needs. Add a field here
+// only once something actually reads it; don't mirror the DTO 1:1.
 export interface LienListItem {
   id: string;
   lienNumber: string;
   lienType: string;
   lienTypeLabel: string;
   status: string;
+  facility: string | null;
+  facilityId: string | null;
+  facilityName: string | null;
+  plaintiff: string | null;
+  lawFirm: string | null;
+  caseManager: string | null;
   caseId: string;
-  originalAmount: number;
-  currentBalance: number | null;
-  offerPrice: number | null;
-  purchasePrice: number | null;
+  initialServiceDate: string;
+  purchaseDate: string;
+  purchaseAmount: number | null;
+  totalBilling: number | null;
+  closedAtUtc: string | null;
+  isServicing: boolean;
   jurisdiction: string;
   isConfidential: boolean;
   subjectName: string;

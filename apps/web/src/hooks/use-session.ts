@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useSessionContext } from '@/providers/session-provider';
-import type { PlatformSession } from '@/types';
+import { useSessionContext } from "@/providers/session-provider";
+import type { PlatformSession } from "@/types";
 
 /**
  * Access the current platform session from any client component.
@@ -12,8 +12,9 @@ import type { PlatformSession } from '@/types';
  *   refresh()  — re-fetch session from /auth/me (use after login or org switch)
  */
 export function useSession() {
-  const { session, isLoading, refresh, clearSession } = useSessionContext();
-  return { session, isLoading, refresh, clearSession };
+  const { session, isLoading, refresh, clearSession, logout } =
+    useSessionContext();
+  return { session, isLoading, refresh, clearSession, logout };
 }
 
 /**
@@ -22,6 +23,6 @@ export function useSession() {
  */
 export function useRequiredSession(): PlatformSession {
   const { session } = useSessionContext();
-  if (!session) throw new Error('Session is required but not available');
+  if (!session) throw new Error("Session is required but not available");
   return session;
 }

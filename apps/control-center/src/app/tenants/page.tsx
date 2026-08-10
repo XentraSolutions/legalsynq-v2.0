@@ -20,8 +20,8 @@ interface TenantsPageProps {
  *
  * Access: PlatformAdmin only (enforced by requirePlatformAdmin).
  *
- * Data: served from mock stub in controlCenterServerApi.tenants.list().
- * TODO: When GET /identity/api/admin/tenants is live, the stub auto-wires — no page change needed.
+ * Data: served by the Tenant service admin API through
+ * controlCenterServerApi.tenants.list().
  */
 export default async function TenantsPage({ searchParams }: TenantsPageProps) {
   const searchParamsData = await searchParams;

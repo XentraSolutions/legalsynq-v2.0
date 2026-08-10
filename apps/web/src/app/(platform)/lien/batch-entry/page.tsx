@@ -1,141 +1,454 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { PageHeader } from '@/components/lien/page-header';
+export const dynamic = "force-dynamic";
 
-export const dynamic = 'force-dynamic';
+import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { PageHeader } from "@/components/lien/page-header";
+import { useLienStore } from "@/stores/lien-store";
+import { useRoleAccess } from "@/hooks/use-role-access";
+import { ApiError } from "@/lib/api-client";
+import { batchService } from "@/lib/batch/batch.service";
+import { BatchListItem, PaginationMeta } from "@/lib/batch/batch.types";
+import { useRouter } from "next/navigation";
+import { ActionMenu } from "@/components/lien/action-menu";
+import { FormModal, Modal } from "@/components/lien/modal";
+import DataMappingComponent from "./components/data-mapping";
+import { dateConverter } from "@/lib/cases/cases.mapper";
+import DataValidationComponent from "./components/data-validaton";
 
+export default function BatchListPage() {
+  const ra = useRoleAccess();
+  const addToast = useLienStore((s) => s.addToast);
+  const router = useRouter();
+  const [list, setList] = useState<BatchListItem[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    pageSize: 50,
+    totalCount: 0,
+    totalPages: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-const STEPS = ['Upload File', 'Map Fields', 'Validate', 'Import'];
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState("");
+  const [template, setTemplate] = useState<BatchListItem>();
+  const currentQuery = useCallback(
+    () => ({
+      page: 1,
+      limit: 50,
+      keyword: search || undefined,
+      template: "",
+      status: "",
+    }),
+    [search],
+  );
+  const [processStatus, setProcessStatus] = useState(
+    template?.processStatus ?? "VIEWING",
+  );
 
-export default function BatchEntryPage() {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [dragOver, setDragOver] = useState(false);
+  const fetchList = useCallback(async (query: PaginationMeta) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await batchService.getBatchList(query);
+      setList(result.items);
+      setPagination((prev) => ({
+        ...prev,
+        page: result.pagination.page,
+        totalCount: result.pagination.totalCount,
+      }));
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError("Failed to load liens");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchList(currentQuery());
+  }, [search, statusFilter, fetchList, currentQuery]);
+
+  const handlePageChange = (newPage: number) => {
+    fetchList({
+      ...currentQuery(),
+      page: newPage,
+      pageSize: pagination.pageSize,
+    });
+  };
+
+  const process = async (template: any) => {
+    const response = await batchService.process({
+      batchUploadId: template.template.id,
+      templateId: template?.template?.templateId ?? "INITIAL_CASE_IMPORT",
+      caseId: template.template.caseId,
+    });
+    if (response.isSuccess) {
+      if (response.successCount > 0) {
+        importBatch(template);
+      } else {
+        setIsOpen(false);
+        // setTimeout(() => {
+        //   setProcessStatus("VIEWING");
+        //   setIsOpen(true);
+        // }, 1000);
+      }
+
+      // addToast({
+      //   type: "success",
+      //   title: "Process Succeed",
+      //   description: "",
+      // });
+    }
+  };
+
+  const importBatch = async (templateData: any) => {
+    // if (!templateData?.file) return;
+
+    const dataContextLines = [
+      templateData.template.columns.join(","),
+      ...templateData.template.tableData.map((row: any) =>
+        templateData.template.columns
+          .map((column: any) => {
+            const value = row?.[column];
+            return value === null || value === undefined ? "" : String(value);
+          })
+          .join(","),
+      ),
+    ];
+
+    const importPayload = {
+      label: templateData.template.templateLabel || "Case tracking import",
+      template: templateData.templateId ?? "",
+      caseId: templateData.template.caseId || "",
+      file: templateData.template.file || "tracking.csv",
+      date: dateConverter(new Date().toDateString()),
+      rows: templateData.template.tableData.length,
+      dataContext: dataContextLines.join("\n"),
+    };
+
+    const response = await batchService.createBatch(importPayload);
+
+    addToast({
+      type: response.successCount > 0 ? "success" : "error",
+      title: "Process Succeeded",
+      description: response.message,
+    });
+    setIsOpen(false);
+  };
+
+  const canEdit = ra.can("lien:edit");
 
   return (
-    <div className="space-y-5">
-      <PageHeader title="Batch Entry" subtitle="Import liens, cases, and contacts in bulk" />
-
-      <div className="bg-white border border-gray-200 rounded-xl p-6">
-        <div className="flex items-center justify-between mb-8">
-          {STEPS.map((step, i) => (
-            <div key={step} className="flex items-center flex-1">
-              <div className="flex items-center gap-2">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  i <= currentStep ? 'bg-primary text-white' : 'bg-gray-100 text-gray-400'
-                }`}>
-                  {i < currentStep ? <i className="ri-check-line" /> : i + 1}
-                </div>
-                <span className={`text-sm font-medium ${i <= currentStep ? 'text-gray-900' : 'text-gray-400'}`}>{step}</span>
-              </div>
-              {i < STEPS.length - 1 && <div className={`flex-1 h-px mx-4 ${i < currentStep ? 'bg-primary' : 'bg-gray-200'}`} />}
+    <>
+      <div className="space-y-5">
+        <PageHeader
+          title="Bulk Imports History"
+          subtitle={loading ? "Loading..." : `${pagination?.totalCount}`}
+          actions={
+            <div className="relative">
+              {/* Dropdown Button */}
+              <button
+                onClick={() => router.push("batch-entry/create")}
+                className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
+              >
+                Create
+              </button>
             </div>
-          ))}
-        </div>
+          }
+        />
 
-        {currentStep === 0 && (
-          <div className="space-y-6">
-            <div
-              className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${dragOver ? 'border-primary bg-primary/5' : 'border-gray-200'}`}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => { e.preventDefault(); setDragOver(false); }}
-            >
-              <i className="ri-upload-cloud-2-line text-4xl text-gray-300 mb-3" />
-              <p className="text-sm font-medium text-gray-600 mb-1">Drag & drop your file here</p>
-              <p className="text-xs text-gray-400 mb-4">Supports CSV, XLSX (max 10MB)</p>
-              <button className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">Browse Files</button>
-            </div>
-
-            <div className="border border-gray-200 rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">Templates</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[
-                  { name: 'Liens Import Template', icon: 'ri-stack-line', color: 'text-indigo-600' },
-                  { name: 'Cases Import Template', icon: 'ri-folder-open-line', color: 'text-blue-600' },
-                  { name: 'Contacts Import Template', icon: 'ri-contacts-book-line', color: 'text-teal-600' },
-                ].map((t) => (
-                  <button key={t.name} className="flex items-center gap-3 p-3 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors text-left">
-                    <i className={`${t.icon} text-lg ${t.color}`} />
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">{t.name}</p>
-                      <p className="text-xs text-gray-400">Download .xlsx</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
+        {loading ? (
+          <div className="p-10 text-center">
+            <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="text-sm text-gray-400 mt-2">Loading liens...</p>
           </div>
-        )}
+        ) : (
+          <>
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-100">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Label
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Template
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        File
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Date
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Rows
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Status
+                      </th>
 
-        {currentStep === 1 && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">Map your file columns to system fields:</p>
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-100">
-                <thead><tr className="bg-gray-50">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">File Column</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">System Field</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Preview</th>
-                </tr></thead>
-                <tbody className="divide-y divide-gray-100">
-                  {['Lien Number', 'Type', 'Amount', 'Jurisdiction', 'Subject Name'].map((col) => (
-                    <tr key={col} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-700">{col}</td>
-                      <td className="px-4 py-3"><select className="text-sm border border-gray-200 rounded px-2 py-1"><option>{col.toLowerCase().replace(' ', '_')}</option></select></td>
-                      <td className="px-4 py-3 text-xs text-gray-400">Sample data...</td>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Action
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {list.map((l) => (
+                      //  ${selection.isSelected(l.id) ? "bg-primary/5" : ""
+                      <tr
+                        key={l.id}
+                        className={`hover:bg-gray-50 transition-colors cursor-pointer}`}
+                        // onClick={() => setPreviewId(l.id)}
+                      >
+                        <td className="px-4 py-3">{l.label}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {l.template}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {l.file}
+                        </td>
 
-        {currentStep === 2 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-              <i className="ri-checkbox-circle-line text-green-600 text-xl" />
-              <div>
-                <p className="text-sm font-medium text-green-700">Validation Complete</p>
-                <p className="text-xs text-green-600">245 records ready to import. 3 warnings found.</p>
+                        <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                          {l.createdDate}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {l.rows}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {l.processStatus}
+                        </td>
+                        <td
+                          className="px-3 py-2.5 text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ActionMenu
+                            items={[
+                              {
+                                label: "View",
+                                icon: "ri-eye-line",
+                                onClick: () => {
+                                  setTemplate(l);
+                                  setIsOpen(true);
+                                },
+                              },
+                            ]}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {list.length === 0 && !error && (
+                <div className="p-10 text-center text-sm text-gray-400">
+                  No liens match your filters.
+                </div>
+              )}
+            </div>
+
+            {/* {pagination.totalPages && pagination.totalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                Page {pagination.page} of {pagination.totalPages} (
+                {pagination.totalCount} total)
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                  disabled={pagination.page <= 1}
+                  className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                  disabled={pagination.page >= pagination.totalPages}
+                  className="text-sm px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
+                >
+                  Next
+                </button>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
-                <p className="text-2xl font-bold text-gray-900">245</p>
-                <p className="text-xs text-gray-500">Valid Records</p>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
-                <p className="text-2xl font-bold text-amber-600">3</p>
-                <p className="text-xs text-gray-500">Warnings</p>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-lg p-4 text-center">
-                <p className="text-2xl font-bold text-red-600">0</p>
-                <p className="text-xs text-gray-500">Errors</p>
-              </div>
-            </div>
-          </div>
+          )} */}
+          </>
         )}
-
-        {currentStep === 3 && (
-          <div className="text-center py-8">
-            <i className="ri-checkbox-circle-line text-5xl text-green-500 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Import Complete</h3>
-            <p className="text-sm text-gray-500 mb-4">245 records have been successfully imported.</p>
-            <button onClick={() => setCurrentStep(0)} className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">Start New Import</button>
-          </div>
-        )}
-
-        <div className="flex justify-between mt-8 pt-6 border-t border-gray-100">
-          <button onClick={() => setCurrentStep(Math.max(0, currentStep - 1))} disabled={currentStep === 0} className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed">
-            Back
-          </button>
-          <button onClick={() => setCurrentStep(Math.min(STEPS.length - 1, currentStep + 1))} disabled={currentStep === STEPS.length - 1} className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed">
-            {currentStep === 2 ? 'Start Import' : 'Next'}
-          </button>
-        </div>
       </div>
-    </div>
+      {isOpen && (
+        <ViewModal
+          templateData={template}
+          processStatus={processStatus}
+          isOpen={isOpen}
+          onClose={() => setIsOpen(false)}
+          handleSubmit={(template) => process(template)}
+        />
+      )}
+    </>
+  );
+}
+
+function ViewModal({
+  templateData,
+  processStatus,
+  onClose,
+  handleSubmit,
+  isOpen,
+}: {
+  templateData: BatchListItem | undefined;
+  processStatus: string;
+  onClose: () => void;
+  handleSubmit: (template: any) => void;
+  isOpen: boolean;
+}) {
+  const addToast = useLienStore((s) => s.addToast);
+
+  const [template, setTemplate] = useState<{
+    columns: string[];
+    tableData: Record<string, unknown>[];
+    id: string;
+    batchUploadId: string;
+    caseId: string;
+  }>({
+    columns: [],
+    tableData: [],
+    id: templateData?.id ?? "",
+    batchUploadId: "",
+    caseId: "",
+  });
+  const [validations, setValidations] = useState<{
+    isSuccess?: boolean;
+    message?: string;
+    totalRows?: number;
+    successCount?: number;
+    failedCount?: number;
+    data?: Array<{
+      id: string;
+      batchUploadId: string;
+      row: number;
+      status: string;
+      reason: string;
+      data: Record<string, unknown>;
+    }>;
+  } | null>(null);
+
+  const [submitting, setSubmitting] = useState<boolean>(false);
+
+  const fetchDataContext = useCallback(
+    async (id: string) => {
+      const dataContext = await batchService.dataContext({
+        id: id,
+        page: 1,
+        limit: 20,
+      });
+      const rows = Array.isArray(dataContext?.data) ? dataContext.data : [];
+      const excludedColumns = new Set(["id", "row", "status", "reason"]);
+      const columns = rows.length
+        ? Object.keys(rows[0]).filter((key) => !excludedColumns.has(key))
+        : [];
+
+      setTemplate((prev) => ({
+        ...prev,
+        columns,
+        id: id,
+        tableData: rows,
+        batchUploadId: dataContext.id,
+        caseId: dataContext.caseId,
+        templateStatus: `${dataContext?.successCount} Successfully Imported Rows From ${templateData?.file}`,
+      }));
+    },
+    [template.id],
+  );
+
+  const fetchValidationContext = useCallback(
+    async (id: string) => {
+      const dataContext = await batchService.getDetails(id);
+      setValidations(dataContext);
+    },
+    [template.id],
+  );
+  const removeDetails = useCallback(
+    async (id: string) => {
+      try {
+        await batchService.deleteDetails(id);
+        const newList = template.tableData.filter((t) => t.id !== id);
+        setTemplate((prev) => ({ ...prev, tableData: newList }));
+        addToast({
+          type: "success",
+          title: "Row Deleted",
+          description: `Row has been deleted.`,
+        });
+      } catch (err) {
+        if (err instanceof ApiError) {
+          console.log(err);
+        }
+      } finally {
+        //   setLoading(false);
+      }
+    },
+    [template],
+  );
+
+  useEffect(() => {
+    if (templateData?.processStatus == "PENDING") {
+      fetchDataContext(templateData?.id);
+    } else {
+      fetchValidationContext(templateData?.id ?? "");
+    }
+  }, []);
+
+  return (
+    <>
+      <Modal
+        open={isOpen}
+        title={templateData?.label ?? "View"}
+        onClose={onClose}
+        size="lg"
+        footer={
+          <>
+            <button
+              onClick={onClose}
+              className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+            >
+              Close
+            </button>
+            {templateData?.processStatus == "PENDING" && (
+              <button
+                onClick={() => {
+                  handleSubmit({
+                    template,
+                    templateId: templateData.template,
+                  });
+                  setSubmitting(true);
+                }}
+                disabled={submitting}
+                className="text-sm px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg disabled:opacity-50"
+              >
+                {submitting ? "Processing..." : "Process"}
+              </button>
+            )}
+          </>
+        }
+      >
+        {templateData?.processStatus == "PENDING" ? (
+          <DataMappingComponent
+            template={template}
+            onRemoveDetails={removeDetails}
+          ></DataMappingComponent>
+        ) : (
+          <DataValidationComponent
+            status="VIEWING"
+            validations={validations}
+          ></DataValidationComponent>
+        )}
+      </Modal>
+    </>
   );
 }

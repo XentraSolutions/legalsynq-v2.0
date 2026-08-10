@@ -1,0 +1,103 @@
+using System.Text.Json;
+using Xenia.Application.Assistant;
+using Xenia.Infrastructure.Assistant;
+using Xunit;
+
+namespace Xenia.Tests.Assistant;
+
+public sealed class FakeAssistantProviderTests
+{
+    [Fact]
+    public async Task StreamAsync_TitleGeneration_ReturnsConversationTitleOnly()
+    {
+        var provider = new FakeAssistantProvider();
+        var request = new AssistantProviderRequest(
+            AgentKey: "generic",
+            AgentVersion: "1.0.0",
+            SystemPrompt: AssistantConversationTitlePolicy.BuildTitlePrompt(),
+            ModelKey: "fake",
+            Messages:
+            [
+                new AssistantProviderMessage(
+                    "user",
+                    "Generate a funded amount report")
+            ],
+            ContextJson: "{}",
+            CorrelationId: "corr-title",
+            Purpose: AssistantProviderPurpose.TitleGeneration);
+
+        var title = await CollectTextAsync(provider, request);
+
+        Assert.Equal("Funded Amount Report", title);
+    }
+
+    [Fact]
+    public async Task StreamAsync_ToolSelection_UsesReferralSearch_ForNaturalLanguageReferralLookup()
+    {
+        var provider = new FakeAssistantProvider();
+        var request = new AssistantProviderRequest(
+            AgentKey: "careconnect",
+            AgentVersion: "1.0.0",
+            SystemPrompt: "system",
+            ModelKey: "fake",
+            Messages:
+            [
+                new AssistantProviderMessage(
+                    "user",
+                    "Find the referral for Jane Doe at Atlas Health from Acme Law")
+            ],
+            ContextJson: "{}",
+            CorrelationId: "corr-1",
+            Purpose: AssistantProviderPurpose.ToolSelection);
+
+        var json = await CollectTextAsync(provider, request);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal("tool", doc.RootElement.GetProperty("action").GetString());
+        Assert.Equal("careconnect.referral.search", doc.RootElement.GetProperty("toolKey").GetString());
+        Assert.Equal(
+            "Find the referral for Jane Doe at Atlas Health from Acme Law",
+            doc.RootElement.GetProperty("input").GetProperty("searchText").GetString());
+    }
+
+    [Fact]
+    public async Task StreamAsync_ToolSelection_UsesQueueSummary_ForKpiQuestion()
+    {
+        var provider = new FakeAssistantProvider();
+        var request = new AssistantProviderRequest(
+            AgentKey: "careconnect",
+            AgentVersion: "1.0.0",
+            SystemPrompt: "system",
+            ModelKey: "fake",
+            Messages:
+            [
+                new AssistantProviderMessage(
+                    "user",
+                    "How many new referrals do I have in the last 7 days?")
+            ],
+            ContextJson: "{}",
+            CorrelationId: "corr-2",
+            Purpose: AssistantProviderPurpose.ToolSelection);
+
+        var json = await CollectTextAsync(provider, request);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.Equal("tool", doc.RootElement.GetProperty("action").GetString());
+        Assert.Equal("careconnect.referral.queue.summary", doc.RootElement.GetProperty("toolKey").GetString());
+        Assert.Equal("new", doc.RootElement.GetProperty("input").GetProperty("statusGroup").GetString());
+        Assert.Equal(7, doc.RootElement.GetProperty("input").GetProperty("days").GetInt32());
+    }
+
+    private static async Task<string> CollectTextAsync(IAssistantProvider provider, AssistantProviderRequest request)
+    {
+        var chunks = new List<string>();
+
+        await foreach (var evt in provider.StreamAsync(request))
+        {
+            if (evt.Type == "delta" && evt.Delta is not null)
+                chunks.Add(evt.Delta);
+        }
+
+        return string.Concat(chunks);
+    }
+}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
 import type { ReferralComment } from '@/types/careconnect';
+import type { SelectedCareConnectMessageFile } from '@/lib/careconnect-message-attachments';
 import { ReferralCommentBubble } from './referral-comment-bubble';
 import { ReferralMessageComposer } from './referral-message-composer';
 
@@ -23,8 +24,12 @@ export function ReferralMessageThread({
   const historyRef = useRef<HTMLDivElement | null>(null);
   const [comments, setComments] = useState(initialComments);
   const [message, setMessage] = useState('');
+  const [files, setFiles] = useState<SelectedCareConnectMessageFile[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
+  const [attachmentState, setAttachmentState] = useState<
+    Record<string, { loading: boolean; error: string | null }>
+  >({});
 
   useEffect(() => {
     if (!historyRef.current || comments.length === 0) return;
@@ -41,8 +46,8 @@ export function ReferralMessageThread({
     e.preventDefault();
 
     const trimmed = message.trim();
-    if (!trimmed) {
-      setError('Message is required.');
+    if (!trimmed && files.length === 0) {
+      setError('Enter a message or attach at least one file.');
       return;
     }
     if (trimmed.length > 4000) {
@@ -54,9 +59,12 @@ export function ReferralMessageThread({
     setError(null);
 
     try {
-      const { data } = await careConnectApi.referrals.postComment(referralId, { message: trimmed });
+      const { data } = files.length > 0
+        ? await careConnectApi.referrals.postCommentWithAttachments(referralId, trimmed, files)
+        : await careConnectApi.referrals.postComment(referralId, { message: trimmed });
       setComments((prev) => [...prev, data]);
       setMessage('');
+      setFiles([]);
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -65,6 +73,40 @@ export function ReferralMessageThread({
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleOpenAttachment(attachmentId: string, download = false) {
+    setAttachmentState((prev) => ({
+      ...prev,
+      [attachmentId]: { loading: true, error: null },
+    }));
+
+    try {
+      const { data } = await careConnectApi.referralAttachments.getSignedUrl(
+        referralId,
+        attachmentId,
+        download,
+      );
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+      setAttachmentState((prev) => ({
+        ...prev,
+        [attachmentId]: { loading: false, error: null },
+      }));
+    } catch (err) {
+      const message =
+        err instanceof ApiError && err.isForbidden
+          ? 'You do not have permission to view this attachment.'
+          : err instanceof ApiError && err.isServerError
+          ? 'This attachment is temporarily unavailable.'
+          : err instanceof ApiError
+          ? err.message
+          : 'Unable to open this attachment.';
+
+      setAttachmentState((prev) => ({
+        ...prev,
+        [attachmentId]: { loading: false, error: message },
+      }));
     }
   }
 
@@ -86,7 +128,7 @@ export function ReferralMessageThread({
       <div
         ref={historyRef}
         data-testid="referral-message-history"
-        className="h-[26rem] overflow-y-auto flex flex-col gap-3"
+        className="h-[26rem] overflow-y-auto flex flex-col gap-3 md:max-h-[28rem] md:overflow-y-auto md:pr-2"
       >
         {comments.length === 0 ? (
           <p className="text-sm text-gray-500 italic">
@@ -96,7 +138,12 @@ export function ReferralMessageThread({
           </p>
         ) : (
           comments.map((comment) => (
-            <ReferralCommentBubble key={comment.id} comment={comment} />
+            <ReferralCommentBubble
+              key={comment.id}
+              comment={comment}
+              onOpenAttachment={handleOpenAttachment}
+              attachmentState={attachmentState}
+            />
           ))
         )}
       </div>
@@ -111,6 +158,8 @@ export function ReferralMessageThread({
           onChange={setMessage}
           onSubmit={handleSubmit}
           isSubmitting={isSubmitting}
+          files={files}
+          onFilesChange={setFiles}
         />
       )}
     </div>

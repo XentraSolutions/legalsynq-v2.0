@@ -2,11 +2,14 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using BuildingBlocks.Exceptions;
+using CareConnect.Api.Helpers;
+using CareConnect.Api.Options;
 using CareConnect.Application.Authorization;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
 using CareConnect.Domain;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -36,8 +39,11 @@ public static class ReferralEndpoints
             {
                 Status             = p.Status,
                 ProviderId         = p.ProviderId,
+                SearchText         = p.Search,
                 ClientName         = p.ClientName,
                 CaseNumber         = p.CaseNumber,
+                ProviderName       = p.ProviderName,
+                ReferrerName       = p.ReferrerName,
                 Urgency            = p.Urgency,
                 CreatedFrom        = p.CreatedFrom,
                 CreatedTo          = p.CreatedTo,
@@ -225,14 +231,26 @@ public static class ReferralEndpoints
 
         group.MapPost("/{id:guid}/comments", async (
             Guid id,
-            [FromBody] CreateReferralCommentRequest request,
+            HttpRequest httpRequest,
             IReferralThreadService threadService,
             ICurrentRequestContext ctx,
             AuthorizationService authSvc,
+            IOptions<AttachmentUploadOptions> uploadOptions,
             CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 4000)
-                return Results.BadRequest(new { error = "message is required and must be 4000 characters or fewer." });
+            var request = await ReadAuthenticatedCommentRequestAsync(httpRequest, ct);
+            if (request is null)
+                return Results.BadRequest(new { error = "Request body is required." });
+
+            var files = request.Files ?? new FormFileCollection();
+            var message = MessageAttachmentUploadHelper.NormalizeMessage(request.Message);
+            var messageValidationError = MessageAttachmentUploadHelper.ValidateMessage(message, files);
+            if (messageValidationError is not null)
+                return messageValidationError;
+
+            var validationError = MessageAttachmentUploadHelper.ValidateFiles(files, uploadOptions.Value);
+            if (validationError is not null)
+                return validationError;
 
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
             var canPostThread = await CareConnectAuthHelper.HasAnyAsync(
@@ -247,22 +265,44 @@ public static class ReferralEndpoints
                 ? (string.IsNullOrWhiteSpace(ctx.Email) ? "Provider" : ctx.Email!)
                 : ctx.Name!;
 
-            var comment = await threadService.PostAuthenticatedCommentAsync(
-                tenantId,
-                id,
-                ctx.OrgId,
-                ctx.Email,
-                senderName,
-                request.Message,
-                useGlobalLookup: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)),
-                ct);
+            List<ReferralMessageAttachmentUpload> uploads = [];
+            try
+            {
+                uploads = MessageAttachmentUploadHelper.OpenUploads(files);
+                var comment = uploads.Count == 0
+                    ? await threadService.PostAuthenticatedCommentAsync(
+                        tenantId,
+                        id,
+                        ctx.OrgId,
+                        ctx.Email,
+                        senderName,
+                        message,
+                        useGlobalLookup: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)),
+                        ct: ct)
+                    : await threadService.PostAuthenticatedCommentWithAttachmentsAsync(
+                        tenantId,
+                        id,
+                        ctx.OrgId,
+                        ctx.Email,
+                        senderName,
+                        message,
+                        useGlobalLookup: ShouldUseGlobalReferralLookup(ctx, CareConnectParticipantHelper.IsReceiverContext(ctx)),
+                        uploads,
+                        createdByUserId: ctx.UserId,
+                        ct: ct);
 
-            return comment is null
-                ? Results.NotFound()
-                : Results.Created($"/api/referrals/{id}/comments/{comment.Id}", comment);
+                return comment is null
+                    ? Results.NotFound()
+                    : Results.Created($"/api/referrals/{id}/comments/{comment.Id}", comment);
+            }
+            finally
+            {
+                MessageAttachmentUploadHelper.DisposeUploads(uploads);
+            }
         })
         .RequireAuthorization(Policies.AuthenticatedUser)
-        .RequireProductAccess(ProductCodes.SynqCareConnect);
+        .RequireProductAccess(ProductCodes.SynqCareConnect)
+        .DisableAntiforgery();
 
         // LS-ID-TNT-012: filter-level JWT permission check; handler also validates via IEffectivePermissionService.
         group.MapPost("/", async (
@@ -776,6 +816,24 @@ public static class ReferralEndpoints
         // Note: no .RequireAuthorization — intentionally public, token-gated
     }
 
+    private static async Task<AuthenticatedCommentRequest?> ReadAuthenticatedCommentRequestAsync(
+        HttpRequest httpRequest,
+        CancellationToken ct)
+    {
+        if (httpRequest.HasFormContentType)
+        {
+            var form = await httpRequest.ReadFormAsync(ct);
+            return new AuthenticatedCommentRequest(
+                form["message"].FirstOrDefault() ?? string.Empty,
+                form.Files);
+        }
+
+        var request = await httpRequest.ReadFromJsonAsync<CreateReferralCommentRequest>(cancellationToken: ct);
+        return request is null
+            ? null
+            : new AuthenticatedCommentRequest(request.Message, null);
+    }
+
     private static bool HasVerifiedScopeSelection(
         ICurrentRequestContext ctx,
         CreateReferralRequest request,
@@ -855,8 +913,11 @@ internal sealed class ReferralSearchParams
 {
     public string?   Status      { get; init; }
     public Guid?     ProviderId  { get; init; }
+    public string?   Search      { get; init; }
     public string?   ClientName  { get; init; }
     public string?   CaseNumber  { get; init; }
+    public string?   ProviderName { get; init; }
+    public string?   ReferrerName { get; init; }
     public string?   Urgency     { get; init; }
     public DateTime? CreatedFrom { get; init; }
     public DateTime? CreatedTo   { get; init; }
@@ -868,3 +929,5 @@ internal sealed class ReassignProviderRequest
 {
     public Guid NewProviderId { get; init; }
 }
+
+internal sealed record AuthenticatedCommentRequest(string Message, IFormFileCollection? Files);

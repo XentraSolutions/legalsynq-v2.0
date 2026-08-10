@@ -1,8 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
+using Liens.Domain.Entities;
+using Liens.Domain.Enums;
+using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -80,23 +84,280 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         }
     }
 
+    [Fact]
+    public async Task RunReport_includes_a_new_non_bulk_case_and_lien_when_the_ui_submits_N()
+    {
+        string lienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-NON-BULK-{Guid.CreateVersion7():N}"[..30],
+                "New",
+                "Plaintiff",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-NON-BULK-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N");
+
+            lienNumber = lien.LienNumber;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            statusView = "",
+            lienStatusIds = Array.Empty<string>(),
+            isBulk = "N",
+            columns = new[] { "case_id", "lien_id" },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
+        payload.RootElement.GetProperty("data").EnumerateArray()
+            .Should().Contain(row => row.GetProperty("lien_id").GetString() == lienNumber);
+    }
+
+    [Fact]
+    public async Task RunReport_uses_legacy_medical_code_billing_and_purchase_amounts()
+    {
+        string lienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-AMOUNTS-{Guid.CreateVersion7():N}"[..30],
+                "Amount",
+                "Plaintiff",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-AMOUNTS-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N");
+            var medicalCode = ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LMC-DIY-AMOUNTS-{Guid.CreateVersion7():N}"[..40],
+                "LegacyMedicalCode",
+                "Medical code amount entry",
+                "system",
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                lienId: lien.Id,
+                notes: "billingAmount=600.75; purchaseAmount=275.50");
+
+            lienNumber = lien.LienNumber;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.ServicingItems.Add(medicalCode);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            isBulk = "N",
+            columns = new[] { "lien_id", "purchase_amt", "billing_amt" },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = payload.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("lien_id").GetString() == lienNumber);
+        row.GetProperty("purchase_amt").GetString().Should().Be("275.50");
+        row.GetProperty("billing_amt").GetString().Should().Be("600.75");
+        payload.RootElement.GetProperty("summaryTotals").GetProperty("totalPurchaseAmt").GetDecimal()
+            .Should().BeGreaterThanOrEqualTo(275.50m);
+        payload.RootElement.GetProperty("summaryTotals").GetProperty("totalBillingAmt").GetDecimal()
+            .Should().BeGreaterThanOrEqualTo(600.75m);
+    }
+
     // ── POST /report/diy/export ───────────────────────────────────────────────
 
     [Fact]
-    public async Task ExportReport_returns200_with_base64_data()
+    public async Task RunReport_filters_direct_legacy_payload_by_status_view()
     {
-        var resp = await _client.PostAsJsonAsync("/report/diy/export", new
+        using (var scope = _factory.Services.CreateScope())
         {
-            config = new { status = "Open" },
-            page   = 1,
-            limit  = 10,
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+            var preDemandCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-PRE-{Guid.CreateVersion7():N}",
+                "Pre",
+                "Demand",
+                SeedHelper.UserId);
+            db.Cases.Add(preDemandCase);
+
+            var preDemandLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-PRE-{Guid.CreateVersion7():N}",
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: preDemandCase.Id,
+                isBulk: "No");
+            db.Liens.Add(preDemandLien);
+
+            var demandSentCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DEMAND-{Guid.CreateVersion7():N}",
+                "Demand",
+                "Plaintiff",
+                SeedHelper.UserId);
+            demandSentCase.TransitionStatus(CaseStatus.DemandSent, SeedHelper.UserId);
+            db.Cases.Add(demandSentCase);
+
+            var demandSentLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DEMAND-{Guid.CreateVersion7():N}",
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: demandSentCase.Id);
+            db.Liens.Add(demandSentLien);
+
+            await db.SaveChangesAsync();
+        }
+
+        var resp = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "CASES",
+            statusView = "PreDemand",
+            lienStatusIds = Array.Empty<string>(),
+            purchaseDateFrom = Array.Empty<string>(),
+            purchaseDateTo = (string?)null,
+            closedDateFrom = (string?)null,
+            closedDateTo = (string?)null,
+            isBulk = "N",
+            plaintiffCaseIds = Array.Empty<string>(),
+            lawFirmIds = Array.Empty<string>(),
+            attorneyIds = Array.Empty<string>(),
+            fundingCompanyIds = Array.Empty<string>(),
+            medicalFacilityIds = Array.Empty<string>(),
+            caseManagerIds = Array.Empty<string>(),
+            medicalProviderIds = Array.Empty<string>(),
+            columns = new[]
+            {
+                "plaintiff_first_name",
+                "plaintiff_last_name",
+                "case_id",
+                "lien_id",
+                "case_status",
+            },
+            page = "1",
+            limit = "10",
         });
+
         resp.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await resp.Content.ReadAsStringAsync()}");
 
         var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
-        doc!.RootElement.TryGetProperty("data", out var dataProp).Should().BeTrue();
-        dataProp.GetString().Should().NotBeNull();
+        var rows = doc!.RootElement.GetProperty("data").EnumerateArray().ToList();
+
+        rows.Should().NotBeEmpty();
+        rows.Should().OnlyContain(row => row.GetProperty("case_status").GetString() == "Pre-demand");
+        var rowColumns = rows.Select(row => row.EnumerateObject().Select(p => p.Name).ToList()).ToList();
+        rowColumns.Should().OnlyContain(columns => !columns.Contains("l_id"));
+        rowColumns.Should().OnlyContain(columns => columns.SequenceEqual(new[]
+        {
+            "plaintiff_first_name",
+            "plaintiff_last_name",
+            "case_id",
+            "lien_id",
+            "case_status",
+        }));
+        doc.RootElement.GetProperty("limit").GetInt32().Should().Be(10);
+    }
+
+    [Fact]
+    public async Task ExportReport_returns_case_export_compatible_base64_csv()
+    {
+        var request = new
+        {
+            viewBy = "CASE",
+            reportType = "CASE",
+            statusView = "",
+            lienStatusIds = Array.Empty<string>(),
+            purchaseDateFrom = Array.Empty<string>(),
+            purchaseDateTo = (string?)null,
+            closedDateFrom = (string?)null,
+            closedDateTo = (string?)null,
+            isBulk = "N",
+            plaintiffCaseIds = Array.Empty<string>(),
+            lawFirmIds = Array.Empty<string>(),
+            attorneyIds = Array.Empty<string>(),
+            fundingCompanyIds = Array.Empty<string>(),
+            medicalFacilityIds = Array.Empty<string>(),
+            caseManagerIds = Array.Empty<string>(),
+            medicalProviderIds = Array.Empty<string>(),
+            columns = new[]
+            {
+                "billing_amt",
+                "case_status",
+                "plaintiff_last_name",
+                "plaintiff_first_name",
+            },
+            format = "csv",
+            page = 1,
+            limit = 10,
+        };
+
+        var exportResp = await _client.PostAsJsonAsync("/report/diy/export", request);
+        exportResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await exportResp.Content.ReadAsStringAsync()}");
+
+        var exportDoc = await exportResp.Content.ReadFromJsonAsync<JsonDocument>();
+        exportDoc.Should().NotBeNull();
+
+        exportDoc!.RootElement.GetProperty("isSuccess").GetBoolean()
+            .Should().BeTrue();
+        exportDoc.RootElement.GetProperty("message").GetString()
+            .Should().Be("CSV generated successfully.");
+        exportDoc.RootElement.TryGetProperty("summaryTotals", out _).Should().BeFalse();
+        exportDoc.RootElement.TryGetProperty("page", out _).Should().BeFalse();
+        exportDoc.RootElement.TryGetProperty("limit", out _).Should().BeFalse();
+        exportDoc.RootElement.TryGetProperty("totalCount", out _).Should().BeFalse();
+
+        var exportItems = exportDoc.RootElement.GetProperty("data").EnumerateArray().ToList();
+        exportItems.Should().ContainSingle();
+        var exportItem = exportItems.Single();
+        exportItem.GetProperty("filename").GetString().Should().StartWith("diy_report_");
+        exportItem.GetProperty("export_format").GetString().Should().Be("csv");
+
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(exportItem.GetProperty("base64").GetString()!));
+        csv.Should().StartWith("billing_amt,case_status,plaintiff_last_name,plaintiff_first_name");
     }
 
     // ── POST /report/diy/save ─────────────────────────────────────────────────
@@ -144,9 +405,77 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             .GetProperty("reportConfig")
             .GetProperty("columns")
             .EnumerateArray()
-            .Select(c => c.GetString())
+            .Select(c => c.GetProperty("key").GetString())
             .ToList();
         reportConfigColumns.Should().Equal("billing_amt", "case_id");
+    }
+
+    [Fact]
+    public async Task SaveReport_preserves_top_level_filter_ids_in_saved_response()
+    {
+        var resp = await _client.PostAsJsonAsync("/api/liens/reports/diy/save", new
+        {
+            name = "Saved Filters Report",
+            config = new
+            {
+                reportType = "LIENS",
+                statusView = "ALL",
+                lienStatusIds = Array.Empty<string>(),
+                purchaseDateFrom = "06/01/2026",
+                purchaseDateTo = "06/26/2026",
+                closedDateFrom = (string?)null,
+                closedDateTo = (string?)null,
+                isBulk = "N",
+                plaintiffCaseIds = Array.Empty<string>(),
+                lawFirmIds = Array.Empty<string>(),
+                attorneyIds = Array.Empty<string>(),
+                fundingCompanyIds = Array.Empty<string>(),
+                medicalFacilityIds = Array.Empty<string>(),
+                caseManagerIds = Array.Empty<string>(),
+                medicalProviderIds = Array.Empty<string>(),
+                columns = new[]
+                {
+                    new { key = "billing_amt", label = "Billing Amt" },
+                    new { key = "case_id", label = "Case Id" },
+                },
+                page = 1,
+                limit = 50,
+            },
+            lawFirmIds = new[] { SeedHelper.LawFirmId.ToString() },
+            fundingCompanyIds = new[] { SeedHelper.FundingCompanyId.ToString() },
+            medicalProviderIds = new[] { SeedHelper.MedicalProviderId.ToString() },
+            plaintiffCaseIds = new[] { SeedHelper.CaseId.ToString() },
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        var reportConfig = doc!.RootElement.GetProperty("reportConfig");
+
+        reportConfig.GetProperty("lawFirmIds").EnumerateArray()
+            .Select(v => v.GetString())
+            .Should().Equal(SeedHelper.LawFirmId.ToString());
+        reportConfig.GetProperty("fundingCompanyIds").EnumerateArray()
+            .Select(v => v.GetString())
+            .Should().Equal(SeedHelper.FundingCompanyId.ToString());
+        reportConfig.GetProperty("medicalProviderIds").EnumerateArray()
+            .Select(v => v.GetString())
+            .Should().Equal(SeedHelper.MedicalProviderId.ToString());
+        reportConfig.GetProperty("plaintiffCaseIds").EnumerateArray()
+            .Select(v => v.GetString())
+            .Should().Equal(SeedHelper.CaseId.ToString());
+
+        var reportConfigColumns = reportConfig
+            .GetProperty("columns")
+            .EnumerateArray()
+            .Select(c => new
+            {
+                key = c.GetProperty("key").GetString(),
+                label = c.GetProperty("label").GetString(),
+            })
+            .ToList();
+        reportConfigColumns.Should().ContainSingle(c => c.key == "billing_amt" && c.label == "Billing Amt");
+        reportConfigColumns.Should().ContainSingle(c => c.key == "case_id" && c.label == "Case Id");
     }
 
     // ── DELETE /report/diy/{id} ───────────────────────────────────────────────
@@ -167,6 +496,199 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         var deleteResp = await _client.DeleteAsync($"/report/diy/{id}");
         deleteResp.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await deleteResp.Content.ReadAsStringAsync()}");
+    }
+
+    [Fact]
+    public async Task GetSavedReports_legacy_saved_route_returns_enveloped_response()
+    {
+        var resp = await _client.GetAsync("/report/diy/saved");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        doc!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        doc.RootElement.GetProperty("message").GetString().Should().Be("Saved reports retrieved.");
+        var data = doc.RootElement.GetProperty("data").EnumerateArray().ToList();
+        data.Should().ContainSingle(r => r.GetProperty("id").GetGuid() == SeedHelper.ReportConfigId);
+    }
+
+    [Fact]
+    public async Task DeleteReport_legacy_delete_alias_returns200()
+    {
+        var saveResp = await _client.PostAsJsonAsync("/report/diy/save", new
+        {
+            name = "Report To Delete Via Alias",
+            config = new { },
+        });
+        saveResp.EnsureSuccessStatusCode();
+        var doc = await saveResp.Content.ReadFromJsonAsync<JsonDocument>();
+        var id = doc!.RootElement.GetProperty("id").GetGuid();
+
+        var deleteResp = await _client.DeleteAsync($"/report/diy/delete/{id}");
+        deleteResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await deleteResp.Content.ReadAsStringAsync()}");
+    }
+
+    [Fact]
+    public async Task GetColumns_returns_legacy_column_metadata()
+    {
+        var resp = await _client.GetAsync("/report/diy/columns?reportType=LIENS");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        doc!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        doc.RootElement.GetProperty("reportType").GetString().Should().Be("LIENS");
+        doc.RootElement.TryGetProperty("defaultColumn", out var defaults).Should().BeTrue();
+        defaults.EnumerateArray().Select(x => x.GetString()).Should().Equal(
+        [
+            "plaintiff_first_name",
+            "plaintiff_last_name",
+            "case_id",
+            "lien_id",
+            "purchase_date",
+            "purchase_amt",
+            "billing_amt",
+            "date_closed",
+            "returned_amount",
+            "days_since_reduction_approval",
+            "medical_facility",
+            "lawfirm",
+            "case_type",
+            "case_manager",
+            "case_status",
+            "date_of_loss",
+        ]);
+        doc.RootElement.TryGetProperty("data", out var data).Should().BeTrue();
+        data.EnumerateArray().Any(x => x.GetProperty("key").GetString() == "plaintiff_first_name")
+            .Should().BeTrue();
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "days_since_purchase" &&
+            x.GetProperty("label").GetString() == "Days Since Purchase");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "expected_settlement_amount" &&
+            x.GetProperty("label").GetString() == "Expected Settlement Amount");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "days_since_reduction_approval" &&
+            x.GetProperty("label").GetString() == "Days Since Reduction Approval");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "date_closed" &&
+            x.GetProperty("label").GetString() == "Date Closed");
+        data.EnumerateArray().Count(x => x.GetProperty("key").GetString() == "date_closed")
+            .Should().Be(1);
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "medical_provider" &&
+            x.GetProperty("label").GetString() == "Medical Provider");
+        data.EnumerateArray().Count(x => x.GetProperty("key").GetString() == "medical_facility")
+            .Should().Be(1);
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "medical_facility" &&
+            x.GetProperty("label").GetString() == "Medical Facility");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "lawfirm_email" &&
+            x.GetProperty("label").GetString() == "Lawfirm Email");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "date_of_loss" &&
+            x.GetProperty("label").GetString() == "Date of Loss");
+        data.EnumerateArray().Count(x => x.GetProperty("key").GetString() == "date_of_loss")
+            .Should().Be(1);
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "plaintiff_date_of_birth" &&
+            x.GetProperty("label").GetString() == "Plaintiff Date of Birth");
+
+        var liensInfo = doc.RootElement.GetProperty("liensInfo").EnumerateArray().ToList();
+        liensInfo.Should().Contain(x => x.GetProperty("key").GetString() == "date_closed");
+        liensInfo.Should().NotContain(x => x.GetProperty("key").GetString() == "medical_facility");
+        liensInfo.Should().Contain(x =>
+            x.GetProperty("key").GetString() == "number_of_liens" &&
+            x.GetProperty("label").GetString() == "Number Of Liens");
+        liensInfo.Should().NotContain(x => x.GetProperty("key").GetString() == "l_id");
+
+        var procedureInfo = doc.RootElement.GetProperty("procedureInfo").EnumerateArray().ToList();
+        procedureInfo.Should().Contain(x => x.GetProperty("key").GetString() == "medical_facility");
+
+        var caseTrackingInfo = doc.RootElement.GetProperty("caseTrackingInfo").EnumerateArray().ToList();
+        caseTrackingInfo.Should().NotContain(x => x.GetProperty("key").GetString() == "date_closed");
+        caseTrackingInfo.Should().NotContain(x => x.GetProperty("key").GetString() == "date_of_loss");
+
+        var settlementInfo = doc.RootElement.GetProperty("settlementInfo").EnumerateArray().ToList();
+        settlementInfo.Should().NotContain(x => x.GetProperty("key").GetString() == "returned_amt");
+        settlementInfo.Should().Contain(x =>
+            x.GetProperty("key").GetString() == "returned_amount" &&
+            x.GetProperty("label").GetString() == "Returned Amount");
+
+        var caseInfo = doc.RootElement.GetProperty("caseInfo").EnumerateArray().ToList();
+        caseInfo.Should().Contain(x =>
+            x.GetProperty("key").GetString() == "date_of_loss" &&
+            x.GetProperty("label").GetString() == "Date of Loss");
+    }
+
+    [Fact]
+    public async Task RunReport_projects_new_legacy_columns_when_requested()
+    {
+        var resp = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            config = new
+            {
+                columns = new[]
+                {
+                    "days_since_purchase",
+                    "expected_settlement_amount",
+                    "medical_provider",
+                    "lawfirm_email",
+                    "plaintiff_date_of_birth",
+                },
+            },
+            page = 1,
+            limit = 10,
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        var rows = doc!.RootElement.GetProperty("data").EnumerateArray().ToList();
+        rows.Should().NotBeEmpty();
+        rows[0].TryGetProperty("days_since_purchase", out _).Should().BeTrue();
+        rows[0].TryGetProperty("expected_settlement_amount", out _).Should().BeTrue();
+        rows[0].TryGetProperty("medical_provider", out _).Should().BeTrue();
+        rows[0].TryGetProperty("lawfirm_email", out _).Should().BeTrue();
+        rows[0].TryGetProperty("plaintiff_date_of_birth", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetFilterOptions_returns_filter_choices_for_lawfirms()
+    {
+        var resp = await _client.PostAsJsonAsync("/report/diy/filter-options", new
+        {
+            filterField = "lawfirm",
+            keyword = "Smith",
+            limit = 10,
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        doc!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        var data = doc.RootElement.GetProperty("data").EnumerateArray().ToList();
+        data.Should().NotBeEmpty();
+        data.Should().Contain(item => item.GetProperty("id").GetString() == SeedHelper.LawFirmId.ToString());
+    }
+
+    [Fact]
+    public async Task GetAllFilterOptions_returns_grouped_filter_payload()
+    {
+        var resp = await _client.GetAsync("/report/diy/all-filters?reportType=CASES&limit=10");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+
+        var doc = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        doc!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        doc.RootElement.GetProperty("reportType").GetString().Should().Be("CASES");
+        var data = doc.RootElement.GetProperty("data");
+        data.TryGetProperty("lawfirm", out var lawFirms).Should().BeTrue();
+        data.TryGetProperty("plaintiff", out var plaintiffs).Should().BeTrue();
+        lawFirms.ValueKind.Should().Be(JsonValueKind.Array);
+        plaintiffs.ValueKind.Should().Be(JsonValueKind.Array);
     }
 
     // ── Auth enforcement ──────────────────────────────────────────────────────

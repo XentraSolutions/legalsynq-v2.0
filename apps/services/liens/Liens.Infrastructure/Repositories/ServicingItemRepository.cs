@@ -28,6 +28,22 @@ public class ServicingItemRepository : IServicingItemRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<List<ServicingItem>> GetByLienIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> lienIds,
+        CancellationToken ct = default)
+    {
+        if (lienIds.Count == 0)
+            return [];
+
+        var ids = lienIds.ToList();
+        return await _db.ServicingItems
+            .Where(s => s.TenantId == tenantId &&
+                        s.LienId.HasValue &&
+                        ids.Contains(s.LienId.Value))
+            .ToListAsync(ct);
+    }
+
     public async Task<(List<ServicingItem> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, string? status, string? priority, string? assignedTo,
         Guid? caseId, Guid? lienId, int page, int pageSize, CancellationToken ct = default)
@@ -39,6 +55,7 @@ public class ServicingItemRepository : IServicingItemRepository
             var term = search.Trim();
             q = q.Where(s =>
                 s.TaskNumber.Contains(term) ||
+                s.TaskType.Contains(term) ||
                 s.Description.Contains(term) ||
                 s.AssignedTo.Contains(term));
         }

@@ -40,6 +40,9 @@ export const ProductRole = {
   SynqLienSeller: 'SYNQ_LIENS:SYNQLIEN_SELLER',
   SynqLienBuyer:  'SYNQ_LIENS:SYNQLIEN_BUYER',
   SynqLienHolder: 'SYNQ_LIENS:SYNQLIEN_HOLDER',
+  // Xenia (product code: SYNQ_AI)
+  XeniaUser:  'SYNQ_AI:XENIA_USER',
+  XeniaAdmin: 'SYNQ_AI:XENIA_ADMIN',
 } as const;
 export type ProductRoleValue = typeof ProductRole[keyof typeof ProductRole];
 
@@ -118,12 +121,30 @@ export interface NavItem {
    * should access regardless of product-role provisioning state.
    */
   visibleForTenantAdminInOrgTypes?: OrgTypeValue[];
+  /**
+   * Marks this item as excluded from the current Phase 1 migration scope (LSV3-628).
+   * Hidden from the rendered sidebar until Phase 1 is complete, but kept in the
+   * nav definition so it's easy to re-enable later. Absent/false = visible.
+   */
+  notInPhase1?: boolean;
+  /**
+   * When set, clicking this item shows this message as a toast instead of
+   * navigating to its href. Use for features that are temporarily disabled
+   * but should stay visible in the nav (e.g. "Coming soon").
+   */
+  disabledMessage?: string;
 }
 
 export interface NavSection {
   heading?: string;
   items: NavItem[];
   sellModeOnly?: boolean;
+  /**
+   * Marks this entire section as excluded from the current Phase 1 migration scope
+   * (LSV3-628). The section is dropped entirely from the rendered sidebar (not just
+   * emptied) until Phase 1 is complete. Absent/false = visible.
+   */
+  notInPhase1?: boolean;
 }
 
 /** @deprecated Use NavSection[] */

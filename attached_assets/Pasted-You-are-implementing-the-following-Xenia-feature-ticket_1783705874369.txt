@@ -1,0 +1,2523 @@
+You are implementing the following Xenia feature ticket.
+
+==================================================
+TICKET
+==================================================
+
+Ticket ID: XENIA-P1-T3
+
+Parent Ticket: XENIA-P1 — Xenia Platform Foundation & Email Automation
+
+Related Tickets:
+- XENIA-P1-T1 — Core Service Foundation
+- XENIA-P1-T1-V1 — Core Foundation Validation and Remediation
+- XENIA-P1-T1-V2 — Core Portability and Runtime Closure
+- XENIA-P1-T2 — Tenant Email Module Foundation and Source Connectivity
+- XENIA-P1-T2-V1 — Email Source Connectivity and Administration Closure
+
+Task Type: 🟦 XenIA
+
+Title: Email Ingestion Engine and Message Persistence Foundation
+
+==================================================
+MANDATORY EXECUTION RULES
+==================================================
+
+1. Create the implementation report before making any code changes.
+
+Required report path:
+
+/analysis/XENIA-P1-T3-report.md
+
+2. The report must be created as the first implementation action.
+
+3. Update the report incrementally throughout:
+
+- Initial repository analysis
+- Prerequisite validation
+- Architecture decisions
+- Database changes
+- Connector changes
+- Synchronization engine implementation
+- Message normalization
+- Duplicate detection
+- Attachment dispatch
+- API implementation
+- Frontend implementation
+- Test execution
+- Runtime validation
+- Final assessment
+
+4. Do not write the report only after implementation is complete.
+
+5. Do not fabricate:
+
+- Build success
+- Test success
+- Migration success
+- Provider connectivity
+- Message retrieval
+- Incremental synchronization
+- Duplicate prevention
+- Attachment dispatch
+- Tenant-isolation success
+- Frontend success
+- Runtime success
+
+6. Clearly classify each material activity as:
+
+- Completed
+- Partially completed
+- Failed
+- Blocked
+- Skipped
+- Not applicable
+- Not independently verified
+
+7. For every command, test, migration, provider request, sync run, and HTTP request, record:
+
+- Exact command or request
+- Working directory
+- Environment
+- Exit code or HTTP status
+- Expected result
+- Actual result
+- Relevant output summary
+- Remediation performed
+- Retest result
+
+8. Do not perform GitHub operations.
+
+Do not:
+
+- Run git add
+- Commit
+- Push
+- Create or update pull requests
+- Merge branches
+- Claim GitHub Actions success
+
+9. Do not perform AWS or production infrastructure work.
+
+Do not:
+
+- Deploy to ECS or Fargate
+- Modify production RDS
+- Modify Secrets Manager
+- Modify IAM
+- Modify Cloud Map
+- Modify Route53
+- Modify ALB configuration
+- Claim production deployment success
+- Claim production runtime success
+
+10. Do not begin XENIA-P1-T4.
+
+11. Do not implement:
+
+- AI
+- Case creation
+- Customer support routing
+- Workflow execution
+- Email sending
+- Auto replies
+- OCR
+- Document classification
+- Calendar integration
+- Contact synchronization
+
+12. Preserve the locked Xenia architecture.
+
+13. Keep implementation incremental and limited to the approved ticket.
+
+14. Before implementation, inspect whether XENIA-P1-T2-V1 has actually completed the prerequisites for:
+
+- Clean API build
+- Current EF model snapshot
+- Valid Email source administration
+- Secret-reference behavior
+- Source validation
+- Tenant isolation
+- SSRF controls
+- Provider connector readiness
+
+15. If a prerequisite is missing but can be corrected narrowly within this ticket without broadening scope, correct it and document the remediation.
+
+16. If a missing prerequisite prevents safe ingestion, mark the affected portion blocked and do not fabricate completion.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Build the first operational Email Ingestion Engine inside Xenia.
+
+The engine must connect to tenant-configured Email sources, retrieve messages incrementally, normalize provider-specific payloads into a canonical Xenia message model, prevent duplicate imports, persist synchronization state, store normalized message content and metadata, and dispatch attachment streams to the Documents adapter.
+
+This ticket introduces:
+
+- Manual synchronization
+- Background worker foundation
+- Initial synchronization
+- Incremental synchronization
+- Provider cursor persistence
+- Canonical message persistence
+- Duplicate detection
+- Attachment handoff
+- Ingestion-run tracking
+- Retry and resume behavior
+- Read-only message administration APIs and UI
+
+This ticket must not introduce AI processing, workflow routing, case intake, customer support ticket creation, or outbound email.
+
+==================================================
+SOURCE MATERIAL
+==================================================
+
+Review before implementation:
+
+/analysis/XENIA-P1-T1-report.md
+/analysis/XENIA-P1-T1-V1-report.md
+/analysis/XENIA-P1-T1-V2-report.md
+/analysis/XENIA-P1-T2-report.md
+/analysis/XENIA-P1-T2-V1-report.md
+
+Inspect the actual repository rather than relying only on reports.
+
+Confirm:
+
+- Current Xenia project structure
+- Email module registration
+- Email source entities
+- Provider definitions
+- Authentication model
+- Secret-reference service
+- Provider connector contracts
+- Tenant context
+- Authorization policies
+- Audit adapter
+- Document adapter
+- Current migrations and snapshot
+- Existing source validation
+- Current Control Center Email pages
+- Existing Xenia proxy
+- Test frameworks and commands
+
+Record discrepancies in:
+
+/analysis/XENIA-P1-T3-report.md
+
+==================================================
+LOCKED ARCHITECTURE
+==================================================
+
+1. Xenia is an independent, separately deployable automation platform.
+
+2. Email is a module within Xenia.
+
+3. LegalSynq is the first host platform, not the owner of Xenia core.
+
+4. Xenia remains tenant-aware and provider-neutral.
+
+5. Provider-specific code belongs only in provider connectors and provider mappers.
+
+6. Xenia must not directly access another service’s database.
+
+7. Credentials remain outside the Xenia database.
+
+8. Secret values must be resolved only through the secret-reference abstraction.
+
+9. Xenia owns:
+
+- Email synchronization orchestration
+- Provider cursor state
+- Canonical message model
+- Normalized message persistence
+- Duplicate detection
+- Ingestion-run tracking
+- Attachment-reference metadata
+- Retry and resume state
+- Email message APIs
+- Message administration UI APIs
+
+10. Documents service owns:
+
+- Attachment binary storage
+- Document lifecycle
+- Document versioning
+- File retrieval
+
+11. Audit service owns durable audit persistence.
+
+12. Xenia must not persist attachment binaries.
+
+13. Xenia must not persist mailbox credentials.
+
+14. Xenia must not contain LegalSynq product-domain logic.
+
+15. The Email ingestion engine must be reusable by another host platform without redesign.
+
+==================================================
+PREREQUISITE GATE
+==================================================
+
+Before implementing ingestion:
+
+1. Validate that Email sources can be created and read.
+
+2. Validate that source credentials are represented only by secret references.
+
+3. Validate that the Email module can be globally and tenant enabled.
+
+4. Validate that the provider connector registry is operational.
+
+5. Validate that the Document adapter contract exists.
+
+6. Validate that the Audit adapter contract exists.
+
+7. Validate that the current EF model snapshot is current.
+
+8. Validate that migrations can be generated or applied through the repository’s approved process.
+
+9. Validate that tenant isolation works for Email source records.
+
+10. Validate that unsafe custom hosts are rejected.
+
+If any prerequisite is missing:
+
+- Document it.
+- Remediate narrowly if safe.
+- Do not implement insecure workarounds.
+- Do not store plaintext credentials.
+- Do not bypass tenant isolation.
+- Do not bypass TLS or SSRF protections.
+
+==================================================
+INITIAL REPOSITORY AND ENVIRONMENT ANALYSIS
+==================================================
+
+Before code changes:
+
+1. Inspect:
+
+- Xenia.Domain
+- Xenia.Application
+- Xenia.Infrastructure
+- Xenia.Api
+- Xenia.Tests
+- Email source implementation
+- Email connectors
+- Secret-reference implementation
+- Documents adapter
+- Audit adapter
+- Event framework
+- Module registry
+- Tenant context
+- Authorization
+- EF migrations
+- XeniaDbContextModelSnapshot
+- Control Center Email pages
+- Xenia API proxy
+- Build and startup scripts
+
+2. Run and record:
+
+dotnet --info
+dotnet --list-sdks
+dotnet tool list
+node --version
+pnpm --version
+mysql --version
+docker --version
+docker compose version
+
+3. Confirm:
+
+- Compatible .NET SDK
+- EF CLI compatibility
+- Pomelo compatibility
+- Mail protocol library availability
+- Microsoft Graph SDK or HTTP client approach
+- Gmail API SDK or HTTP client approach
+- Disposable MySQL strategy
+- Controlled provider test strategy
+- Document adapter development implementation
+- Actual backend and frontend validation commands
+
+4. Create the report before source changes.
+
+5. Populate the initial analysis and progress sections before implementation.
+
+==================================================
+IMPLEMENTATION TASKS
+==================================================
+
+--------------------------------------------------
+1. DEFINE THE CANONICAL EMAIL MESSAGE MODEL
+--------------------------------------------------
+
+Create a provider-neutral EmailMessage aggregate.
+
+Required fields:
+
+- Id
+- TenantId
+- EmailSourceId
+- ProviderType
+- ProviderMessageId
+- InternetMessageId
+- ThreadId
+- ConversationId where applicable
+- Subject
+- FromAddress
+- FromName
+- SenderAddress
+- SenderName
+- ReplyToAddresses
+- SentAt
+- ReceivedAt
+- Importance
+- IsRead where provider metadata supports it
+- HasAttachments
+- AttachmentCount
+- BodyType
+- BodyText
+- BodyHtml
+- BodyPreview
+- HeadersJson
+- ProviderMetadataJson
+- ContentHash
+- ImportStatus
+- ProcessingState
+- ImportedAt
+- LastObservedAt
+- CreatedAt
+- UpdatedAt
+- Version or concurrency token
+
+Canonical model rules:
+
+- Provider-specific fields go into versioned provider metadata.
+- Raw provider payloads must not be stored unless explicitly justified.
+- Message bodies may be stored in Xenia in this phase.
+- Attachment binaries must not be stored in Xenia.
+- Message body fields must not be written to logs or audit payloads.
+- Headers must be sanitized before persistence.
+- Secret-bearing headers must be removed.
+- Header size must be capped.
+- Body size must be capped according to configuration.
+- HTML content must be treated as untrusted content.
+
+--------------------------------------------------
+2. DEFINE RECIPIENT MODEL
+--------------------------------------------------
+
+Create EmailMessageRecipient.
+
+Required fields:
+
+- Id
+- TenantId
+- EmailMessageId
+- RecipientType
+- EmailAddress
+- DisplayName
+- CreatedAt
+
+Recipient types:
+
+- To
+- Cc
+- Bcc
+- ReplyTo
+
+Normalize email addresses consistently.
+
+Do not expose Bcc unnecessarily in UI unless authorized and actually supplied by the provider.
+
+--------------------------------------------------
+3. DEFINE ATTACHMENT REFERENCE MODEL
+--------------------------------------------------
+
+Create EmailAttachmentReference.
+
+Required fields:
+
+- Id
+- TenantId
+- EmailMessageId
+- ProviderAttachmentId
+- DocumentReferenceId
+- FileName
+- MimeType
+- SizeBytes
+- ContentHash
+- IsInline
+- ContentId
+- Disposition
+- DispatchStatus
+- ErrorCode
+- SafeErrorSummary
+- CreatedAt
+- UpdatedAt
+
+Rules:
+
+- No binary content column.
+- No Base64 binary persistence.
+- DocumentReferenceId points to the Documents adapter result.
+- Attachment dispatch must be idempotent.
+- Inline images remain attachment references.
+- Unsafe filenames must be sanitized.
+- File size limits must be enforced.
+- MIME type must not be trusted without validation.
+
+--------------------------------------------------
+4. DEFINE SYNC STATE MODEL
+--------------------------------------------------
+
+Create EmailSyncState.
+
+Required fields:
+
+- Id
+- TenantId
+- EmailSourceId
+- ProviderType
+- CursorType
+- CursorValueEncryptedOrProtected where necessary
+- CursorMetadataJson
+- LastSuccessfulSyncAt
+- LastAttemptedSyncAt
+- LastProcessedProviderTimestamp
+- LastProcessedProviderMessageId
+- InitialSyncCompleted
+- ConsecutiveFailureCount
+- NextEligibleSyncAt
+- StateVersion
+- CreatedAt
+- UpdatedAt
+- Concurrency token
+
+Provider cursor types:
+
+Microsoft365:
+- DeltaToken
+
+GoogleWorkspace:
+- HistoryId
+- Optional PageToken only during active run
+
+IMAP:
+- UIDVALIDITY
+- LastProcessedUid
+- FolderName
+
+POP3:
+- UIDL checkpoint set or durable recent UIDL state
+
+ExchangeIMAP:
+- UIDVALIDITY
+- LastProcessedUid
+- FolderName
+
+Rules:
+
+- Cursors are tenant- and source-scoped.
+- Cursor values are never accepted from clients.
+- Cursor updates occur only after successful durable message persistence.
+- Invalidated cursors must trigger a controlled reset strategy.
+- Cursor resets must be audited.
+- Tokens that contain sensitive provider data must be protected at rest.
+
+--------------------------------------------------
+5. DEFINE INGESTION RUN MODEL
+--------------------------------------------------
+
+Create EmailIngestionRun.
+
+Required fields:
+
+- Id
+- TenantId
+- EmailSourceId
+- TriggerType
+- Status
+- StartedAt
+- CompletedAt
+- DurationMs
+- CorrelationId
+- ActorId
+- WorkerInstanceId
+- MessagesDiscovered
+- MessagesImported
+- MessagesUpdated
+- MessagesDuplicated
+- MessagesFailed
+- AttachmentsDiscovered
+- AttachmentsDispatched
+- AttachmentsFailed
+- PagesProcessed
+- RetryCount
+- CursorBeforeSafeSummary
+- CursorAfterSafeSummary
+- ErrorCode
+- SafeErrorSummary
+- CreatedAt
+- UpdatedAt
+
+Trigger types:
+
+- Manual
+- Scheduled
+- Retry
+- Resume
+- Initial
+
+Statuses:
+
+- Queued
+- Running
+- Completed
+- CompletedWithErrors
+- Failed
+- Cancelled
+- Interrupted
+
+Do not store:
+
+- Message bodies
+- Raw credentials
+- Raw tokens
+- Raw provider exceptions
+- Full sensitive cursors
+
+--------------------------------------------------
+6. DATABASE TABLES AND MIGRATIONS
+--------------------------------------------------
+
+Create tables:
+
+- xn_email_messages
+- xn_email_recipients
+- xn_email_attachment_references
+- xn_email_sync_state
+- xn_email_ingestion_runs
+
+Add required:
+
+- Primary keys
+- Tenant indexes
+- Source indexes
+- Provider-message indexes
+- InternetMessageId indexes
+- ReceivedAt indexes
+- ImportStatus indexes
+- Run-status indexes
+- Unique constraints
+- Foreign keys within Xenia-owned schema
+- Concurrency tokens
+- Soft-delete behavior only where explicitly required
+
+Recommended uniqueness:
+
+For provider identity:
+
+TenantId + EmailSourceId + ProviderMessageId
+
+For InternetMessageId:
+
+Do not assume globally unique across all tenants.
+
+Use as a duplicate signal, not necessarily the only unique key.
+
+Update:
+
+- EF configurations
+- Migrations
+- Migration designer
+- XeniaDbContextModelSnapshot
+- Disposable MySQL schema
+- Migration validation tests
+
+No cross-service foreign keys.
+
+--------------------------------------------------
+7. CREATE PROVIDER MESSAGE CONTRACTS
+--------------------------------------------------
+
+Create provider-neutral retrieval DTOs.
+
+Suggested contracts:
+
+ProviderMessageEnvelope
+ProviderRecipient
+ProviderAttachmentDescriptor
+ProviderSyncPage
+ProviderSyncCursor
+ProviderSyncCapabilities
+ProviderSyncResult
+
+ProviderMessageEnvelope should include:
+
+- ProviderMessageId
+- InternetMessageId
+- ThreadId
+- Subject
+- Sender
+- From
+- ReplyTo
+- To
+- Cc
+- Bcc
+- SentAt
+- ReceivedAt
+- Importance
+- IsRead
+- BodyType
+- BodyText
+- BodyHtml
+- BodyPreview
+- Headers
+- ProviderMetadata
+- AttachmentDescriptors
+
+Do not reuse API DTOs as provider connector contracts.
+
+--------------------------------------------------
+8. EXTEND EMAIL CONNECTOR CONTRACT
+--------------------------------------------------
+
+Extend the provider connector model with ingestion methods.
+
+Suggested interface operations:
+
+- GetCapabilities()
+- ValidateConfigurationAsync()
+- TestConnectionAsync()
+- GetInitialCursorAsync()
+- FetchMessagePageAsync()
+- GetAttachmentStreamAsync()
+- ValidateCursorAsync()
+- NormalizeProviderError()
+- CloseAsync() where applicable
+
+Requirements:
+
+- Cancellation tokens
+- Page-size controls
+- Timeout controls
+- Provider rate-limit metadata
+- Retry-after metadata
+- No credential logging
+- No secret persistence
+- No unbounded page retrieval
+- No direct persistence inside connectors
+
+Connector responsibilities:
+
+- Provider communication
+- Provider pagination
+- Provider cursor interpretation
+- Safe provider DTO mapping
+- Attachment stream retrieval
+
+Connector must not:
+
+- Write to Xenia repositories
+- Update sync state directly
+- Emit business audit events directly
+- Invoke LegalSynq product services
+- Create cases or tickets
+
+--------------------------------------------------
+9. IMPLEMENT MICROSOFT 365 INGESTION
+--------------------------------------------------
+
+Use Microsoft Graph or a narrow HTTP implementation consistent with repository standards.
+
+Implement:
+
+- Source authentication through secret reference
+- Delta query initialization
+- Delta token continuation
+- Page retrieval
+- Message metadata retrieval
+- Body retrieval
+- Recipient mapping
+- Attachment descriptor retrieval
+- Attachment stream retrieval
+- Rate-limit handling
+- 401/403 handling
+- Invalid delta token handling
+- Retry-after handling
+
+Do not implement:
+
+- Sending email
+- Deleting email
+- Moving email
+- Marking read
+- Graph subscriptions
+- Webhooks
+
+Use least-privilege scopes.
+
+Document required permissions.
+
+--------------------------------------------------
+10. IMPLEMENT GOOGLE WORKSPACE INGESTION
+--------------------------------------------------
+
+Use Gmail API or a narrow HTTP implementation consistent with repository standards.
+
+Implement:
+
+- OAuth secret resolution
+- Initial message listing for configured mailbox scope
+- History ID continuation where supported
+- Pagination
+- Message metadata retrieval
+- MIME part traversal
+- Body text and HTML extraction
+- Recipient mapping
+- Attachment descriptor retrieval
+- Attachment stream retrieval
+- Rate-limit handling
+- Invalid history ID handling
+- Retry-after handling
+
+Do not implement:
+
+- Sending email
+- Modifying labels
+- Marking read
+- Deleting
+- Watch/push notifications
+
+Document required scopes.
+
+--------------------------------------------------
+11. IMPLEMENT IMAP INGESTION
+--------------------------------------------------
+
+Use a maintained protocol library such as MailKit if compatible.
+
+Implement:
+
+- TLS connection
+- Authentication through secret reference
+- Configured folder selection
+- UIDVALIDITY retrieval
+- Incremental UID search
+- Page/batch retrieval
+- Envelope retrieval
+- Header retrieval
+- Body retrieval
+- Recipient mapping
+- Attachment descriptor extraction
+- Attachment stream access
+- UID cursor update
+- UIDVALIDITY reset handling
+- Timeouts
+- Connection closure
+
+Do not:
+
+- Move messages
+- Delete messages
+- Mark messages read unless explicitly unavoidable and documented
+- Store protocol credentials
+
+Prefer read-only folder access.
+
+--------------------------------------------------
+12. IMPLEMENT POP3 INGESTION
+--------------------------------------------------
+
+Implement:
+
+- TLS connection
+- Authentication
+- UIDL retrieval
+- Duplicate filtering
+- Bounded message batch retrieval
+- MIME parsing
+- Recipient mapping
+- Attachment descriptor extraction
+- Attachment stream access
+- UIDL checkpoint persistence
+- Timeout behavior
+- Connection closure
+
+POP3 limitations must be documented:
+
+- No folders
+- Limited incremental semantics
+- UIDL server behavior varies
+- Message deletion by external clients may affect continuity
+
+Do not delete messages from server.
+
+--------------------------------------------------
+13. IMPLEMENT EXCHANGE IMAP INGESTION
+--------------------------------------------------
+
+Reuse generic IMAP ingestion where appropriate.
+
+Support:
+
+- Exchange-specific defaults
+- OAuth2 or approved credential model
+- Folder selection
+- UIDVALIDITY
+- UID cursor
+- TLS
+- Safe error mapping
+
+Do not duplicate IMAP orchestration unnecessarily.
+
+--------------------------------------------------
+14. CREATE MESSAGE NORMALIZER
+--------------------------------------------------
+
+Implement IMessageNormalizer.
+
+Responsibilities:
+
+- Convert ProviderMessageEnvelope to canonical EmailMessage
+- Normalize email addresses
+- Normalize dates to UTC
+- Normalize recipient types
+- Normalize importance
+- Normalize body type
+- Sanitize HTML where required for preview/display
+- Cap body and header size
+- Remove sensitive headers
+- Canonicalize headers
+- Compute content hash
+- Preserve safe provider metadata
+- Create attachment descriptors
+
+Sensitive headers to remove or redact include, where applicable:
+
+- Authorization
+- Authentication-Results details if sensitive
+- Provider tokens
+- Internal routing headers containing secrets
+- DKIM private material if any malformed payload includes it
+- Custom headers classified as sensitive by policy
+
+Do not alter the original semantic content more than necessary.
+
+--------------------------------------------------
+15. IMPLEMENT DUPLICATE DETECTION
+--------------------------------------------------
+
+Create IDuplicateDetectionService.
+
+Signals in order:
+
+1. TenantId + EmailSourceId + ProviderMessageId
+2. TenantId + EmailSourceId + InternetMessageId
+3. Provider cursor evidence
+4. Canonical content hash fallback
+
+Rules:
+
+- ProviderMessageId is the strongest source-scoped identity.
+- InternetMessageId is a cross-provider signal but not universally reliable.
+- Hash fallback must avoid false positives.
+- Duplicate detection must be deterministic.
+- Duplicate imports must not create duplicate attachment records.
+- Existing messages may have metadata refreshed.
+- Body content should not be overwritten blindly when existing content is more complete.
+- Duplicate events must be recorded in ingestion-run counts.
+- Duplicate audit events must not include body content.
+
+Add tests for:
+
+- Exact provider duplicate
+- Same InternetMessageId from same source
+- Same InternetMessageId from different sources
+- Missing InternetMessageId
+- Hash collision protection
+- Updated provider metadata
+- Attachment duplicate behavior
+- Concurrent import race
+
+Use database unique constraints as a final safety layer.
+
+--------------------------------------------------
+16. IMPLEMENT MESSAGE PERSISTENCE SERVICE
+--------------------------------------------------
+
+Create IMessagePersistenceService.
+
+Responsibilities:
+
+- Persist canonical message atomically
+- Persist recipients
+- Persist provider metadata
+- Persist headers
+- Persist attachment descriptors
+- Enforce tenant and source scope
+- Enforce duplicate constraints
+- Return import result
+- Support update-on-duplicate rules
+- Support transaction boundaries
+- Support cancellation
+- Handle concurrency conflicts
+
+Persistence result should indicate:
+
+- Imported
+- Updated
+- Duplicate
+- Failed
+
+Do not dispatch attachments inside the same database transaction if that would hold the transaction open during network/file operations.
+
+Use a staged process:
+
+1. Persist message and attachment descriptors.
+2. Commit.
+3. Dispatch attachments.
+4. Update attachment references.
+
+--------------------------------------------------
+17. IMPLEMENT ATTACHMENT DISPATCHER
+--------------------------------------------------
+
+Create IAttachmentDispatcher.
+
+Responsibilities:
+
+- Retrieve attachment stream from provider connector
+- Enforce size limits
+- Calculate content hash
+- Sanitize filename
+- Validate MIME metadata
+- Call Documents adapter
+- Persist returned document reference
+- Retry safely
+- Avoid duplicate dispatch
+- Record failure safely
+
+Required Documents adapter metadata:
+
+- Tenant
+- Source system: Xenia
+- Source module: Email
+- Email message ID
+- Email source ID
+- Provider attachment ID
+- Original filename
+- MIME type
+- Size
+- Hash
+- Correlation ID
+
+If Documents adapter is unavailable:
+
+- Message import may complete.
+- Attachment remains Pending or Failed according to policy.
+- Ingestion run should become CompletedWithErrors where appropriate.
+- Xenia must not store binary content as fallback.
+
+Do not buffer unbounded files in memory.
+
+Use streaming.
+
+--------------------------------------------------
+18. IMPLEMENT SYNC STATE SERVICE
+--------------------------------------------------
+
+Create ISyncStateService.
+
+Responsibilities:
+
+- Load source sync state
+- Initialize provider cursor
+- Validate cursor
+- Stage cursor changes
+- Commit cursor only after durable processing
+- Record cursor invalidation
+- Reset cursor
+- Support optimistic concurrency
+- Support resume
+- Prevent stale worker updates
+
+Cursor commit rule:
+
+Do not advance the durable cursor past messages that failed before persistence.
+
+If a page contains partial failures:
+
+- Persist successful messages.
+- Record failed messages.
+- Decide cursor advancement according to provider semantics.
+- Ensure failed messages remain retryable.
+- Document provider-specific behavior.
+
+--------------------------------------------------
+19. IMPLEMENT INGESTION ORCHESTRATOR
+--------------------------------------------------
+
+Create EmailSyncService or equivalent.
+
+Responsibilities:
+
+1. Validate Email module enabled globally.
+2. Validate Email module enabled for tenant.
+3. Validate source enabled and not deleted.
+4. Acquire per-source lock.
+5. Create ingestion run.
+6. Resolve connector.
+7. Resolve secret reference.
+8. Load or initialize sync state.
+9. Fetch bounded page.
+10. Normalize messages.
+11. Detect duplicates.
+12. Persist messages.
+13. Dispatch attachments.
+14. Update run counters.
+15. Commit cursor safely.
+16. Continue pagination within configured limits.
+17. Complete or fail run.
+18. Emit audit events.
+19. Release lock.
+20. Return safe sync result.
+
+The orchestrator must not contain provider-specific protocol code.
+
+--------------------------------------------------
+20. IMPLEMENT PER-SOURCE LOCKING
+--------------------------------------------------
+
+Prevent concurrent sync for one Email source.
+
+Implement an abstraction such as:
+
+IEmailSourceSyncLock
+
+Development implementation may use:
+
+- Database advisory lock
+- Lock row with lease
+- Distributed-lock abstraction with local implementation
+
+Requirements:
+
+- Lock is source-scoped.
+- Lock has lease/expiration.
+- Worker identity recorded.
+- Stale lock recoverable.
+- Cancellation releases lock where possible.
+- Concurrent manual and scheduled runs conflict safely.
+- Multiple sources may sync concurrently.
+- Different tenants may sync concurrently.
+
+Do not rely only on in-process semaphore for production architecture.
+
+An in-process implementation may be used in development only if a durable abstraction and database-backed option are present.
+
+--------------------------------------------------
+21. IMPLEMENT RETRY AND RESUME
+--------------------------------------------------
+
+Define retry policy.
+
+Retryable examples:
+
+- Provider 429
+- Temporary 5xx
+- Timeout
+- Temporary network interruption
+- Documents adapter temporary failure
+
+Non-retryable examples:
+
+- Invalid credentials
+- Disabled source
+- Deleted source
+- Invalid configuration
+- Tenant inactive
+- Unsupported provider
+- Permanent permission denial
+
+Persist:
+
+- Retry count
+- Next eligible retry
+- Last failure code
+- Safe failure summary
+
+Use bounded exponential backoff with jitter.
+
+Do not retry indefinitely.
+
+Resume behavior:
+
+- Interrupted runs may be resumed safely.
+- Cursor is not advanced beyond durable progress.
+- Duplicate detection protects replay.
+- New run references prior interrupted run where useful.
+
+--------------------------------------------------
+22. IMPLEMENT BACKGROUND WORKER FOUNDATION
+--------------------------------------------------
+
+Support:
+
+- Manual sync
+- Scheduled sync framework
+- Retry execution
+- Cancellation
+
+Create a worker abstraction.
+
+Scheduling configuration may include:
+
+- Enabled
+- Interval metadata
+- Next run
+- Backoff state
+
+However, do not build advanced tenant scheduling UI in this ticket unless necessary.
+
+Requirements:
+
+- Worker polls only eligible sources.
+- Worker respects per-source lock.
+- Worker respects NextEligibleSyncAt.
+- Worker respects module enablement.
+- Worker does not run deleted or disabled sources.
+- Worker has bounded concurrency.
+- Worker shuts down gracefully.
+- Worker records instance identity.
+- Worker does not silently lose failures.
+
+If a full background scheduler is too broad:
+
+- Implement the worker contracts and manual execution.
+- Implement a simple hosted background loop behind a disabled-by-default configuration flag.
+- Document limitations honestly.
+
+--------------------------------------------------
+23. IMPLEMENT MANUAL SYNC API
+--------------------------------------------------
+
+Implement:
+
+POST /email/sources/{id}/sync
+
+Requirements:
+
+- xenia.email.sync permission
+- Tenant-scoped
+- Source exists
+- Source enabled
+- Module effectively enabled
+- No concurrent run
+- Returns run ID
+- Supports synchronous acknowledgment with asynchronous execution
+- Does not hold the HTTP request open for full mailbox ingestion
+- Returns 202 Accepted when queued
+- Returns 409 when already running
+- Returns 422 or 400 for invalid source state
+- Returns 503 for unavailable mandatory dependency
+
+Do not return credentials or raw provider errors.
+
+--------------------------------------------------
+24. IMPLEMENT SYNC STATE AND HISTORY APIS
+--------------------------------------------------
+
+Implement:
+
+GET /email/sources/{id}/sync-state
+
+GET /email/sources/{id}/ingestion-history
+
+GET /email/sources/{id}/ingestion-history/{runId}
+
+POST /email/sources/{id}/reset-sync
+
+Reset requirements:
+
+- xenia.email.manage or dedicated reset permission
+- Explicit confirmation input
+- Audit event
+- Tenant-scoped
+- Refuse reset while run active
+- Does not delete existing messages
+- Marks next run as controlled initial/rescan
+- Does not automatically duplicate messages due to duplicate detection
+
+Do not expose raw cursor tokens.
+
+Return only safe cursor summaries.
+
+--------------------------------------------------
+25. IMPLEMENT MESSAGE APIS
+--------------------------------------------------
+
+Implement:
+
+GET /email/messages
+
+GET /email/messages/{id}
+
+GET /email/messages/{id}/attachments
+
+Optional:
+
+GET /email/messages/{id}/headers
+
+only if headers can be returned safely.
+
+List filters:
+
+- Source
+- Provider
+- Date range
+- Sender
+- Recipient
+- Subject search
+- Has attachments
+- Import status
+- Processing state
+
+Requirements:
+
+- Tenant-scoped
+- Paginated
+- Stable sorting
+- Bounded page size
+- Read-only
+- No delete endpoint
+- No edit endpoint
+- No raw provider payload
+- Safe HTML handling
+- No credential exposure
+- No cross-tenant references
+
+--------------------------------------------------
+26. DEFINE AUTHORIZATION
+--------------------------------------------------
+
+Use:
+
+- xenia.email.read
+- xenia.email.manage
+- xenia.email.sync
+- xenia.email.validate where existing source validation remains separate
+
+Policy mapping:
+
+Message list/detail:
+xenia.email.read
+
+Manual sync:
+xenia.email.sync
+
+Sync state/history:
+xenia.email.read
+
+Reset sync:
+xenia.email.manage
+
+Attachment metadata:
+xenia.email.read
+
+Add and validate xenia.email.sync if not already present.
+
+Tests:
+
+- 401 unauthenticated
+- 403 missing permission
+- Reader cannot trigger sync
+- Sync operator cannot reset unless manage permission exists
+- Manager behavior explicit
+- PlatformAdmin behavior explicit
+- Tenant isolation preserved
+
+--------------------------------------------------
+27. IMPLEMENT AUDIT EVENTS
+--------------------------------------------------
+
+Emit:
+
+- xenia.email.sync.queued
+- xenia.email.sync.started
+- xenia.email.sync.completed
+- xenia.email.sync.completed_with_errors
+- xenia.email.sync.failed
+- xenia.email.sync.cancelled
+- xenia.email.sync.resumed
+- xenia.email.sync.reset
+- xenia.email.message.imported
+- xenia.email.message.updated
+- xenia.email.message.duplicate
+- xenia.email.message.failed
+- xenia.email.attachment.dispatched
+- xenia.email.attachment.failed
+- xenia.email.cursor.invalidated
+
+Audit payloads may include:
+
+- Tenant ID
+- Source ID
+- Message ID
+- Run ID
+- Provider
+- Result
+- Counts
+- Correlation ID
+- Timestamp
+
+Audit payloads must not include:
+
+- Message subject if policy treats it as sensitive
+- Message body
+- Recipient addresses unless explicitly approved
+- Headers
+- Attachment contents
+- Credentials
+- Tokens
+- Raw cursor
+- Raw provider exception
+
+Prefer IDs and counts.
+
+--------------------------------------------------
+28. IMPLEMENT OBSERVABILITY
+--------------------------------------------------
+
+Add structured metrics or logs consistent with repository standards.
+
+Track:
+
+- Sync duration
+- Page duration
+- Messages discovered
+- Messages imported
+- Duplicates
+- Failures
+- Attachments dispatched
+- Provider throttling
+- Retry count
+- Lock contention
+- Cursor resets
+- Source health
+
+Log fields:
+
+- Tenant ID where safe
+- Source ID
+- Run ID
+- Provider
+- Correlation ID
+- Worker ID
+- Result
+
+Do not log:
+
+- Bodies
+- Headers
+- Credentials
+- Tokens
+- Secret references
+- Full email addresses unless policy permits
+- Attachment content
+
+--------------------------------------------------
+29. IMPLEMENT MESSAGE LIST UI
+--------------------------------------------------
+
+Create:
+
+/xenia/email/messages
+
+Display:
+
+- Subject
+- From
+- ReceivedAt
+- Provider
+- Source
+- Has attachments
+- Attachment count
+- Import status
+- Processing state
+
+Requirements:
+
+- Tenant-scoped
+- Pagination
+- Filters
+- Search
+- Loading state
+- Empty state
+- Error state
+- Unauthorized state
+- Forbidden state
+- Backend unavailable state
+- Safe subject rendering
+- No HTML execution
+- No raw body preview in list unless sanitized and approved
+
+--------------------------------------------------
+30. IMPLEMENT MESSAGE DETAIL UI
+--------------------------------------------------
+
+Create:
+
+/xenia/email/messages/{id}
+
+Display:
+
+- Subject
+- From
+- Sender
+- Reply-to
+- To
+- Cc
+- Bcc only if present and authorized
+- SentAt
+- ReceivedAt
+- Body text
+- Sanitized body HTML
+- Provider
+- Source
+- Provider IDs
+- Thread/conversation ID
+- Safe headers
+- Attachments
+- Import metadata
+- Correlation/run references
+
+Security:
+
+- Sanitize HTML
+- Disable active content
+- Prevent remote image tracking by default
+- Do not execute scripts
+- Do not render unsafe URLs automatically
+- Do not expose secret-bearing headers
+- Do not expose raw provider payloads
+
+--------------------------------------------------
+31. IMPLEMENT SOURCE SYNC UI
+--------------------------------------------------
+
+Create or extend:
+
+/xenia/email/sources/{id}/sync
+
+Display:
+
+- Current source state
+- Module effective state
+- Last attempted sync
+- Last successful sync
+- Current run
+- Run status
+- Cursor type
+- Safe cursor summary
+- Initial sync complete
+- Consecutive failures
+- Next eligible sync
+- Ingestion history
+- Message counts
+- Attachment counts
+- Retry history
+- Safe errors
+
+Actions:
+
+- Start sync
+- Cancel if supported
+- Reset sync
+- Retry failed run
+
+Requirements:
+
+- Permission-aware
+- Confirmation for reset
+- No raw cursor
+- No token
+- No credentials
+- Correct 202/409 handling
+- Poll run status safely
+- No optimistic false success
+
+--------------------------------------------------
+32. UPDATE EMAIL NAVIGATION
+--------------------------------------------------
+
+Extend Email navigation:
+
+- Dashboard
+- Sources
+- Providers
+- Messages
+- Settings
+
+Source detail should link to Sync.
+
+Do not remove existing Email pages.
+
+--------------------------------------------------
+33. UPDATE CONTROL CENTER API CLIENT
+--------------------------------------------------
+
+Add typed methods for:
+
+- Start sync
+- Get sync state
+- Get ingestion history
+- Get run detail
+- Reset sync
+- List messages
+- Get message
+- Get attachment metadata
+
+Validate DTO parity with backend.
+
+Do not expose raw cursor or provider tokens.
+
+--------------------------------------------------
+34. VALIDATE CONTROL CENTER PROXY
+--------------------------------------------------
+
+Validate:
+
+- GET
+- POST
+- PUT where applicable
+- Authorization forwarding
+- Correlation forwarding
+- 202 preservation
+- 409 preservation
+- 422/400 preservation
+- 503 preservation
+- Query-string forwarding
+- Pagination forwarding
+- Cancellation request forwarding if implemented
+- No secret logging
+- No trusted tenant header injection
+
+Execute actual proxy requests against running Xenia.
+
+--------------------------------------------------
+35. CONFIGURATION
+--------------------------------------------------
+
+Add ingestion settings, scoped appropriately.
+
+Suggested settings:
+
+- Ingestion enabled
+- Background worker enabled
+- Default page size
+- Maximum page size
+- Maximum pages per run
+- Maximum messages per run
+- Maximum message body size
+- Maximum header size
+- Maximum attachment size
+- Maximum attachments per message
+- Per-source timeout
+- Provider request timeout
+- Maximum retry count
+- Retry base delay
+- Worker concurrency
+- Source lock lease duration
+- Message retention metadata only if needed
+- HTML sanitization policy
+
+No AI or workflow settings.
+
+Use safe defaults.
+
+--------------------------------------------------
+36. SECURITY REQUIREMENTS
+--------------------------------------------------
+
+Validate:
+
+- Tenant isolation
+- Source ownership
+- Message ownership
+- Run ownership
+- Attachment reference ownership
+- Secret resolution
+- TLS
+- SSRF protections inherited from T2
+- Safe provider URLs
+- HTML sanitization
+- Remote image blocking
+- Header redaction
+- Body and attachment size limits
+- Cancellation
+- Rate limiting
+- Authorization
+- Correlation IDs
+- Audit logs
+- Safe errors
+
+No plaintext credentials.
+
+No raw tokens.
+
+No untrusted HTML execution.
+
+--------------------------------------------------
+37. PROVIDER TEST STRATEGY
+--------------------------------------------------
+
+Use controlled tests.
+
+Acceptable:
+
+- Mock Graph server
+- Mock Gmail API
+- Local TLS IMAP server
+- Local TLS POP3 server
+- Provider sandbox
+- Approved test mailbox
+
+Tests must prove actual ingestion behavior without production mailboxes.
+
+Provider tests should include:
+
+Microsoft365:
+- Initial page
+- Delta continuation
+- Invalid delta
+- Rate limit
+- Attachment retrieval
+
+Google:
+- Initial list
+- History continuation
+- Invalid history ID
+- MIME parsing
+- Attachment retrieval
+
+IMAP:
+- UIDVALIDITY
+- UID pagination
+- Read-only access
+- MIME parsing
+- Attachment retrieval
+- Resume
+
+POP3:
+- UIDL duplicate prevention
+- Pagination/batching
+- MIME parsing
+- Resume
+
+Do not rely only on mocked application services.
+
+At least one protocol/API path must execute end-to-end through connector, normalizer, persistence, and sync state.
+
+--------------------------------------------------
+38. TENANT ISOLATION TESTS
+--------------------------------------------------
+
+Use Tenant A and Tenant B.
+
+Prove:
+
+- Tenant A cannot sync Tenant B source.
+- Tenant A cannot read Tenant B sync state.
+- Tenant A cannot read Tenant B ingestion runs.
+- Tenant A cannot read Tenant B messages.
+- Tenant A cannot read Tenant B attachment metadata.
+- Tenant A cannot reset Tenant B cursor.
+- Tenant A cannot access Tenant B via body, route, query, or header override.
+- PlatformAdmin behavior is explicit.
+- Background workers preserve tenant context.
+- Events preserve correct tenant context.
+- Documents adapter calls carry correct tenant.
+
+Use relational tests.
+
+--------------------------------------------------
+39. MIGRATION VALIDATION
+--------------------------------------------------
+
+Run:
+
+dotnet ef migrations list
+dotnet ef migrations script
+dotnet ef database update
+
+Validate:
+
+- Clean database apply
+- Upgrade from T2 schema
+- Snapshot consistency
+- New tables
+- Unique constraints
+- Tenant indexes
+- Source indexes
+- Provider message uniqueness
+- Sync-state uniqueness per source
+- Foreign keys
+- JSON mappings
+- Enum mappings
+- Concurrency
+- Large-text fields
+- No binary attachment columns
+- No cross-service foreign keys
+
+If tooling fails:
+
+- Remediate or document approved external migration process.
+- Do not manually mark migrations applied without verified schema.
+- Do not claim success without evidence.
+
+--------------------------------------------------
+40. BUILD AND VALIDATION
+--------------------------------------------------
+
+Backend:
+
+dotnet restore
+dotnet build
+dotnet publish
+dotnet test
+
+Migrations:
+
+dotnet ef migrations list
+dotnet ef migrations script
+dotnet ef database update
+
+Runtime:
+
+dotnet run --project apps/services/xenia/Xenia.Api
+
+Frontend:
+
+pnpm --filter control-center type-check
+pnpm --filter control-center lint
+pnpm --filter control-center test
+pnpm --filter control-center build
+
+Clearly distinguish:
+
+- Xenia result
+- Control Center result
+- Whole solution result
+- Pre-existing unrelated failures
+
+No Xenia-related build failure may remain.
+
+==================================================
+API ENDPOINTS TO IMPLEMENT AND VALIDATE
+==================================================
+
+POST /email/sources/{id}/sync
+
+GET /email/sources/{id}/sync-state
+
+GET /email/sources/{id}/ingestion-history
+
+GET /email/sources/{id}/ingestion-history/{runId}
+
+POST /email/sources/{id}/reset-sync
+
+GET /email/messages
+
+GET /email/messages/{id}
+
+GET /email/messages/{id}/attachments
+
+Optional if safe:
+
+GET /email/messages/{id}/headers
+
+For every endpoint record:
+
+- Method
+- URL
+- Authentication
+- Permissions
+- Tenant
+- Request summary
+- Expected status
+- Actual status
+- Correlation ID
+- Safe response summary
+- Result
+
+==================================================
+DATABASE REQUIREMENTS
+==================================================
+
+Required tables:
+
+xn_email_messages
+xn_email_recipients
+xn_email_attachment_references
+xn_email_sync_state
+xn_email_ingestion_runs
+
+Required constraints:
+
+- Tenant/source/provider message uniqueness
+- Sync state unique per source
+- Attachment reference uniqueness where provider ID exists
+- Recipient foreign keys
+- Source foreign keys
+- Tenant-owned foreign keys only
+- No Documents-service database foreign keys
+- No credential columns
+- No attachment binary columns
+
+Required indexes:
+
+- Tenant ID
+- Source ID
+- Provider
+- ProviderMessageId
+- InternetMessageId
+- ReceivedAt
+- ImportStatus
+- ProcessingState
+- HasAttachments
+- Ingestion run status
+- Ingestion run started time
+- NextEligibleSyncAt
+- LastSuccessfulSyncAt
+
+==================================================
+REQUIRED TEST COVERAGE
+==================================================
+
+Core:
+
+- Canonical message mapping
+- Recipient normalization
+- Header sanitization
+- HTML sanitization
+- Body-size limits
+- Header-size limits
+- Content hashing
+- Provider metadata versioning
+
+Duplicate detection:
+
+- Provider ID duplicate
+- InternetMessageId duplicate
+- Cross-source behavior
+- Missing IDs
+- Hash fallback
+- Concurrent import
+- Attachment duplicate prevention
+
+Sync state:
+
+- Initial cursor
+- Cursor update
+- Invalid cursor
+- Cursor reset
+- Resume
+- Concurrency
+- Partial page failure
+- State-version conflict
+
+Ingestion:
+
+- Initial sync
+- Incremental sync
+- Multiple pages
+- Retry
+- Resume
+- Cancellation
+- Per-source lock
+- Concurrent different-source sync
+- Multi-tenant sync
+- Disabled source
+- Deleted source
+- Disabled module
+- Mandatory adapter unavailable
+- Provider rate limit
+- Provider timeout
+- Provider auth failure
+
+Attachments:
+
+- Stream dispatch
+- Size limit
+- Filename sanitization
+- MIME handling
+- Hash calculation
+- Documents adapter unavailable
+- Retry
+- Idempotency
+- No binary persistence
+
+Provider connectors:
+
+- Microsoft delta
+- Google history
+- IMAP UID/UIDVALIDITY
+- POP3 UIDL
+- Exchange IMAP
+- Pagination
+- MIME parsing
+- Attachment retrieval
+- Rate limits
+- Invalid cursors
+- TLS
+- Cancellation
+
+Security:
+
+- Tenant isolation
+- Authorization
+- Secret masking
+- HTML safety
+- Header redaction
+- Correlation propagation
+- Audit payload redaction
+- Cursor redaction
+- Proxy safety
+
+Frontend:
+
+- Message list
+- Filters
+- Pagination
+- Message detail
+- Sanitized HTML
+- Remote image blocking
+- Attachment list
+- Source sync page
+- Start sync
+- 202 state
+- Running state
+- 409 conflict
+- Failed state
+- Retry
+- Reset confirmation
+- Sync history
+- Loading state
+- Empty state
+- Error state
+- Unauthorized state
+- Forbidden state
+- Backend unavailable
+- Proxy status preservation
+- Correlation forwarding
+
+Tests must execute.
+
+Written but unexecuted tests do not satisfy completion unless genuinely blocked and documented.
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+The ticket is complete only when:
+
+1. Canonical EmailMessage model exists.
+
+2. Recipient model exists.
+
+3. Attachment-reference model exists.
+
+4. Sync-state model exists.
+
+5. Ingestion-run model exists.
+
+6. Required migrations exist.
+
+7. EF snapshot is current.
+
+8. Clean migration succeeds.
+
+9. Upgrade migration succeeds.
+
+10. No attachment binaries are stored in Xenia.
+
+11. No credentials are stored in Xenia.
+
+12. Generic provider retrieval contracts exist.
+
+13. Microsoft365 ingestion works in a controlled environment.
+
+14. Google Workspace ingestion works in a controlled environment.
+
+15. IMAP ingestion works in a controlled environment.
+
+16. POP3 ingestion works in a controlled environment.
+
+17. Exchange IMAP ingestion works or reuses validated IMAP behavior with documented provider-specific configuration.
+
+18. Initial synchronization works.
+
+19. Incremental synchronization works.
+
+20. Provider cursor persists.
+
+21. Cursor updates only after durable persistence.
+
+22. Cursor reset is controlled and audited.
+
+23. Invalid cursor behavior is handled.
+
+24. Synchronization resumes after interruption.
+
+25. Per-source locking prevents concurrent source sync.
+
+26. Different sources may sync concurrently.
+
+27. Retry policy is bounded.
+
+28. Retry-after is respected where provided.
+
+29. Manual sync returns 202 when queued.
+
+30. Concurrent sync returns 409.
+
+31. Ingestion runs are recorded.
+
+32. Run counters are accurate.
+
+33. Message normalization works.
+
+34. Dates normalize to UTC.
+
+35. Recipients normalize correctly.
+
+36. Headers are sanitized.
+
+37. HTML is handled safely.
+
+38. Body-size limits are enforced.
+
+39. Duplicate provider messages are not inserted twice.
+
+40. InternetMessageId is used as a duplicate signal.
+
+41. Hash fallback is implemented safely.
+
+42. Concurrent duplicates are prevented by database constraints.
+
+43. Attachments are detected.
+
+44. Attachment streams are sent to the Documents adapter.
+
+45. Attachment references persist.
+
+46. Documents adapter failure does not cause binary fallback storage.
+
+47. Attachment dispatch is idempotent.
+
+48. Message list API works.
+
+49. Message detail API works.
+
+50. Attachment metadata API works.
+
+51. Sync-state API works.
+
+52. Ingestion-history API works.
+
+53. Reset-sync API works.
+
+54. xenia.email.sync permission is enforced.
+
+55. Unauthenticated sync returns 401.
+
+56. Unauthorized sync returns 403.
+
+57. Reader cannot start sync.
+
+58. Sync operator cannot reset without manage permission.
+
+59. Tenant A cannot sync Tenant B source.
+
+60. Tenant A cannot read Tenant B messages.
+
+61. Tenant A cannot read Tenant B runs.
+
+62. Tenant A cannot read Tenant B attachments.
+
+63. Tenant override attacks fail.
+
+64. Background worker preserves tenant context.
+
+65. Audit events are emitted.
+
+66. Audit events contain no message body.
+
+67. Audit events contain no credentials.
+
+68. Logs contain no message body.
+
+69. Logs contain no credentials.
+
+70. Raw cursor tokens are not exposed.
+
+71. API responses contain no secrets.
+
+72. Message body HTML cannot execute scripts.
+
+73. Remote tracking images are blocked by default.
+
+74. Message list UI renders.
+
+75. Message detail UI renders.
+
+76. Source sync UI renders.
+
+77. Manual sync action works.
+
+78. Sync running state displays.
+
+79. Sync conflict state displays.
+
+80. Ingestion history displays.
+
+81. Reset confirmation works.
+
+82. Message filters work.
+
+83. Message pagination works.
+
+84. Attachment references display.
+
+85. Control Center Xenia code type-checks.
+
+86. Control Center lint executes.
+
+87. Control Center tests execute where configured.
+
+88. Control Center production build succeeds, or unrelated blockers are clearly isolated.
+
+89. Proxy preserves 202.
+
+90. Proxy preserves 409.
+
+91. Proxy preserves authorization.
+
+92. Proxy forwards correlation IDs.
+
+93. No AI behavior is implemented.
+
+94. No case creation is implemented.
+
+95. No support-ticket creation is implemented.
+
+96. No workflow execution is implemented.
+
+97. No outbound email is implemented.
+
+98. `/analysis/XENIA-P1-T3-report.md` exists.
+
+99. The report is created before code changes.
+
+100. The report is updated incrementally.
+
+101. Command results contain exit codes.
+
+102. Provider tests include actual controlled execution evidence.
+
+103. API validation includes actual HTTP statuses.
+
+104. Final completion percentage is evidence-based.
+
+105. The report states whether XENIA-P1-T4 may begin.
+
+==================================================
+OUT OF SCOPE
+==================================================
+
+Do not implement:
+
+- AI classification
+- AI summarization
+- Entity extraction
+- Case creation
+- Support-ticket creation
+- Contact creation
+- Workflow execution
+- Rules engine
+- Email sending
+- Email reply
+- Auto responder
+- Message deletion
+- Message move
+- Mark read
+- Gmail push notifications
+- Microsoft Graph subscriptions
+- Provider webhooks
+- OCR
+- Attachment classification
+- Document indexing
+- Calendar integration
+- Contact synchronization
+- GitHub operations
+- GitHub Actions
+- AWS deployment
+- Production RDS changes
+- Production Secrets Manager changes
+- Production ECS/Fargate changes
+- Production Cloud Map changes
+- Production Route53 changes
+- Production ALB changes
+- Production runtime claims
+
+==================================================
+KNOWN RESTRICTIONS
+==================================================
+
+- Keep implementation incremental.
+- Do not rewrite Xenia core.
+- Do not weaken tenant isolation.
+- Do not weaken authorization.
+- Do not weaken SSRF protections.
+- Do not disable TLS validation.
+- Do not store credentials.
+- Do not log credentials.
+- Do not log message bodies.
+- Do not store attachment binaries.
+- Do not fabricate provider ingestion success.
+- Do not use production mailboxes.
+- Do not begin XENIA-P1-T4.
+
+==================================================
+REQUIRED REPORT STRUCTURE
+==================================================
+
+Create before code changes:
+
+/analysis/XENIA-P1-T3-report.md
+
+Use at least:
+
+# XENIA-P1-T3 Email Ingestion Engine and Message Persistence Foundation Report
+
+## 1. Executive Summary
+
+## 2. Ticket Information
+- Ticket ID
+- Parent ticket
+- Related tickets
+- Task type
+- Objective
+- Current status
+
+## 3. Prior Ticket and Prerequisite Review
+
+## 4. Initial Repository Analysis
+
+## 5. Toolchain and Environment
+
+## 6. Implementation Progress
+Maintain:
+- Not started
+- In progress
+- Completed
+- Partially completed
+- Blocked
+- Failed
+
+## 7. Files Inspected
+
+## 8. Architecture Decisions
+
+## 9. Canonical Message Model
+
+## 10. Recipient Model
+
+## 11. Attachment Reference Model
+
+## 12. Sync State Model
+
+## 13. Ingestion Run Model
+
+## 14. Database Changes
+
+## 15. Migration Validation
+- Migration list
+- Script generation
+- Clean apply
+- Upgrade apply
+- Snapshot validation
+- Schema inspection
+
+## 16. Provider Retrieval Contracts
+
+## 17. Microsoft365 Connector
+
+## 18. Google Workspace Connector
+
+## 19. IMAP Connector
+
+## 20. POP3 Connector
+
+## 21. Exchange IMAP Connector
+
+## 22. Message Normalization
+
+## 23. Duplicate Detection
+
+## 24. Message Persistence
+
+## 25. Attachment Dispatch
+
+## 26. Sync State Management
+
+## 27. Per-Source Locking
+
+## 28. Retry and Resume
+
+## 29. Background Worker
+
+## 30. Manual Synchronization
+
+## 31. Authorization
+
+## 32. Tenant Isolation
+
+## 33. Audit Integration
+
+## 34. Observability
+
+## 35. API Endpoints
+
+## 36. API Validation
+For each request:
+- Method
+- URL
+- Authentication
+- Permissions
+- Tenant
+- Expected status
+- Actual status
+- Correlation ID
+- Safe response summary
+- Result
+
+## 37. Message List UI
+
+## 38. Message Detail UI
+
+## 39. Source Synchronization UI
+
+## 40. Frontend API Client
+
+## 41. Proxy Validation
+
+## 42. Tests Added or Updated
+
+## 43. Test Execution Results
+
+## 44. Controlled Provider Test Evidence
+
+## 45. Build and Publish Validation
+For every command:
+- Command
+- Working directory
+- Exit code
+- Result
+- Output summary
+- Remediation
+- Retest
+
+## 46. Security Review
+
+## 47. Secret and Sensitive-Content Review
+
+## 48. Acceptance Criteria Matrix
+For each criterion:
+- Criterion
+- Status
+- Evidence
+- Notes
+
+## 49. Issues Found
+
+## 50. Remediation Performed
+
+## 51. Remaining Gaps
+
+## 52. Risks and Architecture Concerns
+
+## 53. Environmental Limitations
+
+## 54. Out-of-Scope Confirmation
+
+## 55. Documentation Updated
+
+## 56. XENIA-P1-T4 Readiness
+Use one:
+- Ready to begin
+- Ready with prerequisites
+- Not ready
+- Blocked
+
+## 57. Final Status
+Use one:
+- Complete
+- Complete with limitations
+- Partially complete
+- Blocked
+- Failed
+
+## 58. Completion Percentage
+
+## 59. Follow-Up Recommendations
+
+==================================================
+FINAL RESPONSE REQUIREMENTS
+==================================================
+
+When work is complete:
+
+1. Fully update the report.
+
+2. Provide a concise final response containing:
+
+- Ticket ID
+- Final status
+- Completion percentage
+- Build result
+- Publish result
+- Migration result
+- Provider ingestion result
+- Initial sync result
+- Incremental sync result
+- Duplicate-detection result
+- Cursor-persistence result
+- Retry/resume result
+- Attachment-dispatch result
+- Tenant-isolation result
+- Authorization result
+- Audit result
+- Message API result
+- Frontend result
+- Proxy result
+- Sensitive-content review
+- Known limitations
+- XENIA-P1-T4 readiness
+- Exact report path
+
+3. Do not claim GitHub success.
+
+4. Do not claim AWS success.
+
+5. Do not claim production success.
+
+6. Stop after XENIA-P1-T3.
+
+Do not begin XENIA-P1-T4.

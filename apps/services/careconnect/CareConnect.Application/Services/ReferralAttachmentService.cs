@@ -145,7 +145,7 @@ public class ReferralAttachmentService : IReferralAttachmentService
         var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
             ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
 
-        var attachments = await _attachments.GetByReferralAsync(tenantId, referralId, ct);
+        var attachments = await _attachments.GetByReferralIncludingMessageAttachmentsAsync(tenantId, referralId, ct);
         var attachment  = attachments.FirstOrDefault(a => a.Id == attachmentId)
             ?? throw new NotFoundException($"Attachment '{attachmentId}' was not found.");
 

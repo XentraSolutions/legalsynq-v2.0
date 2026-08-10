@@ -789,6 +789,8 @@ public class DocumentsIntegrationTests
             .ReturnsAsync(referral);
         attachmentRepo.Setup(r => r.GetByReferralAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(attachments);
+        attachmentRepo.Setup(r => r.GetByReferralIncludingMessageAttachmentsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(attachments);
 
         return (new ReferralAttachmentService(attachmentRepo.Object, referralRepo.Object, docClient.Object), docClient);
     }

@@ -1364,7 +1364,7 @@ public class ReferralService : IReferralService
         Id = r.Id,
         TenantId = r.TenantId,
         ProviderId = r.ProviderId,
-        ProviderName = r.Provider?.Name ?? string.Empty,
+        ProviderName = GetProviderDisplayName(r.Provider),
         ClientFirstName = r.ClientFirstName,
         ClientLastName = r.ClientLastName,
         ClientDob = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null,
@@ -1381,7 +1381,7 @@ public class ReferralService : IReferralService
         UpdatedAtUtc = r.UpdatedAtUtc,
         // Phase 5: expose org context fields resolved at creation time
         ReferringOrganizationId = r.ReferringOrganizationId,
-        ReceivingOrganizationId = r.ReceivingOrganizationId,
+        ReceivingOrganizationId = r.ReceivingOrganizationId ?? r.Provider?.OrganizationId,
         OrganizationRelationshipId = r.OrganizationRelationshipId,
         // CC-REFERRER-EMAIL: surface for participant-check in endpoints
         ReferrerEmail = r.ReferrerEmail,
@@ -1608,7 +1608,7 @@ public class ReferralService : IReferralService
             ClientFirstName       = referral.ClientFirstName,
             ClientLastName        = referral.ClientLastName,
             ReferrerName          = referral.ReferrerName ?? "",
-            ProviderName          = referral.Provider?.Name ?? "",
+            ProviderName          = GetProviderDisplayName(referral.Provider),
             RequestedService      = referral.RequestedService,
             Status                = referral.Status,
             ProviderPhone         = referral.Provider?.Phone         ?? "",
@@ -1622,6 +1622,16 @@ public class ReferralService : IReferralService
                 .Select(a => new PublicAttachmentInfo(a.Id, a.FileName, a.ContentType, a.FileSizeBytes))
                 .ToList(),
         });
+    }
+
+    private static string GetProviderDisplayName(Provider? provider)
+    {
+        if (provider is null)
+            return string.Empty;
+
+        return string.IsNullOrWhiteSpace(provider.OrganizationName)
+            ? provider.Name
+            : provider.OrganizationName;
     }
 
     public async Task<ReferralPublicSummaryResponse?> GetPublicSummaryAsync(

@@ -8,17 +8,52 @@ import type {
   UpdateLienRequestDto,
   CreateLienOfferRequestDto,
   LiensQuery,
+  ReassignFacilityRequestDto,
+  ReassignContactPersonRequestDto,
+  ReassignFundingCompanyRequestDto,
+  ReassignMedicalProviderRequestDto,
 } from './liens.types';
 
+// Arrays are sent as a single comma-joined value (e.g. `lawFirmIds=a,b`) —
+// same convention the cases v3 endpoint uses for its multi-select filters
+// (see cases/page.tsx's `.join(",")` query fields) — rather than repeated
+// query keys.
 function toQs(params: Record<string, unknown>): string {
-  const pairs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+  const pairs: string[] = [];
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue;
+    if (Array.isArray(v)) {
+      if (v.length === 0) continue;
+      pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(v.join(','))}`);
+    } else {
+      pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+    }
+  }
   return pairs.length ? `?${pairs.join('&')}` : '';
+}
+
+function hasAdvancedLienFilters(query: LiensQuery): boolean {
+  return Boolean(
+    query.lawFirmIds?.length ||
+      query.medicalFacilityIds?.length ||
+      query.caseManagerIds?.length ||
+      query.lienStatusIds?.length ||
+      query.purchaseDateFrom ||
+      query.purchaseDateTo ||
+      query.closedDateFrom ||
+      query.closedDateTo,
+  );
 }
 
 export const liensApi = {
   list(query: LiensQuery = {}) {
+    if (hasAdvancedLienFilters(query)) {
+      return apiClient.post<PaginatedResultDto<LienResponseDto>>(
+        '/lien/api/liens/liens/search',
+        query,
+      );
+    }
+
     return apiClient.get<PaginatedResultDto<LienResponseDto>>(
       `/lien/api/liens/liens${toQs(query as Record<string, unknown>)}`,
     );
@@ -63,6 +98,34 @@ export const liensApi = {
     return apiClient.post<LienResponseDto>(
       `/lien/api/liens/liens/${id}/withdraw`,
       {},
+    );
+  },
+
+  reassignFacility(request: ReassignFacilityRequestDto) {
+    return apiClient.post<LienResponseDto>(
+      '/lien/api/liens/liens/reassign/facility',
+      request,
+    );
+  },
+
+  reassignContactPerson(request: ReassignContactPersonRequestDto) {
+    return apiClient.post<LienResponseDto>(
+      '/lien/api/liens/liens/reassign/contact-person',
+      request,
+    );
+  },
+
+  reassignFundingCompany(request: ReassignFundingCompanyRequestDto) {
+    return apiClient.post<LienResponseDto>(
+      '/lien/api/liens/liens/reassign/funding-company',
+      request,
+    );
+  },
+
+  reassignMedicalProvider(request: ReassignMedicalProviderRequestDto) {
+    return apiClient.post<LienResponseDto>(
+      '/lien/api/liens/liens/reassign/medical-provider',
+      request,
     );
   },
 };

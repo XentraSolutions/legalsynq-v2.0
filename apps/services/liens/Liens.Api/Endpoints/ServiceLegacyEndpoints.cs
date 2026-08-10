@@ -1,0 +1,771 @@
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization.Filters;
+using BuildingBlocks.Context;
+using Liens.Api.Serialization;
+using Liens.Application.DTOs;
+using Liens.Application.Interfaces;
+using Liens.Domain;
+using Liens.Domain.Enums;
+using Microsoft.EntityFrameworkCore;
+using Liens.Infrastructure.Persistence;
+using Microsoft.Extensions.Primitives;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Globalization;
+using System.Text;
+
+namespace Liens.Api.Endpoints;
+
+public static class ServiceLegacyEndpoints
+{
+    private sealed class LegacyCaseV3FilterRequest
+    {
+        public int page { get; init; } = 1;
+        public int limit { get; init; } = 20;
+        public string? lawFirmId { get; init; }
+        public string? accidentTypeId { get; init; }
+        public string? statusId { get; init; }
+        public string? caseManagerId { get; init; }
+        public string? keyword { get; init; }
+        public string? sortBy { get; init; }
+        public string? sortDirection { get; init; }
+    }
+
+    private sealed class LegacyServiceLiensV3Request
+    {
+        public int page { get; init; } = 1;
+        public int limit { get; init; } = 20;
+        public string? keyword { get; init; }
+        public string? caseId { get; init; }
+    }
+
+    private sealed class LegacySettlementHistoryRequest
+    {
+        public string CaseId { get; init; } = string.Empty;
+        public int Page { get; init; } = 1;
+        public int Limit { get; init; } = 10;
+    }
+
+    private sealed class IdentityUserResponse
+    {
+        public Guid Id { get; init; }
+        public string? FirstName { get; init; }
+        public string? LastName { get; init; }
+        public string? Email { get; init; }
+    }
+
+    private sealed class LegacyServicingDetailsRequest
+    {
+        public string? caseId { get; init; }
+        public string? caseStatusId { get; init; }
+        public string? isUCCFiled { get; init; }
+        public string? switchedDate { get; init; }
+        public string? lawFirmId { get; init; }
+        public string? caseManager { get; init; }
+        public string? attorney { get; init; }
+    }
+
+    private sealed class LegacyUpdateLienStatusRequest
+    {
+        public string? caseId { get; init; }
+        public string? liensId { get; init; }
+        public string? statusId { get; init; }
+    }
+
+    private sealed class LegacyUpdateMultipleLienStatusRequest
+    {
+        public string? caseId { get; init; }
+        public string? lienIds { get; init; }
+        public string? lienStatus { get; init; }
+        public string? closedDate { get; init; }
+        public string? note { get; init; }
+    }
+
+    private sealed class LegacyDeleteSettlementPaymentRequest
+    {
+        public string? caseId { get; init; }
+        public string? paymentId { get; init; }
+    }
+
+    private sealed class LegacyGenerateCaseCsvRequest
+    {
+        public string? caseId { get; init; }
+        public string? lawFirmId { get; init; }
+        public string? accidentTypeId { get; init; }
+        public string? statusId { get; init; }
+        public string? caseManagerId { get; init; }
+    }
+
+    public static void MapServiceLegacyEndpoints(this WebApplication app)
+    {
+        var group = app.MapGroup("/service")
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductAccess(LiensPermissions.ProductCode);
+
+        group.MapGet("/case1", GetServiceCaseLegacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+        group.MapGet("/case", GetServiceCaseLegacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+        group.MapPost("/case/v3", GetServiceCaseV3Legacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+
+        group.MapGet("/liens/{caseId}", GetServiceLiensLegacy)
+            .RequirePermission(LiensPermissions.LienRead);
+        group.MapGet("/closed-liens/{caseId}", GetClosedServiceLiensLegacy)
+            .RequirePermission(LiensPermissions.LienRead);
+        group.MapGet("/all-liens/{caseId}", GetAllServiceLiensLegacy)
+            .RequirePermission(LiensPermissions.LienRead);
+        group.MapPost("/liens/v3", GetServiceLiensV3Legacy)
+            .RequirePermission(LiensPermissions.LienRead);
+
+        group.MapPost("/delete-payment", DeleteSettlementPaymentLegacy)
+            .RequirePermission(LiensPermissions.LienUpdate);
+        group.MapPost("/settlement/history/v3", GetSettlementHistoryV3Legacy)
+            .RequirePermission(LiensPermissions.LienRead);
+        group.MapPatch("/update-details", UpdateServicingDetailsLegacy)
+            .RequirePermission(LiensPermissions.CaseUpdate);
+        group.MapGet("/liens/settlement/payment-details/{caseId}", GetSettlementPaymentDetailsLegacy)
+            .RequirePermission(LiensPermissions.LienRead);
+        group.MapPatch("/liens/update/status", UpdateLienStatusLegacy)
+            .RequirePermission(LiensPermissions.LienUpdate);
+        group.MapGet("/liens/settlement-details/{caseId}", GetSettlementDetailsLegacy)
+            .RequirePermission(LiensPermissions.LienRead);
+        group.MapPost("/generate-csv", GenerateServiceCsvLegacy)
+            .RequirePermission(LiensPermissions.CaseRead);
+        group.MapPost("/update-liens-status", UpdateLienStatusBulkLegacy)
+            .RequirePermission(LiensPermissions.LienUpdate);
+    }
+
+    private static async Task<IResult> GetServiceCaseLegacy(
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var orgId = ctx.OrgId;
+        var result = await caseService.SearchAsync(tenantId, null, null, 1, 200, orgId, ct);
+
+        if (result.Items.Count == 0)
+        {
+            return Results.BadRequest(new { message = "No record", isSuccess = false });
+        }
+
+        return Results.Ok(new
+        {
+            message = "List of Case",
+            isSuccess = true,
+            data = result.Items.Select(MapLegacyServiceCase).ToList(),
+        });
+    }
+
+    private static async Task<IResult> GetServiceCaseV3Legacy(
+        LegacyCaseV3FilterRequest filter,
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        Guid? lawFirmId = Guid.TryParse(filter.lawFirmId, out var parsedLawFirmId) ? parsedLawFirmId : null;
+
+        var result = await caseService.SearchV3Async(
+            tenantId,
+            filter.keyword,
+            filter.statusId,
+            Math.Max(filter.page, 1),
+            Math.Max(filter.limit, 1),
+            filter.sortBy,
+            filter.sortDirection,
+            lawFirmId,
+            filter.accidentTypeId,
+            filter.caseManagerId,
+            ct);
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "List of Case",
+            data = result.Items.Select(MapLegacyServiceCase).ToList(),
+            page = result.Page,
+            limit = result.PageSize,
+            totalCount = result.TotalCount,
+        });
+    }
+
+    private static async Task<IResult> GetServiceLiensLegacy(
+        string caseId,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        return await GetServiceLiensByStatusAsync(caseId, lienService, ctx, includeOpen: true, includeClosed: false, ct);
+    }
+
+    private static async Task<IResult> GetClosedServiceLiensLegacy(
+        string caseId,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        return await GetServiceLiensByStatusAsync(caseId, lienService, ctx, includeOpen: false, includeClosed: true, ct);
+    }
+
+    private static async Task<IResult> GetAllServiceLiensLegacy(
+        string caseId,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        return await GetServiceLiensByStatusAsync(caseId, lienService, ctx, includeOpen: true, includeClosed: true, ct);
+    }
+
+    private static async Task<IResult> GetServiceLiensByStatusAsync(
+        string caseId,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        bool includeOpen,
+        bool includeClosed,
+        CancellationToken ct)
+    {
+        var tenantId = RequireTenantId(ctx);
+        if (!Guid.TryParse(caseId, out var parsedCaseId))
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "Invalid caseId" });
+        }
+
+        var items = await SearchLiensByCaseAsync(lienService, tenantId, parsedCaseId, ct);
+        items = items.Where(item =>
+                (includeOpen && LienStatus.Open.Contains(item.Status)) ||
+                (includeClosed && LienStatus.Terminal.Contains(item.Status)))
+            .ToList();
+
+        if (items.Count == 0)
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "No record" });
+        }
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Liens List.",
+            data = items.Select(MapLegacyServiceLien).ToList(),
+        });
+    }
+
+    private static async Task<IResult> GetServiceLiensV3Legacy(
+        LegacyServiceLiensV3Request filter,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = CaseEndpoints.RequireTenantId(ctx);
+        Guid? caseId = Guid.TryParse(filter.caseId, out var parsedCaseId) ? parsedCaseId : null;
+        var result = await lienService.SearchAsync(
+            tenantId,
+            filter.keyword,
+            null,
+            null,
+            caseId,
+            null,
+            Math.Max(filter.page, 1),
+            Math.Max(filter.limit, 1),
+            ct);
+
+        if (result.Items.Count == 0)
+        {
+            return Results.NotFound(new { isSuccess = false, message = "No record found." });
+        }
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Liens List.",
+            data = result.Items.Select(MapLegacyServiceLien).ToList(),
+            page = result.Page,
+            limit = result.PageSize,
+            totalCount = result.TotalCount,
+        });
+    }
+
+    private static async Task<IResult> DeleteSettlementPaymentLegacy(
+        LegacyDeleteSettlementPaymentRequest request,
+        ISettlementService settlementService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        if (!Guid.TryParse(request.paymentId, out var paymentId))
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "Invalid paymentId" });
+        }
+
+        await settlementService.DeletePaymentAsync(tenantId, paymentId, userId, ct);
+        return Results.Ok(new { isSuccess = true, message = "Successfully Deleted." });
+    }
+
+    private static async Task<IResult> GetSettlementHistoryV3Legacy(
+        LegacySettlementHistoryRequest request,
+        ISettlementService settlementService,
+        ILienService lienService,
+        IHttpClientFactory httpClientFactory,
+        HttpContext httpContext,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        if (!Guid.TryParse(request.CaseId, out var caseId))
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "Invalid CaseId" });
+        }
+
+        var history = await BuildSettlementHistoryAsync(
+            tenantId,
+            caseId,
+            settlementService,
+            lienService,
+            httpClientFactory,
+            httpContext.Request.Headers.Authorization,
+            ct);
+        var page = Math.Max(request.Page, 1);
+        var limit = Math.Max(request.Limit, 1);
+        var data = history.Skip((page - 1) * limit).Take(limit).ToList();
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Settlement history retrieved successfully.",
+            data,
+            totalCount = history.Count,
+            page,
+            limit,
+        });
+    }
+
+    private static async Task<IResult> UpdateServicingDetailsLegacy(
+        LegacyServicingDetailsRequest request,
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        if (!Guid.TryParse(request.caseId, out var caseId))
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "Invalid caseId" });
+        }
+
+        var existing = await caseService.GetByIdAsync(tenantId, caseId, ct);
+        if (existing is null)
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "Case not found" });
+        }
+
+        var metadata = ParseLegacyNoteFields(existing.Notes);
+        SetMetadata(metadata, "isUCCFiled", request.isUCCFiled);
+        SetMetadata(metadata, "switchedDate", request.switchedDate);
+        SetMetadata(metadata, "caseManagerId", request.caseManager);
+        SetMetadata(metadata, "attorney", request.attorney);
+
+        var update = new UpdateCaseRequest
+        {
+            ClientFirstName = existing.ClientFirstName,
+            ClientLastName = existing.ClientLastName,
+            ExternalReference = existing.ExternalReference,
+            Title = existing.Title,
+            ClientDob = existing.ClientDob,
+            ClientPhone = existing.ClientPhone,
+            ClientEmail = existing.ClientEmail,
+            ClientAddress = existing.ClientAddress,
+            DateOfIncident = existing.DateOfIncident,
+            InsuranceCarrier = existing.InsuranceCarrier,
+            PolicyNumber = existing.PolicyNumber,
+            ClaimNumber = existing.ClaimNumber,
+            Description = existing.Description,
+            Notes = SerializeLegacyNoteFields(metadata),
+            Status = string.IsNullOrWhiteSpace(request.caseStatusId) ? existing.Status : request.caseStatusId,
+            DemandAmount = existing.DemandAmount,
+            SettlementAmount = existing.SettlementAmount,
+        };
+
+        await caseService.UpdateAsync(tenantId, caseId, userId, update, ct);
+
+        if (Guid.TryParse(request.lawFirmId, out var lawFirmId))
+            await caseService.ReassignLawFirmAsync(tenantId, caseId, lawFirmId, userId, ct);
+        if (Guid.TryParse(request.caseManager, out var caseManagerId))
+            await caseService.ReassignCaseManagerAsync(tenantId, caseId, caseManagerId, userId, ct);
+
+        return Results.Ok(new { isSuccess = true, message = "Successfully updated servicing details." });
+    }
+
+    private static async Task<IResult> GetSettlementPaymentDetailsLegacy(
+        string caseId,
+        ISettlementService settlementService,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        if (!Guid.TryParse(caseId, out var parsedCaseId))
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "Invalid caseId" });
+        }
+
+        var payments = await settlementService.GetPaymentsByCaseAsync(tenantId, parsedCaseId, ct);
+        var liens = await SearchLiensByCaseAsync(lienService, tenantId, parsedCaseId, ct);
+        var liensById = liens.ToDictionary(l => l.Id);
+
+        var data = payments.Select(payment =>
+        {
+            liensById.TryGetValue(payment.LienId, out var lien);
+            return new
+            {
+                caseId = payment.CaseId.ToString(),
+                lienId = payment.LienId.ToString(),
+                lienCode = lien?.LienNumber ?? string.Empty,
+                lienStatus = lien?.Status ?? string.Empty,
+                lienStatusId = lien?.Status ?? string.Empty,
+                amount = payment.Amount.ToString("0.00", CultureInfo.InvariantCulture),
+                checkAmount = payment.Amount.ToString("0.00", CultureInfo.InvariantCulture),
+                checkDate = payment.PaymentDate?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
+                checkNumber = payment.CheckNumber ?? string.Empty,
+                typeId = string.Empty,
+                type = string.Empty,
+                statusId = string.Empty,
+                status = string.Empty,
+                payor = payment.Payee ?? string.Empty,
+                netProfit = string.Empty,
+                note = payment.Note ?? string.Empty,
+                paymentNumber = payment.PaymentNumber.ToString(CultureInfo.InvariantCulture),
+                date = PacificTimeHelper.FormatDate(payment.CreatedAtUtc),
+                amountToSettle = lien?.CurrentBalance?.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00",
+            };
+        }).ToList();
+
+        return Results.Ok(new { isSuccess = true, message = "Settlement payment details retrieved successfully.", data });
+    }
+
+    private static async Task<IResult> UpdateLienStatusLegacy(
+        LegacyUpdateLienStatusRequest request,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        if (!Guid.TryParse(request.liensId, out var lienId) || string.IsNullOrWhiteSpace(request.statusId))
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "Invalid request" });
+        }
+
+        await lienService.SetLegacyMedicalStatusAsync(tenantId, lienId, userId, request.statusId.Trim(), ct);
+        return Results.Ok(new { isSuccess = true, message = "Successfully updated lien status." });
+    }
+
+    private static async Task<IResult> GetSettlementDetailsLegacy(
+        string caseId,
+        ISettlementService settlementService,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        if (!Guid.TryParse(caseId, out var parsedCaseId))
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "Invalid caseId" });
+        }
+
+        var settlements = await settlementService.GetSettlementsByCaseAsync(tenantId, parsedCaseId, ct);
+        var liens = await SearchLiensByCaseAsync(lienService, tenantId, parsedCaseId, ct);
+        var liensById = liens.ToDictionary(l => l.Id);
+
+        var data = settlements.Select(settlement =>
+        {
+            liensById.TryGetValue(settlement.LienId, out var lien);
+            return new
+            {
+                caseId = settlement.CaseId.ToString(),
+                lienId = settlement.LienId.ToString(),
+                lienCode = lien?.LienNumber ?? string.Empty,
+                lienStatus = lien?.Status ?? string.Empty,
+                paymentNumber = settlement.PaymentNumber.ToString(CultureInfo.InvariantCulture),
+                amount = settlement.Amount.ToString("0.00", CultureInfo.InvariantCulture),
+                status = settlement.Status,
+                note = settlement.Note ?? string.Empty,
+            };
+        }).ToList();
+
+        return Results.Ok(new { isSuccess = true, message = "Settlement details retrieved successfully.", data });
+    }
+
+    private static async Task<IResult> GenerateServiceCsvLegacy(
+        LegacyGenerateCaseCsvRequest request,
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        Guid? orgId = Guid.TryParse(request.lawFirmId, out var lawFirmId) ? lawFirmId : null;
+        var result = await caseService.SearchAsync(tenantId, null, request.statusId, 1, 1000, orgId, ct);
+
+        if (!string.IsNullOrWhiteSpace(request.caseId) && Guid.TryParse(request.caseId, out var caseId))
+            result = new PaginatedResult<CaseResponse> { Items = result.Items.Where(c => c.Id == caseId).ToList(), Page = 1, PageSize = result.Items.Count, TotalCount = result.Items.Count };
+
+        if (result.Items.Count == 0)
+        {
+            return Results.NotFound(new { isSuccess = false, message = "No data generated.", data = (object?)null });
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("CaseId,CaseNumber,ClientFirstName,ClientLastName,Status,DateOfLoss");
+        foreach (var item in result.Items)
+        {
+            sb.AppendLine($"{item.Id},{CsvEscape(item.CaseNumber)},{CsvEscape(item.ClientFirstName)},{CsvEscape(item.ClientLastName)},{CsvEscape(item.Status)},{item.DateOfIncident?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture)}");
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(sb.ToString());
+        var exportItem = new
+        {
+            base64 = Convert.ToBase64String(bytes),
+            filename = $"servicing_{DateTime.UtcNow:yyyyMMddHHmmss}.csv",
+            export_format = "csv",
+        };
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "CSV generated successfully.",
+            data = new object[] { exportItem },
+        });
+    }
+
+    private static async Task<IResult> UpdateLienStatusBulkLegacy(
+        LegacyUpdateMultipleLienStatusRequest request,
+        ILienService lienService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+        if (string.IsNullOrWhiteSpace(request.lienIds) || string.IsNullOrWhiteSpace(request.lienStatus))
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "Invalid request" });
+        }
+
+        var lienIds = request.lienIds
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(value => Guid.TryParse(value, out var id) ? id : Guid.Empty)
+            .Where(id => id != Guid.Empty)
+            .ToList();
+
+        foreach (var lienId in lienIds)
+            await lienService.SetLegacyMedicalStatusAsync(tenantId, lienId, userId, request.lienStatus.Trim(), ct);
+
+        return Results.Ok(new { isSuccess = true, message = "Successfully updated lien statuses." });
+    }
+
+    private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
+        ctx.TenantId ?? throw new UnauthorizedAccessException("Tenant context is required.");
+
+    private static Guid RequireUserId(ICurrentRequestContext ctx) =>
+        ctx.UserId ?? throw new UnauthorizedAccessException("User context is required.");
+
+    private static async Task<List<LienResponse>> SearchLiensByCaseAsync(
+        ILienService lienService,
+        Guid tenantId,
+        Guid caseId,
+        CancellationToken ct)
+    {
+        const int pageSize = 200;
+        var page = 1;
+        var items = new List<LienResponse>();
+
+        while (true)
+        {
+            var result = await lienService.SearchAsync(tenantId, null, null, null, caseId, null, page, pageSize, ct);
+            if (result.Items.Count == 0)
+                break;
+
+            items.AddRange(result.Items);
+            if (items.Count >= result.TotalCount)
+                break;
+
+            page++;
+        }
+
+        return items;
+    }
+
+    private static async Task<List<object>> BuildSettlementHistoryAsync(
+        Guid tenantId,
+        Guid caseId,
+        ISettlementService settlementService,
+        ILienService lienService,
+        IHttpClientFactory httpClientFactory,
+        StringValues authorizationHeader,
+        CancellationToken ct)
+    {
+        var results = new List<object>();
+        var reductions = await settlementService.GetReductionsByCaseAsync(tenantId, caseId, ct);
+        var settlements = await settlementService.GetSettlementsByCaseAsync(tenantId, caseId, ct);
+        var payments = await settlementService.GetPaymentsByCaseAsync(tenantId, caseId, ct);
+        var liens = await SearchLiensByCaseAsync(lienService, tenantId, caseId, ct);
+        var lienNumbersById = liens.ToDictionary(lien => lien.Id, lien => lien.LienNumber);
+        var updatedByNames = await ResolveUserNamesAsync(
+            reductions.Select(item => item.UpdatedByUserId ?? item.CreatedByUserId)
+                .Concat(settlements.Select(item => item.UpdatedByUserId ?? item.CreatedByUserId))
+                .Concat(payments.Select(item => item.UpdatedByUserId ?? item.CreatedByUserId)),
+            httpClientFactory,
+            authorizationHeader,
+            ct);
+
+        results.AddRange(reductions.Select(item => (object)new
+        {
+            id = item.Id.ToString(),
+            type = "reduction",
+            lienId = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
+            lienCode = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
+            amount = item.Amount,
+            date = item.ReductionDate.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture),
+            note = item.Note ?? string.Empty,
+            createdAt = item.CreatedAtUtc,
+            updatedBy = ResolveUpdatedByName(item.UpdatedByUserId ?? item.CreatedByUserId, updatedByNames),
+        }));
+        results.AddRange(settlements.Select(item => (object)new
+        {
+            id = item.Id.ToString(),
+            type = "settlement",
+            lienId = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
+            lienCode = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
+            amount = item.Amount,
+            paymentNumber = item.PaymentNumber,
+            status = item.Status,
+            note = item.Note ?? string.Empty,
+            createdAt = item.CreatedAtUtc,
+            updatedBy = ResolveUpdatedByName(item.UpdatedByUserId ?? item.CreatedByUserId, updatedByNames),
+        }));
+        results.AddRange(payments.Select(item => (object)new
+        {
+            id = item.Id.ToString(),
+            type = "payment",
+            lienId = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
+            lienCode = lienNumbersById.GetValueOrDefault(item.LienId, string.Empty),
+            amount = item.Amount,
+            paymentNumber = item.PaymentNumber,
+            payee = item.Payee ?? string.Empty,
+            checkNumber = item.CheckNumber ?? string.Empty,
+            note = item.Note ?? string.Empty,
+            createdAt = item.CreatedAtUtc,
+            updatedBy = ResolveUpdatedByName(item.UpdatedByUserId ?? item.CreatedByUserId, updatedByNames),
+        }));
+
+        return results.OrderByDescending(item => ((dynamic)item).createdAt).ToList();
+    }
+
+    private static async Task<IReadOnlyDictionary<Guid, string>> ResolveUserNamesAsync(
+        IEnumerable<Guid?> userIds,
+        IHttpClientFactory httpClientFactory,
+        StringValues authorizationHeader,
+        CancellationToken ct)
+    {
+        var ids = userIds
+            .Where(userId => userId.HasValue)
+            .Select(userId => userId!.Value)
+            .Distinct()
+            .ToHashSet();
+        if (ids.Count == 0)
+            return new Dictionary<Guid, string>();
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "api/users");
+            if (AuthenticationHeaderValue.TryParse(authorizationHeader, out var authorization))
+                request.Headers.Authorization = authorization;
+
+            using var response = await httpClientFactory.CreateClient("Identity").SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+                return new Dictionary<Guid, string>();
+
+            var users = await response.Content.ReadFromJsonAsync<List<IdentityUserResponse>>(cancellationToken: ct)
+                ?? [];
+            return users
+                .Where(user => ids.Contains(user.Id))
+                .ToDictionary(
+                    user => user.Id,
+                    user => string.Join(" ", new[] { user.FirstName, user.LastName }
+                        .Where(value => !string.IsNullOrWhiteSpace(value))).Trim());
+        }
+        catch (HttpRequestException)
+        {
+            return new Dictionary<Guid, string>();
+        }
+    }
+
+    private static string ResolveUpdatedByName(
+        Guid? userId,
+        IReadOnlyDictionary<Guid, string> userNames)
+        => userId.HasValue && userNames.TryGetValue(userId.Value, out var userName)
+            ? userName
+            : string.Empty;
+
+    private static object MapLegacyServiceCase(CaseResponse item) => new
+    {
+        caseId = item.Id.ToString(),
+        caseCode = item.CaseNumber,
+        plaintiffName = item.ClientDisplayName,
+        firstName = item.ClientFirstName,
+        lastName = item.ClientLastName,
+        lawfirm = item.LawFirm ?? string.Empty,
+        lawFirmId = item.LawFirmId ?? string.Empty,
+        caseManager = item.CaseManager ?? string.Empty,
+        caseManagerId = item.CaseManagerId ?? string.Empty,
+        status = item.Status,
+        dateOfLoss = item.DateOfIncident?.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture) ?? string.Empty,
+    };
+
+    private static object MapLegacyServiceLien(LienResponse item) => new
+    {
+        liensId = item.Id.ToString(),
+        lienCode = item.LienNumber,
+        caseId = item.CaseId?.ToString() ?? string.Empty,
+        status = item.Status,
+        amount = item.OriginalAmount.ToString("0.00", CultureInfo.InvariantCulture),
+        purchaseAmount = item.PurchasePrice?.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00",
+        currentBalance = item.CurrentBalance?.ToString("0.00", CultureInfo.InvariantCulture) ?? "0.00",
+    };
+
+    private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(notes))
+            return result;
+
+        foreach (var segment in notes.Split("; ", StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = segment.IndexOf('=');
+            if (eq > 0)
+                result[segment[..eq].Trim()] = segment[(eq + 1)..].Trim();
+        }
+
+        return result;
+    }
+
+    private static string SerializeLegacyNoteFields(Dictionary<string, string> fields)
+        => string.Join("; ", fields.Select(pair => $"{pair.Key}={pair.Value}"));
+
+    private static void SetMetadata(Dictionary<string, string> metadata, string key, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            metadata.Remove(key);
+        else
+            metadata[key] = value.Trim();
+    }
+
+    private static string CsvEscape(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
+    }
+}

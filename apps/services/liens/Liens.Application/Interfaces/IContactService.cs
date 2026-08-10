@@ -6,7 +6,7 @@ public interface IContactService
 {
     Task<PaginatedResult<ContactResponse>> SearchAsync(
         Guid tenantId, string? search, string? contactType, bool? isActive,
-        int page, int pageSize, CancellationToken ct = default);
+        int page, int pageSize, Guid? lawFirmId = null, Guid? facilityId = null, string? contactSubtype = null, CancellationToken ct = default);
 
     Task<ContactResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 

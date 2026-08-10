@@ -67,7 +67,35 @@ public interface ISellingPortfolioService
         TransitionSellingPortfolioStatusRequest request,
         CancellationToken ct = default);
 
+    Task<SellingPortfolioResponse> PublishAsync(
+        Guid tenantId,
+        Guid id,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        string? notes = null,
+        CancellationToken ct = default);
+
+    Task<SellingPortfolioResponse> WithdrawAsync(
+        Guid tenantId,
+        Guid id,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        string? notes = null,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<SellingPortfolioStatusHistoryResponse>> GetStatusHistoryAsync(
+        Guid tenantId,
+        Guid id,
+        Guid sellerOrgId,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<SellingPortfolioActivityResponse>> GetActivityAsync(
+        Guid tenantId,
+        Guid id,
+        Guid sellerOrgId,
+        CancellationToken ct = default);
+
+    Task<SellingPortfolioAnalyticsResponse> GetAnalyticsAsync(
         Guid tenantId,
         Guid id,
         Guid sellerOrgId,
@@ -80,5 +108,14 @@ public interface ISellingPortfolioService
         Guid sellerOrgId,
         Guid actingUserId,
         SendLienBuyerEmailRequest request,
+        CancellationToken ct = default);
+
+    Task<ConfirmSellingLienSaleResponse> ConfirmSaleAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        ConfirmSellingLienSaleRequest request,
+        string? idempotencyKey,
         CancellationToken ct = default);
 }

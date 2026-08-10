@@ -13,6 +13,7 @@ public class ReferralThreadService : IReferralThreadService
     private readonly IReferralRepository _referrals;
     private readonly IReferralCommentRepository _comments;
     private readonly IReferralAttachmentRepository _attachments;
+    private readonly IDocumentServiceClient _documents;
     private readonly IReferralEmailService _emailService;
     private readonly IIdentityOrganizationService _identityOrgService;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -22,6 +23,7 @@ public class ReferralThreadService : IReferralThreadService
         IReferralRepository referrals,
         IReferralCommentRepository comments,
         IReferralAttachmentRepository attachments,
+        IDocumentServiceClient documents,
         IReferralEmailService emailService,
         IIdentityOrganizationService identityOrgService,
         IServiceScopeFactory scopeFactory,
@@ -30,6 +32,7 @@ public class ReferralThreadService : IReferralThreadService
         _referrals = referrals;
         _comments = comments;
         _attachments = attachments;
+        _documents = documents;
         _emailService = emailService;
         _identityOrgService = identityOrgService;
         _scopeFactory = scopeFactory;
@@ -46,6 +49,7 @@ public class ReferralThreadService : IReferralThreadService
         var referral = access.Referral;
 
         var comments = await _comments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
+        var attachmentsByComment = await LoadCommentAttachmentsAsync(referral.TenantId, referral.Id, comments, ct);
         var attachments = await _attachments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
         var treatmentTypeName = referral.TreatmentTypeId.HasValue
             ? await _referrals.GetTreatmentTypeNameAsync(referral.TreatmentTypeId.Value, ct)
@@ -66,7 +70,7 @@ public class ReferralThreadService : IReferralThreadService
                 ? referral.ClientDob.Value.ToString("MM/dd/yyyy")
                 : null,
             CaseNumber = referral.CaseNumber,
-            Service = referral.RequestedService,
+            Service = referral.RequestedService ?? string.Empty,
             Urgency = referral.Urgency,
             Notes = referral.Notes,
             DateOfAccident = referral.DateOfAccident?.ToString("yyyy-MM-dd"),
@@ -89,7 +93,13 @@ public class ReferralThreadService : IReferralThreadService
             TreatmentTypeId   = referral.TreatmentTypeId,
             TreatmentTypeName = treatmentTypeName,
             ProviderHasAccount = ProviderHasPortalAccount(referral.Provider),
-            Comments = comments.Select(MapComment).ToList(),
+            Comments = comments
+                .Select(comment => MapComment(
+                    comment,
+                    attachmentsByComment.TryGetValue(comment.Id, out var commentAttachments)
+                        ? commentAttachments
+                        : []))
+                .ToList(),
             Attachments = attachments
                 .OrderBy(a => a.CreatedAtUtc)
                 .Select(a => new ReferralThreadAttachmentResponse
@@ -114,6 +124,14 @@ public class ReferralThreadService : IReferralThreadService
         string senderType,
         string message,
         CancellationToken ct = default)
+        => await PostPublicCommentWithAttachmentsAsync(token, senderType, message, [], ct);
+
+    public async Task<ReferralCommentResponse?> PostPublicCommentWithAttachmentsAsync(
+        string token,
+        string senderType,
+        string message,
+        IReadOnlyList<ReferralMessageAttachmentUpload> attachments,
+        CancellationToken ct = default)
     {
         var access = await GetReferralByTokenAsync(token, ct);
         if (access.Referral is null)
@@ -135,9 +153,21 @@ public class ReferralThreadService : IReferralThreadService
             CreatedAt = DateTime.UtcNow,
         };
 
-        await _comments.AddAsync(comment, ct);
+        var savedAttachments = await UploadMessageAttachmentsAsync(
+            referral,
+            comment.Id,
+            userId: null,
+            attachments,
+            ct);
+        comment.Attachments = savedAttachments;
+
+        if (savedAttachments.Count == 0)
+            await _comments.AddAsync(comment, ct);
+        else
+            await _comments.AddWithAttachmentsAsync(comment, savedAttachments, ct);
+
         QueueCommentNotification(referral, comment);
-        return MapComment(comment);
+        return MapComment(comment, savedAttachments);
     }
 
     public async Task<IReadOnlyList<ReferralCommentResponse>?> GetAuthenticatedCommentsAsync(
@@ -161,7 +191,14 @@ public class ReferralThreadService : IReferralThreadService
             return null;
 
         var comments = await _comments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
-        return comments.Select(MapComment).ToList();
+        var attachmentsByComment = await LoadCommentAttachmentsAsync(referral.TenantId, referral.Id, comments, ct);
+        return comments
+            .Select(comment => MapComment(
+                comment,
+                attachmentsByComment.TryGetValue(comment.Id, out var commentAttachments)
+                    ? commentAttachments
+                    : []))
+            .ToList();
     }
 
     public async Task<ReferralCommentResponse?> PostAuthenticatedCommentAsync(
@@ -172,6 +209,28 @@ public class ReferralThreadService : IReferralThreadService
         string senderName,
         string message,
         bool useGlobalLookup,
+        CancellationToken ct = default)
+        => await PostAuthenticatedCommentWithAttachmentsAsync(
+            tenantId,
+            referralId,
+            callerOrganizationId,
+            callerEmail,
+            senderName,
+            message,
+            useGlobalLookup,
+            [],
+            ct: ct);
+
+    public async Task<ReferralCommentResponse?> PostAuthenticatedCommentWithAttachmentsAsync(
+        Guid tenantId,
+        Guid referralId,
+        Guid? callerOrganizationId,
+        string? callerEmail,
+        string senderName,
+        string message,
+        bool useGlobalLookup,
+        IReadOnlyList<ReferralMessageAttachmentUpload> attachments,
+        Guid? createdByUserId = null,
         CancellationToken ct = default)
     {
         var participant = await LoadAuthenticatedCommentParticipantAsync(
@@ -195,9 +254,21 @@ public class ReferralThreadService : IReferralThreadService
             CreatedAt = DateTime.UtcNow,
         };
 
-        await _comments.AddAsync(comment, ct);
+        var savedAttachments = await UploadMessageAttachmentsAsync(
+            participant.Referral,
+            comment.Id,
+            userId: createdByUserId,
+            attachments,
+            ct);
+        comment.Attachments = savedAttachments;
+
+        if (savedAttachments.Count == 0)
+            await _comments.AddAsync(comment, ct);
+        else
+            await _comments.AddWithAttachmentsAsync(comment, savedAttachments, ct);
+
         QueueCommentNotification(participant.Referral, comment);
-        return MapComment(comment);
+        return MapComment(comment, savedAttachments);
     }
 
     private async Task<TokenScopedReferralResult> GetReferralByTokenAsync(string token, CancellationToken ct)
@@ -326,13 +397,97 @@ public class ReferralThreadService : IReferralThreadService
         }, CancellationToken.None);
     }
 
-    private static ReferralCommentResponse MapComment(ReferralComment comment) => new()
+    private async Task<Dictionary<Guid, List<ReferralAttachment>>> LoadCommentAttachmentsAsync(
+        Guid tenantId,
+        Guid referralId,
+        IReadOnlyList<ReferralComment> comments,
+        CancellationToken ct)
+    {
+        var commentIds = comments
+            .Select(c => c.Id)
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        if (commentIds.Count == 0)
+            return [];
+
+        var rows = await _attachments.GetByReferralCommentIdsAsync(tenantId, referralId, commentIds, ct);
+        return rows
+            .Where(a => a.ReferralCommentId.HasValue)
+            .GroupBy(a => a.ReferralCommentId!.Value)
+            .ToDictionary(g => g.Key, g => g.OrderBy(a => a.CreatedAtUtc).ToList());
+    }
+
+    private async Task<List<ReferralAttachment>> UploadMessageAttachmentsAsync(
+        Referral referral,
+        Guid commentId,
+        Guid? userId,
+        IReadOnlyList<ReferralMessageAttachmentUpload> uploads,
+        CancellationToken ct)
+    {
+        if (uploads.Count == 0)
+            return [];
+
+        var attachments = new List<ReferralAttachment>(uploads.Count);
+        foreach (var upload in uploads)
+        {
+            var uploadResult = await _documents.UploadAsync(
+                upload.FileContent,
+                upload.FileName,
+                upload.ContentType,
+                upload.FileSizeBytes,
+                referral.TenantId,
+                title:         upload.FileName,
+                referenceId:   commentId.ToString(),
+                referenceType: "referral-comment",
+                ct:            ct);
+
+            if (!uploadResult.Success || string.IsNullOrWhiteSpace(uploadResult.DocumentId))
+            {
+                throw new InvalidOperationException(
+                    $"Document upload failed: {uploadResult.Error ?? "unknown error"}");
+            }
+
+            attachments.Add(ReferralAttachment.Create(
+                referral.TenantId,
+                referral.Id,
+                upload.FileName,
+                upload.ContentType,
+                upload.FileSizeBytes,
+                externalDocumentId:      uploadResult.DocumentId,
+                externalStorageProvider: AttachmentScope.Shared,
+                status:                  "Uploaded",
+                notes:                   null,
+                createdByUserId:         userId,
+                referralCommentId:       commentId));
+        }
+
+        return attachments;
+    }
+
+    private static ReferralCommentResponse MapComment(
+        ReferralComment comment,
+        IReadOnlyList<ReferralAttachment>? attachments = null) => new()
     {
         Id = comment.Id,
         SenderType = comment.SenderType,
         SenderName = comment.SenderName,
         Message = comment.Message,
         CreatedAtUtc = NormalizeUtc(comment.CreatedAt),
+        Attachments = (attachments ?? comment.Attachments)
+            .OrderBy(a => a.CreatedAtUtc)
+            .Select(MapMessageAttachment)
+            .ToList(),
+    };
+
+    private static ReferralMessageAttachmentResponse MapMessageAttachment(ReferralAttachment attachment) => new()
+    {
+        Id = attachment.Id,
+        FileName = attachment.FileName,
+        ContentType = attachment.ContentType,
+        FileSizeBytes = attachment.FileSizeBytes,
+        CreatedAtUtc = attachment.CreatedAtUtc,
     };
 
     private static DateTime NormalizeUtc(DateTime value) =>

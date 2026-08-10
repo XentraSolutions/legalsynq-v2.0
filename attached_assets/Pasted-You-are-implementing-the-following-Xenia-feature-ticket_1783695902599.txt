@@ -1,0 +1,2042 @@
+You are implementing the following Xenia feature ticket.
+
+==================================================
+TICKET
+==================================================
+
+Ticket ID: XENIA-P1-T2
+
+Parent Ticket: XENIA-P1 — Xenia Platform Foundation & Email Automation
+
+Related Tickets:
+- XENIA-P1-T1 — Core Service Foundation
+- XENIA-P1-T1-V1 — Core Foundation Validation and Remediation
+- XENIA-P1-T1-V2 — Core Portability and Runtime Closure
+
+Task Type: 🟦 XenIA
+
+Title: Tenant Email Module Foundation and Source Connectivity
+
+==================================================
+MANDATORY EXECUTION RULES
+==================================================
+
+1. Create the implementation report before making any code changes.
+
+Required report path:
+
+/analysis/XENIA-P1-T2-report.md
+
+2. The report must be created as the first implementation action.
+
+3. Update the report incrementally throughout:
+   - Repository analysis
+   - Requirements validation
+   - Architecture decisions
+   - Database changes
+   - Backend implementation
+   - Provider connector implementation
+   - Security implementation
+   - Frontend implementation
+   - Test execution
+   - Validation
+   - Final assessment
+
+4. Do not wait until the end to create or update the report.
+
+5. Do not fabricate:
+   - Build success
+   - Test success
+   - Migration success
+   - Connection-validation success
+   - OAuth success
+   - Provider success
+   - Tenant-isolation success
+   - Frontend success
+   - Runtime success
+
+6. Clearly classify each material activity as:
+   - Completed
+   - Partially completed
+   - Failed
+   - Blocked
+   - Skipped
+   - Not applicable
+   - Not independently verified
+
+7. For every command and runtime request, record:
+   - Exact command or request
+   - Working directory
+   - Environment
+   - Exit code or HTTP status
+   - Expected result
+   - Actual result
+   - Relevant output summary
+   - Remediation performed
+   - Retest result
+
+8. Do not perform GitHub operations.
+
+Do not:
+- Run git add
+- Commit
+- Push
+- Create or update pull requests
+- Merge branches
+- Claim GitHub Actions success
+
+9. Do not perform AWS or production infrastructure work.
+
+Do not:
+- Deploy to ECS or Fargate
+- Modify production RDS
+- Modify Secrets Manager
+- Modify IAM
+- Modify Cloud Map
+- Modify Route53
+- Modify ALB configuration
+- Claim production deployment success
+- Claim production runtime success
+
+10. Do not begin XENIA-P1-T3.
+
+11. Do not implement email-message retrieval or persistence.
+
+12. Do not implement AI, case creation, support-ticket creation, workflow execution, or attachment ingestion.
+
+13. Preserve the locked Xenia architecture and portability boundaries.
+
+14. Keep the implementation incremental and limited to this ticket.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Implement Email as the first functional Xenia module.
+
+This ticket establishes tenant-scoped Email module registration, provider definitions, email-source management, secure authentication references, connection validation, administration APIs, and tenant administration UI.
+
+By the end of this ticket, an authorized tenant administrator must be able to:
+
+- View the Email module.
+- Enable or disable Email for their tenant.
+- Configure multiple email sources.
+- Select a supported provider type.
+- Configure provider connection metadata.
+- Store only secure credential references.
+- Test source connectivity.
+- Review validation results.
+- Enable, disable, update, and remove sources.
+- View module and source health.
+- Review audit history through the Audit adapter where available.
+
+This ticket must not retrieve, download, normalize, parse, or store email messages.
+
+==================================================
+SOURCE MATERIAL
+==================================================
+
+Review before implementation:
+
+/analysis/XENIA-P1-T1-report.md
+/analysis/XENIA-P1-T1-V1-report.md
+/analysis/XENIA-P1-T1-V2-report.md
+
+Confirm the current Xenia implementation, including:
+
+- Module registry
+- Tenant module settings
+- Adapter contracts
+- Adapter criticality
+- Configuration framework
+- Tenant context
+- Authorization policies
+- Audit adapter
+- Readiness behavior
+- Database model
+- Existing Control Center integration
+- Local development conventions
+- Migration strategy and known EF/Pomelo limitations
+
+Do not assume prior reports are fully accurate without inspecting the repository.
+
+==================================================
+LOCKED ARCHITECTURE
+==================================================
+
+1. Xenia remains an independent, separately deployable automation service.
+
+2. Email is a module inside Xenia, not a separate service.
+
+3. Xenia core must remain platform-neutral.
+
+4. LegalSynq is the first host platform.
+
+5. Tenant implementation is mandatory.
+
+6. Email source data belongs to Xenia.
+
+7. External platform services must be accessed through adapters.
+
+8. Xenia must not directly access another service's database.
+
+9. Xenia must not contain LegalSynq product-domain logic.
+
+10. Email source credentials must never be stored in plaintext.
+
+11. Secret values must be represented by secure secret references.
+
+12. Email source validation must not persist or process email contents.
+
+13. Provider-specific implementations must conform to a generic connector contract.
+
+14. The module must support future provider additions without schema redesign.
+
+15. The Email module must use:
+   - Tenant context
+   - Identity and permissions
+   - Audit adapter
+   - Configuration framework
+   - Module registry
+
+16. The Email module must not use in this ticket:
+   - AI adapter
+   - Workflow adapter
+   - Document adapter for message attachments
+   - Notification automation
+   - Email synchronization workers
+
+==================================================
+INITIAL ANALYSIS
+==================================================
+
+Before changing source code:
+
+1. Inspect:
+   - Xenia Domain
+   - Xenia Application
+   - Xenia Infrastructure
+   - Xenia API
+   - Xenia Tests
+   - Existing migrations
+   - Module registry
+   - Tenant module registry
+   - Configuration service
+   - Adapter registry
+   - Audit adapter
+   - Authorization policies
+   - Control Center Xenia pages
+   - Xenia API proxy
+   - Existing frontend design conventions
+
+2. Confirm:
+   - Current project and namespace conventions
+   - Existing EF Core configuration patterns
+   - Migration strategy
+   - Tenant scoping patterns
+   - API response conventions
+   - Error response conventions
+   - Permission registration patterns
+   - Control Center page patterns
+   - Test frameworks and commands
+   - Existing secret-management abstractions
+
+3. Identify whether a platform-neutral secret-reference abstraction already exists.
+
+4. If none exists, implement a minimal Xenia-owned secret-reference contract without creating a secret store.
+
+5. Record findings in:
+
+/analysis/XENIA-P1-T2-report.md
+
+6. Do not modify code until the report exists and the initial analysis is recorded.
+
+==================================================
+IMPLEMENTATION SCOPE
+==================================================
+
+--------------------------------------------------
+1. REGISTER THE EMAIL MODULE
+--------------------------------------------------
+
+Register Email as a Xenia module.
+
+Required metadata:
+
+Module key:
+email
+
+Display name:
+Email Automation
+
+Version:
+1.0.0
+
+Category:
+Automation
+
+Configuration namespace:
+email
+
+Description:
+Tenant-scoped email-source connectivity and automation foundation.
+
+The module must expose:
+
+- Global enabled state
+- Tenant enabled state
+- Effective enabled state
+- Runtime status
+- Health state
+- Version
+- Configuration namespace
+
+Use the existing effective-state rule:
+
+EffectiveEnabled =
+GlobalEnabled
+AND
+TenantEnabled
+
+Define and document the behavior when no tenant override exists.
+
+Recommended default:
+Tenant Email module is disabled until explicitly enabled.
+
+Module registration and seed behavior must be idempotent.
+
+Add tests for:
+
+- Email module registered once
+- Duplicate registration rejected or treated idempotently according to existing registry behavior
+- Global enablement
+- Tenant enablement
+- Effective state
+- Tenant isolation
+- Missing tenant override
+- Globally disabled module cannot be enabled effectively by tenant
+
+--------------------------------------------------
+2. DEFINE PROVIDER TYPES
+--------------------------------------------------
+
+Create an extensible Email provider model.
+
+Initial provider types:
+
+- Microsoft365
+- Google
+- IMAP
+- POP3
+- ExchangeIMAP
+
+Provider definitions must be data-driven or enum-backed in a way that supports future providers without restructuring source tables.
+
+Future provider examples:
+
+- Yahoo
+- Zoho
+- Fastmail
+- Proton bridge
+- Custom IMAP providers
+
+Each provider definition must include:
+
+- Provider key
+- Display name
+- Provider category
+- Supported authentication types
+- Default incoming host where applicable
+- Default port where applicable
+- TLS requirements
+- OAuth support indicator
+- Username/password support indicator
+- Configuration field definitions
+- Validation capability
+- Availability status
+- Documentation/help text safe for UI display
+
+Do not store provider secrets in provider definitions.
+
+--------------------------------------------------
+3. DEFINE AUTHENTICATION TYPES
+--------------------------------------------------
+
+Support these authentication types:
+
+- OAuth2
+- UsernamePassword
+- AppPassword
+- ClientCredentials where appropriate for future enterprise use
+- SecretReference
+
+Not every provider supports every authentication type.
+
+Define valid combinations.
+
+Examples:
+
+Microsoft365:
+- OAuth2
+- ClientCredentials only if supported by the chosen architecture and documented
+
+Google:
+- OAuth2
+- AppPassword for supported IMAP configurations where explicitly allowed
+
+IMAP:
+- UsernamePassword
+- AppPassword
+- SecretReference
+
+POP3:
+- UsernamePassword
+- AppPassword
+- SecretReference
+
+ExchangeIMAP:
+- OAuth2 where feasible
+- UsernamePassword only as configuration metadata if allowed by host policy
+
+Do not implement interactive OAuth completion if the current platform lacks the required callback infrastructure.
+
+If full OAuth is not feasible in this ticket:
+
+- Implement the OAuth connection metadata model.
+- Implement authorization initiation contract.
+- Implement callback contract or placeholder endpoint only if safe.
+- Mark runtime OAuth validation honestly as unavailable or pending.
+- Do not fabricate successful provider authorization.
+
+--------------------------------------------------
+4. IMPLEMENT SECURE SECRET REFERENCE MODEL
+--------------------------------------------------
+
+Do not persist plaintext:
+
+- Passwords
+- OAuth access tokens
+- OAuth refresh tokens
+- Client secrets
+- API keys
+- App passwords
+
+Implement a platform-neutral secret-reference model.
+
+Required fields may include:
+
+- Secret provider type
+- Secret reference identifier
+- Secret version where applicable
+- Credential type
+- Created timestamp
+- Rotated timestamp
+- Validation timestamp
+- Status
+
+Xenia may persist the reference, but not the secret.
+
+Do not expose the reference identifier unnecessarily through public APIs.
+
+Mask or omit sensitive reference metadata.
+
+If no real secret service is wired:
+
+- Provide a development secret-reference adapter.
+- It may validate reference format.
+- It must not claim the secret exists unless actually verified.
+- It must report unconfigured or unavailable honestly.
+
+Document how another platform can replace the secret-reference implementation.
+
+--------------------------------------------------
+5. CREATE EMAIL SOURCE DOMAIN MODEL
+--------------------------------------------------
+
+Create a tenant-scoped EmailSource entity.
+
+Required fields:
+
+- Id
+- TenantId
+- ModuleKey
+- DisplayName
+- Description or Notes
+- ProviderType
+- AuthenticationType
+- EmailAddress
+- Username if non-secret and necessary
+- IncomingHost where applicable
+- IncomingPort where applicable
+- UseTls
+- Folder or mailbox identifier where applicable
+- SecretReferenceId or credential reference
+- OAuthConnectionReference where applicable
+- Enabled
+- Status
+- HealthStatus
+- ValidationStatus
+- LastValidatedAt
+- LastSuccessfulValidationAt
+- LastValidationLatencyMs
+- LastConnectionAt
+- LastErrorCode
+- LastErrorSummary
+- CreatedBy
+- UpdatedBy
+- CreatedAt
+- UpdatedAt
+- Version or concurrency token
+
+Do not add:
+
+- Last email ID
+- Last sync cursor
+- Delta token
+- Message count
+- Sync schedule
+- Message data
+- Attachment data
+
+Those belong to XENIA-P1-T3.
+
+--------------------------------------------------
+6. CREATE PROVIDER SETTINGS MODEL
+--------------------------------------------------
+
+Create tenant-scoped or source-scoped provider metadata.
+
+Recommended table:
+
+xn_email_provider_settings
+
+Required fields:
+
+- Id
+- TenantId
+- EmailSourceId
+- ProviderType
+- ConfigurationJson or structured provider metadata
+- ConfigurationVersion
+- CreatedAt
+- UpdatedAt
+
+Provider settings may contain:
+
+- Host
+- Port
+- TLS mode
+- OAuth tenant/domain identifiers
+- Client ID where public/non-secret
+- Scopes
+- Mailbox identifier
+- Connection timeout
+- Validation options
+
+Provider settings must not contain:
+
+- Passwords
+- Access tokens
+- Refresh tokens
+- Client secrets
+- App passwords
+
+Use strict DTO validation and safe serialization.
+
+--------------------------------------------------
+7. CREATE VALIDATION HISTORY MODEL
+--------------------------------------------------
+
+Create:
+
+xn_email_validation_history
+
+Required fields:
+
+- Id
+- TenantId
+- EmailSourceId
+- ProviderType
+- ValidationType
+- StartedAt
+- CompletedAt
+- DurationMs
+- Result
+- ErrorCode
+- ErrorSummary
+- CorrelationId
+- ActorId
+- CreatedAt
+
+Do not store:
+
+- Raw provider error payloads containing secrets
+- Passwords
+- Tokens
+- Full connection strings
+- Sensitive server banners
+
+Implement retention-ready design, but do not build purge jobs in this ticket.
+
+--------------------------------------------------
+8. DATABASE MIGRATIONS
+--------------------------------------------------
+
+Create EF Core migrations for:
+
+- xn_email_sources
+- xn_email_provider_settings
+- xn_email_validation_history
+
+Add:
+
+- Primary keys
+- Tenant indexes
+- Source indexes
+- Provider indexes
+- Unique constraints where appropriate
+- Concurrency tokens
+- Foreign keys within Xenia-owned schema only
+- Cascade behavior consistent with source deletion policy
+
+Recommended uniqueness:
+
+TenantId + normalized EmailAddress + ProviderType
+
+Do not prevent a tenant from configuring the same mailbox for different functional purposes unless explicitly justified.
+
+A safer uniqueness model may be:
+
+TenantId + SourceId only
+
+and separately detect likely duplicates as a validation warning.
+
+Document the selected rule.
+
+Validate against disposable MySQL.
+
+If EF/Pomelo tooling remains defective:
+
+- Do not silently bypass.
+- Produce a migration script through a compatible environment or approved manual SQL only as a documented development workaround.
+- Do not mark migration tooling successful if it did not succeed.
+- Keep startup migration bypass explicit and safe.
+
+--------------------------------------------------
+9. IMPLEMENT GENERIC EMAIL CONNECTOR CONTRACT
+--------------------------------------------------
+
+Create a provider-neutral connector contract.
+
+Suggested interface:
+
+IEmailSourceConnector
+
+Required operations:
+
+- GetProviderType()
+- ValidateConfigurationAsync()
+- ValidateCredentialsAsync()
+- TestConnectionAsync()
+- GetCapabilities()
+- GetSafeDiagnosticAsync()
+
+Do not include message retrieval methods in this ticket.
+
+Do not include:
+
+- FetchMessages
+- FetchAttachments
+- GetDeltaToken
+- MarkRead
+- MoveMessage
+- DeleteMessage
+
+Connector result must include:
+
+- Success
+- Validation status
+- Health state
+- Error code
+- Safe error summary
+- Latency
+- Provider metadata safe for persistence
+- Capability information
+
+Support cancellation tokens.
+
+--------------------------------------------------
+10. IMPLEMENT INITIAL PROVIDER CONNECTORS
+--------------------------------------------------
+
+Implement source-connectivity connectors for:
+
+- Microsoft365
+- Google
+- IMAP
+- POP3
+- ExchangeIMAP
+
+The level of implementation must be honest.
+
+Microsoft365 and Google:
+
+- Validate configuration shape.
+- Validate required OAuth metadata.
+- Validate secret/token reference presence.
+- If real access tokens are available through a configured secret provider, perform a safe connectivity validation.
+- Otherwise return an explicit NotConfigured or CredentialUnavailable result.
+- Do not claim provider connectivity without making a real provider request.
+
+IMAP, POP3, ExchangeIMAP:
+
+- Validate host, port, TLS, username, and secret reference.
+- If a safe email protocol library exists in the repository or can be added narrowly, perform connection/authentication only.
+- Do not list or retrieve messages.
+- Close the connection immediately after validation.
+- Enforce timeout.
+- Validate TLS according to configuration.
+- Do not disable certificate validation.
+- Do not log credentials.
+
+Use an established .NET email protocol library where appropriate, such as MailKit, if compatible with repository standards.
+
+Document any new dependency.
+
+--------------------------------------------------
+11. IMPLEMENT CONNECTOR REGISTRY
+--------------------------------------------------
+
+Create a connector registry mapping provider types to connector implementations.
+
+Requirements:
+
+- Exactly one connector per provider type
+- Duplicate provider registration rejected
+- Unknown provider handled safely
+- Connectors resolved through DI
+- Provider capabilities available to API/UI
+- Test connectors may be injected for integration tests
+
+Add tests for:
+
+- Connector registration
+- Duplicate connector rejection
+- Unknown provider
+- Provider capability retrieval
+- Provider-specific validation
+- Cancellation
+- Timeout behavior
+
+--------------------------------------------------
+12. IMPLEMENT EMAIL SOURCE SERVICE
+--------------------------------------------------
+
+Create application services for:
+
+- List sources for current tenant
+- Get source for current tenant
+- Create source
+- Update source
+- Delete source
+- Enable source
+- Disable source
+- Validate source
+- Retrieve validation history
+- Retrieve supported provider definitions
+- Retrieve Email module settings
+
+Rules:
+
+- All operations require verified tenant context.
+- No tenant ID may be trusted from request body.
+- Source IDs must be resolved within current tenant.
+- Platform admins do not automatically bypass tenant boundaries.
+- Deleted source behavior must be explicit:
+  - Soft delete recommended
+  - Or hard delete only if no dependent message data exists yet
+
+Since no email messages exist yet, hard delete may be acceptable, but audit history and validation history retention must be considered.
+
+Recommended:
+Soft-delete sources using status/deleted timestamp while preserving auditability.
+
+--------------------------------------------------
+13. VALIDATION WORKFLOW
+--------------------------------------------------
+
+Implement source validation.
+
+Validation sequence:
+
+1. Confirm Email module globally enabled.
+2. Confirm Email module enabled for tenant.
+3. Validate source exists under current tenant.
+4. Validate provider configuration.
+5. Validate authentication metadata.
+6. Resolve secret reference if a secret adapter is configured.
+7. Test provider connection when credentials are available.
+8. Record validation history.
+9. Update source validation and health status.
+10. Emit audit event.
+11. Return safe validation result.
+
+Validation must not:
+
+- Retrieve messages
+- Enumerate folders unless strictly required for authentication and not persisted
+- Persist credentials
+- Return provider secrets
+- Store raw authentication errors
+
+--------------------------------------------------
+14. EMAIL SOURCE STATUS MODEL
+--------------------------------------------------
+
+Define explicit statuses.
+
+Suggested source status:
+
+- Draft
+- PendingValidation
+- Active
+- Disabled
+- InvalidConfiguration
+- AuthenticationFailed
+- ConnectionFailed
+- Unavailable
+- Deleted
+
+Suggested health status:
+
+- Unknown
+- Healthy
+- Degraded
+- Unhealthy
+
+Suggested validation status:
+
+- NotValidated
+- Valid
+- Invalid
+- Failed
+- CredentialUnavailable
+- ProviderUnavailable
+
+Ensure API and UI use stable values.
+
+--------------------------------------------------
+15. AUDIT INTEGRATION
+--------------------------------------------------
+
+Use IAuditAdapter.
+
+Audit actions:
+
+- xenia.email.module.enabled
+- xenia.email.module.disabled
+- xenia.email.source.created
+- xenia.email.source.updated
+- xenia.email.source.deleted
+- xenia.email.source.enabled
+- xenia.email.source.disabled
+- xenia.email.source.validation_started
+- xenia.email.source.validation_succeeded
+- xenia.email.source.validation_failed
+- xenia.email.source.credential_reference_changed
+
+Audit payload must include:
+
+- Tenant ID
+- Actor ID
+- Source ID
+- Provider type
+- Action
+- Result
+- Correlation ID
+- Timestamp
+
+Do not include:
+
+- Passwords
+- Tokens
+- Secret values
+- Full credential references where sensitive
+
+If Audit adapter is unavailable:
+
+- Use existing degraded fallback behavior.
+- Do not claim durable audit persistence.
+- Make degraded status observable.
+
+--------------------------------------------------
+16. AUTHORIZATION
+--------------------------------------------------
+
+Add and register:
+
+- xenia.email.read
+- xenia.email.manage
+- xenia.email.validate
+
+Suggested policy mapping:
+
+GET providers:
+xenia.email.read
+
+GET sources:
+xenia.email.read
+
+GET source:
+xenia.email.read
+
+POST source:
+xenia.email.manage
+
+PUT source:
+xenia.email.manage
+
+DELETE source:
+xenia.email.manage
+
+Enable/disable:
+xenia.email.manage
+
+Validate:
+xenia.email.validate
+
+GET settings:
+xenia.email.read
+
+Tenant module enable/disable:
+xenia.email.manage
+
+PlatformAdmin behavior must remain explicit.
+
+Tenant admins must remain tenant-scoped.
+
+Add tests for:
+
+- 401 unauthenticated
+- 403 missing permission
+- Reader cannot manage
+- Manager cannot validate unless policy allows it
+- Validator cannot manage
+- PlatformAdmin behavior
+- Tenant boundary enforcement
+
+--------------------------------------------------
+17. API ENDPOINTS
+--------------------------------------------------
+
+Implement:
+
+GET /email/providers
+
+GET /email/sources
+
+GET /email/sources/{id}
+
+POST /email/sources
+
+PUT /email/sources/{id}
+
+DELETE /email/sources/{id}
+
+POST /email/sources/{id}/validate
+
+POST /email/sources/{id}/enable
+
+POST /email/sources/{id}/disable
+
+GET /email/sources/{id}/validation-history
+
+GET /email/settings
+
+PUT /email/settings if tenant-level module settings are editable in this ticket
+
+POST /email/module/enable
+
+POST /email/module/disable
+
+Use repository-standard response and Problem Details conventions.
+
+Expected statuses:
+
+200:
+Successful reads and actions
+
+201:
+Source created
+
+204:
+Successful delete if no response body
+
+400:
+Invalid configuration or malformed request
+
+401:
+Unauthenticated
+
+403:
+Unauthorized or cross-tenant operation
+
+404:
+Unknown source
+
+409:
+Conflicting source state or duplicate operation
+
+422:
+Configuration is syntactically valid but provider validation fails, if consistent with platform conventions
+
+503:
+Required provider or secret service unavailable
+
+Do not expose secret values.
+
+--------------------------------------------------
+18. API DTO REQUIREMENTS
+--------------------------------------------------
+
+Create separate request and response DTOs.
+
+Create request must accept:
+
+- Display name
+- Description/notes
+- Provider type
+- Email address
+- Authentication type
+- Safe provider settings
+- Credential reference input
+- Enabled state if allowed
+
+Response must include:
+
+- Source ID
+- Display name
+- Provider
+- Email address
+- Authentication type
+- Enabled
+- Status
+- Health
+- Validation status
+- Last validation
+- Safe diagnostics
+- Created/updated timestamps
+
+Response must not include:
+
+- Password
+- OAuth token
+- Refresh token
+- App password
+- Client secret
+- Raw secret reference unless explicitly safe
+- Internal exception details
+
+--------------------------------------------------
+19. TENANT ISOLATION
+--------------------------------------------------
+
+Add database-backed tests using Tenant A and Tenant B.
+
+Validate:
+
+1. Tenant A creates a source.
+2. Tenant B cannot read Tenant A source.
+3. Tenant B cannot update Tenant A source.
+4. Tenant B cannot delete Tenant A source.
+5. Tenant B cannot validate Tenant A source.
+6. Tenant B cannot enable or disable Tenant A source.
+7. Tenant A cannot view Tenant B validation history.
+8. Body tenant ID cannot override JWT context.
+9. Route tenant ID cannot override JWT context.
+10. Query tenant ID cannot override JWT context.
+11. Untrusted tenant headers cannot override JWT context.
+12. PlatformAdmin does not automatically bypass tenant scope.
+
+These tests must execute against a relational database.
+
+Disposable MySQL is preferred.
+
+--------------------------------------------------
+20. CONNECTION SECURITY
+--------------------------------------------------
+
+For network validation:
+
+- Use explicit timeouts.
+- Use TLS where required.
+- Never disable TLS certificate validation.
+- Never accept all certificates.
+- Never log credentials.
+- Never return raw provider exceptions.
+- Sanitize hostnames and error output.
+- Prevent SSRF where possible.
+
+For custom IMAP/POP3 hosts:
+
+- Validate host format.
+- Restrict unsafe loopback/link-local/internal addresses according to platform policy.
+- Document development exceptions.
+- Do not allow arbitrary URL schemes.
+- Validate allowed ports or explicitly document configurable ports.
+- Resolve DNS safely where practical.
+
+Add tests for invalid hosts and unsafe connection targets.
+
+--------------------------------------------------
+21. MODULE AND SOURCE HEALTH
+--------------------------------------------------
+
+Update Xenia health/readiness behavior.
+
+The Email module itself should not make Xenia unready merely because no sources exist.
+
+Rules:
+
+- Module disabled globally:
+  - No readiness impact
+
+- Module disabled for tenant:
+  - No tenant module readiness impact
+
+- Module enabled with no sources:
+  - Ready, informational state
+
+- Module enabled with disabled sources:
+  - Ready
+
+- Module enabled with invalid sources:
+  - Xenia remains ready
+  - Email module health may be degraded
+
+- Required Tenant or Identity adapter unavailable:
+  - Follow existing mandatory dependency rules
+
+- Secret provider unavailable during validation:
+  - Validation fails safely
+  - Service remains ready unless secret provider is configured as mandatory
+
+Do not implement synchronization health.
+
+--------------------------------------------------
+22. FRONTEND NAVIGATION
+--------------------------------------------------
+
+Extend the existing Control Center Xenia navigation.
+
+Required structure:
+
+Xenia
+- Dashboard
+- Modules
+- Adapters
+- Settings
+- Email
+  - Dashboard
+  - Sources
+  - Providers
+  - Settings
+
+Use existing Control Center layout and design system.
+
+The UI is LegalSynq host integration, not Xenia core.
+
+Document this boundary.
+
+--------------------------------------------------
+23. EMAIL DASHBOARD UI
+--------------------------------------------------
+
+Create:
+
+/xenia/email
+
+Display:
+
+- Email module global state
+- Tenant state
+- Effective state
+- Total sources
+- Enabled sources
+- Healthy sources
+- Degraded/unhealthy sources
+- Sources pending validation
+- Failed validation count
+- Provider distribution
+- Last validation activity
+- Module health
+
+Do not display:
+
+- Message count
+- Inbox count
+- Attachment count
+- Sync count
+- Last email received
+
+Those belong to XENIA-P1-T3.
+
+--------------------------------------------------
+24. EMAIL SOURCES UI
+--------------------------------------------------
+
+Create:
+
+/xenia/email/sources
+
+Display:
+
+- Display name
+- Email address
+- Provider
+- Authentication type
+- Enabled
+- Status
+- Health
+- Validation status
+- Last validation
+- Actions
+
+Actions:
+
+- View
+- Edit
+- Validate
+- Enable
+- Disable
+- Delete
+
+Requirements:
+
+- Loading state
+- Empty state
+- Error state
+- Unauthorized state
+- Forbidden state
+- Validation-in-progress state
+- Backend unavailable state
+- Safe diagnostics
+- No secret exposure
+
+--------------------------------------------------
+25. SOURCE CREATE/EDIT WIZARD
+--------------------------------------------------
+
+Create a multi-step or structured provider wizard.
+
+Steps:
+
+1. Select provider
+2. Enter mailbox identity
+3. Select authentication type
+4. Enter safe provider configuration
+5. Supply or select credential reference
+6. Review configuration
+7. Save
+8. Optionally validate connection
+
+Provider-specific fields:
+
+Microsoft365:
+- Email address
+- Tenant/domain identifier if required
+- Client ID if public
+- Credential/token reference
+- OAuth scopes
+
+Google:
+- Email address
+- Client ID if public
+- Credential/token reference
+- OAuth scopes
+
+IMAP:
+- Email address
+- Username
+- Host
+- Port
+- TLS
+- Secret reference
+
+POP3:
+- Email address
+- Username
+- Host
+- Port
+- TLS
+- Secret reference
+
+ExchangeIMAP:
+- Email address
+- Username
+- Host
+- Port
+- TLS
+- OAuth or secret reference
+
+The UI must never accept or retain plaintext secrets unless a secure secret-entry component writes directly to an approved secret provider.
+
+If no secure secret provider UI exists:
+
+- Accept only an existing secret reference.
+- Display clear setup guidance.
+- Do not add a password field that posts plaintext to Xenia.
+
+--------------------------------------------------
+26. PROVIDERS PAGE
+--------------------------------------------------
+
+Create:
+
+/xenia/email/providers
+
+Display supported providers with:
+
+- Provider name
+- Category
+- Authentication types
+- Default ports
+- TLS requirements
+- Validation support
+- Availability
+- Configuration help
+- Future support indicator where appropriate
+
+Do not imply unavailable OAuth flows are complete.
+
+--------------------------------------------------
+27. EMAIL SETTINGS UI
+--------------------------------------------------
+
+Create:
+
+/xenia/email/settings
+
+Settings may include:
+
+- Module enabled state
+- Default connection timeout
+- Allowed provider types
+- Validation retry limit
+- Safe network validation policy
+- Source naming rules
+- Validation-history retention metadata
+
+Do not add:
+
+- Polling schedule
+- Sync interval
+- Message retention
+- Attachment settings
+- AI settings
+- Workflow rules
+
+Those belong to future tickets.
+
+--------------------------------------------------
+28. CONTROL CENTER PROXY
+--------------------------------------------------
+
+Extend the existing Xenia proxy where needed.
+
+Validate:
+
+- HTTP method forwarding
+- Request-body forwarding
+- Authorization forwarding
+- Correlation forwarding
+- Response status preservation
+- Content-type preservation
+- Safe tenant-context propagation
+- No browser-controlled trusted tenant header
+- No credential logging
+- Provider validation errors preserved safely
+
+Add tests where supported.
+
+--------------------------------------------------
+29. DOCUMENTATION
+--------------------------------------------------
+
+Create or update:
+
+- Email module architecture
+- Provider connector contract
+- Provider support matrix
+- Authentication model
+- Secret-reference model
+- Email source lifecycle
+- Source status model
+- Validation workflow
+- API documentation
+- Permission documentation
+- Tenant-isolation documentation
+- Network security and SSRF protections
+- Control Center UI guide
+- Local validation guide
+- Known limitations
+- XENIA-P1-T3 handoff notes
+
+Documentation must explicitly state:
+
+- No email messages are ingested in this ticket.
+- OAuth may be metadata-only if provider callbacks are not available.
+- Plaintext credentials are prohibited.
+- Control Center is LegalSynq host integration.
+- Provider connectors only validate connectivity in this ticket.
+
+==================================================
+DATABASE REQUIREMENTS
+==================================================
+
+Required tables:
+
+xn_email_sources
+xn_email_provider_settings
+xn_email_validation_history
+
+Required indexes:
+
+- TenantId
+- EmailSourceId
+- ProviderType
+- Enabled
+- ValidationStatus
+- LastValidatedAt
+
+Required constraints:
+
+- Provider and authentication values valid
+- Email address required
+- Source display name required
+- Port range valid where applicable
+- Secret fields not present
+- Tenant-owned foreign keys only
+- Validation history references source
+- Deletion behavior explicit
+
+Use concurrency protection on source updates.
+
+No email-message tables.
+
+No attachment tables.
+
+No sync cursor tables.
+
+==================================================
+SHARED AND MOCK SERVICE DEPENDENCIES
+==================================================
+
+Use existing generic adapters.
+
+Tenant adapter:
+- Validate tenant status if configured.
+- If unavailable and mandatory, follow readiness rules.
+
+Identity adapter:
+- Use existing authenticated actor and permissions.
+
+Audit adapter:
+- Submit administrative audit events.
+- Use degraded fallback if unconfigured.
+- Do not claim durable audit success during fallback.
+
+Secret reference:
+- Use existing platform-neutral secret abstraction if available.
+- Otherwise create a minimal Xenia-owned contract.
+- Development implementation must be honest about unavailable secrets.
+
+Do not use:
+
+- Document adapter for attachments
+- Workflow adapter
+- AI adapter
+- Notification automation
+
+==================================================
+VALIDATION COMMANDS
+==================================================
+
+Discover and use the repository's actual commands.
+
+At minimum run and record the equivalent of:
+
+dotnet --info
+dotnet restore
+dotnet build
+dotnet test
+
+dotnet ef migrations list
+dotnet ef migrations script
+dotnet ef database update
+
+dotnet run --project apps/services/xenia/Xenia.Api
+
+pnpm install
+pnpm --filter control-center type-check
+pnpm --filter control-center lint
+pnpm --filter control-center test
+pnpm --filter control-center build
+
+Execute API tests against the running Xenia service.
+
+Record for every request:
+
+- Method
+- URL
+- Authentication
+- Permissions
+- Tenant
+- Request summary
+- Expected status
+- Actual status
+- Correlation ID
+- Result
+
+==================================================
+REQUIRED TEST COVERAGE
+==================================================
+
+Backend:
+
+- Email module registration
+- Email module idempotent seed
+- Email module global state
+- Email module tenant state
+- Email module effective state
+- Provider definitions
+- Provider/authentication compatibility
+- Connector registry
+- Unknown provider
+- Duplicate connector
+- Microsoft configuration validation
+- Google configuration validation
+- IMAP configuration validation
+- POP3 configuration validation
+- Exchange IMAP configuration validation
+- Safe connection timeout
+- TLS enforcement
+- Unsafe host rejection
+- Secret reference validation
+- No plaintext credential persistence
+- Email source creation
+- Email source read
+- Email source update
+- Email source delete
+- Email source enable
+- Email source disable
+- Email source validation
+- Validation history
+- Validation error sanitization
+- Tenant A/B source isolation
+- Tenant A/B validation-history isolation
+- Body tenant override rejection
+- Route tenant override rejection
+- Query tenant override rejection
+- Header tenant override rejection
+- 401 behavior
+- 403 behavior
+- Reader cannot manage
+- Manager cannot validate without permission if policies are separate
+- Validator cannot manage
+- Audit events
+- Secret masking
+- Concurrency conflict
+- Unknown source
+- Deleted source behavior
+- Module disabled behavior
+- Health behavior
+
+Frontend:
+
+- Email navigation
+- Dashboard summary
+- Sources list
+- Empty state
+- Loading state
+- Error state
+- Unauthorized state
+- Forbidden state
+- Backend unavailable
+- Create wizard
+- Provider-specific fields
+- Secret-reference-only behavior
+- No plaintext password input unless approved secret component exists
+- Edit source
+- Validate source
+- Enable/disable source
+- Delete source
+- Provider list
+- Settings page
+- Secret masking
+- API proxy status preservation
+- Correlation forwarding
+
+Tests must execute.
+
+Written but unexecuted tests do not satisfy completion unless genuinely blocked and documented.
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+The ticket is complete only if:
+
+1. Email module is registered.
+
+2. Email module seed is idempotent.
+
+3. Email module supports global state.
+
+4. Email module supports tenant state.
+
+5. Effective Email module state is correct.
+
+6. Missing tenant override behavior is documented and tested.
+
+7. Provider model supports Microsoft365.
+
+8. Provider model supports Google.
+
+9. Provider model supports IMAP.
+
+10. Provider model supports POP3.
+
+11. Provider model supports ExchangeIMAP.
+
+12. Provider model is extensible.
+
+13. Provider/authentication compatibility is enforced.
+
+14. Secret reference model exists.
+
+15. Plaintext passwords are not stored.
+
+16. OAuth access tokens are not stored in plaintext.
+
+17. Refresh tokens are not stored in plaintext.
+
+18. Client secrets are not stored in plaintext.
+
+19. Email source entity exists.
+
+20. Provider settings entity exists.
+
+21. Validation history entity exists.
+
+22. Required migrations exist.
+
+23. Migrations apply to disposable MySQL, or a tooling blocker is honestly documented with an approved safe workaround.
+
+24. No email-message tables exist.
+
+25. No attachment tables exist.
+
+26. No synchronization tables exist.
+
+27. Generic connector contract exists.
+
+28. Connector registry exists.
+
+29. Microsoft connector validates configuration.
+
+30. Google connector validates configuration.
+
+31. IMAP connector validates configuration and connectivity when credentials are available.
+
+32. POP3 connector validates configuration and connectivity when credentials are available.
+
+33. Exchange IMAP connector validates configuration and connectivity when credentials are available.
+
+34. No connector retrieves messages.
+
+35. Network validation uses timeouts.
+
+36. TLS validation is not disabled.
+
+37. Unsafe connection targets are rejected or controlled.
+
+38. Email source CRUD works.
+
+39. Source enable works.
+
+40. Source disable works.
+
+41. Source validation works.
+
+42. Validation history is recorded.
+
+43. Validation errors are sanitized.
+
+44. Audit events are emitted.
+
+45. Audit fallback is honest.
+
+46. xenia.email.read is enforced.
+
+47. xenia.email.manage is enforced.
+
+48. xenia.email.validate is enforced.
+
+49. Unauthenticated requests return 401.
+
+50. Unauthorized requests return 403.
+
+51. Tenant A cannot read Tenant B source.
+
+52. Tenant A cannot update Tenant B source.
+
+53. Tenant A cannot delete Tenant B source.
+
+54. Tenant A cannot validate Tenant B source.
+
+55. Tenant A cannot view Tenant B validation history.
+
+56. Request tenant identifiers cannot override verified context.
+
+57. PlatformAdmin tenant behavior is explicit.
+
+58. API responses expose no secrets.
+
+59. Logs expose no secrets.
+
+60. UI exposes no secrets.
+
+61. Report exposes no secrets.
+
+62. Email Dashboard renders.
+
+63. Sources page renders.
+
+64. Providers page renders.
+
+65. Email Settings page renders.
+
+66. Create/edit wizard works.
+
+67. Provider-specific configuration fields work.
+
+68. UI accepts only secret references unless an approved secret-entry integration exists.
+
+69. Validate action shows safe results.
+
+70. Enable/disable actions work.
+
+71. Delete action works.
+
+72. Loading state works.
+
+73. Empty state works.
+
+74. Error state works.
+
+75. Unauthorized state works.
+
+76. Forbidden state works.
+
+77. Backend unavailable state works.
+
+78. Control Center Xenia changes type-check.
+
+79. Control Center lint executes.
+
+80. Control Center tests execute where configured.
+
+81. Control Center production build succeeds, or unrelated pre-existing blockers are clearly separated.
+
+82. Proxy preserves response status.
+
+83. Proxy forwards authorization safely.
+
+84. Proxy forwards correlation IDs.
+
+85. Browser cannot inject trusted tenant context.
+
+86. Email module health does not incorrectly block overall readiness.
+
+87. No email synchronization is implemented.
+
+88. No email messages are retrieved.
+
+89. No attachments are processed.
+
+90. No AI behavior is implemented.
+
+91. No case or support-ticket creation is implemented.
+
+92. Documentation is updated.
+
+93. `/analysis/XENIA-P1-T2-report.md` exists.
+
+94. The report is created before code changes.
+
+95. The report is updated incrementally.
+
+96. Validation commands include exit codes and output summaries.
+
+97. API validation includes actual status codes.
+
+98. Final completion percentage is evidence-based.
+
+99. The report states whether XENIA-P1-T3 may begin.
+
+==================================================
+OUT OF SCOPE
+==================================================
+
+Do not implement:
+
+- Email message retrieval
+- Email body storage
+- Email headers persistence
+- MIME parsing
+- Attachment download
+- Attachment storage
+- Message normalization
+- Message deduplication
+- Delta synchronization
+- Polling jobs
+- Scheduled synchronization
+- Push notifications
+- Gmail message APIs
+- Microsoft Graph message retrieval
+- IMAP mailbox listing for ingestion
+- POP3 message listing for ingestion
+- Email sending
+- Auto replies
+- Case creation
+- Support-ticket creation
+- Contact creation
+- Workflow execution
+- AI classification
+- OCR
+- Document processing
+- Notification automation
+- GitHub operations
+- GitHub Actions
+- AWS deployment
+- Production RDS changes
+- Production Secrets Manager changes
+- Production ECS/Fargate changes
+- Production Cloud Map changes
+- Production Route53 changes
+- Production ALB changes
+- Production runtime claims
+
+==================================================
+KNOWN RESTRICTIONS
+==================================================
+
+- Keep implementation incremental.
+- Do not rewrite Xenia core.
+- Do not weaken tenant isolation.
+- Do not weaken authorization.
+- Do not store plaintext secrets.
+- Do not log credentials.
+- Do not disable TLS certificate validation.
+- Do not fabricate OAuth success.
+- Do not fabricate provider connectivity.
+- Do not use production mailboxes for testing.
+- Do not retrieve messages during validation.
+- Do not begin XENIA-P1-T3.
+
+==================================================
+REQUIRED REPORT STRUCTURE
+==================================================
+
+Create before any code change:
+
+/analysis/XENIA-P1-T2-report.md
+
+Use at least these sections:
+
+# XENIA-P1-T2 Tenant Email Module Foundation and Source Connectivity Report
+
+## 1. Executive Summary
+
+## 2. Ticket Information
+- Ticket ID
+- Parent ticket
+- Related tickets
+- Task type
+- Objective
+- Current status
+
+## 3. Prior Foundation Review
+
+## 4. Initial Repository Analysis
+
+## 5. Architecture Decisions
+
+## 6. Implementation Progress
+Maintain:
+- Not started
+- In progress
+- Completed
+- Partially completed
+- Blocked
+- Failed
+
+## 7. Files Inspected
+
+## 8. Email Module Registration
+
+## 9. Provider Model
+
+## 10. Authentication Model
+
+## 11. Secret Reference Architecture
+
+## 12. Email Source Domain Model
+
+## 13. Database Changes
+
+## 14. Migration Validation
+
+## 15. Connector Contract
+
+## 16. Connector Registry
+
+## 17. Provider Connector Implementations
+
+## 18. Network and TLS Security
+
+## 19. Email Source Application Services
+
+## 20. Tenant Isolation
+
+## 21. Authorization and Permissions
+
+## 22. Audit Integration
+
+## 23. API Endpoints
+
+## 24. API Validation
+For every request:
+- Method
+- URL
+- Authentication
+- Permissions
+- Tenant
+- Expected status
+- Actual status
+- Correlation ID
+- Result
+
+## 25. Module and Source Health
+
+## 26. Frontend Implementation
+
+## 27. Email Dashboard
+
+## 28. Sources Page
+
+## 29. Provider Wizard
+
+## 30. Providers Page
+
+## 31. Settings Page
+
+## 32. Proxy Validation
+
+## 33. Tests Added or Updated
+
+## 34. Test Execution Results
+
+## 35. Build Validation
+For every command:
+- Command
+- Working directory
+- Exit code
+- Result
+- Output summary
+- Remediation
+- Retest
+
+## 36. Security Review
+
+## 37. Secret Exposure Review
+
+## 38. Acceptance Criteria Matrix
+For every criterion:
+- Criterion
+- Status
+- Evidence
+- Notes
+
+## 39. Issues Found
+
+## 40. Remediation Performed
+
+## 41. Remaining Gaps
+
+## 42. Risks and Architecture Concerns
+
+## 43. Environmental Limitations
+
+## 44. Out-of-Scope Confirmation
+
+## 45. Documentation Updated
+
+## 46. XENIA-P1-T3 Readiness
+Use one:
+- Ready to begin
+- Ready with prerequisites
+- Not ready
+- Blocked
+
+## 47. Final Status
+Use one:
+- Complete
+- Complete with limitations
+- Partially complete
+- Blocked
+- Failed
+
+## 48. Completion Percentage
+
+## 49. Follow-Up Recommendations
+
+==================================================
+FINAL RESPONSE REQUIREMENTS
+==================================================
+
+When implementation is complete:
+
+1. Fully update the report.
+
+2. Provide a concise final response containing:
+   - Ticket ID
+   - Final status
+   - Completion percentage
+   - Email module result
+   - Provider model result
+   - Secret-reference result
+   - Database and migration result
+   - Connector result
+   - Source CRUD result
+   - Validation result
+   - Tenant-isolation result
+   - Authorization result
+   - Audit result
+   - Frontend result
+   - Build result
+   - Test result
+   - Known limitations
+   - XENIA-P1-T3 readiness
+   - Exact report path
+
+3. Do not claim GitHub success.
+
+4. Do not claim AWS success.
+
+5. Do not claim production success.
+
+6. Stop after XENIA-P1-T2.
+
+Do not begin XENIA-P1-T3.

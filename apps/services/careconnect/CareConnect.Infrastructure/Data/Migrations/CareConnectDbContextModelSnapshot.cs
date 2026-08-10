@@ -1502,6 +1502,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<Guid>("ReferralId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("ReferralCommentId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1520,11 +1523,55 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("ReferralId");
 
+                    b.HasIndex("ReferralCommentId")
+                        .HasDatabaseName("IX_cc_ReferralAttachments_ReferralCommentId");
+
                     b.HasIndex("TenantId", "Status");
 
                     b.HasIndex("TenantId", "ReferralId", "CreatedAtUtc");
 
+                    b.HasIndex("TenantId", "ReferralId", "ReferralCommentId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_cc_ReferralAttachments_ReferralComment");
+
                     b.ToTable("cc_ReferralAttachments", (string)null);
+                });
+
+            modelBuilder.Entity("CareConnect.Domain.ReferralComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
+
+                    b.Property<Guid>("ReferralId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("SenderName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<string>("SenderType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ReferralId", "CreatedAt")
+                        .HasDatabaseName("IX_ReferralComments_TenantId_ReferralId_CreatedAt");
+
+                    b.ToTable("cc_ReferralComments", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ReferralNote", b =>
@@ -2005,7 +2052,14 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("CareConnect.Domain.ReferralComment", "ReferralComment")
+                        .WithMany("Attachments")
+                        .HasForeignKey("ReferralCommentId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.Navigation("Referral");
+
+                    b.Navigation("ReferralComment");
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ReferralNote", b =>
@@ -2064,6 +2118,11 @@ namespace CareConnect.Infrastructure.Data.Migrations
             modelBuilder.Entity("CareConnect.Domain.ProviderNetwork", b =>
                 {
                     b.Navigation("NetworkProviders");
+                });
+
+            modelBuilder.Entity("CareConnect.Domain.ReferralComment", b =>
+                {
+                    b.Navigation("Attachments");
                 });
 #pragma warning restore 612, 618
         }

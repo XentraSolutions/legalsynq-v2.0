@@ -1,0 +1,1615 @@
+You are implementing the following Xenia production-readiness subtask.
+
+==================================================
+TICKET
+==================================================
+
+Ticket ID:
+XENIA-P1-PROD-V1-T1
+
+Parent Ticket:
+XENIA-P1-PROD-V1 — Production Readiness and Durable Automation State Closure
+
+Related Tickets:
+- XENIA-P1-T1 — Core Service Foundation
+- XENIA-P1-T2 — Email Module Foundation
+- XENIA-P1-T3 — Email Ingestion Engine
+- XENIA-P1-T4 — Administration and Operations
+- XENIA-P1-T5 — Enterprise Hardening and Automation Framework
+- XENIA-P1-PROD-V1 — Production Readiness and Durable Automation State Closure
+
+Task Type:
+🟦 XenIA
+
+Title:
+Durable Automation Runtime Integration
+
+==================================================
+MANDATORY EXECUTION RULES
+==================================================
+
+1. Create the implementation report before making any code changes.
+
+Required report path:
+
+/analysis/XENIA-P1-PROD-V1-T1-report.md
+
+2. The report must be the first implementation artifact created.
+
+3. Before modifying source code, populate the report with:
+
+- Ticket information
+- Prior-report review
+- Initial repository analysis
+- Current automation runtime architecture
+- Current dependency-injection registrations
+- Current Migration 8 entity and table coverage
+- Current in-memory implementations
+- Current EF-backed implementations
+- Current build and test state
+- Initial implementation-progress table
+- Confirmed discrepancies and blockers
+
+4. Update the report incrementally throughout:
+
+- Domain and persistence review
+- EF service implementation
+- Registry reconciliation
+- Configuration persistence
+- Lifecycle persistence
+- Runtime-state persistence
+- Execution persistence
+- Dead-letter persistence
+- Schedule persistence
+- Idempotency persistence
+- Dependency-injection changes
+- Transaction handling
+- Concurrency handling
+- Restart-recovery validation
+- Multi-instance validation
+- Runtime validation
+- Build and test execution
+- Acceptance-matrix completion
+
+5. Do not write the report only after implementation is complete.
+
+6. Do not fabricate:
+
+- Build success
+- Test success
+- Persistence success
+- Restart recovery
+- Multi-instance safety
+- Registry reconciliation
+- Concurrency protection
+- Runtime API behavior
+- Database behavior
+
+7. Classify every material activity as exactly one of:
+
+- Completed
+- Partially completed
+- Failed
+- Blocked
+- Skipped
+- Not applicable
+- Not independently verified
+- Accepted limitation
+
+8. For every command, migration inspection, test, startup, restart, concurrency test, and database query, record:
+
+- Exact command
+- Working directory
+- Environment
+- Exit code or result
+- Expected result
+- Actual result
+- Relevant output summary
+- Remediation performed
+- Retest result
+
+9. Do not perform GitHub operations.
+
+Do not:
+
+- Run git add
+- Commit
+- Push
+- Create or update pull requests
+- Merge branches
+- Claim GitHub Actions success
+
+10. Do not perform AWS or production infrastructure work.
+
+Do not:
+
+- Deploy to ECS or Fargate
+- Modify production RDS
+- Modify production Secrets Manager
+- Modify IAM
+- Modify Cloud Map
+- Modify Route53
+- Modify ALB
+- Claim production deployment success
+
+11. Do not begin another Phase 1 or Phase 2 ticket.
+
+12. Do not implement:
+
+- AI functionality
+- OCR
+- Case intake
+- Customer-support automation
+- Workflow business logic
+- Outbound email
+- SMS
+- Slack or Teams integration
+- Calendar or contact synchronization
+- Provider webhooks
+- LegalSynq lien or funding logic
+
+13. Preserve Xenia as:
+
+- Independent
+- Separately deployable
+- Tenant-aware
+- Provider-neutral
+- Adapter-driven
+- Portable to another host platform
+
+14. Keep implementation incremental.
+
+15. Do not redesign Migration 8 unless an actual schema defect prevents the runtime implementation.
+
+16. Do not weaken:
+
+- Tenant isolation
+- Authorization
+- Optimistic concurrency
+- Idempotency
+- Secret handling
+- Audit redaction
+- Runtime validation
+- Existing Email behavior
+
+17. Use only local, disposable, or controlled test infrastructure.
+
+18. Do not use production data or production databases.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Replace the remaining process-local mutable automation runtime components with EF Core and MySQL-backed implementations.
+
+Migration 8 already provides durable tables for:
+
+- Automation registry
+- Automation versions
+- Tenant automation state
+- Automation configuration
+- Automation runtime state
+- Automation executions
+- Automation dead letters
+- Automation schedules
+- Automation idempotency
+
+This ticket must make those tables the actual runtime source of truth.
+
+The completed system must ensure that mutable automation state:
+
+- Survives service restart
+- Survives process replacement
+- Is consistent across multiple Xenia instances
+- Uses optimistic concurrency
+- Prevents duplicate registration
+- Prevents duplicate execution
+- Prevents duplicate dead-letter replay
+- Preserves tenant isolation
+- Preserves existing Email automation behavior
+
+==================================================
+SOURCE MATERIAL
+==================================================
+
+Review before modifying code:
+
+/analysis/XENIA-P1-T5-report.md
+/analysis/XENIA-P1-PROD-V1-report.md
+
+Inspect the actual repository rather than relying only on reports.
+
+Confirm:
+
+- Migration 8 exists.
+- Migration 8 entities exist.
+- Migration 8 DbSets exist.
+- EF configurations exist.
+- Model snapshot contains automation entities.
+- Current automation interfaces exist.
+- Current in-memory implementations exist.
+- Current dependency-injection registrations.
+- Current automation APIs.
+- Current EmailAutomationProvider.
+- Current registry discovery process.
+- Current runtime-state behavior.
+- Current dead-letter behavior.
+- Current scheduling behavior.
+- Current idempotency behavior.
+- Current tests and test infrastructure.
+
+Record discrepancies in:
+
+/analysis/XENIA-P1-PROD-V1-T1-report.md
+
+==================================================
+LOCKED ARCHITECTURE
+==================================================
+
+1. Provider manifests may remain code-defined.
+
+2. Provider discovery may remain dependency-injection based.
+
+3. Mutable production state must be stored in MySQL.
+
+4. Production runtime must not use process-local state as the source of truth for:
+
+- Registry lifecycle
+- Tenant automation enablement
+- Configuration
+- Runtime health
+- Executions
+- Dead letters
+- Schedules
+- Idempotency
+
+5. In-memory implementations may remain only for:
+
+- Unit tests
+- Explicit development scenarios
+- Controlled fallback where clearly disabled in production-like environments
+
+6. Production and default runtime registrations must use EF-backed implementations.
+
+7. Xenia must not directly access another service's database.
+
+8. Automation persistence must contain no:
+
+- Credentials
+- Secret values
+- Raw provider tokens
+- Message bodies
+- Attachment binaries
+- Raw business payloads
+
+9. Existing Email APIs and behavior must remain backward compatible.
+
+10. No central switch statement should be introduced for provider registration.
+
+==================================================
+INITIAL REPOSITORY ANALYSIS
+==================================================
+
+Before source changes:
+
+1. Inspect:
+
+- Xenia.Domain/Automation
+- Xenia.Application/Automation
+- Xenia.Infrastructure/Automation
+- Xenia.Infrastructure/Persistence
+- XeniaDbContext
+- Automation entity configurations
+- Migration 8
+- XeniaDbContextModelSnapshot
+- DependencyInjection.cs
+- Program.cs
+- Automation endpoint registrations
+- EmailAutomationProvider
+- Existing in-memory registry
+- Existing in-memory runtime-state store
+- Existing in-memory dead-letter store
+- Existing scheduler implementation
+- Existing execution service
+- Existing configuration service
+- Existing lifecycle service
+- Existing tests
+
+2. Identify every interface and its current production implementation.
+
+3. Produce a mapping table in the report:
+
+| Interface | Current implementation | Required production implementation | Status |
+|---|---|---|---|
+
+4. Run and record:
+
+dotnet --info
+dotnet --list-sdks
+dotnet tool list
+docker --version
+docker compose version
+
+5. Confirm the disposable MySQL connection and existing Migration 8 schema before implementation.
+
+==================================================
+IMPLEMENTATION TASKS
+==================================================
+
+--------------------------------------------------
+1. IMPLEMENT EF AUTOMATION REGISTRY
+--------------------------------------------------
+
+Create or complete:
+
+EfAutomationRegistry
+
+It must implement the existing registry interface rather than creating a parallel contract unless the current interface is demonstrably insufficient.
+
+Required behavior:
+
+- Register automation
+- Find by automation key
+- List automations
+- Get current version
+- Get all versions
+- Read global lifecycle state
+- Update global lifecycle state
+- Read global enablement
+- Update global enablement
+- Read tenant enablement
+- Update tenant enablement
+- Resolve effective state
+- Read capabilities
+- Read dependencies
+- Read health/runtime state
+- Preserve provider-defined manifest data
+- Use durable entities as the source of truth
+
+Requirements:
+
+- Automation key uniqueness
+- Transactional registration
+- Optimistic concurrency
+- Cancellation tokens
+- Tenant isolation
+- Safe exception mapping
+- No process-local authoritative cache
+
+A read-through cache is permitted only if:
+
+- MySQL remains authoritative
+- Cache invalidation is reliable
+- Cache does not affect correctness
+- Multi-instance behavior remains correct
+
+--------------------------------------------------
+2. IMPLEMENT AUTOMATION REGISTRY RECONCILIATION
+--------------------------------------------------
+
+Create a startup reconciliation service.
+
+Suggested interface:
+
+IAutomationRegistryReconciler
+
+Suggested implementation:
+
+EfAutomationRegistryReconciler
+
+At startup:
+
+1. Discover all `IAutomationProvider` implementations.
+2. Validate each manifest.
+3. Compute a deterministic manifest hash.
+4. Insert missing automation registry rows.
+5. Insert missing automation versions.
+6. Update compatible safe metadata.
+7. Preserve platform lifecycle state.
+8. Preserve tenant enablement.
+9. Preserve tenant configuration.
+10. Preserve runtime state.
+11. Mark missing providers unavailable.
+12. Never automatically delete missing providers.
+13. Record last reconciliation timestamp.
+14. Emit safe audit or automation lifecycle events.
+
+Requirements:
+
+- Idempotent
+- Transactional where appropriate
+- Safe under concurrent startup
+- Handles duplicate-key races
+- Bounded retry
+- No duplicate versions
+- No tenant-state reset
+- No configuration loss
+
+Run reconciliation before automation APIs are considered ready.
+
+--------------------------------------------------
+3. IMPLEMENT EF AUTOMATION CONFIGURATION SERVICE
+--------------------------------------------------
+
+Create or complete:
+
+EfAutomationConfigurationService
+
+Required behavior:
+
+- Read platform configuration
+- Read tenant configuration
+- Resolve effective configuration
+- Update platform configuration
+- Update tenant configuration
+- Validate schema version
+- Enforce configuration-size limits
+- Preserve secret references as opaque references
+- Increment concurrency version
+- Audit successful changes
+- Reject stale updates
+
+Precedence must be explicit:
+
+1. Provider defaults
+2. Platform configuration
+3. Tenant configuration
+
+Do not resolve secret values inside configuration persistence.
+
+--------------------------------------------------
+4. IMPLEMENT EF AUTOMATION LIFECYCLE SERVICE
+--------------------------------------------------
+
+Create or complete:
+
+EfAutomationLifecycleService
+
+Persist and enforce:
+
+- Registered
+- Disabled
+- Enabled
+- Degraded
+- Unavailable
+- Retired
+
+Support:
+
+- Enable globally
+- Disable globally
+- Enable for tenant
+- Disable for tenant
+- Mark degraded
+- Mark unavailable
+- Mark restored
+- Retire
+- Resolve effective lifecycle state
+
+Requirements:
+
+- Valid transition matrix
+- Tenant isolation
+- Optimistic concurrency
+- Audit or lifecycle event emission
+- Missing providers marked unavailable, not deleted
+- Retired providers cannot execute unless explicitly restored through an approved transition
+
+--------------------------------------------------
+5. IMPLEMENT EF AUTOMATION RUNTIME-STATE STORE
+--------------------------------------------------
+
+Create or complete:
+
+EfAutomationRuntimeStateStore
+
+Persist:
+
+- Lifecycle state
+- Health state
+- Last execution
+- Last successful execution
+- Consecutive failure count
+- Total executions
+- Active executions
+- Total failures
+- Next eligible execution
+- Last safe error
+- Worker instance
+
+Required operations:
+
+- Get or create state
+- Record queued execution
+- Record start
+- Record success
+- Record failure
+- Record cancellation
+- Update health
+- Update next eligible execution
+- Reset failure state where appropriate
+
+Requirements:
+
+- Unique tenant + automation key
+- Transactional counter updates
+- Optimistic concurrency
+- Bounded retry for concurrency conflicts
+- No raw stack trace
+- No raw payload
+- No secret data
+
+--------------------------------------------------
+6. IMPLEMENT EF AUTOMATION EXECUTION SERVICE
+--------------------------------------------------
+
+Create or complete:
+
+EfAutomationExecutionService
+
+Persist the full execution lifecycle:
+
+- Queued
+- Running
+- Completed
+- CompletedWithErrors
+- Failed
+- Cancelled
+- DeadLettered
+
+Required operations:
+
+- Queue execution
+- Acquire queued execution
+- Mark running
+- Mark completed
+- Mark completed with errors
+- Mark failed
+- Mark cancelled
+- Mark dead-lettered
+- List tenant executions
+- Get execution detail
+- Find by correlation ID
+- Link parent execution
+- Link dead letter
+
+Requirements:
+
+- Execution ID unique
+- Tenant-scoped
+- Multi-instance-safe acquisition
+- Worker identity
+- Correlation propagation
+- Actor propagation
+- Safe summaries only
+- Optimistic concurrency
+- No duplicate provider invocation
+- Cancellation-aware
+
+Use an atomic state transition for acquisition.
+
+Examples:
+
+- Queued → Running only when current status is Queued
+- Update affected-row count must be exactly one
+- Concurrency conflict means another instance acquired the execution
+
+--------------------------------------------------
+7. IMPLEMENT EF AUTOMATION DEAD-LETTER STORE
+--------------------------------------------------
+
+Create or complete:
+
+EfAutomationDeadLetterStore
+
+Replace the production use of:
+
+InMemoryAutomationDeadLetterStore
+
+Required behavior:
+
+- Create dead letter idempotently
+- List tenant dead letters
+- Get detail
+- Acquire for retry
+- Mark retrying
+- Increment retry/replay count
+- Resolve
+- Abandon
+- Set next eligible retry
+- Link new execution
+- Preserve correlation ID
+- Enforce tenant isolation
+
+Multi-instance rule:
+
+Only one instance may acquire a dead letter for replay.
+
+Use:
+
+- Optimistic concurrency
+- Conditional status update
+- Lease or acquisition timestamp if required
+
+No raw payloads or sensitive content.
+
+--------------------------------------------------
+8. IMPLEMENT EF AUTOMATION SCHEDULE STORE
+--------------------------------------------------
+
+Create:
+
+IAutomationScheduleStore
+
+if no appropriate existing interface exists.
+
+Implement:
+
+EfAutomationScheduleStore
+
+Required behavior:
+
+- Create schedule
+- Read schedule
+- List tenant schedules
+- Update schedule
+- Enable schedule
+- Disable schedule
+- Delete or retire according to existing domain conventions
+- Update last run
+- Update next run
+- Validate schedule type
+- Validate time zone
+- Validate interval or expression
+- Enforce optimistic concurrency
+
+Schedule execution remains out of scope unless already implemented.
+
+If execution remains disabled:
+
+- Persist definitions
+- Expose them through existing APIs where appropriate
+- Clearly document that durable definition support does not imply active scheduler execution
+
+--------------------------------------------------
+9. IMPLEMENT EF AUTOMATION IDEMPOTENCY SERVICE
+--------------------------------------------------
+
+Create:
+
+IAutomationIdempotencyService
+
+if no suitable contract exists.
+
+Implement:
+
+EfAutomationIdempotencyService
+
+Required operations:
+
+- Reserve idempotency key
+- Compare request fingerprint
+- Associate execution ID
+- Get existing reservation
+- Release only when policy allows
+- Expire old records
+- Purge expired records safely
+
+Rules:
+
+- Unique tenant + automation key + idempotency key
+- Same fingerprint returns existing execution or reservation
+- Different fingerprint returns conflict
+- Cross-tenant keys independent
+- Concurrent duplicate requests create one execution only
+- Request fingerprint contains safe canonical metadata only
+- No raw request payload persisted
+
+--------------------------------------------------
+10. UPDATE AUTOMATION EXECUTION FLOW
+--------------------------------------------------
+
+Update the generic automation execution pipeline to use:
+
+- Durable registry
+- Durable tenant state
+- Durable configuration
+- Durable runtime state
+- Durable execution state
+- Durable idempotency
+- Durable dead letters
+
+Required sequence:
+
+1. Resolve trusted tenant.
+2. Resolve provider.
+3. Read durable lifecycle and tenant state.
+4. Validate effective enablement.
+5. Validate configuration.
+6. Reserve idempotency key where supplied.
+7. Create queued execution.
+8. Acquire execution.
+9. Mark running.
+10. Invoke provider.
+11. Persist result.
+12. Update runtime state.
+13. Emit events/audit.
+14. Create dead letter when retry threshold is exceeded.
+15. Associate idempotency reservation with execution.
+
+No process-local state may determine correctness.
+
+--------------------------------------------------
+11. UPDATE DEPENDENCY INJECTION
+--------------------------------------------------
+
+Production/default registrations must use:
+
+- EfAutomationRegistry
+- EfAutomationConfigurationService
+- EfAutomationLifecycleService
+- EfAutomationRuntimeStateStore
+- EfAutomationExecutionService
+- EfAutomationDeadLetterStore
+- EfAutomationScheduleStore
+- EfAutomationIdempotencyService
+- EfAutomationRegistryReconciler
+
+In-memory implementations may remain only for:
+
+- Unit tests
+- Explicit Development configuration
+- Controlled test fixtures
+
+Requirements:
+
+- Production-like environments must reject in-memory runtime configuration.
+- Readiness should expose active automation store type.
+- Startup logs should safely report selected implementation names.
+- No ambiguous duplicate DI registration.
+- Existing EmailAutomationProvider remains registered.
+
+--------------------------------------------------
+12. IMPLEMENT PRODUCTION STORE VALIDATION
+--------------------------------------------------
+
+At startup in Staging or Production-like environments:
+
+Fail startup if any mutable automation store resolves to an in-memory implementation.
+
+Validate at minimum:
+
+- Registry
+- Runtime state
+- Executions
+- Dead letters
+- Configuration
+- Schedules
+- Idempotency
+
+Development may allow in-memory stores only through an explicit configuration flag.
+
+Default must remain EF-backed.
+
+--------------------------------------------------
+13. TRANSACTION BOUNDARIES
+--------------------------------------------------
+
+Use transactions for operations that must remain atomic.
+
+Required examples:
+
+Registry reconciliation:
+- Registry insert/update
+- Version insert
+- Reconciliation timestamp
+
+Execution queueing:
+- Idempotency reservation
+- Execution insertion
+- Runtime-state queued counter
+
+Execution completion:
+- Execution status
+- Runtime-state counters
+- Dead-letter creation where applicable
+
+Dead-letter retry:
+- Acquire dead letter
+- Increment replay count
+- Create linked execution
+- Change dead-letter status
+
+Configuration update:
+- Configuration write
+- Version/concurrency update
+- Audit event where supported by transactional outbox or existing convention
+
+Do not hold database transactions open across provider network calls.
+
+--------------------------------------------------
+14. ERROR AND CONFLICT MAPPING
+--------------------------------------------------
+
+Map failures consistently.
+
+Examples:
+
+- Duplicate registration handled idempotently
+- Stale configuration version → conflict
+- Duplicate idempotency key with mismatched fingerprint → conflict
+- Execution already acquired → conflict/no work
+- Dead letter already retrying → conflict
+- Unknown tenant resource → platform-standard 404 or 403
+- Invalid lifecycle transition → 422 or domain validation failure
+
+Do not leak database exception details.
+
+==================================================
+VALIDATION TASKS
+==================================================
+
+--------------------------------------------------
+15. UNIT AND APPLICATION TESTS
+--------------------------------------------------
+
+Add tests for:
+
+EfAutomationRegistry:
+- Register
+- Duplicate register
+- Lookup
+- Version registration
+- Global enablement
+- Tenant enablement
+- Effective state
+- Missing provider unavailable
+
+Configuration:
+- Platform config
+- Tenant config
+- Precedence
+- Secret reference preservation
+- Concurrency conflict
+- Tenant isolation
+
+Lifecycle:
+- Valid transitions
+- Invalid transitions
+- Tenant override
+- Retired behavior
+- Missing provider
+
+Runtime state:
+- Create
+- Queue
+- Start
+- Complete
+- Fail
+- Cancel
+- Counter updates
+- Concurrency conflict
+
+Execution:
+- Queue
+- Acquire
+- Competing acquisition
+- Complete
+- Fail
+- Cancel
+- History
+- Detail
+- Tenant isolation
+
+Dead letter:
+- Create
+- Idempotent create
+- Retry
+- Competing retry
+- Resolve
+- Abandon
+- Replay limits
+- Tenant isolation
+
+Schedule:
+- Create
+- Update
+- Enable
+- Disable
+- Validation
+- Concurrency conflict
+- Tenant isolation
+
+Idempotency:
+- Reserve
+- Same fingerprint
+- Different fingerprint
+- Concurrent reserve
+- Cross-tenant independence
+- Expiration
+
+--------------------------------------------------
+16. RELATIONAL MYSQL TESTS
+--------------------------------------------------
+
+Use disposable MySQL.
+
+Do not rely only on EF InMemory provider.
+
+Validate:
+
+- Unique constraints
+- Concurrency tokens
+- Transaction rollbacks
+- Conditional status updates
+- Duplicate registration race
+- Execution acquisition race
+- Dead-letter retry race
+- Idempotency race
+- Configuration conflict
+- Tenant-scoped queries
+
+--------------------------------------------------
+17. RESTART-RECOVERY TEST
+--------------------------------------------------
+
+Execute this sequence:
+
+1. Start Xenia instance A.
+2. Reconcile Email provider.
+3. Enable Email automation for Tenant A.
+4. Save tenant configuration.
+5. Queue and complete one execution.
+6. Create one failed execution and dead letter.
+7. Create one schedule definition.
+8. Create one idempotency record.
+9. Stop instance A.
+10. Start a new process/service-provider instance B using the same database.
+11. Run registry reconciliation.
+12. Verify:
+
+- Registry row remains
+- Version row remains
+- Tenant enablement remains
+- Configuration remains
+- Runtime state remains
+- Execution history remains
+- Dead letter remains
+- Schedule remains
+- Idempotency remains
+- No duplicate registry/version rows appear
+
+Record actual database row counts before and after restart.
+
+--------------------------------------------------
+18. MULTI-INSTANCE TEST HARNESS
+--------------------------------------------------
+
+Create two independent service providers or runtime instances:
+
+- Instance A
+- Instance B
+
+Both must use:
+
+- Same MySQL database
+- Different instance/worker IDs
+- Same provider discovery configuration
+
+Do not use a single service provider for both simulated instances.
+
+--------------------------------------------------
+19. MULTI-INSTANCE REGISTRY TESTS
+--------------------------------------------------
+
+Start reconciliation concurrently.
+
+Validate:
+
+- One registry row
+- One row per version
+- No tenant-state reset
+- No configuration reset
+- Reconciliation timestamps valid
+- No unhandled duplicate-key exception
+
+--------------------------------------------------
+20. MULTI-INSTANCE EXECUTION TESTS
+--------------------------------------------------
+
+Queue one execution.
+
+Have both instances attempt acquisition.
+
+Validate:
+
+- One instance acquires
+- One instance does not execute
+- Provider invoked once
+- Execution status valid
+- Runtime counters increment once
+- No duplicate side effect
+
+--------------------------------------------------
+21. MULTI-INSTANCE DEAD-LETTER TESTS
+--------------------------------------------------
+
+Have two instances retry one dead letter.
+
+Validate:
+
+- One acquires retry
+- One receives conflict/no work
+- Replay count increments once
+- One linked retry execution
+- Final dead-letter status correct
+
+--------------------------------------------------
+22. MULTI-INSTANCE CONFIGURATION TESTS
+--------------------------------------------------
+
+Have two instances update the same configuration version.
+
+Validate:
+
+- One succeeds
+- One receives concurrency conflict
+- No silent overwrite
+- Final configuration deterministic
+
+--------------------------------------------------
+23. MULTI-INSTANCE IDEMPOTENCY TESTS
+--------------------------------------------------
+
+Submit the same idempotent execution request concurrently through two instances.
+
+Validate:
+
+- One execution created
+- Both callers resolve to the same execution where contract permits
+- No duplicate provider invocation
+- Different fingerprint returns conflict
+
+--------------------------------------------------
+24. SCHEDULE CONCURRENCY TESTS
+--------------------------------------------------
+
+If schedule execution remains disabled:
+
+- Validate concurrent schedule updates
+- Validate optimistic concurrency
+- Validate durable persistence
+- Mark active schedule acquisition not applicable
+
+If schedule acquisition exists:
+
+- Validate one-instance acquisition
+- Validate no duplicate execution
+- Validate NextRunAt update once
+
+--------------------------------------------------
+25. DATABASE INSPECTION
+--------------------------------------------------
+
+Verify runtime writes actual rows into:
+
+- xn_automation_registry
+- xn_automation_versions
+- xn_tenant_automations
+- xn_automation_configuration
+- xn_automation_runtime_state
+- xn_automation_executions
+- xn_automation_dead_letters
+- xn_automation_schedules
+- xn_automation_idempotency
+
+Record safe row counts and selected non-sensitive fields.
+
+==================================================
+BUILD AND VALIDATION COMMANDS
+==================================================
+
+Run:
+
+dotnet --info
+
+dotnet restore
+
+dotnet build
+
+dotnet publish
+
+dotnet test
+
+Run repository-equivalent project-specific commands when required.
+
+Migration inspection:
+
+dotnet ef migrations list
+
+If EF database update remains blocked by the documented Pomelo issue:
+
+- Do not fabricate EF success.
+- Use the approved disposable MySQL migration mechanism.
+- Record the EF failure.
+- Record the alternative migration command.
+- Confirm Migration 8 schema exists.
+- Do not modify migration designer metadata further unless required by an approved migration strategy.
+
+Runtime:
+
+dotnet run --project apps/services/xenia/Xenia.Api
+
+Use disposable MySQL and test configuration.
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+The ticket is complete only when:
+
+1. EfAutomationRegistry exists.
+
+2. Production uses EfAutomationRegistry.
+
+3. InMemoryAutomationRegistry is not the production source of truth.
+
+4. Registry rows are written to MySQL.
+
+5. Automation versions are written to MySQL.
+
+6. Tenant automation state is written to MySQL.
+
+7. EfAutomationConfigurationService exists.
+
+8. Production uses durable automation configuration.
+
+9. Platform configuration persists.
+
+10. Tenant configuration persists.
+
+11. Configuration precedence works.
+
+12. Configuration optimistic concurrency works.
+
+13. EfAutomationLifecycleService exists.
+
+14. Global lifecycle state persists.
+
+15. Tenant lifecycle state persists.
+
+16. Missing providers are marked unavailable.
+
+17. EfAutomationRuntimeStateStore exists.
+
+18. Production uses durable runtime state.
+
+19. Runtime counters persist.
+
+20. Runtime health persists.
+
+21. Runtime failure state persists.
+
+22. EfAutomationExecutionService exists.
+
+23. Production uses durable execution state.
+
+24. Execution queue state persists.
+
+25. Running state persists.
+
+26. Completion state persists.
+
+27. Failed state persists.
+
+28. Cancelled state persists.
+
+29. Execution history persists.
+
+30. Execution acquisition is atomic.
+
+31. EfAutomationDeadLetterStore exists.
+
+32. Production uses durable dead-letter storage.
+
+33. Dead letters survive restart.
+
+34. Dead-letter retry is atomic.
+
+35. Competing dead-letter replay is prevented.
+
+36. Dead-letter resolution persists.
+
+37. Dead-letter abandonment persists.
+
+38. EfAutomationScheduleStore exists.
+
+39. Schedule definitions persist.
+
+40. Schedule updates enforce concurrency.
+
+41. Schedule state survives restart.
+
+42. EfAutomationIdempotencyService exists.
+
+43. Idempotency records persist.
+
+44. Same idempotency key and fingerprint do not create duplicate execution.
+
+45. Mismatched fingerprint returns conflict.
+
+46. Concurrent idempotency reservation creates one execution.
+
+47. Startup registry reconciliation exists.
+
+48. Reconciliation is idempotent.
+
+49. Concurrent reconciliation creates no duplicate registration.
+
+50. New versions register automatically.
+
+51. Tenant state is preserved during reconciliation.
+
+52. Configuration is preserved during reconciliation.
+
+53. Missing provider records are not deleted.
+
+54. Production dependency injection defaults to EF implementations.
+
+55. Production-like startup rejects in-memory mutable stores.
+
+56. In-memory stores remain available only for explicit development or tests.
+
+57. Restart recovery is demonstrated.
+
+58. Registry state survives restart.
+
+59. Version state survives restart.
+
+60. Tenant enablement survives restart.
+
+61. Configuration survives restart.
+
+62. Runtime state survives restart.
+
+63. Execution history survives restart.
+
+64. Dead letters survive restart.
+
+65. Schedules survive restart.
+
+66. Idempotency survives restart.
+
+67. Two independent instances are used for concurrency validation.
+
+68. Duplicate registry startup is prevented.
+
+69. Duplicate execution acquisition is prevented.
+
+70. Duplicate provider invocation is prevented.
+
+71. Duplicate dead-letter replay is prevented.
+
+72. Configuration stale writes are rejected.
+
+73. Idempotency works across instances.
+
+74. Tenant A cannot read Tenant B automation state.
+
+75. Tenant A cannot update Tenant B configuration.
+
+76. Tenant A cannot read Tenant B execution.
+
+77. Tenant A cannot retry Tenant B dead letter.
+
+78. Tenant A cannot update Tenant B schedule.
+
+79. Existing Email automation APIs remain compatible.
+
+80. EmailAutomationProvider remains registered.
+
+81. No Phase 2 business functionality is implemented.
+
+82. No new credential columns are introduced.
+
+83. No raw business-payload persistence is introduced.
+
+84. No message-body persistence is introduced into automation tables.
+
+85. Backend restores successfully.
+
+86. Backend builds successfully.
+
+87. API publishes successfully.
+
+88. Critical automated tests pass.
+
+89. Final test counts are documented.
+
+90. Disposable MySQL relational tests execute.
+
+91. Database inspection proves runtime table usage.
+
+92. `/analysis/XENIA-P1-PROD-V1-T1-report.md` exists.
+
+93. The report was created before code changes.
+
+94. The report was updated incrementally.
+
+95. Validation commands include exit codes.
+
+96. Restart evidence includes before/after row counts.
+
+97. Multi-instance evidence identifies both instance IDs.
+
+98. Acceptance criteria include evidence and notes.
+
+99. Completion percentage is evidence-based.
+
+100. The report recommends whether XENIA-P1-PROD-V1 may proceed to its remaining validation work.
+
+==================================================
+OUT OF SCOPE
+==================================================
+
+Do not implement:
+
+- AI
+- OCR
+- Case intake
+- Customer-support workflows
+- Workflow business rules
+- Email sending
+- SMS
+- Slack
+- Teams
+- Calendar synchronization
+- Contact synchronization
+- Provider webhooks
+- Distributed scheduling enhancements
+- New Phase 2 automation providers
+- LegalSynq lien or funding logic
+- GitHub operations
+- GitHub Actions
+- AWS deployment
+- Production infrastructure changes
+- Production data migration
+- Production runtime claims
+
+==================================================
+KNOWN RESTRICTIONS
+==================================================
+
+- Use Migration 8 as the existing schema baseline.
+- Do not redesign tables without an evidenced defect.
+- Do not make in-memory stores the production fallback.
+- Do not hold database transactions open across external provider calls.
+- Do not introduce arbitrary dynamic plugin loading.
+- Do not weaken concurrency handling.
+- Do not weaken tenant isolation.
+- Do not store resolved secrets.
+- Do not store raw automation payloads.
+- Do not fabricate restart or multi-instance results.
+- Do not begin another ticket.
+
+==================================================
+REQUIRED REPORT STRUCTURE
+==================================================
+
+Create before any code change:
+
+/analysis/XENIA-P1-PROD-V1-T1-report.md
+
+Use at least:
+
+# XENIA-P1-PROD-V1-T1 Durable Automation Runtime Integration Report
+
+## 1. Executive Summary
+
+## 2. Ticket Information
+- Ticket ID
+- Parent ticket
+- Task type
+- Objective
+- Current status
+
+## 3. Prior Report Review
+- Confirmed claims
+- Incorrect claims
+- Unverified claims
+- Missing evidence
+
+## 4. Initial Repository Analysis
+
+## 5. Toolchain and Environment
+
+## 6. Implementation Progress
+Maintain:
+- Not started
+- In progress
+- Completed
+- Partially completed
+- Failed
+- Blocked
+- Accepted limitation
+
+## 7. Interface-to-Implementation Mapping
+
+## 8. Files Inspected
+
+## 9. Durable Runtime Architecture
+
+## 10. EF Automation Registry
+
+## 11. Registry Reconciliation
+
+## 12. EF Automation Configuration Service
+
+## 13. EF Automation Lifecycle Service
+
+## 14. EF Automation Runtime-State Store
+
+## 15. EF Automation Execution Service
+
+## 16. EF Automation Dead-Letter Store
+
+## 17. EF Automation Schedule Store
+
+## 18. EF Automation Idempotency Service
+
+## 19. Automation Execution Flow Changes
+
+## 20. Dependency-Injection Changes
+
+## 21. Production Store Validation
+
+## 22. Transaction Boundaries
+
+## 23. Concurrency Handling
+
+## 24. Error and Conflict Mapping
+
+## 25. Migration 8 Compatibility
+
+## 26. Database Runtime Usage
+Include safe row counts for every automation table.
+
+## 27. Restart-Recovery Validation
+Include:
+- State before shutdown
+- Shutdown command/result
+- Restart command/result
+- State after restart
+- Duplicate-row checks
+
+## 28. Multi-Instance Test Harness
+Include:
+- Instance A ID
+- Instance B ID
+- Shared database
+- Service-provider separation
+
+## 29. Concurrent Registry Reconciliation
+
+## 30. Concurrent Execution Acquisition
+
+## 31. Concurrent Dead-Letter Replay
+
+## 32. Concurrent Configuration Update
+
+## 33. Concurrent Idempotency Reservation
+
+## 34. Schedule Concurrency
+
+## 35. Tenant Isolation
+
+## 36. Email Backward Compatibility
+
+## 37. Tests Added or Updated
+
+## 38. Test Execution Results
+- Total discovered
+- Total executed
+- Passed
+- Failed
+- Skipped
+- Duration
+- Command
+- Exit code
+
+## 39. Build and Publish Results
+
+## 40. Security Review
+
+## 41. Sensitive-Content Review
+
+## 42. Acceptance Criteria Matrix
+For every criterion:
+- Criterion ID
+- Criterion
+- Status
+- Evidence
+- Command/test
+- Notes
+
+## 43. Issues Found
+
+## 44. Remediation Performed
+
+## 45. Remaining Gaps
+
+## 46. Risks and Architecture Concerns
+
+## 47. Environmental Limitations
+
+## 48. Out-of-Scope Confirmation
+
+## 49. XENIA-P1-PROD-V1 Continuation Recommendation
+Use one:
+- Ready to continue
+- Ready with prerequisites
+- Not ready
+- Blocked
+
+## 50. Final Status
+Use one:
+- Complete
+- Complete with limitations
+- Partially complete
+- Blocked
+- Failed
+
+## 51. Completion Percentage
+
+## 52. Follow-Up Recommendations
+
+==================================================
+FINAL RESPONSE REQUIREMENTS
+==================================================
+
+When implementation and validation are complete:
+
+1. Fully update the report.
+
+2. Remove or resolve placeholder text unless an item is genuinely blocked and documented.
+
+3. Provide a concise final response containing:
+
+- Ticket ID
+- Final status
+- Completion percentage
+- Build result
+- Publish result
+- Test result
+- EF registry result
+- Registry reconciliation result
+- Configuration persistence result
+- Lifecycle persistence result
+- Runtime-state result
+- Execution persistence result
+- Dead-letter persistence result
+- Schedule persistence result
+- Idempotency result
+- Dependency-injection result
+- Production-store validation result
+- Restart-recovery result
+- Multi-instance registry result
+- Multi-instance execution result
+- Multi-instance dead-letter result
+- Multi-instance configuration result
+- Multi-instance idempotency result
+- Tenant-isolation result
+- Email backward-compatibility result
+- Known limitations
+- XENIA-P1-PROD-V1 continuation recommendation
+- Exact report path
+
+4. Do not claim GitHub success.
+
+5. Do not claim AWS success.
+
+6. Do not claim production deployment success.
+
+7. Stop after XENIA-P1-PROD-V1-T1.
+
+Do not begin the next subtask.

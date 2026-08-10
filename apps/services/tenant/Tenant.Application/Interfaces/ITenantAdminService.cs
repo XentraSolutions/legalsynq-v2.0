@@ -55,8 +55,8 @@ public interface ITenantAdminService
     /// TENANT-B12 — Admin entitlement toggle (Tenant-first).
     ///
     /// Upserts the TenantProductEntitlement record in Tenant DB (authoritative),
-    /// then best-effort syncs to Identity so Identity-side TenantProduct records
-    /// stay consistent. Identity sync failure does not fail the operation.
+    /// then syncs to Identity so Identity-side TenantProduct records stay
+    /// consistent. Identity sync failure rolls the Tenant-side change back.
     ///
     /// Returns a shape compatible with the control-center mapEntitlementResponse mapper.
     /// </summary>

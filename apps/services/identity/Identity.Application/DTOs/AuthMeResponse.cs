@@ -46,4 +46,10 @@ public record AuthMeResponse(
     /// UI rendering (hide/disable unavailable actions) without a separate API call.
     /// Frontend checks are UX-only — backend enforcement (LS-ID-TNT-012) remains authoritative.
     /// </summary>
-    List<string>? Permissions = null);
+    List<string>? Permissions = null,
+    /// <summary>
+    /// Freshly minted access token for sliding-session renewal. Intended for the server-side
+    /// BFF only, which rotates the HttpOnly cookie and strips this field before returning the
+    /// session envelope to browser JavaScript.
+    /// </summary>
+    string? RefreshedAccessToken = null);

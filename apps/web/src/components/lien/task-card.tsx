@@ -6,6 +6,7 @@ import {
   TASK_PRIORITY_COLORS,
   TASK_PRIORITY_ICONS,
 } from '@/lib/liens/lien-tasks.types';
+import { DateDisplay } from '@/components/ui/date-display';
 
 interface AssigneeInfo {
   firstName: string;
@@ -49,16 +50,6 @@ function getInitials(first: string, last: string): string {
   return `${first.charAt(0)}${last.charAt(0)}`.toUpperCase();
 }
 
-function formatDate(val?: string | null): string {
-  if (!val) return '—';
-  try {
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return val;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return val;
-  }
-}
 
 function isOverdue(dueDate?: string | null, status?: string): boolean {
   if (!dueDate || status === 'COMPLETED' || status === 'CANCELLED') return false;
@@ -114,7 +105,7 @@ export function TaskCard({ task, onClick, compact = false, assigneeUser }: TaskC
         )}
         {task.dueDate && (
           <span className={`text-[10px] flex items-center gap-0.5 ${overdue ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-            <i className="ri-calendar-line" />{formatDate(task.dueDate)}
+            <i className="ri-calendar-line" /><DateDisplay value={task.dueDate} format="date" />
             {overdue && <i className="ri-error-warning-line" />}
           </span>
         )}

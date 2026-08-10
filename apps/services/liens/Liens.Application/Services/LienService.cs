@@ -11,43 +11,93 @@ namespace Liens.Application.Services;
 public sealed class LienService : ILienService
 {
     private readonly ILienRepository           _lienRepo;
+    private readonly ILienStatusHistoryRepository _lienStatusHistoryRepo;
     private readonly ICaseRepository           _caseRepo;
+    private readonly IContactRepository        _contactRepo;
     private readonly IFacilityRepository       _facilityRepo;
     private readonly IAuditPublisher           _audit;
-    private readonly ILienTaskGenerationEngine _taskGenEngine;
-    private readonly ILogger<LienService>      _logger;
+    private readonly ILienTaskGenerationDispatcher _taskGenDispatcher;
+    private readonly ILogger<LienService>          _logger;
 
     public LienService(
         ILienRepository lienRepo,
+        ILienStatusHistoryRepository lienStatusHistoryRepo,
         ICaseRepository caseRepo,
+        IContactRepository contactRepo,
         IFacilityRepository facilityRepo,
         IAuditPublisher audit,
-        ILienTaskGenerationEngine taskGenEngine,
+        ILienTaskGenerationDispatcher taskGenDispatcher,
         ILogger<LienService> logger)
     {
-        _lienRepo      = lienRepo;
-        _caseRepo      = caseRepo;
-        _facilityRepo  = facilityRepo;
-        _audit         = audit;
-        _taskGenEngine = taskGenEngine;
-        _logger        = logger;
+        _lienRepo          = lienRepo;
+        _lienStatusHistoryRepo = lienStatusHistoryRepo;
+        _caseRepo          = caseRepo;
+        _contactRepo       = contactRepo;
+        _facilityRepo      = facilityRepo;
+        _audit             = audit;
+        _taskGenDispatcher = taskGenDispatcher;
+        _logger            = logger;
     }
 
     public async Task<PaginatedResult<LienResponse>> SearchAsync(
         Guid tenantId, string? search, string? status, string? lienType,
         Guid? caseId, Guid? facilityId, int page, int pageSize,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        DateTime? createdFromUtc = null,
+        DateTime? createdToUtc = null,
+        Guid? visibleOrgId = null,
+        bool includeSellerOrg = false,
+        bool includeBuyerOrg = false,
+        bool includeHolderOrg = false,
+        bool includeMarketplace = false,
+        bool excludeRejectedAndCancelled = false)
     {
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
         var (items, totalCount) = await _lienRepo.SearchAsync(
-            tenantId, search, status, lienType, caseId, facilityId, page, pageSize, ct);
+            tenantId,
+            search,
+            status,
+            lienType,
+            caseId,
+            facilityId,
+            page,
+            pageSize,
+            ct,
+            createdFromUtc,
+            createdToUtc,
+            visibleOrgId,
+            includeSellerOrg,
+            includeBuyerOrg,
+            includeHolderOrg,
+            includeMarketplace,
+            excludeRejectedAndCancelled);
+
+        var casesById = await LoadCasesByIdAsync(tenantId, items, ct);
+        var facilitiesById = await LoadFacilitiesByIdAsync(tenantId, items, ct);
+        var caseManagerById = await LoadCaseManagersByIdAsync(tenantId, casesById.Values, ct);
+        var lawFirms = await _contactRepo.GetAllByTypeAsync(tenantId, ContactType.LawFirm, isActive: null, ct);
+        var lawFirmById = lawFirms.ToDictionary(contact => contact.Id);
+        var lawFirmByOrgId = lawFirms
+            .GroupBy(contact => contact.OrgId)
+            .ToDictionary(group => group.Key, group => group.First());
 
         return new PaginatedResult<LienResponse>
         {
-            Items = items.Select(MapToResponse).ToList(),
+            Items = items.Select(item => MapToResponse(
+                item,
+                caseEntity: casesById.GetValueOrDefault(item.CaseId ?? Guid.Empty),
+                facility: facilitiesById.GetValueOrDefault(item.FacilityId ?? Guid.Empty),
+                lawFirm: ResolveLawFirmName(
+                    item,
+                    casesById.GetValueOrDefault(item.CaseId ?? Guid.Empty),
+                    lawFirmById,
+                    lawFirmByOrgId),
+                caseManager: ResolveCaseManagerName(
+                    casesById.GetValueOrDefault(item.CaseId ?? Guid.Empty),
+                    caseManagerById))).ToList(),
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount,
@@ -57,13 +107,19 @@ public sealed class LienService : ILienService
     public async Task<LienResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
     {
         var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct);
-        return entity is null ? null : MapToResponse(entity);
+        if (entity is null)
+            return null;
+
+        return await MapToResponseAsync(tenantId, entity, ct);
     }
 
     public async Task<LienResponse?> GetByLienNumberAsync(Guid tenantId, string lienNumber, CancellationToken ct = default)
     {
         var entity = await _lienRepo.GetByLienNumberAsync(tenantId, lienNumber, ct);
-        return entity is null ? null : MapToResponse(entity);
+        if (entity is null)
+            return null;
+
+        return await MapToResponseAsync(tenantId, entity, ct);
     }
 
     public async Task<LienResponse> CreateAsync(
@@ -101,12 +157,14 @@ public sealed class LienService : ILienService
                 $"A lien with number '{lienNumber}' already exists.",
                 "LIEN_NUMBER_DUPLICATE");
 
-        if (request.FacilityId.HasValue)
+        var resolvedFacilityId = request.FacilityId.HasValue
+            ? await ResolveFacilityIdAsync(tenantId, request.FacilityId.Value, actingUserId, ct)
+            : null;
+
+        if (request.FacilityId.HasValue && !resolvedFacilityId.HasValue)
         {
-            var facilityEntity = await _facilityRepo.GetByIdAsync(tenantId, request.FacilityId.Value, ct);
-            if (facilityEntity is null)
-                throw new ValidationException("Referenced facility does not exist.",
-                    new Dictionary<string, string[]> { ["facilityId"] = [$"Facility '{request.FacilityId.Value}' not found."] });
+            throw new ValidationException("Referenced facility does not exist.",
+                new Dictionary<string, string[]> { ["facilityId"] = [$"Facility '{request.FacilityId.Value}' not found."] });
         }
 
         var entity = Lien.Create(
@@ -118,12 +176,16 @@ public sealed class LienService : ILienService
             createdByUserId: actingUserId,
             externalReference: request.ExternalReference,
             caseId: request.CaseId,
-            facilityId: request.FacilityId,
+            facilityId: resolvedFacilityId,
             subjectFirstName: request.SubjectFirstName,
             subjectLastName: request.SubjectLastName,
             isConfidential: request.IsConfidential,
             jurisdiction: request.Jurisdiction,
             incidentDate: request.IncidentDate,
+            initialServiceDate: request.InitialServiceDate,
+            endServiceDate: request.EndServiceDate,
+            isBulk: request.IsBulk,
+            isServicing: request.IsServicing,
             description: request.Description);
 
         await _lienRepo.AddAsync(entity, ct);
@@ -141,9 +203,9 @@ public sealed class LienService : ILienService
             entityType: "Lien",
             entityId: entity.Id.ToString());
 
-        // Fire-and-observe: task generation failure must not block lien creation
-        var lienId     = entity.Id;
-        var genContext  = new TaskGenerationContext(
+        // Run task generation in an isolated scope so it never reuses the request DbContext.
+        var lienId = entity.Id;
+        var genContext = new TaskGenerationContext(
             TenantId:       tenantId,
             EventType:      Domain.Enums.TaskGenerationEventType.LienCreated,
             EntityType:     "LIEN",
@@ -153,14 +215,9 @@ public sealed class LienService : ILienService
             WorkflowStageId: null,
             ActorUserId:    actingUserId);
 
-        _ = _taskGenEngine.TriggerAsync(genContext, CancellationToken.None)
-            .ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                    _logger.LogWarning(t.Exception, "Task generation failed for lien {LienId}.", lienId);
-            }, TaskContinuationOptions.OnlyOnFaulted);
+        _taskGenDispatcher.Dispatch(genContext);
 
-        return MapToResponse(entity);
+        return await MapToResponseAsync(tenantId, entity, ct);
     }
 
     private async Task<string> GenerateLienNumberAsync(Guid tenantId, Case caseEntity, CancellationToken ct)
@@ -212,12 +269,14 @@ public sealed class LienService : ILienService
                     new Dictionary<string, string[]> { ["caseId"] = [$"Case '{request.CaseId.Value}' not found."] });
         }
 
-        if (request.FacilityId.HasValue && request.FacilityId != entity.FacilityId)
+        var resolvedFacilityId = request.FacilityId.HasValue
+            ? await ResolveFacilityIdAsync(tenantId, request.FacilityId.Value, actingUserId, ct)
+            : null;
+
+        if (request.FacilityId.HasValue && !resolvedFacilityId.HasValue)
         {
-            var facilityEntity = await _facilityRepo.GetByIdAsync(tenantId, request.FacilityId.Value, ct);
-            if (facilityEntity is null)
-                throw new ValidationException("Referenced facility does not exist.",
-                    new Dictionary<string, string[]> { ["facilityId"] = [$"Facility '{request.FacilityId.Value}' not found."] });
+            throw new ValidationException("Referenced facility does not exist.",
+                new Dictionary<string, string[]> { ["facilityId"] = [$"Facility '{request.FacilityId.Value}' not found."] });
         }
 
         entity.Update(
@@ -230,13 +289,17 @@ public sealed class LienService : ILienService
             isConfidential: request.IsConfidential,
             jurisdiction: request.Jurisdiction,
             incidentDate: request.IncidentDate,
+            initialServiceDate: request.InitialServiceDate ?? entity.InitialServiceDate,
+            endServiceDate: request.EndServiceDate ?? entity.EndServiceDate,
+            isBulk: request.IsBulk ?? entity.IsBulk,
+            isServicing: request.IsServicing ?? entity.IsServicing,
             description: request.Description);
 
         if (request.CaseId.HasValue)
             entity.AttachCase(request.CaseId.Value, actingUserId);
 
-        if (request.FacilityId.HasValue)
-            entity.AttachFacility(request.FacilityId.Value, actingUserId);
+        if (resolvedFacilityId.HasValue && resolvedFacilityId != entity.FacilityId)
+            entity.AttachFacility(resolvedFacilityId.Value, actingUserId);
 
         await _lienRepo.UpdateAsync(entity, ct);
 
@@ -252,10 +315,74 @@ public sealed class LienService : ILienService
             entityType: "Lien",
             entityId: entity.Id.ToString());
 
-        return MapToResponse(entity);
+        return await MapToResponseAsync(tenantId, entity, ct);
     }
 
-    private static LienResponse MapToResponse(Lien entity)
+    public async Task<LienResponse> SetLegacyMedicalStatusAsync(
+        Guid tenantId, Guid id, Guid actingUserId,
+        string status, CancellationToken ct = default)
+    {
+        var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
+            ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
+
+        entity.SetLegacyMedicalStatus(status.Trim(), actingUserId);
+
+        await _lienRepo.UpdateAsync(entity, ct);
+        await RecordStatusHistoryAsync(
+            entity,
+            actingUserId,
+            $"Lien status updated to {MapBusinessStatusLabel(entity.Status)}.",
+            ct);
+
+        _logger.LogInformation(
+            "Legacy medical lien status updated: {LienId} Status={Status} Tenant={TenantId}",
+            entity.Id, entity.Status, tenantId);
+
+        _audit.Publish(
+            eventType: "liens.lien.legacy_medical_status_updated",
+            action: "update",
+            description: $"Legacy medical status for lien '{entity.LienNumber}' updated to '{entity.Status}'",
+            tenantId: tenantId,
+            actorUserId: actingUserId,
+            entityType: "Lien",
+            entityId: entity.Id.ToString());
+
+        return await MapToResponseAsync(tenantId, entity, ct);
+    }
+
+    private async Task<LienResponse> MapToResponseAsync(Guid tenantId, Lien entity, CancellationToken ct)
+    {
+        var caseEntity = entity.CaseId.HasValue
+            ? await _caseRepo.GetByIdAsync(tenantId, entity.CaseId.Value, ct)
+            : null;
+        var facility = entity.FacilityId.HasValue
+            ? await _facilityRepo.GetByIdAsync(tenantId, entity.FacilityId.Value, ct)
+            : null;
+
+        var caseManagerById = await LoadCaseManagersByIdAsync(
+            tenantId,
+            caseEntity is null ? [] : [caseEntity],
+            ct);
+        var lawFirms = await _contactRepo.GetAllByTypeAsync(tenantId, ContactType.LawFirm, isActive: null, ct);
+        var lawFirmById = lawFirms.ToDictionary(contact => contact.Id);
+        var lawFirmByOrgId = lawFirms
+            .GroupBy(contact => contact.OrgId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        return MapToResponse(
+            entity,
+            caseEntity,
+            facility,
+            ResolveLawFirmName(entity, caseEntity, lawFirmById, lawFirmByOrgId),
+            ResolveCaseManagerName(caseEntity, caseManagerById));
+    }
+
+    private static LienResponse MapToResponse(
+        Lien entity,
+        Case? caseEntity = null,
+        Facility? facility = null,
+        string? lawFirm = null,
+        string? caseManager = null)
     {
         return new LienResponse
         {
@@ -264,6 +391,7 @@ public sealed class LienService : ILienService
             ExternalReference = entity.ExternalReference,
             LienType = entity.LienType,
             Status = entity.Status,
+            StatusLabel = MapBusinessStatusLabel(entity.Status),
             CaseId = entity.CaseId,
             FacilityId = entity.FacilityId,
             OriginalAmount = entity.OriginalAmount,
@@ -276,11 +404,22 @@ public sealed class LienService : ILienService
             SubjectFirstName = entity.SubjectFirstName,
             SubjectLastName = entity.SubjectLastName,
             SubjectDisplayName = BuildDisplayName(entity.SubjectFirstName, entity.SubjectLastName),
+            Plaintiff = caseEntity is null ? null : BuildDisplayName(caseEntity.ClientFirstName, caseEntity.ClientLastName),
+            LawFirm = lawFirm,
+            MedicalFacility = facility?.Name,
+            CaseManager = caseManager,
             OrgId = entity.OrgId,
             SellingOrgId = entity.SellingOrgId,
             BuyingOrgId = entity.BuyingOrgId,
             HoldingOrgId = entity.HoldingOrgId,
             IncidentDate = entity.IncidentDate,
+            PurchaseDate = entity.IncidentDate?.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture),
+            InitialServiceDate = entity.InitialServiceDate,
+            EndServiceDate = entity.EndServiceDate,
+            TotalPurchase = null,
+            TotalBilling = null,
+            IsBulk = entity.IsBulk,
+            IsServicing = entity.IsServicing,
             Description = entity.Description,
             OpenedAtUtc = entity.OpenedAtUtc,
             ClosedAtUtc = entity.ClosedAtUtc,
@@ -289,10 +428,233 @@ public sealed class LienService : ILienService
         };
     }
 
+    private static string MapBusinessStatusLabel(string status) => status switch
+    {
+        LienStatus.Cancelled or LienStatus.Declined => "Rejected",
+        LienStatus.Settled or LienStatus.Withdrawn => "Closed",
+        _ => "Open",
+    };
+
+    private async Task<Dictionary<Guid, Case>> LoadCasesByIdAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Lien> items,
+        CancellationToken ct)
+    {
+        var caseIds = items
+            .Where(item => item.CaseId.HasValue)
+            .Select(item => item.CaseId!.Value)
+            .Distinct()
+            .ToArray();
+
+        return (await _caseRepo.GetByIdsAsync(tenantId, caseIds, ct))
+            .ToDictionary(item => item.Id);
+    }
+
+    private async Task<Dictionary<Guid, Facility>> LoadFacilitiesByIdAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Lien> items,
+        CancellationToken ct)
+    {
+        var facilityIds = items
+            .Where(item => item.FacilityId.HasValue)
+            .Select(item => item.FacilityId!.Value)
+            .Distinct()
+            .ToArray();
+
+        return (await _facilityRepo.GetByIdsAsync(tenantId, facilityIds, ct))
+            .ToDictionary(item => item.Id);
+    }
+
+    private async Task<Dictionary<Guid, Contact>> LoadCaseManagersByIdAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Case> cases,
+        CancellationToken ct)
+    {
+        var caseManagerIds = cases
+            .Select(caseEntity => GetMetadataValue(ParseCaseMetadata(caseEntity.Notes), "caseManagerId"))
+            .Where(value => Guid.TryParse(value, out _))
+            .Select(value => Guid.Parse(value!))
+            .Distinct()
+            .ToArray();
+
+        return (await _contactRepo.GetByIdsAsync(tenantId, caseManagerIds, ct))
+            .ToDictionary(contact => contact.Id);
+    }
+
+    private static string? ResolveLawFirmName(
+        Lien lien,
+        Case? caseEntity,
+        IReadOnlyDictionary<Guid, Contact> lawFirmById,
+        IReadOnlyDictionary<Guid, Contact> lawFirmByOrgId)
+    {
+        if (caseEntity is null)
+            return null;
+
+        var metadata = ParseCaseMetadata(caseEntity.Notes);
+        var lawFirmId = GetMetadataValue(metadata, "lawFirmId");
+        if (Guid.TryParse(lawFirmId, out var parsedLawFirmId) &&
+            lawFirmById.TryGetValue(parsedLawFirmId, out var lawFirmContact))
+        {
+            return FirstNonEmpty(lawFirmContact.Organization, lawFirmContact.DisplayName);
+        }
+
+        if (lawFirmByOrgId.TryGetValue(caseEntity.OrgId, out var orgLawFirmContact))
+            return FirstNonEmpty(orgLawFirmContact.Organization, orgLawFirmContact.DisplayName);
+
+        if (lawFirmByOrgId.TryGetValue(lien.OrgId, out var lienOrgLawFirmContact))
+            return FirstNonEmpty(lienOrgLawFirmContact.Organization, lienOrgLawFirmContact.DisplayName);
+
+        return FirstNonEmpty(GetMetadataValue(metadata, "lawFirm"));
+    }
+
+    private static string? ResolveCaseManagerName(
+        Case? caseEntity,
+        IReadOnlyDictionary<Guid, Contact> caseManagerById)
+    {
+        if (caseEntity is null)
+            return null;
+
+        var metadata = ParseCaseMetadata(caseEntity.Notes);
+        var caseManagerId = GetMetadataValue(metadata, "caseManagerId");
+        if (Guid.TryParse(caseManagerId, out var parsedCaseManagerId) &&
+            caseManagerById.TryGetValue(parsedCaseManagerId, out var caseManagerContact))
+        {
+            return caseManagerContact.DisplayName;
+        }
+
+        return FirstNonEmpty(GetMetadataValue(metadata, "caseManager"));
+    }
+
+    private static Dictionary<string, string> ParseCaseMetadata(string? notes)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(notes))
+            return result;
+
+        const string legacyMetadataMarker = "[legacy-meta]";
+        var rawMetadata = notes;
+        var markerIndex = notes.IndexOf(legacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+        {
+            rawMetadata = notes[(markerIndex + legacyMetadataMarker.Length)..].Trim();
+        }
+        else if (!LooksLikeLegacyMetadata(notes))
+        {
+            return result;
+        }
+
+        foreach (var segment in rawMetadata.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separatorIndex = segment.IndexOf('=');
+            if (separatorIndex <= 0)
+                continue;
+
+            var key = segment[..separatorIndex].Trim();
+            var value = segment[(separatorIndex + 1)..].Trim();
+            if (key.Length > 0)
+                result[key] = value;
+        }
+
+        return result;
+    }
+
+    private static bool LooksLikeLegacyMetadata(string notes)
+    {
+        var segments = notes.Split("; ", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return segments.Length > 0 && segments.All(segment => segment.Contains('='));
+    }
+
+    private static string? GetMetadataValue(Dictionary<string, string> metadata, string key)
+        => metadata.GetValueOrDefault(key);
+
+    private static string? FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
     private static string? BuildDisplayName(string? firstName, string? lastName)
     {
         var display = $"{firstName} {lastName}".Trim();
         return string.IsNullOrEmpty(display) ? null : display;
+    }
+
+    private async Task<Guid?> ResolveFacilityIdAsync(
+        Guid tenantId,
+        Guid requestedFacilityId,
+        Guid actingUserId,
+        CancellationToken ct)
+    {
+        if (requestedFacilityId == Guid.Empty)
+            return null;
+
+        var facility = await _facilityRepo.GetByIdAsync(tenantId, requestedFacilityId, ct);
+        if (facility is not null)
+            return facility.Id;
+
+        var legacyFacilityContact = await _contactRepo.GetByIdAsync(tenantId, requestedFacilityId, ct);
+        if (legacyFacilityContact is null || !IsStandaloneFacilityContact(legacyFacilityContact))
+            return null;
+
+        if (legacyFacilityContact.FacilityId.HasValue)
+        {
+            var linkedFacility = await _facilityRepo.GetByIdAsync(tenantId, legacyFacilityContact.FacilityId.Value, ct);
+            if (linkedFacility is not null)
+                return linkedFacility.Id;
+        }
+
+        var createdFacility = Facility.Create(
+            legacyFacilityContact.TenantId,
+            legacyFacilityContact.OrgId,
+            ResolveFacilityName(legacyFacilityContact),
+            actingUserId,
+            addressLine1: legacyFacilityContact.AddressLine1,
+            city: legacyFacilityContact.City,
+            state: legacyFacilityContact.State,
+            postalCode: legacyFacilityContact.PostalCode,
+            phone: legacyFacilityContact.Phone,
+            email: legacyFacilityContact.Email,
+            fax: legacyFacilityContact.Fax);
+
+        await _facilityRepo.AddAsync(createdFacility, ct);
+
+        legacyFacilityContact.Update(
+            legacyFacilityContact.FirstName,
+            legacyFacilityContact.LastName,
+            legacyFacilityContact.ContactType,
+            actingUserId,
+            facilityId: createdFacility.Id,
+            contactSubtype: legacyFacilityContact.ContactSubtype,
+            title: legacyFacilityContact.Title,
+            organization: legacyFacilityContact.Organization,
+            email: legacyFacilityContact.Email,
+            phone: legacyFacilityContact.Phone,
+            fax: legacyFacilityContact.Fax,
+            website: legacyFacilityContact.Website,
+            addressLine1: legacyFacilityContact.AddressLine1,
+            city: legacyFacilityContact.City,
+            state: legacyFacilityContact.State,
+            postalCode: legacyFacilityContact.PostalCode,
+            notes: legacyFacilityContact.Notes);
+
+        await _contactRepo.UpdateAsync(legacyFacilityContact, ct);
+
+        _logger.LogInformation(
+            "Legacy facility contact {ContactId} linked to facility {FacilityId} for tenant {TenantId}",
+            legacyFacilityContact.Id,
+            createdFacility.Id,
+            tenantId);
+
+        return createdFacility.Id;
+    }
+
+    private static bool IsStandaloneFacilityContact(Contact contact) =>
+        (contact.ContactType == ContactType.Facility || contact.ContactType == ContactType.MedicalFacility)
+        && string.IsNullOrWhiteSpace(contact.ContactSubtype);
+
+    private static string ResolveFacilityName(Contact contact)
+    {
+        if (!string.IsNullOrWhiteSpace(contact.Organization))
+            return contact.Organization.Trim();
+
+        return contact.DisplayName;
     }
 
     public async Task DeleteAsync(Guid tenantId, Guid id, Guid actingUserId, CancellationToken ct = default)
@@ -300,16 +662,13 @@ public sealed class LienService : ILienService
         var entity = await _lienRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Lien '{id}' not found for tenant '{tenantId}'.");
 
-        // Already terminal — treat as success (idempotent soft-delete).
         if (LienStatus.Terminal.Contains(entity.Status))
         {
-            return;
+            // A closed lien can still be removed from the case. Use the same
+            // hidden terminal state as other delete requests so list APIs omit it.
+            entity.SetLegacyMedicalStatus(LienStatus.Cancelled, actingUserId);
         }
-
-        // Transition to the appropriate terminal state respecting the state machine.
-        // Cancelled is reachable from Draft, Sold, Active, Disputed.
-        // Withdrawn is reachable from Offered, UnderReview.
-        if (LienStatus.AllowedTransitions.TryGetValue(entity.Status, out var allowed) &&
+        else if (LienStatus.AllowedTransitions.TryGetValue(entity.Status, out var allowed) &&
             allowed.Contains(LienStatus.Cancelled))
         {
             entity.TransitionStatus(LienStatus.Cancelled, actingUserId);
@@ -320,6 +679,7 @@ public sealed class LienService : ILienService
         }
 
         await _lienRepo.UpdateAsync(entity, ct);
+        await RecordStatusHistoryAsync(entity, actingUserId, "Lien status updated to Delete.", ct);
 
         _logger.LogInformation(
             "Lien deleted (status={Status}): {LienId} Tenant={TenantId}", entity.Status, entity.Id, tenantId);
@@ -333,4 +693,13 @@ public sealed class LienService : ILienService
             entityType: "Lien",
             entityId: entity.Id.ToString());
     }
+
+    private Task RecordStatusHistoryAsync(
+        Lien entity,
+        Guid actingUserId,
+        string description,
+        CancellationToken ct) =>
+        _lienStatusHistoryRepo.AddAsync(
+            LienStatusHistory.Create(entity.TenantId, entity.Id, entity.CaseId, description, actingUserId),
+            ct);
 }
