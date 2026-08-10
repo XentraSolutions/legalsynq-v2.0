@@ -256,6 +256,9 @@ SynqLien exposes read-only assistant tool endpoints for Xenia under `/api/assist
 bearer token, SynqLien product access, and the matching read permission; Xenia forwards the caller's token so Liens
 remains the authorization boundary. Lien lookups/searches accept broad lien read or scoped seller/buyer/holder read
 permissions and apply visibility filters before returning results.
+The tenant portal's `GET /api/liens/cases/dashboard/piechart` lien totals use the same visibility policy as the
+assistant queue summary, so organization-scoped users see consistent Total Liens values on both surfaces. Broad lien
+read, tenant-admin, and platform-admin access continue to produce tenant-wide totals.
 
 | Method | Path | Permission | Description |
 |---|---|---|---|

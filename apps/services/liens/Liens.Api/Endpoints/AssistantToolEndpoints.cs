@@ -31,7 +31,7 @@ public static class AssistantToolEndpoints
             CancellationToken ct) =>
         {
             var tenantId = RequireTenantId(ctx);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             if (!visibility.CanReadAnyLien)
                 return Results.Forbid();
 
@@ -72,7 +72,7 @@ public static class AssistantToolEndpoints
             CancellationToken ct) =>
         {
             var tenantId = RequireTenantId(ctx);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             if (!visibility.CanReadAnyLien)
                 return Results.Forbid();
 
@@ -193,7 +193,7 @@ public static class AssistantToolEndpoints
             CancellationToken ct) =>
         {
             var tenantId = RequireTenantId(ctx);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             if (!visibility.CanReadAnyLien)
                 return Results.Forbid();
 
@@ -216,7 +216,7 @@ public static class AssistantToolEndpoints
             CancellationToken ct) =>
         {
             var tenantId = RequireTenantId(ctx);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             if (!visibility.CanReadAnyLien)
                 return Results.Forbid();
 
@@ -295,7 +295,7 @@ public static class AssistantToolEndpoints
         {
             var tenantId = RequireTenantId(ctx);
             var item = await cases.GetByIdAsync(tenantId, id, ct);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             return item is null
                 ? Results.NotFound()
                 : Results.Ok(new SynqLienCaseLookupOutcome(true, "completed", null, await ToCaseLookupResultAsync(item, liens, tenantId, visibility, p.LiensTop, ct)));
@@ -312,7 +312,7 @@ public static class AssistantToolEndpoints
         {
             var tenantId = RequireTenantId(ctx);
             var item = await cases.GetByCaseNumberAsync(tenantId, caseNumber, ct);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             return item is null
                 ? Results.NotFound()
                 : Results.Ok(new SynqLienCaseLookupOutcome(true, "completed", null, await ToCaseLookupResultAsync(item, liens, tenantId, visibility, p.LiensTop, ct)));
@@ -335,7 +335,7 @@ public static class AssistantToolEndpoints
             if (item is null)
                 return Results.NotFound();
 
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             var insights = await BuildCaseInsightsAsync(
                 item,
                 p,
@@ -368,7 +368,7 @@ public static class AssistantToolEndpoints
             if (item is null)
                 return Results.NotFound();
 
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             var insights = await BuildCaseInsightsAsync(
                 item,
                 p,
@@ -417,7 +417,7 @@ public static class AssistantToolEndpoints
             CancellationToken ct) =>
         {
             var tenantId = RequireTenantId(ctx);
-            var visibility = BuildLienVisibilityScope(ctx);
+            var visibility = LienVisibilityPolicy.Resolve(ctx);
             if (!visibility.CanReadAnyLien)
                 return Results.Forbid();
 
@@ -429,30 +429,6 @@ public static class AssistantToolEndpoints
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx)
         => ctx.TenantId ?? throw new UnauthorizedAccessException("Tenant context is required.");
-
-    private static LienVisibilityScope BuildLienVisibilityScope(ICurrentRequestContext ctx)
-    {
-        if (IsTenantAdminOrAbove(ctx) || HasPermission(ctx, LiensPermissions.LienRead))
-            return LienVisibilityScope.All;
-
-        var canReadOwn = HasPermission(ctx, LiensPermissions.LienReadOwn);
-        var canBrowse = HasPermission(ctx, LiensPermissions.LienBrowse);
-        var canReadHeld = HasPermission(ctx, LiensPermissions.LienReadHeld);
-
-        if (!canReadOwn && !canBrowse && !canReadHeld)
-            return LienVisibilityScope.None;
-
-        if (ctx.OrgId is not { } orgId || orgId == Guid.Empty)
-            return LienVisibilityScope.None;
-
-        return new LienVisibilityScope(
-            CanReadAnyLien: true,
-            OrgId: orgId,
-            IncludeSellerOrg: canReadOwn,
-            IncludeBuyerOrg: canReadHeld,
-            IncludeHolderOrg: canReadHeld,
-            IncludeMarketplace: canBrowse);
-    }
 
     private static bool CanReadLien(LienResponse lien, LienVisibilityScope visibility)
     {
@@ -469,11 +445,11 @@ public static class AssistantToolEndpoints
                (visibility.IncludeMarketplace && MarketplaceStatusGroup.Contains(lien.Status, StringComparer.OrdinalIgnoreCase));
     }
 
-    private static bool IsTenantAdminOrAbove(ICurrentRequestContext ctx)
-        => ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
-
     private static bool HasPermission(ICurrentRequestContext ctx, string permission)
         => ctx.Permissions.Contains(permission, StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsTenantAdminOrAbove(ICurrentRequestContext ctx)
+        => ctx.IsPlatformAdmin || ctx.Roles.Contains(Roles.TenantAdmin, StringComparer.OrdinalIgnoreCase);
 
     private static async Task<Guid?> ResolveCaseIdAsync(
         ICaseService cases,
@@ -2043,30 +2019,6 @@ public static class AssistantToolEndpoints
     private static string? NullIfWhiteSpace(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private readonly record struct LienVisibilityScope(
-        bool CanReadAnyLien,
-        Guid? OrgId,
-        bool IncludeSellerOrg,
-        bool IncludeBuyerOrg,
-        bool IncludeHolderOrg,
-        bool IncludeMarketplace)
-    {
-        public static LienVisibilityScope All { get; } = new(
-            CanReadAnyLien: true,
-            OrgId: null,
-            IncludeSellerOrg: false,
-            IncludeBuyerOrg: false,
-            IncludeHolderOrg: false,
-            IncludeMarketplace: false);
-
-        public static LienVisibilityScope None { get; } = new(
-            CanReadAnyLien: false,
-            OrgId: Guid.Empty,
-            IncludeSellerOrg: false,
-            IncludeBuyerOrg: false,
-            IncludeHolderOrg: false,
-            IncludeMarketplace: false);
-    }
 }
 
 internal sealed class AssistantLienSearchParams
