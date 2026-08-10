@@ -233,6 +233,7 @@ public static class AssistantToolEndpoints
         group.MapGet("/cases/search", async (
             [AsParameters] AssistantCaseSearchParams p,
             ICaseService cases,
+            IContactService contacts,
             ICurrentRequestContext ctx,
             CancellationToken ct) =>
         {
@@ -248,6 +249,17 @@ public static class AssistantToolEndpoints
                     single is null ? [] : [ToCaseSearchResult(single)]));
             }
 
+            var lawFirmIds = await ResolveLawFirmFilterIdsAsync(contacts, tenantId, p.LawFirm, ct);
+            if (!string.IsNullOrWhiteSpace(p.LawFirm) && string.IsNullOrWhiteSpace(lawFirmIds))
+            {
+                return Results.Ok(new SynqLienCaseSearchOutcome(
+                    true,
+                    "completed",
+                    null,
+                    0,
+                    []));
+            }
+
             var result = await cases.SearchV3Async(
                 tenantId,
                 keyword: p.ClientName ?? p.Search,
@@ -259,6 +271,7 @@ public static class AssistantToolEndpoints
                 lawFirmOrgId: null,
                 accidentTypeId: null,
                 caseManagerId: null,
+                lawFirmIds: lawFirmIds,
                 ct: ct);
 
             var (openedFromUtc, openedToUtc) = ResolveDateWindow(
@@ -267,7 +280,6 @@ public static class AssistantToolEndpoints
                 p.OpenedTo);
 
             var filtered = result.Items
-                .Where(item => MatchesText(NullIfWhiteSpace(item.LawFirm), p.LawFirm))
                 .Where(item => MatchesText(NullIfWhiteSpace(item.CaseManager), p.CaseManager))
                 .Where(item => MatchesText(NullIfWhiteSpace(item.CaseType), p.CaseType))
                 .Where(item => MatchesText(NullIfWhiteSpace(item.AccidentType), p.AccidentType))
@@ -276,11 +288,19 @@ public static class AssistantToolEndpoints
                 .Take(Math.Clamp(p.Top ?? 8, 1, 25))
                 .ToList();
 
+            var hasInMemoryFilters =
+                !string.IsNullOrWhiteSpace(p.CaseManager) ||
+                !string.IsNullOrWhiteSpace(p.CaseType) ||
+                !string.IsNullOrWhiteSpace(p.AccidentType) ||
+                !string.IsNullOrWhiteSpace(p.State) ||
+                openedFromUtc.HasValue ||
+                openedToUtc.HasValue;
+
             return Results.Ok(new SynqLienCaseSearchOutcome(
                 true,
                 "completed",
                 null,
-                filtered.Count == result.Items.Count ? result.TotalCount : filtered.Count,
+                hasInMemoryFilters ? filtered.Count : result.TotalCount,
                 filtered.Select(ToCaseSearchResult).ToList()));
         })
         .RequirePermission(LiensPermissions.CaseRead);
@@ -462,6 +482,22 @@ public static class AssistantToolEndpoints
 
         var item = await cases.GetByCaseNumberAsync(tenantId, caseNumber.Trim(), ct);
         return item?.Id;
+    }
+
+    private static async Task<string?> ResolveLawFirmFilterIdsAsync(
+        IContactService contacts,
+        Guid tenantId,
+        string? lawFirm,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(lawFirm))
+            return null;
+
+        var filterIds = await contacts.FindLawFirmFilterIdsAsync(tenantId, lawFirm, ct);
+        if (filterIds.Count == 0)
+            return null;
+
+        return string.Join(",", filterIds);
     }
 
     private static async Task<SynqLienLienLookupResult> ToLienLookupResultAsync(

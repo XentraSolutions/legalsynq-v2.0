@@ -373,6 +373,36 @@ public sealed class ContactService : IContactService
         return items.Select(item => MapToResponse(item, activeCaseCounts.GetValueOrDefault(item.Id))).ToList();
     }
 
+    public async Task<IReadOnlyList<Guid>> FindLawFirmFilterIdsAsync(
+        Guid tenantId,
+        string lawFirmName,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(lawFirmName))
+            return [];
+
+        var term = lawFirmName.Trim();
+        var matchingLawFirms = (await _repo.GetAllByTypeAsync(
+                tenantId,
+                ContactType.LawFirm,
+                isActive: null,
+                ct))
+            .Where(contact =>
+            {
+                var firmName = string.IsNullOrWhiteSpace(contact.Organization)
+                    ? contact.DisplayName
+                    : contact.Organization;
+                return firmName.Contains(term, StringComparison.OrdinalIgnoreCase);
+            });
+
+        return matchingLawFirms
+            .SelectMany(contact => new Guid?[] { contact.Id, contact.OrgId, contact.LawFirmId })
+            .Where(id => id.HasValue && id.Value != Guid.Empty)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+    }
+
     private static ContactResponse MapToResponse(Contact entity, int activeCases = 0) => new()
     {
         Id = entity.Id,
