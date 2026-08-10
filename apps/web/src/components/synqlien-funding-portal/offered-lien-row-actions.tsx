@@ -1,16 +1,37 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { submitFundingOfferedLienResponse, type FundingOfferedLienResponseAction } from "@/lib/synqlien-funding-portal/client-actions";
+import { formatFundingCurrency } from "@/lib/synqlien-funding-portal/format";
+import type { OfferedLienAction } from "@/lib/synqlien-funding-portal/types";
+import { OfferedLienResponseAlert, OfferedLienResponseDialog } from "./offered-lien-response-dialog";
+import { notifyFundingNotificationsChanged } from "./funding-notifications";
 
 export function OfferedLienRowActions({
   lienNumber,
   detailHref,
+  id,
+  sellerName,
+  sellerCompany,
+  askAmount,
+  allowedActions = [],
 }: {
+  id: string;
   lienNumber: string;
   detailHref: string | null;
+  sellerName: string;
+  sellerCompany?: string | null;
+  askAmount?: number | null;
+  allowedActions?: OfferedLienAction[];
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<FundingOfferedLienResponseAction | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [completedAction, setCompletedAction] = useState<FundingOfferedLienResponseAction | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,6 +54,26 @@ export function OfferedLienRowActions({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open]);
+
+  async function confirmResponse() {
+    if (!pendingAction || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    const result = await submitFundingOfferedLienResponse(id, pendingAction);
+    setSubmitting(false);
+    if (!result.ok) {
+      setError(result.error?.message ?? "The lien offer response could not be recorded.");
+      return;
+    }
+    setCompletedAction(pendingAction);
+    setPendingAction(null);
+    notifyFundingNotificationsChanged();
+    router.refresh();
+  }
+
+  const responseActions = allowedActions.filter(
+    (action): action is FundingOfferedLienResponseAction => action === "accept" || action === "decline",
+  );
 
   return (
     <div ref={rootRef} className="relative inline-flex">
@@ -71,8 +112,43 @@ export function OfferedLienRowActions({
               View
             </span>
           )}
+          {responseActions.map(action => (
+            <button
+              key={action}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                setError(null);
+                setPendingAction(action);
+              }}
+              className={`flex h-9 w-full items-center gap-2 rounded-[8px] px-3 text-left text-[14px] font-medium leading-[1.6] transition-colors hover:bg-[#f5f5f5] focus:bg-[#f5f5f5] focus:outline-none ${action === "decline" ? "text-[#ef4444]" : "text-[#0a0a0a]"}`}
+            >
+              <i className={`${action === "accept" ? "ri-file-check-line" : "ri-file-close-line"} text-[16px]`} />
+              {action === "accept" ? "Accept" : "Decline"}
+            </button>
+          ))}
         </div>
       ) : null}
+      {pendingAction ? (
+        <OfferedLienResponseDialog
+          action={pendingAction}
+          lienNumber={lienNumber}
+          sellerName={sellerName}
+          sellerCompany={sellerCompany}
+          askAmount={askAmount == null ? null : formatFundingCurrency(askAmount)}
+          submitting={submitting}
+          error={error}
+          onCancel={() => {
+            if (!submitting) {
+              setPendingAction(null);
+              setError(null);
+            }
+          }}
+          onConfirm={() => void confirmResponse()}
+        />
+      ) : null}
+      {completedAction ? <OfferedLienResponseAlert action={completedAction} onDismiss={() => setCompletedAction(null)} /> : null}
     </div>
   );
 }

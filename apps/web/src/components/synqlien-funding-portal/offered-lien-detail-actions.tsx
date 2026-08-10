@@ -6,26 +6,42 @@ import {
   submitFundingOfferedLienResponse,
   type FundingOfferedLienResponseAction,
 } from "@/lib/synqlien-funding-portal/client-actions";
+import { formatFundingCurrency } from "@/lib/synqlien-funding-portal/format";
 import type { OfferedLienAction } from "@/lib/synqlien-funding-portal/types";
+import { OfferedLienResponseAlert, OfferedLienResponseDialog } from "./offered-lien-response-dialog";
+import { notifyFundingNotificationsChanged } from "./funding-notifications";
 
 interface OfferedLienDetailActionsProps {
   id: string;
   status: string;
   allowedActions?: OfferedLienAction[];
+  lienNumber: string;
+  sellerName: string;
+  sellerCompany?: string | null;
+  askAmount?: number | null;
 }
 
 export function OfferedLienDetailActions({
   id,
   status,
+  allowedActions = [],
+  lienNumber,
+  sellerName,
+  sellerCompany,
+  askAmount,
 }: OfferedLienDetailActionsProps) {
   const router = useRouter();
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState<FundingOfferedLienResponseAction | null>(null);
+  const [pendingAction, setPendingAction] = useState<FundingOfferedLienResponseAction | null>(null);
+  const [completedAction, setCompletedAction] = useState<FundingOfferedLienResponseAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const normalizedStatus = status.trim().toLowerCase();
   const canRespond = normalizedStatus === "pending" || normalizedStatus === "offered";
-  const actions: FundingOfferedLienResponseAction[] = canRespond ? ["accept", "decline"] : [];
+  const actions: FundingOfferedLienResponseAction[] = canRespond
+    ? allowedActions.filter((action): action is FundingOfferedLienResponseAction => action === "accept" || action === "decline")
+    : [];
   const hasActions = actions.length > 0;
   const disabled = Boolean(submitting) || !hasActions;
 
@@ -39,6 +55,9 @@ export function OfferedLienDetailActions({
 
     if (result.ok) {
       setOpen(false);
+      setPendingAction(null);
+      setCompletedAction(action);
+      notifyFundingNotificationsChanged();
       router.refresh();
       return;
     }
@@ -92,7 +111,11 @@ export function OfferedLienDetailActions({
               type="button"
               role="menuitem"
               disabled={disabled}
-              onClick={() => void handleAction(action)}
+              onClick={() => {
+                setOpen(false);
+                setError(null);
+                setPendingAction(action);
+              }}
               className={`flex w-full items-center gap-2 px-3 py-2 text-left font-medium transition-colors hover:bg-[#fafafa] disabled:cursor-not-allowed disabled:opacity-60 ${
                 action === "decline" ? "text-[#e11d48]" : "text-[#0a0a0a]"
               }`}
@@ -106,11 +129,30 @@ export function OfferedLienDetailActions({
         </div>
       ) : null}
 
-      {error ? (
+      {error && !pendingAction ? (
         <p role="alert" className="absolute right-0 mt-2 w-72 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-[13px] font-medium leading-[1.5] text-red-700 shadow-[0_8px_20px_rgba(0,0,0,0.08)]">
           {error}
         </p>
       ) : null}
+      {pendingAction ? (
+        <OfferedLienResponseDialog
+          action={pendingAction}
+          lienNumber={lienNumber}
+          sellerName={sellerName}
+          sellerCompany={sellerCompany}
+          askAmount={askAmount == null ? null : formatFundingCurrency(askAmount)}
+          submitting={submitting === pendingAction}
+          error={error}
+          onCancel={() => {
+            if (!submitting) {
+              setPendingAction(null);
+              setError(null);
+            }
+          }}
+          onConfirm={() => void handleAction(pendingAction)}
+        />
+      ) : null}
+      {completedAction ? <OfferedLienResponseAlert action={completedAction} onDismiss={() => setCompletedAction(null)} /> : null}
     </div>
   );
 }

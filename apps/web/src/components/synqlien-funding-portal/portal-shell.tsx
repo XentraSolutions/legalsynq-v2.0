@@ -14,12 +14,20 @@ import {
 import type { PlatformSession } from "@/types";
 import { useSession } from "@/hooks/use-session";
 import { cn } from "@/lib/utils";
+import { FundingNotificationBell } from "./funding-notifications";
 
 const SIDEBAR_STORAGE_KEY = "ls_synqlien_funding_sidebar_collapsed";
 const EXPANDED_SIDEBAR_WIDTH = 255;
 const COLLAPSED_SIDEBAR_WIDTH = 64;
 
-const NAV_ITEMS = [
+type FundingNavItem = {
+  href: string;
+  label: string;
+  icon: string;
+  hidden?: boolean;
+};
+
+const NAV_ITEMS: FundingNavItem[] = [
   {
     href: "/funding/dashboard",
     label: "Dashboard",
@@ -29,6 +37,12 @@ const NAV_ITEMS = [
     href: "/funding/offered-liens",
     label: "Offered Liens",
     icon: "ri-file-list-3-line",
+  },
+  {
+    href: "/funding/notifications",
+    label: "Notifications",
+    icon: "ri-notification-3-line",
+    hidden: true,
   },
 ];
 
@@ -122,7 +136,7 @@ export function SynqLienFundingPortalShell({
 
         <nav className="flex-1 pb-6 pt-4">
           <div className="flex w-full flex-col gap-1 p-2">
-            {NAV_ITEMS.map(item => {
+            {NAV_ITEMS.filter(item => !item.hidden).map(item => {
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <Link
@@ -185,7 +199,7 @@ export function SynqLienFundingPortalShell({
               </span>
               <HeaderBreadcrumbs items={breadcrumbs} />
               <nav className="ml-auto flex items-center gap-1 lg:hidden">
-                {NAV_ITEMS.map(item => {
+                {NAV_ITEMS.filter(item => !item.hidden).map(item => {
                   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
                   return (
                     <Link
@@ -208,14 +222,7 @@ export function SynqLienFundingPortalShell({
             </div>
 
             <div className="flex items-center gap-2">
-              <Link
-                href="/funding/offered-liens?status=Pending"
-                aria-label="Notifications"
-                title="Notifications"
-                className="flex h-7 w-7 items-center justify-center rounded-[8px] text-[#0a0a0a] transition-colors hover:bg-[#f5f5f5]"
-              >
-                <i className="ri-notification-3-line text-[16px]" />
-              </Link>
+              <FundingNotificationBell />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -320,6 +327,10 @@ function buildHeaderBreadcrumbs(pathname: string, currentLabel: string): HeaderB
 
   if (pathname === "/funding/settings") {
     return [{ label: "Account Settings" }];
+  }
+
+  if (pathname === "/funding/notifications") {
+    return [{ label: "Notifications" }];
   }
 
   return [{ label: currentLabel }];
