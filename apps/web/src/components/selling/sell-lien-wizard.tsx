@@ -8,7 +8,11 @@ import { documentsService } from "@/lib/documents";
 import { useSession } from "@/hooks/use-session";
 import { useSessionContext } from "@/providers/session-provider";
 import { useToast } from "@/lib/toast-context";
-import { ConfirmDialog, Modal } from "@/components/lien/modal";
+import { ConfirmDialog, Modal } from "@/components/selling/modal";
+import { Button } from "@/components/ui/button";
+
+// Selling's brand accent, matching the convention used on other selling pages.
+const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 import Field from "@/components/lien/field";
 import { LienInformationPanel } from "@/components/selling/lien-detail/lien-information-panel";
 import { FundingCompanyAndCaseInformationPanel } from "@/components/selling/lien-detail/funding-company-information-panel";
@@ -510,13 +514,14 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
             >
               Cancel
             </Link>
-            <button
+            <Button
+              className={`px-6 ${PRIMARY_BUTTON_CLASSNAME}`}
               disabled={!companyId || savingBuyerSelection}
+              loading={savingBuyerSelection}
               onClick={handleContinue}
-              className="text-sm px-6 py-2 bg-[#EE7132] hover:bg-[#EE7132]/90 text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {savingBuyerSelection ? "Saving..." : "Continue"}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -611,27 +616,24 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
           </div>
 
           <div className="flex justify-between items-center pt-4">
-            <button
-              onClick={() => setStep(1)}
-              className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
-            >
+            <Button variant="secondary" onClick={() => setStep(1)}>
               Back
-            </button>
+            </Button>
             <div className="flex gap-3">
-              <button
-                onClick={saveForLater}
+              <Button
+                variant="secondary"
                 disabled={submitting}
-                className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
+                onClick={saveForLater}
               >
                 Save for Later
-              </button>
-              <button
+              </Button>
+              <Button
+                className={`px-6 ${PRIMARY_BUTTON_CLASSNAME}`}
                 disabled={!canAuthorize || submitting}
                 onClick={() => setShowConfirm(true)}
-                className="text-sm px-6 py-2 bg-[#EE7132] hover:bg-[#EE7132]/90 text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Authorize &amp; Send
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -674,12 +676,12 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
         title="Lien Submitted Successfully"
         size="sm"
         footer={
-          <button
+          <Button
+            className={PRIMARY_BUTTON_CLASSNAME}
             onClick={() => router.push(`/selling/portfolio/${lienId}`)}
-            className="text-sm px-4 py-2 bg-[#EE7132] hover:bg-[#EE7132]/90 text-white rounded-lg"
           >
             Done
-          </button>
+          </Button>
         }
       >
         <p className="text-sm text-gray-600">

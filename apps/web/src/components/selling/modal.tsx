@@ -2,13 +2,19 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { Button } from "@/components/ui/button";
+
+// Selling's brand accent, matching the convention used on other selling pages.
+const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 
 interface ModalProps {
   open: boolean;
   onClose: () => void;
   title: string;
   titleClassName?: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
+  /** Rendered left of the title (e.g. a small icon tile in a confirmation dialog). */
+  icon?: ReactNode;
   /** Extra controls rendered in the header, left of the close button (e.g. a "Clear Filter" action). */
   headerActions?: ReactNode;
   hasHeader?: boolean;
@@ -30,8 +36,9 @@ export function Modal({
   title,
   titleClassName,
   subtitle,
+  icon,
   headerActions,
-  hasHeader,
+  hasHeader = true,
   children,
   footer,
   size = "md",
@@ -80,26 +87,30 @@ export function Modal({
       >
         {hasHeader && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <div>
-              <h2
-                id="modal-title"
-                className={`text-base font-semibold ${titleClassName ?? "text-gray-900"}`}
-              >
-                {title}
-              </h2>
-              {subtitle && (
-                <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
-              )}
+            <div className="flex items-center gap-3">
+              {icon}
+              <div>
+                <h2
+                  id="modal-title"
+                  className={`text-base font-semibold ${titleClassName ?? "text-gray-900"}`}
+                >
+                  {title}
+                </h2>
+                {subtitle && (
+                  <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
               {headerActions}
-              <button
+              <Button
+                variant="ghost"
+                className="w-7 h-7 p-0 rounded-lg text-gray-400 hover:text-gray-600"
                 onClick={onClose}
                 aria-label="Close dialog"
-                className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <i className="ri-close-line text-xl" />
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -121,8 +132,13 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   title: string;
   description: ReactNode;
+  /** Rendered left of the title (e.g. a small icon tile). */
+  icon?: ReactNode;
   confirmLabel?: string;
+  cancelLabel?: string;
   confirmVariant?: "primary" | "danger";
+  /** Overrides the default bg-primary styling on the confirm button (e.g. selling's orange brand). */
+  primaryButtonClassName?: string;
   loading?: boolean;
   warningTitle?: string;
   warningItems?: string[];
@@ -134,40 +150,36 @@ export function ConfirmDialog({
   onConfirm,
   title,
   description,
+  icon,
   confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
   confirmVariant = "primary",
+  primaryButtonClassName,
   loading,
   warningTitle,
   warningItems,
 }: ConfirmDialogProps) {
-  const btnClass =
-    confirmVariant === "danger"
-      ? "bg-red-600 hover:bg-red-700 text-white"
-      : "bg-primary hover:bg-[#EE7132]/90 text-white";
-
   return (
     <Modal
       open={open}
       onClose={loading ? () => {} : onClose}
       title={title}
+      icon={icon}
       titleClassName={confirmVariant === "danger" ? "text-red-600" : undefined}
       size="sm"
       footer={
         <>
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
+          <Button variant="secondary" disabled={loading} onClick={onClose}>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={confirmVariant === "danger" ? "destructive" : "primary"}
+            className={confirmVariant === "danger" ? undefined : primaryButtonClassName}
+            loading={loading}
             onClick={onConfirm}
-            disabled={loading}
-            className={`text-sm px-4 py-2 rounded-lg ${btnClass} disabled:opacity-50`}
           >
             {loading ? "Processing..." : confirmLabel}
-          </button>
+          </Button>
         </>
       }
     >
@@ -197,7 +209,7 @@ interface FormModalProps {
   onClose: () => void;
   onSubmit: () => void;
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   headerActions?: ReactNode;
   hasHeader?: boolean;
   children: ReactNode;
@@ -232,19 +244,17 @@ export function FormModal({
       size={size}
       footer={
         <>
-          <button
-            onClick={onClose}
-            className="flex-1 text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
-          >
+          <Button variant="secondary" className="flex-1" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            onClick={onSubmit}
+          </Button>
+          <Button
+            className={`flex-1 ${PRIMARY_BUTTON_CLASSNAME}`}
             disabled={submitDisabled || loading}
-            className="flex-1 text-sm px-4 py-2 bg-[#EE7132] hover:bg-[#EE7132]/90 text-white rounded-lg disabled:opacity-50"
+            loading={loading}
+            onClick={onSubmit}
           >
             {loading ? "Saving..." : submitLabel}
-          </button>
+          </Button>
         </>
       }
     >

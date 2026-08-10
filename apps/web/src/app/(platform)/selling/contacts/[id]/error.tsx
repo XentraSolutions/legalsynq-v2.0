@@ -1,6 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import { Button, buttonVariants } from '@/components/ui/button';
+
+// Selling's brand accent, matching the convention used on other selling pages.
+const PRIMARY_BUTTON_CLASSNAME = 'bg-[#EE7132] hover:bg-[#EE7132]/90 text-white';
 
 export default function SellingContactDetailError({
   error,
@@ -20,8 +24,10 @@ export default function SellingContactDetailError({
         <p className="text-xs text-gray-400 font-mono">Error ID: {error.digest}</p>
       )}
       <div className="flex items-center justify-center gap-3 pt-2">
-        <button onClick={reset} className="text-sm font-medium px-4 py-2 bg-[#EE7132] text-white rounded-lg hover:bg-[#EE7132]/90 transition-colors">Try Again</button>
-        <Link href="/selling/contacts" className="text-sm font-medium px-4 py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">Back to Contacts</Link>
+        <Button className={PRIMARY_BUTTON_CLASSNAME} onClick={reset}>Try Again</Button>
+        <Link href="/selling/contacts" className={buttonVariants({ variant: 'secondary' })}>
+          Back to Contacts
+        </Link>
       </div>
     </div>
   );

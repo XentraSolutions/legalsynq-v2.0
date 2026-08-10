@@ -7,6 +7,7 @@ import {
 } from "@/hooks/use-case-liens";
 import { Input } from "@/components/ui/input";
 import Field from "@/components/lien/field";
+import { Button } from "@/components/ui/button";
 
 export interface MedicalCodesDescriptionProps {
   caseId?: string;
@@ -188,15 +189,15 @@ export default function MedicalCodesDescription(
                 onChange={handleTargetPercentChange}
               />
             </div>
-            <button
+            <Button
               type="button"
+              className="shrink-0"
               disabled={!isEntryValid}
+              rightIcon={<i className="ri-add-line text-sm" />}
               onClick={handleAddRow}
-              className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-gray-300"
             >
               Add
-              <i className="ri-add-line text-sm" />
-            </button>
+            </Button>
           </div>
         </div>
 

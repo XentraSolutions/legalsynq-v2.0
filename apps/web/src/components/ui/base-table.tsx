@@ -445,33 +445,35 @@ export function BaseTable<TData>({
       {enablePagination && (
         <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100">
           {pageSizeOptions ? (
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <span>Showing</span>
-              <Select
-                value={String(currentPageSize)}
-                onValueChange={handlePageSizeChange}
-              >
-                <SelectTrigger
-                  className="h-7 w-[68px] px-2 text-xs"
-                  aria-label="Rows per page"
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              <span className="flex items-center gap-2">
+                Rows per page:
+                <Select
+                  value={String(currentPageSize)}
+                  onValueChange={handlePageSizeChange}
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {pageSizeOptions.map((size) => (
-                    <SelectItem
-                      key={size}
-                      value={String(size)}
-                      className="text-xs"
-                    >
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  <SelectTrigger
+                    className="h-7 w-[68px] px-2 text-xs"
+                    aria-label="Rows per page"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {pageSizeOptions.map((size) => (
+                      <SelectItem
+                        key={size}
+                        value={String(size)}
+                        className="text-xs"
+                      >
+                        {size}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </span>
               <span>
                 {totalRows === 0 ? "0" : `${firstRow}-${lastRow}`} of{" "}
-                {totalRows} entries
+                {totalRows}
               </span>
             </div>
           ) : (

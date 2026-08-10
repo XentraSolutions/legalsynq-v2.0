@@ -1,14 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { FormModal } from "@/components/lien/modal";
+import { useState } from "react";
+import { FormModal } from "@/components/selling/modal";
 import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
-import { contactsService } from "@/lib/contacts";
 import { liensService } from "@/lib/selling";
 import { useToast } from "@/lib/toast-context";
 import type { LienCaseDetail, LienFundingCompanyDetail } from "@/types/lien-selling";
-
-const FUNDING_CONTACT_SUBTYPE = "FundingCompanyContactPerson";
 
 interface EditCaseInformationModalProps {
   lienId: string;
@@ -36,12 +33,7 @@ export function EditCaseInformationModal({
   const [caseManagerId, setCaseManagerId] = useState(
     caseInformation?.caseManagerId ?? "",
   );
-  const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<string>();
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    contactsService.getCaseManagerRoleCode().then(setCaseManagerRoleCode);
-  }, []);
 
   const handleSubmit = async () => {
     setSaving(true);
@@ -91,7 +83,6 @@ export function EditCaseInformationModal({
             searchPlaceholder="Search funding companies..."
             allowCreate
             createLabel="Add Funding Company"
-            createContactType="FundingCompany"
           />
         </div>
         <div>
@@ -109,8 +100,6 @@ export function EditCaseInformationModal({
             searchPlaceholder="Search contacts..."
             allowCreate
             createLabel="Add New Contact Person"
-            createContactType="FundingCompany"
-            createContactSubtype={FUNDING_CONTACT_SUBTYPE}
           />
         </div>
         <div>
@@ -128,7 +117,6 @@ export function EditCaseInformationModal({
             searchPlaceholder="Search law firms..."
             allowCreate
             createLabel="Add New Law Firm"
-            createContactType="LawFirm"
           />
         </div>
         <div>
@@ -146,8 +134,6 @@ export function EditCaseInformationModal({
             searchPlaceholder="Search case managers..."
             allowCreate
             createLabel="Add Case Manager"
-            createContactType="LawFirm"
-            createContactSubtype={caseManagerRoleCode}
           />
         </div>
       </div>

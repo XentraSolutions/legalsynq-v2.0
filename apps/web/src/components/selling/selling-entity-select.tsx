@@ -1,23 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 import { BaseSelect, type BaseSelectOption } from "@/components/ui/base-select";
-import { AddContactModal } from "@/components/lien/add-contact-modal";
-import type { ContactDetail } from "@/lib/contacts";
-import {
-  useSellingFundingCompanies,
-  useSellingFundingCompanyContacts,
-  useSellingFacilities,
-  useSellingLawFirms,
-  useSellingCaseManagers,
-  SELLING_FUNDING_COMPANIES_QUERY_KEY,
-  SELLING_FUNDING_COMPANY_CONTACTS_QUERY_KEY,
-  SELLING_FACILITIES_QUERY_KEY,
-  SELLING_LAW_FIRMS_QUERY_KEY,
-  SELLING_CASE_MANAGERS_QUERY_KEY,
-} from "@/hooks/use-selling-lookups";
+import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
+import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
+import { useCompanyTypes, useCompanies, useCompany, useContactPersons } from "@/hooks/use-selling-companies";
 
 export type SellingEntityType =
   | "FundingCompany"
@@ -25,6 +12,28 @@ export type SellingEntityType =
   | "Facility"
   | "LawFirm"
   | "CaseManager";
+
+// Company-type / contact-person-type *names*, matched by name against
+// GET /lookups/company-types and /lookups/contact-person-types (ids are
+// backend-assigned, so name is the only stable thing to key off of here).
+// Update these if the backend seeds different display names.
+const COMPANY_TYPE_NAME: Partial<Record<SellingEntityType, string>> = {
+  FundingCompany: "Funding Company",
+  Facility: "Facility",
+  LawFirm: "Law Firm",
+};
+
+const CONTACT_PERSON_TYPE_NAME: Partial<Record<SellingEntityType, string>> = {
+  FundingCompanyContact: "Contact Person",
+  CaseManager: "Case Manager",
+};
+
+// entityType -> the SellingEntityType whose company-type the contact
+// person's parent company belongs to.
+const PARENT_COMPANY_ENTITY_TYPE: Partial<Record<SellingEntityType, SellingEntityType>> = {
+  FundingCompanyContact: "FundingCompany",
+  CaseManager: "LawFirm",
+};
 
 interface SellingEntitySelectProps {
   entityType: SellingEntityType;
@@ -43,31 +52,9 @@ interface SellingEntitySelectProps {
   error?: boolean;
   className?: string;
 
-  /** Renders a "+ Add …" row that opens an inline AddContactModal, then refreshes this list. */
+  /** Renders a "+ Add …" row that opens an inline create modal, then refreshes this list. */
   allowCreate?: boolean;
   createLabel?: string;
-  /** Contact type/subtype used only when creating a new entity via AddContactModal. */
-  createContactType?: string;
-  createContactSubtype?: string;
-}
-
-function invalidationKey(
-  entityType: SellingEntityType,
-  fundingCompanyId?: string,
-  lawFirmId?: string,
-) {
-  switch (entityType) {
-    case "FundingCompany":
-      return SELLING_FUNDING_COMPANIES_QUERY_KEY;
-    case "FundingCompanyContact":
-      return SELLING_FUNDING_COMPANY_CONTACTS_QUERY_KEY(fundingCompanyId ?? "");
-    case "Facility":
-      return SELLING_FACILITIES_QUERY_KEY;
-    case "LawFirm":
-      return SELLING_LAW_FIRMS_QUERY_KEY;
-    case "CaseManager":
-      return SELLING_CASE_MANAGERS_QUERY_KEY(lawFirmId ?? "");
-  }
 }
 
 export function SellingEntitySelect({
@@ -85,39 +72,42 @@ export function SellingEntitySelect({
   className,
   allowCreate,
   createLabel = "Add New",
-  createContactType,
-  createContactSubtype,
 }: SellingEntitySelectProps) {
-  const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
 
-  const parentId = entityType === "CaseManager" ? lawFirmId : fundingCompanyId;
-  const parentMissing = Boolean(requireParent) && !parentId;
+  const isContactPerson = entityType === "FundingCompanyContact" || entityType === "CaseManager";
+  const companyId = entityType === "CaseManager" ? lawFirmId : fundingCompanyId;
+  const parentMissing = Boolean(requireParent) && isContactPerson && !companyId;
 
-  // All five lookups are queried unconditionally (rather than dispatched by
-  // entityType) so this component never changes which hooks it calls across
-  // renders — each query is individually gated by `enabled` (see
-  // use-selling-lookups.ts) so only the one matching entityType actually hits
-  // the network.
-  const fundingCompanies = useSellingFundingCompanies({
-    enabled: entityType === "FundingCompany",
-  });
-  const fundingCompanyContacts = useSellingFundingCompanyContacts(fundingCompanyId, {
-    enabled: entityType === "FundingCompanyContact",
-  });
-  const facilities = useSellingFacilities({ enabled: entityType === "Facility" });
-  const lawFirms = useSellingLawFirms({ enabled: entityType === "LawFirm" });
-  const caseManagers = useSellingCaseManagers(lawFirmId, {
-    enabled: entityType === "CaseManager",
-  });
+  const companyTypesQuery = useCompanyTypes();
+  const companyTypeName = isContactPerson
+    ? COMPANY_TYPE_NAME[PARENT_COMPANY_ENTITY_TYPE[entityType]!]
+    : COMPANY_TYPE_NAME[entityType];
+  const companyType = companyTypesQuery.data?.find((t) => t.name === companyTypeName);
 
-  const { options, isLoading } = {
-    FundingCompany: fundingCompanies,
-    FundingCompanyContact: fundingCompanyContacts,
-    Facility: facilities,
-    LawFirm: lawFirms,
-    CaseManager: caseManagers,
-  }[entityType];
+  const companiesQuery = useCompanies(
+    { companyTypeId: companyType?.id },
+    { enabled: !isContactPerson && Boolean(companyType?.id) },
+  );
+
+  const contactPersonsQuery = useContactPersons(companyId, true, {
+    enabled: isContactPerson && !parentMissing,
+  });
+  const parentCompanyQuery = useCompany(companyId, {
+    enabled: isContactPerson && showCreate && Boolean(companyId),
+  });
+  const contactPersonTypeName = isContactPerson ? CONTACT_PERSON_TYPE_NAME[entityType] : undefined;
+  const contactPersonOptions = useMemo(() => {
+    if (!isContactPerson) return [];
+    const items = contactPersonsQuery.data ?? [];
+    const filtered = contactPersonTypeName
+      ? items.filter((c) => c.contactPersonTypeName === contactPersonTypeName)
+      : items;
+    return filtered.map((c) => ({ value: c.id, label: c.displayName }));
+  }, [isContactPerson, contactPersonsQuery.data, contactPersonTypeName]);
+
+  const options = isContactPerson ? contactPersonOptions : companiesQuery.options;
+  const isLoading = isContactPerson ? contactPersonsQuery.isLoading : companiesQuery.isLoading;
 
   return (
     <>
@@ -138,30 +128,29 @@ export function SellingEntitySelect({
         }
       />
 
-      {showCreate && (
-        <AddContactModal
+      {showCreate && !isContactPerson && companyType && (
+        <CompanyFormModal
           open={showCreate}
           onClose={() => setShowCreate(false)}
           title={createLabel}
-          contactType={createContactType}
-          contactSubtype={createContactSubtype}
-          lawFirmId={entityType === "CaseManager" ? lawFirmId : undefined}
-          facilityId={entityType === "FundingCompanyContact" ? fundingCompanyId : undefined}
-          onSaved={async (created: ContactDetail) => {
-            const queryKey = invalidationKey(entityType, fundingCompanyId, lawFirmId);
-            await queryClient.invalidateQueries({ queryKey });
+          companyTypeId={companyType.id}
+          onSaved={(created) => {
+            onChange(created.id, { value: created.id, label: created.name });
+            setShowCreate(false);
+          }}
+        />
+      )}
 
-            const refreshed = queryClient.getQueryData<{ id: string }[]>(queryKey);
-            const stillListed = refreshed?.some((item) => item.id === created.id);
-
-            if (stillListed ?? true) {
-              onChange(created.id, { value: created.id, label: created.displayName });
-            } else {
-              toast.error("Couldn't select the new entry", {
-                description:
-                  "It was created but didn't come back in the refreshed list. Please select it manually.",
-              });
-            }
+      {showCreate && isContactPerson && companyId && companyType && (
+        <ContactPersonFormModal
+          open={showCreate}
+          onClose={() => setShowCreate(false)}
+          title={createLabel}
+          companyId={companyId}
+          companyName={parentCompanyQuery.data?.name ?? ""}
+          companyTypeId={companyType.id}
+          onSaved={(created) => {
+            onChange(created.id, { value: created.id, label: created.displayName });
             setShowCreate(false);
           }}
         />

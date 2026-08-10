@@ -186,7 +186,7 @@ export const apiClient = {
   post:     <T>(path: string, body: unknown, headers?: Record<string, string>) => request<T>(path, { method: 'POST', body, headers }),
   put:      <T>(path: string, body: unknown, headers?: Record<string, string>) => request<T>(path, { method: 'PUT',  body, headers }),
   patch:    <T>(path: string, body: unknown)               => request<T>(path, { method: 'PATCH', body }),
-  delete:   <T>(path: string)                              => request<T>(path, { method: 'DELETE' }),
+  delete:   <T>(path: string, headers?: Record<string, string>) => request<T>(path, { method: 'DELETE', headers }),
   postForm: <T>(path: string, formData: FormData)          => requestForm<T>(path, formData),
   getBlob:  (path: string)                                 => requestBlob(path),
 };
