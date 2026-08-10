@@ -13,6 +13,9 @@ public interface IContactService
     Task<List<ContactResponse>> GetAllByTypeAsync(
         Guid tenantId, string? contactType, bool? isActive = true, CancellationToken ct = default);
 
+    Task<IReadOnlyList<Guid>> FindLawFirmFilterIdsAsync(
+        Guid tenantId, string lawFirmName, CancellationToken ct = default);
+
     Task<ContactResponse> CreateAsync(
         Guid tenantId, Guid orgId, Guid actingUserId,
         CreateContactRequest request, CancellationToken ct = default);
