@@ -59,6 +59,39 @@ public sealed class AssistantToolEndpointTests : IClassFixture<LiensApiFactory>,
     }
 
     [Fact]
+    public async Task Lien_assistant_lookup_returns_purchase_date_as_the_exact_iso_calendar_date()
+    {
+        var lienId = Guid.NewGuid();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DATE-{lienId:N}",
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                purchaseDate: new DateOnly(2026, 7, 14));
+            typeof(Lien).GetProperty(nameof(Lien.Id))!.SetValue(lien, lienId);
+            db.Liens.Add(lien);
+            await db.SaveChangesAsync();
+        }
+
+        var lookupResponse = await _client.GetAsync($"/api/assistant-tools/liens/{lienId}");
+        lookupResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var lookup = await lookupResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        lookup!.RootElement
+            .GetProperty("lien")
+            .GetProperty("purchaseDate")
+            .GetString()
+            .Should()
+            .Be("2026-07-14");
+
+    }
+
+    [Fact]
     public async Task SearchCases_filters_law_firm_before_pagination_and_returns_full_count()
     {
         var otherOrgId = Guid.NewGuid();

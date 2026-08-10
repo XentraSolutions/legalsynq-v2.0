@@ -537,7 +537,7 @@ public static class AssistantToolEndpoints
             lien.CreatedAtUtc,
             lien.UpdatedAtUtc,
             lien.IncidentDate,
-            NullIfWhiteSpace(lien.PurchaseDate),
+            ParseDateOnly(lien.PurchaseDate),
             lien.InitialServiceDate,
             lien.EndServiceDate,
             lien.TotalPurchase,
@@ -612,7 +612,7 @@ public static class AssistantToolEndpoints
             lien.CurrentBalance,
             lien.CreatedAtUtc,
             lien.UpdatedAtUtc,
-            NullIfWhiteSpace(lien.PurchaseDate),
+            ParseDateOnly(lien.PurchaseDate),
             lien.TotalPurchase,
             lien.TotalBilling,
             0);
@@ -1216,7 +1216,7 @@ public static class AssistantToolEndpoints
             totalBilling = lien.TotalBilling ?? lien.OriginalAmount;
 
         var reduction = Math.Max(totalBilling - totalPurchase, 0m);
-        var purchaseDate = NullIfWhiteSpace(lien.PurchaseDate);
+        var purchaseDate = ParseDateOnly(lien.PurchaseDate);
         var isMedical = string.Equals(lien.LienType, LienType.MedicalLien, StringComparison.OrdinalIgnoreCase);
 
         return new SynqLienLienInsight(
@@ -1239,7 +1239,7 @@ public static class AssistantToolEndpoints
                 string.Equals(lien.Status, LienStatus.Sold, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(lien.Status, LienStatus.Active, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(lien.Status, LienStatus.Disputed, StringComparison.OrdinalIgnoreCase),
-            string.IsNullOrWhiteSpace(purchaseDate),
+            !purchaseDate.HasValue,
             supportingDocumentCount == 0,
             supportingDocumentCount,
             lien.CreatedAtUtc,
@@ -2050,6 +2050,21 @@ public static class AssistantToolEndpoints
             "OTHER" => LienType.Other,
             _ => value.Trim(),
         };
+    }
+
+    private static DateOnly? ParseDateOnly(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return DateOnly.TryParseExact(
+            value.Trim(),
+            ["MM/dd/yyyy", "M/d/yyyy", "yyyy-MM-dd"],
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsed)
+            ? parsed
+            : null;
     }
 
     private static string? NullIfWhiteSpace(string? value)
