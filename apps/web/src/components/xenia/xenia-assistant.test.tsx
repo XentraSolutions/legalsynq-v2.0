@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { XeniaAssistant } from './xenia-assistant';
 import { xeniaClient } from '@/lib/xenia/client';
+import { SettingsProvider } from '@/contexts/settings-context';
 import type { XeniaBootstrap, XeniaConversation, XeniaMessage } from '@/lib/xenia/types';
 
 vi.mock('next/navigation', () => ({
@@ -189,6 +190,32 @@ describe('XeniaAssistant streaming', () => {
     await waitFor(() => {
       expect(mockedXeniaClient.getConversation).toHaveBeenCalledWith('conv-1');
     });
+  });
+
+  test('shows each conversation creation timestamp in the history list', async () => {
+    mockedXeniaClient.conversations.mockResolvedValue([
+      {
+        id: baseConversation.id,
+        agentKey: baseConversation.agentKey,
+        agentVersion: baseConversation.agentVersion,
+        title: baseConversation.title,
+        source: baseConversation.source,
+        status: baseConversation.status,
+        lastMessageAtUtc: baseConversation.lastMessageAtUtc,
+        createdAtUtc: baseConversation.createdAtUtc,
+        updatedAtUtc: baseConversation.updatedAtUtc,
+      },
+    ]);
+    mockedXeniaClient.getConversation.mockResolvedValue(baseConversation);
+
+    render(
+      <SettingsProvider initialTimezone="UTC">
+        <XeniaAssistant />
+      </SettingsProvider>,
+    );
+
+    const timestamp = await screen.findByText('Jul 14, 2026, 7:00 PM');
+    expect(timestamp).toHaveAttribute('datetime', baseConversation.createdAtUtc);
   });
 
   function emitSseFrame(payload: Record<string, unknown>) {
