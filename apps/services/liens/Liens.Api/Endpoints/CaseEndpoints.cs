@@ -3822,6 +3822,7 @@ public static class CaseEndpoints
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
+        var lienVisibility = LienVisibilityPolicy.Resolve(ctx);
 
         var caseStatusRows = await db.Cases
             .AsNoTracking()
@@ -3834,9 +3835,12 @@ public static class CaseEndpoints
             })
             .ToListAsync(ct);
 
-        var lienStatusRows = await db.Liens
+        var visibleLiens = LienVisibilityPolicy.Apply(
+            db.Liens.AsNoTracking().Where(item => item.TenantId == tenantId),
+            lienVisibility);
+
+        var lienStatusRows = await visibleLiens
             .AsNoTracking()
-            .Where(item => item.TenantId == tenantId)
             .GroupBy(item => item.Status)
             .Select(group => new
             {
