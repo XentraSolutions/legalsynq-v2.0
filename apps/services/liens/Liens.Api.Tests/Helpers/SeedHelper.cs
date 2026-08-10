@@ -7,7 +7,7 @@ namespace Liens.Api.Tests.Helpers;
 
 /// <summary>
 /// Seeds a deterministic set of reference and test data into the InMemory DB.
-/// Call once per test class after creating the service scope.
+/// Resets and reseeds the database before each test.
 /// All IDs are stable so tests can reference them by value.
 /// </summary>
 public static class SeedHelper
@@ -36,7 +36,8 @@ public static class SeedHelper
     {
         var db = sp.GetRequiredService<LiensDbContext>();
 
-        if (db.Cases.Any()) return; // already seeded
+        await db.Database.EnsureDeletedAsync();
+        await db.Database.EnsureCreatedAsync();
 
         // ── Lookup values ────────────────────────────────────────────────────
         var lookupSeed = new (string Category, string Code, string Name)[]

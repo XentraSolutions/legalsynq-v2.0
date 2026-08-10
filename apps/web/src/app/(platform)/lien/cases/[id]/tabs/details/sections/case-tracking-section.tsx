@@ -83,7 +83,6 @@ export function CaseTrackingSection({
                   updateField("trackingFollowUpDate", e.toString());
                   setTTrackingFollowUpDate(e.toString());
                 }}
-                allowFutureDates
               />
             </div>
 

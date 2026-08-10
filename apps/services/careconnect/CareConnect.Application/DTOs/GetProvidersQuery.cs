@@ -4,6 +4,7 @@ public class GetProvidersQuery
 {
     public string? Name              { get; init; }
     public string? CategoryCode      { get; init; }
+    public string? SpecialtyCode     { get; init; }
     public string? City              { get; init; }
     public string? State             { get; init; }
     public bool?   AcceptingReferrals { get; init; }

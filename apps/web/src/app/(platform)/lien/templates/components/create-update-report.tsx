@@ -35,6 +35,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { ColumnGroup, ReportColumnOption } from "@/lib/liens/lien-report.types";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
+import { useDebounce, useReportFilterOptions } from "@/hooks/use-report";
 
 const INITIAL_FORM = {
   name: "",
@@ -79,6 +80,8 @@ export default function CreateUpdateReport({
 
   const [searchInput, setSearchInput] = useState<string>("");
   const [searchInputSelected, setSearchInputSelected] = useState<string>("");
+  const [searchSelectInput, setSearchSelectInput] = useState<string>("");
+  const [filterField, setfilterField] = useState<string>("");
 
   const [form, setForm] = useState(
     initialData
@@ -88,7 +91,8 @@ export default function CreateUpdateReport({
   const [checkedAvailable, setCheckedAvailable] = useState<any>([]);
   const [checkedSelected, setCheckedSelected] = useState<any>([]);
   const [isValid, setIsValid] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  // const [isLoading, setIsLoading] = useState(true);
   const addToast = useLienStore((s) => s.addToast);
 
   function categoryDescription(category: string) {
@@ -288,7 +292,7 @@ export default function CreateUpdateReport({
             { key: "LIENS", value: "LIENS", label: "LIENS" },
             { key: "CASE", value: "CASE", label: "CASE" },
           ],
-          statusView: "",
+          statusView: [],
           lawfirm: [],
           plaintiff: [],
           attorney: [],
@@ -303,7 +307,7 @@ export default function CreateUpdateReport({
             { key: "LIENS", value: "LIENS", label: "LIENS" },
             { key: "CASE", value: "CASE", label: "CASE" },
           ],
-          statusView: "",
+          statusView: [],
           lawfirm: [],
           plaintiff: [],
           attorney: [],
@@ -315,26 +319,59 @@ export default function CreateUpdateReport({
         },
   );
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
+  const debouncedSearch = useDebounce(searchSelectInput, 500);
 
-    const [
-      caseStatusRes,
-      casesRes,
-      lawfirmRes,
-      fundingRes,
-      facilityRes,
-      providerRes,
-      caseManagersRes,
-      liensStatusRes,
-    ] = await Promise.allSettled([
+  const plaintiffFilter = useReportFilterOptions({
+    reportType: form.reportType,
+    filterField: "plaintiff",
+    keyword: filterField === "plaintiff" ? debouncedSearch : "",
+    enabled: filterField === "plaintiff",
+  });
+
+  const medicalProviderFilter = useReportFilterOptions({
+    reportType: form.reportType,
+    filterField: "medicalprovider",
+    keyword: filterField === "medicalprovider" ? debouncedSearch : "",
+    enabled: filterField === "medicalprovider",
+  });
+
+  const lawFirmFilter = useReportFilterOptions({
+    reportType: form.reportType,
+    filterField: "lawfirm",
+    keyword: filterField === "lawfirm" ? debouncedSearch : "",
+    enabled: filterField === "lawfirm",
+  });
+
+  const fundingCompanyFilter = useReportFilterOptions({
+    reportType: form.reportType,
+    filterField: "fundingcompany",
+    keyword: filterField === "fundingcompany" ? debouncedSearch : "",
+    enabled: filterField === "fundingcompany",
+  });
+
+  const medicalFacilityFilter = useReportFilterOptions({
+    reportType: form.reportType,
+    filterField: "medicalfacility",
+    keyword: filterField === "medicalfacility" ? debouncedSearch : "",
+    enabled: filterField === "medicalfacility",
+  });
+
+  const caseManagerFilter = useReportFilterOptions({
+    reportType: form.reportType,
+    filterField: "casemanager",
+    keyword: filterField === "casemanager" ? debouncedSearch : "",
+    enabled: filterField === "casemanager",
+  });
+
+  const attorneyFilter = useReportFilterOptions({
+    reportType: form.reportType,
+    filterField: "attorney",
+    keyword: filterField === "attorney" ? debouncedSearch : "",
+    enabled: filterField === "attorney",
+  });
+  const fetchData = useCallback(async () => {
+    const [caseStatusRes, liensStatusRes] = await Promise.allSettled([
       lookupService.getCaseStatus(),
-      casesService.getCases(),
-      contactsService.getContacts({ ContactType: "LawFirm" }),
-      contactsService.getContacts({ ContactType: "FundingCompany" }),
-      contactsService.getContacts({ ContactType: "MedicalFacility" }),
-      contactsService.getContacts({ ContactType: "Provider" }),
-      contactsService.getCaseManagers(),
       lookupService.getLiensStatus(),
     ]);
     setData((prev: any) => ({
@@ -348,43 +385,6 @@ export default function CreateUpdateReport({
               }),
             ]
           : [{ key: "all", value: "", label: "All" }],
-      lawfirm:
-        lawfirmRes.status === "fulfilled"
-          ? lawfirmRes.value.items.map((c) => {
-              return { key: c.id, value: c.id, label: c.displayName };
-            })
-          : [],
-      plaintiff:
-        casesRes.status === "fulfilled"
-          ? casesRes.value.items.map((c) => {
-              return { key: c.id, value: c.id, label: c.clientName };
-            })
-          : [],
-      attorney: [],
-      funding:
-        fundingRes.status === "fulfilled"
-          ? fundingRes.value.items.map((c) => {
-              return { key: c.id, value: c.id, label: c.displayName };
-            })
-          : [],
-      medicalFacility:
-        facilityRes.status === "fulfilled"
-          ? facilityRes.value.items.map((c) => {
-              return { key: c.id, value: c.id, label: c.displayName };
-            })
-          : [],
-      medicalProviders:
-        providerRes.status === "fulfilled"
-          ? providerRes.value.items.map((c) => {
-              return { key: c.id, value: c.id, label: c.displayName };
-            })
-          : [],
-      caseManagers:
-        caseManagersRes.status === "fulfilled"
-          ? caseManagersRes.value.items.map((c) => {
-              return { key: c.id, value: c.id, label: c.displayName };
-            })
-          : [],
       liensStatus:
         liensStatusRes.status === "fulfilled"
           ? [
@@ -395,21 +395,24 @@ export default function CreateUpdateReport({
             ]
           : [{ key: "all", value: "", label: "All" }],
     }));
-    setIsLoading(false);
   }, []);
-
   useEffect(() => {
     fetchData();
     fetchConfig();
-  }, [fetchData, mode]);
+  }, [mode]);
 
   useEffect(() => {
     if (currentStep == 0) {
       const valid = !!form.name;
       setIsValid(valid);
     }
+
     if (currentStep == 1) {
-      const valid = !!form.reportType;
+      const valid =
+        form.reportType.length > 0 && form.reportType == "CASE"
+          ? typeof form.statusView === "string"
+          : typeof form.lienStatusIds === "string";
+
       setIsValid(valid);
     }
   }, [currentStep, form]);
@@ -573,8 +576,19 @@ export default function CreateUpdateReport({
       setCurrentStep((s) => s + 1);
       return;
     }
+    setSubmitting(true);
+
     const reportData = await createReportTemplate();
+    resetTemplateData();
     onSaved(reportData);
+  };
+  const resetTemplateData = () => {
+    setForm(INITIAL_FORM);
+    setIsValid(false);
+    setSelectedCols([]);
+    setAvailable([]);
+    setCols([]);
+    setFilteredSelectedCols([]);
   };
 
   const createReportTemplate = async () => {
@@ -584,7 +598,7 @@ export default function CreateUpdateReport({
         viewBy: form.reportType,
         reportType: form.reportType,
         statusView: form.statusView ?? "",
-        lienStatusIds: form.lienStatusIds ?? [],
+        lienStatusIds: form.lienStatusIds ?? "",
         purchaseDateFrom: form.purchaseDateFrom ?? [],
         purchaseDateTo: form.purchaseDateTo ?? null,
         closedDateFrom: form.closedDateFrom ?? null,
@@ -647,6 +661,8 @@ export default function CreateUpdateReport({
       const message =
         err instanceof ApiError ? err.message : "Failed to save report";
       addToast({ type: "error", title: "Save Failed", description: message });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -701,7 +717,6 @@ export default function CreateUpdateReport({
 
     setSelectedCols(filtered);
   };
-  useEffect(() => {}, []);
   return (
     <Modal
       open={true}
@@ -721,11 +736,11 @@ export default function CreateUpdateReport({
 
           {/* RIGHT BUTTON */}
           <button
-            disabled={!isValid}
+            disabled={!isValid || submitting}
             onClick={handleNextOrSubmit}
             className="text-sm px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-primary/70"
           >
-            {isLastStep ? "Save" : "Next"}
+            {submitting ? "Saving..." : isLastStep ? "Save" : "Next"}
           </button>
         </div>
       }
@@ -794,194 +809,244 @@ export default function CreateUpdateReport({
       )}
 
       {/* STEP 2 */}
-      {currentStep === 1 &&
-        (!isLoading ? (
-          <div className="bg-white border border-gray-200 rounded-lg px-5 py-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {currentStep === 1 && (
+        <div className="bg-white border border-gray-200 rounded-lg px-5 py-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field
+              label="View By"
+              required
+              value={form.reportType}
+              options={data.reportType}
+              onChange={(v: string) => {
+                setForm({
+                  ...form,
+                  reportType: v,
+                  lienStatusIds: "",
+                  statusView: "",
+                });
+              }}
+              type="select"
+            />
+
+            {form.reportType == "CASE" ? (
               <Field
-                label="View By"
+                label="Status"
                 required
-                value={form.reportType}
-                options={data.reportType}
+                value={form.statusView}
+                options={data.statusView ?? []}
+                placeholder="Select one status"
                 onChange={(v: string) => {
-                  setForm({
-                    ...form,
-                    reportType: v,
-                    lienStatusIds: [],
-                    statusView: [],
-                  });
+                  setForm({ ...form, statusView: v });
                 }}
                 type="select"
               />
+            ) : (
+              <Field
+                label="Lien Status"
+                required
+                value={form.lienStatusIds}
+                options={data.liensStatus ?? []}
+                placeholder="Select one status"
+                onChange={(v: string) =>
+                  setForm({
+                    ...form,
+                    lienStatusIds: v,
+                  })
+                }
+                type="select"
+                onOpen={() => {
+                  // setfilterField("lienStatus");
+                }}
+                onSearchChange={(e) => {
+                  setSearchSelectInput(e);
+                }}
+              />
+            )}
 
-              {form.reportType == "CASE" ? (
-                <Field
-                  label="Status"
-                  required
-                  value={form.statusView}
-                  options={data.statusView}
-                  placeholder="Select one status"
-                  onChange={(v: string) => {
-                    setForm({ ...form, statusView: v });
-                  }}
-                  type="select"
-                />
-              ) : (
-                <Field
-                  label="Lien Status"
-                  required
-                  value={form.lienStatusIds}
-                  options={data.liensStatus ? data.liensStatus : []}
-                  placeholder="Select one status"
-                  onChange={(v: string) =>
-                    setForm({
-                      ...form,
-                      lienStatusIds: v,
-                    })
+            <Field
+              type="date"
+              label="Closed Date"
+              value={form.closedDateFrom}
+              onChange={(v) => setForm({ ...form, closedDateFrom: v })}
+            />
+            <Field
+              type="date"
+              label="Purchase Date"
+              value={form.purchaseDateFrom}
+              onChange={(v) => setForm({ ...form, purchaseDateFrom: v })}
+            />
+
+            <Field
+              label="Law Firm"
+              value={form.lawFirmIds}
+              options={lawFirmFilter.options}
+              placeholder="Select law firms"
+              onChange={(values) =>
+                setForm({
+                  ...form,
+                  lawFirmIds: values,
+                })
+              }
+              type="select"
+              multiple
+              onOpen={() => {
+                setSearchSelectInput("");
+                setfilterField("lawfirm");
+                lawFirmFilter.refetch();
+              }}
+              onSearchChange={setSearchSelectInput}
+              isLoading={lawFirmFilter.isLoadingFilter}
+            />
+
+            <Field
+              label="Plaintiff Name"
+              value={form.plaintiffCaseIds}
+              options={plaintiffFilter.options}
+              placeholder="Select one or more plaintiffs"
+              onChange={(values) =>
+                setForm({
+                  ...form,
+                  plaintiffCaseIds: values,
+                })
+              }
+              type="select"
+              multiple
+              onOpen={() => {
+                setSearchSelectInput("");
+                setfilterField("plaintiff");
+                plaintiffFilter.refetch();
+              }}
+              onSearchChange={setSearchSelectInput}
+              isLoading={plaintiffFilter.isLoadingFilter}
+            />
+
+            <Field
+              label="Attorney"
+              value={form.attorneyIds}
+              options={attorneyFilter.options}
+              placeholder="Select attorneys"
+              onChange={(values) =>
+                setForm({
+                  ...form,
+                  attorneyIds: values,
+                })
+              }
+              type="select"
+              multiple
+              onOpen={() => {
+                setSearchSelectInput("");
+                setfilterField("attorney");
+                attorneyFilter.refetch();
+              }}
+              onSearchChange={setSearchSelectInput}
+              isLoading={attorneyFilter.isLoadingFilter}
+            />
+
+            <Field
+              label="Funding Company"
+              value={form.fundingCompanyIds}
+              options={fundingCompanyFilter.options}
+              placeholder="Select funding companies"
+              onChange={(values) =>
+                setForm({
+                  ...form,
+                  fundingCompanyIds: values,
+                })
+              }
+              type="select"
+              multiple
+              onOpen={() => {
+                setSearchSelectInput("");
+                setfilterField("fundingcompany");
+                fundingCompanyFilter.refetch();
+              }}
+              onSearchChange={setSearchSelectInput}
+              isLoading={fundingCompanyFilter.isLoadingFilter}
+            />
+            <Field
+              label="Medical Facility"
+              value={form.medicalFacilityIds}
+              options={medicalFacilityFilter.options}
+              placeholder="Select facilities"
+              onChange={(values) =>
+                setForm({
+                  ...form,
+                  medicalFacilityIds: values,
+                })
+              }
+              type="select"
+              multiple
+              onOpen={() => {
+                setSearchSelectInput("");
+                setfilterField("medicalfacility");
+                medicalFacilityFilter.refetch();
+              }}
+              onSearchChange={setSearchSelectInput}
+              isLoading={medicalFacilityFilter.isLoadingFilter}
+            />
+
+            <Field
+              label="Case Manager"
+              value={form.caseManagerIds}
+              options={caseManagerFilter.options}
+              placeholder="Select case managers"
+              onChange={(values) =>
+                setForm({
+                  ...form,
+                  caseManagerIds: values,
+                })
+              }
+              type="select"
+              multiple
+              onOpen={() => {
+                setSearchSelectInput("");
+                setfilterField("casemanager");
+                caseManagerFilter.refetch();
+              }}
+              onSearchChange={setSearchSelectInput}
+              isLoading={caseManagerFilter.isLoadingFilter}
+            />
+            <Field
+              label="Medical Provider"
+              value={form.medicalProviderIds}
+              options={medicalProviderFilter.options}
+              placeholder="Select providers"
+              onChange={(values) =>
+                setForm({
+                  ...form,
+                  medicalProviderIds: values,
+                })
+              }
+              type="select"
+              multiple
+              onOpen={() => {
+                setSearchSelectInput("");
+                setfilterField("medicalprovider");
+                medicalProviderFilter.refetch();
+              }}
+              onSearchChange={setSearchSelectInput}
+              isLoading={medicalProviderFilter.isLoadingFilter}
+            />
+
+            <div className="sm:col-span-2">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  onChange={(v) =>
+                    setForm({ ...form, isBulk: v.target.checked ? "Y" : "N" })
                   }
-                  type="select"
+                  value={form.isBulk}
                 />
-              )}
-
-              <Field
-                type="date"
-                label="Closed Date"
-                value={form.closedDateFrom}
-                onChange={(v) => setForm({ ...form, closedDateFrom: v })}
-              />
-              <Field
-                type="date"
-                label="Purchase Date"
-                value={form.purchaseDateFrom}
-                onChange={(v) => setForm({ ...form, purchaseDateFrom: v })}
-              />
-
-              <Field
-                label="Law Firm"
-                value={form.lawFirmIds}
-                options={data.lawfirm ? data.lawfirm : []}
-                placeholder="Select one or more law firms"
-                onChange={(v) =>
-                  setForm({
-                    ...form,
-                    lawFirmIds: Array.isArray(v) ? v : v ? [v] : [],
-                  })
-                }
-                type="select"
-                multiple
-              />
-
-              <Field
-                label="Plaintiff Name"
-                value={form.plaintiffCaseIds}
-                options={data.plaintiff ? data.plaintiff : []}
-                placeholder="Select one or more plaintiffs"
-                onChange={(v) =>
-                  setForm({
-                    ...form,
-                    plaintiffCaseIds: Array.isArray(v) ? v : v ? [v] : [],
-                  })
-                }
-                type="select"
-                multiple
-              />
-
-              <Field
-                label="Attorney"
-                value={form.attorneyIds}
-                options={data.attorney ? data.attorney : []}
-                placeholder="Select one or more attorneys"
-                onChange={(v) =>
-                  setForm({
-                    ...form,
-                    attorneyIds: Array.isArray(v) ? v : v ? [v] : [],
-                  })
-                }
-                type="select"
-                multiple
-              />
-
-              <Field
-                label="Funding Company"
-                value={form.fundingCompanyIds}
-                options={data.funding ? data.funding : []}
-                placeholder="Select one or more funding companies"
-                onChange={(v) =>
-                  setForm({
-                    ...form,
-                    fundingCompanyIds: Array.isArray(v) ? v : v ? [v] : [],
-                  })
-                }
-                type="select"
-                multiple
-              />
-
-              <Field
-                label="Medical Facility"
-                value={form.medicalFacilityIds}
-                options={data.medicalFacility ? data.medicalFacility : []}
-                placeholder="Select one or more facilities"
-                onChange={(v) =>
-                  setForm({
-                    ...form,
-                    medicalFacilityIds: Array.isArray(v) ? v : v ? [v] : [],
-                  })
-                }
-                type="select"
-                multiple
-              />
-
-              <Field
-                label="Case Manager"
-                value={form.caseManagerIds}
-                options={data.caseManagers ? data.caseManagers : []}
-                placeholder="Select one or more case managers"
-                onChange={(v) =>
-                  setForm({
-                    ...form,
-                    caseManagerIds: Array.isArray(v) ? v : v ? [v] : [],
-                  })
-                }
-                type="select"
-                multiple
-              />
-
-              <Field
-                label="Medical Provider"
-                value={form.medicalProviderIds}
-                options={data.medicalProviders ? data.medicalProviders : []}
-                placeholder="Select one or more providers"
-                onChange={(v) =>
-                  setForm({
-                    ...form,
-                    medicalProviderIds: Array.isArray(v) ? v : v ? [v] : [],
-                  })
-                }
-                type="select"
-                multiple
-              />
-
-              <div className="sm:col-span-2">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
-                    onChange={(v) =>
-                      setForm({ ...form, isBulk: v.target.checked ? "Y" : "N" })
-                    }
-                    value={form.isBulk}
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">BULK</p>
-                    <p className="text-xs text-gray-400">Mark as Bulk.</p>
-                  </div>
-                </label>
-              </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">BULK</p>
+                  <p className="text-xs text-gray-400">Mark as Bulk.</p>
+                </div>
+              </label>
             </div>
           </div>
-        ) : (
-          <>Loading filters...</>
-        ))}
+        </div>
+      )}
 
       {/* STEP 3 */}
       {currentStep === 2 && (

@@ -10,6 +10,9 @@ namespace Liens.Infrastructure.Services;
 
 public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkService
 {
+    private const string LegacyConfirmSaleRoute = "/api/liens/selling/liens/{lienId}/confirm-sale";
+    private const string ConfirmSaleSellerViewRoute = "/api/liens/selling/liens/{lienId}/confirm-sale/seller-view";
+
     private readonly LiensDbContext _db;
     private readonly IConfiguration _configuration;
 
@@ -38,6 +41,31 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
             buyerOrgId,
             buyerContactId,
             actingUserId,
+            LegacyConfirmSaleRoute,
+            SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
+            idempotencyKey,
+            ttl,
+            ct);
+
+    public Task<SellingBuyerAccessLinkResult> CreateAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid actingUserId,
+        string route,
+        string idempotencyKey,
+        TimeSpan ttl,
+        CancellationToken ct = default)
+        => CreateOrGetAsync(
+            tenantId,
+            lienId,
+            sellerOrgId,
+            buyerOrgId,
+            buyerContactId,
+            actingUserId,
+            route,
             SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
             idempotencyKey,
             ttl,
@@ -60,6 +88,7 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
             buyerOrgId,
             buyerContactId,
             actingUserId,
+            ConfirmSaleSellerViewRoute,
             SellingAccessLinkPurposes.ConfirmSaleSellerView,
             idempotencyKey,
             ttl,
@@ -72,21 +101,40 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
         Guid buyerOrgId,
         Guid buyerContactId,
         Guid actingUserId,
+        string route,
         string purpose,
         string idempotencyKey,
         TimeSpan ttl,
         CancellationToken ct = default)
     {
+        if (ttl <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(ttl), "Access-link TTL must be positive.");
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+
         var portalBaseUrl = ResolveBuyerPortalBaseUrl();
+        var trimmedRoute = route?.Trim();
         var trimmedIdempotencyKey = idempotencyKey.Trim();
 
+        ArgumentException.ThrowIfNullOrWhiteSpace(trimmedRoute, nameof(route));
+
         var existing = await _db.SellingBuyerAccessLinks
-            .Where(l => l.TenantId == tenantId && l.IdempotencyKey == trimmedIdempotencyKey)
+            .Where(l =>
+                l.TenantId == tenantId &&
+                l.SellerOrgId == sellerOrgId &&
+                l.LienId == lienId &&
+                l.BuyerOrgId == buyerOrgId &&
+                l.BuyerContactId == buyerContactId &&
+                l.CreatedByUserId == actingUserId &&
+                l.Route == trimmedRoute &&
+                l.IdempotencyKey == trimmedIdempotencyKey)
             .FirstOrDefaultAsync(ct);
 
         if (existing is not null)
         {
-            return Map(existing, portalBaseUrl, alreadyExisted: true);
+            // A raw token is intentionally unrecoverable after the first response.
+            // Replays may expose link metadata, but never recreate the secret URL.
+            return Map(existing, portalBaseUrl, rawToken: null, alreadyExisted: true);
         }
 
         var token = GenerateToken();
@@ -98,6 +146,7 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
             buyerContactId,
             token,
             purpose,
+            trimmedRoute,
             trimmedIdempotencyKey,
             DateTime.UtcNow.Add(ttl),
             actingUserId);
@@ -105,7 +154,7 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
         await _db.SellingBuyerAccessLinks.AddAsync(link, ct);
         await _db.SaveChangesAsync(ct);
 
-        return Map(link, portalBaseUrl, alreadyExisted: false);
+        return Map(link, portalBaseUrl, token, alreadyExisted: false);
     }
 
     public async Task MarkNotificationSubmittedAsync(
@@ -175,11 +224,12 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
     private static SellingBuyerAccessLinkResult Map(
         SellingBuyerAccessLink link,
         string portalBaseUrl,
+        string? rawToken,
         bool alreadyExisted)
         => new(
             link.Id,
-            link.Token,
-            BuildPortalUrl(portalBaseUrl, link.Token),
+            rawToken,
+            rawToken is null ? string.Empty : BuildPortalUrl(portalBaseUrl, rawToken),
             link.ExpiresAtUtc,
             alreadyExisted,
             link.NotificationId,

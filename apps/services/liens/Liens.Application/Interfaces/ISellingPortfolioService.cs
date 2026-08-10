@@ -116,6 +116,5 @@ public interface ISellingPortfolioService
         Guid sellerOrgId,
         Guid actingUserId,
         ConfirmSellingLienSaleRequest request,
-        string? idempotencyKey,
         CancellationToken ct = default);
 }

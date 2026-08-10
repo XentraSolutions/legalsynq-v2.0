@@ -34,6 +34,7 @@ public interface ILienRepository
         DateOnly? purchaseDateTo,
         DateTime? closedDateFrom,
         DateTime? closedDateTo,
+        bool useSettlementDateForClosedFilter,
         string? isBulk,
         IReadOnlyCollection<Guid> caseIds,
         int page,

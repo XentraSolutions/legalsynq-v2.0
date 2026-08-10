@@ -208,7 +208,7 @@ export function useLienStatusOptions(opts?: { enabled?: boolean }): InfiniteOpti
   });
 
   const options = useMemo<BaseSelectOption[]>(
-    () => (query.data?.items ?? []).map((s) => ({ value: s.id, label: s.name })),
+    () => (query.data?.items ?? []).map((s) => ({ value: s.code, label: s.name })),
     [query.data],
   );
 

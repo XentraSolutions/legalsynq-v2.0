@@ -14,6 +14,8 @@ function makeRequest(
 ): [NextRequest, RouteContext] {
   const headers: Record<string, string> = {
     "content-type": "application/json",
+    host: "synqlien-demo.localhost:3000",
+    "x-forwarded-proto": "http",
   };
   if (options.idempotencyKey) {
     headers["Idempotency-Key"] = options.idempotencyKey;
@@ -64,12 +66,47 @@ describe("SynqLien catch-all proxy", () => {
         method: "POST",
         headers: {
           "Idempotency-Key": "idem-123",
+          "x-legal-synq-public-host": "synqlien-demo.localhost:3000",
+          "x-legal-synq-public-proto": "http",
           "Content-Type": "application/json",
         },
         body: "{}",
+        redirect: "manual",
       },
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("X-Correlation-Id")).toBe("corr-public-response");
+  });
+
+  test("preserves public document redirects through the document access proxy", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(null, {
+        status: 302,
+        headers: {
+          Location: "/documents/access/abc123",
+          "X-Correlation-Id": "corr-public-doc",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const { GET } = await import("./route");
+    const [req, ctx] = makeRequest(
+      "api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/view",
+      { method: "GET" },
+    );
+
+    const response = await GET(req, ctx);
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "http://127.0.0.1:5010/liens/api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/view",
+      expect.objectContaining({
+        method: "GET",
+        redirect: "manual",
+      }),
+    );
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Location")).toBe("/api/lien/documents/access/abc123");
+    expect(response.headers.get("X-Correlation-Id")).toBe("corr-public-doc");
   });
 });

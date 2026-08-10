@@ -102,6 +102,9 @@ public class ReferralThreadServiceTests
         var provider = new ProviderStub
         {
             Name = "Dr. Gray",
+            Title = "Dr.",
+            FirstName = "Graham",
+            LastName = "Gray",
             OrganizationName = "Gray Clinic",
             Email = "intake@gray.example",
             AccessStage = ProviderAccessStage.Url,
@@ -127,12 +130,113 @@ public class ReferralThreadServiceTests
         Assert.NotNull(result.Data);
         Assert.Equal(provider.Id, result.Data!.ProviderId);
         Assert.Equal("Gray Clinic", result.Data.ProviderName);
+        Assert.Equal("Dr.", result.Data.ProviderTitle);
+        Assert.Equal("Graham", result.Data.ProviderFirstName);
+        Assert.Equal("Gray", result.Data.ProviderLastName);
         Assert.Equal("intake@gray.example", result.Data.ProviderEmail);
         Assert.Equal("555-0101", result.Data.ProviderPhone);
-        Assert.Equal("123 Main", result.Data.ProviderAddressLine1);
-        Assert.Equal("Las Vegas", result.Data.ProviderCity);
-        Assert.Equal("NV", result.Data.ProviderState);
-        Assert.Equal("89101", result.Data.ProviderPostalCode);
+        Assert.Null(result.Data.FacilityName);
+        Assert.Equal("123 Main", result.Data.LocationAddressLine1);
+        Assert.Equal("Las Vegas", result.Data.LocationCity);
+        Assert.Equal("NV", result.Data.LocationState);
+        Assert.Equal("89101", result.Data.LocationPostalCode);
+    }
+
+    [Fact]
+    public async Task GetPublicThreadAccessAsync_PrefersFacilityAddress_OverProviderDefaultAddress()
+    {
+        var referral = BuildReferral(referringOrganizationId: null);
+        var provider = new ProviderStub
+        {
+            Name = "Dr. Gray",
+            OrganizationName = "Gray Clinic",
+            Email = "intake@gray.example",
+            AccessStage = ProviderAccessStage.Url,
+        }.ToDomain(null);
+        SetProvider(referral, provider);
+
+        var facility = Facility.Create(
+            TenantId,
+            name: "Gray Clinic - North",
+            addressLine1: "456 North Ave",
+            city: "Henderson",
+            state: "NV",
+            postalCode: "89052",
+            phone: null,
+            isActive: true,
+            createdByUserId: null);
+        typeof(Referral).GetProperty(nameof(Referral.Facility))!.SetValue(referral, facility);
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var emailService = Mock.Of<IReferralEmailService>(e =>
+            e.ValidateViewTokenDetailed("valid-token") ==
+            CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
+
+        var sut = BuildService(repo, commentsRepo, emailService);
+
+        var result = await sut.GetPublicThreadAccessAsync("valid-token");
+
+        Assert.NotNull(result.Data);
+        Assert.Equal("Gray Clinic - North", result.Data!.FacilityName);
+        Assert.Equal("456 North Ave", result.Data.LocationAddressLine1);
+        Assert.Equal("Henderson", result.Data.LocationCity);
+        Assert.Equal("NV", result.Data.LocationState);
+        Assert.Equal("89052", result.Data.LocationPostalCode);
+    }
+
+    [Fact]
+    public async Task GetPublicThreadAccessAsync_MobileFacility_ReturnsServiceAreaLabelAndIsMobileFlag()
+    {
+        var referral = BuildReferral(referringOrganizationId: null);
+        var provider = new ProviderStub
+        {
+            Name = "Dr. Gray",
+            OrganizationName = "Gray Clinic",
+            Email = "intake@gray.example",
+            AccessStage = ProviderAccessStage.Url,
+        }.ToDomain(null);
+        SetProvider(referral, provider);
+
+        var facility = Facility.Create(
+            TenantId,
+            name: "Gray Clinic - Mobile",
+            addressLine1: "Greater Las Vegas Metro",
+            city: "Las Vegas",
+            state: "NV",
+            postalCode: "89101",
+            phone: null,
+            isActive: true,
+            createdByUserId: null,
+            isMobile: true,
+            serviceRadiusMiles: 25);
+        typeof(Referral).GetProperty(nameof(Referral.Facility))!.SetValue(referral, facility);
+
+        var repo = new Mock<IReferralRepository>();
+        repo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var commentsRepo = new Mock<IReferralCommentRepository>();
+        commentsRepo.Setup(r => r.GetByReferralAsync(referral.TenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var emailService = Mock.Of<IReferralEmailService>(e =>
+            e.ValidateViewTokenDetailed("valid-token") ==
+            CareConnect.Application.DTOs.ReferralTokenValidationOutcome.Success(referral.Id, referral.TokenVersion));
+
+        var sut = BuildService(repo, commentsRepo, emailService);
+
+        var result = await sut.GetPublicThreadAccessAsync("valid-token");
+
+        Assert.NotNull(result.Data);
+        Assert.True(result.Data!.LocationIsMobile);
+        Assert.Equal("Greater Las Vegas Metro", result.Data.LocationAddressLine1);
     }
 
     [Fact]
@@ -753,6 +857,9 @@ public class ReferralThreadServiceTests
     private sealed class ProviderStub
     {
         public string Name { get; init; } = string.Empty;
+        public string? Title { get; init; }
+        public string? FirstName { get; init; }
+        public string? LastName { get; init; }
         public string OrganizationName { get; init; } = string.Empty;
         public string Email { get; init; } = string.Empty;
         public string AccessStage { get; init; } = ProviderAccessStage.CommonPortal;
@@ -771,7 +878,10 @@ public class ReferralThreadServiceTests
                 "89101",
                 isActive: true,
                 acceptingReferrals: true,
-                createdByUserId: null);
+                createdByUserId: null,
+                firstName: FirstName,
+                lastName: LastName,
+                title: Title);
 
             if (organizationId.HasValue)
                 provider.LinkOrganization(organizationId.Value);

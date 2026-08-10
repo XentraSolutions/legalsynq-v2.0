@@ -20,16 +20,30 @@ public sealed record PublicNetworkSummary(
 /// </summary>
 public sealed record PublicProviderItem(
     Guid    Id,
+    Guid    NetworkProviderId,
+    Guid    ProviderId,
+    Guid    FacilityId,
     string  Name,
+    string? Title,
     string? OrganizationName,
+    string  FacilityName,
+    string  AddressLine1,
     string  Phone,
+    string? Email,
     string  City,
     string  State,
-    string  PostalCode,
+    string? PostalCode,
     bool    IsActive,
     bool    AcceptingReferrals,
     string  AccessStage,
-    string? PrimaryCategory);
+    string? PrimaryCategory,
+    List<SpecialtyResponse> Specialties,
+    Guid? PrimarySpecialtyId,
+    string? PrimarySpecialty,
+    double? DistanceMiles = null,
+    bool    IsMobile = false,
+    double? ServiceRadiusMiles = null,
+    string? ServiceAreaLabel = null);
 
 /// <summary>
 /// Public-facing map marker for a provider in a network.
@@ -37,13 +51,25 @@ public sealed record PublicProviderItem(
 /// </summary>
 public sealed record PublicProviderMarker(
     Guid    Id,
+    Guid    NetworkProviderId,
+    Guid    ProviderId,
+    Guid    FacilityId,
     string  Name,
+    string? Title,
     string? OrganizationName,
+    string  FacilityName,
     string  City,
     string  State,
     bool    AcceptingReferrals,
     double  Latitude,
-    double  Longitude);
+    double  Longitude,
+    List<SpecialtyResponse> Specialties,
+    Guid? PrimarySpecialtyId,
+    string? PrimarySpecialty,
+    double? DistanceMiles = null,
+    bool    IsMobile = false,
+    double? ServiceRadiusMiles = null,
+    string? ServiceAreaLabel = null);
 
 /// <summary>
 /// Resolved public network surface returned when the tenant has a single network.
@@ -54,7 +80,8 @@ public sealed record PublicNetworkDetail(
     string NetworkName,
     string NetworkDescription,
     List<PublicProviderItem>   Providers,
-    List<PublicProviderMarker> Markers);
+    List<PublicProviderMarker> Markers,
+    List<SpecialtyResponse> Specialties);
 
 /// <summary>
 /// Stage-based redirect instruction returned when the network surface detects
@@ -76,6 +103,9 @@ public sealed class PublicReferralRequest
 {
     /// <summary>Target provider (from the public directory card).</summary>
     public Guid ProviderId { get; set; }
+
+    /// <summary>Selected provider-location network membership from the public directory card.</summary>
+    public Guid? NetworkProviderId { get; set; }
 
     /// <summary>First name of the person submitting the referral (law firm staff).</summary>
     public string SenderFirstName { get; set; } = string.Empty;
@@ -130,6 +160,13 @@ public sealed class PublicReferralRequest
 
     /// <summary>Treatment type ID selected from the treatment types list (optional).</summary>
     public Guid? TreatmentTypeId { get; set; }
+
+    /// <summary>
+    /// Referral Attribution selected from the tenant's active options (optional). Validated
+    /// server-side (must belong to this tenant and be active) by
+    /// ReferralService.CreateAsync — never trusted at face value.
+    /// </summary>
+    public Guid? ReferralAttributionId { get; set; }
 }
 
 /// <summary>
@@ -139,6 +176,8 @@ public sealed class PublicReferralRequest
 public sealed record PublicReferralResponse(
     Guid   ReferralId,
     Guid   ProviderId,
+    Guid?  FacilityId,
+    Guid?  NetworkProviderId,
     string ProviderName,
     string ProviderStage,
     string Message);

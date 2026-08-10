@@ -60,11 +60,14 @@ public static class DependencyInjection
         services.AddSingleton<IBillOfSalePdfGenerator, BillOfSalePdfGenerator>();
         services.AddScoped<IBillOfSaleDocumentService, BillOfSaleDocumentService>();
         services.AddScoped<ILegacyDocumentUploadClient, LegacyDocumentUploadClient>();
+        services.AddScoped<ISellingDocumentReferenceValidator, SellingDocumentReferenceValidator>();
         services.AddScoped<ILienSaleService, LienSaleService>();
         services.AddScoped<ILienService, LienService>();
         services.AddScoped<ILienOfferService, LienOfferService>();
         services.AddScoped<ILienEligibilityValidator, LienEligibilityValidator>();
+        services.AddScoped<ISellerOrganizationDisplayResolver, SellerOrganizationDisplayResolver>();
         services.AddScoped<ISellingPortfolioService, SellingPortfolioService>();
+        services.AddScoped<ISellingDashboardService, SellingDashboardService>();
         services.AddScoped<ISellingBuyerAccessLinkService, SellingBuyerAccessLinkService>();
         services.AddScoped<ISellingAnalyticsService, SellingAnalyticsService>();
         services.AddScoped<IBillOfSaleService, BillOfSaleService>();
@@ -103,7 +106,10 @@ public static class DependencyInjection
         services.Configure<IdentityServiceOptions>(options =>
         {
             configuration.GetSection(IdentityServiceOptions.SectionName).Bind(options);
-            options.BaseUrl ??= configuration["ExternalServices:Identity:BaseUrl"];
+            if (string.IsNullOrWhiteSpace(options.BaseUrl))
+                options.BaseUrl = configuration["ExternalServices:Identity:BaseUrl"];
+            if (string.IsNullOrWhiteSpace(options.ProvisioningToken))
+                options.ProvisioningToken = configuration["TenantService:ProvisioningToken"];
         });
         services.AddHttpClient("IdentityService");
         services.AddScoped<IPublicBuyerAccountProvisioningService, IdentityBuyerAccountProvisioningService>();

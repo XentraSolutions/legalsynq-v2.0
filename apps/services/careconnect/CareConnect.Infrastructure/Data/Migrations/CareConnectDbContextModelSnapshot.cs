@@ -716,8 +716,30 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("varchar(320)");
+
+                    b.Property<string>("GeoPointSource")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<DateTime?>("GeoUpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsMobile")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
+
+                    b.Property<decimal?>("Latitude")
+                        .HasColumnType("decimal(10,7)");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasColumnType("decimal(10,7)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -732,9 +754,11 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasColumnType("varchar(50)");
 
                     b.Property<string>("PostalCode")
-                        .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
+
+                    b.Property<decimal?>("ServiceRadiusMiles")
+                        .HasColumnType("decimal(5,1)");
 
                     b.Property<string>("State")
                         .IsRequired()
@@ -757,6 +781,12 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasIndex("TenantId", "Name");
 
+                    b.HasIndex("TenantId", "Latitude", "Longitude")
+                        .HasDatabaseName("IX_Facilities_TenantId_Latitude_Longitude");
+
+                    b.HasIndex("TenantId", "AddressLine1", "City", "State", "PostalCode")
+                        .HasDatabaseName("IX_Facilities_Tenant_Address");
+
                     b.ToTable("cc_Facilities", (string)null);
                 });
 
@@ -766,11 +796,20 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<bool>("AcceptingReferrals")
+                        .HasColumnType("tinyint(1)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
                     b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("char(36)");
+
+                    b.Property<Guid>("FacilityId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<Guid>("ProviderId")
                         .HasColumnType("char(36)");
@@ -789,13 +828,20 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("FacilityId")
+                        .HasDatabaseName("IX_NetworkProviders_FacilityId");
+
                     b.HasIndex("ProviderId");
 
                     b.HasIndex("ProviderNetworkId", "ProviderId")
-                        .IsUnique();
+                        .HasDatabaseName("IX_NetworkProviders_ProviderNetworkId_ProviderId");
 
                     b.HasIndex("TenantId", "ProviderNetworkId")
                         .HasDatabaseName("IX_NetworkProviders_TenantId_ProviderNetworkId");
+
+                    b.HasIndex("ProviderNetworkId", "ProviderId", "FacilityId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_NetworkProviders_ProviderNetworkId_ProviderId_FacilityId");
 
                     b.ToTable("cc_NetworkProviders", (string)null);
                 });
@@ -1040,6 +1086,10 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.Property<DateTime?>("TenantProvisionedAtUtc")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -1314,6 +1364,28 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.ToTable("cc_ProviderServiceOfferings", (string)null);
                 });
 
+            modelBuilder.Entity("CareConnect.Domain.ProviderSpecialty", b =>
+                {
+                    b.Property<Guid>("ProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("SpecialtyId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("tinyint(1)");
+
+                    b.HasKey("ProviderId", "SpecialtyId");
+
+                    b.HasIndex("SpecialtyId")
+                        .HasDatabaseName("IX_cc_ProviderSpecialties_SpecialtyId");
+
+                    b.HasIndex("ProviderId", "IsPrimary")
+                        .HasDatabaseName("IX_cc_ProviderSpecialties_ProviderId_IsPrimary");
+
+                    b.ToTable("cc_ProviderSpecialties", (string)null);
+                });
+
             modelBuilder.Entity("CareConnect.Domain.Referral", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1353,6 +1425,16 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<Guid?>("CreatedByUserId")
                         .HasColumnType("char(36)");
 
+                    b.Property<DateOnly?>("DateOfAccident")
+                        .HasColumnType("date");
+
+                    b.Property<string>("DeclineNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("varchar(2000)");
+
+                    b.Property<Guid?>("FacilityId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("varchar(2000)");
@@ -1366,6 +1448,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<Guid?>("ReceivingOrganizationId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("ReferralAttributionId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("ReferrerEmail")
                         .HasColumnType("longtext");
 
@@ -1376,15 +1461,15 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<string>("ReferrerFirstName")
                         .HasColumnType("longtext");
 
-                    b.Property<string>("ReferrerPhone")
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
                     b.Property<string>("ReferrerLastName")
                         .HasColumnType("longtext");
 
                     b.Property<string>("ReferrerName")
                         .HasColumnType("longtext");
+
+                    b.Property<string>("ReferrerPhone")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
 
                     b.Property<Guid?>("ReferringOrganizationId")
                         .HasColumnType("char(36)");
@@ -1397,9 +1482,6 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
-
-                    b.Property<Guid?>("TreatmentTypeId")
-                        .HasColumnType("char(36)");
 
                     b.Property<DateOnly?>("SubjectDobSnapshot")
                         .HasColumnType("date");
@@ -1417,6 +1499,9 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Property<int>("TokenVersion")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("TreatmentTypeId")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -1430,10 +1515,15 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("FacilityId");
+
                     b.HasIndex("OrganizationRelationshipId")
                         .HasDatabaseName("IX_Referrals_OrganizationRelationshipId");
 
                     b.HasIndex("ProviderId");
+
+                    b.HasIndex("ReferralAttributionId")
+                        .HasDatabaseName("IX_Referrals_ReferralAttributionId");
 
                     b.HasIndex("SubjectPartyId")
                         .HasDatabaseName("IX_Referrals_SubjectPartyId");
@@ -1447,17 +1537,26 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.HasIndex("TenantId", "CreatedAtUtc")
                         .HasDatabaseName("IX_Referrals_TenantId_CreatedAtUtc");
 
+                    b.HasIndex("TenantId", "FacilityId")
+                        .HasDatabaseName("IX_Referrals_TenantId_FacilityId");
+
                     b.HasIndex("TenantId", "ProviderId")
                         .HasDatabaseName("IX_Referrals_TenantId_ProviderId");
+
+                    b.HasIndex("TenantId", "ReferralAttributionId")
+                        .HasDatabaseName("IX_Referrals_TenantId_ReferralAttributionId");
 
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("IX_Referrals_TenantId_Status");
 
+                    b.HasIndex("TenantId", "ReferralAttributionId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_Referrals_TenantId_ReferralAttributionId_CreatedAtUtc");
+
+                    b.HasIndex("TenantId", "ReferralAttributionId", "Status")
+                        .HasDatabaseName("IX_Referrals_TenantId_ReferralAttributionId_Status");
+
                     b.HasIndex("TenantId", "Status", "CreatedAtUtc")
                         .HasDatabaseName("IX_Referrals_TenantId_Status_CreatedAtUtc");
-
-                    b.HasIndex("TreatmentTypeId")
-                        .HasDatabaseName("IX_Referrals_TreatmentTypeId");
 
                     b.ToTable("cc_Referrals", (string)null);
                 });
@@ -1499,10 +1598,10 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("varchar(1000)");
 
-                    b.Property<Guid>("ReferralId")
+                    b.Property<Guid?>("ReferralCommentId")
                         .HasColumnType("char(36)");
 
-                    b.Property<Guid?>("ReferralCommentId")
+                    b.Property<Guid>("ReferralId")
                         .HasColumnType("char(36)");
 
                     b.Property<string>("Status")
@@ -1521,10 +1620,10 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ReferralId");
-
                     b.HasIndex("ReferralCommentId")
                         .HasDatabaseName("IX_cc_ReferralAttachments_ReferralCommentId");
+
+                    b.HasIndex("ReferralId");
 
                     b.HasIndex("TenantId", "Status");
 
@@ -1534,6 +1633,120 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasDatabaseName("IX_cc_ReferralAttachments_ReferralComment");
 
                     b.ToTable("cc_ReferralAttachments", (string)null);
+                });
+
+            modelBuilder.Entity("CareConnect.Domain.ReferralAttribution", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<int?>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_ReferralAttributions_TenantId");
+
+                    b.HasIndex("TenantId", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ReferralAttributions_TenantId_Code");
+
+                    b.HasIndex("TenantId", "IsActive")
+                        .HasDatabaseName("IX_ReferralAttributions_TenantId_IsActive");
+
+                    b.ToTable("cc_ReferralAttributions", (string)null);
+                });
+
+            modelBuilder.Entity("CareConnect.Domain.ReferralAttributionAccessCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("AccessEndAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("AccessStartAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<Guid>("ReferralAttributionId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CodeHash")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ReferralAttributionAccessCodes_CodeHash");
+
+                    b.HasIndex("ReferralAttributionId")
+                        .HasDatabaseName("IX_ReferralAttributionAccessCodes_ReferralAttributionId");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("IX_ReferralAttributionAccessCodes_TenantId");
+
+                    b.ToTable("cc_ReferralAttributionAccessCodes", (string)null);
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ReferralComment", b =>
@@ -1762,6 +1975,99 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.ToTable("cc_ServiceOfferings", (string)null);
                 });
 
+            modelBuilder.Entity("CareConnect.Domain.Specialty", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("cc_Specialties", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000001"),
+                            Code = "PAIN",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Pain",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000007"),
+                            Code = "SPINE",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Spine",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000004"),
+                            Code = "PHYSICAL_THERAPY",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Physical Therapy",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000006"),
+                            Code = "NEURO",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Neuro",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000005"),
+                            Code = "IMAGING",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Imaging",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("41000000-0000-0000-0000-000000000002"),
+                            Code = "CHIROPRACTOR",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            Name = "Chiropractor",
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
+                });
+
             modelBuilder.Entity("CareConnect.Domain.ActivationRequest", b =>
                 {
                     b.HasOne("CareConnect.Domain.Provider", "Provider")
@@ -1890,6 +2196,12 @@ namespace CareConnect.Infrastructure.Data.Migrations
 
             modelBuilder.Entity("CareConnect.Domain.NetworkProvider", b =>
                 {
+                    b.HasOne("CareConnect.Domain.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("CareConnect.Domain.Provider", "Provider")
                         .WithMany()
                         .HasForeignKey("ProviderId")
@@ -1901,6 +2213,8 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .HasForeignKey("ProviderNetworkId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Facility");
 
                     b.Navigation("Network");
 
@@ -1990,7 +2304,7 @@ namespace CareConnect.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.HasOne("CareConnect.Domain.Provider", "Provider")
-                        .WithMany()
+                        .WithMany("ProviderFacilities")
                         .HasForeignKey("ProviderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -2026,40 +2340,84 @@ namespace CareConnect.Infrastructure.Data.Migrations
                     b.Navigation("ServiceOffering");
                 });
 
+            modelBuilder.Entity("CareConnect.Domain.ProviderSpecialty", b =>
+                {
+                    b.HasOne("CareConnect.Domain.Provider", "Provider")
+                        .WithMany("ProviderSpecialties")
+                        .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CareConnect.Domain.Specialty", "Specialty")
+                        .WithMany("ProviderSpecialties")
+                        .HasForeignKey("SpecialtyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Provider");
+
+                    b.Navigation("Specialty");
+                });
+
             modelBuilder.Entity("CareConnect.Domain.Referral", b =>
                 {
+                    b.HasOne("CareConnect.Domain.Facility", "Facility")
+                        .WithMany()
+                        .HasForeignKey("FacilityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CareConnect.Domain.Provider", "Provider")
                         .WithMany()
                         .HasForeignKey("ProviderId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("CareConnect.Domain.ReferralAttribution", "ReferralAttribution")
+                        .WithMany()
+                        .HasForeignKey("ReferralAttributionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CareConnect.Domain.Party", "SubjectParty")
                         .WithMany()
                         .HasForeignKey("SubjectPartyId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.Navigation("Facility");
+
                     b.Navigation("Provider");
+
+                    b.Navigation("ReferralAttribution");
 
                     b.Navigation("SubjectParty");
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ReferralAttachment", b =>
                 {
+                    b.HasOne("CareConnect.Domain.ReferralComment", "ReferralComment")
+                        .WithMany("Attachments")
+                        .HasForeignKey("ReferralCommentId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("CareConnect.Domain.Referral", "Referral")
                         .WithMany()
                         .HasForeignKey("ReferralId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("CareConnect.Domain.ReferralComment", "ReferralComment")
-                        .WithMany("Attachments")
-                        .HasForeignKey("ReferralCommentId")
-                        .OnDelete(DeleteBehavior.Cascade);
-
                     b.Navigation("Referral");
 
                     b.Navigation("ReferralComment");
+                });
+
+            modelBuilder.Entity("CareConnect.Domain.ReferralAttributionAccessCode", b =>
+                {
+                    b.HasOne("CareConnect.Domain.ReferralAttribution", "ReferralAttribution")
+                        .WithMany()
+                        .HasForeignKey("ReferralAttributionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ReferralAttribution");
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ReferralNote", b =>
@@ -2113,6 +2471,10 @@ namespace CareConnect.Infrastructure.Data.Migrations
             modelBuilder.Entity("CareConnect.Domain.Provider", b =>
                 {
                     b.Navigation("ProviderCategories");
+
+                    b.Navigation("ProviderFacilities");
+
+                    b.Navigation("ProviderSpecialties");
                 });
 
             modelBuilder.Entity("CareConnect.Domain.ProviderNetwork", b =>
@@ -2123,6 +2485,11 @@ namespace CareConnect.Infrastructure.Data.Migrations
             modelBuilder.Entity("CareConnect.Domain.ReferralComment", b =>
                 {
                     b.Navigation("Attachments");
+                });
+
+            modelBuilder.Entity("CareConnect.Domain.Specialty", b =>
+                {
+                    b.Navigation("ProviderSpecialties");
                 });
 #pragma warning restore 612, 618
         }

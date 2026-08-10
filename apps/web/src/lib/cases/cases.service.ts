@@ -77,12 +77,6 @@ export const casesService = {
   async updateCasePersonal(
     request: UpdateCasePersonalRequestDto,
   ): Promise<CaseDetail> {
-    // const dto: UpdateCaseDetailsRequestDto = {
-    //   firstname: request.firstName,
-    //   lastname: request.lastName,
-    //   request.dob && { dateOfIncident: request.dob }),
-    // };
-    console.log(request);
     const { data } = await casesApi.updatePersonal(request);
     return mapCaseToDetail(data);
   },
@@ -133,35 +127,67 @@ export const casesService = {
 
   async getLawFirmCaseAllocation(
     request: CaseAllocationReportRequest,
-  ): Promise<{ segments: AllocationSegment[]; rows: CaseReportItem[] }> {
+  ): Promise<{
+    segments: AllocationSegment[];
+    rows: CaseReportItem[];
+    totalCount: number;
+  }> {
     const { data } = await casesApi.getLawFirmCaseReport(request);
     const rows = data.items ?? [];
-    return { segments: groupAndCount(rows, (item) => item.lawFirm), rows };
+    return {
+      segments: hasSummaryCounts(data.allocationCounts)
+        ? countsToSegments(data.allocationCounts)
+        : groupAndCount(rows, (item) => item.lawFirm),
+      rows,
+      totalCount: data.totalCount ?? 0,
+    };
   },
 
   async getMedicalFacilityCaseAllocation(
     request: CaseAllocationReportRequest,
-  ): Promise<{ segments: AllocationSegment[]; rows: LienReportItem[] }> {
+  ): Promise<{
+    segments: AllocationSegment[];
+    rows: LienReportItem[];
+    totalCount: number;
+  }> {
     const { data } = await casesApi.getMedicalProviderCaseReport(request);
     const rows = data.items ?? [];
     return {
-      segments: groupAndCount(rows, (item) => item.facilityName),
+      segments: hasSummaryCounts(data.allocationCounts)
+        ? countsToSegments(data.allocationCounts)
+        : groupAndCount(rows, (item) => item.facilityName),
       rows,
+      totalCount: data.totalCount ?? 0,
     };
   },
 
-  async getTotalLienReportRows(
-    request: CaseAllocationReportRequest,
-  ): Promise<{ items: LienReportItem[]; totalCount: number }> {
+  async getTotalLienReportRows(request: CaseAllocationReportRequest) {
     const { data } = await casesApi.getTotalLienReport(request);
-    return { items: data.items ?? [], totalCount: data.totalCount ?? 0 };
+    const items = data.items ?? [];
+    return {
+      ...data,
+      items,
+      totalCount: data.totalCount ?? 0,
+      totalPurchaseAmount:
+        data.totalPurchaseAmount ??
+        items.reduce((sum, item) => sum + (item.totalPurchaseAmount ?? 0), 0),
+      totalBillingAmount:
+        data.totalBillingAmount ??
+        items.reduce((sum, item) => sum + (item.totalBillingAmount ?? 0), 0),
+      statusCounts: data.statusCounts ?? countBy(items, (item) => item.status),
+      statusAmounts: data.statusAmounts ?? amountByStatus(items),
+    };
   },
 
-  async getTotalCaseReportRows(
-    request: CaseAllocationReportRequest,
-  ): Promise<{ items: CaseReportItem[]; totalCount: number }> {
+  async getTotalCaseReportRows(request: CaseAllocationReportRequest) {
     const { data } = await casesApi.getTotalCaseReport(request);
-    return { items: data.items ?? [], totalCount: data.totalCount ?? 0 };
+    const items = data.items ?? [];
+    return {
+      ...data,
+      items,
+      totalCount: data.totalCount ?? 0,
+      statusCounts: data.statusCounts ?? countBy(items, (item) => item.status),
+    };
   },
 
   async exportLawFirmCaseReport(
@@ -370,4 +396,43 @@ function groupAndCount<T>(
     label,
     value,
   }));
+}
+
+function normalizeSummaryKey(raw: unknown): string {
+  return typeof raw === "string" && raw.trim() ? raw.trim() : "Unknown";
+}
+
+function countBy<T>(
+  items: T[],
+  getKey: (item: T) => unknown,
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const item of items) {
+    const key = normalizeSummaryKey(getKey(item));
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function amountByStatus(
+  items: LienReportItem[],
+): Record<string, { purchase: number; billing: number }> {
+  const amounts: Record<string, { purchase: number; billing: number }> = {};
+  for (const item of items) {
+    const key = normalizeSummaryKey(item.status);
+    amounts[key] ??= { purchase: 0, billing: 0 };
+    amounts[key].purchase += item.totalPurchaseAmount ?? 0;
+    amounts[key].billing += item.totalBillingAmount ?? 0;
+  }
+  return amounts;
+}
+
+function hasSummaryCounts(
+  counts: Record<string, number> | undefined,
+): counts is Record<string, number> {
+  return counts !== undefined;
+}
+
+function countsToSegments(counts: Record<string, number>): AllocationSegment[] {
+  return Object.entries(counts).map(([label, value]) => ({ label, value }));
 }

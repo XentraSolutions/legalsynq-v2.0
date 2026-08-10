@@ -128,4 +128,8 @@ export const lookupApi = {
   getLawFirmContactRoles() {
     return apiClient.get<LookupData[]>(`${BASE}/contact/lawfirm/role`);
   },
+
+  getTasks() {
+    return apiClient.get<any>(`/lien/api/liens/cases/dashboard/task-summary`);
+  },
 };

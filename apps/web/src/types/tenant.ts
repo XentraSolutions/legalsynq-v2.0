@@ -2,6 +2,7 @@ export interface TenantUser {
   id: string;
   tenantId: string;
   email: string;
+  title?: string | null;
   firstName: string;
   lastName: string;
   isActive: boolean;
@@ -17,6 +18,7 @@ export interface TenantUser {
 
 export interface TenantUserDetail {
   id: string;
+  title?: string | null;
   firstName: string;
   lastName: string;
   email: string;

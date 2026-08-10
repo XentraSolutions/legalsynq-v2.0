@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { ArrowRight, TrendingDown, TrendingUp } from "lucide-react";
+import { CustomDateRangeForm } from "@/components/synqlien-funding-portal/custom-date-range-form";
 import {
   formatFundingCurrency,
   formatFundingDateTime,
@@ -11,7 +13,6 @@ import {
   type FundingMetricKey,
   type FundingMetricTrend,
   type PendingFundingOfferRow,
-  type ProviderPerformanceRow,
   type SynqLienFundingDashboard,
 } from "@/lib/synqlien-funding-portal";
 
@@ -32,16 +33,20 @@ const RANGE_LABELS: Record<FundingDashboardRange, string> = {
 };
 
 const RANGE_OPTIONS: FundingDashboardRange[] = ["last7Days", "last30Days", "custom"];
+const DATE_PARAM_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function SynqLienFundingDashboardPage({
   searchParams,
 }: DashboardPageProps) {
   const sp = await searchParams;
   const range = parseRange(sp.range);
+  const from = parseDateParam(sp.from);
+  const to = parseDateParam(sp.to);
+  const today = getTodayDateParam();
   const dashboard = await getFundingDashboard({
     range,
-    from: sp.from || undefined,
-    to: sp.to || undefined,
+    from,
+    to,
   });
 
   return (
@@ -60,7 +65,7 @@ export default async function SynqLienFundingDashboardPage({
           className="hidden h-[38px] shrink-0 items-center justify-center rounded-[10px] bg-[#ee7132] px-4 text-[14px] font-medium leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:bg-[#d86228] sm:inline-flex"
           aria-label="Open Offer Inbox"
         >
-          OfferInbox
+          Offer Inbox
         </Link>
       </div>
 
@@ -70,13 +75,12 @@ export default async function SynqLienFundingDashboardPage({
         <PendingOffersCard rows={dashboard.pendingOffers} />
         <PipelineCard
           range={range}
-          from={sp.from}
-          to={sp.to}
+          from={from}
+          to={to}
+          defaultDate={today}
           stages={dashboard.pipelineStages}
         />
       </div>
-
-      <ProviderPerformanceCard rows={dashboard.providerPerformance} />
 
       <OfferInboxCard />
     </div>
@@ -147,8 +151,9 @@ function TrendPill({ trend }: { trend?: FundingMetricTrend | null }) {
         : "bg-[#dcfce7] text-[#15803d]";
 
   return (
-    <span className={`inline-flex h-6 items-center rounded-full px-2 text-[12px] font-medium leading-[1.6] ${tone}`}>
-      {formatSignedPercent(trend)}
+    <span className={`inline-flex h-6 items-center gap-0.5 rounded-full px-2 text-[12px] font-medium leading-[1.6] ${tone}`}>
+      <TrendIcon direction={trend.direction} className="h-3 w-3 shrink-0" />
+      {formatTrendPercent(trend)}
     </span>
   );
 }
@@ -172,7 +177,7 @@ function TrendSummary({ trend }: { trend?: FundingMetricTrend | null }) {
   return (
     <div className="mt-4 space-y-1">
       <p className="text-[12px] font-semibold leading-[1.6] text-[#0a0a0a]">
-        {verb} <i className={trend.direction === "down" ? "ri-line-chart-line" : "ri-line-chart-line"} />
+        {verb} <TrendIcon direction={trend.direction} className="ml-1 inline-block h-3.5 w-3.5 align-[-2px]" />
       </p>
       <p className="text-[12px] font-normal leading-[1.6] text-[#737373]">
         {directionLabel} {formatFundingPercent(Math.abs(trend.value))}
@@ -180,6 +185,18 @@ function TrendSummary({ trend }: { trend?: FundingMetricTrend | null }) {
       </p>
     </div>
   );
+}
+
+function TrendIcon({
+  direction,
+  className,
+}: {
+  direction: FundingMetricTrend["direction"];
+  className?: string;
+}) {
+  const Icon = direction === "down" ? TrendingDown : direction === "flat" ? ArrowRight : TrendingUp;
+
+  return <Icon aria-hidden className={className} strokeWidth={2.25} />;
 }
 
 function PendingOffersCard({ rows }: { rows: PendingFundingOfferRow[] }) {
@@ -204,27 +221,32 @@ function PendingOffersCard({ rows }: { rows: PendingFundingOfferRow[] }) {
         <EmptyState icon="ri-inbox-line" title="No pending offers" />
       ) : (
         <ul className="divide-y divide-[#e5e5e5] px-6">
-          {visibleRows.map(row => (
-            <li key={row.id} className="flex min-h-[86px] items-center justify-between gap-5 py-3">
-              <div className="min-w-0">
-                <StatusBadge status={row.status} size="sm" />
-                <p className="mt-2 truncate text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
-                  {row.providerName}
-                </p>
-                <p className="truncate text-[12px] font-normal leading-[1.6] text-[#737373]">
-                  {row.sellerName}
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
-                  {formatFundingCurrency(row.offeredAmount)}
-                </p>
-                <p className="mt-1 text-[12px] font-normal leading-[1.6] text-[#737373]">
-                  {formatFundingDateTime(row.receivedAtUtc)}
-                </p>
-              </div>
-            </li>
-          ))}
+          {visibleRows.map(row => {
+            const sellerCompany = row.sellerCompany?.trim() || row.sellerName || "Seller company unavailable";
+            const sellerName = row.sellerName?.trim() || "Seller unavailable";
+
+            return (
+              <li key={row.id} className="flex min-h-[86px] items-center justify-between gap-5 py-3">
+                <div className="min-w-0">
+                  <StatusBadge status={row.status} size="sm" />
+                  <p className="mt-2 truncate text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
+                    {sellerCompany}
+                  </p>
+                  <p className="truncate text-[12px] font-normal leading-[1.6] text-[#737373]">
+                    {sellerName}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
+                    {formatFundingCurrency(row.offeredAmount)}
+                  </p>
+                  <p className="mt-1 text-[12px] font-normal leading-[1.6] text-[#737373]">
+                    {formatFundingDateTime(row.receivedAtUtc)}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
@@ -235,37 +257,51 @@ function PipelineCard({
   range,
   from,
   to,
+  defaultDate,
   stages,
 }: {
   range: FundingDashboardRange;
   from?: string;
   to?: string;
+  defaultDate: string;
   stages: AcquisitionPipelineStage[];
 }) {
-  const totalCount = stages.reduce((sum, stage) => sum + stage.count, 0);
+  const waitingForCustomRange = range === "custom" && (!from || !to);
+  const visibleStages = waitingForCustomRange ? [] : stages;
+  const totalCount = visibleStages.reduce((sum, stage) => sum + stage.count, 0);
 
   return (
     <section className="rounded-[16px] border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.08)]">
       <h2 className="text-[16px] font-semibold leading-5 text-[#0a0a0a]">
         Acquisition Pipeline
       </h2>
-      <RangeTabs range={range} from={from} to={to} />
+      <RangeTabs range={range} from={from} to={to} defaultDate={defaultDate} />
 
-      <div className="mt-8 flex items-center justify-between gap-3">
-        <p className="text-[24px] font-semibold leading-8 text-[#0a0a0a]">Total:</p>
-        <p className="text-[24px] font-semibold leading-8 text-[#0a0a0a]">
-          {formatFundingNumber(totalCount)}
-        </p>
-      </div>
-
-      {stages.length === 0 ? (
-        <EmptyState icon="ri-bar-chart-horizontal-line" title="No pipeline activity for this range" compact />
-      ) : (
-        <div className="mt-7 space-y-8">
-          {stages.map(stage => (
-            <PipelineStageRow key={stage.key} stage={stage} totalCount={totalCount} />
-          ))}
+      {waitingForCustomRange ? (
+        <div className="mt-8 rounded-[10px] border border-dashed border-[#e5e5e5] bg-[#fafafa] px-4 py-8 text-center">
+          <p className="text-[14px] font-medium leading-[1.6] text-[#525252]">
+            Select a start and end date to view pipeline data.
+          </p>
         </div>
+      ) : (
+        <>
+          <div className="mt-8 flex items-center justify-between gap-3">
+            <p className="text-[24px] font-semibold leading-8 text-[#0a0a0a]">Total:</p>
+            <p className="text-[24px] font-semibold leading-8 text-[#0a0a0a]">
+              {formatFundingNumber(totalCount)}
+            </p>
+          </div>
+
+          {visibleStages.length === 0 ? (
+            <EmptyState icon="ri-bar-chart-horizontal-line" title="No pipeline activity for this range" compact />
+          ) : (
+            <div className="mt-7 space-y-8">
+              {visibleStages.map(stage => (
+                <PipelineStageRow key={stage.key} stage={stage} totalCount={totalCount} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -275,30 +311,36 @@ function RangeTabs({
   range,
   from,
   to,
+  defaultDate,
 }: {
   range: FundingDashboardRange;
   from?: string;
   to?: string;
+  defaultDate: string;
 }) {
   return (
-    <div className="mt-4 grid h-9 grid-cols-3 overflow-hidden rounded-[8px] bg-[#f5f5f5] p-px">
-      {RANGE_OPTIONS.map(item => {
-        const active = range === item;
-        return (
-          <Link
-            key={item}
-            href={buildDashboardHref(item, from, to)}
-            className={`flex items-center justify-center rounded-[7px] text-[12px] font-medium leading-[1.6] transition-colors ${
-              active
-                ? "border border-[#e5e5e5] bg-white text-[#0a0a0a] shadow-[0_1px_1px_rgba(0,0,0,0.08)]"
-                : "text-[#0a0a0a] hover:bg-white/70"
-            }`}
-          >
-            {RANGE_LABELS[item]}
-          </Link>
-        );
-      })}
-    </div>
+    <>
+      <div className="mt-4 grid h-9 grid-cols-3 overflow-hidden rounded-[8px] bg-[#f5f5f5] p-px">
+        {RANGE_OPTIONS.map(item => {
+          const active = range === item;
+          return (
+            <Link
+              key={item}
+              href={buildDashboardHref(item, from, to)}
+              className={`flex items-center justify-center rounded-[7px] text-[12px] font-medium leading-[1.6] transition-colors ${
+                active
+                  ? "border border-[#e5e5e5] bg-white text-[#0a0a0a] shadow-[0_1px_1px_rgba(0,0,0,0.08)]"
+                  : "text-[#0a0a0a] hover:bg-white/70"
+              }`}
+            >
+              {RANGE_LABELS[item]}
+            </Link>
+          );
+        })}
+      </div>
+
+      {range === "custom" ? <CustomDateRangeForm from={from} to={to} defaultDate={defaultDate} /> : null}
+    </>
   );
 }
 
@@ -316,8 +358,8 @@ function PipelineStageRow({
     <div>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] ${tone.iconBg}`}>
-            <i className={`${tone.icon} text-[16px] ${tone.iconText}`} />
+          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] ${tone.iconBg}`}>
+            <i className={`${tone.icon} text-[22px] leading-none ${tone.iconText}`} />
           </span>
           <p className="truncate text-[16px] font-medium leading-5 text-[#0a0a0a]">
             {stage.label}
@@ -335,65 +377,6 @@ function PipelineStageRow({
         />
       </div>
     </div>
-  );
-}
-
-function ProviderPerformanceCard({ rows }: { rows: ProviderPerformanceRow[] }) {
-  const visibleRows = rows.slice(0, 5);
-
-  return (
-    <section className="overflow-hidden rounded-[16px] border border-[#e5e5e5] bg-white shadow-[0_1px_1.5px_rgba(0,0,0,0.08)]">
-      <div className="flex min-h-[53px] items-center border-b border-[#e5e5e5]">
-        <div className="flex w-11 shrink-0 items-center justify-center">
-          <i className="ri-draggable text-[14px] text-[#737373]" />
-        </div>
-        <h2 className="text-[16px] font-semibold leading-[1.6] text-[#0a0a0a]">
-          Provider Performance
-        </h2>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse">
-          <thead className="bg-[#f5f5f5]">
-            <tr>
-              <ProviderHeaderCell>Providers</ProviderHeaderCell>
-              <ProviderHeaderCell>Offered Liens</ProviderHeaderCell>
-              <ProviderHeaderCell>Acceptance</ProviderHeaderCell>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="py-10">
-                  <EmptyState icon="ri-hospital-line" title="No provider performance data" compact />
-                </td>
-              </tr>
-            ) : visibleRows.map(row => (
-              <tr key={row.providerId} className="border-b border-[#e5e5e5] last:border-b-0">
-                <ProviderBodyCell>{row.providerName}</ProviderBodyCell>
-                <ProviderBodyCell>{formatFundingNumber(row.lienCount)}</ProviderBodyCell>
-                <ProviderBodyCell>{formatAcceptance(row)}</ProviderBodyCell>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
-function ProviderHeaderCell({ children }: { children: React.ReactNode }) {
-  return (
-    <th className="h-10 px-4 text-left text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
-      {children}
-    </th>
-  );
-}
-
-function ProviderBodyCell({ children }: { children: React.ReactNode }) {
-  return (
-    <td className="h-[53px] px-4 text-[14px] font-medium leading-[1.6] text-[#0a0a0a]">
-      {children}
-    </td>
   );
 }
 
@@ -453,14 +436,8 @@ function StatusBadge({
   );
 }
 
-function formatAcceptance(row: ProviderPerformanceRow): string {
-  if (row.offeredAmount <= 0) return "-";
-  return formatFundingPercent((row.acceptedAmount / row.offeredAmount) * 100);
-}
-
-function formatSignedPercent(trend: FundingMetricTrend): string {
-  const sign = trend.direction === "down" ? "-" : trend.direction === "flat" ? "" : "+";
-  return `${sign}${formatFundingPercent(Math.abs(trend.value))}`;
+function formatTrendPercent(trend: FundingMetricTrend): string {
+  return formatFundingPercent(Math.abs(trend.value));
 }
 
 function getPipelineTone(label: string): {
@@ -473,7 +450,7 @@ function getPipelineTone(label: string): {
   if (normalized.includes("accepted") || normalized.includes("purchased")) {
     return {
       icon: "ri-checkbox-circle-line",
-      iconBg: "bg-[#dcfce7]",
+      iconBg: "bg-[#f5f5f5]",
       iconText: "text-[#15803d]",
       bar: "bg-[#22c55e]",
     };
@@ -481,14 +458,14 @@ function getPipelineTone(label: string): {
   if (normalized.includes("declined") || normalized.includes("expired")) {
     return {
       icon: "ri-close-circle-line",
-      iconBg: "bg-[#fee2e2]",
-      iconText: "text-[#b91c1c]",
+      iconBg: "bg-[#f5f5f5]",
+      iconText: "text-[#ef4444]",
       bar: "bg-[#ef4444]",
     };
   }
   return {
     icon: "ri-time-line",
-    iconBg: "bg-[#fef3c7]",
+    iconBg: "bg-[#f5f5f5]",
     iconText: "text-[#a16207]",
     bar: "bg-[#eab308]",
   };
@@ -506,4 +483,19 @@ function buildDashboardHref(range: FundingDashboardRange, from?: string, to?: st
 function parseRange(value?: string): FundingDashboardRange {
   if (value === "last7Days" || value === "custom") return value;
   return "last30Days";
+}
+
+function parseDateParam(value?: string): string | undefined {
+  if (!value || !DATE_PARAM_PATTERN.test(value)) return undefined;
+
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return undefined;
+
+  return date.toISOString().slice(0, 10) === value ? value : undefined;
+}
+
+function getTodayDateParam(): string {
+  const now = new Date();
+  const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return localDate.toISOString().slice(0, 10);
 }

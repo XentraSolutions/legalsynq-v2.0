@@ -153,6 +153,7 @@ public class ProviderReassignmentTests
             NullLogger<ReferralService>.Instance,
             httpCtx.Object,
             referralAttachments.Object,
+            new Mock<IReferralAttributionRepository>().Object,
             activationRequests: null);
 
         return (svc, referralRepo, providerRepo, emailSvc, auditClient);

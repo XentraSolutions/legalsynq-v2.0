@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type React from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { EnrollmentForm } from './enrollment-form';
 
@@ -21,6 +22,16 @@ const addressSuggestion = {
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
+}));
+
+vi.mock('next/link', () => ({
+  default: ({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & {
+    href: string;
+  }) => <a href={href} {...props}>{children}</a>,
 }));
 
 vi.mock('./actions', () => ({
@@ -64,7 +75,7 @@ describe('EnrollmentForm', () => {
     expect(screen.getByDisplayValue('provider@example.com')).toBeDisabled();
   });
 
-  test('prefills first and last name from enrollment prefill data', () => {
+  test('prefills title, first name, and last name from enrollment prefill data', () => {
     render(
       <EnrollmentForm
         prefill={{
@@ -73,6 +84,7 @@ describe('EnrollmentForm', () => {
           companyType: 'Provider',
           email: 'provider@example.com',
           phone: '555-0101',
+          title: 'Dr.',
           firstName: 'Ralph',
           lastName: 'Lopez',
           addressLine1: '123 Main',
@@ -87,8 +99,46 @@ describe('EnrollmentForm', () => {
       />,
     );
 
+    expect(screen.getByDisplayValue('Dr.')).toBeDisabled();
     expect(screen.getByDisplayValue('Ralph')).toBeDisabled();
     expect(screen.getByDisplayValue('Lopez')).toBeDisabled();
+  });
+
+  test('submits title in provider enrollment payload', async () => {
+    const user = userEvent.setup();
+    registerEnrollmentMock.mockResolvedValue({ ok: true });
+
+    render(
+      <EnrollmentForm
+        prefill={{
+          providerId: 'provider-123',
+          companyName: 'Demo Provider',
+          companyType: 'Provider',
+          email: 'provider@example.com',
+          phone: '',
+          addressLine1: '123 Main',
+          city: 'Las Vegas',
+          state: 'NV',
+          postalCode: '89101',
+        }}
+        providerId="provider-123"
+        tenantId="tenant-123"
+        referralPrefill={null}
+        isFirmEnrollment={false}
+      />,
+    );
+
+    await user.type(screen.getByPlaceholderText('Dr.'), 'Dr.');
+    await user.type(screen.getByPlaceholderText('Enter first name'), 'Taylor');
+    await user.type(screen.getByPlaceholderText('Create password'), 'password123');
+    await user.type(screen.getByPlaceholderText('Re-enter password'), 'password123');
+    await user.click(screen.getByLabelText(/i agree to the/i));
+    await user.click(screen.getByRole('button', { name: /activate my portal access/i }));
+
+    expect(registerEnrollmentMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Dr.',
+      firstName: 'Taylor',
+    }));
   });
 
   test('blocks submit when phone number is not 10 digits', async () => {

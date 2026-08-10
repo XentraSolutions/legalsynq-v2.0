@@ -2,7 +2,6 @@ namespace Liens.Domain.Enums;
 
 public static class SellingLienStatus
 {
-    public const string Draft = "Draft";
     public const string Pending = "Pending";
     public const string Internal = "Internal";
     public const string PreparedForSale = "PreparedForSale";
@@ -15,7 +14,6 @@ public static class SellingLienStatus
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>
     {
-        Draft,
         Pending,
         Internal,
         PreparedForSale,

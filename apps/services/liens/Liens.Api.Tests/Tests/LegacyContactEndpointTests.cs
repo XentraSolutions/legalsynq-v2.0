@@ -809,8 +809,9 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
 
         var created = await createResp.Content.ReadFromJsonAsync<ContactResponseDto>();
         created.Should().NotBeNull();
+        created!.Organization.Should().Be("Monarch");
 
-        var updateResp = await _client.PutAsJsonAsync($"/api/liens/contacts/{created!.Id}", new
+        var updateResp = await _client.PutAsJsonAsync($"/api/liens/contacts/{created.Id}", new
         {
             contactType = "LawFirm",
             fullName = "Monarch Legal",
@@ -822,6 +823,7 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         updated!.FirstName.Should().Be("Monarch");
         updated.LastName.Should().Be("Legal");
         updated.DisplayName.Should().Be("Monarch Legal");
+        updated.Organization.Should().Be("Monarch Legal");
     }
 
     [Fact]

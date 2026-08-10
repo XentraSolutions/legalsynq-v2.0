@@ -5,6 +5,7 @@ import { FormModal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { settlementService } from "@/lib/settlement";
+import { buildSettlementPaymentRequest } from "@/lib/settlement/payment-request";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 import { lookupService } from "@/lib/lookup";
 import type {
@@ -19,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import { LienTable } from "@/components/lien/lien-table";
@@ -47,12 +49,6 @@ function pickLienStatusOptions(
   );
 }
 
-function cleanNumericInput(raw: string): string {
-  const cleaned = raw.replace(/[^\d.]/g, "");
-  const parts = cleaned.split(".");
-  return parts.length > 2 ? parts[0] + "." + parts[1] : cleaned;
-}
-
 interface AddPaymentFormProps {
   open: boolean;
   onClose: () => void;
@@ -62,6 +58,8 @@ interface AddPaymentFormProps {
   onRefreshLiens?: () => void;
   isLiensFetching?: boolean;
   onSaved: () => void;
+  selectedPayment?: any;
+  isEditing?: boolean;
 }
 
 const INITIAL_FORM = {
@@ -83,9 +81,12 @@ export function AddPaymentForm({
   onRefreshLiens,
   isLiensFetching,
   onSaved,
+  selectedPayment,
+  isEditing = false,
 }: AddPaymentFormProps) {
   const addToast = useLienStore((s) => s.addToast);
-  const [form, setForm] = useState({ ...INITIAL_FORM });
+  const [form, setForm] = useState({ ...INITIAL_FORM, ...selectedPayment });
+
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [lienPayments, setLienPayments] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -101,7 +102,7 @@ export function AddPaymentForm({
   const PAYMENT_METHOD_CHECK = "Check";
 
   // TEMP: hardcoded until API endpoint is ready
-  const TEMP_SETTLEMENT_TYPES: LookupData[] = [
+  const TEMP_SETTLEMENT_STATUSES: LookupData[] = [
     {
       id: "full_payment",
       name: "Full Payment",
@@ -145,7 +146,7 @@ export function AddPaymentForm({
   ];
 
   // TEMP: hardcoded until API endpoint is ready
-  const TEMP_SETTLEMENT_STATUSES: LookupData[] = [
+  const TEMP_SETTLEMENT_TYPES: LookupData[] = [
     {
       id: "by_attorney",
       name: "By Attorney",
@@ -205,8 +206,8 @@ export function AddPaymentForm({
     setTypeError(false);
     setStatusError(false);
     Promise.allSettled([
-      lookupService.getSettlementType(),
       lookupService.getSettlementStatus(),
+      lookupService.getSettlementType(),
       lookupService.getLiensStatus(),
     ]).then(([typeRes, statusRes, lienStatusRes]) => {
       if (typeRes.status === "fulfilled" && typeRes.value.items.length > 0) {
@@ -234,9 +235,12 @@ export function AddPaymentForm({
       const active = lienStatusOptions.find(
         (s) => (s.code || "").toLowerCase() === "active",
       );
-      setForm((prev) => ({
+      setForm((prev: any) => ({
         ...prev,
-        lienStatus: (active ?? lienStatusOptions[0])?.code ?? "",
+        ...selectedPayment,
+        lienStatus: isEditing
+          ? selectedPayment.lienStatus
+          : (active ?? lienStatusOptions[0]?.code ?? ""),
       }));
       setLookupsLoading(false);
     });
@@ -358,28 +362,44 @@ export function AddPaymentForm({
       const lienIds = Array.from(checkedIds);
       const paymentDate = form.checkDate ? formatDate(form.checkDate) : "";
 
-      await Promise.all(
-        lienIds.flatMap((id) => [
-          settlementService.createSettlementPayment({
-            lienId: id,
-            caseId,
-            amount: parseFloat(lienPayments[id] || "0"),
-            paymentDate,
-            paymentMethod: PAYMENT_METHOD_CHECK,
-            referenceNumber: form.checkNumber,
-            notes: form.note,
-            settlementType: form.type,
-            settlementStatus: form.lienStatus,
-          }),
-          settlementService.createLienSettlement({
-            lienId: id,
-            caseId,
-            settlementAmount: parseFloat(lienPayments[id] || "0"),
-            settlementDate: paymentDate,
-            notes: form.note,
-          }),
-        ]),
-      );
+      if (isEditing) {
+        settlementService.updateSettlement({
+          lienId: form.lienId,
+          lienStatus: form.lienStatus,
+          caseId,
+          amount: parseFloat(form.checkAmount || "0"),
+          paymentDate,
+          paymentMethod: PAYMENT_METHOD_CHECK,
+          referenceNumber: form.checkNumber,
+          notes: form.note,
+          settlementType: form.type,
+          settlementStatus: form.status,
+        });
+      } else {
+        await Promise.all(
+          lienIds.flatMap((id) => [
+            settlementService.createSettlementPayment({
+              lienId: id,
+              lienStatus: form.lienStatus,
+              caseId,
+              amount: parseFloat(lienPayments[id] || "0"),
+              paymentDate,
+              paymentMethod: PAYMENT_METHOD_CHECK,
+              referenceNumber: form.checkNumber,
+              notes: form.note,
+              settlementType: form.type,
+              settlementStatus: form.status,
+            }),
+            settlementService.createLienSettlement({
+              lienId: id,
+              caseId,
+              settlementAmount: parseFloat(lienPayments[id] || "0"),
+              settlementDate: paymentDate,
+              notes: form.note,
+            }),
+          ]),
+        );
+      }
 
       addToast({
         type: "success",
@@ -406,7 +426,10 @@ export function AddPaymentForm({
     !form.checkDate ||
     !form.checkNumber ||
     !form.type ||
-    checkedIds.size === 0;
+    !form.status ||
+    isEditing
+      ? false
+      : checkedIds.size === 0;
 
   const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
 
@@ -433,7 +456,8 @@ export function AddPaymentForm({
   const receivedExceedsCheck =
     totalReceivedPayment > checkAmountNum &&
     checkAmountNum > 0 &&
-    totalReceivedPayment > 0;
+    totalReceivedPayment > 0 &&
+    !isEditing;
 
   const paymentColumns: LienColumnDef[] = [
     {
@@ -490,34 +514,27 @@ export function AddPaymentForm({
           inputNumeric > (l.balance ?? 0) && inputNumeric > 0;
         return (
           <div className="flex flex-col items-end gap-0.5">
-            <div className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                $
-              </span>
-              <Input
-                type="text"
-                inputMode="decimal"
-                value={inputVal}
-                onChange={(e) => {
-                  const sanitized = cleanNumericInput(e.target.value);
-                  setLienPayments((prev) => ({ ...prev, [l.id]: sanitized }));
-                }}
-                onBlur={() => {
-                  const n = parseFloat(inputVal);
-                  if (!isNaN(n))
-                    setLienPayments((prev) => ({
-                      ...prev,
-                      [l.id]: n.toFixed(2),
-                    }));
-                }}
-                placeholder="0.00"
-                className={`w-28 pl-5 pr-2 py-1 text-right ${
-                  rowExceedsBilling
-                    ? "border-red-300 focus:border-red-400 focus:ring-red-100"
-                    : ""
-                }`}
-              />
-            </div>
+            <NumberInput
+              value={inputVal}
+              onValueChange={(v) =>
+                setLienPayments((prev) => ({ ...prev, [l.id]: v }))
+              }
+              onBlur={() => {
+                const n = parseFloat(inputVal);
+                if (!isNaN(n))
+                  setLienPayments((prev) => ({
+                    ...prev,
+                    [l.id]: n.toFixed(2),
+                  }));
+              }}
+              placeholder="0.00"
+              prefix="$"
+              className={`w-28 text-right ${
+                rowExceedsBilling
+                  ? "border-red-300 focus:border-red-400 focus:ring-red-100"
+                  : ""
+              }`}
+            />
             {rowExceedsBilling && (
               <span className="text-[10px] text-red-500 whitespace-nowrap">
                 Exceeds balance
@@ -641,29 +658,17 @@ export function AddPaymentForm({
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Check Amount <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">
-                  $
-                </span>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={form.checkAmount}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      checkAmount: cleanNumericInput(e.target.value),
-                    })
-                  }
-                  onBlur={() => {
-                    const n = parseFloat(form.checkAmount);
-                    if (!isNaN(n) && n > 0)
-                      setForm({ ...form, checkAmount: n.toFixed(2) });
-                  }}
-                  placeholder="0.00"
-                  className="pl-6"
-                />
-              </div>
+              <NumberInput
+                value={form.checkAmount}
+                onValueChange={(v) => setForm({ ...form, checkAmount: v })}
+                onBlur={() => {
+                  const n = parseFloat(form.checkAmount);
+                  if (!isNaN(n) && n > 0)
+                    setForm({ ...form, checkAmount: n.toFixed(2) });
+                }}
+                placeholder="0.00"
+                prefix="$"
+              />
             </div>
 
             <Field
@@ -723,7 +728,7 @@ export function AddPaymentForm({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Settlement Status
+                Settlement Status <span className="text-red-500">*</span>
               </label>
               <Select
                 value={form.status}

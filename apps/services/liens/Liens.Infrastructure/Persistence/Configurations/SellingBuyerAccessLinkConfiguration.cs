@@ -19,13 +19,17 @@ public class SellingBuyerAccessLinkConfiguration : IEntityTypeConfiguration<Sell
         builder.Property(l => l.BuyerOrgId).IsRequired();
         builder.Property(l => l.BuyerContactId).IsRequired();
 
-        builder.Property(l => l.Token)
-            .IsRequired()
-            .HasMaxLength(128);
+        builder.Property(l => l.TokenHash)
+            .IsRequired(false)
+            .HasMaxLength(64);
 
         builder.Property(l => l.Purpose)
             .IsRequired()
             .HasMaxLength(100);
+
+        builder.Property(l => l.Route)
+            .IsRequired(false)
+            .HasMaxLength(180);
 
         builder.Property(l => l.IdempotencyKey)
             .IsRequired()
@@ -55,18 +59,35 @@ public class SellingBuyerAccessLinkConfiguration : IEntityTypeConfiguration<Sell
         builder.Property(l => l.ResponseIdempotencyKey)
             .HasMaxLength(280);
 
+        builder.Property(l => l.AccountActivatedUserId);
+
+        builder.Property(l => l.AccountActivatedEmail)
+            .HasMaxLength(320);
+
+        builder.Property(l => l.AccountActivatedAtUtc);
+
         builder.Property(l => l.CreatedByUserId).IsRequired();
         builder.Property(l => l.UpdatedByUserId);
         builder.Property(l => l.CreatedAtUtc).IsRequired();
         builder.Property(l => l.UpdatedAtUtc).IsRequired();
 
-        builder.HasIndex(l => new { l.TenantId, l.Token })
+        builder.HasIndex(l => l.TokenHash)
             .IsUnique()
-            .HasDatabaseName("UX_SellingBuyerAccessLinks_TenantId_Token");
+            .HasDatabaseName("UX_SellingBuyerAccessLinks_TokenHash");
 
-        builder.HasIndex(l => new { l.TenantId, l.IdempotencyKey })
+        builder.HasIndex(l => new
+            {
+                l.TenantId,
+                l.SellerOrgId,
+                l.LienId,
+                l.BuyerOrgId,
+                l.BuyerContactId,
+                l.CreatedByUserId,
+                l.Route,
+                l.IdempotencyKey,
+            })
             .IsUnique()
-            .HasDatabaseName("UX_SellingBuyerAccessLinks_TenantId_IdempotencyKey");
+            .HasDatabaseName("UX_SellingBuyerAccessLinks_Tenant_Scope_IdempotencyKey");
 
         builder.HasIndex(l => new { l.TenantId, l.LienId, l.BuyerContactId })
             .HasDatabaseName("IX_SellingBuyerAccessLinks_Tenant_Lien_BuyerContact");

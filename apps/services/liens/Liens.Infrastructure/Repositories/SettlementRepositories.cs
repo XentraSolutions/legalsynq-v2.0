@@ -25,6 +25,20 @@ public class LienReductionRepository : ILienReductionRepository
             .OrderByDescending(r => r.ReductionDate)
             .ToListAsync(ct);
 
+    public Task<List<LienReduction>> GetByLienIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> lienIds,
+        CancellationToken ct = default)
+    {
+        if (lienIds.Count == 0)
+            return Task.FromResult(new List<LienReduction>());
+
+        return _db.LienReductions
+            .Where(r => r.TenantId == tenantId && lienIds.Contains(r.LienId) && !r.IsDeleted)
+            .OrderByDescending(r => r.ReductionDate)
+            .ToListAsync(ct);
+    }
+
     public async Task AddAsync(LienReduction reduction, CancellationToken ct = default)
     {
         _db.LienReductions.Add(reduction);

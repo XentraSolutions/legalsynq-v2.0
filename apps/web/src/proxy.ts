@@ -66,6 +66,7 @@ const PUBLIC_PATHS = [
   // SynqLien document view/download redemption — namespaced under /api/lien/
   // to avoid colliding with CareConnect's top-level /api/documents/ routing.
   "/api/lien/documents/access/",
+  "/api/lien/documents/internal/",
   // SynqLien buyer offer links are token-gated by the Liens API and must stay
   // reachable from email before a platform_session exists.
   "/selling/public/",
@@ -81,6 +82,11 @@ const PUBLIC_PATHS = [
   // CC2-INT-B07: Public tenant network directory — no session required
   "/network",
   "/careconnect/network",
+  // Referral Attribution representative portal — anonymous, access-code gated
+  // (see apps/web/src/app/careconnect/representative/layout.tsx). The code is
+  // re-verified server-side on every request; this only lets the request past
+  // the platform_session cookie check so the access-code gate can run.
+  "/careconnect/representative",
   "/api/public/",
   // CC2-ENROLL: Provider self-enrollment form — no session required
   "/enroll",

@@ -75,7 +75,6 @@ public static class LookupEndpoints
         (Guid.Parse("10000000-0000-0000-0000-000000000009"), "BillsAndRecords", "Bills & Records", [], 9),
         (Guid.Parse("10000000-0000-0000-0000-000000000010"), "BillsAndRecs", "Bills & Recs", [], 10),
     ];
-
     public static void MapLookupEndpoints(this WebApplication app)
     {
         // ── v2 routes ─────────────────────────────────────────────────────────

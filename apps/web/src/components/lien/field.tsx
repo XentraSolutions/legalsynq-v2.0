@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import {
   BaseSelect,
   BaseSelectOption,
@@ -6,6 +6,7 @@ import {
 } from "../ui/base-select";
 import { DatePicker } from "../ui/date-picker";
 import { PhoneInput } from "../ui/phone-input";
+import { NumberInput } from "../ui/number-input";
 
 interface BaseFieldProps {
   label: string;
@@ -21,15 +22,21 @@ interface BaseFieldProps {
 }
 
 interface TextFieldProps {
-  type?: "text" | "textarea" | "number" | "email";
+  type?: "text" | "textarea" | "email";
   value?: string | null | number;
   onChange: (value: string) => void;
+}
+
+export interface NumberFieldProps {
+  type: "number";
+  value?: string | number | null;
+  onChange: (value: string) => void; // Emits the raw (unformatted) numeric string
 }
 
 interface DateFieldProps {
   type?: "date";
   maxDate?: Date | null;
-  allowFutureDates?: boolean;
+  disableFutureDates?: boolean;
   value?: string;
   onChange: (value: string) => void;
 }
@@ -44,7 +51,10 @@ interface CheckboxFieldProps {
   onChange: (value: boolean) => void;
 }
 
-interface SelectFieldProps<TOption extends BaseSelectOption> {
+interface SelectFieldProps<TOption extends BaseSelectOption> extends Omit<
+  BaseSelectProps<TOption>,
+  "value" | "onChange" | "multiple" | "options"
+> {
   type: "select";
   options: TOption[];
 
@@ -53,7 +63,10 @@ interface SelectFieldProps<TOption extends BaseSelectOption> {
   onChange: (value: string, option: TOption) => void;
 }
 
-interface MultiSelectFieldProps<TOption extends BaseSelectOption> {
+interface MultiSelectFieldProps<TOption extends BaseSelectOption> extends Omit<
+  BaseSelectProps<TOption>,
+  "value" | "onChange" | "multiple" | "options"
+> {
   type: "select";
   options: TOption[];
 
@@ -66,6 +79,7 @@ export type FieldProps<TOption extends BaseSelectOption = BaseSelectOption> =
   BaseFieldProps &
     (
       | TextFieldProps
+      | NumberFieldProps
       | CheckboxFieldProps
       | DateFieldProps
       | PhoneFieldProps
@@ -128,6 +142,18 @@ export default function Field<
           placeholder={props.placeholder}
           disabled={props.disabled}
           error={!!props.error}
+          loadingMode={props.loadingMode}
+          isLoading={props.isLoading}
+          isSearching={props.isSearching}
+          isFetchingMore={props.isFetchingMore}
+          hasNextPage={props.hasNextPage}
+          onLoadMore={props.onLoadMore}
+          searchPlaceholder={props.searchPlaceholder}
+          search={props.search}
+          onSearchChange={props.onSearchChange}
+          filterLocally={props.filterLocally}
+          className={props.className}
+          onOpen={props.onOpen}
         />
       ) : props.type === "select" ? (
         <BaseSelect
@@ -137,6 +163,18 @@ export default function Field<
           placeholder={props.placeholder}
           disabled={props.disabled}
           error={!!props.error}
+          loadingMode={props.loadingMode}
+          isLoading={props.isLoading}
+          isSearching={props.isSearching}
+          isFetchingMore={props.isFetchingMore}
+          hasNextPage={props.hasNextPage}
+          onLoadMore={props.onLoadMore}
+          searchPlaceholder={props.searchPlaceholder}
+          search={props.search}
+          onSearchChange={props.onSearchChange}
+          filterLocally={props.filterLocally}
+          className={props.className}
+          onOpen={props.onOpen}
         />
       ) : props.type === "checkbox" ? (
         <input
@@ -149,7 +187,7 @@ export default function Field<
       ) : props.type === "date" ? (
         <DatePicker
           maxDate={props?.maxDate}
-          disableFutureDates={!props.allowFutureDates}
+          disableFutureDates={props.disableFutureDates}
           value={props.value}
           onChange={props.onChange}
           disabled={disabled}
@@ -160,6 +198,16 @@ export default function Field<
           value={props.value}
           onValueChange={props.onChange}
           className="shadow-sm" // Optional styling overrides
+        />
+      ) : props.type === "number" ? (
+        <NumberInput
+          value={props.value}
+          onValueChange={props.onChange}
+          placeholder={placeholder}
+          disabled={disabled}
+          prefix={prefix}
+          suffix={suffix}
+          error={error}
         />
       ) : (
         <div className={hasAdornment ? "relative" : ""}>

@@ -1,9 +1,14 @@
 import Link from "next/link";
+import { OfferedLiensPageSizeSelect } from "@/components/synqlien-funding-portal/offered-liens-page-size-select";
+import { OfferedLienRowActions } from "@/components/synqlien-funding-portal/offered-lien-row-actions";
 import {
+  OFFERED_LIENS_DEFAULT_PAGE_SIZE,
+  buildOfferedLiensHref,
   formatFundingCurrency,
   formatFundingDate,
   formatFundingNumber,
   getOfferedLiens,
+  getOfferedLiensDisplayRange,
   getOfferedLiensEmptyStateCopy,
   statusBadgeClass,
   type OfferedLienRow,
@@ -38,7 +43,7 @@ export default async function OfferedLiensPage({
     status: normalizeFilter(sp.status),
     search: normalizeFilter(sp.search),
     page: parsePositiveInt(sp.page, 1),
-    pageSize: parsePositiveInt(sp.pageSize, 10),
+    pageSize: parsePositiveInt(sp.pageSize, OFFERED_LIENS_DEFAULT_PAGE_SIZE),
     sort,
     direction: sort ? normalizeDirection(sp.direction) : undefined,
   };
@@ -71,7 +76,7 @@ function SearchForm({ query }: { query: OfferedLiensQuery }) {
   return (
     <form action="/funding/offered-liens" className="w-full">
       {query.status ? <input type="hidden" name="status" value={query.status} /> : null}
-      {query.pageSize && query.pageSize !== 10 ? (
+      {query.pageSize && query.pageSize !== OFFERED_LIENS_DEFAULT_PAGE_SIZE ? (
         <input type="hidden" name="pageSize" value={query.pageSize} />
       ) : null}
       {query.sort ? <input type="hidden" name="sort" value={query.sort} /> : null}
@@ -95,7 +100,7 @@ function StatusTabs({ query }: { query: OfferedLiensQuery }) {
     <div className="grid h-9 grid-cols-4 overflow-hidden rounded-[8px] bg-[#f5f5f5] p-px">
       {STATUS_FILTERS.map(status => {
         const active = (query.status ?? "") === status;
-        const href = buildHref({
+        const href = buildOfferedLiensHref({
           ...query,
           status: status || undefined,
           page: 1,
@@ -130,7 +135,7 @@ function OfferedLiensTable({
   const emptyCopy = getOfferedLiensEmptyStateCopy(hasFilters);
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-[1120px] w-full border-collapse">
+      <table className="min-w-[980px] w-full border-collapse">
         <thead className="bg-[#f5f5f5]">
           <tr>
             <SortableHeaderCell query={query} sortKey="lienNumber">Lien ID</SortableHeaderCell>
@@ -138,7 +143,6 @@ function OfferedLiensTable({
             <SortableHeaderCell query={query} sortKey="initialServiceDate">Initial Service Date</SortableHeaderCell>
             <SortableHeaderCell query={query} sortKey="billingAmount">Billing Amount</SortableHeaderCell>
             <SortableHeaderCell query={query} sortKey="askAmount">Ask Amount</SortableHeaderCell>
-            <SortableHeaderCell query={query} sortKey="highestBidAmount">Highest Bid</SortableHeaderCell>
             <SortableHeaderCell query={query} sortKey="status">Status</SortableHeaderCell>
             <th aria-label="Actions" className="h-10 w-12 px-4" />
           </tr>
@@ -146,7 +150,7 @@ function OfferedLiensTable({
         <tbody>
           {result.rows.length === 0 ? (
             <tr>
-              <td colSpan={8} className="px-5 py-14">
+              <td colSpan={7} className="px-5 py-14">
                 <EmptyState
                   title={emptyCopy.title}
                   description={emptyCopy.description}
@@ -179,7 +183,7 @@ function SortableHeaderCell({
       ? "ri-arrow-down-s-line"
       : "ri-arrow-up-s-line"
     : "ri-arrow-up-down-line";
-  const href = buildHref({
+  const href = buildOfferedLiensHref({
     ...query,
     sort: sortKey,
     direction: nextDirection,
@@ -208,7 +212,6 @@ function OfferedLienTableRow({ row }: { row: OfferedLienRow }) {
   const initialServiceDate = row.initialServiceDate ?? row.serviceDate ?? null;
   const billingAmount = row.billingAmount ?? row.originalAmount ?? null;
   const askAmount = row.askAmount ?? row.offeredAmount;
-  const highestBidAmount = row.highestBidAmount ?? row.highestBid ?? null;
 
   return (
     <tr className="border-b border-[#e5e5e5] last:border-b-0">
@@ -225,26 +228,13 @@ function OfferedLienTableRow({ row }: { row: OfferedLienRow }) {
       <BodyCell>{formatOptionalDate(initialServiceDate)}</BodyCell>
       <BodyCell>{formatOptionalCurrency(billingAmount)}</BodyCell>
       <BodyCell>{formatOptionalCurrency(askAmount)}</BodyCell>
-      <BodyCell>{formatOptionalCurrency(highestBidAmount)}</BodyCell>
       <td className="h-[53px] px-4 text-[14px] font-normal leading-[1.6] text-[#0a0a0a]">
         <span className={`inline-flex rounded-full px-3 py-1 text-[14px] font-medium leading-[1.6] ring-1 ${statusBadgeClass(row.status)}`}>
           {row.status}
         </span>
       </td>
       <td className="h-[53px] w-12 px-4 text-center">
-        {detailHref ? (
-          <Link
-            href={detailHref}
-            aria-label={`View ${row.lienNumber}`}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[#525252] transition-colors hover:bg-[#f5f5f5] hover:text-[#0a0a0a]"
-          >
-            <i className="ri-more-2-fill text-[20px]" />
-          </Link>
-        ) : (
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-[8px] text-[#525252]">
-            <i className="ri-more-2-fill text-[20px]" />
-          </span>
-        )}
+        <OfferedLienRowActions lienNumber={row.lienNumber} detailHref={detailHref} />
       </td>
     </tr>
   );
@@ -267,30 +257,30 @@ function Pagination({
 }) {
   const totalPages = result.pageSize > 0 ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
   const currentPage = Math.min(Math.max(result.page, 1), totalPages);
-  const firstItem = result.total === 0 ? 0 : (currentPage - 1) * result.pageSize + 1;
-  const lastItem = Math.min(result.total, currentPage * result.pageSize);
+  const { firstItem, lastItem } = getOfferedLiensDisplayRange(result);
   const pageNumbers = buildPageNumbers(currentPage, totalPages);
 
   return (
     <div className="flex flex-col gap-4 px-6 pb-6 pt-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-wrap items-center gap-3 text-[14px] font-normal leading-5 text-[#737373]">
         <span>Showing</span>
-        <span className="inline-flex h-9 min-w-[92px] items-center justify-between rounded-[8px] border border-[#e5e5e5] bg-white px-3 text-[#0a0a0a] shadow-[0_1px_1px_rgba(0,0,0,0.08)]">
-          {formatFundingNumber(firstItem)}-{formatFundingNumber(lastItem)}
-          <i className="ri-arrow-down-s-line ml-2 text-[16px] text-[#525252]" />
-        </span>
+        <OfferedLiensPageSizeSelect
+          pageSize={result.pageSize}
+          firstItem={firstItem}
+          lastItem={lastItem}
+        />
         <span>of {formatFundingNumber(result.total)} entries.</span>
       </div>
 
       <div className="flex items-center gap-2">
         <PaginationIcon
-          href={buildHref({ ...query, page: 1 })}
+          href={buildOfferedLiensHref({ ...query, page: 1 })}
           disabled={currentPage <= 1}
           icon="ri-skip-left-line"
           label="First page"
         />
         <PaginationIcon
-          href={buildHref({ ...query, page: Math.max(1, currentPage - 1) })}
+          href={buildOfferedLiensHref({ ...query, page: Math.max(1, currentPage - 1) })}
           disabled={currentPage <= 1}
           icon="ri-arrow-left-s-line"
           label="Previous page"
@@ -298,19 +288,19 @@ function Pagination({
         {pageNumbers.map(page => (
           <PaginationNumber
             key={page}
-            href={buildHref({ ...query, page })}
+            href={buildOfferedLiensHref({ ...query, page })}
             active={page === currentPage}
             page={page}
           />
         ))}
         <PaginationIcon
-          href={buildHref({ ...query, page: Math.min(totalPages, currentPage + 1) })}
+          href={buildOfferedLiensHref({ ...query, page: Math.min(totalPages, currentPage + 1) })}
           disabled={currentPage >= totalPages}
           icon="ri-arrow-right-s-line"
           label="Next page"
         />
         <PaginationIcon
-          href={buildHref({ ...query, page: totalPages })}
+          href={buildOfferedLiensHref({ ...query, page: totalPages })}
           disabled={currentPage >= totalPages}
           icon="ri-skip-right-line"
           label="Last page"
@@ -393,21 +383,6 @@ function EmptyState({
   );
 }
 
-function buildHref(query: OfferedLiensQuery): string {
-  const params = new URLSearchParams();
-  if (query.status) params.set("status", query.status);
-  if (query.search) params.set("search", query.search);
-  if (query.page && query.page > 1) params.set("page", String(query.page));
-  if (query.pageSize && query.pageSize !== 10) params.set("pageSize", String(query.pageSize));
-  if (query.sort) {
-    params.set("sort", query.sort);
-    params.set("direction", query.direction ?? DEFAULT_SORT_DIRECTION);
-  }
-
-  const encoded = params.toString();
-  return encoded ? `/funding/offered-liens?${encoded}` : "/funding/offered-liens";
-}
-
 function buildPageNumbers(currentPage: number, totalPages: number): number[] {
   const count = Math.min(3, totalPages);
   const start = Math.min(Math.max(1, currentPage - 1), Math.max(1, totalPages - count + 1));
@@ -426,7 +401,6 @@ function normalizeSort(value?: string): OfferedLiensSortKey | undefined {
     case "initialServiceDate":
     case "billingAmount":
     case "askAmount":
-    case "highestBidAmount":
     case "status":
       return value;
     default:

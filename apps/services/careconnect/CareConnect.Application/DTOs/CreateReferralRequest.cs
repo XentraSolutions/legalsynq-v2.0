@@ -9,6 +9,8 @@ public class CreateReferralRequest
     public Guid? TenantId { get; set; }
 
     public Guid ProviderId { get; set; }
+    public Guid? FacilityId { get; set; }
+    public Guid? NetworkProviderId { get; set; }
     public string ClientFirstName { get; set; } = string.Empty;
     public string ClientLastName { get; set; } = string.Empty;
     public DateTime? ClientDob { get; set; }
@@ -20,6 +22,13 @@ public class CreateReferralRequest
     public Guid? TreatmentTypeId { get; set; }
     public DateOnly? DateOfAccident { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Optional Referral Attribution — who or what originated this referral. Blank/null by
+    /// default; never auto-selected. Must resolve to an active attribution in the caller's
+    /// own tenant, or the request is rejected — see ReferralService.ResolveAttributionAsync.
+    /// </summary>
+    public Guid? ReferralAttributionId { get; set; }
 
     // Phase C: optional multi-org context.
     // When both are supplied, the service attempts to resolve the active

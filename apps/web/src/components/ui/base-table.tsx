@@ -21,6 +21,13 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pagination } from "@/components/ui/pagination";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -66,6 +73,8 @@ export interface BaseTableProps<TData> {
   pageSize?: number;
   /** Total row count across all pages (server-driven). Defaults to the current page's row count. */
   totalCount?: number;
+  /** When set, renders a page-size dropdown ("Showing X-Y of Z entries") in the footer instead of the plain "Page X of Y" text. */
+  pageSizeOptions?: number[];
 
   // Row selection — checkbox column rendered only when this is provided.
   rowSelection?: RowSelectionState;
@@ -90,6 +99,8 @@ export interface BaseTableProps<TData> {
   emptyMessage?: string;
   isLoading?: boolean;
   className?: string;
+  /** Overrides the default bg-primary styling on the active pagination page button (e.g. selling's orange brand). */
+  primaryButtonClassName?: string;
 }
 
 export function BaseTable<TData>({
@@ -112,6 +123,7 @@ export function BaseTable<TData>({
   onPaginationChange,
   pageSize = 10,
   totalCount,
+  pageSizeOptions,
   rowSelection,
   onRowSelectionChange,
   enableRowSelection,
@@ -124,14 +136,16 @@ export function BaseTable<TData>({
   className,
   onRowClick,
   getRowClassName,
+  primaryButtonClassName,
 }: BaseTableProps<TData>) {
   const selectable = rowSelection !== undefined;
   const expandable = enableExpanding && renderSubRow !== undefined;
 
-  const [internalPagination, setInternalPagination] = React.useState<PaginationState>({
-    pageIndex: 0,
-    pageSize,
-  });
+  const [internalPagination, setInternalPagination] =
+    React.useState<PaginationState>({
+      pageIndex: 0,
+      pageSize,
+    });
 
   const effectivePagination = enablePagination
     ? (pagination ?? internalPagination)
@@ -166,13 +180,18 @@ export function BaseTable<TData>({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
     getFilteredRowModel: manualFiltering ? undefined : getFilteredRowModel(),
-    getPaginationRowModel: enablePagination && !manualPagination ? getPaginationRowModel() : undefined,
+    getPaginationRowModel:
+      enablePagination && !manualPagination
+        ? getPaginationRowModel()
+        : undefined,
     getExpandedRowModel: expandable ? getExpandedRowModel() : undefined,
   });
 
   const rows = table.getRowModel().rows;
   const totalCols =
-    (selectable ? 1 : 0) + (expandable ? 1 : 0) + table.getVisibleLeafColumns().length;
+    (selectable ? 1 : 0) +
+    (expandable ? 1 : 0) +
+    table.getVisibleLeafColumns().length;
 
   const handleHeaderClick = React.useCallback(
     (columnId: string) => {
@@ -199,18 +218,36 @@ export function BaseTable<TData>({
     [onSortingChange, table],
   );
 
-  const { pageIndex } = table.getState().pagination;
+  const { pageIndex, pageSize: currentPageSize } = table.getState().pagination;
   const pageCountResolved = table.getPageCount();
   const showPagination = enablePagination && pageCountResolved > 1;
   const totalRows = totalCount ?? table.getFilteredRowModel().rows.length;
 
+  const setPagination = onPaginationChange ?? setInternalPagination;
+  const handlePageSizeChange = (value: string) => {
+    const nextPageSize = Number(value);
+    if (!Number.isFinite(nextPageSize) || nextPageSize <= 0) return;
+    setPagination({ pageIndex: 0, pageSize: nextPageSize });
+  };
+
+  const firstRow = totalRows === 0 ? 0 : pageIndex * currentPageSize + 1;
+  const lastRow = Math.min(totalRows, (pageIndex + 1) * currentPageSize);
+
   return (
-    <div className={cn("border border-gray-100 rounded-lg overflow-hidden", className)}>
+    <div
+      className={cn(
+        "border border-gray-100 rounded-lg overflow-hidden",
+        className,
+      )}
+    >
       {toolbar}
       <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id} className="hover:bg-transparent border-b border-gray-100">
+            <TableRow
+              key={headerGroup.id}
+              className="hover:bg-transparent border-b border-gray-100"
+            >
               {selectable && (
                 <TableHead className="w-10 normal-case">
                   <Checkbox
@@ -226,34 +263,56 @@ export function BaseTable<TData>({
               )}
               {headerGroup.headers.map((header) => {
                 const meta = header.column.columnDef.meta as
-                  | { align?: "left" | "right"; headerClassName?: string }
+                  | {
+                      align?: "left" | "right";
+                      headerClassName?: string;
+                      width?: string;
+                      minWidth?: string;
+                    }
                   | undefined;
+
                 const align = meta?.align;
                 const sortable = header.column.getCanSort();
                 return (
                   <TableHead
                     key={header.id}
+                    style={{
+                      width: meta?.width,
+                      minWidth: meta?.minWidth,
+                    }}
                     className={cn(
-                      "text-[11px] whitespace-nowrap",
+                      "text-[12px] whitespace-nowrap",
                       align === "right" ? "text-right" : "text-left",
                       sortable && "cursor-pointer select-none",
                       meta?.headerClassName,
                     )}
-                    onClick={sortable ? () => handleHeaderClick(header.column.id) : undefined}
+                    onClick={
+                      sortable
+                        ? () => handleHeaderClick(header.column.id)
+                        : undefined
+                    }
                   >
-                    <span className={cn("inline-flex items-center gap-1", align === "right" && "flex-row-reverse")}>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1",
+                        align === "right" && "flex-row-reverse",
+                      )}
+                    >
                       {header.isPlaceholder
                         ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
                       {sortable && (
                         <i
                           className={cn(
                             "text-xs leading-none",
                             header.column.getIsSorted() === "asc"
-                              ? "ri-arrow-up-line text-gray-600"
+                              ? "ri-arrow-up-line"
                               : header.column.getIsSorted() === "desc"
-                                ? "ri-arrow-down-line text-gray-600"
-                                : "ri-arrow-up-down-line text-gray-300",
+                                ? "ri-arrow-down-line"
+                                : "ri-arrow-up-down-line",
                           )}
                         />
                       )}
@@ -267,13 +326,19 @@ export function BaseTable<TData>({
         <TableBody>
           {isLoading ? (
             <TableRow>
-              <TableCell colSpan={totalCols} className="text-center py-8 text-sm text-gray-400">
+              <TableCell
+                colSpan={totalCols}
+                className="text-center py-8 text-sm text-gray-400"
+              >
                 Loading...
               </TableCell>
             </TableRow>
           ) : rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={totalCols} className="text-center py-8 text-sm text-gray-400">
+              <TableCell
+                colSpan={totalCols}
+                className="text-center py-8 text-sm text-gray-400"
+              >
                 {emptyMessage}
               </TableCell>
             </TableRow>
@@ -281,8 +346,13 @@ export function BaseTable<TData>({
             rows.map((row) => (
               <React.Fragment key={row.id}>
                 <TableRow
-                  className={cn(onRowClick && "cursor-pointer", getRowClassName?.(row.original))}
-                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+                  className={cn(
+                    onRowClick && "cursor-pointer",
+                    getRowClassName?.(row.original),
+                  )}
+                  onClick={
+                    onRowClick ? () => onRowClick(row.original) : undefined
+                  }
                 >
                   {selectable && (
                     <TableCell>
@@ -299,7 +369,9 @@ export function BaseTable<TData>({
                       <button
                         type="button"
                         onClick={() => row.toggleExpanded()}
-                        aria-label={row.getIsExpanded() ? "Collapse row" : "Expand row"}
+                        aria-label={
+                          row.getIsExpanded() ? "Collapse row" : "Expand row"
+                        }
                         className="w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
                       >
                         <i
@@ -313,14 +385,29 @@ export function BaseTable<TData>({
                   )}
                   {row.getVisibleCells().map((cell) => {
                     const meta = cell.column.columnDef.meta as
-                      | { align?: "left" | "right"; cellClassName?: string }
+                      | {
+                          align?: "left" | "right";
+                          cellClassName?: string;
+                          width?: string;
+                          minWidth?: string;
+                        }
                       | undefined;
                     return (
                       <TableCell
                         key={cell.id}
-                        className={cn(meta?.align === "right" && "text-right", meta?.cellClassName)}
+                        className={cn(
+                          meta?.align === "right" && "text-right",
+                          meta?.cellClassName,
+                        )}
+                        style={{
+                          width: meta?.width,
+                          minWidth: meta?.minWidth,
+                        }}
                       >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
                       </TableCell>
                     );
                   })}
@@ -343,7 +430,10 @@ export function BaseTable<TData>({
                 <TableCell
                   key={i}
                   colSpan={cell.colSpan}
-                  className={cn(cell.align === "right" && "text-right", cell.className)}
+                  className={cn(
+                    cell.align === "right" && "text-right",
+                    cell.className,
+                  )}
                 >
                   {cell.content}
                 </TableCell>
@@ -354,14 +444,48 @@ export function BaseTable<TData>({
       </Table>
       {enablePagination && (
         <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100">
-          <span className="text-xs text-gray-500">
-            Page {pageIndex + 1} of {Math.max(pageCountResolved, 1)} · {totalRows} total
-          </span>
+          {pageSizeOptions ? (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span>Showing</span>
+              <Select
+                value={String(currentPageSize)}
+                onValueChange={handlePageSizeChange}
+              >
+                <SelectTrigger
+                  className="h-7 w-[68px] px-2 text-xs"
+                  aria-label="Rows per page"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {pageSizeOptions.map((size) => (
+                    <SelectItem
+                      key={size}
+                      value={String(size)}
+                      className="text-xs"
+                    >
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span>
+                {totalRows === 0 ? "0" : `${firstRow}-${lastRow}`} of{" "}
+                {totalRows} entries
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-gray-500">
+              Page {pageIndex + 1} of {Math.max(pageCountResolved, 1)} ·{" "}
+              {totalRows} total
+            </span>
+          )}
           {showPagination && (
             <Pagination
               page={pageIndex + 1}
               totalPages={pageCountResolved}
               onPageChange={(p) => table.setPageIndex(p - 1)}
+              primaryButtonClassName={primaryButtonClassName}
             />
           )}
         </div>

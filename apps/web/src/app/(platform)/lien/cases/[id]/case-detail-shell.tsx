@@ -15,9 +15,10 @@ import MedicalLienComponent from "@/components/lien/add-medical-lien/add-medical
 import { lookupService } from "@/lib/lookup";
 import type { DropdownOption } from "@/lib/lookup/lookup.types";
 import {
+  useCaseDetail,
   useCaseLiens,
   useDeleteCase,
-  useLienPaymentsByCase,
+  useSettlementPaymentDetails,
 } from "@/hooks/use-case-liens";
 import { MergeCaseForm } from "@/components/lien/forms/merge-case-form";
 import { HeaderMeta } from "./components/header-meta";
@@ -40,6 +41,7 @@ export function CaseDetailShell({
   children: React.ReactNode;
 }) {
   const { mutateAsync: deleteCase } = useDeleteCase();
+  const { data: caseDetail, isLoading: loading, refetch } = useCaseDetail(id);
 
   const queryClient = useQueryClient();
 
@@ -48,7 +50,6 @@ export function CaseDetailShell({
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
 
-  const [caseDetail, setCaseDetail] = useState<CaseDetail | null>(null);
   const [caseUpdates, setCaseUpdates] = useState<any | null>(null);
 
   const [documentTypes, setDocumentTypes] = useState<DropdownOption[]>([]);
@@ -70,8 +71,9 @@ export function CaseDetailShell({
     dataUpdatedAt: paymentsUpdatedAt,
     refetch: refetchPayments,
     isFetching: isPaymentsFetching,
-  } = useLienPaymentsByCase(id);
-  const [loading, setLoading] = useState(true);
+  } = useSettlementPaymentDetails(id);
+  // const [loading, setLoading] = useState(true);
+
   const [error, setError] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<PanelMode>("split");
   const [confirmAction, setConfirmAction] = useState<{
@@ -88,25 +90,8 @@ export function CaseDetailShell({
     url: "",
   });
 
-  const fetchCase = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const detail = await casesService.getCase(id);
-      setCaseDetail(detail);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.isNotFound ? "Case not found." : err.message);
-      } else {
-        setError("Failed to load case details");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
   const fetchCaseUpdates = useCallback(async () => {
-    setLoading(true);
+    // setLoading(true);
     setError(null);
     try {
       const updates = await casesService.getCaseUpdates(id);
@@ -115,7 +100,7 @@ export function CaseDetailShell({
   }, [id]);
 
   const fetchDocumentTypes = useCallback(async () => {
-    setLoading(true);
+    // setLoading(true);
     setError(null);
     try {
       const types = await lookupService.getDocumentType();
@@ -132,12 +117,11 @@ export function CaseDetailShell({
         setError("Failed to load document types");
       }
     } finally {
-      setLoading(false);
+      // setLoading(false);
     }
   }, [id]);
 
   useEffect(() => {
-    fetchCase();
     fetchDocumentTypes();
     fetchCaseUpdates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -276,10 +260,7 @@ export function CaseDetailShell({
                   label="Date of Loss"
                   value={d.dateOfIncident || ""}
                 />
-                <HeaderMeta
-                  label="Date of Birth"
-                  value={d.clientDob || ""}
-                />
+                <HeaderMeta label="Date of Birth" value={d.clientDob || ""} />
                 {/* TEMP: UI mock data for visual review only */}
                 <HeaderMeta
                   label="State of Incident"
@@ -396,7 +377,6 @@ export function CaseDetailShell({
             canEdit,
             panelMode,
             setPanelMode,
-            fetchCase,
             openMedicalLienModal: setShowMedicalLienModal,
           }}
         >
@@ -433,7 +413,9 @@ export function CaseDetailShell({
               onClose={() => {
                 setShowMedicalLienModal(false);
                 queryClient.invalidateQueries({ queryKey: ["case-liens", id] });
-                queryClient.invalidateQueries({ queryKey: ["case-liens-all", id] });
+                queryClient.invalidateQueries({
+                  queryKey: ["case-liens-all", id],
+                });
               }}
             />
           </div>

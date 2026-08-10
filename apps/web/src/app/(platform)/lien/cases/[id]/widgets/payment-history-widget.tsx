@@ -5,8 +5,17 @@ import { LienTableToolbar } from "@/components/lien/lien-table";
 import { useLienStore } from "@/stores/lien-store";
 import { settlementService } from "@/lib/settlement";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
+import type { LegacyCasePayment } from "@/lib/settlement/settlement.types";
 import { CollapsibleSection } from "../components/collapsible-section";
 import { formatCurrency } from "../utils/case-detail-utils";
+import { ActionMenu } from "@/components/lien/action-menu";
+import { useRouter } from "next/navigation";
+
+function toAmount(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isNaN(n) ? null : n;
+}
 
 export function PaymentHistoryWidget({
   payments,
@@ -14,44 +23,24 @@ export function PaymentHistoryWidget({
   paymentsLoadedAt,
   onRefreshPayments,
   isPaymentsFetching,
+  onEditPayment,
+  onDeletePayment,
 }: {
-  payments: import("@/lib/settlement/settlement.types").CasePayment[];
+  payments: LegacyCasePayment[];
   liens: (CaseLienItem & CaseLienItemMetadata)[];
   paymentsLoadedAt: Date | null;
   onRefreshPayments: () => void;
   isPaymentsFetching: boolean;
+  onEditPayment: (p: any) => void;
+  onDeletePayment: (p: string) => void;
 }) {
   const addToast = useLienStore((s) => s.addToast);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const lienById = new Map(liens.map((l) => [l.id, l]));
+  const router = useRouter();
 
-  const handleDelete = async (id: string) => {
-    setDeletingId(id);
-    setOpenMenuId(null);
-    try {
-      await settlementService.deleteSettlementPayment(id);
-      addToast({
-        type: "success",
-        title: "Payment Deleted",
-        description: "The payment record was removed.",
-      });
-      onRefreshPayments();
-    } catch {
-      addToast({
-        type: "error",
-        title: "Delete Failed",
-        description: "Failed to delete the payment.",
-      });
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const paymentColumns: ColumnDef<
-    import("@/lib/settlement/settlement.types").CasePayment,
-    any
-  >[] = [
+  const paymentColumns: ColumnDef<LegacyCasePayment, any>[] = [
     {
       id: "paymentNumber",
       header: "Payment ID",
@@ -68,8 +57,9 @@ export function PaymentHistoryWidget({
       header: "Lien ID",
       cell: ({ row }) => (
         <span className="text-xs font-mono text-primary whitespace-nowrap">
-          {lienById.get(row.original.lienId)?.lienNumber ??
-            row.original.lienId ??
+          {row.original.lienCode ||
+            lienById.get(row.original.lienId)?.lienNumber ||
+            row.original.lienId ||
             "—"}
         </span>
       ),
@@ -79,17 +69,38 @@ export function PaymentHistoryWidget({
       header: "Lien Status",
       cell: ({ row }) => (
         <span className="text-xs text-gray-600 whitespace-nowrap">
-          {lienById.get(row.original.lienId)?.status ?? "—"}
+          {row.original.lienStatus ||
+            lienById.get(row.original.lienId)?.status ||
+            "—"}
         </span>
       ),
     },
     {
-      id: "amount",
-      header: "Amount",
+      id: "amountToSettle",
+      header: "Amount to Settle",
       meta: { align: "right" },
       cell: ({ row }) => (
         <span className="text-sm text-gray-700 font-medium tabular-nums whitespace-nowrap">
-          {formatCurrency(row.original.amount)}
+          {formatCurrency(toAmount(row.original.amountToSettle))}
+        </span>
+      ),
+    },
+    {
+      id: "checkAmount",
+      header: "Check Amount",
+      meta: { align: "right" },
+      cell: ({ row }) => (
+        <span className="text-sm text-gray-700 font-medium tabular-nums whitespace-nowrap">
+          {formatCurrency(toAmount(row.original.checkAmount))}
+        </span>
+      ),
+    },
+    {
+      id: "checkReceived",
+      header: "Check Received",
+      cell: ({ row }) => (
+        <span className="text-xs text-gray-500 whitespace-nowrap">
+          {row.original.checkDate || "—"}
         </span>
       ),
     },
@@ -98,24 +109,26 @@ export function PaymentHistoryWidget({
       header: "Check Number",
       cell: ({ row }) => (
         <span className="text-xs font-mono text-gray-500 whitespace-nowrap">
-          {row.original.checkNumber ?? "—"}
+          {row.original.checkNumber || "—"}
         </span>
       ),
     },
     {
-      id: "payee",
-      header: "Payee",
+      id: "settlementType",
+      header: "Settlement Type",
       cell: ({ row }) => (
         <span className="text-xs text-gray-600 whitespace-nowrap">
-          {row.original.payee ?? "—"}
+          {row.original.type || "—"}
         </span>
       ),
     },
     {
-      id: "note",
-      header: "Note",
+      id: "settlementStatus",
+      header: "Settlement Status",
       cell: ({ row }) => (
-        <span className="text-xs text-gray-600">{row.original.note ?? "—"}</span>
+        <span className="text-xs text-gray-600 whitespace-nowrap">
+          {row.original.status || "—"}
+        </span>
       ),
     },
     {
@@ -123,7 +136,7 @@ export function PaymentHistoryWidget({
       header: "Date",
       cell: ({ row }) => (
         <span className="text-xs text-gray-500 whitespace-nowrap">
-          {row.original.paymentDate ?? "—"}
+          {row.original.date || "—"}
         </span>
       ),
     },
@@ -132,42 +145,25 @@ export function PaymentHistoryWidget({
       header: "",
       cell: ({ row }) => {
         const p = row.original;
-        const rowKey = `paymentHistory${row.index}`;
-        const isDeleting = deletingId === rowKey;
         return (
-          <div className="text-center relative">
-            {p.id ? (
-              <>
-                <button
-                  type="button"
-                  disabled={isDeleting}
-                  onClick={() =>
-                    setOpenMenuId(openMenuId === rowKey ? null : rowKey)
-                  }
-                  className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40"
-                >
-                  {isDeleting ? (
-                    <i className="ri-loader-4-line text-sm animate-spin" />
-                  ) : (
-                    <i className="ri-more-2-line text-sm" />
-                  )}
-                </button>
-                {openMenuId === rowKey && (
-                  <div className="absolute right-0 top-full mt-1 w-32 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(p.id!)}
-                      className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
-                    >
-                      <i className="ri-delete-bin-line text-sm" />
-                      Delete
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <span className="text-gray-300 text-xs">—</span>
-            )}
+          <div onClick={(e) => e.stopPropagation()}>
+            <ActionMenu
+              items={[
+                {
+                  label: "Edit",
+                  onClick: () => {
+                    onEditPayment(p);
+                  },
+                },
+                {
+                  label: "Delete",
+                  variant: "danger",
+                  onClick: () => {
+                    onDeletePayment(p.id!);
+                  },
+                },
+              ]}
+            />
           </div>
         );
       },

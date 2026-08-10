@@ -37,9 +37,11 @@ const currency = (value: number | null) =>
 interface Props {
   contactId: string;
   contactType: string;
+  /** Overrides the default bg-primary styling on the Assign Case button (e.g. selling's orange brand). */
+  primaryButtonClassName?: string;
 }
 
-export function ContactCasesSection({ contactId, contactType }: Props) {
+export function ContactCasesSection({ contactId, contactType, primaryButtonClassName }: Props) {
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
   const [page, setPage] = useState(1);
@@ -240,7 +242,7 @@ const { data, isLoading } = useContactCases(
 
             {totalPages > 1 && (
               <div className="flex justify-end pt-4">
-                <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+                <Pagination page={page} totalPages={totalPages} onPageChange={setPage} primaryButtonClassName={primaryButtonClassName} />
               </div>
             )}
           </div>
@@ -265,7 +267,7 @@ const { data, isLoading } = useContactCases(
               <button
                 onClick={handleReassignSubmit}
                 disabled={submitting || !newPrimaryId}
-                className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg disabled:opacity-50 transition-colors"
+                className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-colors ${primaryButtonClassName ?? 'bg-primary hover:bg-primary/90'}`}
               >
                 {submitting ? 'Assigning...' : 'Assign Case'}
               </button>

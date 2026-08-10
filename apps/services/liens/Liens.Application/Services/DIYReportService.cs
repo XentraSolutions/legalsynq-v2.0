@@ -15,17 +15,35 @@ public class DIYReportService : IDIYReportService
     private readonly ILienRepository            _lienRepo;
     private readonly ICaseRepository            _caseRepo;
     private readonly IServicingItemRepository   _servicingItemRepo;
+    private readonly IContactRepository         _contactRepo;
+    private readonly IFacilityRepository        _facilityRepo;
+    private readonly ILookupValueRepository     _lookupRepo;
+    private readonly ILienReductionRepository   _reductionRepo;
+    private readonly ILienSettlementRepository  _settlementRepo;
+    private readonly ISettlementPaymentDetailRepository _paymentDetailRepo;
 
     public DIYReportService(
         IDIYReportConfigRepository repo,
         ILienRepository lienRepo,
         ICaseRepository caseRepo,
-        IServicingItemRepository servicingItemRepo)
+        IServicingItemRepository servicingItemRepo,
+        IContactRepository contactRepo,
+        IFacilityRepository facilityRepo,
+        ILookupValueRepository lookupRepo,
+        ILienReductionRepository reductionRepo,
+        ILienSettlementRepository settlementRepo,
+        ISettlementPaymentDetailRepository paymentDetailRepo)
     {
         _repo              = repo;
         _lienRepo          = lienRepo;
         _caseRepo          = caseRepo;
         _servicingItemRepo = servicingItemRepo;
+        _contactRepo       = contactRepo;
+        _facilityRepo      = facilityRepo;
+        _lookupRepo        = lookupRepo;
+        _reductionRepo     = reductionRepo;
+        _settlementRepo    = settlementRepo;
+        _paymentDetailRepo = paymentDetailRepo;
     }
 
     public async Task<List<DIYReportConfigResponse>> GetSavedReportsAsync(
@@ -67,15 +85,17 @@ public class DIYReportService : IDIYReportService
     /// can be added here as the product evolves.
     /// </summary>
     public async Task<DIYReportResult> RunReportAsync(
-        Guid tenantId, DIYReportRunRequest request, CancellationToken ct = default)
+        Guid tenantId,
+        DIYReportRunRequest request,
+        bool includeAllItems = false,
+        CancellationToken ct = default)
     {
         // Extract known filters from the config payload
         string? search = null;
-        var lienStatuses = new List<string>();
+        var requestedLienStatuses = new List<string>();
+        var statusViewLienStatuses = new List<string>();
         var caseStatuses = new List<string>();
-        var reportType = GetReportString(request, "reportType")?.Trim().ToUpperInvariant();
-        if (string.IsNullOrWhiteSpace(reportType))
-            reportType = "LIENS";
+        var reportType = NormalizeReportType(GetReportString(request, "reportType"));
         var isLiensReport = string.Equals(reportType, "LIENS", StringComparison.OrdinalIgnoreCase);
         var isCombinedReport = string.Equals(reportType, "COMBINED", StringComparison.OrdinalIgnoreCase);
         var isCasesReport = !isLiensReport && !isCombinedReport;
@@ -84,24 +104,31 @@ public class DIYReportService : IDIYReportService
         {
             var status = s.GetString();
             if (!string.IsNullOrWhiteSpace(status))
-                lienStatuses.Add(status.Trim());
+                requestedLienStatuses.Add(status.Trim());
         }
         if (HasReportProperty(request, "statusView", out var statusView) && statusView.ValueKind == JsonValueKind.String)
         {
             var status = statusView.GetString();
             if (!string.IsNullOrWhiteSpace(status))
             {
-                ApplyStatusView(status.Trim(), isLiensReport || isCombinedReport, lienStatuses, caseStatuses);
+                ApplyStatusView(
+                    status.Trim(),
+                    isLiensReport || isCombinedReport,
+                    statusViewLienStatuses,
+                    caseStatuses);
             }
         }
         if (HasReportProperty(request, "lienStatusIds", out var statusIds) && statusIds.ValueKind == JsonValueKind.Array)
         {
-            foreach (var item in statusIds.EnumerateArray())
-            {
-                if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString()))
-                    lienStatuses.Add(item.GetString()!.Trim());
-            }
+            var requestedStatuses = statusIds.EnumerateArray()
+                .Where(item => item.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+                .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : item.GetRawText())
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!.Trim())
+                .ToList();
+            requestedLienStatuses.AddRange(await ResolveLienStatusesAsync(tenantId, requestedStatuses, ct));
         }
+        var lienStatuses = CombineLienStatusFilters(requestedLienStatuses, statusViewLienStatuses);
         if (HasReportProperty(request, "search", out var k) && k.ValueKind == JsonValueKind.String)
             search = k.GetString();
         var purchaseDateFrom = GetReportDateOnly(request, "purchaseDateFrom");
@@ -110,12 +137,18 @@ public class DIYReportService : IDIYReportService
         var closedDateTo = GetReportDateTime(request, "closedDateTo", endOfDay: true);
         var isBulk = GetReportString(request, "isBulk");
         var filterCaseIds = GetReportGuidList(request, "plaintiffCaseIds");
+        var relationshipFilters = new ReportRelationshipFilters(
+            GetReportGuidList(request, "lawFirmIds").ToHashSet(),
+            GetReportGuidList(request, "attorneyIds").ToHashSet(),
+            GetReportGuidList(request, "fundingCompanyIds").ToHashSet(),
+            GetReportGuidList(request, "medicalFacilityIds").ToHashSet(),
+            GetReportGuidList(request, "caseManagerIds").ToHashSet(),
+            GetReportGuidList(request, "medicalProviderIds").ToHashSet());
 
         var page = GetReportInt(request, "page", request.Page);
         if (page < 1) page = 1;
         var limit = GetReportInt(request, "limit", request.Limit);
         if (limit < 1) limit = 50;
-        if (limit > 500) limit = 500;
 
         var reportData = await _lienRepo.SearchReportAsync(
             tenantId,
@@ -126,52 +159,182 @@ public class DIYReportService : IDIYReportService
             purchaseDateTo,
             closedDateFrom,
             closedDateTo,
-            NormalizeLegacyBooleanFilter(isBulk),
+            isCasesReport,
+            NormalizeDIYBulkFilter(isBulk),
             filterCaseIds,
             page,
             limit,
             ct);
 
-        var rowSource = isCasesReport ? reportData.AllItems : reportData.PageItems;
-        var caseIds = rowSource
+        var caseIds = reportData.AllItems
             .Select(l => l.CaseId)
             .Where(id => id.HasValue)
             .Select(id => id!.Value)
             .Distinct()
             .ToList();
-        var casesById = new Dictionary<Guid, Case>();
-        foreach (var caseId in caseIds)
-        {
-            var caseEntity = await _caseRepo.GetByIdAsync(tenantId, caseId, ct);
-            if (caseEntity is not null)
-                casesById[caseId] = caseEntity;
-        }
-
-        var legacyMedicalAmounts = await GetLegacyMedicalAmountsByLienIdAsync(
+        var casesById = (await _caseRepo.GetByIdsAsync(tenantId, caseIds, ct))
+            .ToDictionary(caseEntity => caseEntity.Id);
+        var servicingItems = await _servicingItemRepo.GetByLienIdsAsync(
             tenantId,
+            reportData.AllItems.Select(lien => lien.Id).Distinct().ToList(),
+            ct);
+        var filteredLiens = ApplyRelationshipFilters(
             reportData.AllItems,
+            casesById,
+            servicingItems,
+            relationshipFilters);
+        var totalCount = isCasesReport
+            ? filteredLiens.Select(lien => lien.CaseId).Where(id => id.HasValue).Distinct().Count()
+            : filteredLiens.Count;
+        var effectivePage = includeAllItems ? 1 : page;
+        var effectiveLimit = includeAllItems ? int.MaxValue : limit;
+        var pageLiens = includeAllItems
+            ? filteredLiens
+            : TakePage(filteredLiens, effectivePage, effectiveLimit);
+        var filteredCaseIds = filteredLiens
+            .Select(lien => lien.CaseId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToHashSet();
+        var rowCasesById = isCasesReport
+            ? casesById
+                .Where(pair => filteredCaseIds.Contains(pair.Key))
+                .ToDictionary(pair => pair.Key, pair => pair.Value)
+            : pageLiens
+                .Where(lien => lien.CaseId.HasValue && casesById.ContainsKey(lien.CaseId.Value))
+                .Select(lien => lien.CaseId!.Value)
+                .Distinct()
+                .ToDictionary(caseId => caseId, caseId => casesById[caseId]);
+
+        var legacyMedicalAmounts = GetLegacyMedicalAmountsByLienId(filteredLiens, servicingItems);
+        var rowEnrichment = await GetRowEnrichmentAsync(
+            tenantId,
+            filteredLiens,
+            rowCasesById,
+            servicingItems,
             ct);
 
         var rows = isCasesReport
-            ? BuildCaseRows(reportData.AllItems, casesById, legacyMedicalAmounts, page, limit)
-            : reportData.PageItems.Select(l => BuildLienRow(l, casesById, legacyMedicalAmounts)).ToList();
+            ? BuildCaseRows(filteredLiens, rowCasesById, legacyMedicalAmounts, rowEnrichment, effectivePage, effectiveLimit)
+            : pageLiens.Select(lien => BuildLienRow(lien, rowCasesById, legacyMedicalAmounts, rowEnrichment)).ToList();
 
-        var totalCount = isCasesReport
-            ? reportData.AllItems.Select(l => l.CaseId).Where(id => id.HasValue).Distinct().Count()
-            : reportData.TotalCount;
-
-        var summary = await BuildSummaryAsync(tenantId, reportData.AllItems, legacyMedicalAmounts, ct);
+        var summary = BuildSummary(
+            filteredLiens,
+            legacyMedicalAmounts,
+            rowEnrichment,
+            casesById,
+            isCombinedReport,
+            ct);
 
         return new DIYReportResult
         {
             ReportType = reportType,
             Items      = rows,
             TotalCount = totalCount,
-            Page       = page,
-            PageSize   = limit,
+            Page       = effectivePage,
+            PageSize   = includeAllItems ? totalCount : limit,
             SummaryTotals = summary,
         };
     }
+
+    private async Task<IReadOnlyCollection<string>> ResolveLienStatusesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<string> requestedStatuses,
+        CancellationToken ct)
+    {
+        var lookupIds = requestedStatuses
+            .Where(value => Guid.TryParse(value, out _))
+            .Select(Guid.Parse)
+            .ToHashSet();
+        if (lookupIds.Count == 0)
+            return requestedStatuses;
+
+        var lookups = await _lookupRepo.GetByCategoryAsync(tenantId, LookupCategory.LienStatus, ct);
+        var lookupCodesById = lookups
+            .Where(lookup => lookupIds.Contains(lookup.Id))
+            .ToDictionary(lookup => lookup.Id, lookup => lookup.Code);
+
+        return requestedStatuses
+            .Select(value => Guid.TryParse(value, out var lookupId) &&
+                             lookupCodesById.TryGetValue(lookupId, out var code)
+                ? code
+                : value)
+            .ToList();
+    }
+
+    private static List<Lien> ApplyRelationshipFilters(
+        IReadOnlyCollection<Lien> liens,
+        IReadOnlyDictionary<Guid, Case> casesById,
+        IReadOnlyCollection<ServicingItem> servicingItems,
+        ReportRelationshipFilters filters)
+    {
+        if (!filters.HasAny)
+            return liens.ToList();
+
+        var caseMetadataById = casesById.Values.ToDictionary(
+            caseEntity => caseEntity.Id,
+            caseEntity => ParseLegacyNoteFields(caseEntity.Notes));
+        var facilityMetadataByLienId = servicingItems
+            .Where(item => item.LienId.HasValue &&
+                           string.Equals(item.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal))
+            .GroupBy(item => item.LienId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => ParseLegacyNoteFields(group.OrderBy(item => item.CreatedAtUtc).First().Notes));
+
+        return liens.Where(lien =>
+        {
+            var caseMetadata = lien.CaseId.HasValue &&
+                               caseMetadataById.TryGetValue(lien.CaseId.Value, out var metadata)
+                ? metadata
+                : EmptyLegacyMetadata;
+            var facilityMetadata = facilityMetadataByLienId.TryGetValue(lien.Id, out var lienMetadata)
+                ? lienMetadata
+                : EmptyLegacyMetadata;
+
+            return MatchesMetadataIdFilter(filters.LawFirmIds, caseMetadata, "lawFirmId") &&
+                   MatchesMetadataIdFilter(filters.AttorneyIds, caseMetadata, "attorneyId") &&
+                   MatchesGuidFilter(filters.FundingCompanyIds, lien.FundingCompanyId) &&
+                   MatchesAnyGuidFilter(
+                       filters.MedicalFacilityIds,
+                       lien.FacilityId,
+                       FirstGuid(facilityMetadata.GetValueOrDefault("facilityId"))) &&
+                   MatchesMetadataIdFilter(filters.CaseManagerIds, caseMetadata, "caseManagerId") &&
+                   MatchesAnyGuidFilter(
+                       filters.MedicalProviderIds,
+                       FirstGuid(facilityMetadata.GetValueOrDefault("medicalProviderId")));
+        }).ToList();
+    }
+
+    private static bool MatchesMetadataIdFilter(
+        IReadOnlySet<Guid> requestedIds,
+        IReadOnlyDictionary<string, string> metadata,
+        string key) =>
+        requestedIds.Count == 0 ||
+        (Guid.TryParse(metadata.GetValueOrDefault(key), out var id) && requestedIds.Contains(id));
+
+    private static bool MatchesGuidFilter(IReadOnlySet<Guid> requestedIds, Guid? candidate) =>
+        requestedIds.Count == 0 || candidate.HasValue && requestedIds.Contains(candidate.Value);
+
+    private static bool MatchesAnyGuidFilter(IReadOnlySet<Guid> requestedIds, params Guid?[] candidates) =>
+        requestedIds.Count == 0 || candidates.Any(candidate => candidate.HasValue && requestedIds.Contains(candidate.Value));
+
+    private static List<Lien> TakePage(IReadOnlyList<Lien> liens, int page, int limit)
+    {
+        var skip = (long)(page - 1) * limit;
+        return skip >= liens.Count
+            ? []
+            : liens.Skip((int)skip).Take(limit).ToList();
+    }
+
+    private static string NormalizeReportType(string? reportType) =>
+        reportType?.Trim().ToUpperInvariant() switch
+        {
+            "CASE" or "CASES" => "CASES",
+            "COMBINED" => "COMBINED",
+            _ => "LIENS",
+        };
 
     private static void ApplyStatusView(
         string statusView,
@@ -191,13 +354,13 @@ public class DIYReportService : IDIYReportService
                 return;
             case "CLOSED":
                 if (isLienLevel)
-                    lienStatuses.AddRange(LienStatus.Terminal);
+                    lienStatuses.Add(LienStatus.Settled);
                 else
                     caseStatuses.AddRange(CaseStatus.All.Where(IsClosedCaseStatus));
                 return;
             case "REJECTED":
                 if (isLienLevel)
-                    lienStatuses.Add(LienStatus.Cancelled);
+                    lienStatuses.AddRange([LienStatus.Declined, LienStatus.Withdrawn, LienStatus.Cancelled]);
                 return;
             default:
                 if (isLienLevel && LienStatus.All.Contains(statusView))
@@ -208,14 +371,66 @@ public class DIYReportService : IDIYReportService
         }
     }
 
+    private static IReadOnlyCollection<string> CombineLienStatusFilters(
+        IReadOnlyCollection<string> requestedStatuses,
+        IReadOnlyCollection<string> statusViewStatuses)
+    {
+        var expandedRequested = LienStatus.ExpandFilterValues(requestedStatuses);
+        var expandedStatusView = LienStatus.ExpandFilterValues(statusViewStatuses);
+
+        if (expandedRequested.Count == 0)
+            return expandedStatusView.ToList();
+        if (expandedStatusView.Count == 0)
+            return expandedRequested.ToList();
+
+        var intersection = expandedRequested
+            .Intersect(expandedStatusView, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // An empty list means "no status filter" to the repository, so retain an
+        // impossible sentinel when both valid filter dimensions have no overlap.
+        return intersection.Count > 0 ? intersection : ["__NO_MATCHING_LIEN_STATUS__"];
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> EmptyLegacyMetadata =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    private sealed record ReportRelationshipFilters(
+        IReadOnlySet<Guid> LawFirmIds,
+        IReadOnlySet<Guid> AttorneyIds,
+        IReadOnlySet<Guid> FundingCompanyIds,
+        IReadOnlySet<Guid> MedicalFacilityIds,
+        IReadOnlySet<Guid> CaseManagerIds,
+        IReadOnlySet<Guid> MedicalProviderIds)
+    {
+        public bool HasAny =>
+            LawFirmIds.Count > 0 ||
+            AttorneyIds.Count > 0 ||
+            FundingCompanyIds.Count > 0 ||
+            MedicalFacilityIds.Count > 0 ||
+            CaseManagerIds.Count > 0 ||
+            MedicalProviderIds.Count > 0;
+    }
+
     private static DIYReportRow BuildLienRow(
         Lien l,
         IReadOnlyDictionary<Guid, Case> casesById,
-        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts)
+        IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts,
+        ReportRowEnrichment enrichment)
     {
         Case? caseEntity = null;
         if (l.CaseId.HasValue)
             casesById.TryGetValue(l.CaseId.Value, out caseEntity);
+        var caseDetails = caseEntity is not null && enrichment.CaseDetailsById.TryGetValue(caseEntity.Id, out var details)
+            ? details
+            : CaseReportDetails.Empty;
+        var billingAmount = ResolveBillingAmount(l, legacyMedicalAmounts);
+        var purchaseAmount = ResolvePurchaseAmount(l, legacyMedicalAmounts);
+        var returnedAmount = ResolveReturnedAmount(l, enrichment);
+        var reductionAmount = ResolveReductionAmount(l, enrichment);
+        var toSettleAmount = ResolveToSettleAmount(l, enrichment);
+        var daysSincePurchase = GetDaysSincePurchase(l.PurchaseDate);
+        var grossProfit = returnedAmount - (purchaseAmount ?? 0m);
 
         return new DIYReportRow
         {
@@ -231,15 +446,43 @@ public class DIYReportService : IDIYReportService
             Status = l.Status,
             CaseStatus = caseEntity?.Status,
             DateOfLoss = caseEntity?.DateOfIncident ?? l.IncidentDate,
-            DateClosed = l.ClosedAtUtc ?? caseEntity?.ClosedAtUtc,
+            PurchaseDate = l.PurchaseDate,
+            DateClosed = string.Equals(l.Status, LienStatus.Settled, StringComparison.OrdinalIgnoreCase)
+                ? l.ClosedAtUtc
+                : null,
             InitialServiceDate = l.InitialServiceDate,
-            BillingAmount = ResolveBillingAmount(l, legacyMedicalAmounts),
-            PurchaseAmount = ResolvePurchaseAmount(l, legacyMedicalAmounts),
-            ReturnedAmount = l.PayoffAmount,
+            EndServiceDate = l.EndServiceDate,
+            SettlementDate = ResolveSettlementDate(l, enrichment),
+            ReductionDate = ResolveReductionDate(l, enrichment),
+            FirstPurchaseDate = l.PurchaseDate,
+            LastPurchaseDate = l.PurchaseDate,
+            DaysSincePurchase = daysSincePurchase,
+            BillingAmount = billingAmount,
+            PurchaseAmount = purchaseAmount,
+            ReturnedAmount = string.Equals(l.Status, LienStatus.Settled, StringComparison.OrdinalIgnoreCase)
+                ? returnedAmount
+                : null,
+            ReductionAmount = reductionAmount,
+            RemainingBillingAmount = reductionAmount > 0m
+                ? billingAmount - (purchaseAmount ?? 0m)
+                : null,
+            ReductionPercentage = billingAmount == 0m ? 0m : reductionAmount / billingAmount * 100m,
+            GrossProfit = grossProfit,
+            Roi = purchaseAmount is > 0m ? grossProfit / purchaseAmount.Value * 100m : 0m,
+            AnnualizedRoi = purchaseAmount is > 0m && daysSincePurchase is > 0
+                ? grossProfit / purchaseAmount.Value * (365m / daysSincePurchase.Value) * 100m
+                : 0m,
             LienTotal = l.CurrentBalance,
             NumberOfLiens = 1,
-            ToSettleAmount = l.CurrentBalance,
-            SettledAmount = l.PayoffAmount,
+            ToSettleAmount = toSettleAmount,
+            SettledAmount = returnedAmount,
+            DaysSinceReductionApproval = ResolveReductionDate(l, enrichment) is { } reductionDate
+                ? GetDaysSinceReductionApproval(reductionDate)
+                : null,
+            MedicalFacility = enrichment.MedicalFacilityByLienId.GetValueOrDefault(l.Id, string.Empty),
+            LawFirm = caseDetails.LawFirm,
+            CaseType = caseDetails.CaseType,
+            CaseManager = caseDetails.CaseManager,
             Extra = new Dictionary<string, object?>(),
         };
     }
@@ -252,19 +495,50 @@ public class DIYReportService : IDIYReportService
         IReadOnlyCollection<Lien> liens,
         IReadOnlyDictionary<Guid, Case> casesById,
         IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts,
+        ReportRowEnrichment enrichment,
         int page,
         int limit)
     {
-        return liens
+        var groups = liens
             .Where(l => l.CaseId.HasValue)
             .GroupBy(l => l.CaseId!.Value)
             .OrderByDescending(g => g.Key)
-            .Skip((page - 1) * limit)
+            .ToList();
+        var skip = (long)(page - 1) * limit;
+        if (skip >= groups.Count)
+            return [];
+
+        return groups
+            .Skip((int)skip)
             .Take(limit)
             .Select(g =>
             {
                 casesById.TryGetValue(g.Key, out var caseEntity);
                 var first = g.First();
+                var caseDetails = enrichment.CaseDetailsById.GetValueOrDefault(g.Key, CaseReportDetails.Empty);
+                var purchaseDates = g
+                    .Where(l => l.PurchaseDate.HasValue)
+                    .Select(l => l.PurchaseDate!.Value)
+                    .ToList();
+                var reductionDates = g
+                    .Select(l => ResolveReductionDate(l, enrichment))
+                    .Where(date => date.HasValue)
+                    .Select(date => date!.Value)
+                    .ToList();
+                var settlementDates = g
+                    .Select(l => ResolveSettlementDate(l, enrichment))
+                    .Where(date => date.HasValue)
+                    .Select(date => date!.Value)
+                    .ToList();
+                var closedDates = g
+                    .Where(l => string.Equals(l.Status, LienStatus.Settled, StringComparison.OrdinalIgnoreCase) &&
+                                l.ClosedAtUtc.HasValue)
+                    .Select(l => l.ClosedAtUtc!.Value)
+                    .ToList();
+                var facilities = g
+                    .Select(l => enrichment.MedicalFacilityByLienId.GetValueOrDefault(l.Id, string.Empty))
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Distinct(StringComparer.OrdinalIgnoreCase);
 
                 return new DIYReportRow
                 {
@@ -280,20 +554,346 @@ public class DIYReportService : IDIYReportService
                     Status = null,
                     CaseStatus = caseEntity?.Status,
                     DateOfLoss = caseEntity?.DateOfIncident ?? first.IncidentDate,
-                    DateClosed = caseEntity?.ClosedAtUtc ?? g.Max(l => l.ClosedAtUtc),
+                    PurchaseDate = purchaseDates.Count > 0
+                        ? purchaseDates.Min()
+                        : null,
+                    DateClosed = closedDates.Count > 0 ? closedDates.Max() : null,
                     InitialServiceDate = g.Min(l => l.InitialServiceDate),
+                    EndServiceDate = g.Max(l => l.EndServiceDate),
+                    SettlementDate = settlementDates.Count > 0 ? settlementDates.Max() : null,
+                    ReductionDate = reductionDates.Count > 0 ? reductionDates.Max() : null,
+                    FirstPurchaseDate = purchaseDates.Count > 0 ? purchaseDates.Min() : null,
+                    LastPurchaseDate = purchaseDates.Count > 0 ? purchaseDates.Max() : null,
                     BillingAmount = g.Sum(l => ResolveBillingAmount(l, legacyMedicalAmounts)),
                     PurchaseAmount = g.Sum(l => ResolvePurchaseAmount(l, legacyMedicalAmounts) ?? 0m),
-                    ReturnedAmount = g.Sum(l => l.PayoffAmount ?? 0m),
+                    ReturnedAmount = g.Sum(l => ResolveReturnedAmount(l, enrichment)),
+                    ReductionAmount = g.Sum(l => ResolveReductionAmount(l, enrichment)),
                     LienTotal = g.Sum(l => l.CurrentBalance ?? 0m),
                     NumberOfLiens = g.Count(),
-                    ToSettleAmount = g.Sum(l => l.CurrentBalance ?? 0m),
-                    SettledAmount = g.Sum(l => l.PayoffAmount ?? 0m),
+                    ToSettleAmount = g.Sum(l => ResolveToSettleAmount(l, enrichment)),
+                    SettledAmount = g.Sum(l => ResolveReturnedAmount(l, enrichment)),
+                    DaysSinceReductionApproval = reductionDates.Count > 0
+                        ? GetDaysSinceReductionApproval(reductionDates.Max())
+                        : null,
+                    MedicalFacility = string.Join(", ", facilities),
+                    LawFirm = caseDetails.LawFirm,
+                    CaseType = caseDetails.CaseType,
+                    CaseManager = caseDetails.CaseManager,
                     Extra = new Dictionary<string, object?>(),
                 };
             })
             .ToList();
     }
+
+    private async Task<ReportRowEnrichment> GetRowEnrichmentAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Lien> liens,
+        IReadOnlyDictionary<Guid, Case> casesById,
+        IReadOnlyCollection<ServicingItem> servicingItems,
+        CancellationToken ct)
+    {
+        var lienIds = liens.Select(lien => lien.Id).Distinct().ToList();
+        var facilityInfoByLienId = servicingItems
+            .Where(item => item.LienId.HasValue &&
+                           string.Equals(item.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal))
+            .GroupBy(item => item.LienId!.Value)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.CreatedAtUtc).First());
+
+        var caseMetadataById = casesById.Values
+            .ToDictionary(caseEntity => caseEntity.Id, caseEntity => ParseLegacyNoteFields(caseEntity.Notes));
+
+        var facilityIds = new HashSet<Guid>(liens
+            .Where(lien => lien.FacilityId.HasValue)
+            .Select(lien => lien.FacilityId!.Value));
+        var contactIds = new HashSet<Guid>();
+
+        foreach (var fields in caseMetadataById.Values)
+        {
+            AddGuidIfValid(contactIds, fields.GetValueOrDefault("lawFirmId"));
+            AddGuidIfValid(contactIds, fields.GetValueOrDefault("caseManagerId"));
+        }
+
+        foreach (var lien in liens)
+        {
+            if (facilityInfoByLienId.TryGetValue(lien.Id, out var facilityInfo))
+                AddGuidIfValid(facilityIds, ParseLegacyNoteFields(facilityInfo.Notes).GetValueOrDefault("facilityId"));
+        }
+
+        contactIds.UnionWith(facilityIds);
+
+        var facilitiesById = (await _facilityRepo.GetByIdsAsync(tenantId, facilityIds, ct))
+            .ToDictionary(facility => facility.Id);
+        var contactsById = (await _contactRepo.GetByIdsAsync(tenantId, contactIds, ct))
+            .ToDictionary(contact => contact.Id);
+        var lawFirmsByOrgId = (await _contactRepo.GetAllByTypeAsync(
+                tenantId,
+                ContactType.LawFirm,
+                isActive: null,
+                ct))
+            .GroupBy(contact => contact.OrgId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        var medicalFacilityByLienId = new Dictionary<Guid, string>();
+        foreach (var lien in liens)
+        {
+            var facilityFields = facilityInfoByLienId.TryGetValue(lien.Id, out var facilityInfo)
+                ? ParseLegacyNoteFields(facilityInfo.Notes)
+                : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var facilityId = FirstGuid(
+                facilityFields.GetValueOrDefault("facilityId"),
+                lien.FacilityId?.ToString());
+
+            medicalFacilityByLienId[lien.Id] = FirstNonEmpty(
+                facilityFields.GetValueOrDefault("facilityName"),
+                facilityId.HasValue && facilitiesById.TryGetValue(facilityId.Value, out var facility)
+                    ? facility.Name
+                    : null,
+                facilityId.HasValue && contactsById.TryGetValue(facilityId.Value, out var facilityContact)
+                    ? DisplayContactName(facilityContact)
+                    : null) ?? string.Empty;
+        }
+
+        var caseDetailsById = new Dictionary<Guid, CaseReportDetails>();
+        foreach (var caseEntity in casesById.Values)
+        {
+            var fields = caseMetadataById[caseEntity.Id];
+            var lawFirmId = FirstGuid(fields.GetValueOrDefault("lawFirmId"));
+            var caseManagerId = FirstGuid(fields.GetValueOrDefault("caseManagerId"));
+
+            caseDetailsById[caseEntity.Id] = new CaseReportDetails(
+                FirstNonEmpty(
+                    lawFirmId.HasValue && contactsById.TryGetValue(lawFirmId.Value, out var lawFirm)
+                        ? DisplayContactName(lawFirm)
+                        : null,
+                    fields.GetValueOrDefault("lawFirm"),
+                    lawFirmsByOrgId.TryGetValue(caseEntity.OrgId, out var organizationLawFirm)
+                        ? DisplayContactName(organizationLawFirm)
+                        : null) ?? string.Empty,
+                FirstNonEmpty(
+                    caseManagerId.HasValue && contactsById.TryGetValue(caseManagerId.Value, out var caseManager)
+                        ? DisplayPersonName(caseManager)
+                        : null,
+                    fields.GetValueOrDefault("caseManager")) ?? string.Empty,
+                FirstNonEmpty(
+                    fields.GetValueOrDefault("accidentType"),
+                    fields.GetValueOrDefault("caseType")) ?? string.Empty);
+        }
+
+        var reductions = await _reductionRepo.GetByLienIdsAsync(tenantId, lienIds, ct);
+        var reductionAmountsByLienId = reductions
+            .GroupBy(reduction => reduction.LienId)
+            .ToDictionary(
+                group => group.Key,
+                group => new ReductionReportAmounts(
+                    group.Sum(reduction => reduction.Amount),
+                    group.Max(reduction => reduction.ReductionDate)));
+
+        var settlementAmountsByLienId = (await _settlementRepo.GetByLienIdsAsync(tenantId, lienIds, ct))
+            .GroupBy(settlement => settlement.LienId)
+            .ToDictionary(group => group.Key, BuildSettlementReportAmounts);
+
+        var returnedAmountsByLienId = (await _paymentDetailRepo.GetByLienIdsAsync(tenantId, lienIds, ct))
+            .GroupBy(payment => payment.LienId)
+            .ToDictionary(group => group.Key, group => group.Sum(payment => payment.Amount));
+
+        return new ReportRowEnrichment(
+            medicalFacilityByLienId,
+            caseDetailsById,
+            reductionAmountsByLienId,
+            settlementAmountsByLienId,
+            returnedAmountsByLienId);
+    }
+
+    private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
+    {
+        var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(notes))
+            return fields;
+
+        const string legacyMetadataMarker = "[legacy-meta]";
+        var rawMetadata = notes;
+        var markerIndex = notes.IndexOf(legacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+            rawMetadata = notes[(markerIndex + legacyMetadataMarker.Length)..].Trim();
+
+        foreach (var segment in rawMetadata.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0)
+                continue;
+
+            var key = segment[..separator].Trim();
+            var value = segment[(separator + 1)..].Trim();
+            if (!string.IsNullOrWhiteSpace(key))
+                fields[key] = value;
+        }
+
+        return fields;
+    }
+
+    private static void AddGuidIfValid(ISet<Guid> target, string? value)
+    {
+        if (Guid.TryParse(value, out var id))
+            target.Add(id);
+    }
+
+    private static Guid? FirstGuid(params string?[] values)
+        => values
+            .Select(value => Guid.TryParse(value, out var id) ? (Guid?)id : null)
+            .FirstOrDefault(id => id.HasValue);
+
+    private static string? FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
+    private static string DisplayContactName(Contact contact)
+        => FirstNonEmpty(contact.Organization, contact.DisplayName) ?? string.Empty;
+
+    private static string DisplayPersonName(Contact contact)
+        => FirstNonEmpty(contact.DisplayName, contact.Organization) ?? string.Empty;
+
+    private static SettlementReportAmounts BuildSettlementReportAmounts(
+        IGrouping<Guid, LienSettlement> settlements)
+    {
+        var reductionAmount = 0m;
+        var returnedAmount = 0m;
+        var hasLegacyReductionAmount = false;
+        var hasLegacyReturnedAmount = false;
+        DateOnly? reductionDate = null;
+
+        foreach (var settlement in settlements)
+        {
+            var fields = ParseLegacyNoteFields(settlement.Note);
+            if (fields.TryGetValue("reductionAmount", out var reductionValue))
+            {
+                hasLegacyReductionAmount = true;
+                if (decimal.TryParse(reductionValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
+                    reductionAmount += amount;
+            }
+
+            if (fields.TryGetValue("totalSettledAmount", out var returnedValue))
+            {
+                hasLegacyReturnedAmount = true;
+                if (decimal.TryParse(returnedValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
+                    returnedAmount += amount;
+            }
+
+            if (fields.TryGetValue("reductionDate", out var reductionDateValue) &&
+                TryParseLegacyDate(reductionDateValue, out var parsedReductionDate) &&
+                (!reductionDate.HasValue || parsedReductionDate > reductionDate.Value))
+            {
+                reductionDate = parsedReductionDate;
+            }
+        }
+
+        var settlementDates = settlements
+            .Where(settlement => settlement.SettlementDate.HasValue)
+            .Select(settlement => settlement.SettlementDate!.Value)
+            .ToList();
+
+        return new SettlementReportAmounts(
+            settlements.Sum(settlement => settlement.Amount),
+            reductionAmount,
+            returnedAmount,
+            hasLegacyReductionAmount,
+            hasLegacyReturnedAmount,
+            settlementDates.Count > 0 ? settlementDates.Max() : null,
+            reductionDate);
+    }
+
+    private static bool TryParseLegacyDate(string? value, out DateOnly date)
+    {
+        var formats = new[] { "yyyy-MM-dd", "M/d/yyyy", "MM/dd/yyyy" };
+        return DateOnly.TryParseExact(
+                   value,
+                   formats,
+                   CultureInfo.InvariantCulture,
+                   DateTimeStyles.None,
+                   out date) ||
+               DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+    }
+
+    private static decimal ResolveReturnedAmount(
+        Lien lien,
+        ReportRowEnrichment enrichment)
+    {
+        if (enrichment.SettlementAmountsByLienId.TryGetValue(lien.Id, out var settlementAmounts) &&
+            settlementAmounts.HasLegacyReturnedAmount)
+        {
+            return settlementAmounts.ReturnedAmount;
+        }
+
+        return lien.PayoffAmount ??
+               (enrichment.ReturnedAmountsByLienId.TryGetValue(lien.Id, out var returnedAmount)
+                   ? returnedAmount
+                   : 0m);
+    }
+
+    private static decimal ResolveReductionAmount(Lien lien, ReportRowEnrichment enrichment)
+    {
+        if (enrichment.SettlementAmountsByLienId.TryGetValue(lien.Id, out var settlementAmounts) &&
+            settlementAmounts.HasLegacyReductionAmount)
+        {
+            return settlementAmounts.ReductionAmount;
+        }
+
+        return enrichment.ReductionAmountsByLienId.TryGetValue(lien.Id, out var reductionAmounts)
+            ? reductionAmounts.Amount
+            : 0m;
+    }
+
+    private static decimal ResolveToSettleAmount(Lien lien, ReportRowEnrichment enrichment) =>
+        enrichment.SettlementAmountsByLienId.TryGetValue(lien.Id, out var settlementAmounts)
+            ? settlementAmounts.ToSettleAmount
+            : 0m;
+
+    private static DateOnly? ResolveSettlementDate(Lien lien, ReportRowEnrichment enrichment) =>
+        enrichment.SettlementAmountsByLienId.TryGetValue(lien.Id, out var settlementAmounts)
+            ? settlementAmounts.SettlementDate
+            : null;
+
+    private static DateOnly? ResolveReductionDate(Lien lien, ReportRowEnrichment enrichment)
+    {
+        if (enrichment.SettlementAmountsByLienId.TryGetValue(lien.Id, out var settlementAmounts) &&
+            settlementAmounts.ReductionDate.HasValue)
+        {
+            return settlementAmounts.ReductionDate;
+        }
+
+        return enrichment.ReductionAmountsByLienId.TryGetValue(lien.Id, out var reductionAmounts)
+            ? reductionAmounts.ReductionDate
+            : null;
+    }
+
+    private static int? GetDaysSincePurchase(DateOnly? purchaseDate) =>
+        purchaseDate.HasValue
+            ? Math.Max(DateOnly.FromDateTime(DateTime.UtcNow).DayNumber - purchaseDate.Value.DayNumber, 0)
+            : null;
+
+    private static int GetDaysSinceReductionApproval(DateOnly reductionDate) =>
+        Math.Max(DateOnly.FromDateTime(DateTime.UtcNow).DayNumber - reductionDate.DayNumber, 0);
+
+    private sealed record CaseReportDetails(string LawFirm, string CaseManager, string CaseType)
+    {
+        public static readonly CaseReportDetails Empty = new(string.Empty, string.Empty, string.Empty);
+    }
+
+    private sealed record ReportRowEnrichment(
+        IReadOnlyDictionary<Guid, string> MedicalFacilityByLienId,
+        IReadOnlyDictionary<Guid, CaseReportDetails> CaseDetailsById,
+        IReadOnlyDictionary<Guid, ReductionReportAmounts> ReductionAmountsByLienId,
+        IReadOnlyDictionary<Guid, SettlementReportAmounts> SettlementAmountsByLienId,
+        IReadOnlyDictionary<Guid, decimal> ReturnedAmountsByLienId);
+
+    private readonly record struct ReductionReportAmounts(decimal Amount, DateOnly ReductionDate);
+
+    private readonly record struct SettlementReportAmounts(
+        decimal ToSettleAmount,
+        decimal ReductionAmount,
+        decimal ReturnedAmount,
+        bool HasLegacyReductionAmount,
+        bool HasLegacyReturnedAmount,
+        DateOnly? SettlementDate,
+        DateOnly? ReductionDate);
 
     private static bool HasReportProperty(DIYReportRunRequest request, string propertyName, out JsonElement value)
     {
@@ -387,32 +987,52 @@ public class DIYReportService : IDIYReportService
             .ToList();
     }
 
-    private static string? NormalizeLegacyBooleanFilter(string? value)
+    private static string? NormalizeDIYBulkFilter(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
         return value.Trim().ToUpperInvariant() switch
         {
+            // The legacy report UI always submits N when its bulk checkbox is
+            // unchecked. The legacy SQL treated that sentinel as no filter.
+            "N" => null,
             "Y" or "YES" or "TRUE" or "1" => "Yes",
-            "N" or "NO" or "FALSE" or "0" => "No",
+            "NO" or "FALSE" or "0" => "No",
             _ => value.Trim(),
         };
     }
 
-    private async Task<DIYReportSummaryTotals> BuildSummaryAsync(
-        Guid tenantId,
+    private static DIYReportSummaryTotals BuildSummary(
         IReadOnlyCollection<Lien> liens,
         IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts,
+        ReportRowEnrichment enrichment,
+        IReadOnlyDictionary<Guid, Case> casesById,
+        bool isCombinedReport,
         CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         var totalPurchase = liens.Sum(l => ResolvePurchaseAmount(l, legacyMedicalAmounts) ?? 0m);
         var totalBilling = liens.Sum(l => ResolveBillingAmount(l, legacyMedicalAmounts));
-        var totalReturned = liens.Sum(l => l.PayoffAmount ?? 0m);
-        var totalAmtToSettle = liens.Sum(l => l.CurrentBalance ?? 0m);
+        var totalReturned = liens.Sum(l => ResolveReturnedAmount(l, enrichment));
+        var totalAmtToSettle = isCombinedReport
+            ? liens.Sum(lien => ResolveToSettleAmount(lien, enrichment))
+            : totalBilling - totalReturned;
         var totalGrossProfit = totalReturned - totalPurchase;
-        var avgRoi = totalPurchase == 0m ? 0m : totalReturned / totalPurchase;
-        var closedLiens = liens.Count(l => LienStatus.Terminal.Contains(l.Status));
+        var roiValues = liens
+            .Select(lien => new
+            {
+                Purchase = ResolvePurchaseAmount(lien, legacyMedicalAmounts) ?? 0m,
+                Returned = ResolveReturnedAmount(lien, enrichment),
+            })
+            .Where(amounts => amounts.Purchase > 0m)
+            .Select(amounts => (amounts.Returned - amounts.Purchase) / amounts.Purchase * 100m)
+            .ToList();
+        var avgRoi = roiValues.Count == 0 ? 0m : roiValues.Average();
+        var openLiens = liens.Count(lien => LienStatus.Open.Contains(lien.Status));
+        var closedLiens = liens.Count(lien =>
+            string.Equals(lien.Status, LienStatus.Settled, StringComparison.OrdinalIgnoreCase));
         var uniqueCaseIds = liens
             .Select(l => l.CaseId)
             .Where(id => id.HasValue)
@@ -423,12 +1043,10 @@ public class DIYReportService : IDIYReportService
 
         foreach (var caseId in uniqueCaseIds)
         {
-            var caseEntity = await _caseRepo.GetByIdAsync(tenantId, caseId, ct);
-            if (caseEntity is not null &&
+            ct.ThrowIfCancellationRequested();
+            if (casesById.TryGetValue(caseId, out var caseEntity) &&
                 IsClosedCaseStatus(caseEntity.Status))
-            {
                 closedCases++;
-            }
         }
 
         return new DIYReportSummaryTotals
@@ -443,21 +1061,20 @@ public class DIYReportService : IDIYReportService
             AvgRoi = avgRoi,
             TotalOpenCases = Math.Max(uniqueCaseIds.Count - closedCases, 0),
             TotalClosedCases = closedCases,
-            TotalOpenLiens = liens.Count - closedLiens,
+            TotalOpenLiens = openLiens,
             TotalClosedLiens = closedLiens,
         };
     }
 
-    private async Task<IReadOnlyDictionary<Guid, LegacyMedicalAmounts>> GetLegacyMedicalAmountsByLienIdAsync(
-        Guid tenantId,
+    private static IReadOnlyDictionary<Guid, LegacyMedicalAmounts> GetLegacyMedicalAmountsByLienId(
         IReadOnlyCollection<Lien> liens,
-        CancellationToken ct)
+        IReadOnlyCollection<ServicingItem> servicingItems)
     {
-        var lienIds = liens.Select(l => l.Id).Distinct().ToList();
-        var medicalCodeItems = await _servicingItemRepo.GetByLienIdsAsync(tenantId, lienIds, ct);
+        var lienIds = liens.Select(lien => lien.Id).ToHashSet();
 
-        return medicalCodeItems
+        return servicingItems
             .Where(item => item.LienId.HasValue &&
+                           lienIds.Contains(item.LienId.Value) &&
                            string.Equals(item.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
             .GroupBy(item => item.LienId!.Value)
             .ToDictionary(
@@ -505,7 +1122,7 @@ public class DIYReportService : IDIYReportService
         IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts) =>
         legacyMedicalAmounts.TryGetValue(lien.Id, out var amounts) && amounts.HasPurchaseAmount
             ? amounts.PurchaseAmount
-            : lien.PurchasePrice;
+            : lien.PurchasePrice ?? 0m;
 
     private readonly record struct LegacyMedicalAmounts(
         decimal PurchaseAmount = 0m,

@@ -938,9 +938,10 @@ public class DocumentsIntegrationTests
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ASPNETCORE_ENVIRONMENT"]          = "Production",
-                ["ReferralToken:Secret"]             = "STRONG-HMAC-SECRET-KEY-32-CHARS-LONG",
-                ["DocumentsService:DocumentTypeId"]  = "11111111-2222-3333-4444-555555555555",
+                ["ASPNETCORE_ENVIRONMENT"]                       = "Production",
+                ["ReferralToken:Secret"]                          = "STRONG-HMAC-SECRET-KEY-32-CHARS-LONG",
+                ["DocumentsService:DocumentTypeId"]               = "11111111-2222-3333-4444-555555555555",
+                ["ReferralAttributionAccessCode:Pepper"]          = "STRONG-ACCESS-CODE-PEPPER-32-CHARS",
             })
             .Build();
 
@@ -967,6 +968,39 @@ public class DocumentsIntegrationTests
 
     [Fact]
     public void ValidateRequiredConfiguration_MissingDocumentTypeId_Development_DoesNotThrow()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ASPNETCORE_ENVIRONMENT"] = "Development",
+                ["ReferralToken:Secret"]   = "any-secret",
+            })
+            .Build();
+
+        var ex = Record.Exception(() => DependencyInjection.ValidateRequiredConfiguration(config));
+        Assert.Null(ex);
+    }
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    public void ValidateRequiredConfiguration_MissingAccessCodePepper_NonDev_Throws(string environment)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ASPNETCORE_ENVIRONMENT"]          = environment,
+                ["ReferralToken:Secret"]             = "STRONG-HMAC-SECRET-KEY-32-CHARS-LONG",
+                ["DocumentsService:DocumentTypeId"]  = "11111111-2222-3333-4444-555555555555",
+            })
+            .Build();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            DependencyInjection.ValidateRequiredConfiguration(config));
+    }
+
+    [Fact]
+    public void ValidateRequiredConfiguration_MissingAccessCodePepper_Development_DoesNotThrow()
     {
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>

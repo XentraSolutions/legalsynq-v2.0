@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
@@ -110,6 +111,178 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
     }
 
     [Fact]
+    public async Task GetCasesV3_filters_contact_ids_and_legacy_status_aliases_with_multi_select_values()
+    {
+        var matchCaseNumber = $"CASE-V3-CONTACT-{Guid.CreateVersion7():N}";
+        var otherCaseNumber = $"CASE-V3-CONTACT-OTHER-{Guid.CreateVersion7():N}";
+        var falsePositiveCaseNumber = $"CASE-V3-CONTACT-FALSE-POSITIVE-{Guid.CreateVersion7():N}";
+        var crossTenantCaseNumber = $"CASE-V3-CONTACT-OTHER-TENANT-{Guid.CreateVersion7():N}";
+        var lawFirmId = SeedHelper.LawFirmId;
+        var otherLawFirmId = Guid.CreateVersion7();
+        var caseManagerId = Guid.CreateVersion7();
+        var accidentTypeId = Guid.CreateVersion7().ToString();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                Guid.CreateVersion7(),
+                matchCaseNumber,
+                "Contact",
+                "Match",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={lawFirmId}; accidentTypeId={accidentTypeId}; caseManagerId={caseManagerId}"));
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                Guid.CreateVersion7(),
+                otherCaseNumber,
+                "Contact",
+                "Other",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={otherLawFirmId}; accidentTypeId=other; caseManagerId={Guid.CreateVersion7()}"));
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                Guid.CreateVersion7(),
+                falsePositiveCaseNumber,
+                "Contact",
+                "FalsePositive",
+                SeedHelper.UserId,
+                notes: $"notlawFirmId={lawFirmId}; accidentTypeId={accidentTypeId}; caseManagerId={caseManagerId}"));
+            db.Cases.Add(Case.Create(
+                Guid.CreateVersion7(),
+                Guid.CreateVersion7(),
+                crossTenantCaseNumber,
+                "Contact",
+                "Tenant",
+                SeedHelper.UserId,
+                notes: $"lawFirmId={lawFirmId}; accidentTypeId={accidentTypeId}; caseManagerId={caseManagerId}"));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+        {
+            keyword = "Contact",
+            page = 1,
+            limit = 50,
+            statusId = "Pre-Demand",
+            lawFirmId = $"{lawFirmId},{Guid.CreateVersion7()}",
+            accidentTypeId = $"{accidentTypeId},{Guid.CreateVersion7()}",
+            caseManagerId = $"{caseManagerId},{Guid.CreateVersion7()}",
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var items = payload!.RootElement.GetProperty("data").EnumerateArray().ToList();
+        items.Should().ContainSingle(item => item.GetProperty("caseNumber").GetString() == matchCaseNumber);
+        items.Should().NotContain(item => item.GetProperty("caseNumber").GetString() == otherCaseNumber);
+        items.Should().NotContain(item => item.GetProperty("caseNumber").GetString() == falsePositiveCaseNumber);
+        items.Should().NotContain(item => item.GetProperty("caseNumber").GetString() == crossTenantCaseNumber);
+    }
+
+    [Fact]
+    public async Task GetCasesV3_maps_negotiations_to_in_negotiation()
+    {
+        var caseNumber = $"CASE-V3-NEGOTIATIONS-{Guid.CreateVersion7():N}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, caseNumber, "Negotiation", "Match", SeedHelper.UserId);
+            caseEntity.TransitionStatus(CaseStatus.DemandSent, SeedHelper.UserId);
+            caseEntity.TransitionStatus(CaseStatus.InNegotiation, SeedHelper.UserId);
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+        {
+            keyword = caseNumber,
+            page = 1,
+            limit = 20,
+            statusId = "Negotiations",
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        payload!.RootElement.GetProperty("data").EnumerateArray()
+            .Should().Contain(item => item.GetProperty("caseNumber").GetString() == caseNumber);
+    }
+
+    [Fact]
+    public async Task GetCasesV3_returns_only_cases_matching_each_selected_legacy_status()
+    {
+        var prefix = $"CASE-STATUS-{Guid.CreateVersion7():N}"[..24];
+        var expectedCaseNumbers = new Dictionary<string, string>
+        {
+            ["New"] = $"{prefix}-NEW",
+            ["Processing"] = $"{prefix}-PROCESSING",
+            ["Closed"] = $"{prefix}-CLOSED",
+            ["Pre-Demand"] = $"{prefix}-PRE-DEMAND",
+            ["Demand Sent"] = $"{prefix}-DEMAND-SENT",
+            ["Negotiations"] = $"{prefix}-NEGOTIATIONS",
+            ["Litigation"] = $"{prefix}-LITIGATION",
+            ["Case Settled"] = $"{prefix}-CASE-SETTLED",
+        };
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+
+            AddCase("New", CaseStatus.PreDemand, "New");
+            AddCase("Processing", CaseStatus.PreDemand, "Processing");
+            AddCase("Closed", CaseStatus.Closed);
+            AddCase("Pre-Demand", CaseStatus.PreDemand);
+            AddCase("Demand Sent", CaseStatus.DemandSent);
+            AddCase("Negotiations", CaseStatus.InNegotiation);
+            AddCase("Litigation", CaseStatus.InNegotiation, "Litigation");
+            AddCase("Case Settled", CaseStatus.CaseSettled);
+
+            await db.SaveChangesAsync();
+
+            void AddCase(string displayStatus, string canonicalStatus, string? statusLabel = null)
+            {
+                var caseEntity = Case.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    expectedCaseNumbers[displayStatus],
+                    "StatusMatrix",
+                    displayStatus.Replace(" ", string.Empty, StringComparison.Ordinal),
+                    SeedHelper.UserId,
+                    notes: statusLabel is null
+                        ? null
+                        : $"[legacy-meta]{Environment.NewLine}statusLabel={statusLabel}");
+
+                if (canonicalStatus != CaseStatus.PreDemand)
+                    caseEntity.TransitionStatus(canonicalStatus, SeedHelper.UserId);
+
+                db.Cases.Add(caseEntity);
+            }
+        }
+
+        foreach (var (selectedStatus, expectedCaseNumber) in expectedCaseNumbers)
+        {
+            var response = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+            {
+                keyword = prefix,
+                page = 1,
+                limit = 20,
+                statusId = selectedStatus,
+            });
+            response.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Status: {selectedStatus}; Body: {await response.Content.ReadAsStringAsync()}");
+
+            var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+            var items = payload!.RootElement.GetProperty("data").EnumerateArray().ToList();
+            items.Should().ContainSingle($"only the {selectedStatus} case should match");
+            items.Single().GetProperty("caseNumber").GetString().Should().Be(expectedCaseNumber);
+        }
+    }
+
+    [Fact]
     public async Task GetCasesV3_returns_law_firm_case_manager_and_accident_type_display_values()
     {
         var caseManagerId = Guid.CreateVersion7();
@@ -163,6 +336,126 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         item.GetProperty("caseManager").GetString().Should().Be("John Doe");
         item.GetProperty("accidentTypeId").GetString().Should().Be("MVA");
         item.GetProperty("accidentType").GetString().Should().Be("Motor Vehicle Accident");
+    }
+
+    [Fact]
+    public async Task GenerateCaseCsv_exports_migrated_accident_type_and_filters_by_its_canonical_id()
+    {
+        var accidentTypeId = $"ACC-{Guid.CreateVersion7():N}";
+        var caseManagerId = Guid.CreateVersion7();
+        var caseNumber = $"CASE-CSV-{Guid.CreateVersion7():N}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseManager = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.CaseManager,
+                "Casey",
+                "Manager",
+                SeedHelper.UserId);
+            typeof(Contact).GetProperty(nameof(Contact.Id))!.SetValue(caseManager, caseManagerId);
+            db.Contacts.Add(caseManager);
+
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                caseNumber,
+                "CSV",
+                "Export",
+                SeedHelper.UserId,
+                clientDob: new DateOnly(1990, 1, 2),
+                clientPhone: "702-555-0100",
+                clientEmail: "csv.export@example.com",
+                clientAddress: "123 Main St, Las Vegas, NV, 89101",
+                dateOfIncident: new DateOnly(2026, 7, 31),
+                description: "Export summary",
+                notes: $"""
+                    Export note
+
+                    [legacy-meta]
+                    accidentTypeId={accidentTypeId}; accidentType=Motor Vehicle Accident; isServicing=Yes; isUccFiled=Yes; isBulk=No; accidentState=NV; lawFirmId={SeedHelper.LawFirmId}; caseManagerId={caseManagerId}; currentMedicalStatus=Treating; currentAttributes=Active; gender=Female; ssn=***-**-6789; toGeneratePdf=Yes; switchedDate=08/01/2026
+                    """));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/generate-csv", new
+        {
+            caseId = caseNumber,
+            accidentTypeId,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var encodedCsv = payload!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
+        var lines = csv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        var headers = ParseCsvLine(lines[0]);
+        var values = ParseCsvLine(lines[1]);
+        var row = headers.Zip(values).ToDictionary(pair => pair.First, pair => pair.Second);
+
+        row["Address"].Should().Be("123 Main St");
+        row["City"].Should().Be("Las Vegas");
+        row["State"].Should().Be("NV");
+        row["ZipCode"].Should().Be("89101");
+        row["IsServicing"].Should().Be("Yes");
+        row["IsUccFiled"].Should().Be("Yes");
+        row["IsBulk"].Should().Be("No");
+        row["AccidentType"].Should().Be("Motor Vehicle Accident");
+        row["AccidentState"].Should().Be("NV");
+        row["LawFirm"].Should().Be("Smith & Associates LLP");
+        row["CaseManager"].Should().Be("Casey Manager");
+        row["Note"].Should().Be("Export note");
+        row["CreateBy"].Should().Be(SeedHelper.UserId.ToString());
+        row["UpdateBy"].Should().Be(SeedHelper.UserId.ToString());
+        row["CurrentMedicalStatus"].Should().Be("Treating");
+        row["CurrentAttributes"].Should().Be("Active");
+        row["Email"].Should().Be("csv.export@example.com");
+        row["Phone"].Should().Be("702-555-0100");
+        row["Gender"].Should().Be("Female");
+        row["SSN"].Should().Be("***-**-6789");
+        row["Summary"].Should().Be("Export summary");
+        row["ToGeneratePdf"].Should().Be("Yes");
+        row["SwitchedDate"].Should().Be("08/01/2026");
+    }
+
+    private static string[] ParseCsvLine(string line)
+    {
+        var values = new List<string>();
+        var current = new StringBuilder();
+        var quoted = false;
+
+        for (var index = 0; index < line.Length; index++)
+        {
+            var character = line[index];
+            if (character == '"')
+            {
+                if (quoted && index + 1 < line.Length && line[index + 1] == '"')
+                {
+                    current.Append('"');
+                    index++;
+                }
+                else
+                {
+                    quoted = !quoted;
+                }
+            }
+            else if (character == ',' && !quoted)
+            {
+                values.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(character);
+            }
+        }
+
+        values.Add(current.ToString());
+        return values.ToArray();
     }
 
     [Fact]

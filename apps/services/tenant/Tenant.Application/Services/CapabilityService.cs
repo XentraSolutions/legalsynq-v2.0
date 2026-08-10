@@ -113,6 +113,15 @@ public class CapabilityService : ICapabilityService
         await _capabilities.DeleteAsync(capability, ct);
     }
 
+    // ── Public/service-to-service check ─────────────────────────────────────────
+
+    public async Task<bool> IsEnabledAsync(Guid tenantId, string capabilityKey, CancellationToken ct = default)
+    {
+        var normalizedKey = TenantCapability.NormalizeKey(capabilityKey);
+        var record = await _capabilities.GetByKeyAsync(tenantId, normalizedKey, null, ct);
+        return record?.IsEnabled ?? false;
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private async Task RequireTenantAsync(Guid tenantId, CancellationToken ct)

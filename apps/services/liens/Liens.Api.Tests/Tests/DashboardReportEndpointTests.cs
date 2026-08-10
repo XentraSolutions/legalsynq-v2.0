@@ -41,6 +41,27 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task DashboardPiechart_returns_database_aggregates_with_consistent_totals()
+    {
+        var response = await _client.GetAsync("/api/liens/cases/dashboard/piechart");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var data = payload.RootElement.GetProperty("data");
+
+        var caseStatusTotal = data.GetProperty("caseStatus")
+            .EnumerateArray()
+            .Sum(item => item.GetProperty("value").GetInt32());
+        var lienStatusTotal = data.GetProperty("lienStatus")
+            .EnumerateArray()
+            .Sum(item => item.GetProperty("value").GetInt32());
+
+        data.GetProperty("totalCases").GetInt32().Should().Be(caseStatusTotal);
+        data.GetProperty("totalLiens").GetInt32().Should().Be(lienStatusTotal);
+        data.GetProperty("totalLienValue").GetDouble().Should().BeGreaterThan(0d);
+    }
+
+    [Fact]
     public async Task TotalCaseReportV3_returns_seeded_case_rows()
     {
         var response = await _client.PostAsJsonAsync(
@@ -81,41 +102,145 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         item.GetProperty("totalPurchaseAmount").GetDecimal().Should().Be(100m);
         item.GetProperty("totalBillingAmount").GetDecimal().Should().Be(150m);
         item.GetProperty("status").GetString().Should().Be("Open");
+        item.GetProperty("purchaseDate").GetString().Should().Be("06/15/2024");
     }
 
     [Fact]
-    public async Task TotalLienReportV3_excludes_rejected_and_normalizes_remaining_business_statuses()
+    public async Task TotalCaseReportV3_keeps_full_summary_when_rows_are_paged()
     {
         var response = await _client.PostAsJsonAsync(
-            "/api/liens/cases/dashboard/total-lien-report-export/v3",
-            new { page = 1, limit = 50 });
+            "/api/liens/cases/dashboard/total-case-report-export/v3",
+            new { page = 1, limit = 1 });
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
 
         using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var items = payload.RootElement.GetProperty("items").EnumerateArray().ToList();
+        var root = payload.RootElement;
+        root.GetProperty("items").GetArrayLength().Should().Be(1);
+        root.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(1);
+        root.GetProperty("statusCounts")
+            .EnumerateObject()
+            .Sum(item => item.Value.GetInt32())
+            .Should().Be(root.GetProperty("totalCount").GetInt32());
+    }
 
-        items.Should().Contain(i =>
-            i.GetProperty("id").GetString() == SeedHelper.LienId.ToString() &&
-            i.GetProperty("status").GetString() == "Open");
-        items.Should().Contain(i =>
-            i.GetProperty("id").GetString() == ActiveDashboardLienId.ToString() &&
-            i.GetProperty("status").GetString() == "Open");
-        items.Should().NotContain(i =>
-            i.GetProperty("id").GetString() == CancelledDashboardLienId.ToString());
-        items.Should().NotContain(i =>
-            i.GetProperty("status").GetString() == "Rejected");
-        items.Should().Contain(i =>
-            i.GetProperty("id").GetString() == SettledDashboardLienId.ToString() &&
-            i.GetProperty("status").GetString() == "Closed");
+    [Fact]
+    public async Task TotalLienReportV3_keeps_non_deleted_business_statuses_and_returns_full_result_summaries()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/total-lien-report-export/v3",
+            new { page = 1, limit = 1 });
 
-        var counts = items
-            .GroupBy(i => i.GetProperty("status").GetString())
-            .ToDictionary(group => group.Key!, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
 
-        counts["Open"].Should().Be(3);
-        counts["Closed"].Should().Be(1);
-        payload.RootElement.GetProperty("totalCount").GetInt32().Should().Be(4);
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("items").GetArrayLength().Should().Be(1);
+        payload.RootElement.GetProperty("totalCount").GetInt32().Should().Be(5);
+        payload.RootElement.GetProperty("totalPurchaseAmount").GetDecimal().Should().Be(100m);
+        payload.RootElement.GetProperty("totalBillingAmount").GetDecimal().Should().Be(150m);
+
+        var counts = payload.RootElement.GetProperty("statusCounts");
+        counts.GetProperty("Open").GetInt32().Should().Be(3);
+        counts.GetProperty("Closed").GetInt32().Should().Be(1);
+        counts.GetProperty("Rejected").GetInt32().Should().Be(1);
+
+        var amounts = payload.RootElement.GetProperty("statusAmounts");
+        amounts.GetProperty("Open").GetProperty("purchase").GetDecimal().Should().Be(100m);
+        amounts.GetProperty("Open").GetProperty("billing").GetDecimal().Should().Be(150m);
+    }
+
+    [Fact]
+    public async Task TotalLienReportV3_applies_status_filter_before_fast_summary_and_paging()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/total-lien-report-export/v3",
+            new
+            {
+                page = 1,
+                limit = 1,
+                filterType = "status",
+                filterId = "Closed",
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        payload.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
+        payload.RootElement.GetProperty("items").GetArrayLength().Should().Be(1);
+        payload.RootElement.GetProperty("items")[0].GetProperty("status").GetString().Should().Be("Closed");
+        payload.RootElement.GetProperty("statusCounts").GetProperty("Closed").GetInt32().Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("/api/liens/cases/dashboard/total-lien-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/total-case-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/lawfirm-case-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/medical-provider-report-export/v3")]
+    public async Task Dashboard_report_v3_honors_page_and_limit(string endpoint)
+    {
+        var firstResponse = await _client.PostAsJsonAsync(endpoint, new { page = 1, limit = 1 });
+        firstResponse.StatusCode.Should().Be(HttpStatusCode.OK, await firstResponse.Content.ReadAsStringAsync());
+
+        var secondResponse = await _client.PostAsJsonAsync(endpoint, new { page = 2, limit = 1 });
+        secondResponse.StatusCode.Should().Be(HttpStatusCode.OK, await secondResponse.Content.ReadAsStringAsync());
+
+        using var firstPayload = JsonDocument.Parse(await firstResponse.Content.ReadAsStringAsync());
+        using var secondPayload = JsonDocument.Parse(await secondResponse.Content.ReadAsStringAsync());
+
+        firstPayload.RootElement.GetProperty("page").GetInt32().Should().Be(1);
+        firstPayload.RootElement.GetProperty("pageSize").GetInt32().Should().Be(1);
+        firstPayload.RootElement.GetProperty("items").GetArrayLength().Should().Be(1);
+        secondPayload.RootElement.GetProperty("page").GetInt32().Should().Be(2);
+        secondPayload.RootElement.GetProperty("pageSize").GetInt32().Should().Be(1);
+        secondPayload.RootElement.GetProperty("items").GetArrayLength().Should().Be(1);
+
+        var firstIds = firstPayload.RootElement.GetProperty("items").EnumerateArray()
+            .Select(item => item.GetProperty("id").GetString())
+            .ToHashSet(StringComparer.Ordinal);
+        var secondIds = secondPayload.RootElement.GetProperty("items").EnumerateArray()
+            .Select(item => item.GetProperty("id").GetString())
+            .ToHashSet(StringComparer.Ordinal);
+        firstIds.Intersect(secondIds).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("/api/liens/cases/dashboard/total-lien-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/total-case-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/lawfirm-case-report-export/v3")]
+    [InlineData("/api/liens/cases/dashboard/medical-provider-report-export/v3")]
+    public async Task Dashboard_report_v3_defaults_missing_or_invalid_paging_to_page_one_and_all_rows(string endpoint)
+    {
+        var responses = new[]
+        {
+            await _client.PostAsJsonAsync(endpoint, new { }),
+            await _client.PostAsJsonAsync(endpoint, new { page = 0, limit = 0 }),
+        };
+
+        foreach (var response in responses)
+        {
+            response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var totalCount = payload.RootElement.GetProperty("totalCount").GetInt32();
+            payload.RootElement.GetProperty("page").GetInt32().Should().Be(1);
+            payload.RootElement.GetProperty("pageSize").GetInt32().Should().Be(totalCount);
+            payload.RootElement.GetProperty("items").GetArrayLength().Should().Be(totalCount);
+        }
+    }
+
+    [Fact]
+    public async Task Dashboard_report_v3_honors_limit_above_former_five_hundred_row_cap()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/total-lien-report-export/v3",
+            new { page = 1, limit = 1_000 });
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("page").GetInt32().Should().Be(1);
+        payload.RootElement.GetProperty("pageSize").GetInt32().Should().Be(1_000);
+        payload.RootElement.GetProperty("items").GetArrayLength().Should().Be(
+            payload.RootElement.GetProperty("totalCount").GetInt32());
     }
 
     [Fact]
@@ -197,6 +322,100 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
         payload.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
         payload.RootElement.GetProperty("items")[0].GetProperty("lienNumber").GetString()
             .Should().Be("LIEN-TEST-001");
+    }
+
+    [Fact]
+    public async Task LawFirmCaseReportV3_filters_cases_by_any_lien_purchase_date()
+    {
+        var purchaseDate = new DateOnly(2024, 6, 15).ToString("MM/dd/yyyy");
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/lawfirm-case-report-export/v3",
+            new
+            {
+                page = 1,
+                limit = 10,
+                purchaseDateFrom = purchaseDate,
+                purchaseDateTo = purchaseDate,
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("items").EnumerateArray()
+            .Should().Contain(item => item.GetProperty("caseNumber").GetString() == "CASE-TEST-001");
+    }
+
+    [Fact]
+    public async Task Dashboard_metrics_use_purchase_and_settlement_dates()
+    {
+        var deployedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/deployed",
+            new { startDate = "06/15/2024", endDate = "06/15/2024" });
+        deployedResponse.StatusCode.Should().Be(
+            HttpStatusCode.OK,
+            await deployedResponse.Content.ReadAsStringAsync());
+
+        using var deployed = JsonDocument.Parse(await deployedResponse.Content.ReadAsStringAsync());
+        deployed.RootElement.GetProperty("data").GetProperty("totalAmount").GetString()
+            .Should().Be("100.00");
+
+        var receivedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/cash-received",
+            new { startDate = "06/20/2024", endDate = "06/20/2024" });
+        receivedResponse.StatusCode.Should().Be(
+            HttpStatusCode.OK,
+            await receivedResponse.Content.ReadAsStringAsync());
+
+        using var received = JsonDocument.Parse(await receivedResponse.Content.ReadAsStringAsync());
+        received.RootElement.GetProperty("data").GetProperty("totalAmount").GetString()
+            .Should().Be("250.00");
+    }
+
+    [Fact]
+    public async Task Dashboard_metrics_without_date_range_include_all_dated_history()
+    {
+        var deployedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/deployed",
+            new { });
+        deployedResponse.StatusCode.Should().Be(
+            HttpStatusCode.OK,
+            await deployedResponse.Content.ReadAsStringAsync());
+
+        using var deployed = JsonDocument.Parse(await deployedResponse.Content.ReadAsStringAsync());
+        var deployedData = deployed.RootElement.GetProperty("data");
+        deployedData.GetProperty("periodStart").GetString().Should().BeEmpty();
+        deployedData.GetProperty("periodEnd").GetString().Should().BeEmpty();
+        deployedData.GetProperty("totalAmount").GetString().Should().Be("100.00");
+        deployedData.GetProperty("totalCount").GetInt32().Should().Be(1);
+
+        var receivedResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/cash-received",
+            new { });
+        receivedResponse.StatusCode.Should().Be(
+            HttpStatusCode.OK,
+            await receivedResponse.Content.ReadAsStringAsync());
+
+        using var received = JsonDocument.Parse(await receivedResponse.Content.ReadAsStringAsync());
+        var receivedData = received.RootElement.GetProperty("data");
+        receivedData.GetProperty("periodStart").GetString().Should().BeEmpty();
+        receivedData.GetProperty("periodEnd").GetString().Should().BeEmpty();
+        receivedData.GetProperty("totalAmount").GetString().Should().Be("250.00");
+        receivedData.GetProperty("totalCount").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Dashboard_csv_exports_all_matching_rows_not_only_requested_page()
+    {
+        var response = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/total-lien-report-export/v3",
+            new { page = 1, limit = 1, isCsv = true });
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(
+            payload.RootElement.GetProperty("data")[0].GetProperty("base64").GetString()!));
+        csv.Split('\n', StringSplitOptions.RemoveEmptyEntries).Should().HaveCount(6);
     }
 
     [Fact]
@@ -357,7 +576,15 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
             isBulk: lienEntity.IsBulk,
             isServicing: lienEntity.IsServicing,
             description: lienEntity.Description,
-            notes: lienEntity.Notes);
+            notes: lienEntity.Notes,
+            purchaseDate: new DateOnly(2024, 6, 15));
+        lienEntity.SetFinancials(
+            lienEntity.OriginalAmount,
+            SeedHelper.UserId,
+            currentBalance: lienEntity.CurrentBalance,
+            offerPrice: lienEntity.OfferPrice,
+            purchasePrice: 100m,
+            payoffAmount: lienEntity.PayoffAmount);
 
         if (!db.ServicingItems.Any(s => s.LienId == SeedHelper.LienId && s.TaskType == "LegacyMedicalFacilityInfo"))
         {
@@ -486,6 +713,22 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
                 caseId: AliasedLawFirmCaseId,
                 lienId: AliasedProviderLienId,
                 notes: "facilityName=Sunrise Clinic; facilityContactPerson=Alice Nurse; email=alice@sunrise.com; phone=555-0101; medicalProviderId=019f6b0e-4e90-78ea-908d-f2e94adc33b2; medicalProvider=City Medical Center"));
+        }
+
+        if (!db.LienSettlements.Any(s =>
+                s.LienId == SeedHelper.LienId &&
+                s.SettlementDate == new DateOnly(2024, 6, 20)))
+        {
+            db.LienSettlements.Add(LienSettlement.Create(
+                SeedHelper.TenantId,
+                SeedHelper.CaseId,
+                SeedHelper.LienId,
+                1,
+                250m,
+                SeedHelper.UserId,
+                status: "Settled",
+                note: "Dashboard cash received test",
+                settlementDate: new DateOnly(2024, 6, 20)));
         }
 
         await db.SaveChangesAsync();

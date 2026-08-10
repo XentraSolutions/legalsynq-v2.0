@@ -98,6 +98,17 @@ describe("PublicBuyerPortalInteractiveContent", () => {
     );
   });
 
+  test("renders law firm contact details on the buyer-facing funding case information", () => {
+    render(<PublicBuyerPortalInteractiveContent token="token-abc" data={basePortalData()} />);
+
+    expect(screen.getByText("Funding Company & Case Information")).toBeInTheDocument();
+    expect(screen.getByText("Anderson Contact")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "anderson.contact@ashworthlaw.test" })).toHaveAttribute(
+      "href",
+      "mailto:anderson.contact@ashworthlaw.test",
+    );
+  });
+
   test("renders seller audience as a read-only view with buyer information", () => {
     render(
       <PublicBuyerPortalInteractiveContent
@@ -117,6 +128,12 @@ describe("PublicBuyerPortalInteractiveContent", () => {
     expect(screen.getByRole("link", { name: "buyer@example.test" })).toHaveAttribute(
       "href",
       "mailto:buyer@example.test",
+    );
+    expect(screen.getByText("Case Information")).toBeInTheDocument();
+    expect(screen.getByText("Anderson Contact")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "anderson.contact@ashworthlaw.test" })).toHaveAttribute(
+      "href",
+      "mailto:anderson.contact@ashworthlaw.test",
     );
     expect(submitPublicBuyerPortalResponseMock).not.toHaveBeenCalled();
   });
@@ -186,7 +203,9 @@ function basePortalData(): PublicBuyerPortalData {
       phone: "3105551212",
     },
     case: {
-      handlingLawFirm: "RL Liens1",
+      handlingLawFirm: "Anderson & Ashworth Law Firm LLC",
+      handlingLawFirmContactName: "Anderson Contact",
+      handlingLawFirmEmail: "anderson.contact@ashworthlaw.test",
       caseManager: "Case Manager",
     },
     documents: [],

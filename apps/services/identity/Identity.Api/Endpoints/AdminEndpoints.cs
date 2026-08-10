@@ -7999,7 +7999,7 @@ public static partial class AdminEndpointsLscc010
     /// <summary>
     /// POST /api/admin/organizations
     /// Creates a minimal PROVIDER Organization for a CareConnect provider.
-    /// Idempotent — returns the existing org if one was already created for this provider.
+    /// Always creates a new organization — no lookup/reuse of an existing org by name.
     /// </summary>
     public static async Task<IResult> CreateProviderOrganization(
         CreateProviderOrgRequest body,
@@ -8034,21 +8034,6 @@ public static partial class AdminEndpointsLscc010
         }
 
         var providerNameNorm = body.ProviderName.Trim();
-
-        // Idempotency: check both the legacy "[cc:guid]" name format and the clean name.
-        var legacyName = $"{providerNameNorm} [cc:{body.ProviderCcId:D}]";
-        var orgTenantId = body.GlobalScope ? (Guid?)null : body.TenantId;
-
-        var existing = await db.Organizations
-            .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.TenantId == orgTenantId
-                                   && o.OrgType   == "PROVIDER"
-                                   && (o.Name == legacyName || o.Name == providerNameNorm), ct);
-
-        if (existing is not null)
-        {
-            return Results.Ok(new CreateProviderOrgResponse(existing.Id, existing.DisplayName ?? existing.Name, IsNew: false));
-        }
 
         // Create with the clean name; fall back to a short disambiguator on
         // unique-constraint collision (two providers in the same tenant with
@@ -8546,6 +8531,8 @@ public static partial class AdminEndpointsLscc010
             return Results.BadRequest(new { error = "password is required." });
         if (string.IsNullOrWhiteSpace(body.FirstName))
             return Results.BadRequest(new { error = "firstName is required." });
+        if (body.Title?.Trim().Length > 50)
+            return Results.BadRequest(new { error = "title must be 50 characters or fewer." });
 
         var org = await db.Organizations
             .AsNoTracking()
@@ -8600,6 +8587,8 @@ public static partial class AdminEndpointsLscc010
 
         if (existingUser is not null)
         {
+            if (!string.IsNullOrWhiteSpace(body.Title))
+                existingUser.SetTitle(body.Title);
             existingUser.SetPhone(normalisedPhone);
 
             // Check if already in the target tenant (via UserTenants row).
@@ -8683,7 +8672,13 @@ public static partial class AdminEndpointsLscc010
         // ── New user: standard self-registration path ─────────────────────────
         var lastName = body.LastName?.Trim() ?? string.Empty;
         var hash     = passwordHasher.Hash(body.Password);
-        var user     = User.Create(targetTenantId.Value, emailLower, hash, body.FirstName.Trim(), lastName);
+        var user     = User.Create(
+            targetTenantId.Value,
+            emailLower,
+            hash,
+            body.FirstName.Trim(),
+            lastName,
+            title: body.Title?.Trim());
         user.SetPhone(normalisedPhone);
         // User.Create produces an active user by default — no Deactivate() call here.
         db.Users.Add(user);
@@ -9074,7 +9069,8 @@ public static partial class AdminEndpointsLscc010
         string  Password,
         string  FirstName,
         string? LastName = null,
-        string? Phone = null);
+        string? Phone = null,
+        string? Title = null);
 
     public record SelfRegisterUserResponse(
         Guid UserId,

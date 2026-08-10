@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FormModal } from "@/components/lien/modal";
-import { useLienStore } from "@/stores/lien-store";
+import { toast } from "sonner";
 import { useSessionContext } from "@/providers/session-provider";
 import { contactsService } from "@/lib/contacts";
 import type { ContactDetail } from "@/lib/contacts";
@@ -49,6 +49,8 @@ interface AddContactModalProps {
   editTarget?: EditableContact | null;
   /** Hides the address/city/state/zip fields — used for sub-contacts (staff, law firm contacts) who don't need their own address. */
   hideAddress?: boolean;
+  /** Overrides the default bg-primary styling on the Save button (e.g. selling's orange brand). */
+  primaryButtonClassName?: string;
 }
 
 interface ContactTypeIconConfig {
@@ -174,9 +176,9 @@ export function AddContactModal({
   subtitle,
   editTarget,
   hideAddress,
+  primaryButtonClassName,
 }: AddContactModalProps) {
   const { lookup } = useSessionContext();
-  const addToast = useLienStore((s) => s.addToast);
   const isEdit = Boolean(editTarget);
 
   // Sub-contacts (facility/law firm staff, case managers) keep separate
@@ -324,22 +326,17 @@ export function AddContactModal({
         ? await contactsService.updateContact(editTarget!.id, payload)
         : await contactsService.createContact(payload);
 
-      addToast({
-        type: "success",
-        title: isEdit ? "Contact Updated" : "Contact Created",
-        description: isMainContact
-          ? form.fullName.trim()
-          : `${form.firstName} ${form.lastName}`,
+      const savedName = isMainContact
+        ? form.fullName.trim()
+        : `${form.firstName} ${form.lastName}`;
+      toast.success(isEdit ? "Contact updated" : "Contact created", {
+        description: savedName,
       });
       onSaved(saved);
     } catch (err) {
-      addToast({
-        type: "error",
-        title: isEdit ? "Update Failed" : "Create Failed",
+      toast.error(isEdit ? "Couldn't update contact" : "Couldn't create contact", {
         description:
-          err instanceof ApiError
-            ? err.message
-            : "An unexpected error occurred",
+          err instanceof ApiError ? err.message : "An unexpected error occurred",
       });
     } finally {
       setSubmitting(false);
@@ -394,6 +391,7 @@ export function AddContactModal({
       subtitle={subtitle}
       submitLabel={submitting ? (isEdit ? "Saving..." : "Creating...") : "Save"}
       submitDisabled={submitting}
+      primaryButtonClassName={primaryButtonClassName}
     >
       <div className="flex items-center gap-2.5 mb-4">
         <div

@@ -1,23 +1,41 @@
 // ── Provider ──────────────────────────────────────────────────────────────────
 
+export interface SpecialtyOption {
+  id:          string;
+  name:        string;
+  code:        string;
+  description?: string | null;
+  isActive:    boolean;
+}
+
 export interface ProviderSummary {
   id:                 string;
   name:               string;
+  title?:             string | null;
   organizationName?:  string;
   email:              string;
   phone:              string;
+  addressLine1?:      string;
   city:               string;
   state:              string;
-  postalCode:         string;
+  postalCode?:        string | null;
   isActive:           boolean;
   acceptingReferrals: boolean;
   categories:         string[];
   primaryCategory?:   string;
+  specialties:        SpecialtyOption[];
+  specialtyIds:       string[];
+  primarySpecialty?:  string | null;
+  primarySpecialtyId?: string | null;
+  distanceMiles?:     number | null;
   displayLabel:       string;
   markerSubtitle:     string;
   hasGeoLocation:     boolean;
   latitude?:          number;
   longitude?:         number;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 // ProviderDetail — same DTO as list (backend returns same shape for both)
@@ -26,6 +44,7 @@ export type ProviderDetail = ProviderSummary;
 export interface ProviderSearchParams {
   name?:               string;
   categoryCode?:       string;
+  specialtyCode?:      string;
   city?:               string;
   state?:              string;
   acceptingReferrals?: boolean;
@@ -44,13 +63,14 @@ export interface ProviderSearchParams {
 export interface ProviderMarker {
   id:                 string;
   name:               string;
+  title?:             string | null;
   organizationName?:  string;
   displayLabel:       string;
   markerSubtitle:     string;
   city:               string;
   state:              string;
   addressLine1:       string;
-  postalCode:         string;
+  postalCode?:        string | null;
   email:              string;
   phone:              string;
   acceptingReferrals: boolean;
@@ -60,6 +80,13 @@ export interface ProviderMarker {
   geoPointSource?:    string;
   primaryCategory?:   string;
   categories:         string[];
+  specialties:        SpecialtyOption[];
+  primarySpecialty?:  string | null;
+  primarySpecialtyId?: string | null;
+  distanceMiles?:     number | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 // ── Referral history ─────────────────────────────────────────────────────────
@@ -132,6 +159,14 @@ export interface ReferralSummary {
   tenantId:         string;
   providerId:       string;
   providerName:     string;
+  // Referral location — the specific facility this referral was routed to, falling back
+  // to the provider's own address for legacy/single-location referrals.
+  facilityId?:            string | null;
+  facilityName?:           string | null;
+  locationAddressLine1?:   string;
+  locationCity?:           string;
+  locationState?:          string;
+  locationPostalCode?:     string;
   clientFirstName:  string;
   clientLastName:   string;
   clientDob?:       string;
@@ -158,6 +193,169 @@ export interface ReferralSummary {
   // Type of Treatment — set by Referrer at creation.
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
+  // Referral Attribution — who or what originated this referral. Undefined/null = not set.
+  referralAttribution?: ReferralAttributionSummary | null;
+}
+
+// ── Referral Attribution ─────────────────────────────────────────────────────
+
+export interface ReferralAttributionSummary {
+  id:          string;
+  firstName:   string;
+  lastName:    string;
+  isActive:    boolean;
+}
+
+export interface ReferralAttribution {
+  id:                     string;
+  tenantId:               string;
+  firstName:              string;
+  lastName:               string;
+  code:                   string;
+  description?:           string | null;
+  isActive:               boolean;
+  displayOrder?:          number | null;
+  isUsed:                 boolean;
+  activeAccessCodeCount:  number;
+  createdAtUtc:           string;
+  updatedAtUtc:           string;
+}
+
+export interface CreateReferralAttributionRequest {
+  firstName:     string;
+  lastName:      string;
+  code:          string;
+  description?:  string;
+  isActive?:     boolean;
+  displayOrder?: number;
+}
+
+export interface UpdateReferralAttributionRequest {
+  firstName:     string;
+  lastName:      string;
+  description?:  string;
+  displayOrder?: number;
+}
+
+// ── Referral Representative access codes ──────────────────────────────────────
+// Replaces the earlier admin-typed user-linking model: an admin generates a code
+// scoped to one attribution and shares it out of band. There is no login and no
+// "redeemer" — the Representative Portal is fully anonymous and re-checks the raw
+// code on every request (see representative-portal-api.ts). No admin screen ever
+// picks or types a specific user account.
+
+export interface ReferralAttributionAccessCode {
+  id:                              string;
+  tenantId:                        string;
+  referralAttributionId:           string;
+  referralAttributionFullName?:    string | null;
+  isActive:                        boolean;
+  accessStartAtUtc?:               string | null;
+  accessEndAtUtc?:                 string | null;
+  createdAtUtc:                    string;
+  updatedAtUtc:                    string;
+}
+
+/** Returned only from the generate call, only once — the plaintext code can never be retrieved again. */
+export interface GeneratedReferralAttributionAccessCode extends ReferralAttributionAccessCode {
+  code: string;
+}
+
+export interface CreateReferralAttributionAccessCodeRequest {
+  referralAttributionId:  string;
+  accessStartAtUtc?:      string;
+  accessEndAtUtc?:        string;
+}
+
+// ── Referral Representative Portal (restricted DTOs) ──────────────────────────
+
+export interface RepresentativeStatusRef {
+  code:        string;
+  displayName: string;
+}
+
+export interface RepresentativeDisplayRef {
+  displayName: string;
+}
+
+export interface RepresentativeClientRef {
+  firstName:    string;
+  lastName:     string;
+  dateOfBirth?: string | null;
+  phone:        string;
+  email?:       string | null;
+}
+
+export interface RepresentativeFacilityRef {
+  name:         string;
+  addressLine1: string;
+  city:         string;
+  state:        string;
+  postalCode?:  string | null;
+  phone?:       string | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
+}
+
+export interface RepresentativeMilestone {
+  code:          string;
+  displayName:   string;
+  occurredAtUtc: string;
+}
+
+export interface RepresentativeReferralListItem {
+  referralId:          string;
+  referenceNumber:     string;
+  submittedAtUtc:      string;
+  status:              RepresentativeStatusRef;
+  lawFirm:             RepresentativeDisplayRef;
+  provider:            RepresentativeDisplayRef;
+  providerLocation?:   RepresentativeFacilityRef | null;
+  client:              RepresentativeClientRef;
+  referralAttribution: ReferralAttributionSummary & { id: string };
+  lastUpdatedAtUtc:    string;
+}
+
+export interface RepresentativeReferralDetail {
+  referralId:          string;
+  referenceNumber:     string;
+  submittedAtUtc:      string;
+  status:              RepresentativeStatusRef;
+  lawFirm:             RepresentativeDisplayRef;
+  provider:            RepresentativeDisplayRef;
+  providerLocation?:   RepresentativeFacilityRef | null;
+  client:              RepresentativeClientRef;
+  referralAttribution: ReferralAttributionSummary & { id: string };
+  milestones:          RepresentativeMilestone[];
+  lastUpdatedAtUtc:    string;
+}
+
+export interface RepresentativeReferralMetrics {
+  totalAttributedReferrals: number;
+  pendingReferrals:         number;
+  acceptedReferrals:        number;
+  declinedReferrals:        number;
+  completedReferrals:       number;
+  cancelledReferrals:       number;
+  referralsByStatus:        Record<string, number>;
+}
+
+export interface RepresentativeReferralSearchParams {
+  submittedFrom?:         string;
+  submittedTo?:           string;
+  status?:                string;
+  providerId?:            string;
+  lawFirmOrganizationId?: string;
+  page?:                  number;
+  pageSize?:              number;
+}
+
+/** Anonymous, stateless code check — see representative-portal-api.ts's verifyRepresentativeCode. */
+export interface VerifyReferralAttributionAccessCodeResult {
+  ok:                            boolean;
+  referralAttributionId?:        string | null;
+  referralAttributionFullName?:  string | null;
 }
 
 // LSCC-005-01 / LSCC-005-02: notification delivery record
@@ -226,6 +424,8 @@ export interface CreateReferralRequest {
   /** LSCC-005: referrer identity for the notification email */
   referrerEmail?:    string;
   referrerName?:     string;
+  /** Optional — who or what originated this referral. Blank/undefined by default. */
+  referralAttributionId?: string;
 }
 
 export interface ReferralSearchParams {
@@ -634,24 +834,41 @@ export interface ReferralPerformanceResult {
 /** Result from GET /api/networks/{id}/providers/search — shared global registry */
 export interface ProviderSearchResult {
   id:                string;
+  facilityId?:        string | null;
+  facilityName?:      string | null;
   name:              string;
+  title?:            string | null;
   organizationName?: string;
   email:             string;
   phone:             string;
   city:              string;
   state:             string;
   addressLine1:      string;
-  postalCode:        string;
+  postalCode?:       string | null;
   npi?:              string;
   isActive:          boolean;
   acceptingReferrals: boolean;
   accessStage:       string;
+  specialties:       SpecialtyOption[];
+  primarySpecialtyId?: string | null;
+  primarySpecialty?: string | null;
+  distanceMiles?:    number | null;
+  isMobile?:            boolean;
+  serviceRadiusMiles?:  number | null;
+  serviceAreaLabel?:    string | null;
 }
 
-/** Body for POST /api/networks/{id}/providers — match-or-create */
+/**
+ * Body for POST /api/networks/{id}/providers.
+ * - existingProviderId + existingFacilityId adds an existing provider-location membership.
+ * - existingProviderId + newProvider creates a new location for an existing provider.
+ * - newProvider alone creates a new provider identity and first location; duplicate NPI/email is rejected.
+ */
 export interface AddProviderToNetworkRequest {
   existingProviderId?: string;
+  existingFacilityId?: string | null;
   newProvider?: {
+    title?:              string;
     firstName:           string;
     lastName:            string;
     organizationName?:   string;
@@ -660,13 +877,43 @@ export interface AddProviderToNetworkRequest {
     addressLine1:        string;
     city:                string;
     state:               string;
-    postalCode:          string;
+    postalCode?:         string | null;
     isActive:            boolean;
     acceptingReferrals:  boolean;
     npi?:                string;
     categoryCodes?:      string[];
     primaryCategoryCode?: string;
+    specialtyCodes?:     string[];
+    primarySpecialtyCode?: string;
+    latitude?:           number | null;
+    longitude?:          number | null;
+    geoPointSource?:     string | null;
+    isMobile?:           boolean;
+    serviceRadiusMiles?: number | null;
   };
+}
+
+/** Body for PUT /api/networks/{networkId}/providers/{providerId}. */
+export interface UpdateNetworkProviderRequest {
+  title?:              string | null;
+  firstName:           string;
+  lastName:            string;
+  organizationName?:   string | null;
+  facilityName?:       string | null;
+  email:               string;
+  phone:               string;
+  addressLine1:        string;
+  city:                string;
+  state:               string;
+  postalCode?:         string | null;
+  isActive:            boolean;
+  acceptingReferrals:  boolean;
+  specialtyIds:        string[];
+  latitude?:           number | null;
+  longitude?:          number | null;
+  geoPointSource?:     string | null;
+  isMobile?:           boolean;
+  serviceRadiusMiles?: number | null;
 }
 
 export interface NetworkSummary {
@@ -688,15 +935,36 @@ export type ProviderAccessStageValue = typeof ProviderAccessStage[keyof typeof P
 
 export interface NetworkProviderItem {
   id:                string;
+  networkProviderId: string;
+  providerId:        string;
+  facilityId:        string;
   name:              string;
+  title?:            string | null;
   organizationName?: string;
+  facilityName:      string;
   email:             string;
   phone:             string;
   city:              string;
   state:             string;
+  addressLine1:      string;
+  postalCode?:       string | null;
   isActive:          boolean;
   acceptingReferrals: boolean;
+  /**
+   * Whether the underlying cc_Facilities row is active. Distinct from `isActive` above (the
+   * NetworkProvider membership's own Active/Accepting-referrals toggle — an existing,
+   * independent feature): this is false only when the location itself was soft-deleted via
+   * "Delete location". Use this, not `isActive`, to decide whether a location was deleted.
+   */
+  facilityIsActive:  boolean;
   accessStage:       string;
+  specialties:       SpecialtyOption[];
+  primarySpecialtyId?: string | null;
+  primarySpecialty?: string | null;
+  distanceMiles?:    number | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 export interface NetworkDetail {
@@ -710,12 +978,17 @@ export interface NetworkDetail {
 
 export interface NetworkProviderMarker {
   id:                string;
+  networkProviderId: string;
+  providerId:        string;
+  facilityId:        string;
   name:              string;
+  title?:            string | null;
   organizationName?: string;
+  facilityName:      string;
   city:              string;
   state:             string;
   addressLine1:      string;
-  postalCode:        string;
+  postalCode?:       string | null;
   email:             string;
   phone:             string;
   acceptingReferrals: boolean;
@@ -723,6 +996,13 @@ export interface NetworkProviderMarker {
   latitude:          number;
   longitude:         number;
   geoPointSource?:   string;
+  specialties:       SpecialtyOption[];
+  primarySpecialtyId?: string | null;
+  primarySpecialty?: string | null;
+  distanceMiles?:    number | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 export interface CreateNetworkRequest {

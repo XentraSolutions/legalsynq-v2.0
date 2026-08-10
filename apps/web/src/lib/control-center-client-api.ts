@@ -15,6 +15,7 @@ export const controlCenterClientApi = {
       tenantId:  string;
       email:     string;
       password:  string;
+      title?:    string;
       firstName: string;
       lastName:  string;
       roleIds?:  string[];

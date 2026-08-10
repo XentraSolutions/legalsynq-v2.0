@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ThreadClient } from './thread-client';
+import { ThreadClient, formatDate } from './thread-client';
 
 describe('ThreadClient', () => {
   beforeAll(() => {
@@ -23,6 +23,10 @@ describe('ThreadClient', () => {
         attachments: [],
       }),
     }));
+  });
+
+  test('formats thread timestamps without locale-dependent literals', () => {
+    expect(formatDate('2026-08-03T08:20:00Z', 'UTC')).toBe('Aug 3, 2026, 8:20 AM');
   });
 
   test('passes the provider org name through the create-account CTA', () => {

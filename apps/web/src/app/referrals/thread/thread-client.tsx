@@ -11,6 +11,7 @@ import {
   type SelectedCareConnectMessageFile,
 } from '@/lib/careconnect-message-attachments';
 import type { ReferralMessageAttachment } from '@/types/careconnect';
+import { formatReferralLocation } from '@/lib/referral-location';
 
 interface Comment {
   id:         string;
@@ -45,6 +46,13 @@ interface ThreadData {
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
   providerName:       string;
+  // Referral location — the specific facility this referral was routed to, falling back
+  // to the provider's own address for legacy/single-location referrals.
+  facilityName?:          string | null;
+  locationAddressLine1?:  string;
+  locationCity?:          string;
+  locationState?:         string;
+  locationPostalCode?:    string;
   // Law firm / referrer
   referrerFirmName?:   string | null;
   referrerName:        string | null;
@@ -72,12 +80,25 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string; bor
   InProgress: { label: 'In Progress',               color: '#5b21b6', bg: '#f5f3ff', border: '#c4b5fd' },
 };
 
-function formatDate(iso: string, timezone: string) {
+export function formatDate(iso: string, timezone: string) {
   try {
-    return new Date(iso).toLocaleString('en-US', {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return iso;
+
+    const parts = new Intl.DateTimeFormat('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: 'numeric', minute: '2-digit', hour12: true, timeZone: timezone,
-    });
+    }).formatToParts(date);
+    const get = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value;
+    const month = get('month');
+    const day = get('day');
+    const year = get('year');
+    const hour = get('hour');
+    const minute = get('minute');
+    const dayPeriod = get('dayPeriod');
+    if (!month || !day || !year || !hour || !minute || !dayPeriod) return iso;
+
+    return `${month} ${day}, ${year}, ${hour}:${minute} ${dayPeriod}`;
   } catch { return iso; }
 }
 
@@ -165,6 +186,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
   const [attError,   setAttError]   = useState<Record<string, string | null>>({});
 
   const [liveTreatmentName] = useState<string | undefined>(data.treatmentTypeName);
+  const location = formatReferralLocation(data);
 
   // Decline notes state
   const [showDeclineForm, setShowDeclineForm] = useState(false);
@@ -363,6 +385,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
             {data.caseNumber && <FieldBlock label="Case #" value={data.caseNumber} />}
             <FieldBlock label="Type of Treatment" value={liveTreatmentName ?? '—'} />
             <FieldBlock label="Date of Accident" value={data.dateOfAccident ?? '—'} />
+            {location && <FieldBlock label="Provider Location" value={location} />}
           </div>
 
           {/* Notes */}

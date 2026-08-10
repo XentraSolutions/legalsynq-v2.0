@@ -285,6 +285,7 @@ public static class LienEndpoints
                 ct);
         }
 
+        var selectedStatusCodes = LienStatus.ExpandFilterValues(SplitCsvValues(status));
         var result = await lienService.SearchAsync(
             tenantId,
             search,
@@ -295,7 +296,7 @@ public static class LienEndpoints
             page,
             pageSize,
             ct,
-            excludeRejectedAndCancelled: true);
+            excludeRejectedAndCancelled: !selectedStatusCodes.Contains(LienStatus.Cancelled));
         var enriched = await EnrichLienResponsesAsync(result.Items, tenantId, servicingItemService, ct);
         var mappedItems = MapBuyingLienStatuses(enriched);
         return Results.Ok(new PaginatedResult<LienResponse>
@@ -442,7 +443,7 @@ public static class LienEndpoints
                 BuyingOrgId = lien.BuyingOrgId,
                 HoldingOrgId = lien.HoldingOrgId,
                 IncidentDate = lien.IncidentDate,
-                PurchaseDate = lien.IncidentDate.HasValue ? FormatLegacyDate(lien.IncidentDate) : lien.PurchaseDate,
+                PurchaseDate = lien.PurchaseDate,
                 InitialServiceDate = lien.InitialServiceDate,
                 EndServiceDate = lien.EndServiceDate,
                 TotalPurchase = totalPurchase,
@@ -493,11 +494,25 @@ public static class LienEndpoints
         var purchaseTo = ParseDateOnlyFilter(purchaseDateTo);
         var closedFrom = ParseDateTimeFilter(closedDateFrom, endOfDay: false);
         var closedTo = ParseDateTimeFilter(closedDateTo, endOfDay: true);
+        var directStatusCodes = LienStatus.ExpandFilterValues(
+            string.IsNullOrWhiteSpace(status)
+                ? []
+                : SplitCsvValues(status));
+
+        var shouldExcludeRejectedAndCancelled =
+            !directStatusCodes.Contains(LienStatus.Cancelled) &&
+            !resolvedStatusCodes.Contains(LienStatus.Cancelled);
 
         var query = db.Liens
             .AsNoTracking()
-            .Where(l => l.TenantId == tenantId)
-            .Where(l => l.Status != LienStatus.Cancelled && l.Status != "Rejected");
+            .Where(l => l.TenantId == tenantId);
+
+        if (shouldExcludeRejectedAndCancelled)
+        {
+            query = query.Where(l =>
+                l.Status != LienStatus.Cancelled &&
+                l.Status != "Rejected");
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -509,8 +524,10 @@ public static class LienEndpoints
                 (l.Description != null && l.Description.Contains(term)));
         }
 
-        if (!string.IsNullOrWhiteSpace(status))
-            query = query.Where(l => l.Status == status);
+        if (directStatusCodes.Count == 1)
+            query = query.Where(l => l.Status == directStatusCodes.Single());
+        else if (directStatusCodes.Count > 1)
+            query = query.Where(l => directStatusCodes.Contains(l.Status));
 
         if (resolvedStatusCodes.Count > 0)
             query = query.Where(l => resolvedStatusCodes.Contains(l.Status));
@@ -525,10 +542,10 @@ public static class LienEndpoints
             query = query.Where(l => l.FacilityId == facilityId.Value);
 
         if (purchaseFrom.HasValue)
-            query = query.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value >= purchaseFrom.Value);
+            query = query.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value >= purchaseFrom.Value);
 
         if (purchaseTo.HasValue)
-            query = query.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value <= purchaseTo.Value);
+            query = query.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value <= purchaseTo.Value);
 
         if (closedFrom.HasValue)
             query = query.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value >= closedFrom.Value);
@@ -536,14 +553,48 @@ public static class LienEndpoints
         if (closedTo.HasValue)
             query = query.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value <= closedTo.Value);
 
+        var normalizedLawFirmIds = NormalizeFilterValues(lawFirmIds);
+        var normalizedMedicalFacilityIds = NormalizeFilterValues(medicalFacilityIds);
+        var normalizedCaseManagerIds = NormalizeFilterValues(caseManagerIds);
+        var requiresRelationshipFiltering =
+            normalizedLawFirmIds.Count > 0 ||
+            normalizedMedicalFacilityIds.Count > 0 ||
+            normalizedCaseManagerIds.Count > 0;
+
+        // Status/date filters are already fully represented by the database query.
+        // Page those results before the per-lien detail and servicing enrichment;
+        // otherwise a broad status such as Active performs several queries for every
+        // matching lien and can leave the UI waiting until the request times out.
+        if (!requiresRelationshipFiltering && string.IsNullOrWhiteSpace(sortBy))
+        {
+            var totalCount = await query.CountAsync(ct);
+            var pageLiens = await query
+                .OrderByDescending(l => l.CreatedAtUtc)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync(ct);
+
+            var pageResponses = await GetDetailedLienResponsesAsync(
+                pageLiens,
+                lienService,
+                tenantId,
+                servicingItemService,
+                ct);
+
+            return Results.Ok(new PaginatedResult<LienResponse>
+            {
+                Items = MapBuyingLienStatuses(pageResponses),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount,
+            });
+        }
+
         var liens = await query
             .OrderByDescending(l => l.CreatedAtUtc)
             .ToListAsync(ct);
 
         var advancedRows = await BuildAdvancedLienFilterRowsAsync(db, tenantId, liens, ct);
-        var normalizedLawFirmIds = NormalizeFilterValues(lawFirmIds);
-        var normalizedMedicalFacilityIds = NormalizeFilterValues(medicalFacilityIds);
-        var normalizedCaseManagerIds = NormalizeFilterValues(caseManagerIds);
 
         var filteredLiens = advancedRows
             .Where(row => MatchesAdvancedFilter(normalizedLawFirmIds, row.LawFirmId))
@@ -839,18 +890,41 @@ public static class LienEndpoints
             .Select(Guid.Parse)
             .ToList();
 
-        var lookupCodes = guidIds.Count == 0
+        var lookupStatusValues = guidIds.Count == 0
             ? []
             : await db.LookupValues
                 .AsNoTracking()
                 .Where(l => (l.TenantId == tenantId || l.TenantId == null) &&
                             l.Category == LookupCategory.LienStatus &&
                             guidIds.Contains(l.Id))
-                .Select(l => l.Code)
+                .Select(l => new { l.Code, l.Name, l.Description })
                 .ToListAsync(ct);
 
-        return normalized
-            .Concat(lookupCodes)
+        // Older lien-list clients send the lookup row ID for the three
+        // legacy business groups (Open, Closed, Rejected).  Those rows are
+        // backed by a canonical lifecycle status such as Draft, so treating
+        // the ID as only that canonical status incorrectly omits Active and
+        // the other Open states.  Preserve direct canonical status filters,
+        // while expanding lookup-ID filters back to their business group.
+        var lookupFilterValues = lookupStatusValues.SelectMany(value =>
+        {
+            var values = new List<string> { value.Code, value.Name };
+            if (!string.IsNullOrWhiteSpace(value.Description))
+                values.Add(value.Description);
+
+            if (LienStatus.Open.Contains(value.Code))
+                values.Add("Open");
+            else if (string.Equals(value.Code, LienStatus.Settled, StringComparison.OrdinalIgnoreCase))
+                values.Add("Closed");
+            else if (string.Equals(value.Code, LienStatus.Declined, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(value.Code, LienStatus.Withdrawn, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(value.Code, LienStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
+                values.Add("Rejected");
+
+            return values;
+        });
+
+        return LienStatus.ExpandFilterValues(normalized.Concat(lookupFilterValues))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
@@ -1003,7 +1077,7 @@ public static class LienEndpoints
                     id = lien.Id.ToString(),
                     caseId = lien.CaseId?.ToString() ?? string.Empty,
                     status = lien.Status,
-                    purchaseDate = FormatLegacyDate(lien.IncidentDate),
+                    purchaseDate = lien.PurchaseDate ?? string.Empty,
                     initialServiceDate = FormatLegacyDate(lien.InitialServiceDate),
                     endServiceDate = FormatLegacyDate(lien.EndServiceDate),
                     note = lien.Description ?? string.Empty,

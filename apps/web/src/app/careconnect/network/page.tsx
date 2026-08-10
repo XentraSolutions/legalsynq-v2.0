@@ -68,6 +68,7 @@ export default async function PublicNetworkPage() {
       networkDescription: '',
       providers:          [],
       markers:            [],
+      specialties:        [],
     };
   }
 

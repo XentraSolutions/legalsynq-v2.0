@@ -230,7 +230,7 @@ public class ReferralEmailService : IReferralEmailService
         if (!string.IsNullOrWhiteSpace(provider.Email))
         {
             var dedupeKey = $"referral:{referral.Id}:created:provider";
-            var subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
+            var subject   = $"New referral from {referral.ReferrerFirmName}";
             var body      = BuildNewReferralEmailHtml(referral, provider, providerEntryLink, treatmentTypeName);
 
             var notification = CareConnectNotification.Create(
@@ -696,7 +696,7 @@ public class ReferralEmailService : IReferralEmailService
                 }
                 var token      = GenerateViewToken(referral.Id, referral.TokenVersion);
                 var providerEntryLink = await BuildProviderEntryLinkAsync(referral, provider, token, ct);
-                subject   = $"New referral received — {referral.ClientFirstName} {referral.ClientLastName}";
+                subject   = $"New referral from {referral.ReferrerFirmName}";
                 body      = BuildNewReferralEmailHtml(referral, provider, providerEntryLink);
                 toAddress = provider.Email;
                 break;
@@ -1003,6 +1003,23 @@ public class ReferralEmailService : IReferralEmailService
         return $"""<tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;color:#6b7280;width:160px;vertical-align:top;font-size:14px">{label}</td><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;font-size:14px;color:#111">{v}</td></tr>""";
     }
 
+    /// <summary>
+    /// Formats the referral's resolved location (facility-first, provider-fallback — see
+    /// <see cref="ReferralLocationResolver"/>) as "Address, City, State ZIP", skipping any
+    /// missing parts. Returns null when no address is available.
+    /// </summary>
+    private static string? FormatLocation(Referral r, Provider p)
+    {
+        var location   = ReferralLocationResolver.Resolve(r, p);
+        var addressLine = string.Join(", ", new[] { location.AddressLine1, location.City, location.State }
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
+        var withZip = string.IsNullOrWhiteSpace(location.PostalCode)
+            ? addressLine
+            : $"{addressLine} {location.PostalCode}".Trim();
+
+        return string.IsNullOrWhiteSpace(withZip) ? null : withZip;
+    }
+
     /// <summary>Titled section with orange-gradient rule and a data table.</summary>
     private static string Section(string title, string rows)
         => string.IsNullOrEmpty(rows) ? "" : $"""
@@ -1085,6 +1102,10 @@ public class ReferralEmailService : IReferralEmailService
                 ? $" Please reply directly to <a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a> with any questions."
                 : "");
 
+        var locationLine = FormatLocation(r, p) is { } location
+            ? $"""<p style="margin:12px 0 0;font-size:14px;color:#4b5563"><strong>Provider Location:</strong> {location}</p>"""
+            : "";
+
         var body = $"""
             <p style="margin:0 0 16px;font-size:15px">Dear <strong>{provName}</strong>,</p>
             <p style="margin:0 0 4px;font-size:15px;color:#374151">
@@ -1092,6 +1113,7 @@ public class ReferralEmailService : IReferralEmailService
               Kindly schedule an appointment at your earliest convenience.
             </p>
             <p style="margin:12px 0 4px;font-size:14px;color:#4b5563">{introCopy}</p>
+            {locationLine}
             {Section("Client Information", clientRows)}
             {Section("Referring Case Manager", referrerRows)}
             {notesBlock}
@@ -1120,6 +1142,7 @@ public class ReferralEmailService : IReferralEmailService
 
         var providerRows =
             Row("Provider", provName, bold: true) +
+            Row("Provider Location", FormatLocation(r, p)) +
             Row("Contact",  string.IsNullOrWhiteSpace(p.Phone) ? null : p.Phone);
 
         var footer = firmName is not null
@@ -1183,12 +1206,17 @@ public class ReferralEmailService : IReferralEmailService
                 ? $" Please reply to <a href='mailto:{r.ReferrerEmail}' style='color:#1a56db'>{r.ReferrerEmail}</a> with any questions."
                 : "");
 
+        var locationLine = FormatLocation(r, p) is { } location
+            ? $"""<p style="margin:12px 0 0;font-size:14px;color:#4b5563"><strong>Provider Location:</strong> {location}</p>"""
+            : "";
+
         var body = $"""
             <p style="margin:0 0 16px;font-size:15px">Dear <strong>{provName}</strong>,</p>
             <p style="margin:0 0 4px;font-size:15px;color:#374151">
               A referral from <strong>{referrerLabel}</strong> has been assigned to you.
               Please review the details below and schedule an appointment at your earliest convenience.
             </p>
+            {locationLine}
             {Section("Client Information", clientRows)}
             {Section("Referring Case Manager", referrerRows)}
             {notesBlock}

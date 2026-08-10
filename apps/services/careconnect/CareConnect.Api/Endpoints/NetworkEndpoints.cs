@@ -1,3 +1,4 @@
+using System.Net;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
@@ -22,6 +23,11 @@ namespace CareConnect.Api.Endpoints;
 // Access: CARECONNECT_NETWORK_MANAGER product role, or PlatformAdmin / TenantAdmin bypass.
 public static class NetworkEndpoints
 {
+    // BLK-SEC-06: HttpContext.Items key Program.cs stashes the raw physical TCP peer address
+    // under, captured before UseForwardedHeaders can rewrite Connection.RemoteIpAddress from a
+    // client-supplied X-Forwarded-For header. See the provider-import endpoint below.
+    internal const string RawRemoteIpAddressKey = "RawRemoteIpAddress";
+
     public static void MapNetworkEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/networks")
@@ -183,12 +189,34 @@ public static class NetworkEndpoints
             _ = EmitNetworkAuditAsync(auditClient,
                 eventType:     "careconnect.network.provider_added",
                 action:        "ProviderAdded",
-                description:   $"Provider '{provider.Id}' added to network '{id}' by user.",
+                description:   $"Provider '{provider.ProviderId}' added to network '{id}' by user.",
                 tenantId:      tenantId,
                 actorUserId:   ctx.UserId,
                 networkId:     id,
                 correlationId: correlationId,
-                metadata:      JsonSerializer.Serialize(new { providerId = provider.Id }));
+                metadata:      JsonSerializer.Serialize(new { networkProviderId = provider.NetworkProviderId, providerId = provider.ProviderId, facilityId = provider.FacilityId }));
+            return Results.Ok(provider);
+        })
+        .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
+
+        // ── Edit a provider through a tenant-owned network ────────────────────
+        // The shared provider record may only be changed here after verifying the
+        // provider is a member of the caller's network.
+        group.MapPut("/{id:guid}/providers/{providerId:guid}", async (
+            Guid id,
+            Guid providerId,
+            [FromBody] UpdateNetworkProviderRequest request,
+            INetworkService service,
+            ICurrentRequestContext ctx,
+            IMemoryCache cache,
+            CancellationToken ct) =>
+        {
+            var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
+            var provider = await service.UpdateProviderAsync(tenantId, id, providerId, request, ctx.UserId, ct);
+
+            foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
+                cache.Remove(key);
+
             return Results.Ok(provider);
         })
         .RequireProductRole(ProductCodes.SynqCareConnect, ProductRoleCodes.CareConnectNetworkManager);
@@ -202,10 +230,16 @@ public static class NetworkEndpoints
             IAuditEventClient auditClient,
             IMemoryCache cache,
             HttpContext http,
-            CancellationToken ct) =>
+            CancellationToken ct,
+            [FromQuery] bool cascadeFacility = false) =>
         {
             var tenantId = ctx.TenantId ?? throw new InvalidOperationException("tenant_id claim is missing.");
-            await service.RemoveProviderAsync(tenantId, id, providerId, ct);
+            // cascadeFacility: only "Delete location" (the Facilities panel button) should tag
+            // cc_Facilities.IsActive false. The tenant-portal "Remove from network" icon keeps
+            // its original behavior — membership-only soft delete, Facility untouched — since
+            // it's a distinct action from Delete location, not merely a different UI trigger
+            // for the same one.
+            await service.RemoveProviderAsync(tenantId, id, providerId, cascadeFacility, ctx.UserId, ct);
             // BLK-PERF-02: Provider removed from network — evict public provider/marker/detail/list
             // cache entries for this tenant+network so the directory reflects the removal.
             foreach (var key in CareConnectCacheKeys.PublicNetworkInvalidationKeys(tenantId, id))
@@ -310,10 +344,15 @@ public static class NetworkEndpoints
             IAuditEventClient auditClient,
             IMemoryCache cache,
             HttpContext http,
-            IWebHostEnvironment environment,
             CancellationToken ct) =>
         {
-            if (!environment.IsDevelopment())
+            // BLK-SEC-06: this endpoint is intentionally unauthenticated (see .AllowAnonymous()
+            // below) — it's a bulk provider-write operation meant to be run only via `curl`
+            // against the loopback interface (127.0.0.1/::1) on the box the service runs on,
+            // never reachable from outside. Gated on the raw physical TCP peer address captured
+            // by Program.cs *before* UseForwardedHeaders runs, so a caller can't spoof loopback
+            // by sending X-Forwarded-For: 127.0.0.1 through the trusted reverse proxy.
+            if (!IsLoopbackCaller(http))
                 return Results.Forbid();
 
             var file = await ReadImportFileAsync(httpRequest, ct);
@@ -346,6 +385,8 @@ public static class NetworkEndpoints
                         result.TotalRows,
                         result.ProcessedRows,
                         result.CreatedProviders,
+                        result.CreatedFacilities,
+                        result.LinkedLocations,
                         result.ReusedByNpi,
                         result.ReusedByEmail,
                         result.AlreadyInNetwork,
@@ -357,6 +398,21 @@ public static class NetworkEndpoints
         })
         .AllowAnonymous()
         .DisableAntiforgery();
+    }
+
+    private static bool IsLoopbackCaller(HttpContext http)
+    {
+        var ip = http.Items.TryGetValue(RawRemoteIpAddressKey, out var raw) && raw is IPAddress captured
+            ? captured
+            : http.Connection.RemoteIpAddress;
+
+        if (ip is null)
+            return false;
+
+        if (ip.IsIPv4MappedToIPv6)
+            ip = ip.MapToIPv4();
+
+        return IPAddress.IsLoopback(ip);
     }
 
     private static async Task<IFormFile> ReadImportFileAsync(HttpRequest httpRequest, CancellationToken ct)
@@ -380,9 +436,11 @@ public static class NetworkEndpoints
             throw new ValidationException("Validation failed.",
                 new() { ["file"] = ["The import file exceeds the 5 MB limit."] });
 
-        if (!string.Equals(Path.GetExtension(file.FileName), ".csv", StringComparison.OrdinalIgnoreCase))
+        var extension = Path.GetExtension(file.FileName);
+        if (!string.Equals(extension, ".csv", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase))
             throw new ValidationException("Validation failed.",
-                new() { ["file"] = ["Only CSV files are supported for provider imports."] });
+                new() { ["file"] = ["Only CSV or XLSX files are supported for provider imports."] });
 
         return file;
     }

@@ -29,6 +29,36 @@ public static class LienStatus
         Declined, Settled, Withdrawn, Cancelled
     };
 
+    /// <summary>
+    /// Expands the legacy/UI lifecycle groups used by list filters into the
+    /// persisted statuses that can be compared in database queries.
+    /// </summary>
+    public static IReadOnlySet<string> ExpandFilterValues(IEnumerable<string> values)
+    {
+        var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var value in values.Where(value => !string.IsNullOrWhiteSpace(value)))
+        {
+            switch (value.Trim())
+            {
+                case var group when string.Equals(group, "Open", StringComparison.OrdinalIgnoreCase):
+                    expanded.UnionWith(Open);
+                    break;
+                case var group when string.Equals(group, "Closed", StringComparison.OrdinalIgnoreCase):
+                    expanded.Add(Settled);
+                    break;
+                case var group when string.Equals(group, "Rejected", StringComparison.OrdinalIgnoreCase):
+                    expanded.UnionWith([Declined, Withdrawn, Cancelled]);
+                    break;
+                default:
+                    expanded.Add(value.Trim());
+                    break;
+            }
+        }
+
+        return expanded;
+    }
+
     public static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> AllowedTransitions =
         new Dictionary<string, IReadOnlySet<string>>
         {

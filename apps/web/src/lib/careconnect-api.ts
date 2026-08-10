@@ -31,6 +31,15 @@ import type {
   NetworkProviderMarker,
   ProviderSearchResult,
   AddProviderToNetworkRequest,
+  UpdateNetworkProviderRequest,
+  SpecialtyOption,
+  ReferralAttribution,
+  ReferralAttributionSummary,
+  CreateReferralAttributionRequest,
+  UpdateReferralAttributionRequest,
+  ReferralAttributionAccessCode,
+  GeneratedReferralAttributionAccessCode,
+  CreateReferralAttributionAccessCodeRequest,
 } from '@/types/careconnect';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -48,6 +57,11 @@ function toQs(params: Record<string, unknown>): string {
 // Calls /api/careconnect/* which routes through the BFF proxy → gateway.
 
 export const careConnectApi = {
+  specialties: {
+    list: () =>
+      apiClient.get<SpecialtyOption[]>(`/careconnect/api/specialties`),
+  },
+
   providers: {
     search: (params: ProviderSearchParams = {}) =>
       apiClient.get<PagedResponse<ProviderSummary>>(
@@ -130,6 +144,53 @@ export const careConnectApi = {
     getAuditTimeline: (id: string) =>
       apiClient.get<ReferralAuditEvent[]>(`/careconnect/api/referrals/${id}/audit`),
   },
+
+  // ── Referral Attribution configuration (tenant admin) ────────────────────────
+  referralAttributions: {
+    /** GET /api/referral-attributions/options — active options for the current tenant (law firm dropdown) */
+    options: () =>
+      apiClient.get<ReferralAttributionSummary[]>(`/careconnect/api/referral-attributions/options`),
+
+    /** GET /api/referral-attributions — full admin list, optionally activeOnly */
+    list: (activeOnly?: boolean) =>
+      apiClient.get<ReferralAttribution[]>(
+        `/careconnect/api/referral-attributions${activeOnly !== undefined ? `?activeOnly=${activeOnly}` : ''}`,
+      ),
+
+    getById: (id: string) =>
+      apiClient.get<ReferralAttribution>(`/careconnect/api/referral-attributions/${id}`),
+
+    create: (body: CreateReferralAttributionRequest) =>
+      apiClient.post<ReferralAttribution>(`/careconnect/api/referral-attributions`, body),
+
+    update: (id: string, body: UpdateReferralAttributionRequest) =>
+      apiClient.patch<ReferralAttribution>(`/careconnect/api/referral-attributions/${id}`, body),
+
+    setActive: (id: string, isActive: boolean) =>
+      apiClient.patch<ReferralAttribution>(`/careconnect/api/referral-attributions/${id}/active`, { isActive }),
+  },
+
+  // ── Referral Representative access codes (tenant admin) ──────────────────────
+  // Admin generates a code scoped to one attribution; the representative enters it
+  // themselves at the anonymous portal — see representative-portal-api.ts, not this
+  // file. No admin-typed user linking. Exactly one active code per attribution —
+  // scoped lookup only, no cross-attribution list.
+  referralAttributionAccessCodes: {
+    /** GET .../by-attribution/{id} — the attribution's single active code, or undefined (204) if none. */
+    getByAttribution: (referralAttributionId: string) =>
+      apiClient.get<ReferralAttributionAccessCode | undefined>(
+        `/careconnect/api/referral-representative-access-codes/by-attribution/${referralAttributionId}`,
+      ),
+
+    generate: (body: CreateReferralAttributionAccessCodeRequest) =>
+      apiClient.post<GeneratedReferralAttributionAccessCode>(`/careconnect/api/referral-representative-access-codes`, body),
+
+    setActive: (id: string, isActive: boolean) =>
+      apiClient.patch<ReferralAttributionAccessCode>(`/careconnect/api/referral-representative-access-codes/${id}/active`, { isActive }),
+  },
+
+  // Referral Representative Portal is fully anonymous (no login) — see
+  // apps/web/src/lib/representative-portal-api.ts for its client, not this file.
 
   adminReferrals: {
     getHistory: (id: string) =>
@@ -257,15 +318,25 @@ export const careConnectApi = {
     },
 
     /**
-     * CC2-INT-B06-01: Add a provider to a network (match-or-create).
-     * POST /api/networks/{id}/providers — body: { existingProviderId } | { newProvider: {...} }
+     * CC2-INT-B06-01: Add a provider/location to a network.
+     * POST /api/networks/{id}/providers — body: { existingProviderId, existingFacilityId } |
+     * { existingProviderId, newProvider: {...location fields...} } | { newProvider: {...new provider...} }
      */
     addProvider: (networkId: string, request: AddProviderToNetworkRequest) =>
       apiClient.post<NetworkProviderItem>(`/careconnect/api/networks/${networkId}/providers`, request),
 
-    /** DELETE /api/networks/{id}/providers/{providerId} — removes association only */
-    removeProvider: (networkId: string, providerId: string) =>
-      apiClient.delete<void>(`/careconnect/api/networks/${networkId}/providers/${providerId}`),
+    /** PUT /api/networks/{id}/providers/{providerId} — edit shared provider through this network */
+    updateProvider: (networkId: string, providerId: string, request: UpdateNetworkProviderRequest) =>
+      apiClient.put<NetworkProviderItem>(`/careconnect/api/networks/${networkId}/providers/${providerId}`, request),
+
+    /**
+     * DELETE /api/networks/{id}/providers/{providerId} — removes association only.
+     * cascadeFacility: true only for "Delete location" (Facilities panel) — also tags the
+     * underlying Facility inactive. The "Remove from network" icon omits it, keeping its
+     * original membership-only soft delete.
+     */
+    removeProvider: (networkId: string, providerId: string, cascadeFacility = false) =>
+      apiClient.delete<void>(`/careconnect/api/networks/${networkId}/providers/${providerId}${cascadeFacility ? '?cascadeFacility=true' : ''}`),
 
     /** GET /api/networks/{id}/providers/markers — map markers for the network */
     getMarkers: (id: string) =>

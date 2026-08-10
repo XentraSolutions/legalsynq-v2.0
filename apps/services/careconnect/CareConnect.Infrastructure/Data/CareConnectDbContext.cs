@@ -13,6 +13,8 @@ public class CareConnectDbContext : DbContext
     public DbSet<Provider> Providers => Set<Provider>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<ProviderCategory> ProviderCategories => Set<ProviderCategory>();
+    public DbSet<Specialty> Specialties => Set<Specialty>();
+    public DbSet<ProviderSpecialty> ProviderSpecialties => Set<ProviderSpecialty>();
     public DbSet<Referral> Referrals => Set<Referral>();
     public DbSet<ReferralStatusHistory> ReferralStatusHistories => Set<ReferralStatusHistory>();
     public DbSet<ReferralProviderReassignment> ReferralProviderReassignments => Set<ReferralProviderReassignment>();
@@ -42,6 +44,10 @@ public class CareConnectDbContext : DbContext
 
     // Public referral comment thread (token-authenticated, no login required)
     public DbSet<ReferralComment> ReferralComments => Set<ReferralComment>();
+
+    // Referral Attribution — configurable referral-source tracking and representative access.
+    public DbSet<ReferralAttribution> ReferralAttributions => Set<ReferralAttribution>();
+    public DbSet<ReferralAttributionAccessCode> ReferralAttributionAccessCodes => Set<ReferralAttributionAccessCode>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

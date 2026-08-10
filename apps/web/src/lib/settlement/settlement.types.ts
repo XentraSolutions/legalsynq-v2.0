@@ -98,9 +98,10 @@ export interface CreateSettlementPaymentRequest {
   referenceNumber: string;
   notes: string;
 
-  // missing from the api
+  // Payment classification and linked-lien lifecycle are separate fields.
   settlementType: string;
   settlementStatus: string;
+  lienStatus: string;
 }
 
 export interface CreateSettlementPaymentResponse extends SettlementGenericResponse {}

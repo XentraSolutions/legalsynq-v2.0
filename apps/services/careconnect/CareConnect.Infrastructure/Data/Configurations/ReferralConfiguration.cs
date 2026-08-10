@@ -24,6 +24,7 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
 
         // Provider routing
         builder.Property(r => r.ProviderId).IsRequired();
+        builder.Property(r => r.FacilityId);
 
         // Phase 5: organization relationship context (nullable; set when both orgs are linked)
         builder.Property(r => r.OrganizationRelationshipId);
@@ -53,11 +54,16 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         builder.Property(r => r.CreatedByUserId);
         builder.Property(r => r.UpdatedByUserId);
 
+        // Referral Attribution (optional)
+        builder.Property(r => r.ReferralAttributionId);
+
         // Indexes
         builder.HasIndex(r => new { r.TenantId, r.Status })
             .HasDatabaseName("IX_Referrals_TenantId_Status");
         builder.HasIndex(r => new { r.TenantId, r.ProviderId })
             .HasDatabaseName("IX_Referrals_TenantId_ProviderId");
+        builder.HasIndex(r => new { r.TenantId, r.FacilityId })
+            .HasDatabaseName("IX_Referrals_TenantId_FacilityId");
         builder.HasIndex(r => new { r.TenantId, r.CreatedAtUtc })
             .HasDatabaseName("IX_Referrals_TenantId_CreatedAtUtc");
         // BLK-PERF-01: Composite for admin dashboard / analytics queries that filter on
@@ -71,15 +77,35 @@ public class ReferralConfiguration : IEntityTypeConfiguration<Referral>
         builder.HasIndex(r => r.SubjectPartyId)
             .HasDatabaseName("IX_Referrals_SubjectPartyId");
 
+        // Referral Attribution — representative visibility scope hot paths.
+        builder.HasIndex(r => r.ReferralAttributionId)
+            .HasDatabaseName("IX_Referrals_ReferralAttributionId");
+        builder.HasIndex(r => new { r.TenantId, r.ReferralAttributionId })
+            .HasDatabaseName("IX_Referrals_TenantId_ReferralAttributionId");
+        builder.HasIndex(r => new { r.TenantId, r.ReferralAttributionId, r.Status })
+            .HasDatabaseName("IX_Referrals_TenantId_ReferralAttributionId_Status");
+        builder.HasIndex(r => new { r.TenantId, r.ReferralAttributionId, r.CreatedAtUtc })
+            .HasDatabaseName("IX_Referrals_TenantId_ReferralAttributionId_CreatedAtUtc");
+
         // Relationships
         builder.HasOne(r => r.Provider)
                .WithMany()
                .HasForeignKey(r => r.ProviderId)
                .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne(r => r.Facility)
+               .WithMany()
+               .HasForeignKey(r => r.FacilityId)
+               .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasOne(r => r.SubjectParty)
                .WithMany()
                .HasForeignKey(r => r.SubjectPartyId)
+               .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne(r => r.ReferralAttribution)
+               .WithMany()
+               .HasForeignKey(r => r.ReferralAttributionId)
                .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -21,6 +21,8 @@ import { useRoleAccess } from "@/hooks/use-role-access";
 import {
   useDashboardStats,
   useDashboardReports,
+  useDashboardReportDetails,
+  DASHBOARD_DETAIL_PAGE_SIZE,
 } from "@/hooks/use-lien-dashboard";
 import {
   DateRangePicker,
@@ -91,10 +93,13 @@ export default function LienDashboardPage() {
     "liens" | "cases" | "lawFirm" | "facility" | null
   >(null);
   const [isExportingReport, setIsExportingReport] = useState(false);
+  const [reportPage, setReportPage] = useState(1);
 
   const { data: dashboardStats } = useDashboardStats();
   const { data: reports, isLoading: reportLoading } =
     useDashboardReports(dashboardRange);
+  const { data: reportDetails, isLoading: reportDetailsLoading } =
+    useDashboardReportDetails(activeReport, dashboardRange, reportPage);
 
   const lawFirmAllocation = reports?.lawFirms.segments ?? [];
   const lawFirmRows = reports?.lawFirms.rows ?? [];
@@ -129,48 +134,28 @@ export default function LienDashboardPage() {
     loadActivity();
   }, [loadActivity]);
 
+  useEffect(() => {
+    setReportPage(1);
+  }, [dashboardRange.from, dashboardRange.to]);
+
+  const openReport = useCallback(
+    (report: "liens" | "cases" | "lawFirm" | "facility") => {
+      setReportPage(1);
+      setActiveReport(report);
+    },
+    [],
+  );
+
   const pendingTasks = servicing.filter((s) => s.status !== "Completed");
   const overdueTasks = pendingTasks.filter(
     (s) => new Date(s.dueDate) < new Date(),
   );
 
-  const lienAmountsByStatus = useMemo(() => {
-    const result: Record<string, { purchase: number; billing: number }> = {};
-    for (const lien of lienRows) {
-      const key = lien.status ?? "Unknown";
-      if (!result[key]) result[key] = { purchase: 0, billing: 0 };
-      result[key].purchase += lien.totalPurchaseAmount ?? 0;
-      result[key].billing += lien.totalBillingAmount ?? 0;
-    }
-    return result;
-  }, [lienRows]);
-
-  const lienStatusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const lien of lienRows) {
-      const key = lien.status ?? "Unknown";
-      counts[key] = (counts[key] ?? 0) + 1;
-    }
-    return counts;
-  }, [lienRows]);
-
-  const caseStatusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const c of caseRows) {
-      const key = c.status ?? "Unknown";
-      counts[key] = (counts[key] ?? 0) + 1;
-    }
-    return counts;
-  }, [caseRows]);
-
-  const totalLienPurchase = lienRows.reduce(
-    (s, l) => s + (l.totalPurchaseAmount ?? 0),
-    0,
-  );
-  const totalLienBilling = lienRows.reduce(
-    (s, l) => s + (l.totalBillingAmount ?? 0),
-    0,
-  );
+  const lienAmountsByStatus = reports?.liens.statusAmounts ?? {};
+  const lienStatusCounts = reports?.liens.statusCounts ?? {};
+  const caseStatusCounts = reports?.cases.statusCounts ?? {};
+  const totalLienPurchase = reports?.liens.totalPurchaseAmount ?? 0;
+  const totalLienBilling = reports?.liens.totalBillingAmount ?? 0;
 
   // Built from the known status order plus whatever the API actually returns, so a
   // status this list doesn't anticipate still shows up instead of silently dropping
@@ -223,7 +208,7 @@ export default function LienDashboardPage() {
     "liens" | "cases" | "lawFirm" | "facility",
     (request: {
       page: number;
-      limit: number;
+      limit?: number;
       startDate?: string;
       endDate?: string;
     }) => ReturnType<typeof casesService.exportTotalLienReport>
@@ -240,7 +225,6 @@ export default function LienDashboardPage() {
     try {
       const response = await reportExporters[activeReport]({
         page: 1,
-        limit: 1000,
         startDate: dashboardRange.from,
         endDate: dashboardRange.to,
       });
@@ -285,7 +269,7 @@ export default function LienDashboardPage() {
             STATUS_LABELS[r.status ?? ""] ?? r.status ?? "—",
         },
       ],
-      rows: lienRows,
+      rows: activeReport === "liens" ? (reportDetails?.rows ?? []) : lienRows,
       rowKey: (r: LienReportItem) => r.id,
     },
     cases: {
@@ -312,7 +296,7 @@ export default function LienDashboardPage() {
             STATUS_LABELS[r.status ?? ""] ?? r.status ?? "—",
         },
       ],
-      rows: caseRows,
+      rows: activeReport === "cases" ? (reportDetails?.rows ?? []) : caseRows,
       rowKey: (r: CaseReportItem) => r.id,
     },
     lawFirm: {
@@ -335,7 +319,10 @@ export default function LienDashboardPage() {
         },
         { label: "Law Firm", render: (r: CaseReportItem) => r.lawFirm ?? "—" },
       ],
-      rows: lawFirmRows,
+      rows:
+        activeReport === "lawFirm"
+          ? (reportDetails?.rows ?? [])
+          : lawFirmRows,
       rowKey: (r: CaseReportItem) => r.id,
     },
     facility: {
@@ -361,7 +348,10 @@ export default function LienDashboardPage() {
           render: (r: LienReportItem) => r.facilityName ?? "—",
         },
       ],
-      rows: facilityRows,
+      rows:
+        activeReport === "facility"
+          ? (reportDetails?.rows ?? [])
+          : facilityRows,
       rowKey: (r: LienReportItem) => r.id,
     },
   };
@@ -443,14 +433,14 @@ export default function LienDashboardPage() {
           ]}
           segments={lienSegments}
           href="/lien/liens"
-          onViewDetails={() => setActiveReport("liens")}
+          onViewDetails={() => openReport("liens")}
         />
         <StatCard
           title="Total Cases"
           total={reportLoading ? 0 : totalCaseCount}
           segments={caseSegments}
           href="/lien/cases"
-          onViewDetails={() => setActiveReport("cases")}
+          onViewDetails={() => openReport("cases")}
         />
       </div>
 
@@ -465,7 +455,7 @@ export default function LienDashboardPage() {
           }
           segments={lawFirmSegments}
           href="/lien/cases"
-          onViewDetails={() => setActiveReport("lawFirm")}
+          onViewDetails={() => openReport("lawFirm")}
         />
         <StatCard
           title="Medical Facility Case Allocation"
@@ -477,7 +467,7 @@ export default function LienDashboardPage() {
           }
           segments={facilitySegments}
           href="/lien/cases"
-          onViewDetails={() => setActiveReport("facility")}
+          onViewDetails={() => openReport("facility")}
         />
       </div>
 
@@ -489,6 +479,13 @@ export default function LienDashboardPage() {
           periodLabel={periodLabel}
           onExport={handleExportReport}
           isExporting={isExportingReport}
+          page={reportPage}
+          pageSize={DASHBOARD_DETAIL_PAGE_SIZE}
+          totalCount={
+            reportDetails?.totalCount ?? reportConfig[activeReport].total
+          }
+          onPageChange={setReportPage}
+          isLoading={reportDetailsLoading}
         />
       )}
       {/* not part of phase 1 migration */}

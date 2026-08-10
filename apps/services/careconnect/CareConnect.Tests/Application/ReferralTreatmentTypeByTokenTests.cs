@@ -127,6 +127,7 @@ public class ReferralTreatmentTypeByTokenTests
             NullLogger<ReferralService>.Instance,
             httpCtx.Object,
             new Mock<IReferralAttachmentRepository>().Object,
+            new Mock<IReferralAttributionRepository>().Object,
             activationRequests: null);
     }
 

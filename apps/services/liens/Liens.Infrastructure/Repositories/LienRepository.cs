@@ -79,8 +79,14 @@ public class LienRepository : ILienRepository
                 (l.Description != null && l.Description.Contains(term)));
         }
 
-        if (!string.IsNullOrWhiteSpace(status))
-            q = q.Where(l => l.Status == status);
+        var statuses = LienStatus.ExpandFilterValues(
+            string.IsNullOrWhiteSpace(status)
+                ? []
+                : status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        if (statuses.Count == 1)
+            q = q.Where(l => l.Status == statuses.Single());
+        else if (statuses.Count > 1)
+            q = q.Where(l => statuses.Contains(l.Status));
 
         if (!string.IsNullOrWhiteSpace(lienType))
             q = q.Where(l => l.LienType == lienType);
@@ -117,6 +123,7 @@ public class LienRepository : ILienRepository
         DateOnly? purchaseDateTo,
         DateTime? closedDateFrom,
         DateTime? closedDateTo,
+        bool useSettlementDateForClosedFilter,
         string? isBulk,
         IReadOnlyCollection<Guid> caseIds,
         int page,
@@ -135,9 +142,10 @@ public class LienRepository : ILienRepository
                 (l.Description != null && l.Description.Contains(term)));
         }
 
-        if (lienStatuses.Count > 0)
+        var expandedLienStatuses = LienStatus.ExpandFilterValues(lienStatuses);
+        if (expandedLienStatuses.Count > 0)
         {
-            var statusList = lienStatuses.ToList();
+            var statusList = expandedLienStatuses.ToList();
             q = q.Where(l => statusList.Contains(l.Status));
         }
 
@@ -153,16 +161,56 @@ public class LienRepository : ILienRepository
         }
 
         if (purchaseDateFrom.HasValue)
-            q = q.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value >= purchaseDateFrom.Value);
+            q = q.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value >= purchaseDateFrom.Value);
 
         if (purchaseDateTo.HasValue)
-            q = q.Where(l => l.IncidentDate.HasValue && l.IncidentDate.Value <= purchaseDateTo.Value);
+            q = q.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value <= purchaseDateTo.Value);
 
-        if (closedDateFrom.HasValue)
-            q = q.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value >= closedDateFrom.Value);
+        if (closedDateFrom.HasValue || closedDateTo.HasValue)
+        {
+            if (useSettlementDateForClosedFilter)
+            {
+                q = q.Where(l => _db.LienSettlements.Any(settlement =>
+                    settlement.TenantId == tenantId &&
+                    settlement.LienId == l.Id &&
+                    !settlement.IsDeleted &&
+                    settlement.SettlementDate.HasValue));
 
-        if (closedDateTo.HasValue)
-            q = q.Where(l => l.ClosedAtUtc.HasValue && l.ClosedAtUtc.Value <= closedDateTo.Value);
+                if (closedDateFrom.HasValue)
+                {
+                    var closedFrom = DateOnly.FromDateTime(closedDateFrom.Value);
+                    q = q.Where(l => _db.LienSettlements.Any(settlement =>
+                        settlement.TenantId == tenantId &&
+                        settlement.LienId == l.Id &&
+                        !settlement.IsDeleted &&
+                        settlement.SettlementDate.HasValue &&
+                        settlement.SettlementDate.Value >= closedFrom));
+                }
+
+                if (closedDateTo.HasValue)
+                {
+                    var closedTo = DateOnly.FromDateTime(closedDateTo.Value);
+                    q = q.Where(l => !_db.LienSettlements.Any(settlement =>
+                        settlement.TenantId == tenantId &&
+                        settlement.LienId == l.Id &&
+                        !settlement.IsDeleted &&
+                        settlement.SettlementDate.HasValue &&
+                        settlement.SettlementDate.Value > closedTo));
+                }
+            }
+            else
+            {
+                q = q.Where(l =>
+                    l.Status == LienStatus.Settled &&
+                    l.ClosedAtUtc.HasValue);
+
+                if (closedDateFrom.HasValue)
+                    q = q.Where(l => l.ClosedAtUtc!.Value >= closedDateFrom.Value);
+
+                if (closedDateTo.HasValue)
+                    q = q.Where(l => l.ClosedAtUtc!.Value <= closedDateTo.Value);
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(isBulk))
         {

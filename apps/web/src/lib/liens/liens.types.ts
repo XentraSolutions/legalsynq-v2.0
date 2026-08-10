@@ -258,3 +258,60 @@ export interface PaginationMeta {
   totalCount: number;
   totalPages: number;
 }
+
+// Maps to CreateSellingLienRequest / the anonymous response object in
+// SellingV2Endpoints.CreateLien (apps/services/liens/Liens.Api/Endpoints/
+// SellingV2Endpoints.cs) — undocumented in any OpenAPI spec, so this is the
+// source of truth for the contract. sellerStatus must be "Pending" or
+// "Internal" (NormalizeIntakeStatus rejects anything else, e.g. "Sold" or
+// "Draft") or the API 400s.
+export interface CreateLienParams {
+  sellerStatus: string;
+  source?: string;
+}
+export interface CreateLienResult {
+  lienId: string;
+  lienNumber: string;
+  sellerStatus: string;
+}
+export interface LienInfoParams {
+  sellerStatus: string;
+  initialServiceDate: string;
+  endServiceDate: string | null;
+  listingVisibility: string;
+  notes: string;
+}
+
+export interface LienFundingCompanyParams {
+  fundingCompanyId: string;
+  fundingCompanyContactId: string;
+  handlingLawFirmId: string;
+  caseManagerId: string;
+  caseId: string;
+  createCaseIfMissing: boolean;
+}
+
+export interface LienMedicalCodesParams {
+  askAmount: number;
+  billingAmount: number;
+  rows: [
+    {
+      medicalCode: string;
+      description: string;
+      serviceDate: string;
+      billingAmount: number;
+      medicareCost: number;
+      targetSaleAmount: number;
+    },
+  ];
+}
+
+export interface LienUploadDocumentsParams {
+  documents: [
+    {
+      documentId: string;
+      documentType: string;
+      displayName: string;
+    },
+  ];
+}

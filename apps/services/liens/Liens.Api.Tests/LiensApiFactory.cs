@@ -41,6 +41,8 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Services__CommerceUrl",      "http://localhost:19994/");
         Environment.SetEnvironmentVariable("Liens__Selling__BuyerPortalBaseUrl",
             "https://app.legalsynq.test/selling/public");
+        Environment.SetEnvironmentVariable("TenantService__ProvisioningToken",
+            StubIdentityServiceHandler.ExpectedProvisioningToken);
 
         // Service token issuer requires a signing key.
         Environment.SetEnvironmentVariable("ServiceTokens__liens-service__SigningKey",
@@ -85,6 +87,10 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<CapturingLegacyDocumentUploadClient>();
             services.AddSingleton<ILegacyDocumentUploadClient>(sp => sp.GetRequiredService<CapturingLegacyDocumentUploadClient>());
 
+            services.RemoveAll<ISellingDocumentReferenceValidator>();
+            services.AddSingleton<CapturingSellingDocumentReferenceValidator>();
+            services.AddSingleton<ISellingDocumentReferenceValidator>(sp => sp.GetRequiredService<CapturingSellingDocumentReferenceValidator>());
+
             services.RemoveAll<IPublicBuyerAccountProvisioningService>();
             services.AddSingleton<CapturingPublicBuyerAccountProvisioningService>();
             services.AddSingleton<IPublicBuyerAccountProvisioningService>(
@@ -94,6 +100,10 @@ public sealed class LiensApiFactory : WebApplicationFactory<Program>
                 .ConfigurePrimaryHttpMessageHandler(() => new StubMedicareProcedureLookupHandler());
             services.AddHttpClient("Identity")
                 .ConfigurePrimaryHttpMessageHandler(() => new StubIdentityHandler());
+            services.AddHttpClient("IdentityService")
+                .ConfigurePrimaryHttpMessageHandler(() => new StubIdentityServiceHandler());
+            services.AddHttpClient("DocumentsService")
+                .ConfigurePrimaryHttpMessageHandler(() => new StubDocumentsServiceHandler());
         });
     }
 }
@@ -137,6 +147,51 @@ internal sealed class StubMedicareProcedureLookupHandler : HttpMessageHandler
         };
 }
 
+internal sealed class StubDocumentsServiceHandler : HttpMessageHandler
+{
+    private const string ViewToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    private const string DownloadToken = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+        var response = true switch
+        {
+            _ when path.EndsWith("/view-url", StringComparison.OrdinalIgnoreCase) => JsonResponse($$"""
+                {
+                  "data": {
+                    "accessToken": "{{ViewToken}}",
+                    "redeemUrl": "/access/{{ViewToken}}",
+                    "expiresInSeconds": 300,
+                    "type": "view"
+                  }
+                }
+                """),
+            _ when path.EndsWith("/download-url", StringComparison.OrdinalIgnoreCase) => JsonResponse($$"""
+                {
+                  "data": {
+                    "accessToken": "{{DownloadToken}}",
+                    "redeemUrl": "/access/{{DownloadToken}}",
+                    "expiresInSeconds": 300,
+                    "type": "download"
+                  }
+                }
+                """),
+            _ => new HttpResponseMessage(HttpStatusCode.NotFound)
+        };
+
+        return Task.FromResult(response);
+    }
+
+    private static HttpResponseMessage JsonResponse(string json)
+        => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
+        };
+}
+
 internal sealed class StubIdentityHandler : HttpMessageHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(
@@ -153,6 +208,85 @@ internal sealed class StubIdentityHandler : HttpMessageHandler
                 System.Text.Encoding.UTF8,
                 "application/json"),
         });
+    }
+}
+
+internal sealed class StubIdentityServiceHandler : HttpMessageHandler
+{
+    public const string ExpectedProvisioningToken = "liens-test-provisioning-token";
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        CancellationToken cancellationToken)
+    {
+        var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+        var expectedOrganizationPath = $"/api/admin/organizations/{SeedHelper.OrgId:D}";
+        var expectedTenantOwnerDisplayPath = "/api/internal/users/tenant-owner/display";
+        var expectedUserDisplayPath = $"/api/internal/users/{SeedHelper.UserId:D}/display";
+        if (string.Equals(path, expectedTenantOwnerDisplayPath, StringComparison.OrdinalIgnoreCase))
+        {
+            AssertProvisioningToken(request);
+            request.RequestUri?.Query.Should().Contain($"organizationId={SeedHelper.OrgId:D}");
+            request.RequestUri?.Query.Should().Contain($"tenantId={SeedHelper.TenantId:D}");
+            return Task.FromResult(JsonResponse($$"""
+                {
+                  "found": true,
+                  "tenantId": "{{SeedHelper.TenantId:D}}",
+                  "organizationId": "{{SeedHelper.OrgId:D}}",
+                  "userId": "{{SeedHelper.UserId:D}}",
+                  "email": "tenant.owner@rl-liens.test",
+                  "firstName": "Tenant",
+                  "lastName": "Owner",
+                  "displayName": "Tenant Owner",
+                  "organizationName": "RL Liens1",
+                  "organizationDisplayName": "RL Liens1"
+                }
+                """));
+        }
+
+        if (string.Equals(path, expectedUserDisplayPath, StringComparison.OrdinalIgnoreCase))
+        {
+            AssertProvisioningToken(request);
+            request.RequestUri?.Query.Should().Contain($"tenantId={SeedHelper.TenantId:D}");
+            request.RequestUri?.Query.Should().Contain($"organizationId={SeedHelper.OrgId:D}");
+            return Task.FromResult(JsonResponse($$"""
+                {
+                  "found": true,
+                  "userId": "{{SeedHelper.UserId:D}}",
+                  "tenantId": "{{SeedHelper.TenantId:D}}",
+                  "email": "seller.processor@rl-liens.test",
+                  "firstName": "Seller",
+                  "lastName": "Processor",
+                  "displayName": "Seller Processor"
+                }
+                """));
+        }
+
+        if (!string.Equals(path, expectedOrganizationPath, StringComparison.OrdinalIgnoreCase))
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        AssertProvisioningToken(request);
+        return Task.FromResult(JsonResponse($$"""
+            {
+              "id": "{{SeedHelper.OrgId:D}}",
+              "tenantId": "{{SeedHelper.TenantId:D}}",
+              "name": "RL Liens1",
+              "orgType": "Seller",
+              "isActive": true
+            }
+            """));
+    }
+
+    private static HttpResponseMessage JsonResponse(string json)
+        => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+        };
+
+    private static void AssertProvisioningToken(HttpRequestMessage request)
+    {
+        request.Headers.TryGetValues("X-Provisioning-Token", out var values).Should().BeTrue();
+        values.Should().Contain(ExpectedProvisioningToken);
     }
 }
 
@@ -243,6 +377,21 @@ internal sealed class CapturingNotificationPublisher : INotificationPublisher
             null,
             null));
     }
+}
+
+internal sealed class CapturingSellingDocumentReferenceValidator : ISellingDocumentReferenceValidator
+{
+    public HashSet<Guid> DeniedDocumentIds { get; } = [];
+
+    public Task<bool> IsAccessibleAsync(
+        Guid tenantId,
+        Guid sellerOrgId,
+        Guid actingUserId,
+        Guid lienId,
+        Guid? caseId,
+        Guid documentId,
+        CancellationToken ct = default)
+        => Task.FromResult(!DeniedDocumentIds.Contains(documentId));
 }
 
 internal sealed record CapturedEmail(

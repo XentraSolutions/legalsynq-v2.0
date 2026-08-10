@@ -10,7 +10,11 @@ public interface IDIYReportService
     Task DeleteReportAsync(Guid tenantId, Guid id, Guid userId, CancellationToken ct = default);
 
     /// <summary>Execute a DIY report filter query and return paginated case rows.</summary>
-    Task<DIYReportResult> RunReportAsync(Guid tenantId, DIYReportRunRequest request, CancellationToken ct = default);
+    Task<DIYReportResult> RunReportAsync(
+        Guid tenantId,
+        DIYReportRunRequest request,
+        bool includeAllItems = false,
+        CancellationToken ct = default);
 }
 
 public sealed class DIYReportRow
@@ -25,15 +29,33 @@ public sealed class DIYReportRow
     public string? Status       { get; init; }
     public string? CaseStatus   { get; init; }
     public DateOnly? DateOfLoss { get; init; }
+    public DateOnly? PurchaseDate { get; init; }
     public DateTime? DateClosed { get; init; }
     public DateOnly? InitialServiceDate { get; init; }
+    public DateOnly? EndServiceDate { get; init; }
+    public DateOnly? SettlementDate { get; init; }
+    public DateOnly? ReductionDate { get; init; }
+    public DateOnly? FirstPurchaseDate { get; init; }
+    public DateOnly? LastPurchaseDate { get; init; }
+    public int? DaysSincePurchase { get; init; }
     public decimal BillingAmount { get; init; }
     public decimal? PurchaseAmount { get; init; }
     public decimal? ReturnedAmount { get; init; }
+    public decimal? ReductionAmount { get; init; }
+    public decimal? RemainingBillingAmount { get; init; }
+    public decimal? ReductionPercentage { get; init; }
+    public decimal? GrossProfit { get; init; }
+    public decimal? Roi { get; init; }
+    public decimal? AnnualizedRoi { get; init; }
     public decimal? LienTotal   { get; init; }
     public int NumberOfLiens { get; init; }
     public decimal? ToSettleAmount { get; init; }
     public decimal? SettledAmount { get; init; }
+    public int? DaysSinceReductionApproval { get; init; }
+    public string MedicalFacility { get; init; } = string.Empty;
+    public string LawFirm { get; init; } = string.Empty;
+    public string CaseType { get; init; } = string.Empty;
+    public string CaseManager { get; init; } = string.Empty;
     public Dictionary<string, object?> Extra { get; init; } = new();
 }
 

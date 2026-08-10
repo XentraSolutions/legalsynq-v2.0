@@ -214,6 +214,11 @@ public sealed class ReportExecutionService : IReportExecutionService
                     formulas.Count, execution.Id);
             }
 
+            (columns, rows) = ReportResultProjection.Apply(
+                columns,
+                rows,
+                definition.ColumnConfigJson);
+
             var formattingRules = FormattingConfigParser.Parse(definition.FormattingConfigJson);
             List<Dictionary<string, string>>? formattedRows = null;
             if (formattingRules is not null && formattingRules.Count > 0)

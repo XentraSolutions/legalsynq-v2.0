@@ -2,6 +2,7 @@ using BuildingBlocks.Exceptions;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
+using Liens.Application.Search;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Microsoft.Extensions.Logging;
@@ -56,15 +57,17 @@ public sealed class LienService : ILienService
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 100) pageSize = 100;
 
+        var hasKeyword = !string.IsNullOrWhiteSpace(search);
+        var keyword = search?.Trim();
         var (items, totalCount) = await _lienRepo.SearchAsync(
             tenantId,
-            search,
+            hasKeyword ? null : search,
             status,
             lienType,
             caseId,
             facilityId,
-            page,
-            pageSize,
+            hasKeyword ? 1 : page,
+            hasKeyword ? FuzzySearchScorer.CandidateLimit : pageSize,
             ct,
             createdFromUtc,
             createdToUtc,
@@ -84,20 +87,42 @@ public sealed class LienService : ILienService
             .GroupBy(contact => contact.OrgId)
             .ToDictionary(group => group.Key, group => group.First());
 
+        var candidates = items.Select(item =>
+        {
+            var caseEntity = casesById.GetValueOrDefault(item.CaseId ?? Guid.Empty);
+            return new LienSearchCandidate(
+                item,
+                caseEntity,
+                facilitiesById.GetValueOrDefault(item.FacilityId ?? Guid.Empty),
+                ResolveLawFirmName(item, caseEntity, lawFirmById, lawFirmByOrgId),
+                ResolveCaseManagerName(caseEntity, caseManagerById));
+        }).ToList();
+
+        if (hasKeyword)
+        {
+            var matches = candidates
+                .Select(candidate => new { Candidate = candidate, Score = GetLienKeywordScore(candidate, keyword!) })
+                .Where(match => FuzzySearchScorer.IsAccepted(match.Score))
+                .OrderByDescending(match => match.Score.Value)
+                .ThenByDescending(match => match.Candidate.Lien.Id)
+                .ToList();
+
+            totalCount = matches.Count;
+            candidates = matches
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(match => match.Candidate)
+                .ToList();
+        }
+
         return new PaginatedResult<LienResponse>
         {
-            Items = items.Select(item => MapToResponse(
-                item,
-                caseEntity: casesById.GetValueOrDefault(item.CaseId ?? Guid.Empty),
-                facility: facilitiesById.GetValueOrDefault(item.FacilityId ?? Guid.Empty),
-                lawFirm: ResolveLawFirmName(
-                    item,
-                    casesById.GetValueOrDefault(item.CaseId ?? Guid.Empty),
-                    lawFirmById,
-                    lawFirmByOrgId),
-                caseManager: ResolveCaseManagerName(
-                    casesById.GetValueOrDefault(item.CaseId ?? Guid.Empty),
-                    caseManagerById))).ToList(),
+            Items = candidates.Select(candidate => MapToResponse(
+                candidate.Lien,
+                candidate.Case,
+                candidate.Facility,
+                candidate.LawFirm,
+                candidate.CaseManager)).ToList(),
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount,
@@ -186,7 +211,8 @@ public sealed class LienService : ILienService
             endServiceDate: request.EndServiceDate,
             isBulk: request.IsBulk,
             isServicing: request.IsServicing,
-            description: request.Description);
+            description: request.Description,
+            purchaseDate: request.PurchaseDate);
 
         await _lienRepo.AddAsync(entity, ct);
 
@@ -293,7 +319,8 @@ public sealed class LienService : ILienService
             endServiceDate: request.EndServiceDate ?? entity.EndServiceDate,
             isBulk: request.IsBulk ?? entity.IsBulk,
             isServicing: request.IsServicing ?? entity.IsServicing,
-            description: request.Description);
+            description: request.Description,
+            purchaseDate: request.PurchaseDate ?? entity.PurchaseDate);
 
         if (request.CaseId.HasValue)
             entity.AttachCase(request.CaseId.Value, actingUserId);
@@ -377,6 +404,32 @@ public sealed class LienService : ILienService
             ResolveCaseManagerName(caseEntity, caseManagerById));
     }
 
+    private sealed record LienSearchCandidate(
+        Lien Lien,
+        Case? Case,
+        Facility? Facility,
+        string? LawFirm,
+        string? CaseManager);
+
+    private static FuzzyMatchScore GetLienKeywordScore(LienSearchCandidate candidate, string keyword) =>
+        FuzzySearchScorer.Best(
+            FuzzySearchScorer.ScorePersonName(
+                candidate.Case?.ClientFirstName,
+                candidate.Case?.ClientLastName,
+                keyword),
+            FuzzySearchScorer.ScorePersonName(
+                candidate.Lien.SubjectFirstName,
+                candidate.Lien.SubjectLastName,
+                keyword),
+            FuzzySearchScorer.ScoreFields(
+                keyword,
+                candidate.Lien.LienNumber,
+                candidate.Lien.ExternalReference,
+                candidate.Lien.Description,
+                candidate.LawFirm,
+                candidate.CaseManager,
+                candidate.Facility?.Name));
+
     private static LienResponse MapToResponse(
         Lien entity,
         Case? caseEntity = null,
@@ -413,7 +466,7 @@ public sealed class LienService : ILienService
             BuyingOrgId = entity.BuyingOrgId,
             HoldingOrgId = entity.HoldingOrgId,
             IncidentDate = entity.IncidentDate,
-            PurchaseDate = entity.IncidentDate?.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture),
+            PurchaseDate = entity.PurchaseDate?.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture),
             InitialServiceDate = entity.InitialServiceDate,
             EndServiceDate = entity.EndServiceDate,
             TotalPurchase = null,

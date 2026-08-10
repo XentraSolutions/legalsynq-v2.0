@@ -3,8 +3,10 @@ namespace CareConnect.Application.DTOs;
 public class ProviderResponse
 {
     public Guid    Id                { get; set; }
+    public Guid?   FacilityId        { get; set; }
     public Guid    TenantId          { get; set; }
     public string  Name              { get; set; } = string.Empty;
+    public string? Title             { get; set; }
     public string? OrganizationName  { get; set; }
 
     /// <summary>
@@ -18,10 +20,15 @@ public class ProviderResponse
     public string  AddressLine1      { get; set; } = string.Empty;
     public string  City              { get; set; } = string.Empty;
     public string  State             { get; set; } = string.Empty;
-    public string  PostalCode        { get; set; } = string.Empty;
+    public string? PostalCode        { get; set; }
+    public bool    IsMobile          { get; set; }
+    public double? ServiceRadiusMiles { get; set; }
+    public string? ServiceAreaLabel  { get; set; }
     public bool    IsActive          { get; set; }
     public bool    AcceptingReferrals { get; set; }
     public List<string> Categories   { get; set; } = new();
+    public List<SpecialtyResponse> Specialties { get; set; } = new();
+    public List<Guid> SpecialtyIds  { get; set; } = new();
 
     public double?   Latitude        { get; set; }
     public double?   Longitude       { get; set; }
@@ -30,6 +37,9 @@ public class ProviderResponse
     public bool      HasGeoLocation  { get; set; }
 
     public string?   PrimaryCategory  { get; set; }
+    public string?   PrimarySpecialty  { get; set; }
+    public Guid?     PrimarySpecialtyId { get; set; }
+    public double?   DistanceMiles     { get; set; }
     public string    DisplayLabel     { get; set; } = string.Empty;
     public string    MarkerSubtitle   { get; set; } = string.Empty;
 

@@ -1,4 +1,4 @@
-import { lienTasksApi } from './lien-tasks.api';
+import { lienTasksApi } from "./lien-tasks.api";
 import type {
   TaskDto,
   PaginatedTasksDto,
@@ -7,12 +7,12 @@ import type {
   AssignTaskRequest,
   TaskStatus,
   TasksQuery,
-} from './lien-tasks.types';
+} from "./lien-tasks.types";
 
 export const lienTasksService = {
-  async getTasks(query: TasksQuery = {}): Promise<PaginatedTasksDto> {
+  async getTasks(query: TasksQuery = {}): Promise<{ items: TaskDto[] }> {
     const { data } = await lienTasksApi.list(query);
-    return data;
+    return { items: data.data };
   },
 
   async getTask(id: string): Promise<TaskDto> {
@@ -25,8 +25,12 @@ export const lienTasksService = {
     return data;
   },
 
-  async updateTask(id: string, request: UpdateTaskRequest): Promise<TaskDto> {
-    const { data } = await lienTasksApi.update(id, request);
+  async updateTask(request: UpdateTaskRequest): Promise<TaskDto> {
+    const { data } = await lienTasksApi.update(request);
+    return data;
+  },
+  async deleteTask(id: string): Promise<TaskDto> {
+    const { data } = await lienTasksApi.delete(id);
     return data;
   },
 

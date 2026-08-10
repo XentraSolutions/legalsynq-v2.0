@@ -59,14 +59,21 @@ const buyerPortalData: PublicBuyerPortalData = {
     phone: "3105551212",
   },
   case: {
-    handlingLawFirm: "RL Liens1",
+    handlingLawFirm: "Anderson & Ashworth Law Firm LLC",
+    handlingLawFirmContactName: "Anderson Contact",
+    handlingLawFirmEmail: "anderson.contact@ashworthlaw.test",
     caseManager: "Case Manager",
   },
   documents: [
     {
+      id: "019f8a97-aa3d-70ef-a549-a7710b38d4b5",
       fileName: "signed-lien-real.pdf",
       category: "Lien Document",
       sizeOrType: "PDF",
+      viewUrl:
+        "/api/lien/api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/view",
+      downloadUrl:
+        "/api/lien/api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/download",
     },
   ],
 };
@@ -139,7 +146,31 @@ describe("PublicBuyerPortalPage", () => {
     expect(screen.getByText("Seller Information")).toBeInTheDocument();
     expect(screen.getAllByText("RL Liens1").length).toBeGreaterThan(0);
     expect(screen.getByText("Funding Company & Case Information")).toBeInTheDocument();
+    expect(screen.getByText("Anderson & Ashworth Law Firm LLC")).toBeInTheDocument();
+    expect(screen.getByText("Anderson Contact")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "anderson.contact@ashworthlaw.test" })).toHaveAttribute(
+      "href",
+      "mailto:anderson.contact@ashworthlaw.test",
+    );
     expect(screen.getByText("signed-lien-real.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View signed-lien-real.pdf" })).toHaveAttribute(
+      "href",
+      "/api/lien/api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/view",
+    );
+    expect(screen.getByRole("link", { name: "View signed-lien-real.pdf" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+    expect(screen.getByRole("link", { name: "View signed-lien-real.pdf" })).toHaveAttribute(
+      "rel",
+      "noopener noreferrer",
+    );
+    const downloadLink = screen.getByRole("link", { name: "Download signed-lien-real.pdf" });
+    expect(downloadLink).toHaveAttribute(
+      "href",
+      "/api/lien/api/liens/selling/public/token-abc/documents/019f8a97-aa3d-70ef-a549-a7710b38d4b5/download",
+    );
+    expect(downloadLink).not.toHaveAttribute("target");
     expect(screen.queryByText("John Doe")).not.toBeInTheDocument();
     expect(screen.queryByText("Velantrix")).not.toBeInTheDocument();
   });
@@ -213,6 +244,8 @@ describe("PublicBuyerPortalPage", () => {
         },
         case: {
           handlingLawFirm: "Smith & Associates LLP",
+          handlingLawFirmContactName: "Sarah Mitchell",
+          handlingLawFirmEmail: "s.mitchell@crestfield.com",
           caseManager: "Case Manager",
         },
         documents: [],
@@ -232,6 +265,13 @@ describe("PublicBuyerPortalPage", () => {
     expect(screen.getByText("Buyer Information")).toBeInTheDocument();
     expect(screen.getByText("Buyer Reviewer")).toBeInTheDocument();
     expect(screen.getAllByText("Capital Fund LLC").length).toBeGreaterThan(0);
+    expect(screen.getByText("Case Information")).toBeInTheDocument();
+    expect(screen.getByText("Smith & Associates LLP")).toBeInTheDocument();
+    expect(screen.getByText("Sarah Mitchell")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "s.mitchell@crestfield.com" })).toHaveAttribute(
+      "href",
+      "mailto:s.mitchell@crestfield.com",
+    );
     expect(screen.queryByRole("link", { name: "Activate Free Account" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Accept Lien" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Decline Lien" })).not.toBeInTheDocument();

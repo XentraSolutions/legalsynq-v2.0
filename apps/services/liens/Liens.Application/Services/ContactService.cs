@@ -162,7 +162,14 @@ public sealed class ContactService : IContactService
                 tenantId, orgId, request.ContactType,
                 firstName, lastName, actingUserId,
                 resolvedFacilityId, request.LawFirmId, request.ContactSubtype,
-                request.Title, ResolveOrganization(request.Organization, parentLawFirm),
+                request.Title, ResolveOrganization(
+                    request.Organization,
+                    parentLawFirm,
+                    request.ContactType,
+                    request.ContactSubtype,
+                    request.LawFirmId,
+                    firstName,
+                    lastName),
                 request.Email, request.Phone, request.Fax, request.Website,
                 request.AddressLine1, request.City, request.State, request.PostalCode,
                 request.Notes);
@@ -269,7 +276,20 @@ public sealed class ContactService : IContactService
             entity.Update(
                 firstName, lastName, request.ContactType, actingUserId,
                 resolvedFacilityId, request.LawFirmId, request.ContactSubtype,
-                request.Title, ResolveOrganization(request.Organization, parentLawFirm),
+                request.Title, ResolveOrganization(
+                    request.Organization,
+                    parentLawFirm,
+                    request.ContactType,
+                    request.ContactSubtype,
+                    request.LawFirmId,
+                    firstName,
+                    lastName,
+                    IsStandaloneLawFirm(entity.ContactType, entity.ContactSubtype, entity.LawFirmId)
+                        ? entity.Organization
+                        : null,
+                    IsStandaloneLawFirm(entity.ContactType, entity.ContactSubtype, entity.LawFirmId)
+                        ? entity.DisplayName
+                        : null),
                 request.Email, request.Phone, request.Fax, request.Website,
                 request.AddressLine1, request.City, request.State, request.PostalCode,
                 request.Notes);
@@ -380,12 +400,35 @@ public sealed class ContactService : IContactService
         UpdatedAtUtc = entity.UpdatedAtUtc,
     };
 
-    private static string? ResolveOrganization(string? organization, Contact? parentLawFirm)
+    private static string? ResolveOrganization(
+        string? organization,
+        Contact? parentLawFirm,
+        string contactType,
+        string? contactSubtype,
+        Guid? lawFirmId,
+        string firstName,
+        string lastName,
+        string? existingStandaloneLawFirmOrganization = null,
+        string? existingStandaloneLawFirmDisplayName = null)
     {
         if (!string.IsNullOrWhiteSpace(organization))
             return organization;
 
-        return parentLawFirm?.Organization ?? parentLawFirm?.DisplayName;
+        if (parentLawFirm is not null)
+            return parentLawFirm.Organization ?? parentLawFirm.DisplayName;
+
+        if (!IsStandaloneLawFirm(contactType, contactSubtype, lawFirmId))
+            return null;
+
+        if (!string.IsNullOrWhiteSpace(existingStandaloneLawFirmOrganization) &&
+            !string.Equals(
+                existingStandaloneLawFirmOrganization.Trim(),
+                existingStandaloneLawFirmDisplayName?.Trim(),
+                StringComparison.Ordinal))
+            return existingStandaloneLawFirmOrganization;
+
+        return string.Join(' ', new[] { firstName.Trim(), lastName.Trim() }
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
     }
 
     private static (string FirstName, string LastName) ResolveContactNames(

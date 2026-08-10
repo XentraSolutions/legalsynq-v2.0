@@ -175,10 +175,12 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
 .RequireAuthorization(Policies.AuthenticatedUser);
 
 app.MapLienEndpoints();
+app.MapLegacyDocumentLinkEndpoints();
 app.MapAssistantToolEndpoints();
 app.MapLienOfferEndpoints();
 app.MapSellingPublicEndpoints();
 app.MapSellingEndpoints();
+app.MapSellingV2Endpoints();
 app.MapSellingAnalyticsEndpoints();
 app.MapBillOfSaleEndpoints();
 app.MapBatchUploadEndpoints();

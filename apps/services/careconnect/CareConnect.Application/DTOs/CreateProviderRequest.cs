@@ -3,6 +3,7 @@ namespace CareConnect.Application.DTOs;
 public class CreateProviderRequest
 {
     public string  Name             { get; set; } = string.Empty;
+    public string? Title            { get; set; }
     public string? OrganizationName { get; set; }
     public string  Email            { get; set; } = string.Empty;
     public string  Phone            { get; set; } = string.Empty;
@@ -13,6 +14,7 @@ public class CreateProviderRequest
     public bool    IsActive         { get; set; } = true;
     public bool    AcceptingReferrals { get; set; } = true;
     public List<Guid> CategoryIds   { get; set; } = new();
+    public List<Guid> SpecialtyIds  { get; set; } = new();
 
     public double? Latitude         { get; set; }
     public double? Longitude        { get; set; }

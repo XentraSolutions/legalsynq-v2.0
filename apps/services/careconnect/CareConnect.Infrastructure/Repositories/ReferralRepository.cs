@@ -73,7 +73,20 @@ public class ReferralRepository : IReferralRepository
         }
 
         if (!string.IsNullOrWhiteSpace(query.Status))
-            q = q.Where(r => r.Status == query.Status);
+        {
+            // Comma-separated values group multiple raw statuses under one filter option
+            // (e.g. the Representative Portal's "Pending" = New,NewOpened) without needing
+            // a separate grouped-status concept on the domain model.
+            // List<T>, not string[]: EF's LINQ interpreter mis-evaluates array.Contains(x) in
+            // .NET 10 (it resolves to MemoryExtensions.Contains(ReadOnlySpan<T>, T), which the
+            // parameter-extracting expression visitor cannot compile — see TypeLoadException on
+            // 'System.ReadOnlySpan`1[System.String]'). List<T>.Contains is an unambiguous
+            // instance method and EF translates it to SQL IN exactly the same way.
+            var statuses = query.Status
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+            q = q.Where(r => statuses.Contains(r.Status));
+        }
 
         if (query.ProviderId.HasValue)
             q = q.Where(r => r.ProviderId == query.ProviderId.Value);
@@ -164,6 +177,19 @@ public class ReferralRepository : IReferralRepository
                 r.ReceivingOrganizationId == query.ReceivingOrgId.Value ||
                 (r.Provider != null && r.Provider.OrganizationId == query.ReceivingOrgId.Value));
 
+        if (query.ReferralAttributionId.HasValue)
+            q = q.Where(r => r.ReferralAttributionId == query.ReferralAttributionId.Value);
+
+        // Referral Representative visibility scope — applied last, unconditionally, on top of
+        // whichever branch built `q` above. This is the single enforcement point: every caller
+        // of SearchAsync that sets RestrictedToAttributionIds is scoped here, with no code path
+        // that can reach the return below without passing through this filter.
+        if (query.RestrictedToAttributionIds is not null)
+        {
+            var allowedIds = query.RestrictedToAttributionIds;
+            q = q.Where(r => r.ReferralAttributionId != null && allowedIds.Contains(r.ReferralAttributionId.Value));
+        }
+
         var totalCount = await q.CountAsync(ct);
 
         var skip = (query.Page - 1) * query.PageSize;
@@ -172,6 +198,8 @@ public class ReferralRepository : IReferralRepository
             .Skip(skip)
             .Take(query.PageSize)
             .Include(r => r.Provider)
+            .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
             .ToListAsync(ct);
 
         return (items, totalCount);
@@ -208,6 +236,25 @@ public class ReferralRepository : IReferralRepository
             .AsNoTracking()
             .Where(r => r.TenantId == tenantId && r.Id == id)
             .Include(r => r.Provider)
+            .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<Referral?> GetByIdForAttributionsAsync(Guid tenantId, Guid id, IReadOnlyList<Guid> allowedAttributionIds, CancellationToken ct = default)
+    {
+        if (allowedAttributionIds.Count == 0)
+            return null;
+
+        return await _db.Referrals
+            .AsNoTracking()
+            .Where(r => r.TenantId == tenantId
+                     && r.Id == id
+                     && r.ReferralAttributionId != null
+                     && allowedAttributionIds.Contains(r.ReferralAttributionId.Value))
+            .Include(r => r.Provider)
+            .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
             .FirstOrDefaultAsync(ct);
     }
 
@@ -217,6 +264,8 @@ public class ReferralRepository : IReferralRepository
             .AsNoTracking()
             .Where(r => r.Id == id)
             .Include(r => r.Provider)
+            .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
             .FirstOrDefaultAsync(ct);
     }
 

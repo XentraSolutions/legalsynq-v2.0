@@ -46,6 +46,69 @@ interface PublicNetworkViewProps {
 
 type ViewMode = 'split' | 'list' | 'map';
 
+interface SearchLocation {
+  latitude:  number;
+  longitude: number;
+  label:     string;
+}
+
+type ProviderWithDistance = PublicProviderItem & { distanceMiles?: number | null };
+
+function usableCoordinates(point: { latitude: number; longitude: number }): { latitude: number; longitude: number } | null {
+  const latitude = Number(point.latitude);
+  const longitude = Number(point.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude === 0 && longitude === 0) return null;
+  return { latitude, longitude };
+}
+
+function distanceMilesBetween(a: SearchLocation, b: { latitude: number; longitude: number }): number {
+  const toRad = (deg: number) => deg * Math.PI / 180;
+  const radiusMiles = 3958.7613;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const clamped = Math.min(1, Math.max(0, h));
+  return 2 * radiusMiles * Math.atan2(Math.sqrt(clamped), Math.sqrt(1 - clamped));
+}
+
+function getProviderIdentity(provider: { name: string; organizationName?: string | null }) {
+  const providerName = provider.name.trim();
+  const organizationName = provider.organizationName?.trim() ?? '';
+  const hasDistinctOrganization =
+    organizationName.length > 0 && organizationName.toLowerCase() !== providerName.toLowerCase();
+
+  return {
+    primary: organizationName || providerName,
+    secondary: hasDistinctOrganization ? providerName : null,
+  };
+}
+
+function providerEntryId(provider: { id: string; networkProviderId?: string | null }): string {
+  return provider.networkProviderId || provider.id;
+}
+
+function providerIdentityId(provider: { id: string; providerId?: string | null }): string {
+  return provider.providerId || provider.id;
+}
+
+function compareProvidersByDistance(a: ProviderWithDistance, b: ProviderWithDistance): number {
+  const aDistance = typeof a.distanceMiles === 'number' && Number.isFinite(a.distanceMiles)
+    ? a.distanceMiles
+    : Number.POSITIVE_INFINITY;
+  const bDistance = typeof b.distanceMiles === 'number' && Number.isFinite(b.distanceMiles)
+    ? b.distanceMiles
+    : Number.POSITIVE_INFINITY;
+
+  if (aDistance !== bDistance) return aDistance - bDistance;
+  return getProviderIdentity(a).primary.localeCompare(getProviderIdentity(b).primary);
+}
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export function PublicNetworkView({
@@ -57,6 +120,11 @@ export function PublicNetworkView({
   prefillLawFirm,
 }: PublicNetworkViewProps) {
   const [search,      setSearch]      = useState('');
+  const [zipInput,    setZipInput]    = useState('');
+  const [selectedSpecialtyCode, setSelectedSpecialtyCode] = useState('');
+  const [searchLocation, setSearchLocation] = useState<SearchLocation | null>(null);
+  const [zipLoading,  setZipLoading]  = useState(false);
+  const [zipError,    setZipError]    = useState<string | null>(null);
   const [viewMode,    setViewMode]    = useState<ViewMode>('split');
   const [showAll,     setShowAll]     = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -81,8 +149,9 @@ export function PublicNetworkView({
   useEffect(() => {
     if (detail.providers.length === 0) return;
     const missing = detail.providers.filter(p => {
-      const m = detail.markers.find(mk => mk.id === p.id);
-      return !m || (m.latitude === 0 && m.longitude === 0);
+      const entryId = providerEntryId(p);
+      const m = detail.markers.find(mk => providerEntryId(mk) === entryId);
+      return !m || !usableCoordinates(m);
     });
     if (missing.length === 0) return;
 
@@ -100,9 +169,23 @@ export function PublicNetworkView({
             if (suggestions.length === 0) return;
             const { latitude, longitude } = suggestions[0];
             results.push({
-              id: p.id, name: p.name, organizationName: p.organizationName,
+              id: p.id,
+              networkProviderId: providerEntryId(p),
+              providerId: providerIdentityId(p),
+              facilityId: p.facilityId,
+              name: p.name,
+              title: p.title,
+              organizationName: p.organizationName,
+              facilityName: p.facilityName,
               city: p.city, state: p.state, acceptingReferrals: p.acceptingReferrals,
               latitude, longitude,
+              specialties: p.specialties ?? [],
+              primarySpecialtyId: p.primarySpecialtyId ?? null,
+              primarySpecialty: p.primarySpecialty ?? null,
+              distanceMiles: null,
+              isMobile: p.isMobile,
+              serviceRadiusMiles: p.serviceRadiusMiles,
+              serviceAreaLabel: p.serviceAreaLabel,
             });
           } catch { /* ignore */ }
         }),
@@ -116,30 +199,51 @@ export function PublicNetworkView({
 
   const markerById = useMemo<Record<string, PublicProviderMarker>>(() => {
     const m: Record<string, PublicProviderMarker> = {};
-    for (const mk of markers) m[mk.id] = mk;
+    for (const mk of markers) m[providerEntryId(mk)] = mk;
     return m;
   }, [markers]);
 
-  const filtered = useMemo(() => {
-    let list = detail.providers;
+  const filtered = useMemo<ProviderWithDistance[]>(() => {
+    let list: ProviderWithDistance[] = detail.providers;
     if (!showAll) list = list.filter(p => p.acceptingReferrals);
     const q = search.trim().toLowerCase();
     if (q) list = list.filter(p =>
       p.name.toLowerCase().includes(q) ||
       (p.organizationName?.toLowerCase().includes(q) ?? false) ||
       p.city.toLowerCase().includes(q) ||
-      p.state.toLowerCase().includes(q),
+      p.state.toLowerCase().includes(q) ||
+      (p.primarySpecialty?.toLowerCase().includes(q) ?? false) ||
+      (p.specialties ?? []).some(s => s.name.toLowerCase().includes(q)),
     );
+    if (selectedSpecialtyCode) {
+      list = list.filter(p => (p.specialties ?? []).some(s => s.code === selectedSpecialtyCode));
+    }
+    if (searchLocation) {
+      const withDistances: ProviderWithDistance[] = [];
+      for (const p of list) {
+        const mk = markerById[providerEntryId(p)];
+        if (!mk) continue;
+        const coordinates = usableCoordinates(mk);
+        if (!coordinates) continue;
+        withDistances.push({
+          ...p,
+          distanceMiles: distanceMilesBetween(searchLocation, coordinates),
+        });
+      }
+      list = withDistances.sort(compareProvidersByDistance);
+    }
     return list;
-  }, [detail.providers, search, showAll]);
+  }, [detail.providers, search, showAll, selectedSpecialtyCode, searchLocation, markerById]);
 
   const displayedMarkers = useMemo<NumberedMarker[]>(() => {
     const result: NumberedMarker[] = [];
     let idx = 1;
     for (const p of filtered) {
-      const mk = markerById[p.id];
-      if (mk && (mk.latitude !== 0 || mk.longitude !== 0)) {
-        result.push({ ...mk, index: idx++ });
+      const entryId = providerEntryId(p);
+      const mk = markerById[entryId];
+      const coordinates = mk ? usableCoordinates(mk) : null;
+      if (mk && coordinates) {
+        result.push({ ...mk, id: entryId, ...coordinates, distanceMiles: p.distanceMiles ?? mk.distanceMiles, index: idx++ });
       }
     }
     return result;
@@ -147,6 +251,41 @@ export function PublicNetworkView({
 
   const indexFor = (id: string) =>
     displayedMarkers.find(m => m.id === id)?.index ?? null;
+
+  async function applyZipFilter() {
+    const value = zipInput.trim();
+    if (!value) {
+      setSearchLocation(null);
+      setZipError(null);
+      return;
+    }
+    setZipLoading(true);
+    setZipError(null);
+    try {
+      const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(value)}&loose=1`);
+      if (!res.ok) throw new Error('Unable to geocode ZIP code.');
+      const suggestions = await res.json() as Array<{ latitude: number; longitude: number }>;
+      if (suggestions.length === 0) throw new Error('No matching ZIP code was found.');
+      setSearchLocation({
+        latitude: suggestions[0].latitude,
+        longitude: suggestions[0].longitude,
+        label: value,
+      });
+    } catch (err) {
+      setSearchLocation(null);
+      setZipError(err instanceof Error ? err.message : 'Unable to geocode ZIP code.');
+    } finally {
+      setZipLoading(false);
+    }
+  }
+
+  function clearFilters() {
+    setSearch('');
+    setZipInput('');
+    setSelectedSpecialtyCode('');
+    setSearchLocation(null);
+    setZipError(null);
+  }
 
   function toggleSelect(id: string) {
     setSelectedIds(prev => {
@@ -162,11 +301,11 @@ export function PublicNetworkView({
   }
 
   function handleMapReferral(m: PublicProviderMarker) {
-    toggleSelect(m.id);
+    toggleSelect(providerEntryId(m));
   }
 
-  const selectedProviders = detail.providers.filter(p => selectedIds.has(p.id));
-  const hasMarkers        = markers.some(m => m.latitude !== 0 || m.longitude !== 0);
+  const selectedProviders = detail.providers.filter(p => selectedIds.has(providerEntryId(p)));
+  const hasMarkers        = displayedMarkers.length > 0 || !!searchLocation;
   const shownCount        = filtered.length;
 
   return (
@@ -232,6 +371,41 @@ export function PublicNetworkView({
             />
           </div>
 
+          <input
+            type="text"
+            aria-label="ZIP code"
+            value={zipInput}
+            onChange={e => setZipInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && void applyZipFilter()}
+            placeholder="ZIP"
+            className="w-24 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+                       focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-900/30
+                       placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white flex-shrink-0"
+          />
+
+          <button
+            onClick={() => void applyZipFilter()}
+            disabled={zipLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg flex-shrink-0 transition-colors
+                       bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 disabled:opacity-50"
+          >
+            {zipLoading ? 'Finding…' : 'Apply ZIP'}
+          </button>
+
+          <select
+            aria-label="Specialty"
+            value={selectedSpecialtyCode}
+            onChange={e => setSelectedSpecialtyCode(e.target.value)}
+            className="w-40 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+                       focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-900/30
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white flex-shrink-0"
+          >
+            <option value="">All specialties</option>
+            {(detail.specialties ?? []).map(s => (
+              <option key={s.id} value={s.code}>{s.name}</option>
+            ))}
+          </select>
+
           {/* Filter */}
           <button
             onClick={() => setShowAll(v => !v)}
@@ -246,6 +420,13 @@ export function PublicNetworkView({
             {showAll ? 'All providers' : 'Accepting only'}
           </button>
 
+          <button
+            onClick={clearFilters}
+            className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0"
+          >
+            Clear
+          </button>
+
           <span className="text-xs text-gray-400 font-medium flex-shrink-0">
             {shownCount} of {detail.providers.length}
           </span>
@@ -257,6 +438,9 @@ export function PublicNetworkView({
             </span>
           )}
         </div>
+        {zipError && (
+          <p className="px-5 pb-2 text-xs text-red-600 dark:text-red-400">{zipError}</p>
+        )}
       </header>
 
       {/* ── Body: left content + right panel ───────────────────────────────── */}
@@ -273,25 +457,28 @@ export function PublicNetworkView({
                 {filtered.length === 0 ? (
                   <div className="p-6 text-center">
                     <i className="ri-map-pin-line text-2xl text-gray-300 dark:text-gray-600 mb-2 block" />
-                    <p className="text-sm text-gray-400">No providers match your search</p>
+                    <p className="text-sm text-gray-400">No providers found.</p>
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {filtered.map((provider, i) => (
-                      <ProviderCard
-                        key={provider.id}
-                        provider={provider}
-                        number={indexFor(provider.id) ?? i + 1}
-                        selected={selectedIds.has(provider.id)}
-                        hovered={hoveredId === provider.id}
-                        compact
-                        tenantId={tenantId}
-                        onHover={setHovered}
-                        onToggle={toggleSelect}
-                        onClick={() => { setHovered(provider.id); setZoomToId(provider.id); }}
-                        ref={el => { cardRefs.current[provider.id] = el; }}
-                      />
-                    ))}
+                    {filtered.map((provider, i) => {
+                      const entryId = providerEntryId(provider);
+                      return (
+                        <ProviderCard
+                          key={entryId}
+                          provider={provider}
+                          number={indexFor(entryId) ?? i + 1}
+                          selected={selectedIds.has(entryId)}
+                          hovered={hoveredId === entryId}
+                          compact
+                          tenantId={tenantId}
+                          onHover={setHovered}
+                          onToggle={toggleSelect}
+                          onClick={() => { setHovered(entryId); setZoomToId(entryId); }}
+                          ref={el => { cardRefs.current[entryId] = el; }}
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -304,6 +491,7 @@ export function PublicNetworkView({
                     selectedId={hoveredId}
                     zoomToId={zoomToId}
                     onZoomed={() => setZoomToId(null)}
+                    searchLocation={searchLocation}
                     onSelect={handleMapSelect}
                     onRequestReferral={handleMapReferral}
                   />
@@ -322,24 +510,27 @@ export function PublicNetworkView({
               {filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <i className="ri-map-pin-line text-3xl text-gray-300 dark:text-gray-600 mb-3 block" />
-                  <p className="text-sm text-gray-400">No providers match your search</p>
+                  <p className="text-sm text-gray-400">No providers found.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
-                  {filtered.map((provider, i) => (
-                    <ProviderCard
-                      key={provider.id}
-                      provider={provider}
-                      number={indexFor(provider.id) ?? i + 1}
-                      selected={selectedIds.has(provider.id)}
-                      hovered={hoveredId === provider.id}
-                      compact={false}
-                      tenantId={tenantId}
-                      onHover={setHovered}
-                      onToggle={toggleSelect}
-                      ref={el => { cardRefs.current[provider.id] = el; }}
-                    />
-                  ))}
+                  {filtered.map((provider, i) => {
+                    const entryId = providerEntryId(provider);
+                    return (
+                      <ProviderCard
+                        key={entryId}
+                        provider={provider}
+                        number={indexFor(entryId) ?? i + 1}
+                        selected={selectedIds.has(entryId)}
+                        hovered={hoveredId === entryId}
+                        compact={false}
+                        tenantId={tenantId}
+                        onHover={setHovered}
+                        onToggle={toggleSelect}
+                        ref={el => { cardRefs.current[entryId] = el; }}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -352,6 +543,7 @@ export function PublicNetworkView({
                 <PublicNetworkMap
                   markers={displayedMarkers}
                   selectedId={hoveredId}
+                  searchLocation={searchLocation}
                   onSelect={handleMapSelect}
                   onRequestReferral={handleMapReferral}
                 />
@@ -394,10 +586,18 @@ const ProviderCard = forwardRef<
     onClick?: () => void;
   }
 >(function ProviderCard({ provider, number, selected, hovered, compact, tenantId, onHover, onToggle, onClick }, ref) {
+  const identity = getProviderIdentity(provider);
+  const entryId = providerEntryId(provider);
+  const facilityName = provider.facilityName?.trim() ?? '';
+  const showFacilityName =
+    facilityName.length > 0 &&
+    facilityName.toLowerCase() !== identity.primary.toLowerCase() &&
+    facilityName.toLowerCase() !== (identity.secondary ?? '').toLowerCase();
+
   return (
     <div
       ref={ref}
-      onMouseEnter={() => onHover(provider.id)}
+      onMouseEnter={() => onHover(entryId)}
       onMouseLeave={() => onHover(null)}
       onClick={onClick}
       className={[
@@ -425,17 +625,28 @@ const ProviderCard = forwardRef<
         {/* Info */}
         <div className="flex-1 min-w-0">
           <p className={['font-semibold text-gray-900 dark:text-white leading-tight', compact ? 'text-sm' : 'text-base'].join(' ')}>
-            {provider.name}
+            {identity.primary}
           </p>
-          {provider.organizationName && (
+          {identity.secondary && (
             <p className={['text-gray-500 dark:text-gray-400 mt-0.5 truncate', compact ? 'text-xs' : 'text-sm'].join(' ')}>
-              {provider.organizationName}
+              {identity.secondary}
+            </p>
+          )}
+          {showFacilityName && (
+            <p className={['text-gray-500 dark:text-gray-400 mt-0.5 truncate', compact ? 'text-xs' : 'text-sm'].join(' ')}>
+              {facilityName}
             </p>
           )}
           <p className={['text-gray-400 dark:text-gray-500 mt-0.5', compact ? 'text-xs' : 'text-sm'].join(' ')}>
-            {provider.city}, {provider.state}
-            {!compact && provider.postalCode ? ` ${provider.postalCode}` : ''}
+            {provider.isMobile
+              ? `Mobile · ${[provider.serviceAreaLabel, `${provider.city}, ${provider.state}`].filter(Boolean).join(' · ')}${!compact && provider.serviceRadiusMiles ? ` · ${provider.serviceRadiusMiles}mi radius` : ''}`
+              : <>{provider.city}, {provider.state}{!compact && provider.postalCode ? ` ${provider.postalCode}` : ''}</>}
           </p>
+          {typeof provider.distanceMiles === 'number' && Number.isFinite(provider.distanceMiles) && (
+            <p className={['text-blue-600 dark:text-blue-400 mt-0.5 font-medium', compact ? 'text-xs' : 'text-sm'].join(' ')}>
+              {provider.distanceMiles.toFixed(1)} mi away
+            </p>
+          )}
           {provider.phone && !compact && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5">
               <i className="ri-phone-line text-gray-400 dark:text-gray-500 text-xs" />
@@ -446,13 +657,8 @@ const ProviderCard = forwardRef<
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{provider.phone}</p>
           )}
 
-          {/* Badges */}
+          {/* Status */}
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {provider.primaryCategory && (
-              <span className={['bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full font-medium', compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5'].join(' ')}>
-                {provider.primaryCategory}
-              </span>
-            )}
             <span className={[
               'rounded-full font-medium flex items-center gap-1',
               compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5',
@@ -468,11 +674,25 @@ const ProviderCard = forwardRef<
             </span>
           </div>
 
+          {/* Specialties */}
+          {(provider.specialties ?? []).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {(provider.specialties ?? []).map(s => (
+                <span key={s.id} className={['bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full font-medium', compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5'].join(' ')}>
+                  {s.name}
+                </span>
+              ))}
+            </div>
+          )}
+
         </div>
 
         {/* Select button */}
         <button
-          onClick={() => onToggle(provider.id)}
+          onClick={e => {
+            e.stopPropagation();
+            onToggle(entryId);
+          }}
           className={[
             'flex-shrink-0 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1',
             compact ? 'px-2 py-1' : 'px-3 py-1.5',
@@ -520,6 +740,7 @@ interface ReferralForm {
   urgency:              ReferralUrgencyValue;
   serviceType:          string;
   treatmentTypeId:      string;
+  referralAttributionId: string;
   notes:                string;
   firmName:             string;
   contactFirstName:     string;
@@ -534,6 +755,7 @@ const EMPTY_FORM: ReferralForm = {
   urgency: 'Normal',
   serviceType: 'General Referral',
   treatmentTypeId: '',
+  referralAttributionId: '',
   notes: '',
   firmName: '', contactFirstName: '', contactLastName: '', email: '', phone: '',
 };
@@ -543,6 +765,7 @@ type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error' | 'acc
 interface CreatedReferralUploadTarget {
   referralId: string;
   providerId: string;
+  fileKey:    string;
 }
 
 function extractApiErrorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
@@ -559,6 +782,7 @@ function extractApiErrorMessage(err: unknown, fallback = 'Something went wrong. 
 function toCreatedReferralUploadTarget(
   value: unknown,
   fallbackProviderId: string,
+  fileKey: string,
 ): CreatedReferralUploadTarget {
   if (!value || typeof value !== 'object') {
     throw new Error('Referral created, but the server returned an unexpected response.');
@@ -580,7 +804,7 @@ function toCreatedReferralUploadTarget(
     throw new Error('Referral created, but the response did not include a referral id.');
   }
 
-  return { referralId, providerId };
+  return { referralId, providerId, fileKey };
 }
 
 function ReferralPanel({
@@ -605,6 +829,7 @@ function ReferralPanel({
   const [hasPortalAccess, setHasPortalAccess] = useState(false);
   const [enrollToken,    setEnrollToken]   = useState<string | null>(null);
   const [treatmentTypes, setTreatmentTypes] = useState<{ id: string; name: string }[]>([]);
+  const [attributionOptions, setAttributionOptions] = useState<{ id: string; firstName: string; lastName: string }[]>([]);
   const [checkingEmail,  setCheckingEmail]  = useState(false);
 
   const hasPhoneValue        = form.phone.trim().length > 0;
@@ -632,6 +857,17 @@ function ReferralPanel({
       .then(r => r.ok ? r.json() : [])
       .then((data: { id: string; name: string }[]) => setTreatmentTypes(data))
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const endpoint = prefillLawFirm
+      ? '/api/careconnect/api/referral-attributions/options'
+      : `/api/public/careconnect/api/public/referral-attributions`;
+    fetch(endpoint, prefillLawFirm ? {} : { headers: { 'X-Tenant-Id': tenantId } })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { id: string; firstName: string; lastName: string }[]) => setAttributionOptions(data))
+      .catch(() => {}); // non-fatal — field simply shows no options
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -775,24 +1011,30 @@ function ReferralPanel({
 
     setState('submitting');
 
-    const payloads: PublicReferralRequest[] = providers.map(p => ({
-      providerId:             p.id,
-      senderFirstName:        form.contactFirstName.trim() || form.firmName.trim(),
-      senderLastName:         form.contactFirstName.trim() ? (form.contactLastName.trim() || undefined) : undefined,
-      senderEmail:            form.email.trim(),
-      senderFirmName:         form.firmName.trim() || undefined,
-      senderPhone:            stripPhone(form.phone) || undefined,
-      patientFirstName:       form.patientFirstName.trim(),
-      patientLastName:        form.patientLastName.trim(),
-      patientPhone:           stripPhone(form.patientPhone),
-      patientEmail:           form.patientEmail.trim() || undefined,
-      patientDateOfBirth:     form.patientDob || undefined,
-      patientDateOfAccident:  form.patientDateOfAccident || undefined,
-      patientAddress:         form.patientAddress.trim() || undefined,
-      serviceType:            form.serviceType || 'General Referral',
-      urgency:                form.urgency,
-      treatmentTypeId:        form.treatmentTypeId || undefined,
-      notes:                  form.notes.trim() || undefined,
+    const submissionTargets = providers.map(p => ({
+      fileKey: providerEntryId(p),
+      facilityId: p.facilityId,
+      payload: {
+        providerId:             providerIdentityId(p),
+        networkProviderId:      providerEntryId(p),
+        senderFirstName:        form.contactFirstName.trim() || form.firmName.trim(),
+        senderLastName:         form.contactFirstName.trim() ? (form.contactLastName.trim() || undefined) : undefined,
+        senderEmail:            form.email.trim(),
+        senderFirmName:         form.firmName.trim() || undefined,
+        senderPhone:            stripPhone(form.phone) || undefined,
+        patientFirstName:       form.patientFirstName.trim(),
+        patientLastName:        form.patientLastName.trim(),
+        patientPhone:           stripPhone(form.patientPhone),
+        patientEmail:           form.patientEmail.trim() || undefined,
+        patientDateOfBirth:     form.patientDob || undefined,
+        patientDateOfAccident:  form.patientDateOfAccident || undefined,
+        patientAddress:         form.patientAddress.trim() || undefined,
+        serviceType:            form.serviceType || 'General Referral',
+        urgency:                form.urgency,
+        treatmentTypeId:        form.treatmentTypeId || undefined,
+        referralAttributionId:  form.referralAttributionId || undefined,
+        notes:                  form.notes.trim() || undefined,
+      } satisfies PublicReferralRequest,
     }));
 
     // Authenticated users (prefillLawFirm present) submit through the auth endpoint —
@@ -801,7 +1043,7 @@ function ReferralPanel({
     const isAuthenticated = !!prefillLawFirm;
 
     try {
-      const responses = await Promise.all(payloads.map(async payload => {
+      const responses = await Promise.all(submissionTargets.map(async ({ payload, fileKey, facilityId }) => {
         let res: Response;
         if (isAuthenticated) {
           const authNotes = form.notes.trim() || undefined;
@@ -809,6 +1051,8 @@ function ReferralPanel({
           const authBody = {
             tenantId,
             providerId:       payload.providerId,
+            facilityId,
+            networkProviderId: payload.networkProviderId,
             clientFirstName:  payload.patientFirstName,
             clientLastName:   payload.patientLastName,
             clientPhone:      payload.patientPhone,
@@ -817,6 +1061,7 @@ function ReferralPanel({
             requestedService: payload.serviceType || 'General Referral',
             urgency:          payload.urgency ?? 'Normal',
             treatmentTypeId:  form.treatmentTypeId || undefined,
+            referralAttributionId: form.referralAttributionId || undefined,
             dateOfAccident:   form.patientDateOfAccident || undefined,
             notes:            authNotes,
             referrerScopeSignature,
@@ -844,11 +1089,11 @@ function ReferralPanel({
           throw body;
         }
         const body = await res.json() as unknown;
-        return toCreatedReferralUploadTarget(body, payload.providerId);
+        return toCreatedReferralUploadTarget(body, payload.providerId, fileKey);
       }));
 
       await Promise.all(responses.map(async (r) => {
-        const fileForProvider = providerFiles[r.providerId] ?? null;
+        const fileForProvider = providerFiles[r.fileKey] ?? null;
         if (!fileForProvider) return;
         const fd = new FormData();
         fd.append('file', fileForProvider);
@@ -897,7 +1142,7 @@ function ReferralPanel({
       setErrMsg(msg);
       setState('error');
     }
-  }, [form, providers, tenantId, providerFiles]);
+  }, [form, providers, tenantId, providerFiles, prefillLawFirm, referrerScopeSignature]);
 
   const hasProviders = providers.length > 0;
 
@@ -928,12 +1173,15 @@ function ReferralPanel({
         {/* Selected provider chips */}
         {hasProviders && (
           <div className="flex flex-wrap gap-1.5 mt-3">
-            {providers.map(p => (
-              <span key={p.id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full border border-blue-200 dark:border-blue-700">
-                <i className="ri-hospital-line text-blue-500 dark:text-blue-400" />
-                {p.name.length > 22 ? p.name.slice(0, 22) + '…' : p.name}
-              </span>
-            ))}
+            {providers.map(p => {
+              const entryId = providerEntryId(p);
+              return (
+                <span key={entryId} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full border border-blue-200 dark:border-blue-700">
+                  <i className="ri-hospital-line text-blue-500 dark:text-blue-400" />
+                  {p.name.length > 22 ? p.name.slice(0, 22) + '…' : p.name}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1209,6 +1457,21 @@ function ReferralPanel({
                     {treatmentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </PanelField>
+                <PanelField label="Referral Attribution" hint="optional">
+                  <select
+                    value={form.referralAttributionId}
+                    onChange={e => update('referralAttributionId', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false)}
+                  >
+                    <option value="">None</option>
+                    {attributionOptions.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.firstName} {a.lastName}
+                      </option>
+                    ))}
+                  </select>
+                </PanelField>
                 <PanelField label="Notes" hint="optional">
                   <textarea
                     rows={3} value={form.notes}
@@ -1230,9 +1493,10 @@ function ReferralPanel({
             >
               <div className="px-5 pb-4 space-y-3">
                 {providers.map(p => {
-                  const file = providerFiles[p.id] ?? null;
+                  const entryId = providerEntryId(p);
+                  const file = providerFiles[entryId] ?? null;
                   return (
-                    <div key={p.id} className="rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 space-y-2">
+                    <div key={entryId} className="rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 space-y-2">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
                           <i className="ri-hospital-line text-xs text-blue-600 dark:text-blue-400" />
@@ -1248,7 +1512,7 @@ function ReferralPanel({
                           <span className="text-xs text-blue-700 dark:text-blue-300 truncate flex-1">{file.name}</span>
                           <button
                             type="button"
-                            onClick={() => setProviderFiles(prev => ({ ...prev, [p.id]: null }))}
+                            onClick={() => setProviderFiles(prev => ({ ...prev, [entryId]: null }))}
                             disabled={state === 'submitting'}
                             className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 flex-shrink-0"
                           >
@@ -1266,7 +1530,7 @@ function ReferralPanel({
                             disabled={state === 'submitting'}
                             onChange={e => {
                               const f = e.target.files?.[0] ?? null;
-                              if (f) setProviderFiles(prev => ({ ...prev, [p.id]: f }));
+                              if (f) setProviderFiles(prev => ({ ...prev, [entryId]: f }));
                               e.target.value = '';
                             }}
                           />
@@ -1528,8 +1792,8 @@ function ReferralConfirmModal({
                     <i className="ri-briefcase-line" /> Law Firm
                   </p>
                   <div className="space-y-1.5 pl-1">
-                    <ConfirmRow label="Firm name"    value={form.firmName}    />
-                    <ConfirmRow label="Contact name" value={`${form.contactFirstName} ${form.contactLastName}`.trim()} />
+                    <ConfirmRow label="Firm"    value={form.firmName}    />
+                    <ConfirmRow label="Contact" value={`${form.contactFirstName} ${form.contactLastName}`.trim()} />
                     <ConfirmRow label="Email"        value={form.email}       />
                     <ConfirmRow label="Phone"        value={form.phone}       />
                   </div>
@@ -1566,18 +1830,29 @@ function ReferralConfirmModal({
                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1.5">
                   <i className="ri-hospital-line" /> Providers
                 </p>
-                <div className="space-y-1.5 pl-1">
+                <div className="space-y-3">
                   {providers.map(p => {
-                    const file = providerFiles[p.id];
+                    const entryId = providerEntryId(p);
+                    const file = providerFiles[entryId];
+                    const identity = getProviderIdentity(p);
+                    const facilityName = p.facilityName?.trim() ?? '';
+                    const showFacilityName =
+                      facilityName.length > 0 &&
+                      facilityName.toLowerCase() !== identity.primary.toLowerCase() &&
+                      facilityName.toLowerCase() !== (identity.secondary ?? '').toLowerCase();
+                    const location = [
+                      showFacilityName ? facilityName : null,
+                      [p.city, p.state].filter(Boolean).join(', '),
+                    ].filter(Boolean).join(' · ');
+
                     return (
-                      <div key={p.id} className="flex items-center gap-2 text-xs text-gray-800 dark:text-gray-100">
-                        <i className="ri-checkbox-circle-fill text-blue-500 flex-shrink-0" />
-                        <span className="font-medium">{p.name}</span>
-                        {file && (
-                          <span className="ml-auto text-gray-400 flex items-center gap-1">
-                            <i className="ri-attachment-line" />{file.name.length > 18 ? file.name.slice(0, 18) + '…' : file.name}
-                          </span>
-                        )}
+                      <div key={entryId} className="space-y-1.5 pl-1">
+                        <ConfirmRow label="Provider" value={identity.primary} />
+                        {identity.secondary && <ConfirmRow label="Contact"  value={identity.secondary} />}
+                        <ConfirmRow label="Location" value={location} />
+                        <ConfirmRow label="Email"     value={p.email ?? undefined} />
+                        <ConfirmRow label="Phone"     value={p.phone} />
+                        <ConfirmRow label="Attachment" value={file?.name} />
                       </div>
                     );
                   })}

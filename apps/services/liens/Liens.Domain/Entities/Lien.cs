@@ -32,8 +32,10 @@ public class Lien : AuditableEntity
     public string? Jurisdiction  { get; private set; }
     public string? Description   { get; private set; }
     public string? Notes         { get; private set; }
+    public string? BuyerMessage  { get; private set; }
 
     public DateOnly? IncidentDate { get; private set; }
+    public DateOnly? PurchaseDate { get; private set; }
     public DateOnly? InitialServiceDate { get; private set; }
     public DateOnly? EndServiceDate { get; private set; }
     public string? IsBulk { get; private set; }
@@ -80,7 +82,8 @@ public class Lien : AuditableEntity
         string? isBulk = null,
         string? isServicing = null,
         string? description = null,
-        string? notes = null)
+        string? notes = null,
+        DateOnly? purchaseDate = null)
     {
         if (tenantId == Guid.Empty) throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (orgId == Guid.Empty) throw new ArgumentException("OrgId is required.", nameof(orgId));
@@ -113,6 +116,7 @@ public class Lien : AuditableEntity
             CurrentBalance    = originalAmount,
             Jurisdiction      = jurisdiction?.Trim(),
             IncidentDate      = incidentDate,
+            PurchaseDate      = purchaseDate,
             InitialServiceDate = initialServiceDate,
             EndServiceDate    = endServiceDate,
             IsBulk            = isBulk?.Trim(),
@@ -121,7 +125,7 @@ public class Lien : AuditableEntity
             Notes             = notes?.Trim(),
             OpenedAtUtc       = now,
             SellingOrgId      = orgId,
-            SellerStatus      = SellingLienStatus.Draft,
+            SellerStatus      = SellingLienStatus.Pending,
             ListingVisibility = SellingListingVisibility.Private,
             CreatedByUserId   = createdByUserId,
             UpdatedByUserId   = createdByUserId,
@@ -145,7 +149,8 @@ public class Lien : AuditableEntity
         string? isBulk = null,
         string? isServicing = null,
         string? description = null,
-        string? notes = null)
+        string? notes = null,
+        DateOnly? purchaseDate = null)
     {
         if (!Enums.LienType.All.Contains(lienType))
             throw new ArgumentException($"Invalid lien type: '{lienType}'.");
@@ -164,6 +169,7 @@ public class Lien : AuditableEntity
         if (isConfidential.HasValue) IsConfidential = isConfidential.Value;
         Jurisdiction      = jurisdiction?.Trim();
         IncidentDate      = incidentDate;
+        PurchaseDate      = purchaseDate;
         InitialServiceDate = initialServiceDate;
         EndServiceDate    = endServiceDate;
         IsBulk            = isBulk?.Trim();
@@ -336,6 +342,20 @@ public class Lien : AuditableEntity
         WithdrawnAtUtc = withdrawnAtUtc ?? WithdrawnAtUtc;
         ArchivedAtUtc = archivedAtUtc ?? ArchivedAtUtc;
         ArchivedReason = archivedReason?.Trim() ?? ArchivedReason;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetBuyerMessage(string? buyerMessage, Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        var normalized = buyerMessage?.Trim();
+        if (normalized?.Length > 4000)
+            throw new ArgumentOutOfRangeException(nameof(buyerMessage), "Buyer message cannot exceed 4000 characters.");
+
+        BuyerMessage = normalized;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }

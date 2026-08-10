@@ -478,6 +478,10 @@ public static class ReferralEndpoints
         .RequireAuthorization(Policies.PlatformOrTenantAdmin)
         .RequireProductAccess(ProductCodes.SynqCareConnect);
 
+        // Referral Attribution is set only once, at law firm submission time (see
+        // ReferralService.CreateAsync / ResolveAttributionForSubmissionAsync), and is
+        // immutable afterward — there is deliberately no admin edit endpoint for it.
+
         // POST /api/referrals/{id}/revoke-token — invalidate all previously issued view tokens
         group.MapPost("/{id:guid}/revoke-token", async (
             Guid id,
