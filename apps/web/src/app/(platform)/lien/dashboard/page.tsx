@@ -76,6 +76,8 @@ const CASE_STATUS_ORDER = [
   "InNegotiation",
   "CaseSettled",
   "Closed",
+  "Litigation(Open)",
+  "Litigation(Pending)",
 ];
 
 export default function LienDashboardPage() {
