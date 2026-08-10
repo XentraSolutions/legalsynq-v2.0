@@ -47,6 +47,23 @@ Important boundaries:
 
 ## Quick Start
 
+### New worktree setup
+
+Git worktrees contain tracked files only. Ignored local configuration such as
+`.env.local` and private `appsettings.*.json` files must be copied from an
+existing configured checkout. Set the source checkout once in your shell, then
+run the bootstrap script from each new worktree:
+
+```bash
+export LEGALSYNQ_CONFIG_SOURCE=/absolute/path/to/configured/legalsynq-v2.0
+bash scripts/bootstrap-worktree-local-config.sh
+```
+
+The script copies only ignored `.env`, `.env.*`, and `appsettings.*.json` files,
+excludes generated directories, sets copied files to mode `600`, and does not
+overwrite existing worktree configuration. Use `--dry-run` to review the file
+list or `--force` to deliberately overwrite existing local configuration.
+
 Install Node dependencies with the repository package manager:
 
 ```bash

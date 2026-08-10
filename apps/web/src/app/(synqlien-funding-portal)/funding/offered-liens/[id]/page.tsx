@@ -73,6 +73,10 @@ function PageHeader({ detail }: { detail: OfferedLienDetail }) {
         id={detail.id}
         status={detail.status}
         allowedActions={detail.allowedActions}
+        lienNumber={detail.lienNumber}
+        sellerName={detail.seller.name || "Seller"}
+        sellerCompany={detail.seller.company}
+        askAmount={detail.askAmount}
       />
     </div>
   );

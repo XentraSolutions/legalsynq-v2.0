@@ -234,7 +234,14 @@ function OfferedLienTableRow({ row }: { row: OfferedLienRow }) {
         </span>
       </td>
       <td className="h-[53px] w-12 px-4 text-center">
-        <OfferedLienRowActions lienNumber={row.lienNumber} detailHref={detailHref} />
+        <OfferedLienRowActions
+          id={row.id}
+          lienNumber={row.lienNumber}
+          detailHref={detailHref}
+          sellerName={row.sellerName}
+          askAmount={askAmount}
+          allowedActions={allowedActions}
+        />
       </td>
     </tr>
   );
