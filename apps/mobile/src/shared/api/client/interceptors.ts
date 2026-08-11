@@ -39,6 +39,7 @@ function headerValue(
 function toApiError(error: AxiosError): ApiError {
   const data = error.response?.data as Partial<{
     code: string;
+    errorCode: string;
     detail: string;
     message: string;
     title: string;
@@ -46,13 +47,25 @@ function toApiError(error: AxiosError): ApiError {
   }>;
 
   return new ApiError({
-    code: data?.code ?? data?.title ?? 'API_ERROR',
+    code: data?.errorCode ?? data?.code ?? data?.title ?? 'API_ERROR',
     message:
       data?.message ?? data?.detail ?? data?.title ?? error.message ?? 'Unexpected API error',
     statusCode: error.response?.status,
     correlationId: headerValue(error.response?.headers, 'x-correlation-id'),
     details: data?.details ?? data,
   });
+}
+
+function redactSensitiveFields(data: unknown): unknown {
+  if (Array.isArray(data)) return data.map(redactSensitiveFields);
+  if (!data || typeof data !== 'object') return data;
+
+  return Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [
+      key,
+      /password|token|secret/i.test(key) ? '[redacted]' : redactSensitiveFields(value),
+    ])
+  );
 }
 
 function parseRequestData(data: unknown): unknown {
@@ -66,13 +79,13 @@ function parseRequestData(data: unknown): unknown {
 
   if (typeof data === 'string') {
     try {
-      return JSON.parse(data) as unknown;
+      return redactSensitiveFields(JSON.parse(data) as unknown);
     } catch {
       return '[string request body omitted]';
     }
   }
 
-  return data;
+  return redactSensitiveFields(data);
 }
 
 function captureApiError(error: AxiosError, apiError: ApiError): void {

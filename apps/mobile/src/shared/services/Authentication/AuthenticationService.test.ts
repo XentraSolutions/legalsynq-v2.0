@@ -5,6 +5,8 @@ import { STORAGE_KEYS } from '@/shared/constants/storageKeys';
 import { TenantSelectionService } from '@/shared/services/TenantSelection';
 
 import { AuthenticationService } from './AuthenticationService';
+import { BiometricCredentialService } from './BiometricCredentialService';
+import { BiometricPreferenceService } from './BiometricPreferenceService';
 
 jest.mock('expo-secure-store', () => {
   const store = new Map<string, string>();
@@ -73,6 +75,12 @@ describe('AuthenticationService', () => {
       email: 'avery.mendoza@smithlaw.example',
       password: 'ValidPass123',
       tenantCode: 'smith-law',
+      deviceInfo: {
+        platform: 'ios',
+        appVersion: '3.0.0',
+        osVersion: 'unknown',
+        deviceDisplayName: 'iOS device',
+      },
     });
     await expect(TenantSelectionService.getActiveTenant()).resolves.toMatchObject({
       id: pendingTenant.id,
@@ -97,6 +105,12 @@ describe('AuthenticationService', () => {
       email: 'avery.mendoza@smithlaw.example',
       password: 'ValidPass123',
       tenantCode: 'smith-law',
+      deviceInfo: {
+        platform: 'ios',
+        appVersion: '3.0.0',
+        osVersion: 'unknown',
+        deviceDisplayName: 'iOS device',
+      },
     });
   });
 
@@ -105,10 +119,7 @@ describe('AuthenticationService', () => {
     authenticationApi.login.mockResolvedValue({
       ...loginResponse,
       refreshToken: 'refresh-token',
-      deviceSession: {
-        id: 'device-session-1',
-        biometricEnabled: false,
-      },
+      deviceSessionId: 'device-session-1',
     });
 
     const outcome = await AuthenticationService.login({
@@ -137,5 +148,39 @@ describe('AuthenticationService', () => {
       tenantCode: 'smith-law',
     });
     await expect(secureStore.getItemAsync(STORAGE_KEYS.ACCESS_TOKEN)).resolves.toBeNull();
+  });
+
+  it('keeps enabled biometric login available after logging out', async () => {
+    authenticationApi.logout.mockResolvedValue(undefined);
+    await BiometricCredentialService.save('refresh-token');
+    await BiometricPreferenceService.set({
+      enabled: true,
+      accountLabel: 'a***@smithlaw.example',
+      deviceSessionId: 'device-session-1',
+      tenantId: 'tenant-1',
+      userId: 'usr-1',
+      user: {
+        id: 'usr-1',
+        email: 'avery.mendoza@smithlaw.example',
+        firstName: 'Avery',
+        lastName: 'Mendoza',
+        roles: ['TenantAdmin'],
+        permissions: [],
+        organization: {
+          id: 'org-1',
+          name: 'Smith Law Firm',
+          tenantId: 'tenant-1',
+        },
+        tenantId: 'tenant-1',
+      },
+    });
+
+    await AuthenticationService.logout();
+
+    await expect(BiometricCredentialService.get()).resolves.toBe('refresh-token');
+    await expect(BiometricPreferenceService.get()).resolves.toMatchObject({
+      enabled: true,
+      deviceSessionId: 'device-session-1',
+    });
   });
 });

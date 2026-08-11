@@ -5,6 +5,7 @@ import type {
   ForgotPasswordRequest,
   LoginRequest,
   LoginResponse,
+  RefreshSessionResponse,
   ResetPasswordRequest,
   UserSession,
 } from './types';
@@ -36,5 +37,21 @@ export const AuthenticationApi = {
 
   async changePassword(body: ChangePasswordRequest): Promise<void> {
     await apiClient.post(`${BASE}/change-password`, body);
+  },
+
+  async refreshSession(body: {
+    refreshToken: string;
+    deviceSessionId: string;
+  }): Promise<RefreshSessionResponse> {
+    const response = await apiClient.post<RefreshSessionResponse>(`${BASE}/session/refresh`, body);
+    return response.data;
+  },
+
+  async enableBiometrics(deviceSessionId: string): Promise<void> {
+    await apiClient.post(`${BASE}/device-sessions/${encodeURIComponent(deviceSessionId)}/biometric/enable`);
+  },
+
+  async disableBiometrics(deviceSessionId: string): Promise<void> {
+    await apiClient.post(`${BASE}/device-sessions/${encodeURIComponent(deviceSessionId)}/biometric/disable`);
   },
 };

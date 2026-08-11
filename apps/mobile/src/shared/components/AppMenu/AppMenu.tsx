@@ -365,7 +365,7 @@ export function AppMenu({ visible, onClose }: AppMenuProps) {
                 className="mt-4 min-h-[52px] flex-row items-center rounded-[14px] px-4"
                 onPress={() => {
                   onClose();
-                  void AuthenticationService.clearSession();
+                  void AuthenticationService.logout();
                 }}
               >
                 <Ionicons color="#ef4444" name="log-out-outline" size={22} />

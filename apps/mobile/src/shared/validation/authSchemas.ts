@@ -11,6 +11,14 @@ export const tenantCodeSchema = z.object({
 
 export const loginSchema = credentialsSchema.extend({
   tenantCode: tenantCodeSchema.shape.tenantCode,
+  deviceInfo: z
+    .object({
+      platform: z.string().min(1),
+      appVersion: z.string().min(1),
+      osVersion: z.string().min(1),
+      deviceDisplayName: z.string().min(1),
+    })
+    .optional(),
 });
 
 export const returningLoginSchema = credentialsSchema.extend({

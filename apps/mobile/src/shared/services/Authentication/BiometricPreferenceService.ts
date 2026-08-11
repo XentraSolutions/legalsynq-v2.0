@@ -11,7 +11,9 @@ function isBiometricPreference(value: unknown): value is BiometricPreference {
     typeof candidate.accountLabel === 'string' &&
     typeof candidate.deviceSessionId === 'string' &&
     typeof candidate.tenantId === 'string' &&
-    typeof candidate.userId === 'string'
+    typeof candidate.userId === 'string' &&
+    Boolean(candidate.user) &&
+    candidate.user?.id === candidate.userId
   );
 }
 

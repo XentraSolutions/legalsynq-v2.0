@@ -97,6 +97,7 @@ describe('BiometricAuthenticationService', () => {
       deviceSessionId: 'device-session-1',
       tenantId: 'tenant-1',
       userId: 'user-1',
+      user,
     });
     expect(AnalyticsService.track).toHaveBeenCalledWith(
       ANALYTICS_EVENTS.BIOMETRIC_ENROLLMENT_COMPLETED
@@ -117,6 +118,7 @@ describe('BiometricAuthenticationService', () => {
       deviceSessionId: 'device-session-1',
       tenantId: 'tenant-1',
       userId: 'user-1',
+      user,
     });
 
     await expect(BiometricAuthenticationService.login()).rejects.toBe(error);
@@ -137,6 +139,7 @@ describe('BiometricAuthenticationService', () => {
       deviceSessionId: 'device-session-1',
       tenantId: 'tenant-1',
       userId: 'user-1',
+      user,
     });
 
     await expect(BiometricAuthenticationService.login()).rejects.toBeInstanceOf(
@@ -165,6 +168,7 @@ describe('BiometricAuthenticationService', () => {
       deviceSessionId: 'device-session-1',
       tenantId: 'tenant-1',
       userId: 'user-1',
+      user,
     });
 
     await expect(BiometricAuthenticationService.login()).rejects.toThrow(
@@ -184,6 +188,7 @@ describe('BiometricAuthenticationService', () => {
       deviceSessionId: 'device-session-1',
       tenantId: 'tenant-1',
       userId: 'user-1',
+      user,
     });
     jest
       .spyOn(BiometricCredentialService, 'save')

@@ -163,6 +163,7 @@ export const BiometricAuthenticationService = {
         deviceSessionId: credentials.deviceSessionId,
         tenantId: credentials.tenantId,
         userId: credentials.user.id,
+        user: credentials.user,
       });
       AnalyticsService.track(ANALYTICS_EVENTS.BIOMETRIC_ENROLLMENT_COMPLETED);
     } catch (error) {
@@ -227,7 +228,7 @@ export const BiometricAuthenticationService = {
           );
         }
         AnalyticsService.track(ANALYTICS_EVENTS.BIOMETRIC_LOGIN_SUCCEEDED);
-        return result;
+        return { ...result, user: status.preference.user };
       } catch (error) {
         if (error instanceof BiometricCredentialInvalidError) {
           throw error;

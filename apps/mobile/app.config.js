@@ -10,7 +10,8 @@ module.exports = {
       "supportsTablet": false,
       "bundleIdentifier": process.env.EXPO_PUBLIC_APP_ENV === 'production' ? "com.legalsynq" : "com.legalsynq.qa",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Allow $(PRODUCT_NAME) to use Face ID to securely access your saved login."
       }
     },
     "android": {

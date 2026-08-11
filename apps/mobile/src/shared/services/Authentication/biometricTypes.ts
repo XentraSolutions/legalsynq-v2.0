@@ -7,6 +7,7 @@ export interface BiometricPreference {
   deviceSessionId: string;
   tenantId: string;
   userId: string;
+  user: UserSession;
 }
 
 export interface BiometricEnrollmentCredentials {
@@ -22,15 +23,18 @@ export interface BiometricRefreshInput {
   refreshToken: string;
 }
 
-export interface BiometricRefreshResult {
+export interface BiometricTokenRefreshResult {
   accessToken: string;
   refreshToken: string;
+}
+
+export interface BiometricRefreshResult extends BiometricTokenRefreshResult {
   user: UserSession;
 }
 
 export interface BiometricSessionClient {
   isAvailable(): boolean;
-  refreshSession(input: BiometricRefreshInput): Promise<BiometricRefreshResult>;
+  refreshSession(input: BiometricRefreshInput): Promise<BiometricTokenRefreshResult>;
   enableBiometrics(deviceSessionId: string): Promise<void>;
   disableBiometrics(deviceSessionId: string): Promise<void>;
 }

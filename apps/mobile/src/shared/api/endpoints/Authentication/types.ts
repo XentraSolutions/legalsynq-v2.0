@@ -6,6 +6,7 @@ import type {
   loginUserResponseSchema,
   loginResponseSchema,
   loginSchema,
+  refreshSessionResponseSchema,
   resetPasswordSchema,
   tenantSummarySchema,
   userSessionSchema,
@@ -13,6 +14,7 @@ import type {
 
 export type LoginRequest = z.infer<typeof loginSchema>;
 export type LoginResponse = z.infer<typeof loginResponseSchema>;
+export type RefreshSessionResponse = z.infer<typeof refreshSessionResponseSchema>;
 export type ForgotPasswordRequest = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordRequest = z.infer<typeof resetPasswordSchema>;
 export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;

@@ -1,4 +1,7 @@
 import { getDefaultStore } from 'jotai';
+import { Platform } from 'react-native';
+
+import appPackage from '../../../../package.json';
 
 import {
   AuthenticationApi,
@@ -128,11 +131,17 @@ async function loginCurrent({
     email,
     password,
     tenantCode: effectiveTenantCode,
+    deviceInfo: {
+      platform: Platform.OS,
+      appVersion: appPackage.version,
+      osVersion: Platform.Version == null ? 'unknown' : String(Platform.Version),
+      deviceDisplayName: `${Platform.OS === 'ios' ? 'iOS' : 'Android'} device`,
+    },
   });
   const user = AuthenticationAdapter.toUserSession(response);
   await persistSession(response.accessToken, user);
   await persistRememberedTenant(response, effectiveTenantCode, activeTenant);
-  const deviceSessionId = response.deviceSession?.id;
+  const deviceSessionId = response.deviceSessionId;
   const biometricEnrollment =
     response.refreshToken && deviceSessionId
       ? {
@@ -183,10 +192,7 @@ export const AuthenticationService = {
         await AuthenticationApi.logout();
       }
     } finally {
-      await Promise.all([
-        clearAccessSession(),
-        BiometricAuthenticationService.clearLocalEnrollment(),
-      ]);
+      await clearAccessSession();
     }
   },
 
