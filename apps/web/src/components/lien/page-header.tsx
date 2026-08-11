@@ -13,11 +13,20 @@ interface PageHeaderProps {
   actions?: React.ReactNode;
   subtitle?: string;
   badge?: React.ReactNode;
+  /** Wrap the header in the white bordered card look. Defaults to true. */
+  card?: boolean;
 }
 
-export function PageHeader({ title, breadcrumbs, actions, subtitle, badge }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  breadcrumbs,
+  actions,
+  subtitle,
+  badge,
+  card = true,
+}: PageHeaderProps) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl px-6 py-5">
+    <div className={card ? "bg-white border border-gray-200 rounded-xl px-6 py-5" : ""}>
       {breadcrumbs && breadcrumbs.length > 0 && (
         <nav className="flex items-center gap-1.5 text-xs text-gray-400 mb-3">
           {breadcrumbs.map((crumb, i) => (

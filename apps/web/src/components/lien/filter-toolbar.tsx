@@ -37,9 +37,11 @@ interface FilterToolbarProps {
   dropdown?: React.ReactNode;
   /** Skip the outer card chrome (background/border/rounding) — for embedding inside another bordered container, e.g. BaseTable's `toolbar` slot. */
   bare?: boolean;
+  /** Rendered immediately after the search box/filters, ahead of `children` — for actions (e.g. a modal-triggering Filter button) that should sit beside the search bar instead of being pushed to the far right with the `ml-auto` children group. */
+  filterActions?: React.ReactNode;
 }
 
-export function FilterToolbar({ searchPlaceholder = 'Search...', filters, onSearch, searchValue = '', children, onSearchFocus, onSearchBlur, dropdown, bare }: FilterToolbarProps) {
+export function FilterToolbar({ searchPlaceholder = 'Search...', filters, onSearch, searchValue = '', children, onSearchFocus, onSearchBlur, dropdown, bare, filterActions }: FilterToolbarProps) {
   const [query, setQuery] = useState(searchValue);
 
   return (
@@ -91,7 +93,8 @@ export function FilterToolbar({ searchPlaceholder = 'Search...', filters, onSear
           }
         />
       ))}
-      {children}
+      {filterActions}
+      {children && <div className="ml-auto flex items-center gap-3">{children}</div>}
     </div>
   );
 }

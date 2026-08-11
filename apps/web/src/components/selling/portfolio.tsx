@@ -3,7 +3,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Search, Settings2 } from "lucide-react";
+import { ChevronDown, Search, Settings2 } from "lucide-react";
 import { LiensQuery, liensService } from "@/lib/selling";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MetricCard } from "./dashboard/metric-card";
@@ -25,6 +25,7 @@ import { PaginationMeta } from "@/lib/liens";
 import { SortingState } from "@tanstack/react-table";
 import { useLienStore } from "@/stores/lien-store";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/lien/page-header";
 
 const PORTFOLIO_STATUSES = [
   { key: "Pending", label: "Pending" },
@@ -169,20 +170,16 @@ export default function PortfolioClient() {
   return (
     <>
       <div className="space-y-4">
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">Portfolio</h1>
-            <p className="text-md text-[#737373]">
-              Manage, monitor, and bundle multiple liens into structured
-              portfolios for sale.
-            </p>
-          </div>
-
-          <div className="flex items-end">
+        <PageHeader
+          title="Portfolio"
+          subtitle="Manage, monitor, and bundle multiple liens into structured portfolios for sale."
+          card={false}
+          actions={
             <div className="relative">
               <Button
                 className="bg-[#EE7132] hover:bg-[#EE7132]/90 text-white"
-                rightIcon={<i className="ri-arrow-down-s-line text-base" />}
+                rightIcon={<ChevronDown className="h-4 w-4" />}
+                iconDivider
                 onClick={() => {
                   setActionOpen(!actionOpen);
                 }}
@@ -215,15 +212,9 @@ export default function PortfolioClient() {
                   </button>
                 </div>
               )}
-
-              {actionOpen && (
-                <div
-                  className={`absolute left-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden divide-y divide-gray-100`}
-                ></div>
-              )}
             </div>
-          </div>
-        </div>
+          }
+        />
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <MetricCard
             label="Total Portfolio Value"

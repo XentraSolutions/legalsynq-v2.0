@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
  *   for one tenant.
  */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2.5 whitespace-nowrap rounded-[10px] text-sm font-medium shadow-[0_1px_2px_0_rgba(0,0,0,0.1)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex h-[38px] items-center justify-center gap-2.5 whitespace-nowrap rounded-[10px] text-sm font-medium shadow-[0_1px_2px_0_rgba(0,0,0,0.1)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
@@ -109,13 +109,13 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ) : showDivider ? (
           <>
             {leftIcon && (
-              <span className={cn("flex items-center px-3 py-2 border-r", dividerColorClass)}>
+              <span className={cn("flex h-full items-center px-3 border-r", dividerColorClass)}>
                 {leftIcon}
               </span>
             )}
-            <span className="px-4 py-2">{children}</span>
+            <span className="px-4">{children}</span>
             {rightIcon && (
-              <span className={cn("flex items-center px-3 py-2 border-l", dividerColorClass)}>
+              <span className={cn("flex h-full items-center px-3 border-l", dividerColorClass)}>
                 {rightIcon}
               </span>
             )}

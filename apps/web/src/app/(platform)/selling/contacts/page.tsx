@@ -3,7 +3,17 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Building2, Eye, Repeat, Settings2, SquarePen, Trash2, UserCheck } from "lucide-react";
+import {
+  Building2,
+  Eye,
+  Plus,
+  Repeat,
+  Settings2,
+  SquarePen,
+  Trash2,
+  Upload,
+  UserCheck,
+} from "lucide-react";
 import { PageHeader } from "@/components/lien/page-header";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ActionMenu } from "@/components/selling/action-menu";
@@ -32,7 +42,8 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 // Selling's brand accent — used on every primary action button on this page
 // and everything opened from it, instead of the tenant bg-primary blue used
 // on the lien side.
-const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
+const PRIMARY_BUTTON_CLASSNAME =
+  "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 
 const VIEWS = [
   { key: "companies", label: "Companies" },
@@ -43,11 +54,13 @@ export const dynamic = "force-dynamic";
 
 export default function SellingContactsPage() {
   const searchParams = useSearchParams();
-  const view = searchParams.get("view") === "contacts" ? "contacts" : "companies";
+  const view =
+    searchParams.get("view") === "contacts" ? "contacts" : "companies";
 
   return (
     <div className="space-y-5">
       <PageHeader
+        card={false}
         title="Contacts"
         subtitle="Keep your company and contact person records organized and easily accessible."
       />
@@ -56,7 +69,11 @@ export default function SellingContactsPage() {
         {VIEWS.map((tab) => (
           <Link
             key={tab.key}
-            href={tab.key === "companies" ? "/selling/contacts" : `/selling/contacts?view=${tab.key}`}
+            href={
+              tab.key === "companies"
+                ? "/selling/contacts"
+                : `/selling/contacts?view=${tab.key}`
+            }
             className={`flex-1 text-center px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
               view === tab.key
                 ? "bg-white shadow-sm text-gray-900"
@@ -68,7 +85,11 @@ export default function SellingContactsPage() {
         ))}
       </div>
 
-      {view === "companies" ? <CompaniesListView /> : <ContactPersonsDirectoryView />}
+      {view === "companies" ? (
+        <CompaniesListView />
+      ) : (
+        <ContactPersonsDirectoryView />
+      )}
     </div>
   );
 }
@@ -84,7 +105,8 @@ function CompaniesListView() {
   const [typeFilter, setTypeFilter] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [newCompany, setNewCompany] = useState<Company | null>(null);
-  const [contactPersonTarget, setContactPersonTarget] = useState<Company | null>(null);
+  const [contactPersonTarget, setContactPersonTarget] =
+    useState<Company | null>(null);
   // After the contact person form saves, offer to loop back into it again
   // instead of just closing — set once a contact has been added for `contactPersonTarget`.
   const [contactAddedFor, setContactAddedFor] = useState<Company | null>(null);
@@ -96,14 +118,22 @@ function CompaniesListView() {
 
   const handleExport = () => {
     exportCompaniesMutation.mutate(
-      { search: search || undefined, companyTypeId: typeFilter || undefined, isActive: true },
+      {
+        search: search || undefined,
+        companyTypeId: typeFilter || undefined,
+        isActive: true,
+      },
       {
         onSuccess: (blob) => {
-          downloadBlob(blob, `companies-${new Date().toISOString().slice(0, 10)}.csv`);
+          downloadBlob(
+            blob,
+            `companies-${new Date().toISOString().slice(0, 10)}.csv`,
+          );
         },
         onError: (err) => {
           toast.error("Export failed", {
-            description: err instanceof Error ? err.message : "Failed to export companies",
+            description:
+              err instanceof Error ? err.message : "Failed to export companies",
           });
         },
       },
@@ -166,7 +196,10 @@ function CompaniesListView() {
     const toastId = toast.loading(`Deleting ${company.name}...`);
     deactivateCompanyMutation.mutate(company.id, {
       onSuccess: () => {
-        toast.success("Company deleted", { id: toastId, description: company.name });
+        toast.success("Company deleted", {
+          id: toastId,
+          description: company.name,
+        });
       },
       onError: (err) => {
         toast.error("Couldn't delete company", {
@@ -199,14 +232,18 @@ function CompaniesListView() {
         id: "email",
         header: "Email",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.email || "—"}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.email || "—"}
+          </span>
         ),
       },
       {
         id: "type",
         header: "Type",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.companyTypeName || "—"}</span>
+          <span className="text-sm text-gray-500">
+            {row.original.companyTypeName || "—"}
+          </span>
         ),
       },
       {
@@ -262,8 +299,14 @@ function CompaniesListView() {
     [router, ra],
   );
 
-  const hasActiveFilters = Boolean(search) || Boolean(typeFilter);
-  const showEmptyState = !loading && totalCount === 0 && !hasActiveFilters;
+  const showEmptyState = !loading && totalCount === 0;
+  const selectedCompanyTypeName =
+    companyTypes.find((t) => t.id === typeFilter)?.name ?? "Company";
+  const selectedCompanyTypeNamePlural = /[^aeiou]y$/i.test(
+    selectedCompanyTypeName,
+  )
+    ? `${selectedCompanyTypeName.slice(0, -1)}ies`
+    : `${selectedCompanyTypeName}s`;
 
   const toolbar = (
     <FilterToolbar
@@ -283,7 +326,7 @@ function CompaniesListView() {
       <Button
         variant="secondary"
         iconDivider
-        rightIcon={<i className="ri-upload-2-line text-base" />}
+        rightIcon={<Upload className="h-4 w-4" />}
         disabled={exportCompaniesMutation.isPending}
         onClick={handleExport}
       >
@@ -292,7 +335,7 @@ function CompaniesListView() {
       {ra.can("contact:create") && (
         <Button
           iconDivider
-          rightIcon={<i className="ri-add-line text-base" />}
+          rightIcon={<Plus className="h-4 w-4" />}
           className={PRIMARY_BUTTON_CLASSNAME}
           onClick={() => setShowCreate(true)}
         >
@@ -304,49 +347,55 @@ function CompaniesListView() {
 
   return (
     <>
-      {showEmptyState ? (
-        <div className="bg-white border border-gray-200 rounded-xl">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        {toolbar}
+        {showEmptyState ? (
           <ContactsEmptyState
             icon="ri-building-4-line"
-            title="No Company Yet"
-            description="No companies have been added yet. Add your first company to get started."
-            actionLabel={ra.can("contact:create") ? "Add Company" : undefined}
-            onAction={ra.can("contact:create") ? () => setShowCreate(true) : undefined}
+            title={`No ${selectedCompanyTypeName} Yet`}
+            description={`No ${selectedCompanyTypeNamePlural.toLowerCase()} have been added yet. Add your first ${selectedCompanyTypeName.toLowerCase()} to get started.`}
+            actionLabel={
+              ra.can("contact:create")
+                ? `Add ${selectedCompanyTypeName}`
+                : undefined
+            }
+            onAction={
+              ra.can("contact:create") ? () => setShowCreate(true) : undefined
+            }
           />
-        </div>
-      ) : (
-        <div className="relative">
-          {refreshing && (
-            <div className="absolute top-2 right-3 z-10 flex items-center gap-1.5 text-xs text-gray-400">
-              <i className="ri-loader-4-line animate-spin text-sm" />
-              Refreshing...
-            </div>
-          )}
-          <BaseTable
-            data={companies}
-            columns={columns}
-            getRowId={(c) => c.id}
-            isLoading={loading}
-            emptyMessage="No companies found."
-            toolbar={toolbar}
-            manualPagination
-            pageCount={totalPages}
-            totalCount={totalCount}
-            pagination={{ pageIndex: page - 1, pageSize }}
-            onPaginationChange={(updater) => {
-              const next =
-                typeof updater === "function"
-                  ? updater({ pageIndex: page - 1, pageSize })
-                  : updater;
-              setPage(next.pageIndex + 1);
-              if (next.pageSize !== pageSize) setPageSize(next.pageSize);
-            }}
-            pageSizeOptions={[10, 25, 50, 100]}
-            className="bg-white border-gray-200 rounded-xl"
-            primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
-          />
-        </div>
-      )}
+        ) : (
+          <div className="relative">
+            {refreshing && (
+              <div className="absolute top-2 right-3 z-10 flex items-center gap-1.5 text-xs text-gray-400">
+                <i className="ri-loader-4-line animate-spin text-sm" />
+                Refreshing...
+              </div>
+            )}
+            <BaseTable
+              data={companies}
+              columns={columns}
+              getRowId={(c) => c.id}
+              isLoading={loading}
+              emptyMessage="No companies found."
+              manualPagination
+              pageCount={totalPages}
+              totalCount={totalCount}
+              pagination={{ pageIndex: page - 1, pageSize }}
+              onPaginationChange={(updater) => {
+                const next =
+                  typeof updater === "function"
+                    ? updater({ pageIndex: page - 1, pageSize })
+                    : updater;
+                setPage(next.pageIndex + 1);
+                if (next.pageSize !== pageSize) setPageSize(next.pageSize);
+              }}
+              pageSizeOptions={[10, 25, 50, 100]}
+              className="border-0 rounded-none"
+              primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
+            />
+          </div>
+        )}
+      </div>
 
       {showCreate && (
         <CompanyFormModal
@@ -438,8 +487,10 @@ function CompaniesListView() {
           description={
             <>
               Are you sure you want to delete{" "}
-              <span className="font-semibold text-primary">{deleteTarget.name}</span>?
-              This action cannot be undone.
+              <span className="font-semibold text-primary">
+                {deleteTarget.name}
+              </span>
+              ? This action cannot be undone.
             </>
           }
           confirmLabel="Delete"
