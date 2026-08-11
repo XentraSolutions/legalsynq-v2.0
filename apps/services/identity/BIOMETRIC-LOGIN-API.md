@@ -16,13 +16,13 @@ this document.
 - [Error Codes](#error-codes)
 - [Endpoints](#endpoints)
   - [Login (extended)](#post-identityapiauthlogin-extended)
-  - [Refresh Session](#post-identityapiv1authsessionrefresh)
-  - [Logout (v1)](#post-identityapiv1authlogout)
-  - [Logout All Devices](#post-identityapiv1authlogout-all)
-  - [List Device Sessions](#get-identityapiv1authdevice-sessions)
-  - [Revoke Device Session](#delete-identityapiv1authdevice-sessionsid)
-  - [Enable Biometric Login](#post-identityapiv1authdevice-sessionsidbiometricenable)
-  - [Disable Biometric Login](#post-identityapiv1authdevice-sessionsidbiometricdisable)
+  - [Refresh Session](#post-identityapiauthsessionrefresh)
+  - [Logout](#post-identityapiauthlogout)
+  - [Logout All Devices](#post-identityapiauthlogout-all)
+  - [List Device Sessions](#get-identityapiauthdevice-sessions)
+  - [Revoke Device Session](#delete-identityapiauthdevice-sessionsid)
+  - [Enable Biometric Login](#post-identityapiauthdevice-sessionsidbiometricenable)
+  - [Disable Biometric Login](#post-identityapiauthdevice-sessionsidbiometricdisable)
 - [Rate Limits](#rate-limits)
 - [Audit Events](#audit-events)
 - [Configuration](#configuration)
@@ -45,8 +45,8 @@ feature adds an **additive, opt-in** subsystem:
 - Device-session management (list/revoke/logout-all) for account security
   settings (BE-BIO-014/015/016)
 
-Every new Identity service endpoint lives internally under `/api/v1/auth/...`
-and is exposed publicly through the gateway under `/identity/api/v1/auth/...`.
+Every new Identity service endpoint lives internally under `/api/auth/...`
+and is exposed publicly through the gateway under `/identity/api/auth/...`.
 **No existing endpoint's behavior changes** — see
 [Backward Compatibility](#backward-compatibility).
 
@@ -65,8 +65,8 @@ Gateway routing removes the `/identity` prefix before forwarding requests to
 the Identity service:
 
 ```text
-Public gateway route:   POST /identity/api/v1/auth/session/refresh
-Internal service route: POST /api/v1/auth/session/refresh
+Public gateway route:   POST /identity/api/auth/session/refresh
+Internal service route: POST /api/auth/session/refresh
 ```
 
 Clients must not call the Identity service port directly.
@@ -217,7 +217,7 @@ Rate limit: `auth-login` (unchanged, 20/5min per IP).
 
 ---
 
-### `POST /identity/api/v1/auth/session/refresh`
+### `POST /identity/api/auth/session/refresh`
 
 **Auth:** anonymous (the access token may be legitimately expired — that's
 the point of calling this).
@@ -238,14 +238,14 @@ is immediately invalid.
 
 ---
 
-### `POST /identity/api/v1/auth/logout`
+### `POST /identity/api/auth/logout`
 
-Revokes the given device session and its refresh token. Distinct from the
-legacy `POST /identity/api/auth/logout` (unchanged, stateless, cookie-deletion-only —
-see [Backward Compatibility](#backward-compatibility)).
+Revokes the given device session and its refresh token when refresh credentials
+are supplied. Existing web callers may continue sending no request body; that
+retains the legacy stateless, cookie-deletion-only behavior.
 
 **Auth:** anonymous (access token may be expired).
-**Rate limit:** `auth-logout-v1` (20/5min per IP).
+**Rate limit:** `auth-logout` (20/5min per IP).
 **Idempotent** — repeated calls return `204` without error.
 
 **Request** — possession of the refresh token authenticates the logout even when the access token is expired.
@@ -257,7 +257,7 @@ see [Backward Compatibility](#backward-compatibility)).
 
 ---
 
-### `POST /identity/api/v1/auth/logout-all`
+### `POST /identity/api/auth/logout-all`
 
 Revokes every active device session for the caller, including the one making
 the call. Always requires step-up.
@@ -272,7 +272,7 @@ the call. Always requires step-up.
 
 ---
 
-### `GET /identity/api/v1/auth/device-sessions`
+### `GET /identity/api/auth/device-sessions`
 
 Lists the caller's active device sessions. Never includes token material.
 
@@ -283,7 +283,7 @@ Lists the caller's active device sessions. Never includes token material.
 
 ---
 
-### `DELETE /identity/api/v1/auth/device-sessions/{id}`
+### `DELETE /identity/api/auth/device-sessions/{id}`
 
 Revokes a specific device session. Revoking the caller's **own current**
 session requires no step-up (they're already using it); revoking any
@@ -298,7 +298,7 @@ user returns `404 DEVICE_SESSION_NOT_FOUND`, not `403`.
 
 ---
 
-### `POST /identity/api/v1/auth/device-sessions/{id}/biometric/enable`
+### `POST /identity/api/auth/device-sessions/{id}/biometric/enable`
 
 Marks a device session as biometric-enabled. **Administrative flag only** —
 see [Security Model](#security-model).
@@ -311,7 +311,7 @@ see [Security Model](#security-model).
 
 ---
 
-### `POST /identity/api/v1/auth/device-sessions/{id}/biometric/disable`
+### `POST /identity/api/auth/device-sessions/{id}/biometric/disable`
 
 Disables the biometric flag **and revokes the session's refresh token** in
 the same operation (BE-BIO-012).
@@ -328,7 +328,7 @@ the same operation (BE-BIO-012).
 | Policy | Limit | Window | Partition |
 |---|---|---|---|
 | `auth-refresh` | 30 | 5 min | IP + account/device/client context |
-| `auth-logout-v1` | 20 | 5 min | IP + account/device/client context |
+| `auth-logout` | 20 | 5 min | IP + account/device/client context |
 | `auth-logout-all` | 5 | 15 min | IP + account/device/client context |
 | `auth-biometric-toggle` | 20 | 5 min | IP + account/device/client context |
 | `auth-device-session-list` | 30 | 5 min | IP + account/device/client context |
@@ -361,8 +361,8 @@ data — only opaque IDs and non-sensitive metadata.
 | `identity.session.device_revoked` | Info/Warn | Any session revocation |
 | `identity.user.biometric_enabled` | Info | Biometric flag enabled |
 | `identity.user.biometric_disabled` | Info | Biometric flag disabled (+ session revoked) |
-| `identity.user.logged_out` | Info | `POST /identity/api/v1/auth/logout` |
-| `identity.user.logged_out_all_sessions` | Warn | `POST /identity/api/v1/auth/logout-all` |
+| `identity.user.logged_out` | Info | `POST /identity/api/auth/logout` |
+| `identity.user.logged_out_all_sessions` | Warn | `POST /identity/api/auth/logout-all` |
 
 ## Configuration
 
@@ -387,16 +387,12 @@ password-login path.
 
 ## Backward Compatibility
 
-- `POST /identity/api/auth/login`, `GET /identity/api/auth/me`, and
-  `POST /identity/api/auth/logout` are
-  **unmodified** in behavior for any caller that doesn't send `deviceInfo`.
-- `POST /identity/api/auth/logout` (legacy, unversioned) remains the stateless
-  no-op it always was — the Next.js BFF continues to call it exactly as
-  before. `POST /identity/api/v1/auth/logout` is a new, additive endpoint for clients
-  that hold a `deviceSessionId` and want real revocation.
-- No existing gateway route (`identity-login`, `identity-protected`, etc.)
-  changed. Two new anonymous routes were added
-  (`/identity/api/v1/auth/session/refresh`,
-  `/identity/api/v1/auth/logout`) for the new anonymous endpoints; everything
-  else under `/identity/api/v1/auth/...` falls through to the existing authenticated
-  catch-all route unchanged.
+- `POST /identity/api/auth/login` and `GET /identity/api/auth/me` remain
+  unchanged for existing callers.
+- `POST /identity/api/auth/logout` remains a stateless no-op for callers with
+  no request body, so the Next.js BFFs continue to work as before. Biometric
+  clients can supply `refreshToken` and `deviceSessionId` to revoke their
+  device session through that same unversioned endpoint.
+- The existing anonymous gateway route for `/identity/api/auth/{**catch-all}`
+  forwards login, refresh, and logout. Authenticated device-session management
+  endpoints still enforce JWT authorization independently in Identity.
