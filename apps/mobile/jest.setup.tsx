@@ -27,5 +27,7 @@ jest.mock('@expo/vector-icons', () => {
   return {
     FontAwesome6: ({ name }: { name: string }) => React.createElement(Text, null, name),
     Ionicons: ({ name }: { name: string }) => React.createElement(Text, null, name),
+    MaterialCommunityIcons: ({ name, ...props }: { name: string; testID?: string }) =>
+      React.createElement(Text, { ...props, name }, name),
   };
 });
