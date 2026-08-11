@@ -21,6 +21,7 @@ export interface PublicNetworkMapProps {
   zoomToId?:         string | null;
   onZoomed?:         () => void;
   searchLocation?:   SearchLocationMarker | null;
+  hideSearchMarker?: boolean;
   onSelect:          (id: string) => void;
   onRequestReferral: (m: PublicProviderMarker) => void;
 }

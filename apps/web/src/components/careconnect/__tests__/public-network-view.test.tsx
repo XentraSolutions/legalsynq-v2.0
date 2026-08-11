@@ -7,8 +7,24 @@ import type { PrefillLawFirm } from '../public-network-view';
 
 vi.mock('next/dynamic', () => ({
   default: () => {
-    function MockDynamicComponent() {
-      return <div data-testid="public-network-map" />;
+    function MockDynamicComponent(props: {
+      markers?: Array<{ id: string; index: number; latitude: number; longitude: number }>;
+      searchLocation?: { latitude: number; longitude: number } | null;
+      hideSearchMarker?: boolean;
+    }) {
+      return (
+        <div
+          data-testid="public-network-map"
+          data-marker-ids={(props.markers ?? []).map(marker => `${marker.index}:${marker.id}`).join(',')}
+          data-markers={JSON.stringify((props.markers ?? []).map(marker => ({
+            id: marker.id,
+            index: marker.index,
+            latitude: marker.latitude,
+            longitude: marker.longitude,
+          })))}
+          data-search-location={props.searchLocation && !props.hideSearchMarker ? 'yes' : 'no'}
+        />
+      );
     }
     return MockDynamicComponent;
   },
@@ -194,6 +210,7 @@ describe('PublicNetworkView', () => {
 
   afterEach(() => {
     global.fetch = originalFetch;
+    Reflect.deleteProperty(window, 'google');
   });
 
   test('shows the organization name above the provider name in provider cards', () => {
@@ -801,6 +818,149 @@ describe('PublicNetworkView', () => {
     const bright = screen.getByText('Bright Spine Clinic');
     const atlas = screen.getByText('Atlas Health');
     expect(bright.compareDocumentPosition(atlas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('uses BFF street geocoding and does not show shared provider markers as zero miles', async () => {
+    const user = userEvent.setup();
+    const sharedMarkerDetail: PublicNetworkDetail = {
+      ...MULTI_PROVIDER_DETAIL,
+      markers: MULTI_PROVIDER_DETAIL.markers.map(marker => ({
+        ...marker,
+        latitude: marker.networkProviderId === 'network-provider-1' ? 0 : 30.5,
+        longitude: marker.networkProviderId === 'network-provider-1' ? 0 : -97.5,
+      })),
+    };
+    const geocodeFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const decodedUrl = decodeURIComponent(url);
+      if (url.includes('/api/geocode/address')) {
+        if (decodedUrl.includes('q=123 Main St')) {
+          return jsonResponse([{
+            displayName: '123 Main St, Austin, TX 78701',
+            latitude: 30.2672,
+            longitude: -97.7431,
+          }]);
+        }
+        return jsonResponse([{
+          displayName: '456 Sunset Blvd, Los Angeles, CA 90012',
+          latitude: 34.0522,
+          longitude: -118.2437,
+        }]);
+      }
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) return jsonResponse([]);
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    global.fetch = geocodeFetch as typeof fetch;
+
+    render(
+      <PublicNetworkView
+        detail={sharedMarkerDetail}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText('Search by provider, specialty, address, city, state, or ZIP…'),
+      '123 Main St, Austin, TX 78701',
+    );
+
+    await waitFor(() => expect(geocodeFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/geocode/address'),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    ));
+    expect(geocodeFetch.mock.calls.some(([input]) =>
+      decodeURIComponent(String(input)).includes('q=Austin TX 78701'),
+    )).toBe(false);
+    await waitFor(() => expect(screen.getAllByText('0.0 mi away')).toHaveLength(1));
+    expect(screen.getAllByText(/mi away$/)).toHaveLength(2);
+    expect(screen.getByTestId('public-network-map')).toHaveAttribute(
+      'data-marker-ids',
+      expect.stringContaining('1:network-provider-1'),
+    );
+    const renderedMarkers = JSON.parse(
+      screen.getByTestId('public-network-map').getAttribute('data-markers') ?? '[]',
+    ) as Array<{ id: string; index: number; latitude: number; longitude: number }>;
+    expect(renderedMarkers).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'network-provider-1',
+        index: 1,
+        latitude: 30.2672,
+        longitude: -97.7431,
+      }),
+    ]));
+    expect(screen.getByTestId('public-network-map')).toHaveAttribute('data-search-location', 'yes');
+
+    const atlas = screen.getByText('Atlas Health');
+    const bright = screen.getByText('Bright Spine Clinic');
+    expect(atlas.compareDocumentPosition(bright) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('does not label other facilities zero miles when street geocoding uses a shared marker fallback', async () => {
+    const user = userEvent.setup();
+    const sharedMarkerDetail: PublicNetworkDetail = {
+      ...MULTI_PROVIDER_DETAIL,
+      markers: MULTI_PROVIDER_DETAIL.markers.map(marker => ({
+        ...marker,
+        latitude: 30.5,
+        longitude: -97.5,
+      })),
+    };
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/geocode/address')) return jsonResponse([]);
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) return jsonResponse([]);
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    }) as typeof fetch;
+
+    render(
+      <PublicNetworkView
+        detail={sharedMarkerDetail}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText('Search by provider, specialty, address, city, state, or ZIP…'),
+      '123 Main St, Austin, TX 78701',
+    );
+
+    await waitFor(() => expect(screen.getAllByText('0.0 mi away')).toHaveLength(1));
+    expect(screen.getAllByText(/mi away$/)).toHaveLength(1);
+
+    const atlas = screen.getByText('Atlas Health');
+    const bright = screen.getByText('Bright Spine Clinic');
+    expect(atlas.compareDocumentPosition(bright) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('shows a loading state while a location search is pending instead of no results', async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/geocode/address')) return new Promise<Response>(() => {});
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) return jsonResponse([]);
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    }) as typeof fetch;
+
+    render(
+      <PublicNetworkView
+        detail={MULTI_PROVIDER_DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText('Search by provider, specialty, address, city, state, or ZIP…'),
+      '999 Missing Blvd, Nowhere, TX 99999',
+    );
+
+    expect(screen.getByText('Searching provider locations...')).toBeInTheDocument();
+    expect(screen.queryByText('No providers found.')).not.toBeInTheDocument();
   });
 
   test('shows the no-results state when no provider matches specialty and text filters', async () => {

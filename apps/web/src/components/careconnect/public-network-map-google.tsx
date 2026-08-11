@@ -13,6 +13,7 @@ interface PublicNetworkMapProps {
   zoomToId?: string | null;
   onZoomed?: () => void;
   searchLocation?: SearchLocationMarker | null;
+  hideSearchMarker?: boolean;
   onSelect: (id: string) => void;
   onRequestReferral: (m: PublicProviderMarker) => void;
 }
@@ -58,7 +59,7 @@ function getProviderIdentity(provider: { name: string; organizationName?: string
   };
 }
 
-export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed, searchLocation, onSelect, onRequestReferral }: PublicNetworkMapProps) {
+export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed, searchLocation, hideSearchMarker = false, onSelect, onRequestReferral }: PublicNetworkMapProps) {
   const isLoaded     = useGoogleMapsScript();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<google.maps.Map | null>(null);
@@ -85,24 +86,33 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
     if (!map || !isLoaded) return;
 
     // Fit bounds or center on single marker
-    const boundsKey = `${searchLocation?.label ?? ''}:${markers.map(m => m.id).join(',')}`;
+    const locationKey = searchLocation
+      ? `${searchLocation.latitude}:${searchLocation.longitude}:${hideSearchMarker}`
+      : '';
+    const markerKey = markers
+      .map(m => `${m.id}:${m.latitude}:${m.longitude}`)
+      .join(',');
+    const boundsKey = `${locationKey}:${markerKey}`;
+    const providerAtSearchLocation = !!searchLocation && markers.some(m =>
+      m.latitude === searchLocation.latitude &&
+      m.longitude === searchLocation.longitude,
+    );
     if (boundsKey !== prevBoundsKey.current) {
       prevBoundsKey.current = boundsKey;
-      if (markers.length === 0 && searchLocation) {
+      if (searchLocation) {
         map.setCenter({ lat: searchLocation.latitude, lng: searchLocation.longitude });
-        map.setZoom(11);
+        map.setZoom(providerAtSearchLocation ? 13 : 11);
       } else if (markers.length === 1 && !searchLocation) {
         map.setCenter({ lat: markers[0].latitude, lng: markers[0].longitude });
         map.setZoom(12);
       } else if (markers.length > 0) {
         const bounds = new window.google.maps.LatLngBounds();
         markers.forEach(m => bounds.extend({ lat: m.latitude, lng: m.longitude }));
-        if (searchLocation) bounds.extend({ lat: searchLocation.latitude, lng: searchLocation.longitude });
         map.fitBounds(bounds, 40);
       }
     }
 
-    if (searchLocation) {
+    if (searchLocation && !hideSearchMarker) {
       const icon = {
         url: searchPinUrl(),
         scaledSize: new window.google.maps.Size(34, 34),
@@ -229,7 +239,7 @@ export function PublicNetworkMapGoogle({ markers, selectedId, zoomToId, onZoomed
       if (!seen.has(id)) { ring.setMap(null); ringRefs.current.delete(id); }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markers, selectedId, isLoaded, zoomToId, searchLocation]);
+  }, [markers, selectedId, isLoaded, zoomToId, searchLocation, hideSearchMarker]);
 
   useEffect(() => () => {
     for (const m of markerRefs.current.values()) m.setMap(null);

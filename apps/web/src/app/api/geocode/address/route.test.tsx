@@ -68,4 +68,39 @@ describe('GET /api/geocode/address', () => {
       longitude: -119.4179,
     });
   });
+
+  test('falls back to the U.S. Census geocoder for a street Nominatim cannot resolve', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result: {
+            addressMatches: [{
+              matchedAddress: '1000 WIGWAM PKWY, HENDERSON, NV, 89074',
+              coordinates: { x: -115.03147854692, y: 36.034042304037 },
+              addressComponents: { city: 'HENDERSON', state: 'NV', zip: '89074' },
+            }],
+          },
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { GET } = await import('./route');
+    const response = await GET(new NextRequest(
+      'http://localhost/api/geocode/address?q=1000%20Wigwam%20Pkwy%20Ste.%20100,%20Henderson,%20NV%2089074&loose=1',
+    ));
+    const data = await response.json() as Array<{
+      displayName: string;
+      latitude: number;
+      longitude: number;
+    }>;
+
+    expect(data).toEqual([expect.objectContaining({
+      displayName: '1000 WIGWAM PKWY, HENDERSON, NV, 89074',
+      latitude: 36.034042304037,
+      longitude: -115.03147854692,
+    })]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

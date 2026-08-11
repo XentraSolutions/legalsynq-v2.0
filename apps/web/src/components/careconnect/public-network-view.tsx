@@ -50,6 +50,7 @@ interface SearchLocation {
   latitude:  number;
   longitude: number;
   label:     string;
+  source?:   'geocode' | 'providerFallback';
 }
 
 type GeocodeSuggestion = {
@@ -167,11 +168,16 @@ function getProviderLocationFallback(
   if (!target) return null;
 
   const matches: Array<{ latitude: number; longitude: number }> = [];
+  const exactStreetProviderIds = getExactStreetProviderIds(query, providers);
 
   for (const p of providers) {
-    if (!providerLocationSearchValues(p).some(value => normalizeLocationValue(value) === target)) continue;
+    const providerId = providerEntryId(p);
+    const matchesQuery = exactStreetProviderIds.size > 0
+      ? exactStreetProviderIds.has(providerId)
+      : providerMatchesLocationContext(p, query);
+    if (!matchesQuery) continue;
 
-    const marker = markerById[providerEntryId(p)];
+    const marker = markerById[providerId];
     const coordinates = marker ? usableCoordinates(marker) : null;
     if (coordinates) matches.push(coordinates);
   }
@@ -182,7 +188,70 @@ function getProviderLocationFallback(
     latitude: matches.reduce((sum, point) => sum + point.latitude, 0) / matches.length,
     longitude: matches.reduce((sum, point) => sum + point.longitude, 0) / matches.length,
     label: query.trim(),
+    source: 'providerFallback',
   };
+}
+
+function buildProviderAddressGeocodeQuery(provider: PublicProviderItem): string | null {
+  const addressLine1 = provider.addressLine1?.trim();
+  if (!addressLine1) return null;
+
+  const locality = [provider.city, provider.state, provider.postalCode]
+    .map(value => value?.trim() ?? '')
+    .filter(Boolean);
+  if (locality.length === 0) return null;
+
+  return [addressLine1, ...locality].join(', ');
+}
+
+function isStreetAddressQuery(query: string): boolean {
+  return ADDRESS_HINT_PATTERN.test(query.trim());
+}
+
+function providerMatchesExactLocation(provider: PublicProviderItem, query: string): boolean {
+  const target = normalizeLocationValue(query);
+  if (!target) return false;
+
+  return providerLocationSearchValues(provider)
+    .some(value => normalizeLocationValue(value) === target);
+}
+
+function providerMatchesLocationContext(provider: PublicProviderItem, query: string): boolean {
+  if (providerMatchesExactLocation(provider, query)) return true;
+
+  const target = normalizeLocationValue(query);
+  const addressLine1 = normalizeLocationValue(provider.addressLine1 ?? '');
+  if (addressLine1 && target.includes(addressLine1)) return true;
+
+  const city = normalizeLocationValue(provider.city ?? '');
+  const postalCode = normalizeLocationValue(provider.postalCode ?? '');
+  const stateValues = stateSearchValues(provider.state ?? '').map(normalizeLocationValue);
+  return Boolean(
+    postalCode && target.includes(postalCode) &&
+    city && target.includes(city) &&
+    stateValues.some(state => state && target.includes(state)),
+  );
+}
+
+function getExactStreetProviderIds(query: string, providers: PublicProviderItem[]): Set<string> {
+  if (!isStreetAddressQuery(query)) return new Set<string>();
+
+  const target = normalizeLocationValue(query);
+  const addressMatches = providers.filter(provider => {
+    const addressLine1 = normalizeLocationValue(provider.addressLine1 ?? '');
+    return addressLine1.length >= 5 && target.includes(addressLine1);
+  });
+  if (addressMatches.length > 0) {
+    return new Set(addressMatches.map(providerEntryId));
+  }
+
+  const postalMatches = providers.filter(provider => {
+    const postalCode = normalizeLocationValue(provider.postalCode ?? '');
+    return postalCode.length >= 5 && target.includes(postalCode);
+  });
+  return postalMatches.length === 1
+    ? new Set(postalMatches.map(providerEntryId))
+    : new Set<string>();
 }
 
 function hasProviderTextMatch(query: string, providers: PublicProviderItem[]): boolean {
@@ -234,6 +303,7 @@ function getFirstUsableGeocodeLocation(
       latitude,
       longitude,
       label: suggestion.displayName?.trim() || fallbackLabel,
+      source: 'geocode',
     };
   }
 
@@ -309,6 +379,7 @@ export function PublicNetworkView({
   const [zipInput,    setZipInput]    = useState('');
   const [selectedSpecialtyCode, setSelectedSpecialtyCode] = useState('');
   const [detectedSearchLocation, setDetectedSearchLocation] = useState<SearchLocation | null>(null);
+  const [settledSearchLocationQuery, setSettledSearchLocationQuery] = useState('');
   const [zipLocation, setZipLocation] = useState<SearchLocation | null>(null);
   const [searchLocationLoading, setSearchLocationLoading] = useState(false);
   const [zipLoading,  setZipLoading]  = useState(false);
@@ -348,7 +419,7 @@ export function PublicNetworkView({
       const results: PublicProviderMarker[] = [...detail.markers];
       await Promise.all(
         missing.map(async p => {
-          const q = [p.city, p.state, p.postalCode].filter(Boolean).join(' ');
+          const q = buildProviderAddressGeocodeQuery(p);
           if (!q) return;
           try {
             const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(q)}&loose=1`);
@@ -396,13 +467,21 @@ export function PublicNetworkView({
 
     if (!shouldTrySearchGeocode(value, detail.providers)) {
       setDetectedSearchLocation(null);
+      setSettledSearchLocationQuery('');
       setSearchLocationLoading(false);
       return;
     }
 
-    const fallbackLocation = getProviderLocationFallback(value, detail.providers, markerById);
-    setDetectedSearchLocation(fallbackLocation);
-    if (fallbackLocation) {
+    // City/state/ZIP searches may safely use the providers' average stored point while
+    // geocoding runs. Exact street matches may use only that facility's point; duplicate
+    // city-centroid markers are handled below so unrelated facilities are not shown as 0 mi.
+    const providerFallbackLocation = getProviderLocationFallback(value, detail.providers, markerById);
+    const exactStreetProviderIds = getExactStreetProviderIds(value, detail.providers);
+    const initialFallbackLocation = !isStreetAddressQuery(value) || exactStreetProviderIds.size > 0
+      ? providerFallbackLocation
+      : null;
+    setDetectedSearchLocation(initialFallbackLocation);
+    if (initialFallbackLocation) {
       setZipLocation(null);
       setZipInput('');
       setZipError(null);
@@ -412,13 +491,22 @@ export function PublicNetworkView({
     const timer = setTimeout(async () => {
       setSearchLocationLoading(true);
       try {
-        const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(value)}&loose=1`);
+        const geocodeController = new AbortController();
+        const geocodeTimeout = window.setTimeout(() => geocodeController.abort(), 10000);
+        let res: Response;
+        try {
+          res = await fetch(`/api/geocode/address?q=${encodeURIComponent(value)}&loose=1`, {
+            signal: geocodeController.signal,
+          });
+        } finally {
+          window.clearTimeout(geocodeTimeout);
+        }
         if (!res.ok) throw new Error('Unable to geocode search input.');
         const suggestions = await res.json() as GeocodeSuggestion[];
         const location = getFirstUsableGeocodeLocation(suggestions, value);
 
         if (!cancelled) {
-          const nextLocation = location ?? fallbackLocation;
+          const nextLocation = location ?? providerFallbackLocation;
           setDetectedSearchLocation(nextLocation);
           if (nextLocation) {
             setZipLocation(null);
@@ -427,9 +515,12 @@ export function PublicNetworkView({
           }
         }
       } catch {
-        if (!cancelled) setDetectedSearchLocation(fallbackLocation);
+        if (!cancelled) setDetectedSearchLocation(providerFallbackLocation);
       } finally {
-        if (!cancelled) setSearchLocationLoading(false);
+        if (!cancelled) {
+          setSettledSearchLocationQuery(value);
+          setSearchLocationLoading(false);
+        }
       }
     }, 700);
 
@@ -441,6 +532,11 @@ export function PublicNetworkView({
 
   const searchLocation = detectedSearchLocation ?? zipLocation;
   const searchActsAsLocation = detectedSearchLocation !== null;
+  const trimmedSearch = search.trim();
+  const searchNeedsLocationResolution = shouldTrySearchGeocode(trimmedSearch, detail.providers);
+  const searchLocationPending =
+    searchNeedsLocationResolution &&
+    trimmedSearch !== settledSearchLocationQuery;
 
   const filtered = useMemo<ProviderWithDistance[]>(() => {
     let list: ProviderWithDistance[] = detail.providers;
@@ -462,14 +558,32 @@ export function PublicNetworkView({
     }
     if (searchLocation) {
       const withDistances: ProviderWithDistance[] = [];
+      const exactStreetProviderIds = getExactStreetProviderIds(search, detail.providers);
+      const exactStreetSearch = exactStreetProviderIds.size > 0;
       for (const p of list) {
-        const mk = markerById[providerEntryId(p)];
-        if (!mk) continue;
+        const entryId = providerEntryId(p);
+        const exactLocationMatch = exactStreetProviderIds.has(entryId);
+        const mk = markerById[entryId];
+        if (!mk) {
+          if (exactLocationMatch) withDistances.push({ ...p, distanceMiles: 0 });
+          continue;
+        }
         const coordinates = usableCoordinates(mk);
-        if (!coordinates) continue;
+        if (!coordinates) {
+          if (exactLocationMatch) withDistances.push({ ...p, distanceMiles: 0 });
+          continue;
+        }
+        const sharesFallbackOrigin =
+          searchLocation.source === 'providerFallback' &&
+          coordinates.latitude === searchLocation.latitude &&
+          coordinates.longitude === searchLocation.longitude;
         withDistances.push({
           ...p,
-          distanceMiles: distanceMilesBetween(searchLocation, coordinates),
+          distanceMiles: exactLocationMatch
+            ? 0
+            : exactStreetSearch && sharesFallbackOrigin
+              ? null
+            : distanceMilesBetween(searchLocation, coordinates),
         });
       }
       list = withDistances.sort(compareProvidersByDistance);
@@ -479,17 +593,27 @@ export function PublicNetworkView({
 
   const displayedMarkers = useMemo<NumberedMarker[]>(() => {
     const result: NumberedMarker[] = [];
+    const exactStreetProviderIds = getExactStreetProviderIds(search, detail.providers);
     let idx = 1;
     for (const p of filtered) {
       const entryId = providerEntryId(p);
       const mk = markerById[entryId];
       const coordinates = mk ? usableCoordinates(mk) : null;
-      if (mk && coordinates) {
+      if (searchLocation && exactStreetProviderIds.has(entryId)) {
+        const markerSource = mk ? { ...mk, id: entryId } : { ...p, id: entryId };
+        result.push({
+          ...markerSource,
+          latitude: searchLocation.latitude,
+          longitude: searchLocation.longitude,
+          distanceMiles: 0,
+          index: idx++,
+        });
+      } else if (mk && coordinates) {
         result.push({ ...mk, id: entryId, ...coordinates, distanceMiles: p.distanceMiles ?? mk.distanceMiles, index: idx++ });
       }
     }
     return result;
-  }, [filtered, markerById]);
+  }, [filtered, markerById, search, detail.providers, searchLocation]);
 
   const indexFor = (id: string) =>
     displayedMarkers.find(m => m.id === id)?.index ?? null;
@@ -525,6 +649,7 @@ export function PublicNetworkView({
     setZipInput('');
     setSelectedSpecialtyCode('');
     setDetectedSearchLocation(null);
+    setSettledSearchLocationQuery('');
     setZipLocation(null);
     setSearchLocationLoading(false);
     setZipError(null);
@@ -550,6 +675,7 @@ export function PublicNetworkView({
   const selectedProviders = detail.providers.filter(p => selectedIds.has(providerEntryId(p)));
   const hasMarkers        = displayedMarkers.length > 0 || !!searchLocation;
   const shownCount        = filtered.length;
+  const showProviderSearchLoading = searchLocationPending && filtered.length === 0;
 
   return (
     <div data-theme={dark ? 'dark' : 'light'} className="flex flex-col h-full bg-gray-50 dark:bg-gray-950 overflow-hidden">
@@ -603,7 +729,7 @@ export function PublicNetworkView({
           {/* Search */}
           <div className="flex-1 relative">
             <i className={[
-              searchLocationLoading ? 'ri-loader-4-line animate-spin' : 'ri-search-line',
+              searchLocationPending || searchLocationLoading ? 'ri-loader-4-line animate-spin' : 'ri-search-line',
               'absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm pointer-events-none',
             ].join(' ')} />
             <input
@@ -700,7 +826,9 @@ export function PublicNetworkView({
             <>
               {/* Provider list column */}
               <div className="w-[300px] flex-shrink-0 border-r border-gray-200 dark:border-gray-700 overflow-y-auto bg-white dark:bg-gray-900">
-                {filtered.length === 0 ? (
+                {showProviderSearchLoading ? (
+                  <ProviderSearchLoading />
+                ) : filtered.length === 0 ? (
                   <div className="p-6 text-center">
                     <i className="ri-map-pin-line text-2xl text-gray-300 dark:text-gray-600 mb-2 block" />
                     <p className="text-sm text-gray-400">No providers found.</p>
@@ -753,7 +881,9 @@ export function PublicNetworkView({
           {/* List mode: rich provider grid */}
           {viewMode === 'list' && (
             <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950 p-5">
-              {filtered.length === 0 ? (
+              {showProviderSearchLoading ? (
+                <ProviderSearchLoading />
+              ) : filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <i className="ri-map-pin-line text-3xl text-gray-300 dark:text-gray-600 mb-3 block" />
                   <p className="text-sm text-gray-400">No providers found.</p>
@@ -812,6 +942,16 @@ export function PublicNetworkView({
           prefillLawFirm={prefillLawFirm}
         />
       </div>
+    </div>
+  );
+}
+
+function ProviderSearchLoading() {
+  return (
+    <div className="flex flex-col items-center justify-center p-6 py-16 text-center">
+      <i className="ri-loader-4-line animate-spin text-2xl text-blue-500 mb-2 block" />
+      <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Searching provider locations...</p>
+      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Checking the address before showing results.</p>
     </div>
   );
 }

@@ -20,6 +20,7 @@ interface PublicNetworkMapProps {
   zoomToId?:         string | null;
   onZoomed?:         () => void;
   searchLocation?:   SearchLocationMarker | null;
+  hideSearchMarker?: boolean;
   onSelect:          (id: string) => void;
   onRequestReferral: (m: PublicProviderMarker) => void;
 }
@@ -93,7 +94,7 @@ function buildPopupEl(m: NumberedMarker, onReferral: (m: NumberedMarker) => void
   return el;
 }
 
-export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoomed, searchLocation, onSelect, onRequestReferral }: PublicNetworkMapProps) {
+export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoomed, searchLocation, hideSearchMarker = false, onSelect, onRequestReferral }: PublicNetworkMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef       = useRef<import('leaflet').Map | null>(null);
   const layerRef     = useRef<import('leaflet').LayerGroup | null>(null);
@@ -156,7 +157,7 @@ export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoome
 
       layer.clearLayers();
 
-    if (searchLocation) {
+    if (searchLocation && !hideSearchMarker) {
       const icon = Leaflet.divIcon({
         className: '',
         iconSize: [30, 30] as [number, number],
@@ -206,22 +207,31 @@ export function PublicNetworkMapLeaflet({ markers, selectedId, zoomToId, onZoome
     }
 
     // Re-fit bounds only when the actual marker set changes, not on selectedId changes.
-    const newIds = `${searchLocation?.label ?? ''}:${markers.map(m => m.id).join(',')}`;
+    const locationKey = searchLocation
+      ? `${searchLocation.latitude}:${searchLocation.longitude}:${hideSearchMarker}`
+      : '';
+    const markerKey = markers
+      .map(m => `${m.id}:${m.latitude}:${m.longitude}`)
+      .join(',');
+    const newIds = `${locationKey}:${markerKey}`;
+    const providerAtSearchLocation = !!searchLocation && markers.some(m =>
+      m.latitude === searchLocation.latitude &&
+      m.longitude === searchLocation.longitude,
+    );
     if (newIds !== prevMarkerIdsRef.current) {
       prevMarkerIdsRef.current = newIds;
-      if (markers.length === 0 && searchLocation) {
-        map.setView([searchLocation.latitude, searchLocation.longitude], 11);
+      if (searchLocation) {
+        map.setView([searchLocation.latitude, searchLocation.longitude], providerAtSearchLocation ? 13 : 11);
       } else if (markers.length === 1 && !searchLocation) {
         map.setView([markers[0].latitude, markers[0].longitude], 12);
       } else if (markers.length > 0) {
         const points = markers.map(mk => [mk.latitude, mk.longitude] as [number, number]);
-        if (searchLocation) points.push([searchLocation.latitude, searchLocation.longitude]);
         map.fitBounds(
           Leaflet.latLngBounds(points),
           { padding: [40, 40] },
         );
       }
-    }    })();  }, [markers, selectedId, searchLocation]);
+    }    })();  }, [markers, selectedId, searchLocation, hideSearchMarker]);
 
   // ── Zoom to an externally commanded provider (e.g. card click in split view) ─
   useEffect(() => {
