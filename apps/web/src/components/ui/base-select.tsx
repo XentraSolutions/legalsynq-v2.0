@@ -76,6 +76,21 @@ interface BaseSelectCommonProps<
   className?: string;
   contentClassName?: string;
   onOpen?: () => void;
+  /**
+   * Replaces the trigger's default "selected label / placeholder + chevron"
+   * content — for a trigger that should look like an action button (e.g. an
+   * icon + label) instead of the default combobox chrome. The popover/select
+   * behavior is unchanged; only the trigger's visible content is swapped.
+   * Pass a render function to still show the current selection and a clear
+   * control inside the custom layout.
+   */
+  triggerContent?:
+    | React.ReactNode
+    | ((ctx: {
+        selectedLabel?: string;
+        clearable: boolean;
+        onClear: (event: React.MouseEvent | React.KeyboardEvent) => void;
+      }) => React.ReactNode);
 }
 
 type SingleSelectProps<TOption extends BaseSelectOption> = {
@@ -225,6 +240,7 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
     className,
     contentClassName,
     onOpen,
+    triggerContent,
   } = props;
   const [open, setOpen] = React.useState(false);
   const [internalSearch, setInternalSearch] = React.useState("");
@@ -517,24 +533,32 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
           type="button"
           disabled={disabled}
           className={cn(
-            "h-9 flex w-full items-center justify-between whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-1 text-sm text-gray-700 ring-offset-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:cursor-not-allowed disabled:opacity-50",
+            triggerContent
+              ? "inline-flex items-center whitespace-nowrap rounded-lg text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+              : "h-9 flex w-full items-center justify-between whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 py-1 text-sm text-gray-700 ring-offset-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:cursor-not-allowed disabled:opacity-50",
             error && "border-red-300",
             className,
           )}
         >
-          <span className={cn("truncate", !selectedLabel && "text-gray-400")}>
-            {selectedLabel || placeholder}
-          </span>
-          <span className="flex items-center gap-1 shrink-0">
-            {clearable && !disabled && ((props.multiple && selectedOptions.length > 0) || (!props.multiple && Boolean(selectedLabel))) && (
-              <X
-                aria-label="Clear selection"
-                className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600"
-                onClick={handleClear}
-              />
-            )}
-            <ChevronDown className="h-4 w-4 opacity-50" />
-          </span>
+          {typeof triggerContent === "function"
+            ? triggerContent({ selectedLabel, clearable, onClear: handleClear })
+            : (triggerContent ?? (
+                <>
+                  <span className={cn("truncate", !selectedLabel && "text-gray-400")}>
+                    {selectedLabel || placeholder}
+                  </span>
+                  <span className="flex items-center gap-1 shrink-0">
+                    {clearable && !disabled && ((props.multiple && selectedOptions.length > 0) || (!props.multiple && Boolean(selectedLabel))) && (
+                      <X
+                        aria-label="Clear selection"
+                        className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600"
+                        onClick={handleClear}
+                      />
+                    )}
+                    <ChevronDown className="h-4 w-4 opacity-50" />
+                  </span>
+                </>
+              ))}
         </button>
       </PopoverPrimitive.Trigger>
       <PopoverPrimitive.Portal>

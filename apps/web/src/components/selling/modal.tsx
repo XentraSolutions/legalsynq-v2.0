@@ -214,6 +214,7 @@ interface FormModalProps {
   hasHeader?: boolean;
   children: ReactNode;
   submitLabel?: string;
+  cancelLabel?: string;
   submitDisabled?: boolean;
   loading?: boolean;
   size?: "sm" | "md" | "lg" | "xl";
@@ -228,6 +229,7 @@ export function FormModal({
   headerActions,
   children,
   submitLabel = "Save",
+  cancelLabel = "Cancel",
   submitDisabled,
   loading,
   size = "md",
@@ -245,7 +247,7 @@ export function FormModal({
       footer={
         <>
           <Button variant="secondary" className="flex-1" onClick={onClose}>
-            Cancel
+            {cancelLabel}
           </Button>
           <Button
             className={`flex-1 ${PRIMARY_BUTTON_CLASSNAME}`}

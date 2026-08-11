@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { Search, X } from 'lucide-react';
 import { BaseSelect } from '@/components/ui/base-select';
+import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface FilterOption {
@@ -9,9 +11,24 @@ interface FilterOption {
   label: string;
 }
 
+interface ToolbarFilter {
+  label: string;
+  options: FilterOption[];
+  value: string;
+  onChange: (v: string) => void;
+  /**
+   * Renders the trigger as an icon + label pill (matching the app's
+   * "Filter" action button) that switches to showing the selected option's
+   * label plus a clear control once something's picked — same select
+   * behavior underneath, just a different trigger look than the default
+   * combobox chrome.
+   */
+  icon?: React.ReactNode;
+}
+
 interface FilterToolbarProps {
   searchPlaceholder?: string;
-  filters?: { label: string; options: FilterOption[]; value: string; onChange: (v: string) => void }[];
+  filters?: ToolbarFilter[];
   onSearch?: (query: string) => void;
   searchValue?: string;
   children?: React.ReactNode;
@@ -32,8 +49,8 @@ export function FilterToolbar({ searchPlaceholder = 'Search...', filters, onSear
         bare ? 'px-4 py-3 border-b border-gray-100' : 'bg-white border border-gray-200 rounded-xl px-4 py-3',
       )}
     >
-      <div className="relative flex-1 min-w-[200px]">
-        <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+      <div className="relative flex-1 min-w-[200px] max-w-md">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <input
           type="text"
           placeholder={searchPlaceholder}
@@ -53,7 +70,25 @@ export function FilterToolbar({ searchPlaceholder = 'Search...', filters, onSear
           options={filter.options}
           placeholder={filter.label}
           clearable
-          className="w-auto min-w-[130px]"
+          className={filter.icon ? cn(buttonVariants({ variant: 'secondary' }), 'border-gray-300') : 'w-auto min-w-[130px]'}
+          contentClassName={filter.icon ? 'w-56' : undefined}
+          triggerContent={
+            filter.icon
+              ? ({ selectedLabel, onClear }) => (
+                  <>
+                    {filter.icon}
+                    <span className="truncate max-w-[140px]">{selectedLabel || filter.label}</span>
+                    {selectedLabel && (
+                      <X
+                        aria-label="Clear selection"
+                        className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600"
+                        onClick={onClear}
+                      />
+                    )}
+                  </>
+                )
+              : undefined
+          }
         />
       ))}
       {children}
