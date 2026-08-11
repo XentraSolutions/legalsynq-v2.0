@@ -9,7 +9,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  * Results are cached for 60 s on the CDN edge.
  *
  * Nominatim usage policy: https://operations.osmfoundation.org/policies/nominatim/
- * Rate-limited to 1 req/s — the 300 ms client debounce keeps us within that.
+ * Rate-limited to 1 req/s — client debouncing keeps us within that.
  */
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
 const USER_AGENT = 'LegalSynq/2.0 contact@legalsynq.com';
@@ -43,13 +43,14 @@ const STATE_ABBR: Record<string, string> = {
   Utah: 'UT', Vermont: 'VT', Virginia: 'VA', Washington: 'WA', 'West Virginia': 'WV',
   Wisconsin: 'WI', Wyoming: 'WY',
 };
+const STATE_CODES = new Set(Object.values(STATE_ABBR));
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const q     = request.nextUrl.searchParams.get('q') ?? '';
+  const q     = (request.nextUrl.searchParams.get('q') ?? '').trim();
   // loose=1: relax the addressLine1 requirement — used by map geocoding where
-  // city-level precision is sufficient (no street address needed).
+  // city/state-level precision is sufficient (no street address needed).
   const loose = request.nextUrl.searchParams.get('loose') === '1';
-  if (q.trim().length < 3) {
+  if (q.length < 3 && !(loose && STATE_CODES.has(q.toUpperCase()))) {
     return NextResponse.json([] as AddressSuggestion[]);
   }
 
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const addressLine1 = houseNumber ? `${houseNumber} ${road}` : road;
 
     // In strict mode (autocomplete form) require a street address.
-    // In loose mode (map geocoding) city-level results are acceptable.
+    // In loose mode (map geocoding) city/state-level results are acceptable.
     if (!addressLine1 && !loose) continue;
 
     const city =
@@ -102,7 +103,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const state = STATE_ABBR[stateFull] ?? stateFull.slice(0, 2).toUpperCase();
     const postalCode = addr.postcode?.slice(0, 5) ?? '';
 
-    if (!city || !state || (!postalCode && !loose)) continue;
+    if ((!city && !loose) || !state || (!postalCode && !loose)) continue;
 
     const displayName = [
       addressLine1,

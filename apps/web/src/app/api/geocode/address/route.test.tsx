@@ -33,4 +33,39 @@ describe('GET /api/geocode/address', () => {
     expect(data[0]?.postalCode).toBe('30316');
     expect(data[0]?.addressSelectionToken).toMatch(/\./);
   });
+
+  test('allows state abbreviation matches in loose mode', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ([{
+        lat: '36.7783',
+        lon: '-119.4179',
+        address: {
+          state: 'California',
+        },
+      }]),
+    }));
+
+    const { GET } = await import('./route');
+    const response = await GET(new NextRequest('http://localhost/api/geocode/address?q=CA&loose=1'));
+    const data = await response.json() as Array<{
+      displayName: string;
+      city: string;
+      state: string;
+      postalCode: string;
+      latitude: number;
+      longitude: number;
+    }>;
+
+    expect(response.status).toBe(200);
+    expect(data).toHaveLength(1);
+    expect(data[0]).toMatchObject({
+      displayName: 'CA',
+      city: '',
+      state: 'CA',
+      postalCode: '',
+      latitude: 36.7783,
+      longitude: -119.4179,
+    });
+  });
 });
