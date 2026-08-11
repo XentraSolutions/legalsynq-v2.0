@@ -90,8 +90,9 @@ export function EditCaseInformationModal({
             Contact Person
           </label>
           <SellingEntitySelect
-            entityType="FundingCompanyContact"
-            fundingCompanyId={fundingCompanyId}
+            entityType="FundingCompany"
+            companyId={fundingCompanyId}
+            isContactPerson
             requireParent
             parentHint="Select a funding company first"
             value={fundingCompanyContactId}
@@ -124,8 +125,10 @@ export function EditCaseInformationModal({
             Case Manager
           </label>
           <SellingEntitySelect
-            entityType="CaseManager"
-            lawFirmId={lawFirmId}
+            entityType="LawFirm"
+            contactType="CaseManager"
+            companyId={lawFirmId}
+            isContactPerson
             requireParent
             parentHint="Select a law firm first"
             value={caseManagerId}

@@ -9,11 +9,15 @@ import {
   type CompanyDetail,
   type CreateCompanyRequest,
   type UpdateCompanyRequest,
+  type CreateContactPersonTypeRequest,
   type CompaniesQuery,
   type ContactPerson,
   type ContactPersonDto,
   type CreateContactPersonRequest,
   type UpdateContactPersonRequest,
+  type CompaniesExportQuery,
+  type ContactPersonsExportQuery,
+  type ContactsExportQuery,
 } from "./companies.types";
 
 const BASE = "/selling/api/liens/selling";
@@ -61,6 +65,14 @@ export const companiesApi = {
     );
   },
 
+  createContactPersonType(request: CreateContactPersonTypeRequest) {
+    return apiClient.post<ContactPersonTypeLookupItem>(
+      `${BASE}/lookups/contact-person-types`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
   listCompanies(query: CompaniesQuery = {}) {
     return apiClient.get<PaginatedResultDto<Company>>(
       `${BASE}/companies${toQs(query as Record<string, unknown>)}`,
@@ -99,6 +111,18 @@ export const companiesApi = {
       `${BASE}/companies/${id}/reactivate`,
       {},
       idempotencyHeaders(),
+    );
+  },
+
+  exportCompanies(query: CompaniesExportQuery = {}) {
+    return apiClient.getBlob(
+      `${BASE}/companies/export${toQs(query as Record<string, unknown>)}`,
+    );
+  },
+
+  exportContacts(query: ContactsExportQuery = {}) {
+    return apiClient.getBlob(
+      `${BASE}/contacts/export${toQs(query as Record<string, unknown>)}`,
     );
   },
 
@@ -152,6 +176,12 @@ export const companiesApi = {
       `${BASE}/companies/${companyId}/contacts/${contactId}/reactivate`,
       {},
       idempotencyHeaders(),
+    );
+  },
+
+  exportCompanyContacts(companyId: string, query: ContactPersonsExportQuery = {}) {
+    return apiClient.getBlob(
+      `${BASE}/companies/${companyId}/contacts/export${toQs(query as Record<string, unknown>)}`,
     );
   },
 };

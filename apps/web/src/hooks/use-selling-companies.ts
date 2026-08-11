@@ -1,15 +1,21 @@
 "use client";
 
-import { useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo } from "react";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { companiesApi } from "@/lib/selling/companies.api";
 import type { BaseSelectOption } from "@/components/ui/base-select";
+import type { InfiniteOptions } from "@/hooks/use-filter-options";
 import type {
+  CompaniesPaginatedResult,
   CompaniesQuery,
   CreateCompanyRequest,
   UpdateCompanyRequest,
   CreateContactPersonRequest,
   UpdateContactPersonRequest,
+  CreateContactPersonTypeRequest,
+  CompaniesExportQuery,
+  ContactPersonsExportQuery,
+  ContactsExportQuery,
 } from "@/lib/selling/companies.types";
 
 function toOptions(items: { id: string; name: string }[]): BaseSelectOption[] {
@@ -56,6 +62,17 @@ export function useContactPersonTypes(
   return { ...query, options: useMemo(() => toOptions(query.data ?? []), [query.data]) };
 }
 
+export function useCreateContactPersonType() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateContactPersonTypeRequest) =>
+      companiesApi.createContactPersonType(request).then(({ data }) => data),
+    onSuccess: (_data, { companyTypeId }) => {
+      queryClient.invalidateQueries({ queryKey: CONTACT_PERSON_TYPES_QUERY_KEY(companyTypeId) });
+    },
+  });
+}
+
 // ── Companies ────────────────────────────────────────────────────────────────
 
 export const COMPANIES_QUERY_KEY = (query: CompaniesQuery = {}) =>
@@ -83,6 +100,81 @@ export function useCompany(id: string | null | undefined, options?: { enabled?: 
     queryFn: () => companiesApi.getCompany(id as string).then(({ data }) => data),
     enabled,
   });
+}
+
+const COMPANY_OPTIONS_PAGE_SIZE = 100;
+
+function mapCompanyPageToOptions(page: CompaniesPaginatedResult): BaseSelectOption[] {
+  return page.items.map((c) => ({ value: c.id, label: c.name }));
+}
+
+function nextCompanyOptionsPageParam(last: CompaniesPaginatedResult): number | undefined {
+  const totalPages = Math.ceil(last.totalCount / last.pageSize) || 1;
+  return last.page < totalPages ? last.page + 1 : undefined;
+}
+
+/**
+ * Background-loaded `{value,label}` options for companies of a given type
+ * (matched by `company-types` `code`, e.g. "FundingCompany") — the new
+ * companies API, not the legacy contacts endpoints `useInfiniteContactOptions`
+ * wraps. Same eager-background-pagination shape as that hook (see
+ * use-filter-options.ts's module doc) so it's a drop-in `InfiniteOptions`
+ * source for FilterSection/InfiniteFilterList.
+ */
+export function useInfiniteCompanyOptions(
+  companyTypeCode: string,
+  opts?: { enabled?: boolean },
+): InfiniteOptions {
+  const enabled = opts?.enabled ?? true;
+  const companyTypesQuery = useCompanyTypes({ enabled });
+  const companyType = companyTypesQuery.data?.find((t) => t.code === companyTypeCode);
+  const queryEnabled = enabled && Boolean(companyType?.id);
+
+  const query = useInfiniteQuery({
+    queryKey: ["selling-company-options", companyTypeCode, companyType?.id],
+    queryFn: ({ pageParam }) =>
+      companiesApi
+        .listCompanies({
+          companyTypeId: companyType?.id,
+          page: pageParam,
+          pageSize: COMPANY_OPTIONS_PAGE_SIZE,
+        })
+        .then(({ data }) => data),
+    initialPageParam: 1,
+    getNextPageParam: nextCompanyOptionsPageParam,
+    enabled: queryEnabled,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const { hasNextPage, isFetchingNextPage, isLoading, fetchNextPage } = query;
+  useEffect(() => {
+    if (queryEnabled && hasNextPage && !isFetchingNextPage && !isLoading) {
+      fetchNextPage();
+    }
+  }, [queryEnabled, hasNextPage, isFetchingNextPage, isLoading, fetchNextPage]);
+
+  const loadAll = useCallback(async () => {
+    let result: typeof query = query;
+    while (result.hasNextPage) {
+      result = await result.fetchNextPage();
+    }
+    return (result.data?.pages ?? []).flatMap(mapCompanyPageToOptions);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query.data, query.hasNextPage, query.fetchNextPage]);
+
+  return useMemo(
+    () => ({
+      options: (query.data?.pages ?? []).flatMap(mapCompanyPageToOptions),
+      isLoading: query.isLoading,
+      isFetchingMore: query.isFetchingNextPage,
+      hasNextPage: query.hasNextPage,
+      loadMore: query.fetchNextPage,
+      allLoaded: !query.hasNextPage && !query.isLoading,
+      loadAll,
+    }),
+    [query, loadAll],
+  );
 }
 
 export function useCreateCompany() {
@@ -127,6 +219,18 @@ export function useReactivateCompany() {
       queryClient.invalidateQueries({ queryKey: ["selling-companies"] });
       queryClient.invalidateQueries({ queryKey: COMPANY_QUERY_KEY(id) });
     },
+  });
+}
+
+export function useExportCompanies() {
+  return useMutation({
+    mutationFn: (query: CompaniesExportQuery) => companiesApi.exportCompanies(query),
+  });
+}
+
+export function useExportContacts() {
+  return useMutation({
+    mutationFn: (query: ContactsExportQuery) => companiesApi.exportContacts(query),
   });
 }
 
@@ -234,5 +338,17 @@ export function useReactivateContactPerson() {
       queryClient.invalidateQueries({ queryKey: ["selling-contact-persons", companyId] });
       queryClient.invalidateQueries({ queryKey: CONTACT_PERSON_QUERY_KEY(companyId, contactId) });
     },
+  });
+}
+
+export function useExportCompanyContacts() {
+  return useMutation({
+    mutationFn: ({
+      companyId,
+      query,
+    }: {
+      companyId: string;
+      query: ContactPersonsExportQuery;
+    }) => companiesApi.exportCompanyContacts(companyId, query),
   });
 }

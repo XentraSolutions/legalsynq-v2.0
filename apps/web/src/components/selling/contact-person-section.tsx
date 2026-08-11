@@ -9,7 +9,7 @@ import { type LookupData } from "@/lib/lookup/lookup.types";
 import { ApiError } from "@/lib/api-client";
 import { ConfirmDialog } from "@/components/selling/modal";
 import { AddSubContactModal } from "@/components/lien/add-subcontact-modal";
-import { ActionMenu } from "@/components/lien/action-menu";
+import { ActionMenu } from "@/components/selling/action-menu";
 import { Button } from "@/components/ui/button";
 
 interface Props {

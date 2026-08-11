@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
+import { Eye, Trash2 } from "lucide-react";
 import { DateDisplay } from "@/components/ui/date-display";
 import { LIEN_TYPE_LABELS } from "@/types/lien";
-import { LienStatusBadge } from "./lien-status-badge";
+import { LienStatusBadge } from "../lien/lien-status-badge";
 import { useMemo, useState } from "react";
 import { ColumnDef, SortingState } from "@tanstack/react-table";
-import { StatusBadge } from "./status-badge";
+import { StatusBadge } from "../lien/status-badge";
 import { BaseTable } from "../ui/base-table";
 import { PaginationMeta } from "@/lib/contacts";
 import { LiensQuery } from "@/lib/liens";
@@ -13,9 +14,67 @@ import {
   EMPTY_LIENS_FILTERS,
   LiensFilterValues,
 } from "@/app/(platform)/selling/liens/components/liens-filter";
-import { LienListItem } from "@/lib/selling";
+import { LienListItem, liensService } from "@/lib/selling";
 import { useRouter } from "next/navigation";
-import { LienRowActionsMenu } from "@/components/selling/lien-row-actions-menu";
+import { ActionMenu } from "@/components/selling/action-menu";
+import { ConfirmDialog } from "@/components/selling/modal";
+import { useToast } from "@/lib/toast-context";
+
+interface PortfolioRowActionsProps {
+  lien: LienListItem;
+  onActionComplete?: () => void;
+}
+
+function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProps) {
+  const router = useRouter();
+  const { show: showToast } = useToast();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleDelete = async () => {
+    setLoading(true);
+    try {
+      await liensService.archiveLien(lien.lienId);
+      showToast("Lien deleted.", "success");
+      setConfirmOpen(false);
+      onActionComplete?.();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Action failed", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <ActionMenu
+        items={[
+          {
+            label: "View",
+            icon: Eye,
+            onClick: () => router.push(`portfolio/${lien.lienId}`),
+          },
+          {
+            label: "Delete",
+            icon: Trash2,
+            variant: "danger",
+            onClick: () => setConfirmOpen(true),
+          },
+        ]}
+      />
+      <ConfirmDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={handleDelete}
+        loading={loading}
+        title="Delete This Lien?"
+        description="This lien will be archived and hidden from the active portfolio. This can't be undone through this workflow."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
+    </>
+  );
+}
 
 interface PortfolioTableProps {
   liens: LienListItem[];
@@ -110,11 +169,9 @@ export function PortfolioTable({
         enableSorting: false,
         cell: ({ row }) => (
           <div className="flex justify-end">
-            <LienRowActionsMenu
-              lienId={row.original.lienId}
+            <PortfolioRowActions
               lien={row.original}
-              availableActions={row.original.availableActions ?? []}
-              onActionComplete={() => onActionComplete?.()}
+              onActionComplete={onActionComplete}
             />
           </div>
         ),

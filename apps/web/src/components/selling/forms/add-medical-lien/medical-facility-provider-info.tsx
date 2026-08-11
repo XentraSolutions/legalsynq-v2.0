@@ -92,7 +92,7 @@ export default function MedicalFacilityProviderInfo(
                 updateForm({
                   ...form,
                   facilityId: v,
-                  facility: option.label,
+                  facility: option?.label ?? "",
                   facilityContactId: "",
                   facilityContact: "",
                 })

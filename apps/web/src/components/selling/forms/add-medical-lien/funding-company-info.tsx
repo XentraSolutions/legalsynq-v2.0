@@ -85,7 +85,7 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
                   setForm({
                     ...form,
                     fundingCompanyId: v,
-                    fundingCompany: option.label,
+                    fundingCompany: option?.label ?? "",
                   })
                 }
                 placeholder="Select funding company..."
@@ -100,8 +100,9 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
                 Select Contact Person
               </label>
               <SellingEntitySelect
-                entityType="FundingCompanyContact"
-                fundingCompanyId={form.fundingCompanyId}
+                entityType="FundingCompany"
+                companyId={form.fundingCompanyId}
+                isContactPerson
                 requireParent
                 parentHint="Select a funding company first"
                 value={form.fundingCompanyContactId}
@@ -109,7 +110,7 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
                   setForm({
                     ...form,
                     fundingCompanyContactId: v,
-                    fundingCompanyContact: option.label,
+                    fundingCompanyContact: option?.label ?? "",
                   })
                 }
                 placeholder="Select contact person..."
@@ -147,8 +148,10 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
               Case Manager
             </label>
             <SellingEntitySelect
-              entityType="CaseManager"
-              lawFirmId={form.lawfirmId}
+              entityType="LawFirm"
+              companyId={form.lawfirmId}
+              contactType="CaseManager"
+              isContactPerson
               requireParent
               parentHint="Select a law firm first"
               value={form.caseManagerId}

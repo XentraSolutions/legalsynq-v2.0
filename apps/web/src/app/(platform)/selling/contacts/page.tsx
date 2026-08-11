@@ -3,18 +3,10 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Building2 } from "lucide-react";
+import { Building2, Eye, Repeat, Settings2, SquarePen, Trash2, UserCheck } from "lucide-react";
 import { PageHeader } from "@/components/lien/page-header";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
-import { ActionMenu } from "@/components/lien/action-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { SideDrawer } from "@/components/lien/side-drawer";
+import { ActionMenu } from "@/components/selling/action-menu";
 import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
@@ -24,7 +16,7 @@ import {
   useCompanies,
   useCompanyTypes,
   useDeactivateCompany,
-  useReactivateCompany,
+  useExportCompanies,
 } from "@/hooks/use-selling-companies";
 import { ConfirmDialog } from "@/components/selling/modal";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -32,6 +24,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
 import { Button } from "@/components/ui/button";
 import type { Company } from "@/lib/selling/companies.types";
+import { downloadBlob } from "@/lib/utils";
 
 const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -92,14 +85,30 @@ function CompaniesListView() {
   const [showCreate, setShowCreate] = useState(false);
   const [newCompany, setNewCompany] = useState<Company | null>(null);
   const [contactPersonTarget, setContactPersonTarget] = useState<Company | null>(null);
-  const [previewId, setPreviewId] = useState<string | null>(null);
-  const [confirmAction, setConfirmAction] = useState<{
-    action: "deactivate" | "reactivate";
-    company: Company;
-  } | null>(null);
+  // After the contact person form saves, offer to loop back into it again
+  // instead of just closing — set once a contact has been added for `contactPersonTarget`.
+  const [contactAddedFor, setContactAddedFor] = useState<Company | null>(null);
+  const [editTarget, setEditTarget] = useState<Company | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
 
   const deactivateCompanyMutation = useDeactivateCompany();
-  const reactivateCompanyMutation = useReactivateCompany();
+  const exportCompaniesMutation = useExportCompanies();
+
+  const handleExport = () => {
+    exportCompaniesMutation.mutate(
+      { search: search || undefined, companyTypeId: typeFilter || undefined, isActive: true },
+      {
+        onSuccess: (blob) => {
+          downloadBlob(blob, `companies-${new Date().toISOString().slice(0, 10)}.csv`);
+        },
+        onError: (err) => {
+          toast.error("Export failed", {
+            description: err instanceof Error ? err.message : "Failed to export companies",
+          });
+        },
+      },
+    );
+  };
 
   // Debounce search input before it drives the query, so we don't refetch on every keystroke.
   useEffect(() => {
@@ -147,46 +156,25 @@ function CompaniesListView() {
     }
   }, [companiesQuery.isError, companiesQuery.error]);
 
-  const previewCompany = previewId
-    ? companies.find((c) => c.id === previewId)
-    : null;
-
-  const runDeactivate = (company: Company) => {
-    const toastId = toast.loading(`Deactivating ${company.name}...`);
+  // The underlying endpoint is already a soft-delete (DELETE /companies/{id}),
+  // and this list only ever queries isActive:true, so a deactivated company
+  // simply drops out of view — "Delete" in the UI, deactivate under the hood.
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    const company = deleteTarget;
+    setDeleteTarget(null);
+    const toastId = toast.loading(`Deleting ${company.name}...`);
     deactivateCompanyMutation.mutate(company.id, {
       onSuccess: () => {
-        toast.success("Company deactivated", { id: toastId, description: company.name });
+        toast.success("Company deleted", { id: toastId, description: company.name });
       },
       onError: (err) => {
-        toast.error("Couldn't deactivate company", {
+        toast.error("Couldn't delete company", {
           id: toastId,
           description: err instanceof Error ? err.message : company.name,
         });
       },
     });
-  };
-
-  const runReactivate = (company: Company) => {
-    const toastId = toast.loading(`Reactivating ${company.name}...`);
-    reactivateCompanyMutation.mutate(company.id, {
-      onSuccess: () => {
-        toast.success("Company reactivated", { id: toastId, description: company.name });
-      },
-      onError: (err) => {
-        toast.error("Couldn't reactivate company", {
-          id: toastId,
-          description: err instanceof Error ? err.message : company.name,
-        });
-      },
-    });
-  };
-
-  const handleConfirmAction = () => {
-    if (!confirmAction) return;
-    const { action, company } = confirmAction;
-    setConfirmAction(null);
-    if (action === "deactivate") runDeactivate(company);
-    else runReactivate(company);
   };
 
   const columns = useMemo<ColumnDef<Company, any>[]>(
@@ -238,21 +226,32 @@ function CompaniesListView() {
               <ActionMenu
                 items={[
                   {
-                    label: "View Details",
-                    icon: "ri-eye-line",
+                    label: "View",
+                    icon: Eye,
                     onClick: () => router.push(`/selling/contacts/${c.id}`),
                   },
-                  c.isActive
-                    ? {
-                        label: "Deactivate",
-                        icon: "ri-forbid-line",
-                        onClick: () => setConfirmAction({ action: "deactivate", company: c }),
-                      }
-                    : {
-                        label: "Reactivate",
-                        icon: "ri-check-line",
-                        onClick: () => setConfirmAction({ action: "reactivate", company: c }),
-                      },
+                  {
+                    label: "Reassign Case",
+                    icon: Repeat,
+                    disabled: !ra.can("contact:edit"),
+                    onClick: () =>
+                      toast.info("Coming Soon", {
+                        description: "Reassigning cases isn't available yet.",
+                      }),
+                  },
+                  {
+                    label: "Edit",
+                    icon: SquarePen,
+                    disabled: !ra.can("contact:edit"),
+                    onClick: () => setEditTarget(c),
+                  },
+                  {
+                    label: "Delete",
+                    icon: Trash2,
+                    variant: "danger",
+                    disabled: !ra.can("contact:edit"),
+                    onClick: () => setDeleteTarget(c),
+                  },
                 ]}
               />
             </div>
@@ -260,7 +259,7 @@ function CompaniesListView() {
         },
       },
     ],
-    [router],
+    [router, ra],
   );
 
   const hasActiveFilters = Boolean(search) || Boolean(typeFilter);
@@ -273,10 +272,11 @@ function CompaniesListView() {
       onSearch={setSearchInput}
       filters={[
         {
-          label: "All Types",
+          label: "Filter",
           value: typeFilter,
           onChange: setTypeFilter,
           options: companyTypes.map((t) => ({ value: t.id, label: t.name })),
+          icon: <Settings2 className="h-4 w-4" />,
         },
       ]}
     >
@@ -284,13 +284,10 @@ function CompaniesListView() {
         variant="secondary"
         iconDivider
         rightIcon={<i className="ri-upload-2-line text-base" />}
-        onClick={() =>
-          toast.info("Coming Soon", {
-            description: "Exporting companies isn't available yet.",
-          })
-        }
+        disabled={exportCompaniesMutation.isPending}
+        onClick={handleExport}
       >
-        Export
+        {exportCompaniesMutation.isPending ? "Exporting..." : "Export"}
       </Button>
       {ra.can("contact:create") && (
         <Button
@@ -331,7 +328,6 @@ function CompaniesListView() {
             getRowId={(c) => c.id}
             isLoading={loading}
             emptyMessage="No companies found."
-            onRowClick={(c) => setPreviewId(c.id)}
             toolbar={toolbar}
             manualPagination
             pageCount={totalPages}
@@ -393,70 +389,70 @@ function CompaniesListView() {
           companyId={contactPersonTarget.id}
           companyName={contactPersonTarget.name}
           companyTypeId={contactPersonTarget.companyTypeId}
-          allowCompanySelect
           onClose={() => setContactPersonTarget(null)}
-          onSaved={() => setContactPersonTarget(null)}
+          onSaved={() => {
+            setContactAddedFor(contactPersonTarget);
+            setContactPersonTarget(null);
+          }}
         />
       )}
 
-      {confirmAction && (
+      {contactAddedFor && (
         <ConfirmDialog
           open
-          onClose={() => setConfirmAction(null)}
-          onConfirm={handleConfirmAction}
-          title={confirmAction.action === "deactivate" ? "Deactivate Company" : "Reactivate Company"}
-          description={
-            <>
-              Are you sure you want to{" "}
-              {confirmAction.action === "deactivate" ? "deactivate" : "reactivate"}{" "}
-              <span className="font-semibold text-primary">{confirmAction.company.name}</span>?
-            </>
+          onClose={() => setContactAddedFor(null)}
+          onConfirm={() => {
+            setContactPersonTarget(contactAddedFor);
+            setContactAddedFor(null);
+          }}
+          icon={
+            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+              <UserCheck className="w-5 h-5 text-gray-700" />
+            </div>
           }
-          confirmLabel={confirmAction.action === "deactivate" ? "Deactivate" : "Reactivate"}
-          confirmVariant={confirmAction.action === "deactivate" ? "danger" : "primary"}
-          loading={deactivateCompanyMutation.isPending || reactivateCompanyMutation.isPending}
+          title="New Contact Person Added"
+          description="The new contact person has been added to the company. You can add another contact person if needed."
+          confirmLabel="Add More"
+          cancelLabel="Done"
+          primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
         />
       )}
 
-      <SideDrawer
-        open={!!previewCompany}
-        onClose={() => setPreviewId(null)}
-        title={previewCompany?.name || ""}
-        subtitle={previewCompany?.companyTypeName}
-      >
-        {previewCompany && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="text-xs text-gray-400">Email</p>
-                <p className="text-gray-700">{previewCompany.email || "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Phone</p>
-                <p className="text-gray-700">{previewCompany.phone || "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Location</p>
-                <p className="text-gray-700">
-                  {previewCompany.city}
-                  {previewCompany.city && previewCompany.state ? ", " : ""}
-                  {previewCompany.state || "—"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Status</p>
-                <p className="text-gray-700">{previewCompany.isActive ? "Active" : "Inactive"}</p>
-              </div>
-            </div>
-            <Link
-              href={`/selling/contacts/${previewCompany.id}`}
-              className={`block text-center text-sm px-4 py-2 rounded-lg ${PRIMARY_BUTTON_CLASSNAME}`}
-            >
-              View Full Details
-            </Link>
-          </div>
-        )}
-      </SideDrawer>
+      {editTarget && (
+        <CompanyFormModal
+          open
+          title="Edit Company"
+          companyTypeId={editTarget.companyTypeId}
+          editTarget={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => setEditTarget(null)}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          open
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={handleDelete}
+          title="Delete Company"
+          description={
+            <>
+              Are you sure you want to delete{" "}
+              <span className="font-semibold text-primary">{deleteTarget.name}</span>?
+              This action cannot be undone.
+            </>
+          }
+          confirmLabel="Delete"
+          confirmVariant="danger"
+          loading={deactivateCompanyMutation.isPending}
+          warningTitle="Warning: Deleting this company will also remove:"
+          warningItems={[
+            "All associated contact persons",
+            "All case associations",
+            "All activity history",
+          ]}
+        />
+      )}
     </>
   );
 }

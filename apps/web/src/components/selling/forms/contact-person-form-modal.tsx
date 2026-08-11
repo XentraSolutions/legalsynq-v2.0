@@ -11,6 +11,7 @@ import {
   useCreateContactPerson,
   useUpdateContactPerson,
 } from "@/hooks/use-selling-companies";
+import { AddContactPersonRoleModal } from "@/components/selling/forms/add-contact-person-role-modal";
 import type { ContactPerson } from "@/lib/selling/companies.types";
 
 interface ContactPersonFormModalProps {
@@ -27,6 +28,8 @@ interface ContactPersonFormModalProps {
   onSaved: (contact: ContactPerson) => void;
   /** Renders an editable "Company Name" field instead of assuming a fixed parent company — e.g. the post-create "Add Contact Person" prompt, where the user may want to attach the contact to a different company. */
   allowCompanySelect?: boolean;
+  /** When set, the Role field is locked to this contact-person-type code — e.g. creating a case manager from the lien form's entity select shouldn't let the user pick a different role. */
+  lockContactType?: "CaseManager" | "Attorney";
 }
 
 interface ContactForm {
@@ -73,6 +76,7 @@ export function ContactPersonFormModal({
   onClose,
   onSaved,
   allowCompanySelect,
+  lockContactType,
 }: ContactPersonFormModalProps) {
   const isEdit = Boolean(editTarget);
   const [form, setForm] = useState<ContactForm>(
@@ -98,7 +102,14 @@ export function ContactPersonFormModal({
     ? (selectedCompany?.name ?? companyName)
     : companyName;
 
-  const roleOptions = useContactPersonTypes(effectiveCompanyTypeId, { enabled: open }).options;
+  const contactPersonTypesQuery = useContactPersonTypes(effectiveCompanyTypeId, { enabled: open });
+  const roleOptions = contactPersonTypesQuery.options;
+  const lockedType = lockContactType
+    ? contactPersonTypesQuery.data?.find((t) => t.code === lockContactType)
+    : undefined;
+  const [showAddRole, setShowAddRole] = useState(false);
+  const nextRoleSortOrder =
+    Math.max(0, ...(contactPersonTypesQuery.data ?? []).map((t) => t.sortOrder)) + 1;
 
   useEffect(() => {
     if (!open) return;
@@ -106,6 +117,11 @@ export function ContactPersonFormModal({
     setErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editTarget, companyId]);
+
+  useEffect(() => {
+    if (!open || isEdit || !lockedType) return;
+    setForm((f) => (f.contactPersonTypeId === lockedType.id ? f : { ...f, contactPersonTypeId: lockedType.id }));
+  }, [open, isEdit, lockedType]);
 
   const inputCls = (field: string) =>
     `w-full border rounded-lg px-3 py-2 text-sm ${errors[field] ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`;
@@ -233,6 +249,12 @@ export function ContactPersonFormModal({
               options={roleOptions}
               error={Boolean(errors.contactPersonTypeId)}
               placeholder="Select role"
+              disabled={Boolean(lockedType)}
+              createAction={
+                lockedType || !effectiveCompanyTypeId
+                  ? undefined
+                  : { label: "Add New Role", onSelect: () => setShowAddRole(true) }
+              }
             />
             {errors.contactPersonTypeId && (
               <p className="text-xs text-red-500 mt-1">{errors.contactPersonTypeId}</p>
@@ -294,6 +316,19 @@ export function ContactPersonFormModal({
           </div>
         </div>
       </div>
+
+      {showAddRole && effectiveCompanyTypeId && (
+        <AddContactPersonRoleModal
+          open={showAddRole}
+          companyTypeId={effectiveCompanyTypeId}
+          nextSortOrder={nextRoleSortOrder}
+          onClose={() => setShowAddRole(false)}
+          onCreated={(role) => {
+            setField("contactPersonTypeId", role.id);
+            setShowAddRole(false);
+          }}
+        />
+      )}
     </FormModal>
   );
 }

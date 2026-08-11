@@ -3,11 +3,23 @@ import type { PaginatedResultDto } from "@/lib/contacts/contacts.types";
 export interface CompanyTypeLookupItem {
   id: string;
   name: string;
+  code: string;
+  sortOrder: number;
 }
 
 export interface ContactPersonTypeLookupItem {
   id: string;
   name: string;
+  code: string;
+  companyTypeId: string;
+  sortOrder: number;
+}
+
+export interface CreateContactPersonTypeRequest {
+  companyTypeId: string;
+  code: string;
+  name: string;
+  sortOrder: number;
 }
 
 export interface Company {
@@ -60,12 +72,25 @@ export interface CompaniesQuery {
   pageSize?: number;
 }
 
+export type CompaniesExportQuery = Pick<CompaniesQuery, "search" | "companyTypeId" | "isActive">;
+
+export interface ContactPersonsExportQuery {
+  search?: string;
+  contactPersonTypeId?: string;
+  isActive?: boolean;
+}
+
+export interface ContactsExportQuery extends ContactPersonsExportQuery {
+  companyTypeId?: string;
+}
+
 // Raw shape returned by the API — it has no displayName field, only
 // firstName/lastName (unlike Company, which has a single `name`).
 export interface ContactPersonDto {
   id: string;
   companyId: string;
   contactPersonTypeId: string;
+  contactPersonTypeCode: string;
   contactPersonTypeName: string;
   firstName: string;
   lastName: string;

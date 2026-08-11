@@ -3,11 +3,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { Search, Settings2 } from "lucide-react";
 import { LiensQuery, liensService } from "@/lib/selling";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MetricCard } from "./dashboard/metric-card";
 import { Tabs } from "../ui/tabs";
-import { PortfolioTable } from "../lien/portfolio-table";
+import { PortfolioTable } from "./portfolio-table";
 import { Card } from "../ui/dashboard-card";
 import {
   LiensFilter,
@@ -88,7 +89,6 @@ export default function PortfolioClient() {
       // Each dropdown counts as 1 filter regardless of how many items are
       // checked within it, same as each date range counting as 1 below.
       (f.fundingCompanyIds.length ? 1 : 0) +
-      (f.lienStatusIds.length ? 1 : 0) +
       (f.initialServiceDateFrom || f.initialServiceDateTo ? 1 : 0)
     );
   }
@@ -262,8 +262,8 @@ export default function PortfolioClient() {
         </div>
         <Card title={`${selectedStatus} Liens`}>
           <div className="bg-white rounded-xl py-3 flex flex-wrap items-center gap-3">
-            <div className="relative min-w-[300px]">
-              <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+            <div className="relative flex-1 min-w-[300px] max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search"
@@ -276,8 +276,8 @@ export default function PortfolioClient() {
             </div>
             <Button
               variant="secondary"
-              className="relative min-w-[150px] border-gray-300"
-              leftIcon={<i className="ri-filter-3-line text-base" />}
+              className="border-gray-300"
+              leftIcon={<Settings2 className="h-4 w-4" />}
               onClick={() => setShowFilter(true)}
             >
               Filter
