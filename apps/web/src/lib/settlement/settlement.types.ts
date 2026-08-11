@@ -164,7 +164,11 @@ export interface CaseReduction {
   updatedAtUtc: string;
 }
 
-export type SettlementHistoryItemType = "payment" | "reduction" | "settlement";
+export type SettlementHistoryItemType =
+  | "payment"
+  | "reduction"
+  | "settlement"
+  | "law-firm-change";
 
 interface SettlementHistoryItemBase {
   id: string;
@@ -195,10 +199,17 @@ export interface SettlementHistorySettlementItem extends SettlementHistoryItemBa
   status: string;
 }
 
+export interface SettlementHistoryLawFirmChangeItem
+  extends SettlementHistoryItemBase {
+  type: "law-firm-change";
+  description: string;
+}
+
 export type SettlementHistoryItemV3 =
   | SettlementHistoryPaymentItem
   | SettlementHistoryReductionItem
-  | SettlementHistorySettlementItem;
+  | SettlementHistorySettlementItem
+  | SettlementHistoryLawFirmChangeItem;
 
 export interface GetSettlementHistoryV3Response {
   isSuccess: boolean;
