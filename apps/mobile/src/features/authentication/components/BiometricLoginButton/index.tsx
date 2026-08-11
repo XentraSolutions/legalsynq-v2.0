@@ -1,12 +1,13 @@
-import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Text, View } from 'react-native';
 
 import { Button } from '@/shared/components/Button';
+import type { BiometricLabel } from '@/shared/services/DeviceSecurity';
 import { cx, FIGMA_TEXT } from '@/shared/styles';
 
 export interface BiometricLoginButtonProps {
   accountLabel?: string;
-  label: string;
+  label: BiometricLabel;
   loading?: boolean;
   onPress: () => void;
 }
@@ -17,12 +18,21 @@ export function BiometricLoginButton({
   loading = false,
   onPress,
 }: BiometricLoginButtonProps) {
+  const iconName = label === 'Face ID' ? 'face-recognition' : 'fingerprint';
+
   return (
     <View>
       <Button
         accessibilityLabel={`Sign in with ${label}`}
         label={`Sign in with ${label}`}
-        leftIcon={<Ionicons color="#f97332" name="finger-print-outline" size={22} />}
+        leftIcon={
+          <MaterialCommunityIcons
+            color="#f97332"
+            name={iconName}
+            size={22}
+            testID="biometric-login-icon"
+          />
+        }
         loading={loading}
         variant="ghost"
         onPress={onPress}
