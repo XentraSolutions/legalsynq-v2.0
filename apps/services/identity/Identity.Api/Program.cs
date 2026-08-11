@@ -187,7 +187,7 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit           = 0,
             }));
 
-    options.AddPolicy("auth-logout-v1", context =>
+    options.AddPolicy("auth-logout", context =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: ResolveAuthPartition(context),
             factory: _ => new FixedWindowRateLimiterOptions

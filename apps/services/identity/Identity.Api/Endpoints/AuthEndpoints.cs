@@ -197,10 +197,22 @@ public static class AuthEndpoints
         // Anonymous (JWT may already be expired at logout time).
         // Backend is stateless — real logout is cookie deletion on the Next.js BFF.
         // Emits identity.user.logout for HIPAA audit trail completeness.
-        app.MapPost("/api/auth/logout", (
+        app.MapPost("/api/auth/logout", async (
             HttpContext       httpContext,
-            IAuditEventClient auditClient) =>
+            IAuditEventClient auditClient,
+            IDeviceSessionService deviceSessionService,
+            CancellationToken ct) =>
         {
+            // Biometric/mobile callers may include refresh-token credentials so
+            // logout also revokes their device session. An empty body preserves
+            // the existing stateless logout contract used by the web BFFs.
+            if (httpContext.Request.ContentLength is > 0)
+            {
+                var request = await httpContext.Request.ReadFromJsonAsync<LogoutRequest>(cancellationToken: ct);
+                if (!string.IsNullOrWhiteSpace(request?.RefreshToken))
+                    await deviceSessionService.LogoutCurrentAsync(request.RefreshToken, request.DeviceSessionId, ct);
+            }
+
             // Extract identity from the JWT claim if still present in the request.
             // The token may be expired — we read claims without re-validating the signature.
             var principal  = httpContext.User;
@@ -246,9 +258,10 @@ public static class AuthEndpoints
 
             return Results.NoContent();
         })
-        .AllowAnonymous();
+        .AllowAnonymous()
+        .RequireRateLimiting("auth-logout");
 
-        // ── POST /api/v1/auth/session/refresh ──────────────────────────────────
+        // ── POST /api/auth/session/refresh ─────────────────────────────────────
         // BE-BIO-004. Anonymous (the access token may be expired — that's the
         // point of a refresh call). Exchanges a device-specific refresh token for
         // a rotated pair. See DeviceSessionService.RefreshAsync for the full
@@ -256,7 +269,7 @@ public static class AuthEndpoints
         // accepts or trusts a client-asserted "biometric succeeded" claim —
         // authorization is based solely on possession of a valid, unrevoked,
         // correctly-rotated refresh token.
-        app.MapPost("/api/v1/auth/session/refresh", async (
+        app.MapPost("/api/auth/session/refresh", async (
             RefreshRequest        request,
             HttpContext           httpContext,
             IDeviceSessionService deviceSessionService,
@@ -277,26 +290,6 @@ public static class AuthEndpoints
         })
         .AllowAnonymous()
         .RequireRateLimiting("auth-refresh");
-
-        // ── POST /api/v1/auth/logout ────────────────────────────────────────────
-        // BE-BIO-013. Anonymous — the access token may already be expired at
-        // logout time, same rationale as the legacy /api/auth/logout above.
-        // Unlike the legacy endpoint (which is a stateless no-op left untouched
-        // for backward compatibility — BE-BIO-024), this endpoint performs real
-        // device-session revocation for callers that hold a deviceSessionId.
-        // Idempotent (BE-BIO-019).
-        app.MapPost("/api/v1/auth/logout", async (
-            LogoutV1Request        request,
-            HttpContext            httpContext,
-            IDeviceSessionService  deviceSessionService,
-            CancellationToken      ct) =>
-        {
-            if (!string.IsNullOrWhiteSpace(request.RefreshToken))
-                await deviceSessionService.LogoutCurrentAsync(request.RefreshToken, request.DeviceSessionId, ct);
-            return Results.NoContent();
-        })
-        .AllowAnonymous()
-        .RequireRateLimiting("auth-logout-v1");
 
         // ── GET /api/organizations/my/config ──────────────────────────────────
         // Authenticated. Returns org-level configuration for the caller's organization.
@@ -1182,7 +1175,7 @@ public static class AuthEndpoints
 
     // BE-BIO
     private record RefreshRequest(string RefreshToken, Guid DeviceSessionId);
-    private record LogoutV1Request(string RefreshToken, Guid DeviceSessionId);
+    private record LogoutRequest(string? RefreshToken, Guid DeviceSessionId);
 
     /// <summary>
     /// BE-BIO-018/SEC-010: maps an AuthErrorCodes constant to a standardized,

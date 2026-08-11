@@ -38,6 +38,9 @@ Identity.Api.Tests/      Integration and unit tests
 |---|---|---|
 | `POST` | `/api/auth/login` | Authenticate, returns JWT |
 | `GET` | `/api/auth/me` | Validate current session |
+| `POST` | `/api/auth/session/refresh` | Rotate a biometric device session refresh token |
+| `POST` | `/api/auth/logout` | Stateless web logout or biometric device-session revocation when refresh credentials are supplied |
+| `GET` | `/api/auth/device-sessions` | List the authenticated user's active device sessions |
 | `POST` | `/api/users` | Create user |
 | `GET` | `/api/users` | List users (tenant-scoped) |
 | `POST` | `/api/internal/tenant-provisioning/provision` | Internal: full tenant provision |

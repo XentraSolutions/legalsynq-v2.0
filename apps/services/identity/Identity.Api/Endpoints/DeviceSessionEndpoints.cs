@@ -9,7 +9,7 @@ namespace Identity.Api.Endpoints;
 
 /// <summary>
 /// BE-BIO-011/012/013/014/015/016: biometric-enable/disable toggles and
-/// device-session management (list/revoke/logout-all). The refresh and v1
+/// device-session management (list/revoke/logout-all). The refresh and
 /// logout endpoints live in AuthEndpoints.cs instead, since they are
 /// conceptually part of the auth lifecycle and must be anonymous (the access
 /// token may be expired at call time), unlike everything here which requires
@@ -19,9 +19,9 @@ public static class DeviceSessionEndpoints
 {
     public static void MapDeviceSessionEndpoints(this WebApplication app)
     {
-        // ── GET /api/v1/auth/device-sessions ────────────────────────────────────
+        // ── GET /api/auth/device-sessions ───────────────────────────────────────
         // BE-BIO-015. Never includes token material.
-        app.MapGet("/api/v1/auth/device-sessions", async (
+        app.MapGet("/api/auth/device-sessions", async (
             HttpContext            httpContext,
             IDeviceSessionService  deviceSessionService,
             CancellationToken      ct) =>
@@ -37,12 +37,12 @@ public static class DeviceSessionEndpoints
         .RequireAuthorization()
         .RequireRateLimiting("auth-device-session-list");
 
-        // ── DELETE /api/v1/auth/device-sessions/{id} ────────────────────────────
+        // ── DELETE /api/auth/device-sessions/{id} ───────────────────────────────
         // BE-BIO-016. IDOR-checked (service scopes the lookup to the caller's own
         // UserId). SEC-014: revoking a device OTHER than the caller's own current
         // one is the higher-risk action and requires step-up; revoking your own
         // current session needs none, since you're already using it.
-        app.MapDelete("/api/v1/auth/device-sessions/{id:guid}", async (
+        app.MapDelete("/api/auth/device-sessions/{id:guid}", async (
             Guid                    id,
             HttpContext             httpContext,
             IDeviceSessionService   deviceSessionService,
@@ -67,10 +67,10 @@ public static class DeviceSessionEndpoints
         .RequireAuthorization()
         .RequireRateLimiting("auth-device-session-revoke");
 
-        // ── POST /api/v1/auth/logout-all ────────────────────────────────────────
+        // ── POST /api/auth/logout-all ───────────────────────────────────────────
         // BE-BIO-014. Always requires step-up (recent primary auth on the calling
         // device), since it revokes every device including the one making the call.
-        app.MapPost("/api/v1/auth/logout-all", async (
+        app.MapPost("/api/auth/logout-all", async (
             HttpContext             httpContext,
             IDeviceSessionService   deviceSessionService,
             IOptions<RefreshTokenPolicyOptions> policyOptions,
@@ -88,10 +88,10 @@ public static class DeviceSessionEndpoints
         .RequireAuthorization()
         .RequireRateLimiting("auth-logout-all");
 
-        // ── POST /api/v1/auth/device-sessions/{id}/biometric/enable ─────────────
+        // ── POST /api/auth/device-sessions/{id}/biometric/enable ────────────────
         // BE-BIO-011. Administrative flag only — never itself proof that biometric
         // authentication occurred for any specific request (SEC-006).
-        app.MapPost("/api/v1/auth/device-sessions/{id:guid}/biometric/enable", async (
+        app.MapPost("/api/auth/device-sessions/{id:guid}/biometric/enable", async (
             Guid                    id,
             HttpContext             httpContext,
             IDeviceSessionService   deviceSessionService,
@@ -106,10 +106,10 @@ public static class DeviceSessionEndpoints
         .RequireAuthorization()
         .RequireRateLimiting("auth-biometric-toggle");
 
-        // ── POST /api/v1/auth/device-sessions/{id}/biometric/disable ────────────
+        // ── POST /api/auth/device-sessions/{id}/biometric/disable ───────────────
         // BE-BIO-012. Disables the flag and revokes the session/token together.
         // Idempotent (BE-BIO-019).
-        app.MapPost("/api/v1/auth/device-sessions/{id:guid}/biometric/disable", async (
+        app.MapPost("/api/auth/device-sessions/{id:guid}/biometric/disable", async (
             Guid                    id,
             HttpContext             httpContext,
             IDeviceSessionService   deviceSessionService,
