@@ -52,7 +52,193 @@ interface SearchLocation {
   label:     string;
 }
 
+type GeocodeSuggestion = {
+  displayName?: string;
+  latitude:     number;
+  longitude:    number;
+};
+
 type ProviderWithDistance = PublicProviderItem & { distanceMiles?: number | null };
+
+const US_STATE_NAMES = new Set([
+  'alabama', 'alaska', 'arizona', 'arkansas', 'california',
+  'colorado', 'connecticut', 'delaware', 'florida', 'georgia',
+  'hawaii', 'idaho', 'illinois', 'indiana', 'iowa',
+  'kansas', 'kentucky', 'louisiana', 'maine', 'maryland',
+  'massachusetts', 'michigan', 'minnesota', 'mississippi', 'missouri',
+  'montana', 'nebraska', 'nevada', 'new hampshire', 'new jersey',
+  'new mexico', 'new york', 'north carolina', 'north dakota',
+  'ohio', 'oklahoma', 'oregon', 'pennsylvania', 'rhode island',
+  'south carolina', 'south dakota', 'tennessee', 'texas',
+  'utah', 'vermont', 'virginia', 'washington', 'west virginia',
+  'wisconsin', 'wyoming',
+]);
+const US_STATE_CODES = new Set([
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+]);
+const US_STATE_CODE_TO_NAME: Record<string, string> = {
+  AL: 'alabama', AK: 'alaska', AZ: 'arizona', AR: 'arkansas', CA: 'california',
+  CO: 'colorado', CT: 'connecticut', DE: 'delaware', FL: 'florida', GA: 'georgia',
+  HI: 'hawaii', ID: 'idaho', IL: 'illinois', IN: 'indiana', IA: 'iowa',
+  KS: 'kansas', KY: 'kentucky', LA: 'louisiana', ME: 'maine', MD: 'maryland',
+  MA: 'massachusetts', MI: 'michigan', MN: 'minnesota', MS: 'mississippi', MO: 'missouri',
+  MT: 'montana', NE: 'nebraska', NV: 'nevada', NH: 'new hampshire', NJ: 'new jersey',
+  NM: 'new mexico', NY: 'new york', NC: 'north carolina', ND: 'north dakota',
+  OH: 'ohio', OK: 'oklahoma', OR: 'oregon', PA: 'pennsylvania', RI: 'rhode island',
+  SC: 'south carolina', SD: 'south dakota', TN: 'tennessee', TX: 'texas',
+  UT: 'utah', VT: 'vermont', VA: 'virginia', WA: 'washington', WV: 'west virginia',
+  WI: 'wisconsin', WY: 'wyoming',
+};
+const US_STATE_NAME_TO_CODE = new Map(
+  Object.entries(US_STATE_CODE_TO_NAME).map(([code, name]) => [name, code]),
+);
+const ZIP_CODE_PATTERN = /^\d{5}(?:-\d{4})?$/;
+const ADDRESS_HINT_PATTERN = /\d|,|\b(?:apt|suite|ste|unit|street|st|road|rd|avenue|ave|boulevard|blvd|drive|dr|lane|ln|court|ct|circle|cir|place|pl|parkway|pkwy|highway|hwy|way|terrace|ter)\b/i;
+
+function normalizeLocationValue(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[.,]/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function stateSearchValues(state: string): string[] {
+  const trimmed = state.trim();
+  if (!trimmed) return [];
+
+  const values = new Set<string>([trimmed]);
+  const upper = trimmed.toUpperCase();
+  const normalized = normalizeLocationValue(trimmed);
+
+  const fullName = US_STATE_CODE_TO_NAME[upper];
+  if (fullName) values.add(fullName);
+
+  const code = US_STATE_NAME_TO_CODE.get(normalized);
+  if (code) values.add(code);
+
+  return [...values];
+}
+
+function providerLocationSearchValues(provider: PublicProviderItem): string[] {
+  const city = provider.city?.trim() ?? '';
+  const state = provider.state?.trim() ?? '';
+  const addressLine1 = provider.addressLine1?.trim() ?? '';
+  const postalCode = provider.postalCode?.trim() ?? '';
+  const stateValues = stateSearchValues(state);
+  const values = [
+    addressLine1,
+    city,
+    postalCode,
+    ...stateValues,
+  ];
+
+  for (const stateValue of stateValues) {
+    values.push(
+      [addressLine1, city, stateValue, postalCode].filter(Boolean).join(' '),
+      [city, stateValue].filter(Boolean).join(' '),
+      [city, stateValue, postalCode].filter(Boolean).join(' '),
+      [stateValue, postalCode].filter(Boolean).join(' '),
+    );
+  }
+
+  return values;
+}
+
+function hasExactProviderLocationMatch(query: string, providers: PublicProviderItem[]): boolean {
+  const target = normalizeLocationValue(query);
+  if (!target) return false;
+
+  return providers.some(p => {
+    return providerLocationSearchValues(p).some(value => normalizeLocationValue(value) === target);
+  });
+}
+
+function getProviderLocationFallback(
+  query: string,
+  providers: PublicProviderItem[],
+  markerById: Record<string, PublicProviderMarker>,
+): SearchLocation | null {
+  const target = normalizeLocationValue(query);
+  if (!target) return null;
+
+  const matches: Array<{ latitude: number; longitude: number }> = [];
+
+  for (const p of providers) {
+    if (!providerLocationSearchValues(p).some(value => normalizeLocationValue(value) === target)) continue;
+
+    const marker = markerById[providerEntryId(p)];
+    const coordinates = marker ? usableCoordinates(marker) : null;
+    if (coordinates) matches.push(coordinates);
+  }
+
+  if (matches.length === 0) return null;
+
+  return {
+    latitude: matches.reduce((sum, point) => sum + point.latitude, 0) / matches.length,
+    longitude: matches.reduce((sum, point) => sum + point.longitude, 0) / matches.length,
+    label: query.trim(),
+  };
+}
+
+function hasProviderTextMatch(query: string, providers: PublicProviderItem[]): boolean {
+  const target = normalizeLocationValue(query);
+  if (!target) return false;
+
+  return providers.some(p => {
+    const values = [
+      p.name,
+      p.organizationName ?? '',
+      p.facilityName ?? '',
+      p.primarySpecialty ?? '',
+      ...(p.specialties ?? []).map(s => s.name),
+    ];
+
+    return values.some(value => normalizeLocationValue(value).includes(target));
+  });
+}
+
+function shouldTrySearchGeocode(query: string, providers: PublicProviderItem[]): boolean {
+  const value = query.trim();
+  if (!value) return false;
+
+  if (ZIP_CODE_PATTERN.test(value)) return true;
+
+  const stateCode = value.toUpperCase();
+  const normalized = normalizeLocationValue(value);
+  if (US_STATE_CODES.has(stateCode) || US_STATE_NAMES.has(normalized)) return true;
+
+  if (value.length < 3) return false;
+  if (hasExactProviderLocationMatch(value, providers)) return true;
+  if (ADDRESS_HINT_PATTERN.test(value)) return true;
+  if (hasProviderTextMatch(value, providers)) return false;
+
+  return /^[a-z][a-z\s'.-]*$/i.test(value) && value.split(/\s+/).length <= 3;
+}
+
+function getFirstUsableGeocodeLocation(
+  suggestions: GeocodeSuggestion[],
+  fallbackLabel: string,
+): SearchLocation | null {
+  for (const suggestion of suggestions) {
+    const latitude = Number(suggestion.latitude);
+    const longitude = Number(suggestion.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+    if (latitude === 0 && longitude === 0) continue;
+
+    return {
+      latitude,
+      longitude,
+      label: suggestion.displayName?.trim() || fallbackLabel,
+    };
+  }
+
+  return null;
+}
 
 function usableCoordinates(point: { latitude: number; longitude: number }): { latitude: number; longitude: number } | null {
   const latitude = Number(point.latitude);
@@ -122,7 +308,9 @@ export function PublicNetworkView({
   const [search,      setSearch]      = useState('');
   const [zipInput,    setZipInput]    = useState('');
   const [selectedSpecialtyCode, setSelectedSpecialtyCode] = useState('');
-  const [searchLocation, setSearchLocation] = useState<SearchLocation | null>(null);
+  const [detectedSearchLocation, setDetectedSearchLocation] = useState<SearchLocation | null>(null);
+  const [zipLocation, setZipLocation] = useState<SearchLocation | null>(null);
+  const [searchLocationLoading, setSearchLocationLoading] = useState(false);
   const [zipLoading,  setZipLoading]  = useState(false);
   const [zipError,    setZipError]    = useState<string | null>(null);
   const [viewMode,    setViewMode]    = useState<ViewMode>('split');
@@ -203,13 +391,67 @@ export function PublicNetworkView({
     return m;
   }, [markers]);
 
+  useEffect(() => {
+    const value = search.trim();
+
+    if (!shouldTrySearchGeocode(value, detail.providers)) {
+      setDetectedSearchLocation(null);
+      setSearchLocationLoading(false);
+      return;
+    }
+
+    const fallbackLocation = getProviderLocationFallback(value, detail.providers, markerById);
+    setDetectedSearchLocation(fallbackLocation);
+    if (fallbackLocation) {
+      setZipLocation(null);
+      setZipInput('');
+      setZipError(null);
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setSearchLocationLoading(true);
+      try {
+        const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(value)}&loose=1`);
+        if (!res.ok) throw new Error('Unable to geocode search input.');
+        const suggestions = await res.json() as GeocodeSuggestion[];
+        const location = getFirstUsableGeocodeLocation(suggestions, value);
+
+        if (!cancelled) {
+          const nextLocation = location ?? fallbackLocation;
+          setDetectedSearchLocation(nextLocation);
+          if (nextLocation) {
+            setZipLocation(null);
+            setZipInput('');
+            setZipError(null);
+          }
+        }
+      } catch {
+        if (!cancelled) setDetectedSearchLocation(fallbackLocation);
+      } finally {
+        if (!cancelled) setSearchLocationLoading(false);
+      }
+    }, 700);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [search, detail.providers, markerById]);
+
+  const searchLocation = detectedSearchLocation ?? zipLocation;
+  const searchActsAsLocation = detectedSearchLocation !== null;
+
   const filtered = useMemo<ProviderWithDistance[]>(() => {
     let list: ProviderWithDistance[] = detail.providers;
     if (!showAll) list = list.filter(p => p.acceptingReferrals);
     const q = search.trim().toLowerCase();
-    if (q) list = list.filter(p =>
+    if (q && !searchActsAsLocation) list = list.filter(p =>
       p.name.toLowerCase().includes(q) ||
       (p.organizationName?.toLowerCase().includes(q) ?? false) ||
+      (p.facilityName?.toLowerCase().includes(q) ?? false) ||
+      (p.addressLine1?.toLowerCase().includes(q) ?? false) ||
+      (p.postalCode?.toLowerCase().includes(q) ?? false) ||
       p.city.toLowerCase().includes(q) ||
       p.state.toLowerCase().includes(q) ||
       (p.primarySpecialty?.toLowerCase().includes(q) ?? false) ||
@@ -233,7 +475,7 @@ export function PublicNetworkView({
       list = withDistances.sort(compareProvidersByDistance);
     }
     return list;
-  }, [detail.providers, search, showAll, selectedSpecialtyCode, searchLocation, markerById]);
+  }, [detail.providers, search, showAll, selectedSpecialtyCode, searchLocation, searchActsAsLocation, markerById]);
 
   const displayedMarkers = useMemo<NumberedMarker[]>(() => {
     const result: NumberedMarker[] = [];
@@ -255,7 +497,7 @@ export function PublicNetworkView({
   async function applyZipFilter() {
     const value = zipInput.trim();
     if (!value) {
-      setSearchLocation(null);
+      setZipLocation(null);
       setZipError(null);
       return;
     }
@@ -264,15 +506,14 @@ export function PublicNetworkView({
     try {
       const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(value)}&loose=1`);
       if (!res.ok) throw new Error('Unable to geocode ZIP code.');
-      const suggestions = await res.json() as Array<{ latitude: number; longitude: number }>;
-      if (suggestions.length === 0) throw new Error('No matching ZIP code was found.');
-      setSearchLocation({
-        latitude: suggestions[0].latitude,
-        longitude: suggestions[0].longitude,
-        label: value,
-      });
+      const suggestions = await res.json() as GeocodeSuggestion[];
+      const location = getFirstUsableGeocodeLocation(suggestions, value);
+      if (!location) throw new Error('No matching ZIP code was found.');
+      if (detectedSearchLocation) setSearch('');
+      setDetectedSearchLocation(null);
+      setZipLocation(location);
     } catch (err) {
-      setSearchLocation(null);
+      setZipLocation(null);
       setZipError(err instanceof Error ? err.message : 'Unable to geocode ZIP code.');
     } finally {
       setZipLoading(false);
@@ -283,7 +524,9 @@ export function PublicNetworkView({
     setSearch('');
     setZipInput('');
     setSelectedSpecialtyCode('');
-    setSearchLocation(null);
+    setDetectedSearchLocation(null);
+    setZipLocation(null);
+    setSearchLocationLoading(false);
     setZipError(null);
   }
 
@@ -359,13 +602,16 @@ export function PublicNetworkView({
 
           {/* Search */}
           <div className="flex-1 relative">
-            <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm pointer-events-none" />
+            <i className={[
+              searchLocationLoading ? 'ri-loader-4-line animate-spin' : 'ri-search-line',
+              'absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm pointer-events-none',
+            ].join(' ')} />
             <input
               type="search"
-              placeholder="Search by name, location, or specialty…"
+              placeholder="Search by provider, specialty, address, city, state, or ZIP…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+              className="h-10 w-full pl-8 pr-3 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
                          focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-900/30
                          placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
             />
@@ -378,7 +624,7 @@ export function PublicNetworkView({
             onChange={e => setZipInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && void applyZipFilter()}
             placeholder="ZIP"
-            className="w-24 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+            className="h-10 w-24 px-3 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
                        focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-900/30
                        placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white flex-shrink-0"
           />
@@ -386,7 +632,7 @@ export function PublicNetworkView({
           <button
             onClick={() => void applyZipFilter()}
             disabled={zipLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg flex-shrink-0 transition-colors
+            className="h-10 flex items-center gap-1.5 px-4 text-sm font-medium border rounded-lg flex-shrink-0 transition-colors
                        bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 disabled:opacity-50"
           >
             {zipLoading ? 'Finding…' : 'Apply ZIP'}
@@ -396,7 +642,7 @@ export function PublicNetworkView({
             aria-label="Specialty"
             value={selectedSpecialtyCode}
             onChange={e => setSelectedSpecialtyCode(e.target.value)}
-            className="w-40 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+            className="h-10 w-40 px-3 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
                        focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-900/30
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-white flex-shrink-0"
           >
@@ -410,7 +656,7 @@ export function PublicNetworkView({
           <button
             onClick={() => setShowAll(v => !v)}
             className={[
-              'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg flex-shrink-0 transition-colors',
+              'h-10 flex items-center gap-1.5 px-4 text-sm font-medium border rounded-lg flex-shrink-0 transition-colors',
               showAll
                 ? 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 border-gray-900 dark:border-gray-100'
                 : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500',

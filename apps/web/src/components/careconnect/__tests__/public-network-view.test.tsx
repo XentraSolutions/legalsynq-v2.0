@@ -694,6 +694,115 @@ describe('PublicNetworkView', () => {
     expect(screen.getByText('Atlas Rehab')).toBeInTheDocument();
   });
 
+  test('treats a valid search-bar location as a closest-first provider search', async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/geocode/address')) {
+        return jsonResponse([{
+          displayName: 'Los Angeles, CA 90012',
+          latitude: 34.0522,
+          longitude: -118.2437,
+        }]);
+      }
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    }) as typeof fetch;
+
+    render(
+      <PublicNetworkView
+        detail={MULTI_PROVIDER_DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText('Search by provider, specialty, address, city, state, or ZIP…'),
+      'Los Angeles',
+    );
+
+    await waitFor(() => expect(screen.getByText('0.0 mi away')).toBeInTheDocument());
+    expect(screen.queryByText(/Location detected:/i)).not.toBeInTheDocument();
+
+    const bright = screen.getByText('Bright Spine Clinic');
+    const atlas = screen.getByText('Atlas Health');
+    expect(bright.compareDocumentPosition(atlas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('uses provider coordinates when search-bar city geocoding returns no suggestions', async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/geocode/address')) {
+        return jsonResponse([]);
+      }
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    }) as typeof fetch;
+
+    render(
+      <PublicNetworkView
+        detail={MULTI_PROVIDER_DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText('Search by provider, specialty, address, city, state, or ZIP…'),
+      'Los Angeles',
+    );
+
+    await waitFor(() => expect(screen.getByText('0.0 mi away')).toBeInTheDocument());
+    expect(screen.queryByText(/Location detected:/i)).not.toBeInTheDocument();
+
+    const bright = screen.getByText('Bright Spine Clinic');
+    const atlas = screen.getByText('Atlas Health');
+    expect(bright.compareDocumentPosition(atlas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  test('uses provider coordinates when searching by full state name for abbreviated provider states', async () => {
+    const user = userEvent.setup();
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/geocode/address')) {
+        return jsonResponse([]);
+      }
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    }) as typeof fetch;
+
+    render(
+      <PublicNetworkView
+        detail={MULTI_PROVIDER_DETAIL}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await user.type(
+      screen.getByPlaceholderText('Search by provider, specialty, address, city, state, or ZIP…'),
+      'California',
+    );
+
+    await waitFor(() => expect(screen.getByText('0.0 mi away')).toBeInTheDocument());
+    expect(screen.queryByText(/Location detected:/i)).not.toBeInTheDocument();
+
+    const bright = screen.getByText('Bright Spine Clinic');
+    const atlas = screen.getByText('Atlas Health');
+    expect(bright.compareDocumentPosition(atlas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   test('shows the no-results state when no provider matches specialty and text filters', async () => {
     const user = userEvent.setup();
 
@@ -707,7 +816,7 @@ describe('PublicNetworkView', () => {
     );
 
     await user.selectOptions(screen.getByLabelText('Specialty'), 'CHIROPRACTORS');
-    await user.type(screen.getByPlaceholderText('Search by name, location, or specialty…'), 'atlas');
+    await user.type(screen.getByPlaceholderText('Search by provider, specialty, address, city, state, or ZIP…'), 'atlas');
 
     expect(screen.getByText('No providers found.')).toBeInTheDocument();
   });
