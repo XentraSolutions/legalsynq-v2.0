@@ -10,7 +10,8 @@ module.exports = {
       "supportsTablet": false,
       "bundleIdentifier": process.env.EXPO_PUBLIC_APP_ENV === 'production' ? "com.legalsynq" : "com.legalsynq.qa",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Allow $(PRODUCT_NAME) to use Face ID to securely access your saved login."
       }
     },
     "android": {
@@ -25,8 +26,19 @@ module.exports = {
       ]
     },
     "plugins": [
-      "expo-secure-store",
-      "expo-local-authentication",
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": false,
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to access your saved login using Face ID."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID to sign in."
+        }
+      ],
       "expo-font",
       "@react-native-community/datetimepicker",
       [

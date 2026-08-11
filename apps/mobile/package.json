@@ -14,7 +14,9 @@
     "type-check": "pnpm typecheck",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "storybook:start": "expo start --storybook"
+    "storybook:start": "expo start --storybook",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
