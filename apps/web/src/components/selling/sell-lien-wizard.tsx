@@ -328,7 +328,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
         await saveBuyerSelection();
       }
       showToast("Progress saved.", "success");
-      router.push(`/selling/portfolio/${lienId}`);
+      router.push(`/selling/portfolio/lien/${lienId}`);
     } catch (err) {
       showToast(
         err instanceof Error ? err.message : "Failed to save progress",
@@ -383,7 +383,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
     <div className="max-w-4xl mx-auto space-y-6 pb-10">
       <div className="flex items-center gap-4">
         <Link
-          href={`/selling/portfolio/${lienId}`}
+          href={`/selling/portfolio/lien/${lienId}`}
           className="text-gray-400 hover:text-gray-600"
         >
           <i className="ri-arrow-left-line text-xl" />
@@ -509,7 +509,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
 
           <div className="flex justify-end gap-3 pt-4">
             <Link
-              href={`/selling/portfolio/${lienId}`}
+              href={`/selling/portfolio/lien/${lienId}`}
               className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
             >
               Cancel
@@ -672,13 +672,13 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
 
       <Modal
         open={showSuccess}
-        onClose={() => router.push(`/selling/portfolio/${lienId}`)}
+        onClose={() => router.push(`/selling/portfolio/lien/${lienId}`)}
         title="Lien Submitted Successfully"
         size="sm"
         footer={
           <Button
             className={PRIMARY_BUTTON_CLASSNAME}
-            onClick={() => router.push(`/selling/portfolio/${lienId}`)}
+            onClick={() => router.push(`/selling/portfolio/lien/${lienId}`)}
           >
             Done
           </Button>

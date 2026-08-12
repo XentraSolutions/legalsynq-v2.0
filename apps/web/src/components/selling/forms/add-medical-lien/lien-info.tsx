@@ -42,9 +42,12 @@ export default function LienInfo(props: LienInfoProps) {
       return { key: c.id, value: c.code, label: c.name };
     }) ?? [];
 
+  // Values must match the backend's ListingVisibility casing ("Public" /
+  // "Private") — a lowercase mismatch here means a hydrated lien's saved
+  // value never matches an option, showing the select as unset.
   const listingVisibility = [
-    { key: "public", value: "public", label: "Public" },
-    { key: "private", value: "private", label: "Private" },
+    { key: "Public", value: "Public", label: "Public" },
+    { key: "Private", value: "Private", label: "Private" },
   ];
 
   // Default new liens to "Pending" status once the status list is available

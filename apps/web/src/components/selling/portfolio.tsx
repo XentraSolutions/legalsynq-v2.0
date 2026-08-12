@@ -192,7 +192,7 @@ export default function PortfolioClient() {
                 >
                   <button
                     onClick={() => {
-                      router.push("add-liens");
+                      router.push("/selling/portfolio/lien/add");
                       setActionOpen(false);
                     }}
                     className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
@@ -293,7 +293,7 @@ export default function PortfolioClient() {
             onSortingChange={setSorting}
             handlePageChange={handlePageChange}
             liens={liens?.items ?? []}
-            onRowSelect={(id) => router.push(`portfolio/${id}`)}
+            onRowSelect={(id) => router.push(`/selling/portfolio/lien/${id}`)}
             onActionComplete={() => {
               refetchLiens();
               refetch();
