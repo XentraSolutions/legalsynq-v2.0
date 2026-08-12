@@ -18,6 +18,8 @@ import {
   type CompaniesExportQuery,
   type ContactPersonsExportQuery,
   type ContactsExportQuery,
+  type ReassignCompanyRequest,
+  type ReassignContactPersonRequest,
 } from "./companies.types";
 
 const BASE = "/selling/api/liens/selling";
@@ -114,6 +116,14 @@ export const companiesApi = {
     );
   },
 
+  reassignCompany(companyId: string, request: ReassignCompanyRequest) {
+    return apiClient.post<void>(
+      `${BASE}/companies/${companyId}/reassign`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
   exportCompanies(query: CompaniesExportQuery = {}) {
     return apiClient.getBlob(
       `${BASE}/companies/export${toQs(query as Record<string, unknown>)}`,
@@ -175,6 +185,18 @@ export const companiesApi = {
     return apiClient.put<void>(
       `${BASE}/companies/${companyId}/contacts/${contactId}/reactivate`,
       {},
+      idempotencyHeaders(),
+    );
+  },
+
+  reassignContactPerson(
+    companyId: string,
+    contactId: string,
+    request: ReassignContactPersonRequest,
+  ) {
+    return apiClient.post<void>(
+      `${BASE}/companies/${companyId}/contacts/${contactId}/reassign`,
+      request,
       idempotencyHeaders(),
     );
   },

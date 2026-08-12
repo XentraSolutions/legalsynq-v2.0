@@ -19,6 +19,7 @@ import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ActionMenu } from "@/components/selling/action-menu";
 import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
+import { ReassignCompanyModal } from "@/components/selling/forms/reassign-company-modal";
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
 import { ContactPersonsDirectoryView } from "@/components/selling/contacts/contact-persons-directory-view";
 import { useRoleAccess } from "@/hooks/use-role-access";
@@ -112,6 +113,7 @@ function CompaniesListView() {
   const [contactAddedFor, setContactAddedFor] = useState<Company | null>(null);
   const [editTarget, setEditTarget] = useState<Company | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
+  const [reassignTarget, setReassignTarget] = useState<Company | null>(null);
 
   const deactivateCompanyMutation = useDeactivateCompany();
   const exportCompaniesMutation = useExportCompanies();
@@ -268,13 +270,10 @@ function CompaniesListView() {
                     onClick: () => router.push(`/selling/contacts/${c.id}`),
                   },
                   {
-                    label: "Reassign Case",
+                    label: "Reassign",
                     icon: Repeat,
                     disabled: !ra.can("contact:edit"),
-                    onClick: () =>
-                      toast.info("Coming Soon", {
-                        description: "Reassigning cases isn't available yet.",
-                      }),
+                    onClick: () => setReassignTarget(c),
                   },
                   {
                     label: "Edit",
@@ -475,6 +474,14 @@ function CompaniesListView() {
           editTarget={editTarget}
           onClose={() => setEditTarget(null)}
           onSaved={() => setEditTarget(null)}
+        />
+      )}
+
+      {reassignTarget && (
+        <ReassignCompanyModal
+          open
+          company={reassignTarget}
+          onClose={() => setReassignTarget(null)}
         />
       )}
 

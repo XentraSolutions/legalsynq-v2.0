@@ -12,6 +12,7 @@ import {
   useReactivateCompany,
 } from "@/hooks/use-selling-companies";
 import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
+import { ReassignCompanyModal } from "@/components/selling/forms/reassign-company-modal";
 import { ConfirmDialog } from "@/components/selling/modal";
 import {
   DropdownMenu,
@@ -50,6 +51,7 @@ export function CompanyDetailShell({
   const reactivateMutation = useReactivateCompany();
 
   const [editOpen, setEditOpen] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<"deactivate" | "reactivate" | null>(null);
 
   const canEdit = ra.can("contact:edit");
@@ -127,15 +129,9 @@ export function CompanyDetailShell({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {canEdit && (
-              <DropdownMenuItem
-                onClick={() =>
-                  toast.info("Coming Soon", {
-                    description: "Reassigning cases isn't available yet.",
-                  })
-                }
-              >
+              <DropdownMenuItem onClick={() => setReassignOpen(true)}>
                 <i className="ri-repeat-line" />
-                Reassign Case
+                Reassign
               </DropdownMenuItem>
             )}
             {canEdit && (
@@ -204,6 +200,14 @@ export function CompanyDetailShell({
           editTarget={company}
           onClose={() => setEditOpen(false)}
           onSaved={() => setEditOpen(false)}
+        />
+      )}
+
+      {reassignOpen && (
+        <ReassignCompanyModal
+          open
+          company={company}
+          onClose={() => setReassignOpen(false)}
         />
       )}
 

@@ -23,6 +23,7 @@ import {
   useExportCompanyContacts,
 } from "@/hooks/use-selling-companies";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
+import { ReassignContactPersonModal } from "@/components/selling/forms/reassign-contact-person-modal";
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
 import { CompanyStatsCards } from "@/components/selling/contacts/company-stats-cards";
 import type { ContactPerson } from "@/lib/selling/companies.types";
@@ -49,6 +50,7 @@ export function CompanyContactPersonsTab() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ContactPerson | null>(null);
   const [confirmAction, setConfirmAction] = useState<ContactPerson | null>(null);
+  const [reassignTarget, setReassignTarget] = useState<ContactPerson | null>(null);
 
   const deactivateMutation = useDeactivateContactPerson();
   const exportMutation = useExportCompanyContacts();
@@ -134,13 +136,10 @@ export function CompanyContactPersonsTab() {
 
   const contactActions = (contact: ContactPerson): ActionMenuItem[] => [
     {
-      label: "Reassign Case",
+      label: "Reassign",
       icon: Repeat,
       disabled: !canEdit,
-      onClick: () =>
-        toast.info("Coming Soon", {
-          description: "Reassigning cases isn't available yet.",
-        }),
+      onClick: () => setReassignTarget(contact),
     },
     {
       label: "Edit",
@@ -374,6 +373,15 @@ export function CompanyContactPersonsTab() {
           editTarget={editTarget}
           onClose={() => setEditTarget(null)}
           onSaved={() => setEditTarget(null)}
+        />
+      )}
+
+      {reassignTarget && (
+        <ReassignContactPersonModal
+          open
+          companyId={companyId}
+          contactPerson={reassignTarget}
+          onClose={() => setReassignTarget(null)}
         />
       )}
 
