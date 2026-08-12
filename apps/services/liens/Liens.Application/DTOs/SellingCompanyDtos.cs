@@ -15,6 +15,15 @@ public sealed class ContactPersonTypeResponse
     public string Code { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
     public int SortOrder { get; init; }
+    public bool IsSystem { get; init; }
+}
+
+public sealed class CreateContactPersonTypeRequest
+{
+    public Guid CompanyTypeId { get; init; }
+    public string Code { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
+    public int? SortOrder { get; init; }
 }
 
 public sealed class CreateCompanyRequest
@@ -40,6 +49,11 @@ public sealed class UpdateCompanyRequest
     public string? PostalCode { get; init; }
     public string? Phone { get; init; }
     public string? Email { get; init; }
+}
+
+public sealed class ReassignCompanyRequest
+{
+    public Guid TargetCompanyId { get; init; }
 }
 
 public sealed class CompanyResponse
@@ -87,6 +101,11 @@ public sealed class UpdateCompanyContactPersonRequest
     public string? Email { get; init; }
 }
 
+public sealed class ReassignCompanyContactPersonRequest
+{
+    public Guid TargetContactPersonId { get; init; }
+}
+
 public sealed class CompanyContactPersonResponse
 {
     public Guid Id { get; init; }
@@ -105,4 +124,60 @@ public sealed class CompanyContactPersonResponse
     public bool IsActive { get; init; }
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; init; }
+}
+
+public sealed class CompanyContactPersonExportResponse
+{
+    public Guid Id { get; init; }
+    public Guid CompanyId { get; init; }
+    public string CompanyName { get; init; } = string.Empty;
+    public Guid CompanyTypeId { get; init; }
+    public string CompanyTypeCode { get; init; } = string.Empty;
+    public string CompanyTypeName { get; init; } = string.Empty;
+    public Guid ContactPersonTypeId { get; init; }
+    public string ContactPersonTypeCode { get; init; } = string.Empty;
+    public string ContactPersonTypeName { get; init; } = string.Empty;
+    public string FirstName { get; init; } = string.Empty;
+    public string LastName { get; init; } = string.Empty;
+    public string? AddressLine1 { get; init; }
+    public string? City { get; init; }
+    public string? State { get; init; }
+    public string? PostalCode { get; init; }
+    public string? Phone { get; init; }
+    public string? Email { get; init; }
+    public bool IsActive { get; init; }
+    public DateTime CreatedAtUtc { get; init; }
+    public DateTime UpdatedAtUtc { get; init; }
+}
+
+public sealed class CompanyReassignmentResponse
+{
+    public Guid SourceCompanyId { get; init; }
+    public string SourceCompanyName { get; init; } = string.Empty;
+    public Guid TargetCompanyId { get; init; }
+    public string TargetCompanyName { get; init; } = string.Empty;
+    public Guid CompanyTypeId { get; init; }
+    public int ReassignedContactPersonCount { get; init; }
+    public int ReassignedLienCount { get; init; }
+    public int ReassignedCaseCount { get; init; }
+    public int ReassignedOfferCount { get; init; }
+    public int ReassignedBuyerAccessLinkCount { get; init; }
+    public int ReassignedPortfolioBuyerCount { get; init; }
+    public int TotalReassignedCount { get; init; }
+}
+
+public sealed class CompanyContactPersonReassignmentResponse
+{
+    public Guid SourceContactPersonId { get; init; }
+    public string SourceContactPersonName { get; init; } = string.Empty;
+    public Guid TargetContactPersonId { get; init; }
+    public string TargetContactPersonName { get; init; } = string.Empty;
+    public Guid SourceCompanyId { get; init; }
+    public Guid TargetCompanyId { get; init; }
+    public Guid CompanyTypeId { get; init; }
+    public Guid ContactPersonTypeId { get; init; }
+    public int ReassignedLienCount { get; init; }
+    public int ReassignedCaseCount { get; init; }
+    public int ReassignedBuyerAccessLinkCount { get; init; }
+    public int TotalReassignedCount { get; init; }
 }

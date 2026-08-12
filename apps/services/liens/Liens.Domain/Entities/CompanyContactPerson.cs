@@ -101,6 +101,15 @@ public class CompanyContactPerson : AuditableEntity
 
     public void Reactivate(Guid updatedByUserId) => SetActive(true, updatedByUserId);
 
+    public void ReassignCompany(Guid companyId, Guid updatedByUserId)
+    {
+        if (companyId == Guid.Empty) throw new ArgumentException("CompanyId is required.", nameof(companyId));
+        if (updatedByUserId == Guid.Empty) throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+        CompanyId = companyId;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     private void SetActive(bool isActive, Guid updatedByUserId)
     {
         if (updatedByUserId == Guid.Empty) throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));

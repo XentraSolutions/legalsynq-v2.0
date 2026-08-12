@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
@@ -23,14 +25,20 @@ public static class SellingCompanyEndpoints
             .RequirePermission(LiensPermissions.LienSaleRead);
         group.MapGet("/lookups/contact-person-types", GetContactPersonTypes)
             .RequirePermission(LiensPermissions.LienSaleRead);
+        group.MapPost("/lookups/contact-person-types", CreateContactPersonType)
+            .RequirePermission(LiensPermissions.LienSaleCreate);
 
         group.MapGet("/companies", SearchCompanies)
+            .RequirePermission(LiensPermissions.LienSaleRead);
+        group.MapGet("/companies/export", ExportCompanies)
             .RequirePermission(LiensPermissions.LienSaleRead);
         group.MapGet("/companies/{companyId:guid}", GetCompany)
             .RequirePermission(LiensPermissions.LienSaleRead);
         group.MapPost("/companies", CreateCompany)
             .RequirePermission(LiensPermissions.LienSaleCreate);
         group.MapPut("/companies/{companyId:guid}", UpdateCompany)
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
+        group.MapPost("/companies/{companyId:guid}/reassign", ReassignCompany)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
         group.MapDelete("/companies/{companyId:guid}", DeactivateCompany)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
@@ -39,11 +47,17 @@ public static class SellingCompanyEndpoints
 
         group.MapGet("/companies/{companyId:guid}/contacts", GetContactPersons)
             .RequirePermission(LiensPermissions.LienSaleRead);
+        group.MapGet("/contacts/export", ExportContactPersons)
+            .RequirePermission(LiensPermissions.LienSaleRead);
+        group.MapGet("/companies/{companyId:guid}/contacts/export", ExportContactPersonsByCompany)
+            .RequirePermission(LiensPermissions.LienSaleRead);
         group.MapGet("/companies/{companyId:guid}/contacts/{contactId:guid}", GetContactPerson)
             .RequirePermission(LiensPermissions.LienSaleRead);
         group.MapPost("/companies/{companyId:guid}/contacts", CreateContactPerson)
             .RequirePermission(LiensPermissions.LienSaleCreate);
         group.MapPut("/companies/{companyId:guid}/contacts/{contactId:guid}", UpdateContactPerson)
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
+        group.MapPost("/companies/{companyId:guid}/contacts/{contactId:guid}/reassign", ReassignContactPerson)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
         group.MapDelete("/companies/{companyId:guid}/contacts/{contactId:guid}", DeactivateContactPerson)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
@@ -56,8 +70,36 @@ public static class SellingCompanyEndpoints
         => Results.Ok(new { items = await service.GetCompanyTypesAsync(ct) });
 
     private static async Task<IResult> GetContactPersonTypes(
-        Guid companyTypeId, ICompanyService service, CancellationToken ct)
-        => Results.Ok(new { items = await service.GetContactPersonTypesAsync(companyTypeId, ct) });
+        Guid companyTypeId,
+        ICompanyService service,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, orgId, _) = RequireContext(context);
+        return Results.Ok(new
+        {
+            items = await service.GetContactPersonTypesAsync(tenantId, orgId, companyTypeId, ct),
+        });
+    }
+
+    private static Task<IResult> CreateContactPersonType(
+        CreateContactPersonTypeRequest request,
+        HttpRequest httpRequest,
+        ICompanyService service,
+        IAuditPublisher audit,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, orgId, userId) = RequireContext(context);
+        return ExecuteMutationAsync(
+            httpRequest, db, tenantId, userId,
+            "/api/liens/selling/lookups/contact-person-types",
+            "CompanyType", request.CompanyTypeId.ToString(), request,
+            () => service.CreateContactPersonTypeAsync(tenantId, orgId, userId, request, ct),
+            response => PublishContactPersonTypeAudit(audit, response, tenantId, userId),
+            StatusCodes.Status201Created, ct);
+    }
 
     private static async Task<IResult> SearchCompanies(
         ICompanyService service,
@@ -72,6 +114,20 @@ public static class SellingCompanyEndpoints
         var (tenantId, orgId, _) = RequireContext(context);
         return Results.Ok(await service.SearchCompaniesAsync(
             tenantId, orgId, search, companyTypeId, isActive, page, pageSize, ct));
+    }
+
+    private static async Task<IResult> ExportCompanies(
+        ICompanyService service,
+        ICurrentRequestContext context,
+        string? search = null,
+        Guid? companyTypeId = null,
+        bool? isActive = true,
+        CancellationToken ct = default)
+    {
+        var (tenantId, orgId, _) = RequireContext(context);
+        var companies = await service.GetCompaniesForExportAsync(
+            tenantId, orgId, search, companyTypeId, isActive, ct);
+        return CsvFile(BuildCompaniesCsv(companies), "selling-companies.csv");
     }
 
     private static async Task<IResult> GetCompany(
@@ -129,6 +185,26 @@ public static class SellingCompanyEndpoints
         CancellationToken ct)
         => SetCompanyActive(companyId, false, httpRequest, service, audit, db, context, ct);
 
+    private static Task<IResult> ReassignCompany(
+        Guid companyId,
+        ReassignCompanyRequest request,
+        HttpRequest httpRequest,
+        ICompanyService service,
+        IAuditPublisher audit,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, orgId, userId) = RequireContext(context);
+        return ExecuteMutationAsync(
+            httpRequest, db, tenantId, userId, "/api/liens/selling/companies/{companyId}/reassign",
+            "Company", companyId.ToString(), request,
+            () => service.ReassignCompanyAsync(
+                tenantId, orgId, companyId, request.TargetCompanyId, userId, ct),
+            response => PublishCompanyReassignmentAudit(audit, response, tenantId, userId),
+            StatusCodes.Status200OK, ct);
+    }
+
     private static Task<IResult> ReactivateCompany(
         Guid companyId,
         HttpRequest httpRequest,
@@ -174,6 +250,47 @@ public static class SellingCompanyEndpoints
         {
             items = await service.GetContactPersonsAsync(tenantId, orgId, companyId, isActive, ct),
         });
+    }
+
+    private static Task<IResult> ExportContactPersons(
+        ICompanyService service,
+        ICurrentRequestContext context,
+        string? search = null,
+        Guid? companyTypeId = null,
+        Guid? contactPersonTypeId = null,
+        bool? isActive = true,
+        CancellationToken ct = default)
+        => ExportContactPersonsCore(
+            null, service, context, search, companyTypeId, contactPersonTypeId, isActive,
+            "selling-contact-persons.csv", ct);
+
+    private static Task<IResult> ExportContactPersonsByCompany(
+        Guid companyId,
+        ICompanyService service,
+        ICurrentRequestContext context,
+        string? search = null,
+        Guid? contactPersonTypeId = null,
+        bool? isActive = true,
+        CancellationToken ct = default)
+        => ExportContactPersonsCore(
+            companyId, service, context, search, null, contactPersonTypeId, isActive,
+            $"selling-company-{companyId:D}-contact-persons.csv", ct);
+
+    private static async Task<IResult> ExportContactPersonsCore(
+        Guid? companyId,
+        ICompanyService service,
+        ICurrentRequestContext context,
+        string? search,
+        Guid? companyTypeId,
+        Guid? contactPersonTypeId,
+        bool? isActive,
+        string fileName,
+        CancellationToken ct)
+    {
+        var (tenantId, orgId, _) = RequireContext(context);
+        var contacts = await service.GetContactPersonsForExportAsync(
+            tenantId, orgId, companyId, search, companyTypeId, contactPersonTypeId, isActive, ct);
+        return CsvFile(BuildContactPersonsCsv(contacts), fileName);
     }
 
     private static async Task<IResult> GetContactPerson(
@@ -239,6 +356,29 @@ public static class SellingCompanyEndpoints
         ICurrentRequestContext context,
         CancellationToken ct)
         => SetContactPersonActive(companyId, contactId, false, httpRequest, service, audit, db, context, ct);
+
+    private static Task<IResult> ReassignContactPerson(
+        Guid companyId,
+        Guid contactId,
+        ReassignCompanyContactPersonRequest request,
+        HttpRequest httpRequest,
+        ICompanyService service,
+        IAuditPublisher audit,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, orgId, userId) = RequireContext(context);
+        return ExecuteMutationAsync(
+            httpRequest, db, tenantId, userId,
+            "/api/liens/selling/companies/{companyId}/contacts/{contactId}/reassign",
+            "CompanyContactPerson", contactId.ToString(), request,
+            () => service.ReassignContactPersonAsync(
+                tenantId, orgId, companyId, contactId,
+                request.TargetContactPersonId, userId, ct),
+            response => PublishContactPersonReassignmentAudit(audit, response, tenantId, userId),
+            StatusCodes.Status200OK, ct);
+    }
 
     private static Task<IResult> ReactivateContactPerson(
         Guid companyId,
@@ -360,6 +500,114 @@ public static class SellingCompanyEndpoints
             $"Contact '{contact.FirstName} {contact.LastName}' {suffix} for company '{companyName}'",
             tenantId, userId, "CompanyContactPerson", contact.Id.ToString());
     }
+
+    private static Task PublishCompanyReassignmentAudit(
+        IAuditPublisher audit,
+        CompanyReassignmentResponse response,
+        Guid tenantId,
+        Guid userId)
+    {
+        audit.Publish("liens.company.reassigned", "update",
+            $"Company '{response.SourceCompanyName}' reassigned to '{response.TargetCompanyName}' " +
+            $"({response.TotalReassignedCount} records)",
+            tenantId, userId, "Company", response.SourceCompanyId.ToString());
+        return Task.CompletedTask;
+    }
+
+    private static Task PublishContactPersonTypeAudit(
+        IAuditPublisher audit,
+        ContactPersonTypeResponse response,
+        Guid tenantId,
+        Guid userId)
+    {
+        audit.Publish("liens.company.contact_type.created", "create",
+            $"Contact-person type '{response.Name}' created",
+            tenantId, userId, "ContactPersonType", response.Id.ToString());
+        return Task.CompletedTask;
+    }
+
+    private static Task PublishContactPersonReassignmentAudit(
+        IAuditPublisher audit,
+        CompanyContactPersonReassignmentResponse response,
+        Guid tenantId,
+        Guid userId)
+    {
+        audit.Publish("liens.company.contact.reassigned", "update",
+            $"Contact '{response.SourceContactPersonName}' reassigned to " +
+            $"'{response.TargetContactPersonName}' ({response.TotalReassignedCount} records)",
+            tenantId, userId, "CompanyContactPerson", response.SourceContactPersonId.ToString());
+        return Task.CompletedTask;
+    }
+
+    private static string BuildCompaniesCsv(IReadOnlyList<CompanyResponse> companies)
+    {
+        var csv = new StringBuilder();
+        AppendCsvRow(csv,
+        [
+            "Id", "CompanyTypeId", "CompanyTypeCode", "CompanyTypeName", "LinkedTenantId",
+            "Name", "AddressLine1", "City", "State", "PostalCode", "Phone", "Email",
+            "IsActive", "CreatedAtUtc", "UpdatedAtUtc",
+        ]);
+        foreach (var company in companies)
+        {
+            AppendCsvRow(csv,
+            [
+                company.Id.ToString("D"), company.CompanyTypeId.ToString("D"),
+                company.CompanyTypeCode, company.CompanyTypeName, company.LinkedTenantId?.ToString("D"),
+                company.Name, company.AddressLine1, company.City, company.State, company.PostalCode,
+                company.Phone, company.Email, company.IsActive ? "true" : "false",
+                company.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture),
+                company.UpdatedAtUtc.ToString("O", CultureInfo.InvariantCulture),
+            ]);
+        }
+        return csv.ToString();
+    }
+
+    private static string BuildContactPersonsCsv(IReadOnlyList<CompanyContactPersonExportResponse> contacts)
+    {
+        var csv = new StringBuilder();
+        AppendCsvRow(csv,
+        [
+            "Id", "CompanyId", "CompanyName", "CompanyTypeId", "CompanyTypeCode", "CompanyTypeName",
+            "ContactPersonTypeId", "ContactPersonTypeCode", "ContactPersonTypeName", "FirstName",
+            "LastName", "AddressLine1", "City", "State", "PostalCode", "Phone", "Email",
+            "IsActive", "CreatedAtUtc", "UpdatedAtUtc",
+        ]);
+        foreach (var contact in contacts)
+        {
+            AppendCsvRow(csv,
+            [
+                contact.Id.ToString("D"), contact.CompanyId.ToString("D"), contact.CompanyName,
+                contact.CompanyTypeId.ToString("D"), contact.CompanyTypeCode, contact.CompanyTypeName,
+                contact.ContactPersonTypeId.ToString("D"), contact.ContactPersonTypeCode,
+                contact.ContactPersonTypeName, contact.FirstName, contact.LastName, contact.AddressLine1,
+                contact.City, contact.State, contact.PostalCode, contact.Phone, contact.Email,
+                contact.IsActive ? "true" : "false",
+                contact.CreatedAtUtc.ToString("O", CultureInfo.InvariantCulture),
+                contact.UpdatedAtUtc.ToString("O", CultureInfo.InvariantCulture),
+            ]);
+        }
+        return csv.ToString();
+    }
+
+    private static void AppendCsvRow(StringBuilder csv, IEnumerable<string?> values)
+        => csv.AppendLine(string.Join(',', values.Select(EscapeCsvField)));
+
+    private static string EscapeCsvField(string? value)
+    {
+        if (value is null) return string.Empty;
+
+        var candidate = value.TrimStart();
+        var safeValue = candidate.Length > 0 && candidate[0] is '=' or '+' or '-' or '@' or '\t' or '\r'
+            ? $"'{value}"
+            : value;
+        return safeValue.IndexOfAny([',', '"', '\r', '\n']) >= 0
+            ? $"\"{safeValue.Replace("\"", "\"\"")}\""
+            : safeValue;
+    }
+
+    private static IResult CsvFile(string csv, string fileName)
+        => Results.File(Encoding.UTF8.GetBytes(csv), "text/csv; charset=utf-8", fileName);
 
     private static (Guid TenantId, Guid OrgId, Guid UserId) RequireContext(ICurrentRequestContext context)
         => (

@@ -4,9 +4,11 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Application.Interfaces;
+using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -265,6 +267,104 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         caseInfo.GetProperty("caseManagerName").GetString().Should().Be("Casey Manager");
         caseInfo.GetProperty("lawFirmId").GetGuid().Should().Be(SeedHelper.LawFirmId);
         caseInfo.GetProperty("lawFirm").GetString().Should().Be("Smith & Associates LLP");
+    }
+
+    [Fact]
+    public async Task Case_information_accepts_and_reads_back_company_directory_references()
+    {
+        Company fundingCompany;
+        CompanyContactPerson fundingContact;
+        Company lawFirm;
+        CompanyContactPerson caseManager;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var fundingRoleId = CompanyDirectoryReferenceData.ContactPersonTypes
+                .First(role => role.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId)
+                .Id;
+            var caseManagerRoleId = CompanyDirectoryReferenceData.ContactPersonTypes
+                .Single(role => role.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId && role.Code == "CaseManager")
+                .Id;
+
+            fundingCompany = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.FundingCompanyId,
+                "Directory Capital LLC",
+                SeedHelper.UserId);
+            fundingContact = CompanyContactPerson.Create(
+                SeedHelper.TenantId,
+                fundingCompany.Id,
+                fundingRoleId,
+                "Diana",
+                "Funder",
+                SeedHelper.UserId,
+                email: "diana@directory-capital.test");
+            lawFirm = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.LawFirmId,
+                "Directory Law LLP",
+                SeedHelper.UserId);
+            caseManager = CompanyContactPerson.Create(
+                SeedHelper.TenantId,
+                lawFirm.Id,
+                caseManagerRoleId,
+                "Cameron",
+                "Manager",
+                SeedHelper.UserId,
+                email: "cameron@directory-law.test");
+            db.AddRange(fundingCompany, fundingContact, lawFirm, caseManager);
+            await db.SaveChangesAsync();
+        }
+
+        var lienId = await CreateSellingLienAsync();
+        var response = await _client.PutAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/case-information",
+            new
+            {
+                fundingCompanyId = fundingCompany.Id,
+                fundingCompanyContactId = fundingContact.Id,
+                handlingLawFirmId = lawFirm.Id,
+                caseManagerId = caseManager.Id,
+                createCaseIfMissing = true,
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var savedPayload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        savedPayload.RootElement.GetProperty("fundingCompanyId").GetGuid().Should().Be(fundingCompany.Id);
+        savedPayload.RootElement.GetProperty("fundingCompanyContactId").GetGuid().Should().Be(fundingContact.Id);
+        savedPayload.RootElement.GetProperty("handlingLawFirmId").GetGuid().Should().Be(lawFirm.Id);
+        savedPayload.RootElement.GetProperty("caseManagerId").GetGuid().Should().Be(caseManager.Id);
+        var caseId = savedPayload.RootElement.GetProperty("caseId").GetGuid();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var persistedLien = await db.Liens.SingleAsync(item => item.Id == lienId);
+            persistedLien.FundingCompanyCompanyId.Should().Be(fundingCompany.Id);
+            persistedLien.FundingCompanyContactPersonId.Should().Be(fundingContact.Id);
+            persistedLien.FundingCompanyId.Should().BeNull();
+            persistedLien.FundingCompanyContactId.Should().BeNull();
+
+            var persistedCase = await db.Cases.SingleAsync(item => item.Id == caseId);
+            persistedCase.HandlingLawFirmCompanyId.Should().Be(lawFirm.Id);
+            persistedCase.CaseManagerContactPersonId.Should().Be(caseManager.Id);
+        }
+
+        var detailResponse = await _client.GetAsync($"/api/liens/selling/liens/{lienId}");
+        detailResponse.StatusCode.Should().Be(HttpStatusCode.OK, await detailResponse.Content.ReadAsStringAsync());
+        using var detailPayload = JsonDocument.Parse(await detailResponse.Content.ReadAsStringAsync());
+        var companyDetail = detailPayload.RootElement.GetProperty("fundingCompany");
+        companyDetail.GetProperty("id").GetGuid().Should().Be(fundingCompany.Id);
+        companyDetail.GetProperty("name").GetString().Should().Be("Directory Capital LLC");
+        companyDetail.GetProperty("contactPerson").GetString().Should().Be("Diana Funder");
+        companyDetail.GetProperty("emailAddress").GetString().Should().Be("diana@directory-capital.test");
+        var caseDetail = detailPayload.RootElement.GetProperty("caseInformation");
+        caseDetail.GetProperty("lawFirmId").GetGuid().Should().Be(lawFirm.Id);
+        caseDetail.GetProperty("lawFirm").GetString().Should().Be("Directory Law LLP");
+        caseDetail.GetProperty("caseManagerId").GetGuid().Should().Be(caseManager.Id);
+        caseDetail.GetProperty("caseManagerName").GetString().Should().Be("Cameron Manager");
     }
 
     [Fact]

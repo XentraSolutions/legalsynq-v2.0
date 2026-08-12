@@ -119,7 +119,7 @@ for the requested page. Buyer dashboard lien, facility, and seller-contact looku
 resolution uses bounded parallelism so multiple seller organizations do not serialize identity lookups.
 | `POST` | `/api/liens/selling/liens` | Creates a lien directly in `Pending` or `Internal`; it does not create a seller draft. |
 | `GET` | `/api/liens/selling/liens/{lienId}` | Returns seller-scoped lien detail for the intake wizard, including funding-company contact person/email and case-manager/law-firm details when available. |
-| `PUT` | `/api/liens/selling/liens/{lienId}/lien-information`, `/case-information`, `/medical-pricing`, `/documents` | Saves the seller wizard sections. Medical-pricing rows and document references use collision-resistant task identifiers, including when required and supporting documents are saved together. Existing document IDs are verified against the Documents service and must reference the seller-owned lien or case. |
+| `PUT` | `/api/liens/selling/liens/{lienId}/lien-information`, `/case-information`, `/medical-pricing`, `/documents` | Saves the seller wizard sections. `/case-information` accepts either legacy Contact IDs or Company Directory references: `fundingCompanyId` and `handlingLawFirmId` may identify active companies of the required type, while `fundingCompanyContactId` must belong to the selected funding company and `caseManagerId` must belong to the selected law firm with the Case Manager contact-person type. Canonical references are persisted in the dedicated company/contact-person columns and are returned by lien detail/readiness flows; legacy payloads remain supported. Medical-pricing rows and document references use collision-resistant task identifiers, including when required and supporting documents are saved together. Existing document IDs are verified against the Documents service and must reference the seller-owned lien or case. |
 | `POST` | `/api/liens/selling/liens/{lienId}/prepare-sale` | Validates readiness and saves buyer, ask, visibility, and message selections without changing the lien from `Pending` or `Internal`. When a buyer contact is supplied, its buyer organization is derived from that contact rather than a separate funding-company selection. `confirm-sale` still requires a valid buyer contact to issue the buyer access link and notification. |
 | `POST` | `/api/liens/selling/liens/{lienId}/confirm-sale` | Confirms a prepared request, moves the lien from `Pending`/`Internal` (or legacy `PreparedForSale`) to `Offered` / `SubmittedForSale`, and sends buyer and seller `New Lien Offer` emails. |
 | `POST` | `/api/liens/selling/liens/{lienId}/withdraw-sale`, `/archive`, `/buyer-access-links` | Withdraws a submitted lien, archives an unsold lien, or creates a time-limited buyer capability link. Raw link tokens are returned only on first creation and are never persisted. |
@@ -128,25 +128,39 @@ resolution uses bounded parallelism so multiple seller organizations do not seri
 
 ### Selling company directory
 
+Import [`LegalSynq Company and Contact Person API.postman_collection.json`](LegalSynq%20Company%20and%20Contact%20Person%20API.postman_collection.json) for the complete Company Directory request set, including CSV exports, custom contact-person types, company/contact reassignment, and saving the new references through Selling case information.
+
 The Selling API includes a seller-organization-scoped company directory. Companies are always owned by the authenticated
 tenant and seller organization; callers cannot assign that ownership through the request body. `linkedTenantId` is an
 optional logical association with another LegalSynq tenant and is not a cross-service database foreign key. Company types
-and their contact-person types are deterministic read-only reference data for Law Firm, Funding Company, Medical Provider,
-and Medical Facility. Each company contact has one contact-person type from the company's type-specific role list.
+and their built-in contact-person types are deterministic reference data for Law Firm, Funding Company, Medical Provider,
+and Medical Facility. Seller organizations may add custom contact-person types; custom types remain visible and assignable
+only within the creating tenant and seller organization. Each company contact has one contact-person type from the
+company's type-specific role list.
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/liens/selling/lookups/company-types` | Lists the four active company types. |
-| `GET` | `/api/liens/selling/lookups/contact-person-types?companyTypeId={id}` | Lists the active contact roles for one company type. |
+| `GET` | `/api/liens/selling/lookups/contact-person-types?companyTypeId={id}` | Lists active built-in contact roles plus custom roles owned by the authenticated tenant and seller organization. Responses identify built-in rows with `isSystem: true`. |
+| `POST` | `/api/liens/selling/lookups/contact-person-types` | Adds a seller-organization-scoped custom role for an active company type. Requires `companyTypeId`, machine-stable `code`, and display `name`; positive `sortOrder` is optional and otherwise follows the visible roles. |
 | `GET`, `POST` | `/api/liens/selling/companies` | Searches or creates companies for the authenticated tenant and seller organization. Search supports `search`, `companyTypeId`, `isActive`, `page`, and `pageSize` (maximum 200). |
+| `GET` | `/api/liens/selling/companies/export` | Downloads an uncapped CSV of scoped companies. Supports `search`, `companyTypeId`, and `isActive`; `isActive` defaults to `true`. |
 | `GET`, `PUT`, `DELETE` | `/api/liens/selling/companies/{companyId}` | Reads, updates, or soft-deactivates a scoped company. Company type is immutable after creation. |
+| `POST` | `/api/liens/selling/companies/{companyId}/reassign` | Reassigns the source company's contacts and mutable canonical workflow references to an active scoped target company of the same company type. Body: `{ "targetCompanyId": "..." }`. |
 | `PUT` | `/api/liens/selling/companies/{companyId}/reactivate` | Reactivates a company without changing its contact activation states. |
 | `GET`, `POST` | `/api/liens/selling/companies/{companyId}/contacts` | Lists or creates company contacts. New contacts require an active company and a role belonging to its company type. |
+| `GET` | `/api/liens/selling/contacts/export` | Downloads an uncapped CSV of contact persons across scoped companies. Supports `search`, `companyTypeId`, `contactPersonTypeId`, and `isActive`; `isActive` defaults to `true`. |
+| `GET` | `/api/liens/selling/companies/{companyId}/contacts/export` | Downloads an uncapped CSV of contact persons for one scoped company. Supports `search`, `contactPersonTypeId`, and `isActive`; `isActive` defaults to `true`. |
 | `GET`, `PUT`, `DELETE` | `/api/liens/selling/companies/{companyId}/contacts/{contactId}` | Reads, updates, or soft-deactivates a company contact. |
+| `POST` | `/api/liens/selling/companies/{companyId}/contacts/{contactId}/reassign` | Reassigns mutable canonical usage to an active scoped target contact whose company type and contact-person type (role) exactly match the source. Body: `{ "targetContactPersonId": "..." }`. |
 | `PUT` | `/api/liens/selling/companies/{companyId}/contacts/{contactId}/reactivate` | Reactivates a contact when its parent company is active. |
 
 All company-directory mutations require `Idempotency-Key`. Reads require `lien_sale:read`, creates require
-`lien_sale:create`, and updates/deactivation/reactivation require `lien_sale:update`. The directory intentionally remains
+`lien_sale:create`, and updates/deactivation/reactivation/reassignment require `lien_sale:update`. Reassignment retains
+the source record for audit/history and returns transfer counts by referenced entity type; use the existing deactivation endpoint
+separately when the source should no longer be selectable. Contact reassignment also synchronizes the paired canonical
+company reference when the source contact was assigned with its source company. Immutable compatibility aliases remain
+historical and are not rewritten. The directory intentionally remains
 independent from the existing funding-company, law-firm, case-manager, and facility Selling lookups, whose identifiers are
 still consumed by lien intake, imports, reports, notifications, and sale confirmation.
 
@@ -158,8 +172,8 @@ checkpoints and immutable preferred aliases for existing directory companies. Tr
 and are bounded by `BackfillMaxRetries` (default 3) and `BackfillRetryDelayMilliseconds` (default 250). Do not enable canonical reads until each
 Selling workflow has zero unexplained contract diffs and its dual-write/shadow-read coverage has been completed.
 
-The company-directory and selling-party compatibility migrations are restart-safe on MySQL. If a deployment stops after
-MySQL auto-commits only part of either migration, the next Liens startup detects existing tables, columns, indexes,
+The company-directory, selling-party compatibility, and scoped contact-person-type migrations are restart-safe on MySQL. If a deployment stops after
+MySQL auto-commits only part of a migration, the next Liens startup detects existing tables, columns, indexes,
 constraints, and lookup seeds, creates only the missing objects, and lets EF record the migration normally. The same
 guarded recovery also repairs environments where migration history was recorded before the schema completed, using a
 database advisory lock so concurrent Liens instances do not race the DDL. Runtime and design-time Liens DbContexts enable
