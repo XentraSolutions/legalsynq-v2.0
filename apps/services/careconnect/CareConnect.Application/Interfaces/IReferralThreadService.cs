@@ -12,6 +12,13 @@ public interface IReferralThreadService
         string message,
         CancellationToken ct = default);
 
+    Task<ReferralCommentResponse?> PostPublicCommentWithAttachmentsAsync(
+        string token,
+        string senderType,
+        string message,
+        IReadOnlyList<ReferralMessageAttachmentUpload> attachments,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<ReferralCommentResponse>?> GetAuthenticatedCommentsAsync(
         Guid tenantId,
         Guid referralId,
@@ -29,5 +36,17 @@ public interface IReferralThreadService
         string senderName,
         string message,
         bool useGlobalLookup,
+        CancellationToken ct = default);
+
+    Task<ReferralCommentResponse?> PostAuthenticatedCommentWithAttachmentsAsync(
+        Guid tenantId,
+        Guid referralId,
+        Guid? callerOrganizationId,
+        string? callerEmail,
+        string senderName,
+        string message,
+        bool useGlobalLookup,
+        IReadOnlyList<ReferralMessageAttachmentUpload> attachments,
+        Guid? createdByUserId = null,
         CancellationToken ct = default);
 }

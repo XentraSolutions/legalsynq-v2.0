@@ -15,6 +15,12 @@ package_runtime_artifact() {
   cp -R "$app_dir/.next" "$artifact_dir/.next"
   cp "$app_dir/package.json" "$artifact_dir/package.json"
 
+  for metadata_file in pnpm-lock.yaml pnpm-workspace.yaml .npmrc; do
+    if [ -f "$app_dir/$metadata_file" ]; then
+      cp "$app_dir/$metadata_file" "$artifact_dir/$metadata_file"
+    fi
+  done
+
   if [ -f "$app_dir/next.config.mjs" ]; then
     cp "$app_dir/next.config.mjs" "$artifact_dir/next.config.mjs"
   fi
@@ -78,6 +84,8 @@ build_web() {
   NEXT_PUBLIC_TENANT_CODE="${NEXT_PUBLIC_TENANT_CODE:-}" \
   GATEWAY_URL="${GATEWAY_URL:-http://127.0.0.1:5010}" \
   CC_COMMON_PORTAL_HOSTNAME="${CC_COMMON_PORTAL_HOSTNAME:-careconnect-demo.legalsynq.com}" \
+  SYNQLIEN_COMMON_PORTAL_HOSTNAME="${SYNQLIEN_COMMON_PORTAL_HOSTNAME:-synqlien-demo.localhost}" \
+  PORTAL_SYNQLIEN_SUBDOMAIN="${PORTAL_SYNQLIEN_SUBDOMAIN:-synqlien-demo}" \
   node "$next_bin" build --webpack
 
   mkdir -p "$DIST_ROOT"

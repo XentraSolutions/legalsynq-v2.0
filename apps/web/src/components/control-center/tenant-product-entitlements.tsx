@@ -15,6 +15,16 @@ interface TenantProductEntitlementsProps {
   fetchError?: string | null;
 }
 
+const CONTROL_CENTER_PRODUCTS = [
+  'CareConnect',
+  'SynqFund',
+  'SynqLien',
+  'Xenia',
+  'SynqBill',
+  'SynqRx',
+  'SynqPayout',
+];
+
 export function TenantProductEntitlements({
   tenants,
   selectedTenantId,
@@ -38,6 +48,28 @@ export function TenantProductEntitlements({
     [selectedTenantId, tenants],
   );
 
+  const displayEntitlements = useMemo(() => {
+    if (!localDetail) return [];
+    const byCode = new Map(localDetail.productEntitlements.map(entitlement => [entitlement.productCode, entitlement]));
+    const merged = CONTROL_CENTER_PRODUCTS.map(productCode => {
+      const existing = byCode.get(productCode);
+      if (existing) return existing;
+      const navKey = PRODUCT_CODE_TO_NAV_KEY[productCode];
+      return {
+        productCode,
+        productName: navKey ? PRODUCT_META[navKey]?.label ?? productCode : productCode,
+        enabled: false,
+        status: 'Disabled',
+      };
+    });
+
+    for (const entitlement of localDetail.productEntitlements) {
+      if (!merged.some(item => item.productCode === entitlement.productCode)) merged.push(entitlement);
+    }
+
+    return merged;
+  }, [localDetail]);
+
   function handleTenantChange(nextTenantId: string) {
     startNavigation(() => {
       router.push(`${CCRoutes.products}?tenantId=${encodeURIComponent(nextTenantId)}`);
@@ -52,18 +84,32 @@ export function TenantProductEntitlements({
 
     try {
       await controlCenterClientApi.products.setTenantEntitlement(localDetail.id, productCode, enabled);
+      const existing = localDetail.productEntitlements.find(entitlement => entitlement.productCode === productCode);
+      const navKey = PRODUCT_CODE_TO_NAV_KEY[productCode];
+      const fallbackName = navKey ? PRODUCT_META[navKey]?.label ?? productCode : productCode;
       setLocalDetail({
         ...localDetail,
-        productEntitlements: localDetail.productEntitlements.map((entitlement) =>
-          entitlement.productCode === productCode
-            ? {
-                ...entitlement,
+        productEntitlements: existing
+          ? localDetail.productEntitlements.map((entitlement) =>
+              entitlement.productCode === productCode
+                ? {
+                    ...entitlement,
+                    enabled,
+                    status: enabled ? 'Active' : 'Disabled',
+                    enabledAtUtc: enabled ? (entitlement.enabledAtUtc ?? new Date().toISOString()) : undefined,
+                  }
+                : entitlement,
+            )
+          : [
+              ...localDetail.productEntitlements,
+              {
+                productCode,
+                productName: fallbackName,
                 enabled,
                 status: enabled ? 'Active' : 'Disabled',
-                enabledAtUtc: enabled ? (entitlement.enabledAtUtc ?? new Date().toISOString()) : undefined,
-              }
-            : entitlement,
-        ),
+                enabledAtUtc: enabled ? new Date().toISOString() : undefined,
+              },
+            ],
       });
       router.refresh();
     } catch (error) {
@@ -131,13 +177,13 @@ export function TenantProductEntitlements({
             <SummaryCard label="Users" value={String(localDetail.activeUserCount ?? localDetail.userCount)} subvalue={`${localDetail.userCount} total`} />
             <SummaryCard
               label="Products Enabled"
-              value={String(localDetail.productEntitlements.filter((item) => item.enabled).length)}
-              subvalue={`${localDetail.productEntitlements.length} available`}
+              value={String(displayEntitlements.filter((item) => item.enabled).length)}
+              subvalue={`${displayEntitlements.length} available`}
             />
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            {localDetail.productEntitlements.map((entitlement) => (
+            {displayEntitlements.map((entitlement) => (
               <ProductCard
                 key={entitlement.productCode}
                 entitlement={entitlement}

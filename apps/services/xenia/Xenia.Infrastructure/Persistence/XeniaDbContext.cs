@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Xenia.Domain.Adapters;
+using Xenia.Domain.Assistant;
 using Xenia.Domain.Automation;
 using Xenia.Domain.Common;
 using Xenia.Domain.Configuration;
@@ -27,6 +28,17 @@ public sealed class XeniaDbContext : DbContext
     public DbSet<PlatformAdapter> PlatformAdapters => Set<PlatformAdapter>();
     public DbSet<XeniaConfigurationEntry> ConfigurationEntries => Set<XeniaConfigurationEntry>();
     public DbSet<XeniaTenantSettings> TenantSettings => Set<XeniaTenantSettings>();
+
+    // ── Xenia assistant ──────────────────────────────────────────────────────
+    public DbSet<AssistantAgent> AssistantAgents => Set<AssistantAgent>();
+    public DbSet<TenantAssistantAgent> TenantAssistantAgents => Set<TenantAssistantAgent>();
+    public DbSet<AssistantConversation> AssistantConversations => Set<AssistantConversation>();
+    public DbSet<AssistantMessage> AssistantMessages => Set<AssistantMessage>();
+    public DbSet<AssistantMessageCitation> AssistantMessageCitations => Set<AssistantMessageCitation>();
+    public DbSet<AssistantToolInvocation> AssistantToolInvocations => Set<AssistantToolInvocation>();
+    public DbSet<AssistantUsageEvent> AssistantUsageEvents => Set<AssistantUsageEvent>();
+    public DbSet<AssistantQuotaWindow> AssistantQuotaWindows => Set<AssistantQuotaWindow>();
+    public DbSet<AssistantUserPreference> AssistantUserPreferences => Set<AssistantUserPreference>();
 
     // ── Email module ──────────────────────────────────────────────────────────
     public DbSet<EmailSource> EmailSources => Set<EmailSource>();

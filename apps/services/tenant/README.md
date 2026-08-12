@@ -37,12 +37,13 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 |---|---|---|
 | `POST` | `/api/admin/tenants` | Create tenant (admin; canonical path) |
 | `PATCH` | `/api/admin/tenants/{id}/status` | Update tenant status |
-| `GET` | `/api/admin/tenants` | List tenants (paged) |
-| `GET` | `/api/admin/tenants/{id}` | Tenant admin detail |
+| `GET` | `/api/admin/tenants` | List tenants (paged; includes Identity-backed `type`, primary contact, and full `url`) |
+| `GET` | `/api/admin/tenants/{id}` | Tenant admin detail (includes Identity-backed `type`, primary contact, and full `url`) |
 | `POST` | `/api/tenants/provision` | Minimal provision (internal) |
 | `PUT` | `/api/internal/sync` | Idempotent upsert from Identity dual-write |
 | `GET` | `/api/resolution/{code}` | Resolve tenant by code |
 | `GET` | `/api/branding/{tenantId}` | Tenant branding |
+| `GET` | `/api/v1/public/tenants/{tenantId}/capabilities/{capabilityKey}` | Public/service-to-service single-capability read (boolean) — used by product services (e.g. CareConnect's Referral Representative Portal flag) to check a tenant feature without AdminOnly credentials |
 
 ## Database
 

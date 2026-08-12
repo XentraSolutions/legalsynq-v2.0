@@ -10,6 +10,7 @@ using CareConnect.Api.Endpoints;
 using CareConnect.Api.Middleware;
 using CareConnect.Api.Options;
 using CareConnect.Application.DTOs;
+using CareConnect.Application.Interfaces;
 using CareConnect.Infrastructure;
 using CareConnect.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -235,6 +236,52 @@ app.Logger.LogInformation(
     app.Logger.LogInformation("CareConnect database migrations applied successfully.");
 }
 
+// ── Referral Attribution seed (idempotent) ────────────────────────────────
+// Configured via ReferralAttributionSeed:TenantCode in appsettings/secrets — empty
+// (the default) is a no-op, so this never runs unless an environment explicitly
+// configures the tenant that should receive the initial attribution (e.g. the
+// CareConnect tenant that hired Cam Perry). Resolves the tenant by code via the
+// Tenant service rather than a hardcoded GUID, so the same config works across
+// dev/staging/prod without editing code per environment. Safe to run on every
+// startup — ReferralAttributionService.SeedAsync checks-then-creates on
+// (TenantId, Code) and no-ops if already seeded.
+{
+    var seedTenantCode = builder.Configuration["ReferralAttributionSeed:TenantCode"];
+    if (!string.IsNullOrWhiteSpace(seedTenantCode))
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var tenantClient = scope.ServiceProvider.GetRequiredService<ITenantServiceClient>();
+            var attributionService = scope.ServiceProvider.GetRequiredService<IReferralAttributionService>();
+
+            var seedTenantId = await tenantClient.ResolveTenantIdByCodeAsync(seedTenantCode, CancellationToken.None);
+            if (seedTenantId is null)
+            {
+                app.Logger.LogWarning(
+                    "ReferralAttributionSeed: tenant code '{TenantCode}' did not resolve — skipping seed.", seedTenantCode);
+            }
+            else
+            {
+                await attributionService.SeedAsync(seedTenantId.Value, new CreateReferralAttributionRequest
+                {
+                    FirstName = builder.Configuration["ReferralAttributionSeed:FirstName"] ?? "Cam",
+                    LastName = builder.Configuration["ReferralAttributionSeed:LastName"] ?? "Perry",
+                    Code = builder.Configuration["ReferralAttributionSeed:Code"] ?? "CAM_PERRY",
+                    IsActive = true,
+                    DisplayOrder = int.TryParse(builder.Configuration["ReferralAttributionSeed:DisplayOrder"], out var order) ? order : 1,
+                }, CancellationToken.None);
+                app.Logger.LogInformation(
+                    "ReferralAttributionSeed: seed check completed for tenant '{TenantId}' (code '{TenantCode}').", seedTenantId, seedTenantCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "ReferralAttributionSeed: seed failed (non-fatal) for tenant code '{TenantCode}'.", seedTenantCode);
+        }
+    }
+}
+
 // ── Migration coverage self-test ─────────────────────────────────────────
 // Compares every EF-mapped column against the live schema and logs an ERROR
 // if any are missing. Guards against the regression behind Task #58 —
@@ -291,6 +338,15 @@ catch (Exception ex)
 
 app.UseMiddleware<CorrelationIdMiddleware>();    // BLK-OBS-01: assign X-Correlation-Id first
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.Use(async (context, next) =>
+{
+    // BLK-SEC-06: capture the raw physical TCP peer address before UseForwardedHeaders can
+    // rewrite Connection.RemoteIpAddress from a client-supplied X-Forwarded-For header. The
+    // provider-import endpoint's loopback-only gate reads this so it can't be spoofed by a
+    // caller setting X-Forwarded-For: 127.0.0.1 upstream of the trusted proxy.
+    context.Items[CareConnect.Api.Endpoints.NetworkEndpoints.RawRemoteIpAddressKey] = context.Connection.RemoteIpAddress;
+    await next();
+});
 app.UseForwardedHeaders();                      // BLK-SEC-05: rewrite RemoteIpAddress from X-Forwarded-For before rate limiting
 app.UseRateLimiter();                           // BLK-SEC-04: shed excess traffic before authentication runs
 app.UseAuthentication();
@@ -331,9 +387,11 @@ app.MapActivationAdminEndpoints(); // LSCC-009
 app.MapAnalyticsEndpoints();      // LSCC-011
 // LS-FLOW-MERGE-P4 — product → Flow integration endpoints.
 app.MapWorkflowEndpoints();
+app.MapAssistantToolEndpoints();
 app.MapProviderEndpoints();
 app.MapReferralEndpoints();
 app.MapCategoryEndpoints();
+app.MapSpecialtyEndpoints();
 app.MapFacilityEndpoints();
 app.MapServiceOfferingEndpoints();
 app.MapAvailabilityTemplateEndpoints();
@@ -349,6 +407,9 @@ app.MapPublicNetworkEndpoints();       // CC2-INT-B07: public network surface (a
 app.MapEnrollmentEndpoints();          // CC2-ENROLL: provider self-enrollment (anonymous)
 app.MapReferralThreadEndpoints();      // Public referral comment thread (token-authenticated)
 app.MapProviderOnboardingEndpoints();  // CC2-INT-B09: provider tenant self-onboarding
+app.MapReferralAttributionEndpoints();          // Referral Attribution configuration (tenant admin)
+app.MapReferralAttributionAccessCodeEndpoints(); // Referral Representative access codes (tenant admin)
+app.MapPublicRepresentativeEndpoints();          // Referral Representative Portal (anonymous, code-gated)
 
 app.Run();
 
@@ -398,6 +459,15 @@ static async Task EnsureSchemaObjectsAsync(
         return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
     }
 
+    async Task<bool> IndexExists(string table, string index)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            $"SELECT COUNT(*) FROM information_schema.statistics " +
+            $"WHERE table_schema='{dbName}' AND table_name='{table}' AND index_name='{index}'";
+        return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+    }
+
     async Task<bool> MigrationApplied(string migrationId)
     {
         using var cmd = conn.CreateCommand();
@@ -434,6 +504,14 @@ static async Task EnsureSchemaObjectsAsync(
             logger.LogWarning(ex, "EnsureSchemaObjects: {Label} — DDL failed.", label);
             return false;
         }
+    }
+
+    async Task<bool> DropIndexIfExists(string table, string index, string label)
+    {
+        if (!await IndexExists(table, index))
+            return false;
+
+        return await Exec($"DROP INDEX `{index}` ON `{table}`", label);
     }
 
     int applied = 0;
@@ -526,13 +604,195 @@ static async Task EnsureSchemaObjectsAsync(
         if (await Exec("ALTER TABLE `cc_Providers` ADD COLUMN `TenantProvisionedAtUtc` datetime(6) NULL",
             "cc_Providers.TenantProvisionedAtUtc")) applied++;
 
+    // ── 20260803010000_AddProviderTitle ─────────────────────────────────────
+    if (!await ColumnExists("cc_Providers", "Title"))
+        if (await Exec("ALTER TABLE `cc_Providers` ADD COLUMN `Title` varchar(50) NULL",
+            "cc_Providers.Title")) applied++;
+
+    // ── 20260804010000_AddProviderNetworkLocations ────────────────────────
+    if (await TableExists("cc_Facilities"))
+    {
+        if (!await ColumnExists("cc_Facilities", "Email"))
+            if (await Exec("ALTER TABLE `cc_Facilities` ADD COLUMN `Email` varchar(320) NULL",
+                "cc_Facilities.Email")) applied++;
+
+        if (!await ColumnExists("cc_Facilities", "Latitude"))
+            if (await Exec("ALTER TABLE `cc_Facilities` ADD COLUMN `Latitude` decimal(10,7) NULL",
+                "cc_Facilities.Latitude")) applied++;
+
+        if (!await ColumnExists("cc_Facilities", "Longitude"))
+            if (await Exec("ALTER TABLE `cc_Facilities` ADD COLUMN `Longitude` decimal(10,7) NULL",
+                "cc_Facilities.Longitude")) applied++;
+
+        if (!await ColumnExists("cc_Facilities", "GeoPointSource"))
+            if (await Exec("ALTER TABLE `cc_Facilities` ADD COLUMN `GeoPointSource` varchar(20) NULL",
+                "cc_Facilities.GeoPointSource")) applied++;
+
+        if (!await ColumnExists("cc_Facilities", "GeoUpdatedAtUtc"))
+            if (await Exec("ALTER TABLE `cc_Facilities` ADD COLUMN `GeoUpdatedAtUtc` datetime(6) NULL",
+                "cc_Facilities.GeoUpdatedAtUtc")) applied++;
+
+        if (!await IndexExists("cc_Facilities", "IX_Facilities_TenantId_Latitude_Longitude"))
+            if (await Exec("CREATE INDEX `IX_Facilities_TenantId_Latitude_Longitude` ON `cc_Facilities` (`TenantId`, `Latitude`, `Longitude`)",
+                "cc_Facilities tenant geo index")) applied++;
+
+        if (!await IndexExists("cc_Facilities", "IX_Facilities_Tenant_Address"))
+            if (await Exec("CREATE INDEX `IX_Facilities_Tenant_Address` ON `cc_Facilities` (`TenantId`, `AddressLine1`, `City`, `State`, `PostalCode`)",
+                "cc_Facilities tenant address index")) applied++;
+    }
+
+    if (await TableExists("cc_NetworkProviders"))
+    {
+        if (!await ColumnExists("cc_NetworkProviders", "FacilityId"))
+            if (await Exec("ALTER TABLE `cc_NetworkProviders` ADD COLUMN `FacilityId` char(36) NULL",
+                "cc_NetworkProviders.FacilityId")) applied++;
+
+        if (!await ColumnExists("cc_NetworkProviders", "IsActive"))
+            if (await Exec("ALTER TABLE `cc_NetworkProviders` ADD COLUMN `IsActive` tinyint(1) NOT NULL DEFAULT 1",
+                "cc_NetworkProviders.IsActive")) applied++;
+
+        if (!await ColumnExists("cc_NetworkProviders", "AcceptingReferrals"))
+            if (await Exec("ALTER TABLE `cc_NetworkProviders` ADD COLUMN `AcceptingReferrals` tinyint(1) NOT NULL DEFAULT 1",
+                "cc_NetworkProviders.AcceptingReferrals")) applied++;
+    }
+
+    if (await TableExists("cc_Referrals") && !await ColumnExists("cc_Referrals", "FacilityId"))
+        if (await Exec("ALTER TABLE `cc_Referrals` ADD COLUMN `FacilityId` char(36) NULL",
+            "cc_Referrals.FacilityId")) applied++;
+
+    if (await TableExists("cc_Providers") &&
+        await TableExists("cc_Facilities") &&
+        await TableExists("cc_ProviderFacilities"))
+    {
+        if (await Exec("""
+            INSERT INTO `cc_Facilities`
+                (`Id`, `TenantId`, `Name`, `AddressLine1`, `City`, `State`, `PostalCode`, `Email`, `Phone`, `IsActive`,
+                 `Latitude`, `Longitude`, `GeoPointSource`, `GeoUpdatedAtUtc`, `CreatedAtUtc`, `UpdatedAtUtc`, `CreatedByUserId`, `UpdatedByUserId`)
+            SELECT
+                UUID(),
+                p.`TenantId`,
+                COALESCE(NULLIF(TRIM(p.`OrganizationName`), ''), NULLIF(TRIM(p.`Name`), ''), 'Provider location'),
+                COALESCE(NULLIF(TRIM(p.`AddressLine1`), ''), 'Unknown address'),
+                COALESCE(NULLIF(TRIM(p.`City`), ''), 'Unknown'),
+                COALESCE(NULLIF(TRIM(p.`State`), ''), 'NA'),
+                COALESCE(NULLIF(TRIM(p.`PostalCode`), ''), '00000'),
+                p.`Email`,
+                p.`Phone`,
+                p.`IsActive`,
+                p.`Latitude`,
+                p.`Longitude`,
+                p.`GeoPointSource`,
+                p.`GeoUpdatedAtUtc`,
+                COALESCE(p.`CreatedAtUtc`, UTC_TIMESTAMP(6)),
+                COALESCE(p.`UpdatedAtUtc`, UTC_TIMESTAMP(6)),
+                p.`CreatedByUserId`,
+                p.`UpdatedByUserId`
+            FROM `cc_Providers` p
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM `cc_Facilities` f
+                WHERE f.`TenantId` = p.`TenantId`
+                  AND UPPER(TRIM(f.`Name`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`OrganizationName`), ''), NULLIF(TRIM(p.`Name`), ''), 'Provider location')))
+                  AND UPPER(TRIM(f.`AddressLine1`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`AddressLine1`), ''), 'Unknown address')))
+                  AND UPPER(TRIM(f.`City`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`City`), ''), 'Unknown')))
+                  AND UPPER(TRIM(f.`State`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`State`), ''), 'NA')))
+                  AND UPPER(TRIM(f.`PostalCode`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`PostalCode`), ''), '00000')))
+            )
+            """, "cc_Facilities provider backfill")) applied++;
+
+        if (await Exec("""
+            INSERT IGNORE INTO `cc_ProviderFacilities`
+                (`ProviderId`, `FacilityId`, `IsPrimary`)
+            SELECT
+                p.`Id`,
+                MIN(f.`Id`) AS `FacilityId`,
+                1 AS `IsPrimary`
+            FROM `cc_Providers` p
+            INNER JOIN `cc_Facilities` f
+                ON f.`TenantId` = p.`TenantId`
+               AND UPPER(TRIM(f.`Name`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`OrganizationName`), ''), NULLIF(TRIM(p.`Name`), ''), 'Provider location')))
+               AND UPPER(TRIM(f.`AddressLine1`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`AddressLine1`), ''), 'Unknown address')))
+               AND UPPER(TRIM(f.`City`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`City`), ''), 'Unknown')))
+               AND UPPER(TRIM(f.`State`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`State`), ''), 'NA')))
+               AND UPPER(TRIM(f.`PostalCode`)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(p.`PostalCode`), ''), '00000')))
+            GROUP BY p.`Id`
+            """, "cc_ProviderFacilities provider backfill")) applied++;
+
+        if (await Exec("""
+            UPDATE `cc_ProviderFacilities` pf
+            INNER JOIN (
+                SELECT `ProviderId`, MIN(`FacilityId`) AS `PrimaryFacilityId`
+                FROM `cc_ProviderFacilities`
+                GROUP BY `ProviderId`
+            ) selected ON selected.`ProviderId` = pf.`ProviderId`
+            SET pf.`IsPrimary` = CASE WHEN pf.`FacilityId` = selected.`PrimaryFacilityId` THEN 1 ELSE 0 END
+            """, "cc_ProviderFacilities primary backfill")) applied++;
+    }
+
+    if (await TableExists("cc_NetworkProviders") &&
+        await TableExists("cc_Providers") &&
+        await TableExists("cc_ProviderFacilities"))
+    {
+        if (await Exec("""
+            UPDATE `cc_NetworkProviders` np
+            INNER JOIN `cc_Providers` p ON p.`Id` = np.`ProviderId`
+            INNER JOIN (
+                SELECT `ProviderId`, MIN(`FacilityId`) AS `FacilityId`
+                FROM `cc_ProviderFacilities`
+                GROUP BY `ProviderId`
+            ) pf ON pf.`ProviderId` = np.`ProviderId`
+            SET
+                np.`FacilityId` = pf.`FacilityId`,
+                np.`IsActive` = p.`IsActive`,
+                np.`AcceptingReferrals` = p.`AcceptingReferrals`
+            WHERE np.`FacilityId` IS NULL
+            """, "cc_NetworkProviders facility/status backfill")) applied++;
+
+        if (await Exec("""
+            SET @networkProviderFacilityNotNull = IF(
+                (SELECT COUNT(*) FROM `cc_NetworkProviders` WHERE `FacilityId` IS NULL) = 0,
+                'ALTER TABLE `cc_NetworkProviders` MODIFY COLUMN `FacilityId` char(36) NOT NULL',
+                'SELECT 1');
+            PREPARE stmt FROM @networkProviderFacilityNotNull; EXECUTE stmt; DEALLOCATE PREPARE stmt
+            """, "cc_NetworkProviders.FacilityId not-null repair")) applied++;
+
+        if (!await IndexExists("cc_NetworkProviders", "IX_NetworkProviders_ProviderNetworkId_ProviderId_Tmp"))
+            if (await Exec("CREATE INDEX `IX_NetworkProviders_ProviderNetworkId_ProviderId_Tmp` ON `cc_NetworkProviders` (`ProviderNetworkId`, `ProviderId`)",
+                "cc_NetworkProviders temporary provider lookup index")) applied++;
+
+        if (await DropIndexIfExists("cc_NetworkProviders", "IX_cc_NetworkProviders_ProviderNetworkId_ProviderId",
+            "cc_NetworkProviders old unique provider index drop")) applied++;
+
+        if (await DropIndexIfExists("cc_NetworkProviders", "IX_NetworkProviders_ProviderNetworkId_ProviderId",
+            "cc_NetworkProviders old named provider index drop")) applied++;
+
+        if (!await IndexExists("cc_NetworkProviders", "IX_NetworkProviders_ProviderNetworkId_ProviderId"))
+            if (await Exec("CREATE INDEX `IX_NetworkProviders_ProviderNetworkId_ProviderId` ON `cc_NetworkProviders` (`ProviderNetworkId`, `ProviderId`)",
+                "cc_NetworkProviders provider lookup index")) applied++;
+
+        if (await DropIndexIfExists("cc_NetworkProviders", "IX_NetworkProviders_ProviderNetworkId_ProviderId_Tmp",
+            "cc_NetworkProviders temporary provider lookup index drop")) applied++;
+
+        if (!await IndexExists("cc_NetworkProviders", "IX_NetworkProviders_ProviderNetworkId_ProviderId_FacilityId"))
+            if (await Exec("CREATE UNIQUE INDEX `IX_NetworkProviders_ProviderNetworkId_ProviderId_FacilityId` ON `cc_NetworkProviders` (`ProviderNetworkId`, `ProviderId`, `FacilityId`)",
+                "cc_NetworkProviders provider facility unique index")) applied++;
+
+        if (!await IndexExists("cc_NetworkProviders", "IX_NetworkProviders_FacilityId"))
+            if (await Exec("CREATE INDEX `IX_NetworkProviders_FacilityId` ON `cc_NetworkProviders` (`FacilityId`)",
+                "cc_NetworkProviders facility index")) applied++;
+    }
+
+    if (await TableExists("cc_Referrals") && !await IndexExists("cc_Referrals", "IX_Referrals_TenantId_FacilityId"))
+        if (await Exec("CREATE INDEX `IX_Referrals_TenantId_FacilityId` ON `cc_Referrals` (`TenantId`, `FacilityId`)",
+            "cc_Referrals tenant facility index")) applied++;
+
     // ── 20260429120000_AddReferralComments ──────────────────────────────────
     if (!await TableExists("cc_ReferralComments"))
         if (await Exec("""
             CREATE TABLE `cc_ReferralComments` (
-                `Id`         char(36)      NOT NULL,
-                `TenantId`   char(36)      NOT NULL,
-                `ReferralId` char(36)      NOT NULL,
+                `Id`         char(36) COLLATE ascii_general_ci NOT NULL,
+                `TenantId`   char(36) COLLATE ascii_general_ci NOT NULL,
+                `ReferralId` char(36) COLLATE ascii_general_ci NOT NULL,
                 `SenderType` varchar(20)   NOT NULL,
                 `SenderName` varchar(200)  NOT NULL,
                 `Message`    varchar(4000) NOT NULL,
@@ -541,6 +801,158 @@ static async Task EnsureSchemaObjectsAsync(
                 KEY `IX_ReferralComments_TenantId_ReferralId_CreatedAt` (`TenantId`, `ReferralId`, `CreatedAt`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
             """, "cc_ReferralComments")) applied++;
+
+    // ── 20260719000000_AddReferralMessageAttachments ───────────────────────
+    if (await TableExists("cc_ReferralAttachments"))
+    {
+        if (!await ColumnExists("cc_ReferralAttachments", "ReferralCommentId"))
+            if (await Exec("ALTER TABLE `cc_ReferralAttachments` ADD COLUMN `ReferralCommentId` char(36) COLLATE ascii_general_ci NULL",
+                "cc_ReferralAttachments.ReferralCommentId")) applied++;
+
+        if (!await IndexExists("cc_ReferralAttachments", "IX_cc_ReferralAttachments_ReferralCommentId"))
+            if (await Exec("CREATE INDEX `IX_cc_ReferralAttachments_ReferralCommentId` ON `cc_ReferralAttachments` (`ReferralCommentId`)",
+                "cc_ReferralAttachments.ReferralCommentId index")) applied++;
+
+        if (!await IndexExists("cc_ReferralAttachments", "IX_cc_ReferralAttachments_ReferralComment"))
+            if (await Exec("CREATE INDEX `IX_cc_ReferralAttachments_ReferralComment` ON `cc_ReferralAttachments` (`TenantId`, `ReferralId`, `ReferralCommentId`, `CreatedAtUtc`)",
+                "cc_ReferralAttachments referral-comment index")) applied++;
+    }
+
+    // ── 20260803000000_AddProviderSpecialties ──────────────────────────────
+    if (!await MigrationApplied("20260803000000_AddProviderSpecialties"))
+    {
+        logger.LogInformation(
+            "EnsureSchemaObjects: skipping AddProviderSpecialties repair because migration is not yet recorded in migration history.");
+    }
+    else
+    {
+        if (!await TableExists("cc_Specialties"))
+        {
+            if (await Exec("""
+                CREATE TABLE `cc_Specialties` (
+                    `Id`           char(36)      NOT NULL,
+                    `Name`         varchar(200)  NOT NULL,
+                    `Code`         varchar(50)   NOT NULL,
+                    `Description`  varchar(1000) NULL,
+                    `IsActive`     tinyint(1)    NOT NULL DEFAULT 1,
+                    `CreatedAtUtc` datetime(6)   NOT NULL,
+                    `UpdatedAtUtc` datetime(6)   NOT NULL,
+                    PRIMARY KEY (`Id`),
+                    UNIQUE KEY `IX_cc_Specialties_Code` (`Code`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """, "cc_Specialties")) applied++;
+        }
+
+        if (await TableExists("cc_Specialties"))
+        {
+            if (!await IndexExists("cc_Specialties", "IX_cc_Specialties_Code"))
+                if (await Exec("CREATE UNIQUE INDEX `IX_cc_Specialties_Code` ON `cc_Specialties` (`Code`)",
+                    "cc_Specialties.Code index")) applied++;
+
+            if (await Exec("""
+                INSERT IGNORE INTO `cc_Specialties`
+                    (`Id`, `Name`, `Code`, `Description`, `IsActive`, `CreatedAtUtc`, `UpdatedAtUtc`)
+                VALUES
+                    ('41000000-0000-0000-0000-000000000001', 'Pain',             'PAIN',             NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000007', 'Spine',            'SPINE',            NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000004', 'Physical Therapy', 'PHYSICAL_THERAPY', NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000006', 'Neuro',            'NEURO',            NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000005', 'Imaging',          'IMAGING',          NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000002', 'Chiropractor',     'CHIROPRACTOR',     NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
+                    ('41000000-0000-0000-0000-000000000009', 'Extremities',      'EXTREMITIES',      NULL, 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00')
+                """, "cc_Specialties seed data")) applied++;
+
+            if (await Exec("""
+                UPDATE `cc_Specialties`
+                SET `Name` = CASE `Id`
+                        WHEN '41000000-0000-0000-0000-000000000001' THEN 'Pain'
+                        WHEN '41000000-0000-0000-0000-000000000002' THEN 'Chiropractor'
+                        WHEN '41000000-0000-0000-0000-000000000006' THEN 'Neuro'
+                        ELSE `Name`
+                    END,
+                    `Code` = CASE `Id`
+                        WHEN '41000000-0000-0000-0000-000000000001' THEN 'PAIN'
+                        WHEN '41000000-0000-0000-0000-000000000002' THEN 'CHIROPRACTOR'
+                        WHEN '41000000-0000-0000-0000-000000000006' THEN 'NEURO'
+                        ELSE `Code`
+                    END,
+                    `UpdatedAtUtc` = '2024-01-01 00:00:00'
+                WHERE (`Id` = '41000000-0000-0000-0000-000000000001' AND `Name` = 'Pain Doctors' AND `Code` = 'PAIN_DOCTORS')
+                   OR (`Id` = '41000000-0000-0000-0000-000000000002' AND `Name` = 'Chiropractors' AND `Code` = 'CHIROPRACTORS')
+                   OR (`Id` = '41000000-0000-0000-0000-000000000006' AND `Name` = 'Neurology' AND `Code` = 'NEUROLOGY')
+                """, "cc_Specialties renamed defaults repair")) applied++;
+
+            if (await Exec("""
+                UPDATE `cc_Specialties`
+                SET `IsActive` = 0,
+                    `UpdatedAtUtc` = '2024-01-01 00:00:00'
+                WHERE ((`Id` = '41000000-0000-0000-0000-000000000003' AND `Name` = 'Orthopedics' AND `Code` = 'ORTHOPEDICS')
+                    OR (`Id` = '41000000-0000-0000-0000-000000000008' AND `Name` = 'Surgery Center' AND `Code` = 'SURGERY_CENTER'))
+                  AND `UpdatedAtUtc` = '2024-01-01 00:00:00'
+                """, "cc_Specialties removed defaults deactivation")) applied++;
+        }
+
+        if (!await TableExists("cc_ProviderSpecialties"))
+        {
+            if (await Exec("""
+                CREATE TABLE `cc_ProviderSpecialties` (
+                    `ProviderId`  char(36)   NOT NULL,
+                    `SpecialtyId` char(36)   NOT NULL,
+                    `IsPrimary`   tinyint(1) NOT NULL DEFAULT 0,
+                    PRIMARY KEY (`ProviderId`, `SpecialtyId`),
+                    KEY `IX_cc_ProviderSpecialties_SpecialtyId` (`SpecialtyId`),
+                    KEY `IX_cc_ProviderSpecialties_ProviderId_IsPrimary` (`ProviderId`, `IsPrimary`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+                """, "cc_ProviderSpecialties")) applied++;
+        }
+
+        if (await TableExists("cc_ProviderSpecialties"))
+        {
+            if (!await ColumnExists("cc_ProviderSpecialties", "IsPrimary"))
+                if (await Exec("ALTER TABLE `cc_ProviderSpecialties` ADD COLUMN `IsPrimary` tinyint(1) NOT NULL DEFAULT 0",
+                    "cc_ProviderSpecialties.IsPrimary")) applied++;
+
+            if (!await IndexExists("cc_ProviderSpecialties", "IX_cc_ProviderSpecialties_SpecialtyId"))
+                if (await Exec("CREATE INDEX `IX_cc_ProviderSpecialties_SpecialtyId` ON `cc_ProviderSpecialties` (`SpecialtyId`)",
+                    "cc_ProviderSpecialties.SpecialtyId index")) applied++;
+
+            if (!await IndexExists("cc_ProviderSpecialties", "IX_cc_ProviderSpecialties_ProviderId_IsPrimary"))
+                if (await Exec("CREATE INDEX `IX_cc_ProviderSpecialties_ProviderId_IsPrimary` ON `cc_ProviderSpecialties` (`ProviderId`, `IsPrimary`)",
+                    "cc_ProviderSpecialties.ProviderId.IsPrimary index")) applied++;
+
+            if (await TableExists("cc_ProviderCategories") && await TableExists("cc_Categories") && await TableExists("cc_Specialties"))
+            {
+                if (await Exec("""
+                    INSERT IGNORE INTO `cc_ProviderSpecialties`
+                        (`ProviderId`, `SpecialtyId`, `IsPrimary`)
+                    SELECT
+                        pc.`ProviderId`,
+                        CASE c.`Code`
+                            WHEN 'PAIN' THEN '41000000-0000-0000-0000-000000000001'
+                            WHEN 'PT' THEN '41000000-0000-0000-0000-000000000004'
+                            WHEN 'IMG' THEN '41000000-0000-0000-0000-000000000005'
+                            WHEN 'NEURO' THEN '41000000-0000-0000-0000-000000000006'
+                            WHEN 'SPINE' THEN '41000000-0000-0000-0000-000000000007'
+                            WHEN 'CHIRO' THEN '41000000-0000-0000-0000-000000000002'
+                        END AS `SpecialtyId`,
+                        0
+                    FROM `cc_ProviderCategories` pc
+                    INNER JOIN `cc_Categories` c ON c.`Id` = pc.`CategoryId`
+                    WHERE c.`Code` IN ('PAIN', 'CHIRO', 'PT', 'IMG', 'NEURO', 'SPINE')
+                    """, "cc_ProviderSpecialties category backfill")) applied++;
+
+                if (await Exec("""
+                    UPDATE `cc_ProviderSpecialties` ps
+                    INNER JOIN (
+                        SELECT `ProviderId`, MIN(`SpecialtyId`) AS `PrimarySpecialtyId`
+                        FROM `cc_ProviderSpecialties`
+                        GROUP BY `ProviderId`
+                    ) selected ON selected.`ProviderId` = ps.`ProviderId`
+                    SET ps.`IsPrimary` = CASE WHEN ps.`SpecialtyId` = selected.`PrimarySpecialtyId` THEN 1 ELSE 0 END
+                    """, "cc_ProviderSpecialties primary backfill")) applied++;
+            }
+        }
+    }
 
     // ── 20260429130000_AddTreatmentTypes ────────────────────────────────────
     if (!await TableExists("cc_TreatmentTypes"))

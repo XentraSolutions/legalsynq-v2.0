@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   createContext,
@@ -9,17 +9,22 @@ import {
   useMemo,
   useRef,
   type ReactNode,
-} from 'react';
-import type { PlatformSession } from '@/types';
+} from "react";
+import type { PlatformSession } from "@/types";
+import { LookupResponse } from "@/lib/lookup/lookup.types";
+import { lookupService } from "@/lib/lookup";
+import { usePathname, useRouter } from "next/navigation";
 
 interface SessionContextValue {
-  session:       PlatformSession | null;
-  isLoading:     boolean;
-  refresh:       () => Promise<void>;
-  clearSession:  () => void;
+  session: PlatformSession | null;
+  lookup: LookupResponse | null;
+  isLoading: boolean;
+  refresh: () => Promise<void>;
+  clearSession: () => void;
+  logout: (url?: string) => Promise<void>;
 }
 
-const SessionContext = createContext<SessionContextValue | null>(null);
+export const SessionContext = createContext<SessionContextValue | null>(null);
 
 const PLATFORM_DEFAULT_TIMEOUT_MINUTES = 30;
 const WARNING_LEAD_SECONDS = 60;
@@ -44,7 +49,16 @@ const PERMISSION_SYNC_INTERVAL_MS = 60_000;
  * Cross-origin coordination (e.g. web ↔ control-center on different ports) is
  * not attempted — polling covers that gap.
  */
-const SESSION_BROADCAST_CHANNEL = 'platform_session_sync';
+const SESSION_BROADCAST_CHANNEL = "platform_session_sync";
+
+function shouldPreloadLookupCache(pathname: string | null): boolean {
+  return (
+    pathname === "/lien" ||
+    pathname?.startsWith("/lien/") === true ||
+    pathname === "/selling" ||
+    pathname?.startsWith("/selling/") === true
+  );
+}
 
 /**
  * Fetches session from the BFF /api/auth/me route on mount.
@@ -63,7 +77,10 @@ const SESSION_BROADCAST_CHANNEL = 'platform_session_sync';
  * Serializable version of PlatformSession for the server→client prop boundary.
  * Date objects cannot cross RSC boundaries, so expiresAt is kept as an ISO string.
  */
-export interface SerializableSession extends Omit<PlatformSession, 'expiresAt'> {
+export interface SerializableSession extends Omit<
+  PlatformSession,
+  "expiresAt"
+> {
   expiresAt: string;
 }
 
@@ -73,24 +90,30 @@ function deserializeSession(s: SerializableSession): PlatformSession {
 }
 
 interface SessionProviderProps {
-  children:        ReactNode;
+  children: ReactNode;
   initialSession?: SerializableSession | null;
 }
 
-export function SessionProvider({ children, initialSession }: SessionProviderProps) {
+export function SessionProvider({
+  children,
+  initialSession,
+}: SessionProviderProps) {
   // Seed state from the SSR-resolved session so the UI is populated instantly.
   // isLoading starts false when we already have data; true only on a cold client load.
+  const router = useRouter();
+  const pathname = usePathname();
   const seeded = initialSession ? deserializeSession(initialSession) : null;
-  const [session,   setSession]   = useState<PlatformSession | null>(seeded);
+  const [session, setSession] = useState<PlatformSession | null>(seeded);
   const [isLoading, setIsLoading] = useState(initialSession == null);
+  const [lookup, setLookup] = useState<LookupResponse | null>(null);
   const [showWarning, setShowWarning] = useState(false);
-  const [countdown,   setCountdown]   = useState(WARNING_LEAD_SECONDS);
+  const [countdown, setCountdown] = useState(WARNING_LEAD_SECONDS);
 
-  const idleTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warningTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sessionRef      = useRef<PlatformSession | null>(seeded);
-  const showWarningRef  = useRef(false);
+  const sessionRef = useRef<PlatformSession | null>(seeded);
+  const showWarningRef = useRef(false);
 
   // ── LS-ID-TNT-015-008: BroadcastChannel ref ──────────────────────────────
   // Declared before fetchSession so the callback can reference broadcastRef.current.
@@ -102,9 +125,9 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
     // If we already have an SSR-seeded session this runs as a silent background refresh.
     if (!sessionRef.current) setIsLoading(true);
     try {
-      const res = await fetch('/api/auth/me', {
-        credentials: 'include',
-        cache:       'no-store',
+      const res = await fetch("/api/auth/me", {
+        credentials: "include",
+        cache: "no-store",
       });
 
       if (!res.ok) {
@@ -121,13 +144,13 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
           // Inform other same-origin tabs immediately so they reconcile without
           // waiting for their own next poll cycle.
           if (hadSession) {
-            broadcastRef.current?.postMessage({ type: 'session:invalidated' });
+            broadcastRef.current?.postMessage({ type: "session:invalidated" });
           }
 
-          if (typeof window !== 'undefined') {
+          if (typeof window !== "undefined") {
             // hadSession=true means user was previously authenticated but access changed.
             // hadSession=false means cold load with no valid session.
-            const reason = hadSession ? 'access_updated' : 'unauthenticated';
+            const reason = hadSession ? "access_updated" : "unauthenticated";
             window.location.href = `/login?reason=${reason}`;
           }
         }
@@ -139,25 +162,26 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
 
       const me = await res.json();
       const mapped: PlatformSession = {
-        userId:                me.userId,
-        email:                 me.email,
-        tenantId:              me.tenantId,
-        tenantCode:            me.tenantCode,
-        orgId:                 me.orgId,
-        orgType:               me.orgType,
-        orgName:               me.orgName,
-        productRoles:          me.productRoles          ?? [],
-        systemRoles:           me.systemRoles           ?? [],
-        permissions:           me.permissions           ?? [],
-        enabledProducts:       me.enabledProducts       ?? [],
-        userProducts:          me.userProducts          ?? [],
-        isPlatformAdmin:       (me.systemRoles ?? []).includes('PlatformAdmin'),
-        isTenantAdmin:         (me.systemRoles ?? []).includes('TenantAdmin'),
-        hasOrg:                !!me.orgId,
-        avatarDocumentId:      me.avatarDocumentId,
-        phone:                 me.phone,
-        expiresAt:             new Date(me.expiresAtUtc),
-        sessionTimeoutMinutes: me.sessionTimeoutMinutes ?? PLATFORM_DEFAULT_TIMEOUT_MINUTES,
+        userId: me.userId,
+        email: me.email,
+        tenantId: me.tenantId,
+        tenantCode: me.tenantCode,
+        orgId: me.orgId,
+        orgType: me.orgType,
+        orgName: me.orgName,
+        productRoles: me.productRoles ?? [],
+        systemRoles: me.systemRoles ?? [],
+        permissions: me.permissions ?? [],
+        enabledProducts: me.enabledProducts ?? [],
+        userProducts: me.userProducts ?? [],
+        isPlatformAdmin: (me.systemRoles ?? []).includes("PlatformAdmin"),
+        isTenantAdmin: (me.systemRoles ?? []).includes("TenantAdmin"),
+        hasOrg: !!me.orgId,
+        avatarDocumentId: me.avatarDocumentId,
+        phone: me.phone,
+        expiresAt: new Date(me.expiresAtUtc),
+        sessionTimeoutMinutes:
+          me.sessionTimeoutMinutes ?? PLATFORM_DEFAULT_TIMEOUT_MINUTES,
       };
       setSession(mapped);
       sessionRef.current = mapped;
@@ -169,7 +193,9 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
     }
   }, []);
 
-  useEffect(() => { fetchSession(); }, [fetchSession]);
+  useEffect(() => {
+    fetchSession();
+  }, [fetchSession]);
 
   // ── LS-ID-TNT-010: Access version re-validation on tab focus ──────────────
   // When the user returns to this tab after being away, re-call /auth/me.
@@ -178,12 +204,13 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
   // on the next tab-focus event and triggers a /login redirect.
   useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && sessionRef.current) {
+      if (document.visibilityState === "visible" && sessionRef.current) {
         void fetchSession();
       }
     };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibility);
   }, [fetchSession]);
 
   // ── LS-ID-TNT-015-008: Periodic background poll ───────────────────────────
@@ -212,7 +239,7 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
     if (pollIntervalRef.current) return; // already running
 
     pollIntervalRef.current = setInterval(() => {
-      if (document.visibilityState === 'visible' && sessionRef.current) {
+      if (document.visibilityState === "visible" && sessionRef.current) {
         void fetchSession();
       }
     }, PERMISSION_SYNC_INTERVAL_MS);
@@ -238,13 +265,13 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
   // Cross-origin tabs (e.g. control-center on a different port or subdomain)
   // are NOT reached by this channel — polling covers that gap for those users.
   useEffect(() => {
-    if (typeof BroadcastChannel === 'undefined') return;
+    if (typeof BroadcastChannel === "undefined") return;
 
     const channel = new BroadcastChannel(SESSION_BROADCAST_CHANNEL);
     broadcastRef.current = channel;
 
     channel.onmessage = (event: MessageEvent<{ type: string }>) => {
-      if (event.data?.type === 'session:invalidated' && sessionRef.current) {
+      if (event.data?.type === "session:invalidated" && sessionRef.current) {
         // Another tab detected a stale session; refresh immediately.
         void fetchSession();
       }
@@ -258,7 +285,17 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
 
   const clearSession = useCallback(() => {
     setSession(null);
+    setLookup(null);
     sessionRef.current = null;
+  }, []);
+
+  const logout = useCallback(async (url?: string) => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    router.replace(url ?? "/login");
+    router.refresh();
+    setTimeout(() => {
+      clearSession();
+    }, 1000);
   }, []);
 
   // ── Idle timeout ────────────────────────────────────────────────────────────
@@ -267,10 +304,10 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
     showWarningRef.current = false;
     setShowWarning(false);
     if (warningTimerRef.current) clearInterval(warningTimerRef.current);
-    if (idleTimerRef.current)    clearTimeout(idleTimerRef.current);
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     clearSession();
-    window.location.href = '/login?reason=idle';
+    window.location.href = "/login?reason=idle";
   }, [clearSession]);
 
   const startWarningCountdown = useCallback(() => {
@@ -278,7 +315,7 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
     showWarningRef.current = true;
     setShowWarning(true);
     warningTimerRef.current = setInterval(() => {
-      setCountdown(prev => {
+      setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(warningTimerRef.current!);
           void doLogout();
@@ -297,12 +334,16 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
 
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
 
-    const timeoutMs = (s.sessionTimeoutMinutes ?? PLATFORM_DEFAULT_TIMEOUT_MINUTES) * 60 * 1000;
+    const timeoutMs =
+      (s.sessionTimeoutMinutes ?? PLATFORM_DEFAULT_TIMEOUT_MINUTES) * 60 * 1000;
     const warningMs = timeoutMs - WARNING_LEAD_SECONDS * 1000;
 
-    idleTimerRef.current = setTimeout(() => {
-      startWarningCountdown();
-    }, Math.max(warningMs, 0));
+    idleTimerRef.current = setTimeout(
+      () => {
+        startWarningCountdown();
+      },
+      Math.max(warningMs, 0),
+    );
   }, [startWarningCountdown]);
 
   const stayActive = useCallback(() => {
@@ -316,37 +357,67 @@ export function SessionProvider({ children, initialSession }: SessionProviderPro
   useEffect(() => {
     if (!session) return;
 
-    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'] as const;
+    const events = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "scroll",
+      "touchstart",
+    ] as const;
     const handler = () => resetIdleTimer();
 
-    events.forEach(e => window.addEventListener(e, handler, { passive: true }));
+    events.forEach((e) =>
+      window.addEventListener(e, handler, { passive: true }),
+    );
     resetIdleTimer();
 
     return () => {
-      events.forEach(e => window.removeEventListener(e, handler));
-      if (idleTimerRef.current)    clearTimeout(idleTimerRef.current);
+      events.forEach((e) => window.removeEventListener(e, handler));
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       if (warningTimerRef.current) clearInterval(warningTimerRef.current);
     };
   }, [session, resetIdleTimer]);
 
+  useEffect(() => {
+    if (!session || lookup || !shouldPreloadLookupCache(pathname)) return;
+
+    void (async () => {
+      const data = await lookupService.getLookupAll();
+      setLookup(data);
+    })();
+  }, [session, lookup, pathname]);
+
   const ctxValue = useMemo(
-    () => ({ session, isLoading, refresh: fetchSession, clearSession }),
-    [session, isLoading, fetchSession, clearSession],
+    () => ({
+      session,
+      lookup,
+      isLoading,
+      refresh: fetchSession,
+      clearSession,
+      logout,
+    }),
+    [session, lookup, isLoading, fetchSession, clearSession, logout],
   );
 
   return (
     <SessionContext.Provider value={ctxValue}>
       {children}
-      {showWarning && (
-        <IdleWarningDialog countdown={countdown} onStay={stayActive} onLogout={doLogout} />
-      )}
+      {/* REMOVING FOR NOW: Per QA findings, it is not working as expected and is causing confusion for users. We will revisit this in the future. */}
+      {/* {showWarning && (
+        <IdleWarningDialog
+          countdown={countdown}
+          onStay={stayActive}
+          onLogout={doLogout}
+        />
+      )} */}
     </SessionContext.Provider>
   );
 }
 
 export function useSessionContext(): SessionContextValue {
   const ctx = useContext(SessionContext);
-  if (!ctx) throw new Error('useSessionContext must be used inside <SessionProvider>');
+  if (!ctx)
+    throw new Error("useSessionContext must be used inside <SessionProvider>");
   return ctx;
 }
 
@@ -373,7 +444,10 @@ function IdleWarningDialog({
           <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-4">
             <i className="ri-time-line text-amber-600 text-2xl" />
           </div>
-          <h2 id="idle-warning-title" className="text-lg font-semibold text-gray-900 mb-1">
+          <h2
+            id="idle-warning-title"
+            className="text-lg font-semibold text-gray-900 mb-1"
+          >
             Session expiring soon
           </h2>
           <p className="text-sm text-gray-500">

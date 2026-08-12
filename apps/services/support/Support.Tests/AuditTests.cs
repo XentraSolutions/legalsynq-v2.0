@@ -57,7 +57,17 @@ public class AuditTests : IClassFixture<AuditApiFactory>
     {
         _factory.Recorder.Clear();
         var c = ClientFor("tenant-A1", sub: "actor-1");
-        var t = await CreateTicket(c, "audit hello");
+        var resp = await c.PostAsJsonAsync("/support/api/tickets", new CreateTicketRequest
+        {
+            Title = "audit hello",
+            Priority = TicketPriority.Normal,
+            Source = TicketSource.Portal,
+            CaseManagerUserId = "cm-1",
+            CaseManagerName = "Alex Manager",
+            CaseManagerEmail = "alex.manager@example.com",
+        });
+        resp.EnsureSuccessStatusCode();
+        var t = (await resp.Content.ReadFromJsonAsync<TicketResponse>())!;
 
         var events = _factory.Recorder.ForResource(t.Id.ToString());
         var created = events.Single(e => e.EventType == SupportAuditEventTypes.TicketCreated);
@@ -71,6 +81,9 @@ public class AuditTests : IClassFixture<AuditApiFactory>
         created.Outcome.Should().Be(SupportAuditOutcomes.Success);
         created.Metadata["title"].Should().Be("audit hello");
         created.Metadata["status"].Should().Be(TicketStatus.Open.ToString());
+        created.Metadata["case_manager_user_id"].Should().Be("cm-1");
+        created.Metadata["case_manager_name"].Should().Be("Alex Manager");
+        created.Metadata["case_manager_email"].Should().Be("alex.manager@example.com");
         created.ActorRoles.Should().NotBeEmpty();
     }
 
@@ -83,7 +96,12 @@ public class AuditTests : IClassFixture<AuditApiFactory>
         var t = await CreateTicket(c, "to update");
 
         var resp = await c.PutAsJsonAsync($"/support/api/tickets/{t.Id}",
-            new UpdateTicketRequest { Title = "renamed", Category = "billing" });
+            new UpdateTicketRequest
+            {
+                Title = "renamed",
+                Category = "billing",
+                CaseManagerName = "Jamie Case",
+            });
         resp.EnsureSuccessStatusCode();
 
         var events = _factory.Recorder.ForResource(t.Id.ToString());
@@ -92,6 +110,8 @@ public class AuditTests : IClassFixture<AuditApiFactory>
         updated.Metadata["title_changed"].Should().Be(true);
         updated.Metadata["category_changed"].Should().Be(true);
         updated.Metadata["due_at_changed"].Should().Be(false);
+        updated.Metadata["case_manager_name"].Should().Be("Jamie Case");
+        updated.Metadata["case_manager_changed"].Should().Be(true);
     }
 
     // 3

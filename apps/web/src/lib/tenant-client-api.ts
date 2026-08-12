@@ -16,6 +16,7 @@ export interface CreateUserBody {
   tenantId:  string;
   email:     string;
   password:  string;
+  title?:    string;
   firstName: string;
   lastName:  string;
   roleIds?:  string[];

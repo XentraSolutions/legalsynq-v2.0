@@ -6,6 +6,10 @@ public interface IServicingItemRepository
 {
     Task<ServicingItem?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
     Task<ServicingItem?> GetByTaskNumberAsync(Guid tenantId, string taskNumber, CancellationToken ct = default);
+    Task<List<ServicingItem>> GetByLienIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> lienIds,
+        CancellationToken ct = default);
     Task<(List<ServicingItem> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, string? status, string? priority, string? assignedTo,
         Guid? caseId, Guid? lienId, int page, int pageSize, CancellationToken ct = default);

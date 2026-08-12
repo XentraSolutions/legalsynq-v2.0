@@ -6,7 +6,7 @@ YARP reverse proxy that is the single entry point for all API traffic from both 
 
 ## Responsibilities
 
-- JWT validation (all routes except `/health`, `/info`, public branding, and document access endpoints)
+- JWT validation (all routes except `/health`, `/info`, public branding, document access endpoints, and token-gated public buyer links)
 - Request routing to downstream services via YARP
 - Tenant context propagation (`X-Tenant-Code`, `X-Tenant-Id` headers forwarded)
 - Correlation ID forwarding
@@ -27,7 +27,7 @@ Gateway.Api/
 | `/api/users/*` | Identity `:5001` |
 | `/api/tenants/*` | Identity / Tenant `:5001 / :5005` |
 | `/api/careconnect/*` | CareConnect `:5003` |
-| `/api/liens/*` | Liens `:5002` |
+| `/liens/*` | Liens `:5009` |
 | `/api/fund/*` | Fund `:5008` |
 | `/api/documents/*` | Documents `:5006` |
 | `/api/notifications/*` | Notifications `:5025` |
@@ -39,6 +39,7 @@ Gateway.Api/
 ## Notes
 
 - All downstream services independently validate JWTs — the gateway is not a single point of auth enforcement.
+- SynqLien buyer offer emails open `/selling/public/{token}` in the tenant web app, which forwards to the gateway path `/liens/api/liens/selling/public/{token}`. That gateway route is anonymous; the Liens service validates the opaque buyer access token and expiry.
 - Internal service-to-service calls (e.g. Identity → Notifications, Tenant → Identity) bypass the gateway and use direct HTTP with service tokens or provisioning secrets.
 - For `systemd` deployments that use `EnvironmentFile=`, keep YARP cluster and destination override keys underscore-only, for example `ReverseProxy__Clusters__identity_cluster__Destinations__identity_primary__Address`.
 

@@ -6,12 +6,15 @@ public interface IContactService
 {
     Task<PaginatedResult<ContactResponse>> SearchAsync(
         Guid tenantId, string? search, string? contactType, bool? isActive,
-        int page, int pageSize, CancellationToken ct = default);
+        int page, int pageSize, Guid? lawFirmId = null, Guid? facilityId = null, string? contactSubtype = null, CancellationToken ct = default);
 
     Task<ContactResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     Task<List<ContactResponse>> GetAllByTypeAsync(
         Guid tenantId, string? contactType, bool? isActive = true, CancellationToken ct = default);
+
+    Task<IReadOnlyList<Guid>> FindLawFirmFilterIdsAsync(
+        Guid tenantId, string lawFirmName, CancellationToken ct = default);
 
     Task<ContactResponse> CreateAsync(
         Guid tenantId, Guid orgId, Guid actingUserId,

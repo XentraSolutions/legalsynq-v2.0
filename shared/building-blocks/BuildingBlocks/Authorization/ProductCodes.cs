@@ -10,6 +10,10 @@ public static class ProductCodes
     public const string SynqInsights    = "SYNQ_INSIGHTS";
     /// <summary>LS-ID-TNT-010: Synq Comms messaging product.</summary>
     public const string SynqComms       = "SYNQ_COMMS";
+    /// <summary>Xenia assistant product. Canonical database code remains SYNQ_AI.</summary>
+    public const string SynqAI          = "SYNQ_AI";
+    /// <summary>Alias for <see cref="SynqAI"/> used by Xenia-facing code.</summary>
+    public const string Xenia           = SynqAI;
     /// <summary>
     /// LS-ID-TNT-011: Virtual pseudo-product code used as the catalog anchor for
     /// tenant-level permission codes (TENANT.*).  Never enabled in TenantProducts;

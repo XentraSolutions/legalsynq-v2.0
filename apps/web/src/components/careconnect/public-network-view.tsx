@@ -46,6 +46,330 @@ interface PublicNetworkViewProps {
 
 type ViewMode = 'split' | 'list' | 'map';
 
+interface SearchLocation {
+  latitude:  number;
+  longitude: number;
+  label:     string;
+  source?:   'geocode' | 'providerFallback';
+}
+
+type GeocodeSuggestion = {
+  displayName?: string;
+  latitude:     number;
+  longitude:    number;
+};
+
+type ProviderWithDistance = PublicProviderItem & { distanceMiles?: number | null };
+
+const US_STATE_NAMES = new Set([
+  'alabama', 'alaska', 'arizona', 'arkansas', 'california',
+  'colorado', 'connecticut', 'delaware', 'florida', 'georgia',
+  'hawaii', 'idaho', 'illinois', 'indiana', 'iowa',
+  'kansas', 'kentucky', 'louisiana', 'maine', 'maryland',
+  'massachusetts', 'michigan', 'minnesota', 'mississippi', 'missouri',
+  'montana', 'nebraska', 'nevada', 'new hampshire', 'new jersey',
+  'new mexico', 'new york', 'north carolina', 'north dakota',
+  'ohio', 'oklahoma', 'oregon', 'pennsylvania', 'rhode island',
+  'south carolina', 'south dakota', 'tennessee', 'texas',
+  'utah', 'vermont', 'virginia', 'washington', 'west virginia',
+  'wisconsin', 'wyoming',
+]);
+const US_STATE_CODES = new Set([
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
+  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
+  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
+  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
+  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+]);
+const US_STATE_CODE_TO_NAME: Record<string, string> = {
+  AL: 'alabama', AK: 'alaska', AZ: 'arizona', AR: 'arkansas', CA: 'california',
+  CO: 'colorado', CT: 'connecticut', DE: 'delaware', FL: 'florida', GA: 'georgia',
+  HI: 'hawaii', ID: 'idaho', IL: 'illinois', IN: 'indiana', IA: 'iowa',
+  KS: 'kansas', KY: 'kentucky', LA: 'louisiana', ME: 'maine', MD: 'maryland',
+  MA: 'massachusetts', MI: 'michigan', MN: 'minnesota', MS: 'mississippi', MO: 'missouri',
+  MT: 'montana', NE: 'nebraska', NV: 'nevada', NH: 'new hampshire', NJ: 'new jersey',
+  NM: 'new mexico', NY: 'new york', NC: 'north carolina', ND: 'north dakota',
+  OH: 'ohio', OK: 'oklahoma', OR: 'oregon', PA: 'pennsylvania', RI: 'rhode island',
+  SC: 'south carolina', SD: 'south dakota', TN: 'tennessee', TX: 'texas',
+  UT: 'utah', VT: 'vermont', VA: 'virginia', WA: 'washington', WV: 'west virginia',
+  WI: 'wisconsin', WY: 'wyoming',
+};
+const US_STATE_NAME_TO_CODE = new Map(
+  Object.entries(US_STATE_CODE_TO_NAME).map(([code, name]) => [name, code]),
+);
+const ZIP_CODE_PATTERN = /^\d{5}(?:-\d{4})?$/;
+const ADDRESS_HINT_PATTERN = /\d|,|\b(?:apt|suite|ste|unit|street|st|road|rd|avenue|ave|boulevard|blvd|drive|dr|lane|ln|court|ct|circle|cir|place|pl|parkway|pkwy|highway|hwy|way|terrace|ter)\b/i;
+
+function normalizeLocationValue(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[.,]/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function stateSearchValues(state: string): string[] {
+  const trimmed = state.trim();
+  if (!trimmed) return [];
+
+  const values = new Set<string>([trimmed]);
+  const upper = trimmed.toUpperCase();
+  const normalized = normalizeLocationValue(trimmed);
+
+  const fullName = US_STATE_CODE_TO_NAME[upper];
+  if (fullName) values.add(fullName);
+
+  const code = US_STATE_NAME_TO_CODE.get(normalized);
+  if (code) values.add(code);
+
+  return [...values];
+}
+
+function providerLocationSearchValues(provider: PublicProviderItem): string[] {
+  const city = provider.city?.trim() ?? '';
+  const state = provider.state?.trim() ?? '';
+  const addressLine1 = provider.addressLine1?.trim() ?? '';
+  const postalCode = provider.postalCode?.trim() ?? '';
+  const stateValues = stateSearchValues(state);
+  const values = [
+    addressLine1,
+    city,
+    postalCode,
+    ...stateValues,
+  ];
+
+  for (const stateValue of stateValues) {
+    values.push(
+      [addressLine1, city, stateValue, postalCode].filter(Boolean).join(' '),
+      [city, stateValue].filter(Boolean).join(' '),
+      [city, stateValue, postalCode].filter(Boolean).join(' '),
+      [stateValue, postalCode].filter(Boolean).join(' '),
+    );
+  }
+
+  return values;
+}
+
+function hasExactProviderLocationMatch(query: string, providers: PublicProviderItem[]): boolean {
+  const target = normalizeLocationValue(query);
+  if (!target) return false;
+
+  return providers.some(p => {
+    return providerLocationSearchValues(p).some(value => normalizeLocationValue(value) === target);
+  });
+}
+
+function getProviderLocationFallback(
+  query: string,
+  providers: PublicProviderItem[],
+  markerById: Record<string, PublicProviderMarker>,
+): SearchLocation | null {
+  const target = normalizeLocationValue(query);
+  if (!target) return null;
+
+  const matches: Array<{ latitude: number; longitude: number }> = [];
+  const exactStreetProviderIds = getExactStreetProviderIds(query, providers);
+
+  for (const p of providers) {
+    const providerId = providerEntryId(p);
+    const matchesQuery = exactStreetProviderIds.size > 0
+      ? exactStreetProviderIds.has(providerId)
+      : providerMatchesLocationContext(p, query);
+    if (!matchesQuery) continue;
+
+    const marker = markerById[providerId];
+    const coordinates = marker ? usableCoordinates(marker) : null;
+    if (coordinates) matches.push(coordinates);
+  }
+
+  if (matches.length === 0) return null;
+
+  return {
+    latitude: matches.reduce((sum, point) => sum + point.latitude, 0) / matches.length,
+    longitude: matches.reduce((sum, point) => sum + point.longitude, 0) / matches.length,
+    label: query.trim(),
+    source: 'providerFallback',
+  };
+}
+
+function buildProviderAddressGeocodeQuery(provider: PublicProviderItem): string | null {
+  const locality = [provider.city, provider.state, provider.postalCode]
+    .map(value => value?.trim() ?? '')
+    .filter(Boolean);
+  if (locality.length === 0) return null;
+
+  // A mobile facility stores a human-readable service area (for example,
+  // "Greater Las Vegas Metro") in addressLine1 rather than a street address.
+  // Geocode its locality so the map can use a city centroid for the coverage area.
+  if (provider.isMobile) return locality.join(', ');
+
+  const addressLine1 = provider.addressLine1?.trim();
+  if (!addressLine1) return null;
+
+  return [addressLine1, ...locality].join(', ');
+}
+
+function isStreetAddressQuery(query: string): boolean {
+  return ADDRESS_HINT_PATTERN.test(query.trim());
+}
+
+function providerMatchesExactLocation(provider: PublicProviderItem, query: string): boolean {
+  const target = normalizeLocationValue(query);
+  if (!target) return false;
+
+  return providerLocationSearchValues(provider)
+    .some(value => normalizeLocationValue(value) === target);
+}
+
+function providerMatchesLocationContext(provider: PublicProviderItem, query: string): boolean {
+  if (providerMatchesExactLocation(provider, query)) return true;
+
+  const target = normalizeLocationValue(query);
+  const addressLine1 = normalizeLocationValue(provider.addressLine1 ?? '');
+  if (addressLine1 && target.includes(addressLine1)) return true;
+
+  const city = normalizeLocationValue(provider.city ?? '');
+  const postalCode = normalizeLocationValue(provider.postalCode ?? '');
+  const stateValues = stateSearchValues(provider.state ?? '').map(normalizeLocationValue);
+  return Boolean(
+    postalCode && target.includes(postalCode) &&
+    city && target.includes(city) &&
+    stateValues.some(state => state && target.includes(state)),
+  );
+}
+
+function getExactStreetProviderIds(query: string, providers: PublicProviderItem[]): Set<string> {
+  if (!isStreetAddressQuery(query)) return new Set<string>();
+
+  const target = normalizeLocationValue(query);
+  const addressMatches = providers.filter(provider => {
+    const addressLine1 = normalizeLocationValue(provider.addressLine1 ?? '');
+    return addressLine1.length >= 5 && target.includes(addressLine1);
+  });
+  if (addressMatches.length > 0) {
+    return new Set(addressMatches.map(providerEntryId));
+  }
+
+  const postalMatches = providers.filter(provider => {
+    const postalCode = normalizeLocationValue(provider.postalCode ?? '');
+    return postalCode.length >= 5 && target.includes(postalCode);
+  });
+  return postalMatches.length === 1
+    ? new Set(postalMatches.map(providerEntryId))
+    : new Set<string>();
+}
+
+function hasProviderTextMatch(query: string, providers: PublicProviderItem[]): boolean {
+  const target = normalizeLocationValue(query);
+  if (!target) return false;
+
+  return providers.some(p => {
+    const values = [
+      p.name,
+      p.organizationName ?? '',
+      p.facilityName ?? '',
+      p.primarySpecialty ?? '',
+      ...(p.specialties ?? []).map(s => s.name),
+    ];
+
+    return values.some(value => normalizeLocationValue(value).includes(target));
+  });
+}
+
+function shouldTrySearchGeocode(query: string, providers: PublicProviderItem[]): boolean {
+  const value = query.trim();
+  if (!value) return false;
+
+  if (ZIP_CODE_PATTERN.test(value)) return true;
+
+  const stateCode = value.toUpperCase();
+  const normalized = normalizeLocationValue(value);
+  if (US_STATE_CODES.has(stateCode) || US_STATE_NAMES.has(normalized)) return true;
+
+  if (value.length < 3) return false;
+  if (hasExactProviderLocationMatch(value, providers)) return true;
+  if (ADDRESS_HINT_PATTERN.test(value)) return true;
+  if (hasProviderTextMatch(value, providers)) return false;
+
+  return /^[a-z][a-z\s'.-]*$/i.test(value) && value.split(/\s+/).length <= 3;
+}
+
+function getFirstUsableGeocodeLocation(
+  suggestions: GeocodeSuggestion[],
+  fallbackLabel: string,
+): SearchLocation | null {
+  for (const suggestion of suggestions) {
+    const latitude = Number(suggestion.latitude);
+    const longitude = Number(suggestion.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+    if (latitude === 0 && longitude === 0) continue;
+
+    return {
+      latitude,
+      longitude,
+      label: suggestion.displayName?.trim() || fallbackLabel,
+      source: 'geocode',
+    };
+  }
+
+  return null;
+}
+
+function usableCoordinates(point: { latitude: number; longitude: number }): { latitude: number; longitude: number } | null {
+  const latitude = Number(point.latitude);
+  const longitude = Number(point.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude === 0 && longitude === 0) return null;
+  return { latitude, longitude };
+}
+
+function distanceMilesBetween(a: SearchLocation, b: { latitude: number; longitude: number }): number {
+  const toRad = (deg: number) => deg * Math.PI / 180;
+  const radiusMiles = 3958.7613;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const clamped = Math.min(1, Math.max(0, h));
+  return 2 * radiusMiles * Math.atan2(Math.sqrt(clamped), Math.sqrt(1 - clamped));
+}
+
+function getProviderIdentity(provider: { name: string; organizationName?: string | null }) {
+  const providerName = provider.name.trim();
+  const organizationName = provider.organizationName?.trim() ?? '';
+  const hasDistinctOrganization =
+    organizationName.length > 0 && organizationName.toLowerCase() !== providerName.toLowerCase();
+
+  return {
+    primary: organizationName || providerName,
+    secondary: hasDistinctOrganization ? providerName : null,
+  };
+}
+
+function providerEntryId(provider: { id: string; networkProviderId?: string | null }): string {
+  return provider.networkProviderId || provider.id;
+}
+
+function providerIdentityId(provider: { id: string; providerId?: string | null }): string {
+  return provider.providerId || provider.id;
+}
+
+function compareProvidersByDistance(a: ProviderWithDistance, b: ProviderWithDistance): number {
+  const aDistance = typeof a.distanceMiles === 'number' && Number.isFinite(a.distanceMiles)
+    ? a.distanceMiles
+    : Number.POSITIVE_INFINITY;
+  const bDistance = typeof b.distanceMiles === 'number' && Number.isFinite(b.distanceMiles)
+    ? b.distanceMiles
+    : Number.POSITIVE_INFINITY;
+
+  if (aDistance !== bDistance) return aDistance - bDistance;
+  return getProviderIdentity(a).primary.localeCompare(getProviderIdentity(b).primary);
+}
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export function PublicNetworkView({
@@ -57,6 +381,14 @@ export function PublicNetworkView({
   prefillLawFirm,
 }: PublicNetworkViewProps) {
   const [search,      setSearch]      = useState('');
+  const [zipInput,    setZipInput]    = useState('');
+  const [selectedSpecialtyCode, setSelectedSpecialtyCode] = useState('');
+  const [detectedSearchLocation, setDetectedSearchLocation] = useState<SearchLocation | null>(null);
+  const [settledSearchLocationQuery, setSettledSearchLocationQuery] = useState('');
+  const [zipLocation, setZipLocation] = useState<SearchLocation | null>(null);
+  const [searchLocationLoading, setSearchLocationLoading] = useState(false);
+  const [zipLoading,  setZipLoading]  = useState(false);
+  const [zipError,    setZipError]    = useState<string | null>(null);
   const [viewMode,    setViewMode]    = useState<ViewMode>('split');
   const [showAll,     setShowAll]     = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -81,8 +413,9 @@ export function PublicNetworkView({
   useEffect(() => {
     if (detail.providers.length === 0) return;
     const missing = detail.providers.filter(p => {
-      const m = detail.markers.find(mk => mk.id === p.id);
-      return !m || (m.latitude === 0 && m.longitude === 0);
+      const entryId = providerEntryId(p);
+      const m = detail.markers.find(mk => providerEntryId(mk) === entryId);
+      return !m || !usableCoordinates(m);
     });
     if (missing.length === 0) return;
 
@@ -91,7 +424,7 @@ export function PublicNetworkView({
       const results: PublicProviderMarker[] = [...detail.markers];
       await Promise.all(
         missing.map(async p => {
-          const q = [p.city, p.state, p.postalCode].filter(Boolean).join(' ');
+          const q = buildProviderAddressGeocodeQuery(p);
           if (!q) return;
           try {
             const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(q)}&loose=1`);
@@ -100,9 +433,23 @@ export function PublicNetworkView({
             if (suggestions.length === 0) return;
             const { latitude, longitude } = suggestions[0];
             results.push({
-              id: p.id, name: p.name, organizationName: p.organizationName,
+              id: p.id,
+              networkProviderId: providerEntryId(p),
+              providerId: providerIdentityId(p),
+              facilityId: p.facilityId,
+              name: p.name,
+              title: p.title,
+              organizationName: p.organizationName,
+              facilityName: p.facilityName,
               city: p.city, state: p.state, acceptingReferrals: p.acceptingReferrals,
               latitude, longitude,
+              specialties: p.specialties ?? [],
+              primarySpecialtyId: p.primarySpecialtyId ?? null,
+              primarySpecialty: p.primarySpecialty ?? null,
+              distanceMiles: null,
+              isMobile: p.isMobile,
+              serviceRadiusMiles: p.serviceRadiusMiles,
+              serviceAreaLabel: p.serviceAreaLabel,
             });
           } catch { /* ignore */ }
         }),
@@ -116,37 +463,202 @@ export function PublicNetworkView({
 
   const markerById = useMemo<Record<string, PublicProviderMarker>>(() => {
     const m: Record<string, PublicProviderMarker> = {};
-    for (const mk of markers) m[mk.id] = mk;
+    for (const mk of markers) m[providerEntryId(mk)] = mk;
     return m;
   }, [markers]);
 
-  const filtered = useMemo(() => {
-    let list = detail.providers;
+  useEffect(() => {
+    const value = search.trim();
+
+    if (!shouldTrySearchGeocode(value, detail.providers)) {
+      setDetectedSearchLocation(null);
+      setSettledSearchLocationQuery('');
+      setSearchLocationLoading(false);
+      return;
+    }
+
+    // City/state/ZIP searches may safely use the providers' average stored point while
+    // geocoding runs. Exact street matches may use only that facility's point; duplicate
+    // city-centroid markers are handled below so unrelated facilities are not shown as 0 mi.
+    const providerFallbackLocation = getProviderLocationFallback(value, detail.providers, markerById);
+    const exactStreetProviderIds = getExactStreetProviderIds(value, detail.providers);
+    const initialFallbackLocation = !isStreetAddressQuery(value) || exactStreetProviderIds.size > 0
+      ? providerFallbackLocation
+      : null;
+    setDetectedSearchLocation(initialFallbackLocation);
+    if (initialFallbackLocation) {
+      setZipLocation(null);
+      setZipInput('');
+      setZipError(null);
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setSearchLocationLoading(true);
+      try {
+        const geocodeController = new AbortController();
+        const geocodeTimeout = window.setTimeout(() => geocodeController.abort(), 10000);
+        let res: Response;
+        try {
+          res = await fetch(`/api/geocode/address?q=${encodeURIComponent(value)}&loose=1`, {
+            signal: geocodeController.signal,
+          });
+        } finally {
+          window.clearTimeout(geocodeTimeout);
+        }
+        if (!res.ok) throw new Error('Unable to geocode search input.');
+        const suggestions = await res.json() as GeocodeSuggestion[];
+        const location = getFirstUsableGeocodeLocation(suggestions, value);
+
+        if (!cancelled) {
+          const nextLocation = location ?? providerFallbackLocation;
+          setDetectedSearchLocation(nextLocation);
+          if (nextLocation) {
+            setZipLocation(null);
+            setZipInput('');
+            setZipError(null);
+          }
+        }
+      } catch {
+        if (!cancelled) setDetectedSearchLocation(providerFallbackLocation);
+      } finally {
+        if (!cancelled) {
+          setSettledSearchLocationQuery(value);
+          setSearchLocationLoading(false);
+        }
+      }
+    }, 700);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [search, detail.providers, markerById]);
+
+  const searchLocation = detectedSearchLocation ?? zipLocation;
+  const searchActsAsLocation = detectedSearchLocation !== null;
+  const trimmedSearch = search.trim();
+  const searchNeedsLocationResolution = shouldTrySearchGeocode(trimmedSearch, detail.providers);
+  const searchLocationPending =
+    searchNeedsLocationResolution &&
+    trimmedSearch !== settledSearchLocationQuery;
+
+  const filtered = useMemo<ProviderWithDistance[]>(() => {
+    let list: ProviderWithDistance[] = detail.providers;
     if (!showAll) list = list.filter(p => p.acceptingReferrals);
     const q = search.trim().toLowerCase();
-    if (q) list = list.filter(p =>
+    if (q && !searchActsAsLocation) list = list.filter(p =>
       p.name.toLowerCase().includes(q) ||
       (p.organizationName?.toLowerCase().includes(q) ?? false) ||
+      (p.facilityName?.toLowerCase().includes(q) ?? false) ||
+      (p.addressLine1?.toLowerCase().includes(q) ?? false) ||
+      (p.postalCode?.toLowerCase().includes(q) ?? false) ||
       p.city.toLowerCase().includes(q) ||
-      p.state.toLowerCase().includes(q),
+      p.state.toLowerCase().includes(q) ||
+      (p.primarySpecialty?.toLowerCase().includes(q) ?? false) ||
+      (p.specialties ?? []).some(s => s.name.toLowerCase().includes(q)),
     );
+    if (selectedSpecialtyCode) {
+      list = list.filter(p => (p.specialties ?? []).some(s => s.code === selectedSpecialtyCode));
+    }
+    if (searchLocation) {
+      const withDistances: ProviderWithDistance[] = [];
+      const exactStreetProviderIds = getExactStreetProviderIds(search, detail.providers);
+      const exactStreetSearch = exactStreetProviderIds.size > 0;
+      for (const p of list) {
+        const entryId = providerEntryId(p);
+        const exactLocationMatch = exactStreetProviderIds.has(entryId);
+        const mk = markerById[entryId];
+        if (!mk) {
+          if (exactLocationMatch) withDistances.push({ ...p, distanceMiles: 0 });
+          continue;
+        }
+        const coordinates = usableCoordinates(mk);
+        if (!coordinates) {
+          if (exactLocationMatch) withDistances.push({ ...p, distanceMiles: 0 });
+          continue;
+        }
+        const sharesFallbackOrigin =
+          searchLocation.source === 'providerFallback' &&
+          coordinates.latitude === searchLocation.latitude &&
+          coordinates.longitude === searchLocation.longitude;
+        withDistances.push({
+          ...p,
+          distanceMiles: exactLocationMatch
+            ? 0
+            : exactStreetSearch && sharesFallbackOrigin
+              ? null
+            : distanceMilesBetween(searchLocation, coordinates),
+        });
+      }
+      list = withDistances.sort(compareProvidersByDistance);
+    }
     return list;
-  }, [detail.providers, search, showAll]);
+  }, [detail.providers, search, showAll, selectedSpecialtyCode, searchLocation, searchActsAsLocation, markerById]);
 
   const displayedMarkers = useMemo<NumberedMarker[]>(() => {
     const result: NumberedMarker[] = [];
+    const exactStreetProviderIds = getExactStreetProviderIds(search, detail.providers);
     let idx = 1;
     for (const p of filtered) {
-      const mk = markerById[p.id];
-      if (mk && (mk.latitude !== 0 || mk.longitude !== 0)) {
-        result.push({ ...mk, index: idx++ });
+      const entryId = providerEntryId(p);
+      const mk = markerById[entryId];
+      const coordinates = mk ? usableCoordinates(mk) : null;
+      if (searchLocation && exactStreetProviderIds.has(entryId)) {
+        const markerSource = mk ? { ...mk, id: entryId } : { ...p, id: entryId };
+        result.push({
+          ...markerSource,
+          latitude: searchLocation.latitude,
+          longitude: searchLocation.longitude,
+          distanceMiles: 0,
+          index: idx++,
+        });
+      } else if (mk && coordinates) {
+        result.push({ ...mk, id: entryId, ...coordinates, distanceMiles: p.distanceMiles ?? mk.distanceMiles, index: idx++ });
       }
     }
     return result;
-  }, [filtered, markerById]);
+  }, [filtered, markerById, search, detail.providers, searchLocation]);
 
   const indexFor = (id: string) =>
     displayedMarkers.find(m => m.id === id)?.index ?? null;
+
+  async function applyZipFilter() {
+    const value = zipInput.trim();
+    if (!value) {
+      setZipLocation(null);
+      setZipError(null);
+      return;
+    }
+    setZipLoading(true);
+    setZipError(null);
+    try {
+      const res = await fetch(`/api/geocode/address?q=${encodeURIComponent(value)}&loose=1`);
+      if (!res.ok) throw new Error('Unable to geocode ZIP code.');
+      const suggestions = await res.json() as GeocodeSuggestion[];
+      const location = getFirstUsableGeocodeLocation(suggestions, value);
+      if (!location) throw new Error('No matching ZIP code was found.');
+      if (detectedSearchLocation) setSearch('');
+      setDetectedSearchLocation(null);
+      setZipLocation(location);
+    } catch (err) {
+      setZipLocation(null);
+      setZipError(err instanceof Error ? err.message : 'Unable to geocode ZIP code.');
+    } finally {
+      setZipLoading(false);
+    }
+  }
+
+  function clearFilters() {
+    setSearch('');
+    setZipInput('');
+    setSelectedSpecialtyCode('');
+    setDetectedSearchLocation(null);
+    setSettledSearchLocationQuery('');
+    setZipLocation(null);
+    setSearchLocationLoading(false);
+    setZipError(null);
+  }
 
   function toggleSelect(id: string) {
     setSelectedIds(prev => {
@@ -162,12 +674,13 @@ export function PublicNetworkView({
   }
 
   function handleMapReferral(m: PublicProviderMarker) {
-    toggleSelect(m.id);
+    toggleSelect(providerEntryId(m));
   }
 
-  const selectedProviders = detail.providers.filter(p => selectedIds.has(p.id));
-  const hasMarkers        = markers.some(m => m.latitude !== 0 || m.longitude !== 0);
+  const selectedProviders = detail.providers.filter(p => selectedIds.has(providerEntryId(p)));
+  const hasMarkers        = displayedMarkers.length > 0 || !!searchLocation;
   const shownCount        = filtered.length;
+  const showProviderSearchLoading = searchLocationPending && filtered.length === 0;
 
   return (
     <div data-theme={dark ? 'dark' : 'light'} className="flex flex-col h-full bg-gray-50 dark:bg-gray-950 overflow-hidden">
@@ -220,23 +733,61 @@ export function PublicNetworkView({
 
           {/* Search */}
           <div className="flex-1 relative">
-            <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm pointer-events-none" />
+            <i className={[
+              searchLocationPending || searchLocationLoading ? 'ri-loader-4-line animate-spin' : 'ri-search-line',
+              'absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm pointer-events-none',
+            ].join(' ')} />
             <input
               type="search"
-              placeholder="Search by name, location, or specialty…"
+              placeholder="Search by provider, specialty, address, city, state, or ZIP…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+              className="h-10 w-full pl-8 pr-3 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
                          focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-900/30
                          placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
             />
           </div>
 
+          <input
+            type="text"
+            aria-label="ZIP code"
+            value={zipInput}
+            onChange={e => setZipInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && void applyZipFilter()}
+            placeholder="ZIP"
+            className="h-10 w-24 px-3 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+                       focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-900/30
+                       placeholder-gray-400 dark:placeholder-gray-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white flex-shrink-0"
+          />
+
+          <button
+            onClick={() => void applyZipFilter()}
+            disabled={zipLoading}
+            className="h-10 flex items-center gap-1.5 px-4 text-sm font-medium border rounded-lg flex-shrink-0 transition-colors
+                       bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500 disabled:opacity-50"
+          >
+            {zipLoading ? 'Finding…' : 'Apply ZIP'}
+          </button>
+
+          <select
+            aria-label="Specialty"
+            value={selectedSpecialtyCode}
+            onChange={e => setSelectedSpecialtyCode(e.target.value)}
+            className="h-10 w-40 px-3 text-sm border border-gray-200 dark:border-gray-600 rounded-lg
+                       focus:outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-1 focus:ring-blue-100 dark:focus:ring-blue-900/30
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white flex-shrink-0"
+          >
+            <option value="">All specialties</option>
+            {(detail.specialties ?? []).map(s => (
+              <option key={s.id} value={s.code}>{s.name}</option>
+            ))}
+          </select>
+
           {/* Filter */}
           <button
             onClick={() => setShowAll(v => !v)}
             className={[
-              'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg flex-shrink-0 transition-colors',
+              'h-10 flex items-center gap-1.5 px-4 text-sm font-medium border rounded-lg flex-shrink-0 transition-colors',
               showAll
                 ? 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 border-gray-900 dark:border-gray-100'
                 : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500',
@@ -244,6 +795,13 @@ export function PublicNetworkView({
           >
             <i className="ri-filter-3-line" />
             {showAll ? 'All providers' : 'Accepting only'}
+          </button>
+
+          <button
+            onClick={clearFilters}
+            className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0"
+          >
+            Clear
           </button>
 
           <span className="text-xs text-gray-400 font-medium flex-shrink-0">
@@ -257,6 +815,9 @@ export function PublicNetworkView({
             </span>
           )}
         </div>
+        {zipError && (
+          <p className="px-5 pb-2 text-xs text-red-600 dark:text-red-400">{zipError}</p>
+        )}
       </header>
 
       {/* ── Body: left content + right panel ───────────────────────────────── */}
@@ -270,28 +831,33 @@ export function PublicNetworkView({
             <>
               {/* Provider list column */}
               <div className="w-[300px] flex-shrink-0 border-r border-gray-200 dark:border-gray-700 overflow-y-auto bg-white dark:bg-gray-900">
-                {filtered.length === 0 ? (
+                {showProviderSearchLoading ? (
+                  <ProviderSearchLoading />
+                ) : filtered.length === 0 ? (
                   <div className="p-6 text-center">
                     <i className="ri-map-pin-line text-2xl text-gray-300 dark:text-gray-600 mb-2 block" />
-                    <p className="text-sm text-gray-400">No providers match your search</p>
+                    <p className="text-sm text-gray-400">No providers found.</p>
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {filtered.map((provider, i) => (
-                      <ProviderCard
-                        key={provider.id}
-                        provider={provider}
-                        number={indexFor(provider.id) ?? i + 1}
-                        selected={selectedIds.has(provider.id)}
-                        hovered={hoveredId === provider.id}
-                        compact
-                        tenantId={tenantId}
-                        onHover={setHovered}
-                        onToggle={toggleSelect}
-                        onClick={() => { setHovered(provider.id); setZoomToId(provider.id); }}
-                        ref={el => { cardRefs.current[provider.id] = el; }}
-                      />
-                    ))}
+                    {filtered.map((provider, i) => {
+                      const entryId = providerEntryId(provider);
+                      return (
+                        <ProviderCard
+                          key={entryId}
+                          provider={provider}
+                          number={indexFor(entryId) ?? i + 1}
+                          selected={selectedIds.has(entryId)}
+                          hovered={hoveredId === entryId}
+                          compact
+                          tenantId={tenantId}
+                          onHover={setHovered}
+                          onToggle={toggleSelect}
+                          onClick={() => { setHovered(entryId); setZoomToId(entryId); }}
+                          ref={el => { cardRefs.current[entryId] = el; }}
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -304,6 +870,7 @@ export function PublicNetworkView({
                     selectedId={hoveredId}
                     zoomToId={zoomToId}
                     onZoomed={() => setZoomToId(null)}
+                    searchLocation={searchLocation}
                     onSelect={handleMapSelect}
                     onRequestReferral={handleMapReferral}
                   />
@@ -319,27 +886,32 @@ export function PublicNetworkView({
           {/* List mode: rich provider grid */}
           {viewMode === 'list' && (
             <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950 p-5">
-              {filtered.length === 0 ? (
+              {showProviderSearchLoading ? (
+                <ProviderSearchLoading />
+              ) : filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <i className="ri-map-pin-line text-3xl text-gray-300 dark:text-gray-600 mb-3 block" />
-                  <p className="text-sm text-gray-400">No providers match your search</p>
+                  <p className="text-sm text-gray-400">No providers found.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
-                  {filtered.map((provider, i) => (
-                    <ProviderCard
-                      key={provider.id}
-                      provider={provider}
-                      number={indexFor(provider.id) ?? i + 1}
-                      selected={selectedIds.has(provider.id)}
-                      hovered={hoveredId === provider.id}
-                      compact={false}
-                      tenantId={tenantId}
-                      onHover={setHovered}
-                      onToggle={toggleSelect}
-                      ref={el => { cardRefs.current[provider.id] = el; }}
-                    />
-                  ))}
+                  {filtered.map((provider, i) => {
+                    const entryId = providerEntryId(provider);
+                    return (
+                      <ProviderCard
+                        key={entryId}
+                        provider={provider}
+                        number={indexFor(entryId) ?? i + 1}
+                        selected={selectedIds.has(entryId)}
+                        hovered={hoveredId === entryId}
+                        compact={false}
+                        tenantId={tenantId}
+                        onHover={setHovered}
+                        onToggle={toggleSelect}
+                        ref={el => { cardRefs.current[entryId] = el; }}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -352,6 +924,7 @@ export function PublicNetworkView({
                 <PublicNetworkMap
                   markers={displayedMarkers}
                   selectedId={hoveredId}
+                  searchLocation={searchLocation}
                   onSelect={handleMapSelect}
                   onRequestReferral={handleMapReferral}
                 />
@@ -378,6 +951,16 @@ export function PublicNetworkView({
   );
 }
 
+function ProviderSearchLoading() {
+  return (
+    <div className="flex flex-col items-center justify-center p-6 py-16 text-center">
+      <i className="ri-loader-4-line animate-spin text-2xl text-blue-500 mb-2 block" />
+      <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Searching provider locations...</p>
+      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Checking the address before showing results.</p>
+    </div>
+  );
+}
+
 // ── Provider card ─────────────────────────────────────────────────────────────
 
 const ProviderCard = forwardRef<
@@ -394,10 +977,18 @@ const ProviderCard = forwardRef<
     onClick?: () => void;
   }
 >(function ProviderCard({ provider, number, selected, hovered, compact, tenantId, onHover, onToggle, onClick }, ref) {
+  const identity = getProviderIdentity(provider);
+  const entryId = providerEntryId(provider);
+  const facilityName = provider.facilityName?.trim() ?? '';
+  const showFacilityName =
+    facilityName.length > 0 &&
+    facilityName.toLowerCase() !== identity.primary.toLowerCase() &&
+    facilityName.toLowerCase() !== (identity.secondary ?? '').toLowerCase();
+
   return (
     <div
       ref={ref}
-      onMouseEnter={() => onHover(provider.id)}
+      onMouseEnter={() => onHover(entryId)}
       onMouseLeave={() => onHover(null)}
       onClick={onClick}
       className={[
@@ -425,17 +1016,28 @@ const ProviderCard = forwardRef<
         {/* Info */}
         <div className="flex-1 min-w-0">
           <p className={['font-semibold text-gray-900 dark:text-white leading-tight', compact ? 'text-sm' : 'text-base'].join(' ')}>
-            {provider.name}
+            {identity.primary}
           </p>
-          {provider.organizationName && (
+          {identity.secondary && (
             <p className={['text-gray-500 dark:text-gray-400 mt-0.5 truncate', compact ? 'text-xs' : 'text-sm'].join(' ')}>
-              {provider.organizationName}
+              {identity.secondary}
+            </p>
+          )}
+          {showFacilityName && (
+            <p className={['text-gray-500 dark:text-gray-400 mt-0.5 truncate', compact ? 'text-xs' : 'text-sm'].join(' ')}>
+              {facilityName}
             </p>
           )}
           <p className={['text-gray-400 dark:text-gray-500 mt-0.5', compact ? 'text-xs' : 'text-sm'].join(' ')}>
-            {provider.city}, {provider.state}
-            {!compact && provider.postalCode ? ` ${provider.postalCode}` : ''}
+            {provider.isMobile
+              ? `Mobile · ${[provider.serviceAreaLabel, `${provider.city}, ${provider.state}`].filter(Boolean).join(' · ')}${!compact && provider.serviceRadiusMiles ? ` · ${provider.serviceRadiusMiles}mi radius` : ''}`
+              : <>{provider.city}, {provider.state}{!compact && provider.postalCode ? ` ${provider.postalCode}` : ''}</>}
           </p>
+          {typeof provider.distanceMiles === 'number' && Number.isFinite(provider.distanceMiles) && (
+            <p className={['text-blue-600 dark:text-blue-400 mt-0.5 font-medium', compact ? 'text-xs' : 'text-sm'].join(' ')}>
+              {provider.distanceMiles.toFixed(1)} mi away
+            </p>
+          )}
           {provider.phone && !compact && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1.5">
               <i className="ri-phone-line text-gray-400 dark:text-gray-500 text-xs" />
@@ -446,13 +1048,8 @@ const ProviderCard = forwardRef<
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{provider.phone}</p>
           )}
 
-          {/* Badges */}
+          {/* Status */}
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {provider.primaryCategory && (
-              <span className={['bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full font-medium', compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5'].join(' ')}>
-                {provider.primaryCategory}
-              </span>
-            )}
             <span className={[
               'rounded-full font-medium flex items-center gap-1',
               compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5',
@@ -468,11 +1065,25 @@ const ProviderCard = forwardRef<
             </span>
           </div>
 
+          {/* Specialties */}
+          {(provider.specialties ?? []).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {(provider.specialties ?? []).map(s => (
+                <span key={s.id} className={['bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full font-medium', compact ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5'].join(' ')}>
+                  {s.name}
+                </span>
+              ))}
+            </div>
+          )}
+
         </div>
 
         {/* Select button */}
         <button
-          onClick={() => onToggle(provider.id)}
+          onClick={e => {
+            e.stopPropagation();
+            onToggle(entryId);
+          }}
           className={[
             'flex-shrink-0 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1',
             compact ? 'px-2 py-1' : 'px-3 py-1.5',
@@ -520,6 +1131,7 @@ interface ReferralForm {
   urgency:              ReferralUrgencyValue;
   serviceType:          string;
   treatmentTypeId:      string;
+  referralAttributionId: string;
   notes:                string;
   firmName:             string;
   contactFirstName:     string;
@@ -534,6 +1146,7 @@ const EMPTY_FORM: ReferralForm = {
   urgency: 'Normal',
   serviceType: 'General Referral',
   treatmentTypeId: '',
+  referralAttributionId: '',
   notes: '',
   firmName: '', contactFirstName: '', contactLastName: '', email: '', phone: '',
 };
@@ -543,6 +1156,7 @@ type PanelState = 'form' | 'confirm' | 'submitting' | 'success' | 'error' | 'acc
 interface CreatedReferralUploadTarget {
   referralId: string;
   providerId: string;
+  fileKey:    string;
 }
 
 function extractApiErrorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
@@ -559,6 +1173,7 @@ function extractApiErrorMessage(err: unknown, fallback = 'Something went wrong. 
 function toCreatedReferralUploadTarget(
   value: unknown,
   fallbackProviderId: string,
+  fileKey: string,
 ): CreatedReferralUploadTarget {
   if (!value || typeof value !== 'object') {
     throw new Error('Referral created, but the server returned an unexpected response.');
@@ -580,7 +1195,7 @@ function toCreatedReferralUploadTarget(
     throw new Error('Referral created, but the response did not include a referral id.');
   }
 
-  return { referralId, providerId };
+  return { referralId, providerId, fileKey };
 }
 
 function ReferralPanel({
@@ -605,6 +1220,7 @@ function ReferralPanel({
   const [hasPortalAccess, setHasPortalAccess] = useState(false);
   const [enrollToken,    setEnrollToken]   = useState<string | null>(null);
   const [treatmentTypes, setTreatmentTypes] = useState<{ id: string; name: string }[]>([]);
+  const [attributionOptions, setAttributionOptions] = useState<{ id: string; firstName: string; lastName: string }[]>([]);
   const [checkingEmail,  setCheckingEmail]  = useState(false);
 
   const hasPhoneValue        = form.phone.trim().length > 0;
@@ -632,6 +1248,17 @@ function ReferralPanel({
       .then(r => r.ok ? r.json() : [])
       .then((data: { id: string; name: string }[]) => setTreatmentTypes(data))
       .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const endpoint = prefillLawFirm
+      ? '/api/careconnect/api/referral-attributions/options'
+      : `/api/public/careconnect/api/public/referral-attributions`;
+    fetch(endpoint, prefillLawFirm ? {} : { headers: { 'X-Tenant-Id': tenantId } })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: { id: string; firstName: string; lastName: string }[]) => setAttributionOptions(data))
+      .catch(() => {}); // non-fatal — field simply shows no options
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -775,24 +1402,30 @@ function ReferralPanel({
 
     setState('submitting');
 
-    const payloads: PublicReferralRequest[] = providers.map(p => ({
-      providerId:             p.id,
-      senderFirstName:        form.contactFirstName.trim() || form.firmName.trim(),
-      senderLastName:         form.contactFirstName.trim() ? (form.contactLastName.trim() || undefined) : undefined,
-      senderEmail:            form.email.trim(),
-      senderFirmName:         form.firmName.trim() || undefined,
-      senderPhone:            stripPhone(form.phone) || undefined,
-      patientFirstName:       form.patientFirstName.trim(),
-      patientLastName:        form.patientLastName.trim(),
-      patientPhone:           stripPhone(form.patientPhone),
-      patientEmail:           form.patientEmail.trim() || undefined,
-      patientDateOfBirth:     form.patientDob || undefined,
-      patientDateOfAccident:  form.patientDateOfAccident || undefined,
-      patientAddress:         form.patientAddress.trim() || undefined,
-      serviceType:            form.serviceType || 'General Referral',
-      urgency:                form.urgency,
-      treatmentTypeId:        form.treatmentTypeId || undefined,
-      notes:                  form.notes.trim() || undefined,
+    const submissionTargets = providers.map(p => ({
+      fileKey: providerEntryId(p),
+      facilityId: p.facilityId,
+      payload: {
+        providerId:             providerIdentityId(p),
+        networkProviderId:      providerEntryId(p),
+        senderFirstName:        form.contactFirstName.trim() || form.firmName.trim(),
+        senderLastName:         form.contactFirstName.trim() ? (form.contactLastName.trim() || undefined) : undefined,
+        senderEmail:            form.email.trim(),
+        senderFirmName:         form.firmName.trim() || undefined,
+        senderPhone:            stripPhone(form.phone) || undefined,
+        patientFirstName:       form.patientFirstName.trim(),
+        patientLastName:        form.patientLastName.trim(),
+        patientPhone:           stripPhone(form.patientPhone),
+        patientEmail:           form.patientEmail.trim() || undefined,
+        patientDateOfBirth:     form.patientDob || undefined,
+        patientDateOfAccident:  form.patientDateOfAccident || undefined,
+        patientAddress:         form.patientAddress.trim() || undefined,
+        serviceType:            form.serviceType || 'General Referral',
+        urgency:                form.urgency,
+        treatmentTypeId:        form.treatmentTypeId || undefined,
+        referralAttributionId:  form.referralAttributionId || undefined,
+        notes:                  form.notes.trim() || undefined,
+      } satisfies PublicReferralRequest,
     }));
 
     // Authenticated users (prefillLawFirm present) submit through the auth endpoint —
@@ -801,7 +1434,7 @@ function ReferralPanel({
     const isAuthenticated = !!prefillLawFirm;
 
     try {
-      const responses = await Promise.all(payloads.map(async payload => {
+      const responses = await Promise.all(submissionTargets.map(async ({ payload, fileKey, facilityId }) => {
         let res: Response;
         if (isAuthenticated) {
           const authNotes = form.notes.trim() || undefined;
@@ -809,6 +1442,8 @@ function ReferralPanel({
           const authBody = {
             tenantId,
             providerId:       payload.providerId,
+            facilityId,
+            networkProviderId: payload.networkProviderId,
             clientFirstName:  payload.patientFirstName,
             clientLastName:   payload.patientLastName,
             clientPhone:      payload.patientPhone,
@@ -817,6 +1452,7 @@ function ReferralPanel({
             requestedService: payload.serviceType || 'General Referral',
             urgency:          payload.urgency ?? 'Normal',
             treatmentTypeId:  form.treatmentTypeId || undefined,
+            referralAttributionId: form.referralAttributionId || undefined,
             dateOfAccident:   form.patientDateOfAccident || undefined,
             notes:            authNotes,
             referrerScopeSignature,
@@ -844,11 +1480,11 @@ function ReferralPanel({
           throw body;
         }
         const body = await res.json() as unknown;
-        return toCreatedReferralUploadTarget(body, payload.providerId);
+        return toCreatedReferralUploadTarget(body, payload.providerId, fileKey);
       }));
 
       await Promise.all(responses.map(async (r) => {
-        const fileForProvider = providerFiles[r.providerId] ?? null;
+        const fileForProvider = providerFiles[r.fileKey] ?? null;
         if (!fileForProvider) return;
         const fd = new FormData();
         fd.append('file', fileForProvider);
@@ -897,7 +1533,7 @@ function ReferralPanel({
       setErrMsg(msg);
       setState('error');
     }
-  }, [form, providers, tenantId, providerFiles]);
+  }, [form, providers, tenantId, providerFiles, prefillLawFirm, referrerScopeSignature]);
 
   const hasProviders = providers.length > 0;
 
@@ -928,12 +1564,15 @@ function ReferralPanel({
         {/* Selected provider chips */}
         {hasProviders && (
           <div className="flex flex-wrap gap-1.5 mt-3">
-            {providers.map(p => (
-              <span key={p.id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full border border-blue-200 dark:border-blue-700">
-                <i className="ri-hospital-line text-blue-500 dark:text-blue-400" />
-                {p.name.length > 22 ? p.name.slice(0, 22) + '…' : p.name}
-              </span>
-            ))}
+            {providers.map(p => {
+              const entryId = providerEntryId(p);
+              return (
+                <span key={entryId} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full border border-blue-200 dark:border-blue-700">
+                  <i className="ri-hospital-line text-blue-500 dark:text-blue-400" />
+                  {p.name.length > 22 ? p.name.slice(0, 22) + '…' : p.name}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1209,6 +1848,21 @@ function ReferralPanel({
                     {treatmentTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </PanelField>
+                <PanelField label="Referral Attribution" hint="optional">
+                  <select
+                    value={form.referralAttributionId}
+                    onChange={e => update('referralAttributionId', e.target.value)}
+                    disabled={state === 'submitting'}
+                    className={panelInputCls(false)}
+                  >
+                    <option value="">None</option>
+                    {attributionOptions.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.firstName} {a.lastName}
+                      </option>
+                    ))}
+                  </select>
+                </PanelField>
                 <PanelField label="Notes" hint="optional">
                   <textarea
                     rows={3} value={form.notes}
@@ -1230,9 +1884,10 @@ function ReferralPanel({
             >
               <div className="px-5 pb-4 space-y-3">
                 {providers.map(p => {
-                  const file = providerFiles[p.id] ?? null;
+                  const entryId = providerEntryId(p);
+                  const file = providerFiles[entryId] ?? null;
                   return (
-                    <div key={p.id} className="rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 space-y-2">
+                    <div key={entryId} className="rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 space-y-2">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
                           <i className="ri-hospital-line text-xs text-blue-600 dark:text-blue-400" />
@@ -1248,7 +1903,7 @@ function ReferralPanel({
                           <span className="text-xs text-blue-700 dark:text-blue-300 truncate flex-1">{file.name}</span>
                           <button
                             type="button"
-                            onClick={() => setProviderFiles(prev => ({ ...prev, [p.id]: null }))}
+                            onClick={() => setProviderFiles(prev => ({ ...prev, [entryId]: null }))}
                             disabled={state === 'submitting'}
                             className="text-blue-400 hover:text-blue-600 dark:hover:text-blue-300 flex-shrink-0"
                           >
@@ -1266,7 +1921,7 @@ function ReferralPanel({
                             disabled={state === 'submitting'}
                             onChange={e => {
                               const f = e.target.files?.[0] ?? null;
-                              if (f) setProviderFiles(prev => ({ ...prev, [p.id]: f }));
+                              if (f) setProviderFiles(prev => ({ ...prev, [entryId]: f }));
                               e.target.value = '';
                             }}
                           />
@@ -1528,8 +2183,8 @@ function ReferralConfirmModal({
                     <i className="ri-briefcase-line" /> Law Firm
                   </p>
                   <div className="space-y-1.5 pl-1">
-                    <ConfirmRow label="Firm name"    value={form.firmName}    />
-                    <ConfirmRow label="Contact name" value={`${form.contactFirstName} ${form.contactLastName}`.trim()} />
+                    <ConfirmRow label="Firm"    value={form.firmName}    />
+                    <ConfirmRow label="Contact" value={`${form.contactFirstName} ${form.contactLastName}`.trim()} />
                     <ConfirmRow label="Email"        value={form.email}       />
                     <ConfirmRow label="Phone"        value={form.phone}       />
                   </div>
@@ -1566,18 +2221,29 @@ function ReferralConfirmModal({
                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1.5">
                   <i className="ri-hospital-line" /> Providers
                 </p>
-                <div className="space-y-1.5 pl-1">
+                <div className="space-y-3">
                   {providers.map(p => {
-                    const file = providerFiles[p.id];
+                    const entryId = providerEntryId(p);
+                    const file = providerFiles[entryId];
+                    const identity = getProviderIdentity(p);
+                    const facilityName = p.facilityName?.trim() ?? '';
+                    const showFacilityName =
+                      facilityName.length > 0 &&
+                      facilityName.toLowerCase() !== identity.primary.toLowerCase() &&
+                      facilityName.toLowerCase() !== (identity.secondary ?? '').toLowerCase();
+                    const location = [
+                      showFacilityName ? facilityName : null,
+                      [p.city, p.state].filter(Boolean).join(', '),
+                    ].filter(Boolean).join(' · ');
+
                     return (
-                      <div key={p.id} className="flex items-center gap-2 text-xs text-gray-800 dark:text-gray-100">
-                        <i className="ri-checkbox-circle-fill text-blue-500 flex-shrink-0" />
-                        <span className="font-medium">{p.name}</span>
-                        {file && (
-                          <span className="ml-auto text-gray-400 flex items-center gap-1">
-                            <i className="ri-attachment-line" />{file.name.length > 18 ? file.name.slice(0, 18) + '…' : file.name}
-                          </span>
-                        )}
+                      <div key={entryId} className="space-y-1.5 pl-1">
+                        <ConfirmRow label="Provider" value={identity.primary} />
+                        {identity.secondary && <ConfirmRow label="Contact"  value={identity.secondary} />}
+                        <ConfirmRow label="Location" value={location} />
+                        <ConfirmRow label="Email"     value={p.email ?? undefined} />
+                        <ConfirmRow label="Phone"     value={p.phone} />
+                        <ConfirmRow label="Attachment" value={file?.name} />
                       </div>
                     );
                   })}

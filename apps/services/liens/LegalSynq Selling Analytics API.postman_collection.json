@@ -1,0 +1,857 @@
+{
+  "info": {
+    "name": "LegalSynq Selling Analytics API",
+    "description": "Postman collection for the SynqLien selling analytics backend. All analytics endpoints require a seller JWT with SYNQ_LIENS product access, sell mode, and SYNQ_LIENS.lien_sale:view_analytics. Public-token and buyer-only flows should not access these routes.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Required: set {{token}} to an authenticated seller JWT.",
+          "// Optional: set {{buyerToken}} to verify buyer-only analytics denial."
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5009"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "buyerToken",
+      "value": ""
+    },
+    {
+      "key": "sellerLienId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "dateFrom",
+      "value": "2026-01-01"
+    },
+    {
+      "key": "dateTo",
+      "value": "2026-12-31"
+    },
+    {
+      "key": "sellerStatus",
+      "value": "SubmittedForSale"
+    },
+    {
+      "key": "listingVisibility",
+      "value": "Private"
+    },
+    {
+      "key": "fundingCompanyId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "facilityId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "dateDimension",
+      "value": "submitted"
+    },
+    {
+      "key": "grain",
+      "value": "month"
+    },
+    {
+      "key": "concentrationDimension",
+      "value": "sellerStatus"
+    },
+    {
+      "key": "exportReport",
+      "value": "overview"
+    },
+    {
+      "key": "includeArchived",
+      "value": "false"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Dashboard Metrics",
+      "item": [
+        {
+          "name": "Overview - All Selling Liens",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "overview"
+              ]
+            },
+            "description": "Returns dashboard summary cards across the current seller organization. Sold metrics count only liens with SellerStatus=Sold and SoldAtUtc set."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has summary', () => pm.expect(pm.response.json()).to.have.property('summary'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overview - Filtered",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/overview?sellerStatus={{sellerStatus}}&listingVisibility={{listingVisibility}}&dateFrom={{dateFrom}}&dateTo={{dateTo}}&includeArchived={{includeArchived}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "overview"
+              ],
+              "query": [
+                {
+                  "key": "sellerStatus",
+                  "value": "{{sellerStatus}}"
+                },
+                {
+                  "key": "listingVisibility",
+                  "value": "{{listingVisibility}}"
+                },
+                {
+                  "key": "dateFrom",
+                  "value": "{{dateFrom}}"
+                },
+                {
+                  "key": "dateTo",
+                  "value": "{{dateTo}}"
+                },
+                {
+                  "key": "includeArchived",
+                  "value": "{{includeArchived}}"
+                },
+                {
+                  "key": "fundingCompanyId",
+                  "value": "{{fundingCompanyId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "facilityId",
+                  "value": "{{facilityId}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Same overview endpoint with multi-value compatible filters. Enable fundingCompanyId or facilityId only after setting real GUID values."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Status Breakdown",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/status-breakdown?dateFrom={{dateFrom}}&dateTo={{dateTo}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "status-breakdown"
+              ],
+              "query": [
+                {
+                  "key": "dateFrom",
+                  "value": "{{dateFrom}}"
+                },
+                {
+                  "key": "dateTo",
+                  "value": "{{dateTo}}"
+                }
+              ]
+            },
+            "description": "Breaks selling liens down by SellerStatus with count, original amount, ask amount, highest bid, and percent of total."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has items array', () => pm.expect(pm.response.json()).to.have.property('items').that.is.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Funnel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/funnel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "funnel"
+              ]
+            },
+            "description": "Returns selling workflow funnel stages: Draft, Pending/Internal, PreparedForSale, SubmittedForSale, OfferReceived, and Sold."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has stages array', () => pm.expect(pm.response.json()).to.have.property('stages').that.is.an('array'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Charts and Reports",
+      "item": [
+        {
+          "name": "Timeseries",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/timeseries?dateDimension={{dateDimension}}&grain={{grain}}&dateFrom={{dateFrom}}&dateTo={{dateTo}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "timeseries"
+              ],
+              "query": [
+                {
+                  "key": "dateDimension",
+                  "value": "{{dateDimension}}"
+                },
+                {
+                  "key": "grain",
+                  "value": "{{grain}}"
+                },
+                {
+                  "key": "dateFrom",
+                  "value": "{{dateFrom}}"
+                },
+                {
+                  "key": "dateTo",
+                  "value": "{{dateTo}}"
+                }
+              ]
+            },
+            "description": "Timeseries endpoint. dateDimension is required and must be submitted, sold, offer, or service. grain must be day, week, or month."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has points array', () => pm.expect(pm.response.json()).to.have.property('points').that.is.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Offers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/offers?dateFrom={{dateFrom}}&dateTo={{dateTo}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "offers"
+              ],
+              "query": [
+                {
+                  "key": "dateFrom",
+                  "value": "{{dateFrom}}"
+                },
+                {
+                  "key": "dateTo",
+                  "value": "{{dateTo}}"
+                }
+              ]
+            },
+            "description": "Offer analytics. Uses LienOffer.OfferedAtUtc for date filtering and excludes rejected, withdrawn, and expired offers from active/highest bid calculations."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buyer Performance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/buyer-performance?dateFrom={{dateFrom}}&dateTo={{dateTo}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "buyer-performance"
+              ],
+              "query": [
+                {
+                  "key": "dateFrom",
+                  "value": "{{dateFrom}}"
+                },
+                {
+                  "key": "dateTo",
+                  "value": "{{dateTo}}"
+                }
+              ]
+            },
+            "description": "Aggregates offer count, accepted offer count, sold amount, highest offer, average offer, acceptance rate, and bid-to-ask ratio by buyer org."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has items array', () => pm.expect(pm.response.json()).to.have.property('items').that.is.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aging",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/aging?sellerStatus={{sellerStatus}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "aging"
+              ],
+              "query": [
+                {
+                  "key": "sellerStatus",
+                  "value": "{{sellerStatus}}"
+                }
+              ]
+            },
+            "description": "Returns selling status aging buckets for the current seller organization."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has buckets array', () => pm.expect(pm.response.json()).to.have.property('buckets').that.is.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Concentration",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/concentration?dimension={{concentrationDimension}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "concentration"
+              ],
+              "query": [
+                {
+                  "key": "dimension",
+                  "value": "{{concentrationDimension}}"
+                }
+              ]
+            },
+            "description": "Groups selling portfolio concentration by fundingCompany, facility, sellerStatus, or listingVisibility."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has items array', () => pm.expect(pm.response.json()).to.have.property('items').that.is.an('array'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Detail, Filters, Export",
+      "item": [
+        {
+          "name": "Filter Options",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/filter-options",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "filter-options"
+              ]
+            },
+            "description": "Returns filter option counts for sellerStatus, listingVisibility, fundingCompanyId, and facilityId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Single Lien Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/analytics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "liens",
+                "{{sellerLienId}}",
+                "analytics"
+              ]
+            },
+            "description": "Returns analytics detail for one selling lien scoped to the current seller org."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200 or 404 when placeholder id is not replaced', () => pm.expect([200, 404]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Export CSV",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/csv"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"report\": \"{{exportReport}}\",\n  \"dateFrom\": \"{{dateFrom}}\",\n  \"dateTo\": \"{{dateTo}}\",\n  \"sellerStatus\": [\"{{sellerStatus}}\"],\n  \"listingVisibility\": [\"{{listingVisibility}}\"],\n  \"fundingCompanyId\": [],\n  \"facilityId\": [],\n  \"includeArchived\": false,\n  \"dateDimension\": \"{{dateDimension}}\",\n  \"grain\": \"{{grain}}\",\n  \"concentrationDimension\": \"{{concentrationDimension}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/export",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "export"
+              ]
+            },
+            "description": "Synchronous v1 CSV export. Backend enforces a 10,000 row limit and returns selling-analytics-{report}-{yyyyMMddHHmmss}.csv."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns csv', () => pm.response.to.have.status(200));",
+                  "pm.test('content type is csv', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/csv'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Validation and Auth Checks",
+      "item": [
+        {
+          "name": "Timeseries Missing dateDimension - 400",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/timeseries?grain={{grain}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "timeseries"
+              ],
+              "query": [
+                {
+                  "key": "grain",
+                  "value": "{{grain}}"
+                }
+              ]
+            },
+            "description": "Negative contract test: timeseries must reject requests missing dateDimension."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Invalid Enum and Date Range - 400",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/overview?sellerStatus=AlmostSold&listingVisibility=Secret&dateFrom=2026-12-31&dateTo=2026-01-01",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "overview"
+              ],
+              "query": [
+                {
+                  "key": "sellerStatus",
+                  "value": "AlmostSold"
+                },
+                {
+                  "key": "listingVisibility",
+                  "value": "Secret"
+                },
+                {
+                  "key": "dateFrom",
+                  "value": "2026-12-31"
+                },
+                {
+                  "key": "dateTo",
+                  "value": "2026-01-01"
+                }
+              ]
+            },
+            "description": "Negative contract test: invalid enums and dateFrom > dateTo return 400."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 400', () => pm.response.to.have.status(400));",
+                  "pm.test('validation error body', () => pm.expect(pm.response.json().error.code).to.eql('validation_error'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Buyer Token Denied - 403",
+          "auth": {
+            "type": "bearer",
+            "bearer": [
+              {
+                "key": "token",
+                "value": "{{buyerToken}}",
+                "type": "string"
+              }
+            ]
+          },
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "overview"
+              ]
+            },
+            "description": "Negative auth test. Set {{buyerToken}} to a buyer-only JWT; analytics should be denied."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 401 or 403 depending on token state', () => pm.expect([401, 403]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No Auth Denied - 401",
+          "auth": {
+            "type": "noauth"
+          },
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "overview"
+              ]
+            },
+            "description": "Negative auth test. Public-token and unauthenticated flows must never route to analytics handlers."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

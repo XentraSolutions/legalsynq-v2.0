@@ -14,12 +14,14 @@ interface ProvidersPageProps {
     city?:               string;
     state?:              string;
     categoryCode?:       string;
+    specialtyCode?:      string;
     acceptingReferrals?: string;
     page?:               string;
     view?:               string;
     lat?:                string;
     lng?:                string;
     radius?:             string;
+    zip?:                string;
     nLat?:               string;
     sLat?:               string;
     eLng?:               string;
@@ -39,7 +41,7 @@ interface ProvidersPageProps {
  *   - Map mode fetches markers client-side via BFF proxy.
  *
  * URL params:
- *   name, city, state, categoryCode, acceptingReferrals  — text filters
+ *   name, city, state, specialtyCode, acceptingReferrals — text filters
  *   page                                                  — list pagination
  *   view                                                  — "list" | "map"
  *   lat, lng, radius                                      — geolocation (radius search)
@@ -86,7 +88,7 @@ export default async function ProvidersPage({ searchParams }: ProvidersPageProps
       name:               searchParamsData.name               || undefined,
       city:               searchParamsData.city               || undefined,
       state:              searchParamsData.state              || undefined,
-      categoryCode:       searchParamsData.categoryCode       || undefined,
+      specialtyCode:      searchParamsData.specialtyCode      || undefined,
       acceptingReferrals: searchParamsData.acceptingReferrals === 'true' ? true : undefined,
       isActive:           true,
       page,

@@ -7,6 +7,29 @@ NODE="$(command -v node)"
 
 echo "====== LegalSynq dev startup ======"
 
+require_free_port() {
+  local port="$1"
+  local label="$2"
+  local pids
+  pids="$(lsof -ti tcp:"$port" 2>/dev/null || true)"
+  if [ -n "$pids" ]; then
+    echo "ERROR: Port :$port is already in use before startup ($label)." >&2
+    echo "PID(s): $pids" >&2
+    echo "Run 'bash scripts/stop-dev.sh' to clear leftover LegalSynq dev processes," >&2
+    echo "or stop the conflicting process manually and retry." >&2
+    exit 1
+  fi
+}
+
+require_free_port 3050 "web internal Next.js"
+require_free_port 5000 "web dev proxy"
+require_free_port 5004 "control-center Next.js"
+require_free_port 5020 "artifacts API"
+
+SYNQLIEN_COMMON_PORTAL_HOSTNAME="${SYNQLIEN_COMMON_PORTAL_HOSTNAME:-synqlien-demo.localhost}"
+PORTAL_SYNQLIEN_SUBDOMAIN="${PORTAL_SYNQLIEN_SUBDOMAIN:-synqlien-demo}"
+Liens__Selling__BuyerPortalBaseUrl="${Liens__Selling__BuyerPortalBaseUrl:-http://${SYNQLIEN_COMMON_PORTAL_HOSTNAME}:5000/selling/public}"
+
 # Start Next.js on an internal port; the proxy on :5000 gates requests
 # until the cold-compile race condition is resolved (HTTP 200 on /login).
 NEXT_INTERNAL_PORT=3050
@@ -33,11 +56,10 @@ if [ -d "$PNPM_NEXT16" ]; then
   ln -s "../next/dist/bin/next" "$WEB_NM/.bin/next"
   echo "[web] Pinned node_modules/next → 16.2.6"
 fi
-# Clear stale .next build artefacts so Next.js 16 dev mode starts fresh
-# and does not fail looking for required-server-files.json from a prior build.
-rm -rf "$ROOT/apps/web/.next"
 (cd "$ROOT/apps/web" && GATEWAY_URL=http://localhost:5010 \
   CC_COMMON_PORTAL_HOSTNAME="${CC_COMMON_PORTAL_HOSTNAME:-careconnect-demo.legalsynq.com}" \
+  SYNQLIEN_COMMON_PORTAL_HOSTNAME="$SYNQLIEN_COMMON_PORTAL_HOSTNAME" \
+  PORTAL_SYNQLIEN_SUBDOMAIN="$PORTAL_SYNQLIEN_SUBDOMAIN" \
   exec "$NODE" "$WEB_NEXT_BIN" dev -p "$NEXT_INTERNAL_PORT") &
 PID_WEB=$!
 
@@ -66,8 +88,6 @@ if [ -z "$CC_NEXT_BIN" ] || [ ! -f "$CC_NEXT_BIN" ]; then
   CC_NEXT_BIN="$ROOT/node_modules/next/dist/bin/next"
 fi
 echo "[control-center] Using next binary: $CC_NEXT_BIN"
-# Clear stale .next artefacts for control-center as well.
-rm -rf "$ROOT/apps/control-center/.next"
 (cd "$ROOT/apps/control-center" && GATEWAY_URL=http://localhost:5010 MONITORING_SOURCE=service exec "$NODE" "$CC_NEXT_BIN" dev -p 5004) &
 PID_CC=$!
 
@@ -235,6 +255,9 @@ PID_CC=$!
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
+    Liens__Selling__BuyerPortalBaseUrl="$Liens__Selling__BuyerPortalBaseUrl" \
+    NotificationsService__BaseUrl=http://127.0.0.1:5008 \
+    FLOW_SERVICE_TOKEN_SECRET="${FLOW_SERVICE_TOKEN_SECRET:-dev-flow-service-token-signing-key-32chars!}" \
     dotnet run --no-build --project "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj" &
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \

@@ -17,7 +17,7 @@ public class ProviderFacilityConfiguration : IEntityTypeConfiguration<ProviderFa
         builder.Property(pf => pf.IsPrimary).IsRequired();
 
         builder.HasOne(pf => pf.Provider)
-               .WithMany()
+               .WithMany(p => p.ProviderFacilities)
                .HasForeignKey(pf => pf.ProviderId)
                .OnDelete(DeleteBehavior.Cascade);
     }

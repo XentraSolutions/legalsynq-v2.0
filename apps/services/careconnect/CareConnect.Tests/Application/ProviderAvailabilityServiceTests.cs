@@ -24,7 +24,7 @@ public class ProviderAvailabilityServiceTests
     private readonly Mock<IAppointmentSlotRepository>  _slotRepo     = new();
 
     private ProviderService BuildSut() =>
-        new ProviderService(_providerRepo.Object, _referralRepo.Object, _slotRepo.Object, NullLogger<ProviderService>.Instance);
+        new ProviderService(_providerRepo.Object, _referralRepo.Object, _slotRepo.Object, Mock.Of<ISpecialtyRepository>(), NullLogger<ProviderService>.Instance);
 
     private Provider MakeProvider() => Provider.Create(
         _tenantId, "Dr. Test", null, "test@example.com",
@@ -65,7 +65,7 @@ public class ProviderAvailabilityServiceTests
     public async Task GetAvailabilityAsync_ProviderNotFound_ThrowsNotFoundException()
     {
         _providerRepo
-            .Setup(r => r.GetByIdAsync(_tenantId, _providerId, default))
+            .Setup(r => r.GetByIdCrossAsync(_providerId, default))
             .ReturnsAsync((Provider?)null);
 
         var sut  = BuildSut();
@@ -87,7 +87,7 @@ public class ProviderAvailabilityServiceTests
         var to       = from.AddDays(7);
 
         _providerRepo
-            .Setup(r => r.GetByIdAsync(_tenantId, _providerId, default))
+            .Setup(r => r.GetByIdCrossAsync(_providerId, default))
             .ReturnsAsync(provider);
 
         _slotRepo
@@ -116,7 +116,7 @@ public class ProviderAvailabilityServiceTests
         var slot2    = MakeSlot(from.AddDays(2));
 
         _providerRepo
-            .Setup(r => r.GetByIdAsync(_tenantId, _providerId, default))
+            .Setup(r => r.GetByIdCrossAsync(_providerId, default))
             .ReturnsAsync(provider);
 
         _slotRepo
@@ -142,7 +142,7 @@ public class ProviderAvailabilityServiceTests
         var slotEarly = MakeSlot(from.AddDays(1));
 
         _providerRepo
-            .Setup(r => r.GetByIdAsync(_tenantId, _providerId, default))
+            .Setup(r => r.GetByIdCrossAsync(_providerId, default))
             .ReturnsAsync(provider);
 
         _slotRepo
@@ -171,7 +171,7 @@ public class ProviderAvailabilityServiceTests
         var nonMatchingSlot = AppointmentSlot.Create(_tenantId, _providerId, otherFacility,  null, null, from.AddDays(2), from.AddDays(2).AddHours(1), 2, null);
 
         _providerRepo
-            .Setup(r => r.GetByIdAsync(_tenantId, _providerId, default))
+            .Setup(r => r.GetByIdCrossAsync(_providerId, default))
             .ReturnsAsync(provider);
 
         _slotRepo
@@ -195,7 +195,7 @@ public class ProviderAvailabilityServiceTests
         var to       = new DateTime(2026, 4, 14, 0, 0, 0, DateTimeKind.Utc);
 
         _providerRepo
-            .Setup(r => r.GetByIdAsync(_tenantId, _providerId, default))
+            .Setup(r => r.GetByIdCrossAsync(_providerId, default))
             .ReturnsAsync(provider);
 
         _slotRepo

@@ -213,7 +213,9 @@ namespace Xenia.Infrastructure.Persistence.Migrations
                 b.Property<string>("EmailSourceId").IsRequired().HasColumnType("char(36)").HasColumnName("email_source_id");
                 b.Property<string>("ProviderType").IsRequired().HasMaxLength(32).HasColumnName("provider_type");
                 b.Property<string>("ProviderMessageId").IsRequired().HasMaxLength(1024).HasColumnName("provider_message_id");
+                b.Property<string>("ProviderMessageIdHash").IsRequired().ValueGeneratedOnAddOrUpdate().HasColumnType("char(64)").HasColumnName("provider_message_id_hash").HasComputedColumnSql("sha2(`provider_message_id`, 256)", stored: true);
                 b.Property<string>("InternetMessageId").HasMaxLength(998).HasColumnName("internet_message_id");
+                b.Property<string>("InternetMessageIdHash").ValueGeneratedOnAddOrUpdate().HasColumnType("char(64)").HasColumnName("internet_message_id_hash").HasComputedColumnSql("case when `internet_message_id` is null then null else sha2(`internet_message_id`, 256) end", stored: true);
                 b.Property<string>("ThreadId").HasMaxLength(500).HasColumnName("thread_id");
                 b.Property<string>("ConversationId").HasMaxLength(500).HasColumnName("conversation_id");
                 b.Property<string>("Subject").HasMaxLength(998).HasColumnName("subject");
@@ -244,8 +246,8 @@ namespace Xenia.Infrastructure.Persistence.Migrations
                 b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at_utc");
                 b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)").HasColumnName("updated_at_utc");
                 b.HasKey("Id");
-                b.HasIndex("TenantId", "EmailSourceId", "ProviderType", "ProviderMessageId").IsUnique().HasDatabaseName("ux_email_messages_provider_unique");
-                b.HasIndex("TenantId", "InternetMessageId").HasDatabaseName("ix_email_messages_internet_message_id");
+                b.HasIndex("TenantId", "EmailSourceId", "ProviderType", "ProviderMessageIdHash").IsUnique().HasDatabaseName("ux_email_messages_provider_unique");
+                b.HasIndex("TenantId", "InternetMessageIdHash").HasDatabaseName("ix_email_messages_internet_message_id");
                 b.HasIndex("TenantId").HasDatabaseName("ix_email_messages_tenant");
                 b.HasIndex("TenantId", "EmailSourceId").HasDatabaseName("ix_email_messages_source");
                 b.HasIndex("TenantId", "ReceivedAt").HasDatabaseName("ix_email_messages_received_at");
@@ -275,6 +277,7 @@ namespace Xenia.Infrastructure.Persistence.Migrations
                 b.Property<string>("TenantId").IsRequired().HasColumnType("char(36)").HasColumnName("tenant_id");
                 b.Property<string>("EmailMessageId").IsRequired().HasColumnType("char(36)").HasColumnName("email_message_id");
                 b.Property<string>("ProviderAttachmentId").HasMaxLength(1024).HasColumnName("provider_attachment_id");
+                b.Property<string>("ProviderAttachmentIdHash").ValueGeneratedOnAddOrUpdate().HasColumnType("char(64)").HasColumnName("provider_attachment_id_hash").HasComputedColumnSql("case when `provider_attachment_id` is null then null else sha2(`provider_attachment_id`, 256) end", stored: true);
                 b.Property<string>("DocumentReferenceId").HasColumnType("char(36)").HasColumnName("document_reference_id");
                 b.Property<string>("FileName").IsRequired().HasMaxLength(500).HasColumnName("file_name");
                 b.Property<string>("MimeType").HasMaxLength(255).HasColumnName("mime_type");
@@ -289,7 +292,7 @@ namespace Xenia.Infrastructure.Persistence.Migrations
                 b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)").HasColumnName("created_at_utc");
                 b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)").HasColumnName("updated_at_utc");
                 b.HasKey("Id");
-                b.HasIndex("TenantId", "EmailMessageId", "ProviderAttachmentId").HasDatabaseName("ix_email_attachments_provider_id");
+                b.HasIndex("TenantId", "EmailMessageId", "ProviderAttachmentIdHash").HasDatabaseName("ix_email_attachments_provider_id");
                 b.HasIndex("EmailMessageId").HasDatabaseName("ix_email_attachments_message");
                 b.HasIndex("TenantId", "DispatchStatus").HasDatabaseName("ix_email_attachments_dispatch_status");
                 b.ToTable("xn_email_attachment_references");

@@ -9,6 +9,10 @@ vi.mock('@/lib/careconnect-api', () => ({
   careConnectApi: {
     referrals: {
       postComment: vi.fn(),
+      postCommentWithAttachments: vi.fn(),
+    },
+    referralAttachments: {
+      getSignedUrl: vi.fn(),
     },
   },
 }));
@@ -19,6 +23,7 @@ const EXISTING_COMMENT = {
   senderName: 'Sarah Johnson',
   message: 'Can you see this patient this week?',
   createdAtUtc: '2026-06-09T10:00:00Z',
+  attachments: [],
 };
 
 function ok<T>(data: T) {
@@ -116,7 +121,7 @@ describe('ReferralMessageThread', () => {
 
     await user.click(screen.getByRole('button', { name: 'Send Message' }));
 
-    expect(screen.getByText('Message is required.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a message or attach at least one file.')).toBeInTheDocument();
   });
 
   test('appends a successful message post to the thread', async () => {
@@ -158,5 +163,116 @@ describe('ReferralMessageThread', () => {
     await waitFor(() =>
       expect(screen.getByText('Notification service unavailable')).toBeInTheDocument(),
     );
+  });
+
+  test('submits selected files with a message and renders returned attachments', async () => {
+    vi.mocked(careConnectApi.referrals.postCommentWithAttachments).mockResolvedValue(ok({
+      id: 'c-3',
+      senderType: 'provider',
+      senderName: 'Dr. Gray',
+      message: 'Attached the intake scan.',
+      createdAtUtc: '2026-06-09T12:00:00Z',
+      attachments: [
+        {
+          id: 'att-1',
+          fileName: 'scan.png',
+          contentType: 'image/png',
+          fileSizeBytes: 3,
+          createdAtUtc: '2026-06-09T12:00:00Z',
+        },
+      ],
+    }));
+
+    const user = userEvent.setup();
+    render(<ReferralMessageThread referralId="ref-1" initialComments={[]} />);
+
+    const file = new File(['abc'], 'scan.png', { type: 'image/png' });
+    const input = document.getElementById('referral-message-attachments') as HTMLInputElement;
+    await user.type(screen.getByLabelText('Send a message'), 'Attached the intake scan.');
+    await user.upload(input, file);
+    expect(screen.getByText('scan.png')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Send Message' }));
+
+    await waitFor(() =>
+      expect(careConnectApi.referrals.postCommentWithAttachments).toHaveBeenCalledWith(
+        'ref-1',
+        'Attached the intake scan.',
+        [expect.objectContaining({ file })],
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTitle('View scan.png')).toBeInTheDocument(),
+    );
+  });
+
+  test('submits selected files without message text', async () => {
+    vi.mocked(careConnectApi.referrals.postCommentWithAttachments).mockResolvedValue(ok({
+      id: 'c-4',
+      senderType: 'provider',
+      senderName: 'Dr. Gray',
+      message: '',
+      createdAtUtc: '2026-06-09T12:05:00Z',
+      attachments: [
+        {
+          id: 'att-2',
+          fileName: 'scan.png',
+          contentType: 'image/png',
+          fileSizeBytes: 3,
+          createdAtUtc: '2026-06-09T12:05:00Z',
+        },
+      ],
+    }));
+
+    const user = userEvent.setup();
+    render(<ReferralMessageThread referralId="ref-1" initialComments={[]} />);
+
+    const file = new File(['abc'], 'scan.png', { type: 'image/png' });
+    const input = document.getElementById('referral-message-attachments') as HTMLInputElement;
+    await user.upload(input, file);
+    await user.click(screen.getByRole('button', { name: 'Send Message' }));
+
+    await waitFor(() =>
+      expect(careConnectApi.referrals.postCommentWithAttachments).toHaveBeenCalledWith(
+        'ref-1',
+        '',
+        [expect.objectContaining({ file })],
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTitle('View scan.png')).toBeInTheDocument(),
+    );
+  });
+
+  test('opens a message attachment through the referral signed-url endpoint', async () => {
+    vi.mocked(careConnectApi.referralAttachments.getSignedUrl).mockResolvedValue(ok({
+      url: 'https://docs.example/scan',
+      expiresInSeconds: 300,
+    }));
+    const openMock = vi.fn();
+    vi.stubGlobal('open', openMock);
+
+    const comment = {
+      ...EXISTING_COMMENT,
+      attachments: [
+        {
+          id: 'att-1',
+          fileName: 'scan.png',
+          contentType: 'image/png',
+          fileSizeBytes: 3,
+          createdAtUtc: '2026-06-09T12:00:00Z',
+        },
+      ],
+    };
+
+    const user = userEvent.setup();
+    render(<ReferralMessageThread referralId="ref-1" initialComments={[comment]} />);
+
+    await user.click(screen.getByTitle('View scan.png'));
+
+    await waitFor(() =>
+      expect(careConnectApi.referralAttachments.getSignedUrl).toHaveBeenCalledWith('ref-1', 'att-1', false),
+    );
+    expect(openMock).toHaveBeenCalledWith('https://docs.example/scan', '_blank', 'noopener,noreferrer');
   });
 });

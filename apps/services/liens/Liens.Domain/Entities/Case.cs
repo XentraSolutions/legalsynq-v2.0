@@ -34,8 +34,18 @@ public class Case : AuditableEntity
 
     public string? Description { get; private set; }
     public string? Notes       { get; private set; }
+    public Guid? HandlingLawFirmCompanyId { get; private set; }
+    public Guid? CaseManagerContactPersonId { get; private set; }
 
     private Case() { }
+
+    public void LinkCanonicalCaseParties(Guid? lawFirmCompanyId, Guid? caseManagerContactPersonId)
+    {
+        if (lawFirmCompanyId == Guid.Empty) throw new ArgumentException("Canonical law firm id cannot be empty.", nameof(lawFirmCompanyId));
+        if (caseManagerContactPersonId == Guid.Empty) throw new ArgumentException("Canonical case manager id cannot be empty.", nameof(caseManagerContactPersonId));
+        HandlingLawFirmCompanyId = lawFirmCompanyId;
+        CaseManagerContactPersonId = caseManagerContactPersonId;
+    }
 
     public static Case Create(
         Guid tenantId,

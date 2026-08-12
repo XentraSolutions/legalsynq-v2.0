@@ -30,6 +30,7 @@ public static class AutomationDependencyInjection
     {
         services.Configure<XeniaAutomationOptions>(
             configuration.GetSection(XeniaAutomationOptions.Section));
+        var skipDatabaseStartup = configuration.GetValue<bool>("Xenia:SkipDatabaseStartup");
 
         // ── Durable EF-backed singletons ──────────────────────────────────────
         services.AddSingleton<IAutomationRuntimeStateStore, EfAutomationRuntimeStateStore>();
@@ -56,12 +57,15 @@ public static class AutomationDependencyInjection
         services.AddScoped<IAutomationProvider, EmailAutomationProvider>();
 
         // ── Startup hosted services — ORDER MATTERS ───────────────────────────
-        // 1. Register providers into the in-process registry + DB
-        services.AddHostedService<AutomationRegistrationWorker>();
-        // 2. Reconcile: mark missing providers Unavailable, restore returned providers
-        services.AddHostedService(sp => sp.GetRequiredService<EfAutomationRegistryReconciler>());
-        // 3. Validate all 7 mutable stores are EF-backed (fails fast in Production/Staging)
-        services.AddHostedService<AutomationStoreValidationService>();
+        if (!skipDatabaseStartup)
+        {
+            // 1. Register providers into the in-process registry + DB
+            services.AddHostedService<AutomationRegistrationWorker>();
+            // 2. Reconcile: mark missing providers Unavailable, restore returned providers
+            services.AddHostedService(sp => sp.GetRequiredService<EfAutomationRegistryReconciler>());
+            // 3. Validate all 7 mutable stores are EF-backed (fails fast in Production/Staging)
+            services.AddHostedService<AutomationStoreValidationService>();
+        }
 
         return services;
     }

@@ -45,6 +45,9 @@ public static class CareConnectCacheKeys
     /// <summary>All active categories (platform-wide, no tenant scope).</summary>
     public const string Categories = "cc:categories";
 
+    /// <summary>All active specialties (platform-wide, no tenant scope).</summary>
+    public const string Specialties = "cc:specialties";
+
     // ── Admin dashboard (BLK-PERF-02 §8) ─────────────────────────────────────
     // Short TTL so admins see near-real-time data.
     // tenantScopeKey = tenantId.ToString() for TenantAdmin, "platform" for PlatformAdmin.
@@ -101,6 +104,12 @@ public static class CareConnectCacheTtl
     /// Categories change only via platform admin; no per-tenant variation.
     /// </summary>
     public static readonly TimeSpan Categories = TimeSpan.FromSeconds(300);
+
+    /// <summary>
+    /// Specialty reference data: 300 seconds (5 minutes).
+    /// Specialties change only via platform admin; no per-tenant variation.
+    /// </summary>
+    public static readonly TimeSpan Specialties = TimeSpan.FromSeconds(300);
 
     /// <summary>
     /// Admin dashboard counts: 15 seconds.

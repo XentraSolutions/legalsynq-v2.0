@@ -1,46 +1,94 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { PageHeader } from '@/components/lien/page-header';
-import { FilterToolbar } from '@/components/lien/filter-toolbar';
-import { StatusBadge } from '@/components/lien/status-badge';
-import { ActionMenu } from '@/components/lien/action-menu';
-import { ConfirmDialog } from '@/components/lien/modal';
-import { CreateCaseForm } from '@/components/lien/forms/create-case-form';
-import { BulkActionBar } from '@/components/lien/bulk-action-bar';
-import { BulkConfirmModal } from '@/components/lien/bulk-confirm-modal';
-import { BulkResultBanner } from '@/components/lien/bulk-result-banner';
-import { useLienStore } from '@/stores/lien-store';
-import { useRoleAccess } from '@/hooks/use-role-access';
-import { useSelectionState } from '@/hooks/use-selection-state';
-import { casesService, type CaseListItem, type PaginationMeta } from '@/lib/cases';
-import { executeBulk, type BulkActionConfig, type BulkOperationResult } from '@/lib/bulk-operations';
-import { ApiError } from '@/lib/api-client';
-import { CasesFilter } from './components/cases-filter';
+import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import type { ColumnDef, SortingState } from "@tanstack/react-table";
+import { BaseTable } from "@/components/ui/base-table";
+import { PageHeader } from "@/components/lien/page-header";
+import { FilterToolbar } from "@/components/lien/filter-toolbar";
+import { StatusBadge } from "@/components/lien/status-badge";
+import { ConfirmDialog } from "@/components/lien/modal";
+import { CreateCaseForm } from "@/components/lien/forms/create-case-form";
+import { BulkActionBar } from "@/components/lien/bulk-action-bar";
+import { BulkConfirmModal } from "@/components/lien/bulk-confirm-modal";
+import { BulkResultBanner } from "@/components/lien/bulk-result-banner";
+import { useLienStore } from "@/stores/lien-store";
+import { useRoleAccess } from "@/hooks/use-role-access";
+import { useSelectionState } from "@/hooks/use-selection-state";
+import {
+  casesService,
+  type CaseListItem,
+  type PaginationMeta,
+} from "@/lib/cases";
+import {
+  executeBulk,
+  type BulkActionConfig,
+  type BulkOperationResult,
+} from "@/lib/bulk-operations";
+import {
+  CasesFilter,
+  EMPTY_CASES_FILTERS,
+  type CasesFilterValues,
+} from "./components/cases-filter";
+import { CasesQuery } from "@/lib/cases/cases.types";
+import { useCases, useCreateCase } from "@/hooks/use-case-liens";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  usePrimaryLoad,
+  useBackgroundReady,
+} from "@/hooks/use-background-queue";
+import MedicalLienComponent from "@/components/lien/add-medical-lien/add-medical-lien/medical-lien-component";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-
-const STATUSES = ['PreDemand', 'DemandSent', 'InNegotiation', 'CaseSettled', 'Closed'];
+const STATUSES = [
+  "PreDemand",
+  "DemandSent",
+  "InNegotiation",
+  "CaseSettled",
+  "Closed",
+];
 const STATUS_LABELS: Record<string, string> = {
-  PreDemand: 'Pre-Demand',
-  DemandSent: 'Demand Sent',
-  InNegotiation: 'In Negotiation',
-  CaseSettled: 'Case Settled',
-  Closed: 'Closed',
+  PreDemand: "Pre-Demand",
+  DemandSent: "Demand Sent",
+  InNegotiation: "In Negotiation",
+  CaseSettled: "Case Settled",
+  Closed: "Closed",
 };
+
+// Maps table column ids to the sortBy keys the cases v3 endpoint recognizes
+// (see CaseRepository.GetPagedAsync's sortBy switch). lawFirm/caseManager/
+// accidentType aren't handled by that switch yet (backend support pending) —
+// once added, these keys should match whatever the backend expects.
+const SORT_BY_MAP: Record<string, string> = {
+  caseNumber: "caseCode",
+  clientName: "fullName",
+  dateOfIncident: "dateOfLoss",
+  clientDob: "dateOfBirth",
+  status: "status",
+  lawFirm: "lawFirm",
+  caseManager: "caseManager",
+  accidentType: "accidentType",
+};
+
+function countActiveFilters(f: CasesFilterValues): number {
+  return (
+    (f.lawFirmId.length ? 1 : 0) +
+    (f.accidentTypeId.length ? 1 : 0) +
+    (f.caseManagerId.length ? 1 : 0) +
+    (f.statusId.length ? 1 : 0)
+  );
+}
 
 const BULK_ACTIONS: BulkActionConfig[] = [
   {
-    key: 'advance-status',
-    label: 'Advance Status',
-    icon: 'ri-arrow-right-line',
-    variant: 'primary',
-    confirmTitle: 'Advance Case Status',
+    key: "advance-status",
+    label: "Advance Status",
+    icon: "ri-arrow-right-line",
+    variant: "primary",
+    confirmTitle: "Advance Case Status",
     confirmDescription: (count) =>
-      `This will advance ${count} case${count !== 1 ? 's' : ''} to their next status. Cases already at "Closed" will be skipped.`,
+      `This will advance ${count} case${count !== 1 ? "s" : ""} to their next status. Cases already at "Closed" will be skipped.`,
   },
 ];
 
@@ -50,291 +98,384 @@ export default function CasesPage() {
   const ra = useRoleAccess();
   const selection = useSelectionState();
 
-  const [cases, setCases] = useState<CaseListItem[]>([]);
-  const [pagination, setPagination] = useState<PaginationMeta>({ page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // const [cases, setCases] = useState<CaseListItem[]>([]);
 
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    pageSize: 10,
+    totalCount: 0,
+    totalPages: 0,
+  });
+  const [loading, setLoading] = useState(true);
+
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+
+  const [filters, setFilters] =
+    useState<CasesFilterValues>(EMPTY_CASES_FILTERS);
   const [showCreate, setShowCreate] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<{ id: string; status: string } | null>(null);
-  const [actionOpen, setActionOpen] = useState(false);
+  const [showMedicalLien, setShowMedicalLien] = useState(false);
+
+  const [confirmAction, setConfirmAction] = useState<boolean>(false);
 
   const [bulkAction, setBulkAction] = useState<BulkActionConfig | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(null);
+  const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(
+    null,
+  );
+  const [caseId, setCaseId] = useState("");
 
-  const fetchCases = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await casesService.getCases({
-        search: search || undefined,
-        status: statusFilter || undefined,
-        page: pagination.page,
-        pageSize: 20,
-      });
-      setCases(result.items);
-      setPagination(result.pagination);
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError('Failed to load cases');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [search, statusFilter, pagination.page]);
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: "createdAt", desc: true },
+  ]);
+
+  const query = {
+    keyword: search || "",
+    page: pagination.page,
+    limit: 10,
+    sortBy: (sorting[0] && SORT_BY_MAP[sorting[0].id]) ?? "createdAt",
+    sortDirection: sorting[0]?.desc === false ? "asc" : "desc",
+    accidentTypeId: filters.accidentTypeId.join(",") || "",
+    caseManagerId: filters.caseManagerId.join(",") || "",
+    lawFirmId: filters.lawFirmId.join(",") || "",
+    statusId: filters.statusId.join(",") || "",
+  };
+
+  const { data: cases, isLoading, isFetching } = useCases(query);
+  const queryClient = useQueryClient();
+  // Registers the table's own load with the app-wide background queue so the
+  // filter modal's option prefetch waits for it instead of competing with the
+  // primary table fetch — same pattern as the liens page.
+  usePrimaryLoad(isLoading);
+  const bgReady = useBackgroundReady() && !isLoading;
+  const caseNumber = useMemo(() => {
+    if (!showCreate) return "";
+    const year = new Date().getFullYear();
+    const nextCount = pagination.totalCount + 1;
+    const paddedCount = String(nextCount).padStart(4, "0");
+    return `CASE-${year}-${paddedCount}`;
+  }, [showCreate, pagination]);
+
+  const exportCases = async () => {
+    const response = await casesService.exportCases({
+      caseId: null,
+      keyword: search,
+      lawFirmId: filters.lawFirmId.join(",") || null,
+      accidentTypeId: filters.accidentTypeId.join(",") || null,
+      statusId: filters.statusId.join(",") || null,
+      caseManagerId: filters.caseManagerId.join(",") || null,
+    });
+
+    const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
+    const link = document.createElement("a");
+    link.href = src;
+    link.download = response.data[0]?.filename;
+    link.click();
+    link.remove();
+  };
 
   useEffect(() => {
-    fetchCases();
-  }, [fetchCases]);
+    if (cases) setPagination(cases?.pagination);
+  }, [cases]);
 
-  const canEdit = ra.can('case:edit');
+  useEffect(() => {
+    const timeout = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
 
-  const handleAdvanceStatus = async (caseItem: CaseListItem) => {
-    const idx = STATUSES.indexOf(caseItem.status);
-    if (idx < STATUSES.length - 1) {
-      setConfirmAction({ id: caseItem.id, status: STATUSES[idx + 1] });
-    }
-  };
+  useEffect(() => {
+    setPagination((p) => ({ ...p, page: 1 }));
+  }, [sorting]);
+
+  useEffect(() => {}, [pagination.page, search]);
+
+  const canEdit = ra.can("case:edit");
 
   const confirmStatusChange = async () => {
-    if (!confirmAction) return;
-    try {
-      await casesService.updateCaseStatus(confirmAction.id, confirmAction.status);
-      addToast({ type: 'success', title: 'Status Updated', description: `Case moved to ${STATUS_LABELS[confirmAction.status]}` });
-      setConfirmAction(null);
-      fetchCases();
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to update status';
-      addToast({ type: 'error', title: 'Update Failed', description: message });
-      setConfirmAction(null);
-    }
+    setShowMedicalLien(true);
+    setConfirmAction(false);
   };
 
-  const handleCaseCreated = () => {
+  const handleCaseCreated = (id: string) => {
     setShowCreate(false);
-    fetchCases();
+    setCaseId(id);
+    setConfirmAction(true);
   };
 
-  const handleCasesFilter = () => {
-    setShowFilter(false);
-    fetchCases();
+  const handleApplyFilter = (next: CasesFilterValues) => {
+    setFilters(next);
   };
 
-  const handleBulkAction = (actionKey: string) => {
-    const action = BULK_ACTIONS.find((a) => a.key === actionKey);
-    if (action) setBulkAction(action);
-  };
+  const allIds = cases?.items.map((c) => c.id) ?? [];
+  const activeFilterCount = countActiveFilters(filters);
 
-  const executeBulkAction = async () => {
-    if (!bulkAction) return;
-    setBulkLoading(true);
-    const result = await executeBulk(selection.ids, async (id) => {
-      const caseItem = cases.find((c) => c.id === id);
-      if (!caseItem) throw new Error('Case not found in current list');
-      const idx = STATUSES.indexOf(caseItem.status);
-      if (idx >= STATUSES.length - 1) throw new Error(`Case is already "${STATUS_LABELS[caseItem.status] || caseItem.status}"`);
-      await casesService.updateCaseStatus(id, STATUSES[idx + 1]);
-    });
-    setBulkLoading(false);
-    setBulkAction(null);
-    setBulkResult(result);
-    selection.clear();
-    fetchCases();
-  };
+  const searchDropdown = searchFocused ? (
+    <div
+      onMouseDown={(e) => e.preventDefault()}
+      className="absolute left-0 right-0 top-full mt-1 max-h-96 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-50"
+    >
+      {isLoading ? (
+        <div className="px-4 py-3 text-sm text-gray-400">Searching...</div>
+      ) : (cases?.items.length ?? 0) === 0 ? (
+        <div className="px-4 py-3 text-sm text-gray-400">No cases found.</div>
+      ) : (
+        cases!.items.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => {
+              setSearchFocused(false);
+              router.push(`/lien/cases/${c.id}`);
+            }}
+            className="w-full text-left px-4 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+          >
+            <div className="text-sm font-semibold text-gray-800">
+              {c.clientName}
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              <span className="text-primary">Date of Loss: </span>
+              <span className="text-gray-700">{c.dateOfIncident}</span>
+              {", "}
+              <span className="text-primary">Date of Birth: </span>
+              <span className="text-gray-700">{c.clientDob}</span>
+              {c.lawFirm ? `, ${c.lawFirm}` : ""}{" "}
+              <span className="text-primary">Case ID: </span>
+              <span className="text-gray-700">{c.caseNumber}</span>
+            </div>
+          </button>
+        ))
+      )}
+      {ra.can("case:create") && (
+        <button
+          type="button"
+          onClick={() => {
+            setSearchFocused(false);
+            setShowCreate(true);
+          }}
+          className="w-full text-left px-4 py-2.5 text-sm font-medium text-primary hover:bg-gray-50 flex items-center gap-1.5 border-t border-gray-100"
+        >
+          <i className="ri-add-line text-base" />
+          Add New Case
+        </button>
+      )}
+    </div>
+  ) : null;
 
-  const allIds = cases.map((c) => c.id);
+  const columns = useMemo<ColumnDef<CaseListItem, any>[]>(
+    () => [
+      {
+        id: "caseNumber",
+        header: "Case ID",
+        accessorFn: (row) => row.caseNumber,
+        meta: { minWidth: "180px" },
+        cell: ({ row }) => (
+          <span className="text-sm font-medium text-gray-700">
+            {row.original.caseNumber}
+          </span>
+        ),
+      },
+      {
+        id: "clientName",
+        header: "Plaintiff Name",
+        accessorFn: (row) => row.clientName,
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700 ">
+            {row.original.clientName}
+          </span>
+        ),
+      },
+      {
+        id: "lawFirm",
+        header: "Law Firm",
+        accessorFn: (row) => row.lawFirm,
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-600">
+            {row.original.lawFirm || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "caseManager",
+        header: "Case Manager",
+        accessorFn: (row) => row.caseManager,
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-600">
+            {row.original.caseManager || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "accidentType",
+        header: "Accident Type",
+        accessorFn: (row) => row.accidentType,
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-600">
+            {row.original.accidentType || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "dateOfIncident",
+        header: "Date of Loss",
+        accessorFn: (row) => row.dateOfIncident,
+        cell: ({ row }) => (
+          <span className="text-xs text-gray-500 tabular-nums">
+            {row.original.dateOfIncident || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "clientDob",
+        header: "DOB",
+        accessorFn: (row) => row.clientDob,
+        cell: ({ row }) => (
+          <span className="text-xs text-gray-500 tabular-nums">
+            {row.original.clientDob || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        accessorFn: (row) => row.status,
+        cell: ({ row }) => (
+          <StatusBadge
+            status={row.original.status}
+            label={row.original.statusLabel}
+          />
+        ),
+      },
+    ],
+    [router],
+  );
 
   return (
     <div className="space-y-4">
       <PageHeader
         title="Cases"
-        subtitle={loading ? 'Loading...' : `${pagination.totalCount} cases`}
+        subtitle={isLoading ? "Loading..." : `${pagination.totalCount} cases`}
         actions={
-          <div className="relative">
-            {/* Dropdown Button */}
+          ra.can("case:create") ? (
             <button
-              onClick={() => setActionOpen(!actionOpen)}
-              className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
-              Actions
-              <i className="ri-arrow-down-s-line text-base" />
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
+            >
+              <i className="ri-add-line text-base" />
+              Add New Case
             </button>
-            {/* Dropdown Menu */}
-            {actionOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                {/* Create Case */}
-                {ra.can('case:create') && (
-                  <button
-                    onClick={() => {
-                      setShowCreate(true);
-                      setActionOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
-                    Create Case
-                  </button>
-                )}
-                {/* Filter */}
-                <button
-                  onClick={() => {
-                    setShowFilter(true);
-                    setActionOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
-                  Filter
-                </button>
-
-                {/* Export CSV */}
-                <button onClick={() => { setActionOpen(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">
-                  Export
-                </button>
-
-              </div>
-            )}
-          </div>
+          ) : undefined
         }
       />
 
-      <FilterToolbar searchPlaceholder="Search by case number or client name..." onSearch={setSearch} filters={[{
-        label: 'All Statuses', value: statusFilter, onChange: setStatusFilter,
-        options: STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] || s })),
-      }]} />
+      <FilterToolbar
+        searchPlaceholder="Search by case number or client name..."
+        onSearch={(e) => {
+          setSearchInput(e);
+        }}
+        onSearchFocus={() => setSearchFocused(true)}
+        onSearchBlur={() => setSearchFocused(false)}
+        dropdown={searchDropdown}
+      >
+        <button
+          onClick={() => setShowFilter(true)}
+          className="relative flex items-center gap-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg px-4 py-2 hover:bg-gray-50 transition-colors"
+        >
+          <i className="ri-filter-3-line text-base" />
+          Filter
+          {activeFilterCount > 0 && (
+            <span className="ml-0.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold">
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={exportCases}
+          className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
+        >
+          Export
+        </button>
+      </FilterToolbar>
 
-      <BulkResultBanner result={bulkResult} onDismiss={() => setBulkResult(null)} entityLabel="cases" />
+      <BulkResultBanner
+        result={bulkResult}
+        onDismiss={() => setBulkResult(null)}
+        entityLabel="cases"
+      />
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-center gap-2">
-          <i className="ri-error-warning-line text-red-500 text-sm" />
-          <p className="text-sm text-red-700">{error}</p>
-          <button onClick={fetchCases} className="ml-auto text-sm text-red-600 hover:underline font-medium">Retry</button>
-        </div>
-      )}
+      <BaseTable
+        data={cases?.items ?? []}
+        columns={columns}
+        getRowId={(c) => c.id}
+        isLoading={isLoading}
+        emptyMessage="No cases match your filters."
+        onRowClick={(c) => router.push(`/lien/cases/${c.id}`)}
+        getRowClassName={(c) =>
+          selection.isSelected(c.id) ? "bg-primary/5" : undefined
+        }
+        sorting={sorting}
+        onSortingChange={setSorting}
+        manualSorting
+        manualPagination
+        pageCount={pagination.totalPages}
+        totalCount={pagination.totalCount}
+        pagination={{
+          pageIndex: pagination.page - 1,
+          pageSize: pagination.pageSize,
+        }}
+        onPaginationChange={(updater) => {
+          const next =
+            typeof updater === "function"
+              ? updater({
+                  pageIndex: pagination.page - 1,
+                  pageSize: pagination.pageSize,
+                })
+              : updater;
+          setPagination((p) => ({ ...p, page: next.pageIndex + 1 }));
+        }}
+        className="bg-white border-gray-200 rounded-xl"
+      />
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        {loading ? (
-          <div className="py-12 text-center">
-            <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <p className="text-sm text-gray-400 mt-2">Loading cases...</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50/80 border-b border-gray-100">
-                    {canEdit && (
-                      <th className="px-3 py-2.5 w-10">
-                        <input type="checkbox" checked={selection.isAllSelected(allIds)} onChange={() => selection.toggleAll(allIds)}
-                          className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary/20" />
-                      </th>
-                    )}
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Case ID</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Plaintiff Name</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Law Firm</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Case Manager</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Accident Type</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Date of Loss</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">DOB</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                    <th className="px-3 py-2.5 w-10" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {cases.map((c) => (
-                    <tr
-                      key={c.id}
-                      className={`hover:bg-gray-50/80 transition-colors cursor-pointer ${selection.isSelected(c.id) ? 'bg-primary/5' : ''}`}
-                      onClick={() => router.push(`/lien/cases/${c.id}`)}
-                    >
-                      {canEdit && (
-                        <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" checked={selection.isSelected(c.id)} onChange={() => selection.toggle(c.id)}
-                            className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary/20" />
-                        </td>
-                      )}
-                      <td className="px-3 py-2.5">
-                        <Link href={`/lien/cases/${c.id}`} onClick={(e) => e.stopPropagation()} className="text-xs font-mono text-primary hover:underline">{c.caseNumber}</Link>
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 font-medium">{c.clientName}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">{c.lawFirm || '—'}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">{c.caseManager || '—'}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">{c.accidentType || '—'}</td>
-                      <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">{c.dateOfIncident || '—'}</td>
-                      <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">{c.clientDob || '—'}</td>
-                      <td className="px-3 py-2.5"><StatusBadge status={c.status} /></td>
-                      <td className="px-3 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                        <ActionMenu items={[
-                          { label: 'View Details', icon: 'ri-eye-line', onClick: () => router.push(`/lien/cases/${c.id}`) },
-                          ...(canEdit ? [
-                            { label: 'Advance Status', icon: 'ri-arrow-right-line', onClick: () => handleAdvanceStatus(c) },
-                          ] : []),
-                        ]} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {cases.length === 0 && !loading && (
-              <div className="py-12 text-center">
-                <i className="ri-folder-open-line text-2xl text-gray-300" />
-                <p className="text-sm text-gray-400 mt-2">No cases match your filters.</p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-gray-500">
-            Page {pagination.page} of {pagination.totalPages} · {pagination.totalCount} total
-          </p>
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-              disabled={pagination.page <= 1}
-              className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
-            >Previous</button>
-            <button
-              onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-              disabled={pagination.page >= pagination.totalPages}
-              className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 transition-colors"
-            >Next</button>
-          </div>
-        </div>
-      )}
-
-      {canEdit && (
-        <BulkActionBar count={selection.count} actions={BULK_ACTIONS} onAction={handleBulkAction} onClear={selection.clear} />
-      )}
-
-      {bulkAction && (
-        <BulkConfirmModal
-          open
-          onClose={() => setBulkAction(null)}
-          onConfirm={executeBulkAction}
-          title={bulkAction.confirmTitle}
-          description={bulkAction.confirmDescription(selection.count)}
-          count={selection.count}
-          variant={bulkAction.variant}
-          loading={bulkLoading}
+      {showCreate && (
+        <CreateCaseForm
+          open={showCreate}
+          caseNumber={caseNumber}
+          onClose={() => setShowCreate(false)}
+          onCreated={handleCaseCreated}
         />
       )}
+      <CasesFilter
+        open={showFilter}
+        onClose={() => setShowFilter(false)}
+        value={filters}
+        onApplyFilter={handleApplyFilter}
+        primaryReady={bgReady}
+      />
 
-      <CreateCaseForm open={showCreate} onClose={() => setShowCreate(false)} onCreated={handleCaseCreated} />
-      <CasesFilter open={showFilter} onClose={() => setShowFilter(false)} onApplyFilter={handleCasesFilter} />
-
-      {confirmAction && (
-        <ConfirmDialog open onClose={() => setConfirmAction(null)}
-          onConfirm={confirmStatusChange}
-          title="Change Case Status" description={`Move this case to "${STATUS_LABELS[confirmAction.status]}"?`} confirmLabel="Update Status"
-        />
+      <ConfirmDialog
+        open={confirmAction}
+        onClose={() => setConfirmAction(false)}
+        onConfirm={confirmStatusChange}
+        title="Confirmation"
+        description={`New Case created. Do you want to add a lien now?`}
+        confirmLabel="Yes"
+      />
+      {showMedicalLien && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-lg max-w-2xl w-full mx-4 my-6">
+            <MedicalLienComponent
+              caseId={caseId}
+              onClose={() => {
+                setShowMedicalLien(false);
+                router.push(`/lien/cases/${caseId}/liens`);
+              }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
 }
+
+// "https://legal-dmm-prod.legalsynq.com/70om7wvWruLZg1PA/DrS0uTyouKgBVGQKnlGj1WVe7l0JCksh.pdf"

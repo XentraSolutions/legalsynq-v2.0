@@ -162,4 +162,77 @@ describe('FirmStatusPage', () => {
       firm: 'Fight For You Company',
     }));
   });
+
+  test('omits contactFirstName when it was filled in with the firm name (no contact first name provided at referral time)', async () => {
+    const threadData = {
+      referralId: 'ref-123',
+      tenantId: 'tenant-1',
+      referrerEmail: 'lawyer@example.com',
+      referrerFirstName: 'Fight For You Company',
+      referrerFirmName: 'Fight For You Company',
+      notes: null,
+      status: 'New',
+      clientName: 'Jane Doe',
+      service: 'General Referral',
+      providerName: 'Demo Provider',
+      createdAtUtc: '2026-06-11T00:00:00Z',
+      comments: [],
+    };
+
+    fetchPublicCareConnectMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => threadData,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: ReferrerPortalAccessStatuses.NoAccount }),
+      });
+
+    await FirmStatusPage({ searchParams: Promise.resolve({ token: 'abc123' }) });
+
+    expect(createEnrollmentTokenMock).toHaveBeenCalledWith(expect.not.objectContaining({
+      contactFirstName: expect.anything(),
+    }));
+    expect(createEnrollmentTokenMock).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1',
+      email: 'lawyer@example.com',
+      firm: 'Fight For You Company',
+    }));
+  });
+
+  test('keeps a real contactFirstName that differs from the firm name', async () => {
+    const threadData = {
+      referralId: 'ref-123',
+      tenantId: 'tenant-1',
+      referrerEmail: 'lawyer@example.com',
+      referrerFirstName: 'Jordan',
+      referrerLastName: 'Smith',
+      referrerFirmName: 'Fight For You Company',
+      notes: null,
+      status: 'New',
+      clientName: 'Jane Doe',
+      service: 'General Referral',
+      providerName: 'Demo Provider',
+      createdAtUtc: '2026-06-11T00:00:00Z',
+      comments: [],
+    };
+
+    fetchPublicCareConnectMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => threadData,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ status: ReferrerPortalAccessStatuses.NoAccount }),
+      });
+
+    await FirmStatusPage({ searchParams: Promise.resolve({ token: 'abc123' }) });
+
+    expect(createEnrollmentTokenMock).toHaveBeenCalledWith(expect.objectContaining({
+      contactFirstName: 'Jordan',
+      contactLastName: 'Smith',
+    }));
+  });
 });

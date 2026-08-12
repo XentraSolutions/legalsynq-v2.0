@@ -10,6 +10,7 @@ import { getClientPortalConfig, type PortalConfig } from '@/lib/portal';
 import { useSession } from '@/hooks/use-session';
 import { useNavBadges } from '@/hooks/use-nav-badges';
 import { useProviderMode } from '@/hooks/use-provider-mode';
+import { toast } from 'sonner';
 import type { NavItem } from '@/types';
 import { clsx } from 'clsx';
 
@@ -55,14 +56,15 @@ export function Sidebar() {
 
   const width    = !mounted ? 220 : collapsed ? 52 : 220;
   const rawSections = selectedProductId ? (PRODUCT_NAV[selectedProductId] ?? []) : [];
+  const isProductPortal = portalConfig?.productId === selectedProductId;
   const sections = session
-    ? filterNavByAccess(rawSections, session.productRoles, isSellMode, session.orgType, session.isTenantAdmin)
+    ? filterNavByAccess(rawSections, session.productRoles, isSellMode, session.orgType, session.isTenantAdmin, isProductPortal, session.isPlatformAdmin || session.isTenantAdmin)
     : rawSections;
   const meta     = selectedProductId ? PRODUCT_META[selectedProductId] : null;
 
   const currentPathname = pathname ?? '';
   const allNavItems = [
-    ...sections.flatMap(s => s.items),
+    ...sections.flatMap(s => s.items.flatMap(item => [item, ...(item.children ?? [])])),
     ...adminSections.flatMap(s => s.items),
     ...GLOBAL_BOTTOM_NAV.items,
   ];
@@ -129,16 +131,31 @@ export function Sidebar() {
             )}
             <nav className={clsx('space-y-0.5', collapsed ? 'px-1.5' : 'px-3')}>
               {section.items.map(item => (
-                <SidebarItem
-                  key={item.href + item.label}
-                  item={item}
-                  pathname={currentPathname}
-                  collapsed={collapsed}
-                  activeColor={nav.activeColor}
-                  activeBg={nav.activeBg}
-                  badgeCount={item.badgeKey ? badges[item.badgeKey] : undefined}
-                  isActive={item === activeNavItem}
-                />
+                item.children?.length
+                  ? (
+                    <SidebarDropdownItem
+                      key={item.href + item.label}
+                      item={item}
+                      pathname={currentPathname}
+                      collapsed={collapsed}
+                      activeColor={nav.activeColor}
+                      activeBg={nav.activeBg}
+                      badges={badges}
+                      activeNavItem={activeNavItem}
+                    />
+                  )
+                  : (
+                    <SidebarItem
+                      key={item.href + item.label}
+                      item={item}
+                      pathname={currentPathname}
+                      collapsed={collapsed}
+                      activeColor={nav.activeColor}
+                      activeBg={nav.activeBg}
+                      badgeCount={item.badgeKey ? badges[item.badgeKey] : undefined}
+                      isActive={item === activeNavItem}
+                    />
+                  )
               ))}
             </nav>
           </div>
@@ -214,17 +231,8 @@ function SidebarItem({
   const isActive = isActiveProp ?? (pathname === item.href || pathname.startsWith(item.href + '/'));
   const showBadge = typeof badgeCount === 'number' && badgeCount > 0;
 
-  return (
-    <Link
-      href={item.href}
-      title={collapsed ? `${item.label}${showBadge ? ` (${badgeCount})` : ''}` : undefined}
-      className={clsx(
-        'relative flex items-center rounded-lg text-[12px] font-medium transition-colors',
-        collapsed ? 'w-8 h-8 justify-center mx-auto' : 'gap-2.5 px-3 py-2.5',
-        !isActive && 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
-      )}
-      style={isActive ? { backgroundColor: activeBg, color: '#0f1928' } : undefined}
-    >
+  const content = (
+    <>
       {/* Left accent bar (expanded active) */}
       {isActive && !collapsed && (
         <span
@@ -255,6 +263,147 @@ function SidebarItem({
       {showBadge && collapsed && (
         <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-white" />
       )}
+    </>
+  );
+
+  const className = clsx(
+    'relative flex items-center rounded-lg text-[12px] font-medium transition-colors',
+    collapsed ? 'w-8 h-8 justify-center mx-auto' : 'gap-2.5 px-3 py-2.5',
+    !isActive && 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+  );
+  const style = isActive ? { backgroundColor: activeBg, color: '#0f1928' } : undefined;
+
+  if (item.disabledMessage) {
+    return (
+      <button
+        type="button"
+        onClick={() => toast.info(item.disabledMessage!)}
+        title={collapsed ? `${item.label}${showBadge ? ` (${badgeCount})` : ''}` : undefined}
+        className={clsx(className, 'w-full text-left appearance-none bg-transparent border-0 cursor-pointer')}
+        style={style}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <Link
+      href={item.href}
+      title={collapsed ? `${item.label}${showBadge ? ` (${badgeCount})` : ''}` : undefined}
+      className={className}
+      style={style}
+    >
+      {content}
     </Link>
+  );
+}
+
+function SidebarDropdownItem({
+  item, pathname, collapsed, activeColor, activeBg, badges, activeNavItem,
+}: {
+  item:          NavItem;
+  pathname:      string;
+  collapsed:     boolean;
+  activeColor:   string;
+  activeBg:      string;
+  badges:        Record<string, number>;
+  activeNavItem: NavItem | null;
+}) {
+  const children = item.children ?? [];
+  const isChildActive = children.some(child => child === activeNavItem);
+  const isSelfActive = item === activeNavItem
+    || pathname === item.href || pathname.startsWith(item.href + '/');
+  const shouldBeOpen = isSelfActive || isChildActive;
+  const [open, setOpen] = useState(shouldBeOpen);
+
+  useEffect(() => {
+    if (shouldBeOpen) setOpen(true);
+  }, [shouldBeOpen]);
+
+  if (collapsed) {
+    return (
+      <>
+        <SidebarItem
+          item={item}
+          pathname={pathname}
+          collapsed={collapsed}
+          activeColor={activeColor}
+          activeBg={activeBg}
+          isActive={isSelfActive || isChildActive}
+        />
+        {children.map(child => (
+          <SidebarItem
+            key={child.href + child.label}
+            item={child}
+            pathname={pathname}
+            collapsed={collapsed}
+            activeColor={activeColor}
+            activeBg={activeBg}
+            badgeCount={child.badgeKey ? badges[child.badgeKey] : undefined}
+            isActive={child === activeNavItem}
+          />
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <div>
+      <div
+        className={clsx(
+          'relative flex items-center rounded-lg text-[12px] font-medium transition-colors pr-1.5',
+          !isSelfActive && 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+        )}
+        style={isSelfActive ? { backgroundColor: activeBg, color: '#0f1928' } : undefined}
+      >
+        {isSelfActive && (
+          <span
+            className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full"
+            style={{ backgroundColor: activeColor }}
+          />
+        )}
+        <Link
+          href={item.href}
+          className="flex-1 flex items-center gap-2.5 px-3 py-2.5 min-w-0"
+        >
+          {item.icon
+            ? <i
+                className={`${item.icon} text-[16px] leading-none shrink-0`}
+                style={{ color: isSelfActive ? activeColor : undefined }}
+              />
+            : <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+          }
+          <span className="flex-1 truncate">{item.label}</span>
+        </Link>
+        <button
+          type="button"
+          onClick={(e) => { e.preventDefault(); setOpen(prev => !prev); }}
+          title={open ? 'Collapse' : 'Expand'}
+          className="flex items-center justify-center w-6 h-6 shrink-0 rounded-md hover:bg-black/5 transition-colors"
+        >
+          <i className={clsx(
+            'ri-arrow-down-s-line text-[15px] leading-none transition-transform',
+            !open && '-rotate-90',
+          )} />
+        </button>
+      </div>
+      {open && (
+        <div className="ml-4 pl-2.5 border-l border-gray-100 space-y-0.5 mt-0.5">
+          {children.map(child => (
+            <SidebarItem
+              key={child.href + child.label}
+              item={child}
+              pathname={pathname}
+              collapsed={collapsed}
+              activeColor={activeColor}
+              activeBg={activeBg}
+              badgeCount={child.badgeKey ? badges[child.badgeKey] : undefined}
+              isActive={child === activeNavItem}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

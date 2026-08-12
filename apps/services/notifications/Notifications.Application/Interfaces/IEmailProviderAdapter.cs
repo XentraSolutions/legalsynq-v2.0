@@ -8,6 +8,17 @@ public class EmailSendPayload
     public string Body { get; set; } = string.Empty;
     public string? Html { get; set; }
     public string? ReplyTo { get; set; }
+    public List<EmailAttachmentPayload> Attachments { get; set; } = [];
+    public bool DisableClickTracking { get; set; }
+}
+
+public class EmailAttachmentPayload
+{
+    public string Content { get; set; } = string.Empty;
+    public string Type { get; set; } = "application/octet-stream";
+    public string Filename { get; set; } = "attachment";
+    public string Disposition { get; set; } = "attachment";
+    public string? ContentId { get; set; }
 }
 
 public class EmailSendResult

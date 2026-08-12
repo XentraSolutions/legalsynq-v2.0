@@ -648,9 +648,9 @@ Submitted as `multipart/form-data` fields (not JSON). See [POST `/documents/{id}
 | `deletedBy` | `guid` | Yes | User ID who deleted the document |
 | `retainUntil` | `datetime` | Yes | Retention date |
 | `legalHoldAt` | `datetime` | Yes | When legal hold was applied |
-| `createdAt` | `datetime` | No | Record creation timestamp |
+| `createdAt` | `datetime` | No | Record creation timestamp, serialized in Pacific time (`-08:00` / `-07:00`) |
 | `createdBy` | `guid` | No | User ID who created the document |
-| `updatedAt` | `datetime` | No | Record last-updated timestamp |
+| `updatedAt` | `datetime` | No | Record last-updated timestamp, serialized in Pacific time (`-08:00` / `-07:00`) |
 | `updatedBy` | `guid` | No | User ID who last updated the document |
 
 > **Note:** Internal fields `storageKey`, `storageBucket`, and `checksum` are intentionally omitted and never exposed to clients.
@@ -687,7 +687,7 @@ Submitted as `multipart/form-data` fields (not JSON). See [POST `/documents/{id}
 | `isDeleted` | `boolean` | No | Whether the version has been soft-deleted |
 | `deletedAt` | `datetime` | Yes | When the version was deleted |
 | `deletedBy` | `guid` | Yes | User ID who deleted the version |
-| `uploadedAt` | `datetime` | No | When the version was uploaded |
+| `uploadedAt` | `datetime` | No | When the version was uploaded, serialized in Pacific time (`-08:00` / `-07:00`) |
 | `uploadedBy` | `guid` | No | User ID who uploaded the version |
 
 ---

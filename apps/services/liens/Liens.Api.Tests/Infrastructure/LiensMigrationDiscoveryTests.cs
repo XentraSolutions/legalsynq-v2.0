@@ -2,6 +2,7 @@ using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Infrastructure;
@@ -23,6 +24,13 @@ public class LiensMigrationDiscoveryTests
         Assert.Contains("20260420000002_AddTaskFlowLinkage", migrationIds);
         Assert.Contains("20260421000002_DropLiensConfigTables", migrationIds);
         Assert.Contains("20260513000001_SeedLookupValues", migrationIds);
+        Assert.Contains("20260625000001_AddLienLegacyMedicalFields", migrationIds);
+        Assert.Contains("20260629164601_AddFacilityLinkedContactSubtype", migrationIds);
+        Assert.Contains("20260731000001_AddLienPurchaseAndSettlementDates", migrationIds);
+        Assert.Contains("20260729163919_SecureSellingBuyerAccessAndAddIdempotencyRecords", migrationIds);
+        Assert.Contains("20260729163918_RecordPublicBuyerAccountActivation", migrationIds);
+        Assert.Contains("20260809105501_AddSellingCompanyDirectory", migrationIds);
+        Assert.Contains("20260809185312_AddSellingPartyCompatibility", migrationIds);
     }
 
     [Fact]
@@ -35,6 +43,13 @@ public class LiensMigrationDiscoveryTests
             typeof(Liens.Infrastructure.Persistence.Migrations.AddTaskFlowLinkage),
             typeof(Liens.Infrastructure.Persistence.Migrations.DropLiensConfigTables),
             typeof(Liens.Infrastructure.Persistence.Migrations.SeedLookupValues),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddLienLegacyMedicalFields),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddFacilityLinkedContactSubtype),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddLienPurchaseAndSettlementDates),
+            typeof(Liens.Infrastructure.Persistence.Migrations.SecureSellingBuyerAccessAndAddIdempotencyRecords),
+            typeof(Liens.Infrastructure.Persistence.Migrations.RecordPublicBuyerAccountActivation),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddSellingCompanyDirectory),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddSellingPartyCompatibility),
         };
 
         foreach (var migrationType in migrationTypes)
@@ -53,6 +68,73 @@ public class LiensMigrationDiscoveryTests
             Assert.NotNull(migrationAttribute);
             Assert.False(string.IsNullOrWhiteSpace(migrationAttribute!.Id));
         }
+    }
+
+    [Fact]
+    public void SellingCompanyDirectoryMigration_CanResumeAfterPartialMySqlDdl()
+    {
+        var migration = new Liens.Infrastructure.Persistence.Migrations.AddSellingCompanyDirectory();
+        var sql = AssertOnlyGuardedSqlOperations(migration);
+
+        Assert.Contains("CREATE TABLE IF NOT EXISTS `liens_CompanyTypes`", sql, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS `liens_Companies`", sql, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS `liens_ContactPersonTypes`", sql, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS `liens_CompanyContactPersons`", sql, StringComparison.Ordinal);
+        Assert.Contains("INSERT IGNORE INTO `liens_CompanyTypes`", sql, StringComparison.Ordinal);
+        Assert.Contains("INSERT IGNORE INTO `liens_ContactPersonTypes`", sql, StringComparison.Ordinal);
+        Assert.Contains("information_schema.STATISTICS", sql, StringComparison.Ordinal);
+        Assert.Contains("information_schema.TABLE_CONSTRAINTS", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SellingPartyCompatibilityMigration_CanResumeAfterPartialMySqlDdl()
+    {
+        var migration = new Liens.Infrastructure.Persistence.Migrations.AddSellingPartyCompatibility();
+        var sql = AssertOnlyGuardedSqlOperations(migration);
+
+        Assert.Equal(10, CountOccurrences(sql, "information_schema.COLUMNS"));
+        Assert.Contains("CREATE TABLE IF NOT EXISTS `liens_SellingPartyAliases`", sql, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS `liens_SellingPartyBackfillCheckpoints`", sql, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS `liens_SellingPartyBackfillQuarantines`", sql, StringComparison.Ordinal);
+        Assert.Contains("information_schema.STATISTICS", sql, StringComparison.Ordinal);
+        Assert.Contains("information_schema.TABLE_CONSTRAINTS", sql, StringComparison.Ordinal);
+        Assert.Contains("`FundingCompanyCompanyId` char(36) COLLATE ascii_general_ci NULL", sql, StringComparison.Ordinal);
+        Assert.Contains("`HandlingLawFirmCompanyId` char(36) COLLATE ascii_general_ci NULL", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LiensConnectionString_EnablesUserVariablesForGuardedMySqlDdl()
+    {
+        var configured = LiensMySqlConnectionString.Configure(
+            "Server=127.0.0.1;Database=liens;User=root;Password=ignored;");
+        var builder = new MySqlConnector.MySqlConnectionStringBuilder(configured);
+
+        Assert.True(builder.AllowUserVariables);
+    }
+
+    private static string AssertOnlyGuardedSqlOperations(Migration migration)
+    {
+        Assert.NotEmpty(migration.UpOperations);
+        Assert.All(migration.UpOperations, operation => Assert.IsType<SqlOperation>(operation));
+
+        var sqlOperations = migration.UpOperations.Cast<SqlOperation>().ToList();
+        Assert.All(sqlOperations, operation => Assert.True(operation.SuppressTransaction));
+        Assert.All(sqlOperations, operation => Assert.EndsWith(";", operation.Sql.TrimEnd(), StringComparison.Ordinal));
+
+        return string.Join(Environment.NewLine, sqlOperations.Select(operation => operation.Sql));
+    }
+
+    private static int CountOccurrences(string value, string search)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = value.IndexOf(search, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += search.Length;
+        }
+
+        return count;
     }
 
     private static ServiceProvider BuildServices()

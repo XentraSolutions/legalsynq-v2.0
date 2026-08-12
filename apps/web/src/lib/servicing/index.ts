@@ -7,5 +7,6 @@ export type {
   PaginationMeta,
   CreateServicingItemRequestDto,
   UpdateServicingItemRequestDto,
+  UpdateServicingDetailsRequestDto,
   UpdateServicingStatusRequestDto,
 } from './servicing.types';

@@ -65,6 +65,23 @@ async function fetchXenia<T>(path: string, token?: string): Promise<T | null> {
   }
 }
 
+async function mutateXenia(path: string, token: string, init?: RequestInit): Promise<void> {
+  const res = await fetch(`${XENIA_BASE}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(init?.headers as Record<string, string> | undefined),
+    },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    const message = await res.text().catch(() => 'unknown error');
+    throw new Error(`Xenia API ${path} returned ${res.status}: ${message}`);
+  }
+}
+
 export async function getXeniaInfo(): Promise<XeniaServiceInfo | null> {
   return fetchXenia<XeniaServiceInfo>('/info');
 }
@@ -194,6 +211,53 @@ export interface XeniaDeadLetterEntry {
   tenantId: string | null;
 }
 
+export interface XeniaConfigurationEntry {
+  id: string;
+  scopeType: string;
+  scopeId: string | null;
+  namespace: string;
+  configurationKey: string;
+  configurationValue: string | null;
+  valueType: string | null;
+  isSecret: boolean;
+  version: number;
+  updatedAtUtc: string;
+}
+
+export interface XeniaAssistantUsageRow {
+  tenantId: string;
+  agentKey: string;
+  provider: string;
+  modelKey: string;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  estimatedCostUsd: number;
+  averageLatencyMs: number;
+}
+
+export interface XeniaAssistantAdminSettings {
+  provider: string;
+  modelKey: string;
+  openAiBaseUrl: string;
+  openAiApiKeyConfigured: boolean;
+  openAiTimeoutSeconds: number;
+  openAiReasoningEffort: string | null;
+  openAiTextVerbosity: string | null;
+  openAiMaxOutputTokens: number | null;
+  lastUpdatedAtUtc: string | null;
+}
+
+export interface UpdateXeniaAssistantAdminSettingsPayload {
+  provider: string;
+  modelKey: string;
+  openAiBaseUrl: string;
+  openAiTimeoutSeconds: number;
+  openAiReasoningEffort: string | null;
+  openAiTextVerbosity: string | null;
+  openAiMaxOutputTokens: number | null;
+}
+
 // ── Automation API helpers ──────────────────────────────────────────
 
 export async function getXeniaAutomations(token: string): Promise<XeniaAutomationManifest[]> {
@@ -214,4 +278,34 @@ export async function getXeniaDeadLetterEntries(token: string): Promise<XeniaDea
     token,
   );
   return res?.items ?? [];
+}
+
+export async function getXeniaAssistantGlobalConfig(token: string): Promise<XeniaConfigurationEntry[]> {
+  const res = await fetchXenia<{ entries: XeniaConfigurationEntry[] }>(
+    '/admin/config/global',
+    token,
+  );
+  return res?.entries ?? [];
+}
+
+export async function getXeniaAssistantAdminSettings(token: string): Promise<XeniaAssistantAdminSettings | null> {
+  return fetchXenia<XeniaAssistantAdminSettings>('/admin/settings', token);
+}
+
+export async function updateXeniaAssistantAdminSettings(
+  token: string,
+  payload: UpdateXeniaAssistantAdminSettingsPayload,
+): Promise<void> {
+  await mutateXenia('/admin/settings', token, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getXeniaAssistantUsage(token: string): Promise<XeniaAssistantUsageRow[]> {
+  const res = await fetchXenia<{ usage: XeniaAssistantUsageRow[] }>(
+    '/admin/usage',
+    token,
+  );
+  return res?.usage ?? [];
 }

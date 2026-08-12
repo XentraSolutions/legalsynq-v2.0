@@ -5,6 +5,7 @@ public class User
     public Guid Id { get; private set; }
     public string Email { get; private set; } = string.Empty;
     public string PasswordHash { get; private set; } = string.Empty;
+    public string? Title { get; private set; }
     public string FirstName { get; private set; } = string.Empty;
     public string LastName { get; private set; } = string.Empty;
     public bool IsActive { get; private set; }
@@ -218,6 +219,18 @@ public class User
     }
 
     /// <summary>
+    /// Records the user's optional professional title, such as Dr. or Esq.
+    /// </summary>
+    public bool SetTitle(string? title)
+    {
+        var normalised = string.IsNullOrWhiteSpace(title) ? null : title.Trim();
+        if (string.Equals(Title, normalised, StringComparison.Ordinal)) return false;
+        Title        = normalised;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return true;
+    }
+
+    /// <summary>
     /// PUM-B01: Updates the user type classification.
     /// Idempotent — safe to call when the value is unchanged.
     /// </summary>
@@ -235,7 +248,8 @@ public class User
         string passwordHash,
         string firstName,
         string lastName,
-        UserType userType = UserType.TenantUser)
+        UserType userType = UserType.TenantUser,
+        string? title = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
@@ -247,6 +261,7 @@ public class User
             Id             = Guid.CreateVersion7(),
             Email          = email.ToLowerInvariant().Trim(),
             PasswordHash   = passwordHash,
+            Title          = string.IsNullOrWhiteSpace(title) ? null : title.Trim(),
             FirstName      = firstName.Trim(),
             LastName       = lastName.Trim(),
             IsActive       = true,

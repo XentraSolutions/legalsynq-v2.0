@@ -3,7 +3,6 @@ using System;
 using Identity.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -58,7 +57,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
 
-                    b.Property<Guid?>("TenantId")
+                    b.Property<Guid>("TenantId")
                         .HasColumnType("char(36)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
@@ -170,6 +169,96 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("EntityType");
 
                     b.ToTable("idt_AuditLogs", (string)null);
+                });
+
+            modelBuilder.Entity("Identity.Domain.DeviceSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("AbsoluteExpiresAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("AppVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<bool>("BiometricEnabled")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("DeviceDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTime>("InactivityExpiresAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("LastPrimaryAuthenticationAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("LastUsedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("OsVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("RefreshTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("RevokedReason")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("RiskState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<long>("RowVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("TokenFamilyId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RefreshTokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("TokenFamilyId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("idt_DeviceSessions", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.GroupProductAccess", b =>
@@ -315,7 +404,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .HasColumnType("varchar(20)")
                         .HasDefaultValue("sell");
 
-                    b.Property<Guid>("TenantId")
+                    b.Property<Guid?>("TenantId")
                         .HasColumnType("char(36)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
@@ -919,6 +1008,83 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("60000000-0000-0000-0000-000000000045"),
+                            Category = "Task",
+                            Code = "SYNQ_LIENS.task:read",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "View tasks within a lien or case",
+                            IsActive = true,
+                            Name = "Read Tasks",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000046"),
+                            Category = "Task",
+                            Code = "SYNQ_LIENS.task:create",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Create a new task",
+                            IsActive = true,
+                            Name = "Create Task",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000047"),
+                            Category = "Task",
+                            Code = "SYNQ_LIENS.task:edit:own",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Update status and details of tasks assigned to or created by you",
+                            IsActive = true,
+                            Name = "Edit Own Tasks",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000048"),
+                            Category = "Task",
+                            Code = "SYNQ_LIENS.task:edit:all",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Update any task regardless of ownership",
+                            IsActive = true,
+                            Name = "Edit All Tasks",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000049"),
+                            Category = "Task",
+                            Code = "SYNQ_LIENS.task:assign",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Assign a task to a user or team",
+                            IsActive = true,
+                            Name = "Assign Task",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000050"),
+                            Category = "Task",
+                            Code = "SYNQ_LIENS.task:complete",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Mark a task as completed",
+                            IsActive = true,
+                            Name = "Complete Task",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000051"),
+                            Category = "Task",
+                            Code = "SYNQ_LIENS.task:cancel",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Cancel a task",
+                            IsActive = true,
+                            Name = "Cancel Task",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
+                        },
+                        new
+                        {
                             Id = new Guid("60000000-0000-0000-0000-000000000020"),
                             Category = "Application",
                             Code = "SYNQ_FUND.application:create",
@@ -1026,6 +1192,127 @@ namespace Identity.Infrastructure.Persistence.Migrations
                             IsActive = true,
                             Name = "View Application Status",
                             ProductId = new Guid("10000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000030"),
+                            Category = "Users",
+                            Code = "TENANT.users:view",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "View the list of users in the tenant",
+                            IsActive = true,
+                            Name = "View Tenant Users",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000006")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000031"),
+                            Category = "Users",
+                            Code = "TENANT.users:manage",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Create, edit, and deactivate users in the tenant",
+                            IsActive = true,
+                            Name = "Manage Tenant Users",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000006")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000032"),
+                            Category = "Groups",
+                            Code = "TENANT.groups:manage",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Create, edit, and delete tenant access groups",
+                            IsActive = true,
+                            Name = "Manage Access Groups",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000006")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000033"),
+                            Category = "Roles",
+                            Code = "TENANT.roles:assign",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Assign or revoke roles for tenant users",
+                            IsActive = true,
+                            Name = "Assign Roles",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000006")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000034"),
+                            Category = "Products",
+                            Code = "TENANT.products:assign",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Assign or revoke product access for tenant users",
+                            IsActive = true,
+                            Name = "Assign Product Access",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000006")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000035"),
+                            Category = "Settings",
+                            Code = "TENANT.settings:manage",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Update tenant configuration and preferences",
+                            IsActive = true,
+                            Name = "Manage Tenant Settings",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000006")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000036"),
+                            Category = "Audit",
+                            Code = "TENANT.audit:view",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "View identity and access audit events for the tenant",
+                            IsActive = true,
+                            Name = "View Audit Logs",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000006")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000037"),
+                            Category = "Invitations",
+                            Code = "TENANT.invitations:manage",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Send, resend, and revoke user invitations",
+                            IsActive = true,
+                            Name = "Manage User Invitations",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000006")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000063"),
+                            Category = "Assistant",
+                            Code = "SYNQ_AI.assistant:use",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Create and use Xenia assistant conversations",
+                            IsActive = true,
+                            Name = "Use Xenia Assistant",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000005")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000064"),
+                            Category = "Assistant",
+                            Code = "SYNQ_AI.assistant:manage",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Configure Xenia assistant providers, agents, and quotas",
+                            IsActive = true,
+                            Name = "Manage Xenia Assistant",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000005")
+                        },
+                        new
+                        {
+                            Id = new Guid("60000000-0000-0000-0000-000000000065"),
+                            Category = "Usage",
+                            Code = "SYNQ_AI.usage:read",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "View Xenia assistant usage and cost telemetry",
+                            IsActive = true,
+                            Name = "View Xenia Usage",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000005")
                         });
                 });
 
@@ -1243,9 +1530,18 @@ namespace Identity.Infrastructure.Persistence.Migrations
                             Id = new Guid("10000000-0000-0000-0000-000000000005"),
                             Code = "SYNQ_AI",
                             CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "AI-powered legal intelligence platform",
+                            Description = "Tenant-aware AI assistant and agent platform",
                             IsActive = true,
-                            Name = "SynqAI"
+                            Name = "Xenia"
+                        },
+                        new
+                        {
+                            Id = new Guid("10000000-0000-0000-0000-000000000006"),
+                            Code = "SYNQ_PLATFORM",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Platform/tenant operation capabilities",
+                            IsActive = true,
+                            Name = "SynqPlatform"
                         });
                 });
 
@@ -1344,6 +1640,51 @@ namespace Identity.Infrastructure.Persistence.Migrations
                             OrganizationTypeId = new Guid("70000000-0000-0000-0000-000000000004"),
                             ProductId = new Guid("10000000-0000-0000-0000-000000000001"),
                             ProductRoleId = new Guid("50000000-0000-0000-0000-000000000007")
+                        },
+                        new
+                        {
+                            Id = new Guid("90000000-0000-0000-0000-000000000008"),
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            OrganizationTypeId = new Guid("70000000-0000-0000-0000-000000000002"),
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000005"),
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000009")
+                        },
+                        new
+                        {
+                            Id = new Guid("90000000-0000-0000-0000-000000000009"),
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            OrganizationTypeId = new Guid("70000000-0000-0000-0000-000000000003"),
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000005"),
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000009")
+                        },
+                        new
+                        {
+                            Id = new Guid("90000000-0000-0000-0000-000000000010"),
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            OrganizationTypeId = new Guid("70000000-0000-0000-0000-000000000004"),
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000005"),
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000009")
+                        },
+                        new
+                        {
+                            Id = new Guid("90000000-0000-0000-0000-000000000011"),
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            OrganizationTypeId = new Guid("70000000-0000-0000-0000-000000000005"),
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000005"),
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000009")
+                        },
+                        new
+                        {
+                            Id = new Guid("90000000-0000-0000-0000-000000000012"),
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            IsActive = true,
+                            OrganizationTypeId = new Guid("70000000-0000-0000-0000-000000000001"),
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000005"),
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000010")
                         });
                 });
 
@@ -1527,7 +1868,70 @@ namespace Identity.Infrastructure.Persistence.Migrations
                             IsActive = true,
                             Name = "SynqFund Applicant Portal",
                             ProductId = new Guid("10000000-0000-0000-0000-000000000001")
+                        },
+                        new
+                        {
+                            Id = new Guid("50000000-0000-0000-0000-000000000009"),
+                            Code = "XENIA_USER",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "User access to the Xenia assistant",
+                            IsActive = true,
+                            Name = "Xenia User",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000005")
+                        },
+                        new
+                        {
+                            Id = new Guid("50000000-0000-0000-0000-000000000010"),
+                            Code = "XENIA_ADMIN",
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Administrative access to Xenia assistant configuration",
+                            IsActive = true,
+                            Name = "Xenia Admin",
+                            ProductId = new Guid("10000000-0000-0000-0000-000000000005")
                         });
+                });
+
+            modelBuilder.Entity("Identity.Domain.RefreshTokenLedgerEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("DeviceSessionId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("IssuedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("RotatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("RotatedIntoLedgerEntryId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<Guid>("TokenFamilyId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceSessionId");
+
+                    b.HasIndex("TokenFamilyId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("idt_RefreshTokenLedgerEntries", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.RelationshipType", b =>
@@ -1690,28 +2094,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("30000000-0000-0000-0000-000000000002"),
-                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Tenant-level administration access",
-                            IsSystemRole = true,
-                            Name = "TenantAdmin",
-                            Scope = "Tenant",
-                            TenantId = new Guid("20000000-0000-0000-0000-000000000001"),
-                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Id = new Guid("30000000-0000-0000-0000-000000000003"),
-                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Standard user access",
-                            IsSystemRole = true,
-                            Name = "StandardUser",
-                            Scope = "Tenant",
-                            TenantId = new Guid("20000000-0000-0000-0000-000000000001"),
-                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
                             Id = new Guid("30000000-0000-0000-0000-000000000004"),
                             CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Platform operations — read access to all areas, limited management",
@@ -1756,6 +2138,17 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("30000000-0000-0000-0000-000000000002"),
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Tenant-level administration access",
+                            IsSystemRole = true,
+                            Name = "TenantAdmin",
+                            Scope = "Tenant",
+                            TenantId = new Guid("20000000-0000-0000-0000-000000000001"),
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
                             Id = new Guid("30000000-0000-0000-0000-000000000008"),
                             CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Tenant manager — manages users and settings within a tenant",
@@ -1786,6 +2179,17 @@ namespace Identity.Infrastructure.Persistence.Migrations
                             Scope = "Tenant",
                             TenantId = new Guid("20000000-0000-0000-0000-000000000001"),
                             UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("30000000-0000-0000-0000-000000000003"),
+                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Description = "Standard user access",
+                            IsSystemRole = true,
+                            Name = "StandardUser",
+                            Scope = "Tenant",
+                            TenantId = new Guid("20000000-0000-0000-0000-000000000001"),
+                            UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
                 });
 
@@ -1811,6 +2215,62 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("RoleId");
 
                     b.ToTable("idt_RoleCapabilityAssignments", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            RoleId = new Guid("30000000-0000-0000-0000-000000000002"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000030"),
+                            AssignedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            RoleId = new Guid("30000000-0000-0000-0000-000000000002"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000031"),
+                            AssignedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            RoleId = new Guid("30000000-0000-0000-0000-000000000002"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000032"),
+                            AssignedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            RoleId = new Guid("30000000-0000-0000-0000-000000000002"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000033"),
+                            AssignedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            RoleId = new Guid("30000000-0000-0000-0000-000000000002"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000034"),
+                            AssignedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            RoleId = new Guid("30000000-0000-0000-0000-000000000002"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000035"),
+                            AssignedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            RoleId = new Guid("30000000-0000-0000-0000-000000000002"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000036"),
+                            AssignedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            RoleId = new Guid("30000000-0000-0000-0000-000000000002"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000037"),
+                            AssignedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            RoleId = new Guid("30000000-0000-0000-0000-000000000003"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000030"),
+                            AssignedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
                 });
 
             modelBuilder.Entity("Identity.Domain.RolePermissionMapping", b =>
@@ -1936,6 +2396,71 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000003"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000045")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000003"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000046")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000003"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000047")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000003"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000050")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000003"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000051")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000004"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000045")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000005"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000045")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000005"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000046")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000005"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000047")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000005"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000048")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000005"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000049")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000005"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000050")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000005"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000051")
+                        },
+                        new
+                        {
                             ProductRoleId = new Guid("50000000-0000-0000-0000-000000000006"),
                             PermissionId = new Guid("60000000-0000-0000-0000-000000000020")
                         },
@@ -1988,6 +2513,26 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         {
                             ProductRoleId = new Guid("50000000-0000-0000-0000-000000000008"),
                             PermissionId = new Guid("60000000-0000-0000-0000-000000000028")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000009"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000063")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000010"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000063")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000010"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000064")
+                        },
+                        new
+                        {
+                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000010"),
+                            PermissionId = new Guid("60000000-0000-0000-0000-000000000065")
                         });
                 });
 
@@ -2171,8 +2716,8 @@ namespace Identity.Infrastructure.Persistence.Migrations
                             Code = "LEGALSYNQ",
                             CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             IsActive = true,
-                            Name = "LegalSynq Internal",
                             IsVerificationRetryExhausted = false,
+                            Name = "LegalSynq Internal",
                             ProvisioningFailureStage = "None",
                             ProvisioningStatus = "Active",
                             UpdatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
@@ -2356,6 +2901,10 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(0);
 
+                    b.Property<string>("Title")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -2469,36 +3018,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("idt_UserOrganizationMemberships", (string)null);
-                });
-
-            modelBuilder.Entity("Identity.Domain.UserTenant", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("tinyint(1)")
-                        .HasDefaultValue(true);
-
-                    b.Property<DateTime>("JoinedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId");
-
-                    b.HasIndex("UserId", "TenantId")
-                        .IsUnique();
-
-                    b.ToTable("idt_UserTenants", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.UserProductAccess", b =>
@@ -2620,6 +3139,47 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_UserRoleAssignments_TenantId_UserId_RoleCode");
 
                     b.ToTable("idt_UserRoleAssignments", (string)null);
+                });
+
+            modelBuilder.Entity("Identity.Domain.UserTenant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime>("JoinedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId", "TenantId")
+                        .IsUnique();
+
+                    b.ToTable("idt_UserTenants", (string)null);
+                });
+
+            modelBuilder.Entity("Identity.Domain.DeviceSession", b =>
+                {
+                    b.HasOne("Identity.Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Identity.Domain.Organization", b =>
@@ -2802,6 +3362,18 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("Identity.Domain.RefreshTokenLedgerEntry", b =>
+                {
+                    b.HasOne("Identity.Domain.DeviceSession", "DeviceSession")
+                        .WithMany()
+                        .HasForeignKey("DeviceSessionId")
+                        .HasConstraintName("FK_idt_RTLE_DeviceSession")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DeviceSession");
                 });
 
             modelBuilder.Entity("Identity.Domain.Role", b =>

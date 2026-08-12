@@ -28,6 +28,7 @@ import type {
   NetworkDetail,
   NetworkProviderMarker,
   NetworkReferralPage,
+  SpecialtyOption,
 } from '@/types/careconnect';
 import type { OrgTypeValue } from '@/types';
 
@@ -46,6 +47,11 @@ function toQs(params: Record<string, unknown>): string {
 // DO NOT import this in Client Components — use careconnect-api.ts instead.
 
 export const careConnectServerApi = {
+  specialties: {
+    list: () =>
+      serverApi.get<SpecialtyOption[]>(`/careconnect/api/specialties`),
+  },
+
   access: {
     getMyProductAccess: (productCode: string) =>
       serverApi.get<Array<{

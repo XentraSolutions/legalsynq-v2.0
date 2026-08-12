@@ -85,18 +85,24 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
 
             cmd.CommandText = $@"
                 INSERT INTO `idt_Users`
-                    (`Id`, `TenantId`, `Email`, `PasswordHash`,
+                    (`Id`, `Email`, `PasswordHash`,
                      `FirstName`, `LastName`, `IsActive`,
                      `CreatedAtUtc`, `UpdatedAtUtc`)
                 VALUES
-                    ('{platformUserId1}', '{PlatformTenantId}',
+                    ('{platformUserId1}',
                      'platform1@sup002.test', 'hash',
                      'Platform', 'UserOne', 1,
                      '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
-                    ('{platformUserId2}', '{PlatformTenantId}',
+                    ('{platformUserId2}',
                      'platform2@sup002.test', 'hash',
                      'Platform', 'UserTwo', 1,
-                     '2024-01-01 00:00:00', '2024-01-01 00:00:00');";
+                     '2024-01-01 00:00:00', '2024-01-01 00:00:00');
+
+                INSERT INTO `idt_UserTenants`
+                    (`Id`, `UserId`, `TenantId`, `IsActive`, `JoinedAtUtc`)
+                VALUES
+                    ('{Guid.CreateVersion7()}', '{platformUserId1}', '{PlatformTenantId}', 1, '2024-01-01 00:00:00'),
+                    ('{Guid.CreateVersion7()}', '{platformUserId2}', '{PlatformTenantId}', 1, '2024-01-01 00:00:00');";
             await cmd.ExecuteNonQueryAsync();
 
             // ── Step 3: Strip the three 20260426 migration history rows ────────
@@ -151,14 +157,18 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
             // 5b. Query ALL active platform-tenant users from the database — not just
             //     the two we seeded — so that any future seeded user is also covered.
             cmd.CommandText = $@"
-                SELECT `Id` FROM `idt_Users`
-                WHERE  `TenantId` = '{PlatformTenantId}'
-                  AND  `IsActive` = 1;";
+                SELECT u.`Id`
+                FROM `idt_Users` u
+                INNER JOIN `idt_UserTenants` ut
+                        ON ut.`UserId` = u.`Id`
+                       AND ut.`TenantId` = '{PlatformTenantId}'
+                       AND ut.`IsActive` = 1
+                WHERE u.`IsActive` = 1;";
             var allPlatformUserIds = new List<string>();
             await using (var reader = await cmd.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
-                    allPlatformUserIds.Add(reader.GetString(0));
+                    allPlatformUserIds.Add(reader.GetGuid(0).ToString());
             }
 
             Assert.NotEmpty(allPlatformUserIds);
@@ -220,18 +230,24 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
 
             cmd.CommandText = $@"
                 INSERT INTO `idt_Users`
-                    (`Id`, `TenantId`, `Email`, `PasswordHash`,
+                    (`Id`, `Email`, `PasswordHash`,
                      `FirstName`, `LastName`, `IsActive`,
                      `CreatedAtUtc`, `UpdatedAtUtc`)
                 VALUES
-                    ('{activeUserId}', '{PlatformTenantId}',
+                    ('{activeUserId}',
                      'active@sup002inactive.test', 'hash',
                      'Active', 'PlatformUser', 1,
                      '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
-                    ('{inactiveUserId}', '{PlatformTenantId}',
+                    ('{inactiveUserId}',
                      'inactive@sup002inactive.test', 'hash',
                      'Inactive', 'PlatformUser', 0,
-                     '2024-01-01 00:00:00', '2024-01-01 00:00:00');";
+                     '2024-01-01 00:00:00', '2024-01-01 00:00:00');
+
+                INSERT INTO `idt_UserTenants`
+                    (`Id`, `UserId`, `TenantId`, `IsActive`, `JoinedAtUtc`)
+                VALUES
+                    ('{Guid.CreateVersion7()}', '{activeUserId}', '{PlatformTenantId}', 1, '2024-01-01 00:00:00'),
+                    ('{Guid.CreateVersion7()}', '{inactiveUserId}', '{PlatformTenantId}', 1, '2024-01-01 00:00:00');";
             await cmd.ExecuteNonQueryAsync();
 
             // ── Step 3: Strip the three 20260426 migration history rows ────────
@@ -347,18 +363,24 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
 
             cmd.CommandText = $@"
                 INSERT INTO `idt_Users`
-                    (`Id`, `TenantId`, `Email`, `PasswordHash`,
+                    (`Id`, `Email`, `PasswordHash`,
                      `FirstName`, `LastName`, `IsActive`,
                      `CreatedAtUtc`, `UpdatedAtUtc`)
                 VALUES
-                    ('{platformUserId1}', '{PlatformTenantId}',
+                    ('{platformUserId1}',
                      'idempotent1@sup002.test', 'hash',
                      'Idempotent', 'UserOne', 1,
                      '2024-01-01 00:00:00', '2024-01-01 00:00:00'),
-                    ('{platformUserId2}', '{PlatformTenantId}',
+                    ('{platformUserId2}',
                      'idempotent2@sup002.test', 'hash',
                      'Idempotent', 'UserTwo', 1,
-                     '2024-01-01 00:00:00', '2024-01-01 00:00:00');";
+                     '2024-01-01 00:00:00', '2024-01-01 00:00:00');
+
+                INSERT INTO `idt_UserTenants`
+                    (`Id`, `UserId`, `TenantId`, `IsActive`, `JoinedAtUtc`)
+                VALUES
+                    ('{Guid.CreateVersion7()}', '{platformUserId1}', '{PlatformTenantId}', 1, '2024-01-01 00:00:00'),
+                    ('{Guid.CreateVersion7()}', '{platformUserId2}', '{PlatformTenantId}', 1, '2024-01-01 00:00:00');";
             await cmd.ExecuteNonQueryAsync();
 
             // Ensure no pre-existing SRAs so the first boot starts from a clean slate.
@@ -390,14 +412,18 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
 
             // Collect all active platform-tenant users (not just the two we seeded).
             cmd.CommandText = $@"
-                SELECT `Id` FROM `idt_Users`
-                WHERE  `TenantId` = '{PlatformTenantId}'
-                  AND  `IsActive` = 1;";
+                SELECT u.`Id`
+                FROM `idt_Users` u
+                INNER JOIN `idt_UserTenants` ut
+                        ON ut.`UserId` = u.`Id`
+                       AND ut.`TenantId` = '{PlatformTenantId}'
+                       AND ut.`IsActive` = 1
+                WHERE u.`IsActive` = 1;";
             var allPlatformUserIds = new List<string>();
             await using (var reader = await cmd.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
-                    allPlatformUserIds.Add(reader.GetString(0));
+                    allPlatformUserIds.Add(reader.GetGuid(0).ToString());
             }
 
             Assert.NotEmpty(allPlatformUserIds);
@@ -462,14 +488,19 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
 
             cmd.CommandText = $@"
                 INSERT INTO `idt_Users`
-                    (`Id`, `TenantId`, `Email`, `PasswordHash`,
+                    (`Id`, `Email`, `PasswordHash`,
                      `FirstName`, `LastName`, `IsActive`,
                      `CreatedAtUtc`, `UpdatedAtUtc`)
                 VALUES
-                    ('{platformUserId}', '{PlatformTenantId}',
+                    ('{platformUserId}',
                      'manual-role@sup002.test', 'hash',
                      'Manual', 'RoleUser', 1,
-                     '2024-01-01 00:00:00', '2024-01-01 00:00:00');";
+                     '2024-01-01 00:00:00', '2024-01-01 00:00:00');
+
+                INSERT INTO `idt_UserTenants`
+                    (`Id`, `UserId`, `TenantId`, `IsActive`, `JoinedAtUtc`)
+                VALUES
+                    ('{Guid.CreateVersion7()}', '{platformUserId}', '{PlatformTenantId}', 1, '2024-01-01 00:00:00');";
             await cmd.ExecuteNonQueryAsync();
 
             // ── Step 3: Manually insert a pre-existing active GLOBAL SRA ──────
@@ -595,6 +626,23 @@ public sealed class PlatformAdminRoleSeedingTests : IAsyncLifetime
                     .Where(d => d.ServiceType == typeof(Microsoft.Extensions.Hosting.IHostedService))
                     .ToList();
                 foreach (var d in hosted) services.Remove(d);
+
+                // Program registers the DbContext before WebApplicationFactory's
+                // configuration callback runs. Replace it explicitly so startup
+                // guards and migrations operate on this test's clean container,
+                // never on the developer database from appsettings.
+                var dbDescriptors = services
+                    .Where(d =>
+                        d.ServiceType == typeof(IdentityDbContext) ||
+                        d.ServiceType == typeof(DbContextOptions<IdentityDbContext>) ||
+                        d.ServiceType == typeof(DbContextOptions))
+                    .ToList();
+                foreach (var d in dbDescriptors) services.Remove(d);
+
+                services.AddDbContext<IdentityDbContext>(options =>
+                    options.UseMySql(
+                        connectionString,
+                        new MySqlServerVersion(new Version(8, 0, 0))));
             });
         });
 }

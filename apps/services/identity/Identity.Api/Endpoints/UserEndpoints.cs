@@ -115,6 +115,7 @@ public static class UserEndpoints
                 id                = u.Id,
                 tenantId          = u.TenantId,
                 email             = u.Email,
+                title             = u.Title,
                 firstName         = u.FirstName,
                 lastName          = u.LastName,
                 isActive          = u.IsActive,

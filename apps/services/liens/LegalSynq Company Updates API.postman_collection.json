@@ -1,0 +1,104 @@
+{
+  "info": {
+    "_postman_id": "b60af092-7f52-4d88-80a4-ccb7e59229c8",
+    "name": "LegalSynq Company Updates API",
+    "description": "Focused requests for updating a Selling company and one of its contact persons. Set the collection variables before running a request. Use a fresh idempotencyKey for a new mutation and reuse it only when retrying the exact same request body.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{sellerToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Update Company",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Idempotency-Key",
+            "value": "{{idempotencyKey}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"linkedTenantId\": null,\n  \"name\": \"Postman Company Updated\",\n  \"addressLine1\": \"200 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90002\",\n  \"phone\": \"+15555550101\",\n  \"email\": \"company.updated@example.test\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}",
+        "description": "Updates the selected company. Company type, tenant ownership, and organization ownership cannot be changed through this request. Requires lien_sale:update and a fresh Idempotency-Key for a new payload."
+      }
+    },
+    {
+      "name": "Update Company Contact Person",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Idempotency-Key",
+            "value": "{{idempotencyKey}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"contactPersonTypeId\": \"{{contactPersonTypeId}}\",\n  \"firstName\": \"Alex\",\n  \"lastName\": \"Contact Updated\",\n  \"addressLine1\": \"200 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"postalCode\": \"90002\",\n  \"phone\": \"+15555550102\",\n  \"email\": \"alex.updated@example.test\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts/{{companyContactId}}",
+        "description": "Updates one contact person belonging to the selected company. contactPersonTypeId must belong to the company's type. Requires lien_sale:update and a fresh Idempotency-Key for a new payload."
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5010"
+    },
+    {
+      "key": "sellerToken",
+      "value": ""
+    },
+    {
+      "key": "idempotencyKey",
+      "value": "replace-with-a-new-unique-key"
+    },
+    {
+      "key": "companyId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "companyContactId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "contactPersonTypeId",
+      "value": "20000000-0000-0000-0000-000000000001"
+    }
+  ]
+}

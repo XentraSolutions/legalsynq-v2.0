@@ -100,7 +100,7 @@ internal sealed class EfXeniaConfigurationService : IXeniaConfigurationService
         }
         else
         {
-            existing.UpdateValue(value);
+            existing.UpdateValue(value, isSecret);
         }
 
         await _db.SaveChangesAsync(ct);

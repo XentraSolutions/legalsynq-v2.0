@@ -52,6 +52,27 @@ public class HttpIdentityOrganizationServiceTests
         Assert.Equal(JsonValueKind.Null, phoneProp.ValueKind);
     }
 
+    [Fact]
+    public async Task RegisterUserDirectlyAsync_SendsTitleInSelfRegisterPayload()
+    {
+        var handler = new CapturingHandler("""{"userId":"0f7eb0fa-5d7f-4778-b0c5-0a5f260cb2f4","isNew":true}""");
+        var sut = CreateSut(handler);
+
+        _ = await sut.RegisterUserDirectlyAsync(
+            Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            Guid.Parse("22222222-2222-2222-2222-222222222222"),
+            "user@example.com",
+            "Password123!",
+            "Casey",
+            "Referrer",
+            "+15551234567",
+            CancellationToken.None,
+            title: "Dr.");
+
+        Assert.NotNull(handler.JsonBody);
+        Assert.Equal("Dr.", handler.JsonBody!.RootElement.GetProperty("title").GetString());
+    }
+
     private static HttpIdentityOrganizationService CreateSut(CapturingHandler handler)
     {
         var client = new HttpClient(handler)

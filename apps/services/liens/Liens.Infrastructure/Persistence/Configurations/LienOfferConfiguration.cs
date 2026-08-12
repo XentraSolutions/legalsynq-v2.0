@@ -17,6 +17,7 @@ public class LienOfferConfiguration : IEntityTypeConfiguration<LienOffer>
         builder.Property(o => o.LienId).IsRequired();
 
         builder.Property(o => o.BuyerOrgId).IsRequired();
+        builder.Property(o => o.BuyerCompanyId);
         builder.Property(o => o.SellerOrgId).IsRequired();
 
         builder.Property(o => o.OfferAmount)
@@ -55,6 +56,9 @@ public class LienOfferConfiguration : IEntityTypeConfiguration<LienOffer>
         builder.HasIndex(o => new { o.TenantId, o.SellerOrgId, o.Status })
             .HasDatabaseName("IX_LienOffers_TenantId_SellerOrgId_Status");
 
+        builder.HasIndex(o => new { o.TenantId, o.SellerOrgId, o.OfferedAtUtc })
+            .HasDatabaseName("IX_LienOffers_Tenant_Seller_OfferedAt");
+
         builder.HasIndex(o => new { o.TenantId, o.Status })
             .HasDatabaseName("IX_LienOffers_TenantId_Status");
 
@@ -62,5 +66,7 @@ public class LienOfferConfiguration : IEntityTypeConfiguration<LienOffer>
             .WithMany()
             .HasForeignKey(o => o.LienId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasOne<Company>().WithMany().HasForeignKey(o => o.BuyerCompanyId).OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -19,7 +19,9 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<LiensDbCon
             ?? throw new InvalidOperationException("Connection string 'LiensDb' is not configured.");
 
         var optionsBuilder = new DbContextOptionsBuilder<LiensDbContext>();
-        optionsBuilder.UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 0)));
+        optionsBuilder.UseMySql(
+            LiensMySqlConnectionString.Configure(connectionString),
+            new MySqlServerVersion(new Version(8, 0, 0)));
 
         return new LiensDbContext(optionsBuilder.Options);
     }

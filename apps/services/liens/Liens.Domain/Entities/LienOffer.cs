@@ -10,6 +10,7 @@ public class LienOffer : AuditableEntity
     public Guid LienId        { get; private set; }
 
     public Guid BuyerOrgId    { get; private set; }
+    public Guid? BuyerCompanyId { get; private set; }
     public Guid SellerOrgId   { get; private set; }
 
     public decimal OfferAmount { get; private set; }
@@ -25,6 +26,12 @@ public class LienOffer : AuditableEntity
     public DateTime? WithdrawnAtUtc   { get; private set; }
 
     private LienOffer() { }
+
+    public void LinkCanonicalBuyer(Guid? companyId)
+    {
+        if (companyId == Guid.Empty) throw new ArgumentException("Canonical buyer company id cannot be empty.", nameof(companyId));
+        BuyerCompanyId = companyId;
+    }
 
     public static LienOffer Create(
         Guid tenantId,

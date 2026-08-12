@@ -1,8 +1,17 @@
 'use client';
 
-import { useState, useEffect, useTransition, useRef } from 'react';
-import { postReferrerComment } from './actions';
+import { useState, useEffect, useTransition, useRef, useCallback } from 'react';
+import { postPublicThreadComment } from '../lib/public-thread-comments';
 import { ReferrerPortalAccessStatuses, type ReferrerPortalAccessStatusValue } from '@/types/careconnect';
+import {
+  CARECONNECT_MESSAGE_ALLOWED_TYPES,
+  CARECONNECT_MESSAGE_MAX_FILES,
+  formatCareConnectAttachmentBytes,
+  makeSelectedCareConnectMessageFiles,
+  type SelectedCareConnectMessageFile,
+} from '@/lib/careconnect-message-attachments';
+import type { ReferralMessageAttachment } from '@/types/careconnect';
+import { formatReferralLocation } from '@/lib/referral-location';
 
 interface Comment {
   id:         string;
@@ -10,6 +19,7 @@ interface Comment {
   senderName: string;
   message:    string;
   createdAtUtc: string;
+  attachments?: ReferralMessageAttachment[];
 }
 
 interface ThreadData {
@@ -20,6 +30,13 @@ interface ThreadData {
   service:            string;
   urgency?:           string;
   providerName:       string;
+  // Referral location — the specific facility this referral was routed to, falling back
+  // to the provider's own address for legacy/single-location referrals.
+  facilityName?:          string | null;
+  locationAddressLine1?:  string;
+  locationCity?:          string;
+  locationState?:         string;
+  locationPostalCode?:    string;
   referrerFirmName?:  string | null;
   referrerName:       string | null;
   referrerEmail:      string | null;
@@ -172,10 +189,15 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
   const [timezone, setTimezone] = useState('UTC');
   const [comments,  setComments] = useState<Comment[]>(data.comments);
   const [message,   setMessage]  = useState('');
+  const [files,     setFiles]    = useState<SelectedCareConnectMessageFile[]>([]);
+  const [fileError, setFileError] = useState('');
   const [formError, setFormError] = useState('');
   const [sent,      setSent]      = useState(false);
   const [isPending, startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attLoading, setAttLoading] = useState<Record<string, boolean>>({});
+  const [attError, setAttError] = useState<Record<string, string | null>>({});
 
   useEffect(() => { bottomRef.current?.scrollIntoView(); }, []);
 
@@ -208,19 +230,61 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
     setTimezone(resolveBrowserTimezone());
   }, []);
 
+  const addMessageFiles = useCallback((incoming: File[]) => {
+    const result = makeSelectedCareConnectMessageFiles(incoming, files.length);
+    setFileError(result.error ?? '');
+    if (result.files.length > 0) {
+      setFiles(prev => [...prev, ...result.files]);
+    }
+  }, [files.length]);
+
+  const removeMessageFile = useCallback((id: string) => {
+    setFileError('');
+    setFiles(prev => prev.filter(file => file.id !== id));
+  }, []);
+
+  const openAttachment = useCallback(async (attachmentId: string) => {
+    setAttLoading(prev => ({ ...prev, [attachmentId]: true }));
+    setAttError(prev => ({ ...prev, [attachmentId]: null }));
+    try {
+      const url =
+        `/api/public/careconnect/api/referrals/${data.referralId}/public-attachments/${attachmentId}/url` +
+        `?token=${encodeURIComponent(token)}&download=false`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        setAttError(prev => ({ ...prev, [attachmentId]: 'Could not load this attachment. Please try again.' }));
+        return;
+      }
+      const body = await res.json() as { url?: string };
+      if (!body.url) {
+        setAttError(prev => ({ ...prev, [attachmentId]: 'Attachment URL unavailable.' }));
+        return;
+      }
+      window.open(body.url, '_blank', 'noopener,noreferrer');
+    } catch {
+      setAttError(prev => ({ ...prev, [attachmentId]: 'Network error. Please try again.' }));
+    } finally {
+      setAttLoading(prev => ({ ...prev, [attachmentId]: false }));
+    }
+  }, [data.referralId, token]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
+    setFileError('');
     setSent(false);
     startTransition(async () => {
-      const result = await postReferrerComment(token, message);
+      const result = await postPublicThreadComment(token, 'referrer', message, files);
       if (!result.success) { setFormError(result.error ?? 'An error occurred.'); return; }
       if (result.comment) setComments(prev => [...prev, result.comment!]);
       setMessage('');
+      setFiles([]);
       setSent(true);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     });
   };
+
+  const location = formatReferralLocation(data);
 
   return (
     <div style={s.page}>
@@ -241,6 +305,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
             <FieldBlock label="Patient"   value={data.clientName} />
             <FieldBlock label="Service"   value={data.service} />
             <FieldBlock label="Provider"  value={data.providerName} />
+            {location && <FieldBlock label="Provider Location" value={location} />}
             <FieldBlock label="Submitted" value={formatDate(data.createdAtUtc, timezone)} />
             <FieldBlock label="Urgency" value={data.urgency ?? '—'} />
             <FieldBlock label="Type of Treatment" value={data.treatmentTypeName ?? '—'} />
@@ -310,7 +375,16 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
                 No messages yet. Use the form below to send a message to the provider.
               </p>
             ) : (
-              comments.map(c => <CommentBubble key={c.id} comment={c} timezone={timezone} />)
+              comments.map(c => (
+                <CommentBubble
+                  key={c.id}
+                  comment={c}
+                  timezone={timezone}
+                  onOpenAttachment={openAttachment}
+                  attLoading={attLoading}
+                  attError={attError}
+                />
+              ))
             )}
             <div ref={bottomRef} />
           </div>
@@ -331,7 +405,7 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
           )}
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: 18 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Message *</label>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Message</label>
               <textarea
                 style={s.textarea}
                 value={message}
@@ -339,9 +413,69 @@ export function FirmStatusClient({ token, data, portalAccessStatus, loginUrl, en
                 placeholder="Type your message here…"
                 rows={4}
                 maxLength={4000}
-                required
               />
               <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af', textAlign: 'right' as const }}>{message.length}/4000</p>
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={CARECONNECT_MESSAGE_ALLOWED_TYPES.join(',')}
+                onChange={e => {
+                  addMessageFiles(Array.from(e.target.files ?? []));
+                  e.target.value = '';
+                }}
+                style={{ display: 'none' }}
+                aria-hidden="true"
+                tabIndex={-1}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isPending || files.length >= CARECONNECT_MESSAGE_MAX_FILES}
+                style={{
+                  display: 'flex',
+                  width: '100%',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  border: '1px dashed #cbd5e1',
+                  background: '#f8fafc',
+                  color: '#475569',
+                  borderRadius: 6,
+                  padding: '9px 12px',
+                  cursor: isPending || files.length >= CARECONNECT_MESSAGE_MAX_FILES ? 'not-allowed' : 'pointer',
+                  opacity: isPending || files.length >= CARECONNECT_MESSAGE_MAX_FILES ? 0.65 : 1,
+                  fontSize: 13,
+                  fontFamily: 'inherit',
+                }}
+              >
+                <span>Attach files</span>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>{files.length}/{CARECONNECT_MESSAGE_MAX_FILES}</span>
+              </button>
+              {files.length > 0 && (
+                <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {files.map(selected => (
+                    <li key={selected.id} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #e2e8f0', background: '#f8fafc', borderRadius: 6, padding: '6px 8px', fontSize: 12 }}>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#334155' }}>
+                        {selected.file.name}
+                      </span>
+                      <span style={{ color: '#94a3b8', flexShrink: 0 }}>{formatCareConnectAttachmentBytes(selected.file.size)}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeMessageFile(selected.id)}
+                        disabled={isPending}
+                        aria-label={`Remove ${selected.file.name}`}
+                        style={{ border: 'none', background: 'transparent', color: '#94a3b8', cursor: isPending ? 'not-allowed' : 'pointer', padding: 2, fontSize: 16, lineHeight: 1 }}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {fileError && <p style={{ margin: '6px 0 0', fontSize: 12, color: '#dc2626' }}>{fileError}</p>}
             </div>
             <button type="submit" disabled={isPending} style={{ ...s.btnPrimary, width: '100%', boxSizing: 'border-box' as const, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}>
               {isPending ? 'Sending…' : 'Send Message'}
@@ -366,9 +500,22 @@ function FieldBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CommentBubble({ comment, timezone }: { comment: Comment; timezone: string }) {
+function CommentBubble({
+  comment,
+  timezone,
+  onOpenAttachment,
+  attLoading,
+  attError,
+}: {
+  comment: Comment;
+  timezone: string;
+  onOpenAttachment: (attachmentId: string) => void;
+  attLoading: Record<string, boolean>;
+  attError: Record<string, string | null>;
+}) {
   const isProvider = comment.senderType === 'provider';
   const isSelf = !isProvider;
+  const attachments = comment.attachments ?? [];
   return (
     <div style={{ display: 'flex', flexDirection: isSelf ? 'row-reverse' : 'row', gap: 10, alignItems: 'flex-start' }}>
       <div style={{
@@ -385,14 +532,52 @@ function CommentBubble({ comment, timezone }: { comment: Comment; timezone: stri
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{comment.senderName}</span>
           <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAtUtc, timezone)}</span>
         </div>
-        <div style={{
-          background: isProvider ? '#eff6ff' : '#fef3c7',
-          border: `1px solid ${isProvider ? '#bfdbfe' : '#fde68a'}`,
-          borderRadius: isSelf ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
-          padding: '10px 14px',
-        }}>
-          <p style={{ margin: 0, fontSize: 14, color: '#111827', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{comment.message}</p>
-        </div>
+        {comment.message.trim().length > 0 && (
+          <div style={{
+            background: isProvider ? '#eff6ff' : '#fef3c7',
+            border: `1px solid ${isProvider ? '#bfdbfe' : '#fde68a'}`,
+            borderRadius: isSelf ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
+            padding: '10px 14px',
+          }}>
+            <p style={{ margin: 0, fontSize: 14, color: '#111827', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{comment.message}</p>
+          </div>
+        )}
+        {attachments.length > 0 && (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, alignItems: isSelf ? 'flex-end' : 'flex-start' }}>
+            {attachments.map(att => {
+              const loading = attLoading[att.id] ?? false;
+              const error = attError[att.id] ?? null;
+              return (
+                <div key={att.id} style={{ maxWidth: '100%' }}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenAttachment(att.id)}
+                    disabled={loading}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      maxWidth: '100%',
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      color: '#334155',
+                      borderRadius: 6,
+                      padding: '5px 8px',
+                      fontSize: 12,
+                      cursor: loading ? 'wait' : 'pointer',
+                      opacity: loading ? 0.7 : 1,
+                    }}
+                    title={`View ${att.fileName}`}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.fileName}</span>
+                    <span style={{ color: '#94a3b8', flexShrink: 0 }}>{loading ? 'Opening...' : formatCareConnectAttachmentBytes(att.fileSizeBytes)}</span>
+                  </button>
+                  {error && <p style={{ margin: '4px 0 0', fontSize: 12, color: '#dc2626' }}>{error}</p>}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

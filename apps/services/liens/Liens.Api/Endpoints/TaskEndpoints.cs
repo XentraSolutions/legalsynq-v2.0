@@ -1,9 +1,11 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
+using Liens.Api.Serialization;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
+using Liens.Domain.Enums;
 
 namespace Liens.Api.Endpoints;
 
@@ -29,6 +31,11 @@ public static class TaskEndpoints
         public string? status { get; init; }
         public string? assignedTo { get; init; }
         public string? description { get; init; }
+    }
+
+    private sealed class LegacyGetAndUpdateTaskRequest
+    {
+        public string? StatusId { get; init; }
     }
 
     public static void MapTaskEndpoints(this WebApplication app)
@@ -81,6 +88,26 @@ public static class TaskEndpoints
         // under the tasks base path becomes DELETE /api/liens/tasks/legacy/task/delete/{taskId}.
         group.MapDelete("/legacy/task/delete/{taskId}", DeleteTaskLegacy)
             .RequirePermission(LiensPermissions.TaskEditAll);
+
+        var caseLegacy = app.MapGroup("/api/liens/cases")
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductAccess(LiensPermissions.ProductCode)
+            .WithTags("Tasks");
+
+        caseLegacy.MapPost("/task/create", CreateTaskLegacy)
+            .RequirePermission(LiensPermissions.TaskCreate);
+        caseLegacy.MapPost("/tasks/create", CreateTaskLegacy)
+            .RequirePermission(LiensPermissions.TaskCreate);
+        caseLegacy.MapGet("/get-task/{caseId:guid}/{taskId?}", GetTasksLegacy)
+            .RequirePermission(LiensPermissions.TaskRead);
+        caseLegacy.MapPatch("/task/update", UpdateTaskLegacy)
+            .RequirePermission(LiensPermissions.TaskEditAll);
+        caseLegacy.MapPost("/task/update", UpdateTaskLegacy)
+            .RequirePermission(LiensPermissions.TaskEditAll);
+        caseLegacy.MapDelete("/task/delete/{taskId}", DeleteTaskLegacy)
+            .RequirePermission(LiensPermissions.TaskEditAll);
+        caseLegacy.MapPost("/task/{taskId}", GetAndUpdateTaskLegacy)
+            .RequirePermission(LiensPermissions.TaskEditOwn);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>
@@ -231,6 +258,17 @@ public static class TaskEndpoints
             noteFields.Add($"title={request.title.Trim()}");
         if (!string.IsNullOrWhiteSpace(request.status))
             noteFields.Add($"status={request.status.Trim()}");
+        var priority = ResolveLegacyTaskPriority(request.priority);
+        if (!string.IsNullOrWhiteSpace(request.priority) && priority is null)
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = $"Invalid priority: '{request.priority.Trim()}'.",
+            });
+        }
+        if (priority is not null)
+            noteFields.Add($"priorityId={priority.Value.LegacyId}");
 
         try
         {
@@ -240,7 +278,7 @@ public static class TaskEndpoints
                 TaskType    = "LegacyCaseTask",
                 Description = request.description?.Trim() ?? request.title?.Trim() ?? string.Empty,
                 AssignedTo  = request.assignedTo?.Trim() ?? string.Empty,
-                Priority    = request.priority?.Trim(),
+                Priority    = priority?.ServicingValue,
                 CaseId      = caseId,
                 DueDate     = dueDate,
                 Notes       = noteFields.Count > 0 ? string.Join("; ", noteFields) : null,
@@ -318,6 +356,9 @@ public static class TaskEndpoints
                 {
                     var noteFields = ParseLegacyNoteFields(i.Notes);
                     var status = noteFields.GetValueOrDefault("status", i.Status);
+                    var priorityId = noteFields.GetValueOrDefault(
+                        "priorityId",
+                        ToLegacyTaskPriorityId(i.Priority));
                     return new
                     {
                         taskId = i.Id.ToString(),
@@ -325,12 +366,12 @@ public static class TaskEndpoints
                         title = noteFields.GetValueOrDefault("title", string.Empty),
                         description = i.Description,
                         dueDate = i.DueDate?.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
-                        priority = i.Priority,
-                        priorityId = i.Priority,
+                        priority = ToLegacyTaskPriorityName(priorityId),
+                        priorityId,
                         status,
                         statusId = status,
                         assignedTo = i.AssignedTo,
-                        createdAt = i.CreatedAtUtc.ToString("MM/dd/yyyy hh:mm tt", System.Globalization.CultureInfo.InvariantCulture),
+                        createdAt = PacificTimeHelper.FormatTimestamp(i.CreatedAtUtc),
                     };
                 })
                 .ToList();
@@ -394,6 +435,26 @@ public static class TaskEndpoints
             noteFields["title"] = request.title.Trim();
         if (!string.IsNullOrWhiteSpace(request.status))
             noteFields["status"] = request.status.Trim();
+        var servicingStatus = ResolveLegacyTaskServicingStatus(request.status, existing.Status);
+        if (!string.IsNullOrWhiteSpace(request.status) && servicingStatus is null)
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = $"Invalid status: '{request.status.Trim()}'.",
+            });
+        }
+        var priority = ResolveLegacyTaskPriority(request.priority);
+        if (!string.IsNullOrWhiteSpace(request.priority) && priority is null)
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = $"Invalid priority: '{request.priority.Trim()}'.",
+            });
+        }
+        if (priority is not null)
+            noteFields["priorityId"] = priority.Value.LegacyId;
 
         try
         {
@@ -403,8 +464,8 @@ public static class TaskEndpoints
                 Description = request.description?.Trim() ?? existing.Description,
                 AssignedTo = request.assignedTo?.Trim() ?? existing.AssignedTo,
                 AssignedToUserId = existing.AssignedToUserId,
-                Priority = request.priority?.Trim() ?? existing.Priority,
-                Status = request.status?.Trim() ?? existing.Status,
+                Priority = priority?.ServicingValue ?? existing.Priority,
+                Status = servicingStatus ?? existing.Status,
                 CaseId = existing.CaseId,
                 LienId = existing.LienId,
                 DueDate = dueDate,
@@ -479,6 +540,56 @@ public static class TaskEndpoints
         }
     }
 
+    private static async Task<IResult> GetAndUpdateTaskLegacy(
+        string taskId,
+        LegacyGetAndUpdateTaskRequest request,
+        ILienTaskService taskService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var userId = RequireUserId(ctx);
+
+        if (!Guid.TryParse(taskId, out var parsedTaskId))
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No tasks found",
+            });
+        }
+
+        try
+        {
+            var task = await taskService.UpdateStatusAsync(
+                tenantId,
+                parsedTaskId,
+                userId,
+                new UpdateTaskStatusRequest
+                {
+                    Status = string.IsNullOrWhiteSpace(request.StatusId)
+                        ? "Open"
+                        : request.StatusId.Trim(),
+                },
+                ct);
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Task updated successfully.",
+                data = task,
+            });
+        }
+        catch
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "Error: No tasks found",
+            });
+        }
+    }
+
     private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
     {
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -506,4 +617,63 @@ public static class TaskEndpoints
 
         return string.Join("; ", fields.Select(pair => $"{pair.Key}={pair.Value}"));
     }
+
+    private static (string ServicingValue, string LegacyId)? ResolveLegacyTaskPriority(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return value.Trim().ToUpperInvariant() switch
+        {
+            "LOW" => (ServicingPriority.Low, TaskPriorities.Low),
+            "MEDIUM" or "NORMAL" => (ServicingPriority.Normal, TaskPriorities.Medium),
+            "HIGH" => (ServicingPriority.High, TaskPriorities.High),
+            "URGENT" => (ServicingPriority.Urgent, TaskPriorities.Urgent),
+            _ => null,
+        };
+    }
+
+    private static string? ResolveLegacyTaskServicingStatus(string? value, string existingStatus)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = value.Trim()
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "1" or "UPCOMING" or "NEW" or "OPEN" or "PENDING" => ServicingStatus.Pending,
+            "2" or "INPROGRESS" => ServicingStatus.InProgress,
+            "3" or "INREVIEW" or "WAITINGBLOCKED" or "ONHOLD" => ServicingStatus.OnHold,
+            "4" or "COMPLETED" or "DONE" => ServicingStatus.Completed,
+            // Legacy task status remains authoritative in Notes. ServicingItem has
+            // no cancelled state, so preserve its current internal status.
+            "CANCELLED" or "CANCELED" => existingStatus,
+            _ => null,
+        };
+    }
+
+    private static string ToLegacyTaskPriorityId(string priority) =>
+        priority.Trim().ToUpperInvariant() switch
+        {
+            "LOW" => TaskPriorities.Low,
+            "NORMAL" or "MEDIUM" => TaskPriorities.Medium,
+            "HIGH" => TaskPriorities.High,
+            "URGENT" => TaskPriorities.Urgent,
+            _ => priority,
+        };
+
+    private static string ToLegacyTaskPriorityName(string priorityId) =>
+        priorityId.Trim().ToUpperInvariant() switch
+        {
+            TaskPriorities.Low => "Low",
+            TaskPriorities.Medium => "Medium",
+            TaskPriorities.High => "High",
+            TaskPriorities.Urgent => "Urgent",
+            _ => priorityId,
+        };
 }

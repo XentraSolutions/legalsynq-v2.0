@@ -9,9 +9,10 @@ import { NextResponse, type NextRequest } from 'next/server';
  * Results are cached for 60 s on the CDN edge.
  *
  * Nominatim usage policy: https://operations.osmfoundation.org/policies/nominatim/
- * Rate-limited to 1 req/s — the 300 ms client debounce keeps us within that.
+ * Rate-limited to 1 req/s — client debouncing keeps us within that.
  */
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
+const US_CENSUS_GEOCODER = 'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress';
 const USER_AGENT = 'LegalSynq/2.0 contact@legalsynq.com';
 const INTERNAL_REQUEST_SECRET =
   process.env['PublicTrustBoundary__InternalRequestSecret'] ??
@@ -43,13 +44,14 @@ const STATE_ABBR: Record<string, string> = {
   Utah: 'UT', Vermont: 'VT', Virginia: 'VA', Washington: 'WA', 'West Virginia': 'WV',
   Wisconsin: 'WI', Wyoming: 'WY',
 };
+const STATE_CODES = new Set(Object.values(STATE_ABBR));
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const q     = request.nextUrl.searchParams.get('q') ?? '';
+  const q     = (request.nextUrl.searchParams.get('q') ?? '').trim();
   // loose=1: relax the addressLine1 requirement — used by map geocoding where
-  // city-level precision is sufficient (no street address needed).
+  // city/state-level precision is sufficient (no street address needed).
   const loose = request.nextUrl.searchParams.get('loose') === '1';
-  if (q.trim().length < 3) {
+  if (q.length < 3 && !(loose && STATE_CODES.has(q.toUpperCase()))) {
     return NextResponse.json([] as AddressSuggestion[]);
   }
 
@@ -60,16 +62,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   url.searchParams.set('addressdetails', '1');
   url.searchParams.set('countrycodes', 'us');
 
-  let raw: Record<string, unknown>[];
+  let raw: Record<string, unknown>[] = [];
   try {
     const res = await fetch(url.toString(), {
       headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en-US,en' },
+      signal: AbortSignal.timeout(3000),
       next: { revalidate: 60 },
     });
-    if (!res.ok) return NextResponse.json([] as AddressSuggestion[]);
-    raw = await res.json();
+    if (res.ok) raw = await res.json();
   } catch {
-    return NextResponse.json([] as AddressSuggestion[]);
+    // Continue to the U.S. Census fallback below.
   }
 
   const suggestions: AddressSuggestion[] = [];
@@ -87,7 +89,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const addressLine1 = houseNumber ? `${houseNumber} ${road}` : road;
 
     // In strict mode (autocomplete form) require a street address.
-    // In loose mode (map geocoding) city-level results are acceptable.
+    // In loose mode (map geocoding) city/state-level results are acceptable.
     if (!addressLine1 && !loose) continue;
 
     const city =
@@ -102,7 +104,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const state = STATE_ABBR[stateFull] ?? stateFull.slice(0, 2).toUpperCase();
     const postalCode = addr.postcode?.slice(0, 5) ?? '';
 
-    if (!city || !state || (!postalCode && !loose)) continue;
+    if ((!city && !loose) || !state || (!postalCode && !loose)) continue;
 
     const displayName = [
       addressLine1,
@@ -125,9 +127,67 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (suggestions.length >= 5) break;
   }
 
+  // Nominatim can be rate-limited and does not contain every U.S. street address.
+  // The Census geocoder is keyless and authoritative for domestic address ranges.
+  if (suggestions.length === 0) {
+    const censusSuggestion = await getCensusAddressSuggestion(q);
+    if (censusSuggestion) suggestions.push(censusSuggestion);
+  }
+
   return NextResponse.json(suggestions, {
     headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
   });
+}
+
+async function getCensusAddressSuggestion(q: string): Promise<AddressSuggestion | null> {
+  const url = new URL(US_CENSUS_GEOCODER);
+  url.searchParams.set('address', q);
+  url.searchParams.set('benchmark', 'Public_AR_Current');
+  url.searchParams.set('format', 'json');
+
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+      signal: AbortSignal.timeout(5000),
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return null;
+
+    const payload = await res.json() as {
+      result?: {
+        addressMatches?: Array<{
+          matchedAddress?: string;
+          coordinates?: { x?: number; y?: number };
+          addressComponents?: { city?: string; state?: string; zip?: string };
+        }>;
+      };
+    };
+    const match = payload.result?.addressMatches?.[0];
+    const latitude = Number(match?.coordinates?.y);
+    const longitude = Number(match?.coordinates?.x);
+    if (!match || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+
+    const components = match.addressComponents ?? {};
+    const matchedParts = (match.matchedAddress ?? '').split(',').map(part => part.trim());
+    const addressLine1 = matchedParts[0] ?? '';
+    const city = components.city ?? matchedParts[1] ?? '';
+    const state = components.state ?? matchedParts[2] ?? '';
+    const postalCode = (components.zip ?? matchedParts[3] ?? '').slice(0, 5);
+    const displayName = match.matchedAddress?.trim() || q;
+
+    return {
+      displayName,
+      addressLine1,
+      city,
+      state,
+      postalCode,
+      addressSelectionToken: createAddressSelectionToken({ addressLine1, city, state, postalCode }),
+      latitude,
+      longitude,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function createAddressSelectionToken(address: {

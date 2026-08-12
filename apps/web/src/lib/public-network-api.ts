@@ -58,29 +58,63 @@ export interface PublicNetworkSummary {
   providerCount: number;
 }
 
+export interface PublicSpecialtyOption {
+  id:          string;
+  name:        string;
+  code:        string;
+  description?: string | null;
+  isActive:    boolean;
+}
+
 export interface PublicProviderItem {
   id:               string;
+  networkProviderId: string;
+  providerId:      string;
+  facilityId:      string;
   name:             string;
+  title?:           string | null;
   organizationName: string | null;
+  facilityName:    string;
+  addressLine1:    string;
   phone:            string;
+  email?:           string | null;
   city:             string;
   state:            string;
-  postalCode:       string;
+  postalCode:       string | null;
   isActive:         boolean;
   acceptingReferrals: boolean;
   accessStage:      string;
   primaryCategory:  string | null;
+  specialties:      PublicSpecialtyOption[];
+  primarySpecialtyId: string | null;
+  primarySpecialty: string | null;
+  distanceMiles?:   number | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 export interface PublicProviderMarker {
   id:               string;
+  networkProviderId: string;
+  providerId:      string;
+  facilityId:      string;
   name:             string;
+  title?:           string | null;
   organizationName: string | null;
+  facilityName:    string;
   city:             string;
   state:            string;
   acceptingReferrals: boolean;
   latitude:         number;
   longitude:        number;
+  specialties:      PublicSpecialtyOption[];
+  primarySpecialtyId: string | null;
+  primarySpecialty: string | null;
+  distanceMiles?:   number | null;
+  isMobile:            boolean;
+  serviceRadiusMiles?: number | null;
+  serviceAreaLabel?:   string | null;
 }
 
 export interface PublicNetworkDetail {
@@ -89,6 +123,7 @@ export interface PublicNetworkDetail {
   networkDescription: string;
   providers:          PublicProviderItem[];
   markers:            PublicProviderMarker[];
+  specialties:        PublicSpecialtyOption[];
 }
 
 export interface ResolvedTenant {
@@ -249,6 +284,7 @@ export async function fetchPublicNetworkDetail(
 
 export interface PublicReferralRequest {
   providerId:            string;
+  networkProviderId?:    string | null;
   senderFirstName:       string;
   senderLastName?:       string;
   senderEmail:           string;
@@ -265,11 +301,14 @@ export interface PublicReferralRequest {
   notes?:                string;
   urgency?:              string;
   treatmentTypeId?:      string;
+  referralAttributionId?: string;
 }
 
 export interface PublicReferralResponse {
   referralId:    string;
   providerId:    string;
+  facilityId?:   string | null;
+  networkProviderId?: string | null;
   providerName:  string;
   providerStage: string;
   message:       string;

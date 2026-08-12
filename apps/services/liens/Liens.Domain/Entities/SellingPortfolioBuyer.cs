@@ -8,8 +8,15 @@ public class SellingPortfolioBuyer : AuditableEntity
     public Guid TenantId { get; private set; }
     public Guid PortfolioId { get; private set; }
     public Guid BuyerOrgId { get; private set; }
+    public Guid? BuyerCompanyId { get; private set; }
 
     private SellingPortfolioBuyer() { }
+
+    public void LinkCanonicalBuyer(Guid? companyId)
+    {
+        if (companyId == Guid.Empty) throw new ArgumentException("Canonical buyer company id cannot be empty.", nameof(companyId));
+        BuyerCompanyId = companyId;
+    }
 
     public static SellingPortfolioBuyer Create(
         Guid tenantId,

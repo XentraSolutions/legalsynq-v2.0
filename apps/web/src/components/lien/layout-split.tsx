@@ -14,7 +14,11 @@ interface LayoutSplitProps {
   mode?: PanelMode;
   onModeChange?: (mode: PanelMode) => void;
   className?: string;
+  /** Hide the built-in expand/collapse buttons — use when a panel (e.g. Feeds) drives its own collapse. */
+  showControls?: boolean;
 }
+
+const RAIL_WIDTH = 72;
 
 const MODE_MAP: Record<string, PanelMode> = {
   split: 'split',
@@ -31,6 +35,7 @@ export function LayoutSplit({
   mode: controlledMode,
   onModeChange,
   className,
+  showControls = true,
 }: LayoutSplitProps) {
   const [internalMode, setInternalMode] = useState<PanelMode>(
     MODE_MAP[defaultMode] ?? 'split'
@@ -50,21 +55,26 @@ export function LayoutSplit({
   const toggleLeft = () => setMode(isLeft ? 'split' : 'left-expanded');
   const toggleRight = () => setMode(isRight ? 'split' : 'right-expanded');
 
-  const leftFlex = isLeft ? 1 : isRight ? 0.2 : 1;
-  const rightFlex = isRight ? 1 : isLeft ? 0.2 : 0.42;
-
   const leftBtnIcon = isLeft ? 'left' : 'right';
   const rightBtnIcon = isRight ? 'right' : 'left';
 
   const leftCollapsed = isRight;   // left is minimized when right expanded
   const rightCollapsed = isLeft;   // right is minimized when left expanded
 
+  const leftStyle = leftCollapsed
+    ? { flexGrow: 0, flexShrink: 0, flexBasis: RAIL_WIDTH, width: RAIL_WIDTH }
+    : { flexGrow: 1, flexBasis: 0 };
+
+  const rightStyle = rightCollapsed
+    ? { flexGrow: 0, flexShrink: 0, flexBasis: RAIL_WIDTH, width: RAIL_WIDTH }
+    : { flexGrow: isRight ? 1 : 0.42, flexBasis: 0 };
+
   return (
-      <div className={`flex w-full items-stretch gap-0 ${className ?? ''}`}>
+      <div className={`flex w-full items-stretch ${showControls ? 'gap-0' : 'gap-4'} ${className ?? ''}`}>
       {/* LEFT */}
       <div
-        className="min-w-0 relative overflow-hidden transition-[flex-grow] duration-300 ease-out"
-        style={{ flexGrow: leftFlex, flexBasis: 0 }}
+        className="min-w-0 relative overflow-hidden transition-[flex-grow,flex-basis,width] duration-300 ease-out"
+        style={leftStyle}
       >
         {/* CONTENT */}
         <div className={`transition-opacity duration-200`}>
@@ -73,38 +83,40 @@ export function LayoutSplit({
       </div>
 
       {/* CONTROLS */}
-      <div className="flex flex-col items-center justify-start pt-1 gap-1 shrink-0 mx-1">
-        <button
-          onClick={toggleLeft}
-          title={isSplit ? 'Expand left panel' : 'Restore split view'}
-          className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
-            isLeft
-              ? 'border-primary bg-primary/10 text-primary'
-              : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          <i className={`ri-arrow-${leftBtnIcon}-s-line text-sm`} />
-        </button>
+      {showControls && (
+        <div className="flex flex-col items-center justify-start pt-1 gap-1 shrink-0 mx-1">
+          <button
+            onClick={toggleLeft}
+            title={isSplit ? 'Expand left panel' : 'Restore split view'}
+            className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
+              isLeft
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            <i className={`ri-arrow-${leftBtnIcon}-s-line text-sm`} />
+          </button>
 
-        <div className="w-px h-4 bg-gray-200" />
+          <div className="w-px h-4 bg-gray-200" />
 
-        <button
-          onClick={toggleRight}
-          title={isSplit ? 'Expand right panel' : 'Restore split view'}
-          className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
-            isRight
-              ? 'border-primary bg-primary/10 text-primary'
-              : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          <i className={`ri-arrow-${rightBtnIcon}-s-line text-sm`} />
-        </button>
-      </div>
+          <button
+            onClick={toggleRight}
+            title={isSplit ? 'Expand right panel' : 'Restore split view'}
+            className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${
+              isRight
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600'
+            }`}
+          >
+            <i className={`ri-arrow-${rightBtnIcon}-s-line text-sm`} />
+          </button>
+        </div>
+      )}
 
       {/* RIGHT */}
       <div
-        className="min-w-0 relative overflow-hidden transition-[flex-grow] duration-300 ease-out"
-        style={{ flexGrow: rightFlex, flexBasis: 0 }}
+        className="min-w-0 relative overflow-hidden transition-[flex-grow,flex-basis,width] duration-300 ease-out"
+        style={rightStyle}
       >
         {/* CONTENT */}
         <div className={`transition-opacity duration-200`}>

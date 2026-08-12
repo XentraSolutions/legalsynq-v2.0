@@ -31,8 +31,10 @@ public static class NotificationTaxonomy
         public static class Events
         {
             public const string OfferSubmitted       = "lien.offer.submitted";
+            public const string SellingLienSubmitted = "lien.selling.submitted";
             public const string OfferAccepted        = "lien.offer.accepted";
             public const string OfferRejected        = "lien.offer.rejected";
+            public const string OfferMessageCreated  = "lien.offer.message.created";
             public const string SaleFinalized        = "lien.sale.finalized";
             public const string SaleDocumentGenerated = "lien.sale.document.generated";
             public const string TaskAssigned         = "liens.task.assigned";
@@ -42,6 +44,7 @@ public static class NotificationTaxonomy
         public static class Templates
         {
             public const string OfferSubmittedEmail  = "lien-offer-submitted-email";
+            public const string SellingLienSubmittedEmail = "lien-selling-submitted-email";
             public const string OfferAcceptedEmail   = "lien-offer-accepted-email";
             public const string OfferRejectedEmail   = "lien-offer-rejected-email";
             public const string SaleFinalizedEmail   = "lien-sale-finalized-email";
