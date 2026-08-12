@@ -93,15 +93,14 @@ export function PortfolioDetailPanel({
               availableActions={lien.availableActions}
               onActionComplete={onRefresh}
               autoOpenDecision={sellerStatus === "Pending"}
-              trigger={({ onClick }) => (
+              trigger={
                 <Button
                   className="bg-[#EE7132] hover:bg-[#EE7132]/90 text-white"
                   rightIcon={<i className="ri-arrow-down-s-line text-base" />}
-                  onClick={onClick}
                 >
                   Manage Lien
                 </Button>
-              )}
+              }
             />
           </div>
         </div>

@@ -3,7 +3,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Search, Settings2 } from "lucide-react";
+import { ChevronDown, CloudUpload, File, Search, Settings2 } from "lucide-react";
+import { ActionMenu } from "./action-menu";
 import { LiensQuery, liensService } from "@/lib/selling";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MetricCard } from "./dashboard/metric-card";
@@ -75,7 +76,6 @@ export default function PortfolioClient() {
     useState<LiensFilterValues>(EMPTY_LIENS_FILTERS);
   const [showFilter, setShowFilter] = useState(false);
   const activeFilterCount = countActiveFilters(filters);
-  const [actionOpen, setActionOpen] = useState(false);
   const [bulkUpload, setbulkUpload] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
@@ -175,44 +175,29 @@ export default function PortfolioClient() {
           subtitle="Manage, monitor, and bundle multiple liens into structured portfolios for sale."
           card={false}
           actions={
-            <div className="relative">
-              <Button
-                className="bg-[#EE7132] hover:bg-[#EE7132]/90 text-white"
-                rightIcon={<ChevronDown className="h-4 w-4" />}
-                iconDivider
-                onClick={() => {
-                  setActionOpen(!actionOpen);
-                }}
-              >
-                Add New Lien
-              </Button>
-              {actionOpen && (
-                <div
-                  className={`absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden divide-y divide-gray-100`}
+            <ActionMenu
+              trigger={
+                <Button
+                  className="bg-[#EE7132] hover:bg-[#EE7132]/90 text-white"
+                  rightIcon={<ChevronDown className="h-4 w-4" />}
+                  iconDivider
                 >
-                  <button
-                    onClick={() => {
-                      router.push("/selling/portfolio/lien/add");
-                      setActionOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                  >
-                    <i className="ri-file-line mr-2"></i>
-                    Add Single Lien
-                  </button>
-                  <button
-                    onClick={() => {
-                      setbulkUpload(true);
-                      setActionOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                  >
-                    <i className="ri-upload-cloud-2-line mr-2"></i>
-                    Bulk Upload
-                  </button>
-                </div>
-              )}
-            </div>
+                  Add New Lien
+                </Button>
+              }
+              items={[
+                {
+                  label: "Add Single Lien",
+                  icon: File,
+                  onClick: () => router.push("/selling/portfolio/lien/add"),
+                },
+                {
+                  label: "Bulk Upload",
+                  icon: CloudUpload,
+                  onClick: () => setbulkUpload(true),
+                },
+              ]}
+            />
           }
         />
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

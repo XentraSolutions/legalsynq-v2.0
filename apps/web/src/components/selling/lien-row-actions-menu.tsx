@@ -1,8 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Tag,
+  Send,
+  Inbox,
+  Undo2,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import { Modal, ConfirmDialog } from "@/components/selling/modal";
+import { ActionMenu, type ActionMenuItem } from "@/components/selling/action-menu";
 import { Button } from "@/components/ui/button";
 import { LienDetail, LienListItem, liensService } from "@/lib/selling";
 import { useToast } from "@/lib/toast-context";
@@ -13,8 +22,8 @@ interface LienRowActionsMenuProps {
   availableActions: string[];
   onActionComplete: () => void;
   align?: "left" | "right";
-  /** Custom trigger content; defaults to a bare ellipsis icon button. */
-  trigger?: (props: { onClick: () => void }) => ReactNode;
+  /** Custom trigger element; defaults to a bare ellipsis icon button. */
+  trigger?: ReactNode;
   /** Show the Keep/Sell decision modal automatically when this lien loads. */
   autoOpenDecision?: boolean;
 }
@@ -22,15 +31,15 @@ interface LienRowActionsMenuProps {
 // Selling's brand accent, matching the convention used on other selling pages.
 const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 
-const ACTION_LABELS: Record<string, { label: string; icon: string }> = {
-  "prepare-sale": { label: "Sell Lien", icon: "ri-hand-coin-line" },
-  "confirm-sale": { label: "Continue Sale", icon: "ri-send-plane-line" },
-  keep: { label: "Keep", icon: "ri-inbox-archive-line" },
-  "withdraw-sale": {
-    label: "Withdraw from Sale",
-    icon: "ri-arrow-go-back-line",
-  },
-  archive: { label: "Archive", icon: "ri-archive-line" },
+const ACTION_LABELS: Record<
+  string,
+  { label: string; icon: LucideIcon; danger?: boolean }
+> = {
+  "prepare-sale": { label: "Sell Lien", icon: Tag },
+  "confirm-sale": { label: "Continue Sale", icon: Send },
+  keep: { label: "Keep", icon: Inbox },
+  "withdraw-sale": { label: "Withdraw from Sale", icon: Undo2 },
+  archive: { label: "Delete Lien", icon: Trash2, danger: true },
 };
 
 // The liens list endpoint doesn't populate `availableActions` (only the
@@ -49,25 +58,12 @@ export function LienRowActionsMenu({
 }: LienRowActionsMenuProps) {
   const router = useRouter();
   const { show: showToast } = useToast();
-  const [menuOpen, setMenuOpen] = useState(false);
   const [showDecisionModal, setShowDecisionModal] = useState(autoOpenDecision);
   const [confirmAction, setConfirmAction] = useState<
     "withdraw-sale" | "archive" | "keep" | null
   >(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [keepLoading, setKeepLoading] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [menuOpen]);
 
   const status = lien?.sellerStatus ?? lien?.status;
   const resolvedActions =
@@ -79,12 +75,7 @@ export function LienRowActionsMenu({
   if (resolvedActions.length === 0) return null;
 
   const handleAction = (action: string) => {
-    setMenuOpen(false);
-    if (action === "prepare-sale") {
-      router.push(`/selling/portfolio/lien/${lienId}/sell`);
-      return;
-    }
-    if (action === "confirm-sale") {
+    if (action === "prepare-sale" || action === "confirm-sale") {
       router.push(`/selling/portfolio/lien/${lienId}/sell`);
       return;
     }
@@ -93,6 +84,18 @@ export function LienRowActionsMenu({
       return;
     }
   };
+
+  const items: ActionMenuItem[] = resolvedActions
+    .filter((action) => ACTION_LABELS[action])
+    .map((action) => {
+      const meta = ACTION_LABELS[action];
+      return {
+        label: meta.label,
+        icon: meta.icon,
+        variant: meta.danger ? ("danger" as const) : ("default" as const),
+        onClick: () => handleAction(action),
+      };
+    });
 
   const keepAsInternalAsset = async () => {
     setKeepLoading(true);
@@ -141,43 +144,12 @@ export function LienRowActionsMenu({
   };
 
   return (
-    <div
-      className="relative"
-      ref={menuRef}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {trigger ? (
-        trigger({ onClick: () => setMenuOpen((v) => !v) })
-      ) : (
-        <Button
-          variant="ghost"
-          className="w-8 h-8 p-0 rounded-lg text-gray-500"
-          onClick={() => setMenuOpen((v) => !v)}
-          aria-label="Lien actions"
-        >
-          <i className="ri-more-2-fill text-lg" />
-        </Button>
-      )}
-      {menuOpen && (
-        <div
-          className={`absolute ${align === "right" ? "right-0" : "left-0"} mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden divide-y divide-gray-100`}
-        >
-          {resolvedActions.map((action) => {
-            const meta = ACTION_LABELS[action];
-            if (!meta) return null;
-            return (
-              <button
-                key={action}
-                onClick={() => handleAction(action)}
-                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-              >
-                <i className={`${meta.icon} text-gray-400`} />
-                {meta.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <ActionMenu
+        items={items}
+        trigger={trigger}
+        align={align === "right" ? "end" : "start"}
+      />
 
       <Modal
         open={showDecisionModal}
@@ -221,21 +193,21 @@ export function LienRowActionsMenu({
           confirmAction === "withdraw-sale"
             ? "Withdraw From Sale?"
             : confirmAction === "archive"
-              ? "Archive This Lien?"
+              ? "Delete This Lien?"
               : "Keep as Internal Asset?"
         }
         description={
           confirmAction === "withdraw-sale"
             ? "This lien will no longer be visible to the buyer and will need to be re-submitted for sale."
             : confirmAction === "archive"
-              ? "Archived liens are hidden from the active portfolio. This can't be undone through this workflow."
+              ? "Deleted liens are hidden from the active portfolio. This can't be undone through this workflow."
               : "This lien will be kept as a private internal asset instead of being listed for sale."
         }
         confirmLabel={
           confirmAction === "withdraw-sale"
             ? "Withdraw"
             : confirmAction === "archive"
-              ? "Archive"
+              ? "Delete"
               : "Keep"
         }
         confirmVariant={confirmAction === "keep" ? "primary" : "danger"}
