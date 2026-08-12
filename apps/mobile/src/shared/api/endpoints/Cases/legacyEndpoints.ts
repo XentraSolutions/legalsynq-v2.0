@@ -28,15 +28,19 @@ export const LegacyCasesApi = {
 
   async getDashboardDeployed(body: DashboardStatRequest): Promise<unknown> {
     return LegacyPsaService.callCaseService(LEGACY_METHOD.deployed, {
-      startDate: body.fromDate,
-      endDate: body.toDate,
+      page: body.page,
+      limit: body.limit,
+      startDate: body.startDate,
+      endDate: body.endDate,
     });
   },
 
   async getDashboardCashReceived(body: DashboardStatRequest): Promise<unknown> {
     return LegacyPsaService.callCaseService(LEGACY_METHOD.cashReceived, {
-      startDate: body.fromDate,
-      endDate: body.toDate,
+      page: body.page,
+      limit: body.limit,
+      startDate: body.startDate,
+      endDate: body.endDate,
     });
   },
 

@@ -1,8 +1,28 @@
 import { View } from 'react-native';
 import type { DashboardReportType } from '@/features/dashboard/types/types';
 import type { DashboardStatRequest, ReportFilterRequest } from '@/shared/api/endpoints/Cases';
-import { useDashboardCashReceived, useDashboardDeployed, useDashboardLawFirmCaseReport, useDashboardMedicalProviderReport, useDashboardTotalCaseReport, useDashboardTotalLienReport } from '@/features/dashboard/hooks';
-import { StatCardData, BUYING_STATS, BUYING_TOTAL_LIENS, BUYING_TOTAL_CASES, LAW_FIRM_ALLOCATION, FACILITY_ALLOCATION, formatCurrency, mapLawFirmReportGrouped, mapMedicalFacilityReportGrouped, mapTotalLienReportToDashboard, mapTotalCaseReportToDashboard, readStatAmount } from './index';
+import {
+  useDashboardCashReceived,
+  useDashboardDeployed,
+  useDashboardLawFirmCaseReport,
+  useDashboardMedicalProviderReport,
+  useDashboardTotalCaseReport,
+  useDashboardTotalLienReport,
+} from '@/features/dashboard/hooks';
+import {
+  StatCardData,
+  BUYING_STATS,
+  BUYING_TOTAL_LIENS,
+  BUYING_TOTAL_CASES,
+  LAW_FIRM_ALLOCATION,
+  FACILITY_ALLOCATION,
+  formatCurrency,
+  mapLawFirmReportGrouped,
+  mapMedicalFacilityReportGrouped,
+  mapTotalLienReportToDashboard,
+  mapTotalCaseReportToDashboard,
+  readStatAmount,
+} from './index';
 import { DashboardReportState } from './DashboardReportState';
 import { DashboardStatState } from './DashboardStatState';
 import { StatGrid } from './StatGrid';
@@ -23,8 +43,10 @@ export function BuyingDashboard({
 }) {
   const reportsEnabled = dashboardSettingsHydrated && !useDummyData;
   const statRequest: DashboardStatRequest = {
-    fromDate: reportFilter.startDate ?? '',
-    toDate: reportFilter.endDate ?? '',
+    startDate: reportFilter.startDate ?? '',
+    endDate: reportFilter.endDate ?? '',
+    page: reportFilter.page ?? 1,
+    limit: reportFilter.limit ?? 1000000,
   };
   const deployedQuery = useDashboardDeployed(statRequest, reportsEnabled);
   const cashReceivedQuery = useDashboardCashReceived(statRequest, reportsEnabled);

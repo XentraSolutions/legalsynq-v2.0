@@ -6,6 +6,8 @@ import { ALL_DATES_RANGE, buildDashboardReportFilter, DashboardScreen } from './
 
 const mockNavigate = jest.fn();
 const mockRefetch = jest.fn(() => Promise.resolve());
+const mockUseDashboardCashReceived = jest.fn();
+const mockUseDashboardDeployed = jest.fn();
 const mockQueryResults = {
   cashReceived: createQueryResult(),
   deployed: createQueryResult(),
@@ -74,8 +76,14 @@ jest.mock('@/features/dashboard/components', () => {
 });
 
 jest.mock('@/features/dashboard/hooks', () => ({
-  useDashboardCashReceived: () => mockQueryResults.cashReceived,
-  useDashboardDeployed: () => mockQueryResults.deployed,
+  useDashboardCashReceived: (...args: unknown[]) => {
+    mockUseDashboardCashReceived(...args);
+    return mockQueryResults.cashReceived;
+  },
+  useDashboardDeployed: (...args: unknown[]) => {
+    mockUseDashboardDeployed(...args);
+    return mockQueryResults.deployed;
+  },
   useDashboardLawFirmCaseReport: () => mockQueryResults.lawFirm,
   useDashboardMedicalProviderReport: () => mockQueryResults.medicalProvider,
   useDashboardTotalCaseReport: () => mockQueryResults.totalCase,
@@ -102,6 +110,14 @@ describe('DashboardScreen', () => {
 
   it('omits date parameters for the default All Dates filter', () => {
     expect(buildDashboardReportFilter(ALL_DATES_RANGE)).toEqual({ page: 1, limit: 1000000 });
+  });
+
+  it('passes dashboard pagination to deployed and cash-received statistics', () => {
+    renderScreen();
+
+    const expectedRequest = { startDate: '', endDate: '', page: 1, limit: 1000000 };
+    expect(mockUseDashboardDeployed).toHaveBeenCalledWith(expectedRequest, true);
+    expect(mockUseDashboardCashReceived).toHaveBeenCalledWith(expectedRequest, true);
   });
 
   it('passes matching start and end dates for a custom filter', () => {
