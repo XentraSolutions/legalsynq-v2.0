@@ -141,3 +141,11 @@ export interface UpdateContactPersonRequest {
 }
 
 export type CompaniesPaginatedResult = PaginatedResultDto<Company>;
+
+export interface ReassignCompanyRequest {
+  targetCompanyId: string;
+}
+
+export interface ReassignContactPersonRequest {
+  targetContactPersonId: string;
+}
