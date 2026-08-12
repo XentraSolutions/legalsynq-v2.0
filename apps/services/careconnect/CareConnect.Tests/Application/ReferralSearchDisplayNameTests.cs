@@ -108,6 +108,34 @@ public class ReferralSearchDisplayNameTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task SearchAsync_UsesProviderOrganizationNameAndLinkedReceivingOrganizationWhenReferralFieldIsMissing()
+    {
+        var referralTenantId = Guid.CreateVersion7();
+        var receivingOrgId = Guid.CreateVersion7();
+        var provider = BuildProvider(Guid.CreateVersion7(), "Dr. Ralph Lopez", "RL Medical Group");
+        provider.LinkOrganization(receivingOrgId);
+        var referral = BuildReferral(referralTenantId, provider);
+
+        var referrals = new Mock<IReferralRepository>();
+        referrals
+            .Setup(r => r.SearchAsync(It.IsAny<Guid>(), It.IsAny<GetReferralsQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((new List<Referral> { referral }, 1));
+
+        var tenantClient = new Mock<ITenantServiceClient>();
+        tenantClient
+            .Setup(c => c.GetDisplayNameAsync(referralTenantId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Referrer Tenant");
+
+        var service = BuildService(referrals.Object, tenantClient.Object);
+
+        var result = await service.SearchAsync(Guid.CreateVersion7(), new GetReferralsQuery());
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal("RL Medical Group", item.ProviderName);
+        Assert.Equal(receivingOrgId, item.ReceivingOrganizationId);
+    }
+
     private static ReferralService BuildService(
         IReferralRepository referrals,
         ITenantServiceClient tenantClient)
@@ -126,15 +154,16 @@ public class ReferralSearchDisplayNameTests
             NullLogger<ReferralService>.Instance,
             new Mock<IHttpContextAccessor>().Object,
             new Mock<IReferralAttachmentRepository>().Object,
+            new Mock<IReferralAttributionRepository>().Object,
             activationRequests: null);
     }
 
-    private static Provider BuildProvider(Guid tenantId, string name)
+    private static Provider BuildProvider(Guid tenantId, string name, string organizationName = "Org")
     {
         return Provider.Create(
             tenantId: tenantId,
             name: name,
-            organizationName: "Org",
+            organizationName: organizationName,
             email: "provider@example.com",
             phone: "555-0100",
             addressLine1: "1 Main St",

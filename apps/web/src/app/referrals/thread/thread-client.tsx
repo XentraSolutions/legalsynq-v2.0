@@ -1,7 +1,17 @@
 'use client';
 
 import { useState, useEffect, useTransition, useRef, useCallback } from 'react';
-import { postComment, acceptReferralByToken, declineReferralByToken, completeReferralByToken, cancelReferralByToken } from './actions';
+import { acceptReferralByToken, declineReferralByToken, completeReferralByToken, cancelReferralByToken } from './actions';
+import { postPublicThreadComment } from '../lib/public-thread-comments';
+import {
+  CARECONNECT_MESSAGE_ALLOWED_TYPES,
+  CARECONNECT_MESSAGE_MAX_FILES,
+  formatCareConnectAttachmentBytes,
+  makeSelectedCareConnectMessageFiles,
+  type SelectedCareConnectMessageFile,
+} from '@/lib/careconnect-message-attachments';
+import type { ReferralMessageAttachment } from '@/types/careconnect';
+import { formatReferralLocation } from '@/lib/referral-location';
 
 interface Comment {
   id:         string;
@@ -9,6 +19,7 @@ interface Comment {
   senderName: string;
   message:    string;
   createdAtUtc: string;
+  attachments?: ReferralMessageAttachment[];
 }
 
 interface Attachment {
@@ -35,6 +46,13 @@ interface ThreadData {
   treatmentTypeId?:   string;
   treatmentTypeName?: string;
   providerName:       string;
+  // Referral location — the specific facility this referral was routed to, falling back
+  // to the provider's own address for legacy/single-location referrals.
+  facilityName?:          string | null;
+  locationAddressLine1?:  string;
+  locationCity?:          string;
+  locationState?:         string;
+  locationPostalCode?:    string;
   // Law firm / referrer
   referrerFirmName?:   string | null;
   referrerName:        string | null;
@@ -62,12 +80,25 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string; bor
   InProgress: { label: 'In Progress',               color: '#5b21b6', bg: '#f5f3ff', border: '#c4b5fd' },
 };
 
-function formatDate(iso: string, timezone: string) {
+export function formatDate(iso: string, timezone: string) {
   try {
-    return new Date(iso).toLocaleString('en-US', {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return iso;
+
+    const parts = new Intl.DateTimeFormat('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: 'numeric', minute: '2-digit', hour12: true, timeZone: timezone,
-    });
+    }).formatToParts(date);
+    const get = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value;
+    const month = get('month');
+    const day = get('day');
+    const year = get('year');
+    const hour = get('hour');
+    const minute = get('minute');
+    const dayPeriod = get('dayPeriod');
+    if (!month || !day || !year || !hour || !minute || !dayPeriod) return iso;
+
+    return `${month} ${day}, ${year}, ${hour}:${minute} ${dayPeriod}`;
   } catch { return iso; }
 }
 
@@ -137,10 +168,13 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
   const [timezone, setTimezone] = useState('UTC');
   const [comments,  setComments] = useState<Comment[]>(data.comments);
   const [message,   setMessage]  = useState('');
+  const [files,     setFiles]    = useState<SelectedCareConnectMessageFile[]>([]);
+  const [fileError, setFileError] = useState('');
   const [formError,     setFormError] = useState('');
   const [sent,          setSent]      = useState(false);
   const [isPending,     startTransition] = useTransition();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { bottomRef.current?.scrollIntoView(); }, []);
 
@@ -152,6 +186,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
   const [attError,   setAttError]   = useState<Record<string, string | null>>({});
 
   const [liveTreatmentName] = useState<string | undefined>(data.treatmentTypeName);
+  const location = formatReferralLocation(data);
 
   // Decline notes state
   const [showDeclineForm, setShowDeclineForm] = useState(false);
@@ -189,6 +224,19 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
       setAttLoading(prev => ({ ...prev, [attachmentId]: null }));
     }
   }, [data.referralId, token]);
+
+  const addMessageFiles = useCallback((incoming: File[]) => {
+    const result = makeSelectedCareConnectMessageFiles(incoming, files.length);
+    setFileError(result.error ?? '');
+    if (result.files.length > 0) {
+      setFiles(prev => [...prev, ...result.files]);
+    }
+  }, [files.length]);
+
+  const removeMessageFile = useCallback((id: string) => {
+    setFileError('');
+    setFiles(prev => prev.filter(file => file.id !== id));
+  }, []);
 
   const st = STATUS_MAP[liveStatus] ?? { label: liveStatus, color: '#374151', bg: '#f9fafb', border: '#d1d5db' };
 
@@ -265,12 +313,14 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
+    setFileError('');
     setSent(false);
     startTransition(async () => {
-      const result = await postComment(token, 'provider', message);
+      const result = await postPublicThreadComment(token, 'provider', message, files);
       if (!result.success) { setFormError(result.error ?? 'An error occurred.'); return; }
       if (result.comment) setComments(prev => [...prev, result.comment!]);
       setMessage('');
+      setFiles([]);
       setSent(true);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     });
@@ -335,6 +385,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
             {data.caseNumber && <FieldBlock label="Case #" value={data.caseNumber} />}
             <FieldBlock label="Type of Treatment" value={liveTreatmentName ?? '—'} />
             <FieldBlock label="Date of Accident" value={data.dateOfAccident ?? '—'} />
+            {location && <FieldBlock label="Provider Location" value={location} />}
           </div>
 
           {/* Notes */}
@@ -623,7 +674,16 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
                 No messages yet. Send the first message below.
               </p>
             ) : (
-              comments.map(c => <CommentBubble key={c.id} comment={c} timezone={timezone} />)
+              comments.map(c => (
+                <CommentBubble
+                  key={c.id}
+                  comment={c}
+                  timezone={timezone}
+                  onOpenAttachment={openAttachment}
+                  attLoading={attLoading}
+                  attError={attError}
+                />
+              ))
             )}
             <div ref={bottomRef} />
           </div>
@@ -644,7 +704,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
           )}
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: 18 }}>
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Message *</label>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Message</label>
               <textarea
                 style={s.textarea}
                 value={message}
@@ -652,9 +712,69 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
                 placeholder="Type your message here…"
                 rows={4}
                 maxLength={4000}
-                required
               />
               <p style={{ margin: '4px 0 0', fontSize: 12, color: '#9ca3af', textAlign: 'right' as const }}>{message.length}/4000</p>
+            </div>
+            <div style={{ marginBottom: 18 }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={CARECONNECT_MESSAGE_ALLOWED_TYPES.join(',')}
+                onChange={e => {
+                  addMessageFiles(Array.from(e.target.files ?? []));
+                  e.target.value = '';
+                }}
+                style={{ display: 'none' }}
+                aria-hidden="true"
+                tabIndex={-1}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isPending || files.length >= CARECONNECT_MESSAGE_MAX_FILES}
+                style={{
+                  display: 'flex',
+                  width: '100%',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  border: '1px dashed #cbd5e1',
+                  background: '#f8fafc',
+                  color: '#475569',
+                  borderRadius: 6,
+                  padding: '9px 12px',
+                  cursor: isPending || files.length >= CARECONNECT_MESSAGE_MAX_FILES ? 'not-allowed' : 'pointer',
+                  opacity: isPending || files.length >= CARECONNECT_MESSAGE_MAX_FILES ? 0.65 : 1,
+                  fontSize: 13,
+                  fontFamily: 'inherit',
+                }}
+              >
+                <span>Attach files</span>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>{files.length}/{CARECONNECT_MESSAGE_MAX_FILES}</span>
+              </button>
+              {files.length > 0 && (
+                <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {files.map(selected => (
+                    <li key={selected.id} style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid #e2e8f0', background: '#f8fafc', borderRadius: 6, padding: '6px 8px', fontSize: 12 }}>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#334155' }}>
+                        {selected.file.name}
+                      </span>
+                      <span style={{ color: '#94a3b8', flexShrink: 0 }}>{formatCareConnectAttachmentBytes(selected.file.size)}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeMessageFile(selected.id)}
+                        disabled={isPending}
+                        aria-label={`Remove ${selected.file.name}`}
+                        style={{ border: 'none', background: 'transparent', color: '#94a3b8', cursor: isPending ? 'not-allowed' : 'pointer', padding: 2, fontSize: 16, lineHeight: 1 }}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {fileError && <p style={{ margin: '6px 0 0', fontSize: 12, color: '#dc2626' }}>{fileError}</p>}
             </div>
             <button type="submit" disabled={isPending} style={{ ...s.btnPrimary, opacity: isPending ? 0.7 : 1, cursor: isPending ? 'not-allowed' : 'pointer' }}>
               {isPending ? 'Sending…' : 'Send Message'}
@@ -679,8 +799,21 @@ function FieldBlock({ label, value }: { label: string; value: string }) {
   );
 }
 
-function CommentBubble({ comment, timezone }: { comment: Comment; timezone: string }) {
+function CommentBubble({
+  comment,
+  timezone,
+  onOpenAttachment,
+  attLoading,
+  attError,
+}: {
+  comment: Comment;
+  timezone: string;
+  onOpenAttachment: (attachmentId: string, forDownload: boolean) => void;
+  attLoading: Record<string, 'view' | 'download' | null>;
+  attError: Record<string, string | null>;
+}) {
   const isProvider = comment.senderType === 'provider';
+  const attachments = comment.attachments ?? [];
   return (
     <div style={{ display: 'flex', flexDirection: isProvider ? 'row-reverse' : 'row', gap: 10, alignItems: 'flex-start' }}>
       <div style={{
@@ -697,14 +830,52 @@ function CommentBubble({ comment, timezone }: { comment: Comment; timezone: stri
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>{comment.senderName}</span>
           <span style={{ fontSize: 11, color: '#9ca3af' }}>{formatDate(comment.createdAtUtc, timezone)}</span>
         </div>
-        <div style={{
-          background: isProvider ? '#eff6ff' : '#fafaf9',
-          border: `1px solid ${isProvider ? '#bfdbfe' : '#e7e5e4'}`,
-          borderRadius: isProvider ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
-          padding: '10px 14px',
-        }}>
-          <p style={{ margin: 0, fontSize: 14, color: '#111827', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{comment.message}</p>
-        </div>
+        {comment.message.trim().length > 0 && (
+          <div style={{
+            background: isProvider ? '#eff6ff' : '#fafaf9',
+            border: `1px solid ${isProvider ? '#bfdbfe' : '#e7e5e4'}`,
+            borderRadius: isProvider ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
+            padding: '10px 14px',
+          }}>
+            <p style={{ margin: 0, fontSize: 14, color: '#111827', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{comment.message}</p>
+          </div>
+        )}
+        {attachments.length > 0 && (
+          <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, alignItems: isProvider ? 'flex-end' : 'flex-start' }}>
+            {attachments.map(att => {
+              const loading = attLoading[att.id] ?? null;
+              const error = attError[att.id] ?? null;
+              return (
+                <div key={att.id} style={{ maxWidth: '100%' }}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenAttachment(att.id, false)}
+                    disabled={loading !== null}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      maxWidth: '100%',
+                      border: '1px solid #e2e8f0',
+                      background: '#fff',
+                      color: '#334155',
+                      borderRadius: 6,
+                      padding: '5px 8px',
+                      fontSize: 12,
+                      cursor: loading ? 'wait' : 'pointer',
+                      opacity: loading ? 0.7 : 1,
+                    }}
+                    title={`View ${att.fileName}`}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.fileName}</span>
+                    <span style={{ color: '#94a3b8', flexShrink: 0 }}>{loading === 'view' ? 'Opening...' : formatBytes(att.fileSizeBytes)}</span>
+                  </button>
+                  {error && <p style={{ margin: '4px 0 0', fontSize: 12, color: '#dc2626' }}>{error}</p>}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

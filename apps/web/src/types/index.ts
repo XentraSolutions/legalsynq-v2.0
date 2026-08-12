@@ -11,37 +11,40 @@ export interface ApiResponse<T> {
 // LS-COR-AUT-006A: ProductRole values use unified PRODUCT:Role claim format.
 
 export const OrgType = {
-  Internal:  'INTERNAL',
-  LawFirm:   'LAW_FIRM',
-  Provider:  'PROVIDER',
-  Funder:    'FUNDER',
-  LienOwner: 'LIEN_OWNER',
+  Internal: "INTERNAL",
+  LawFirm: "LAW_FIRM",
+  Provider: "PROVIDER",
+  Funder: "FUNDER",
+  LienOwner: "LIEN_OWNER",
 } as const;
-export type OrgTypeValue = typeof OrgType[keyof typeof OrgType];
+export type OrgTypeValue = (typeof OrgType)[keyof typeof OrgType];
 
 export const SystemRole = {
-  PlatformAdmin: 'PlatformAdmin',
-  TenantAdmin:   'TenantAdmin',
-  StandardUser:  'StandardUser',
+  PlatformAdmin: "PlatformAdmin",
+  TenantAdmin: "TenantAdmin",
+  StandardUser: "StandardUser",
 } as const;
-export type SystemRoleValue = typeof SystemRole[keyof typeof SystemRole];
+export type SystemRoleValue = (typeof SystemRole)[keyof typeof SystemRole];
 
 export const ProductRole = {
   // CareConnect (product code: SYNQ_CARECONNECT)
-  CareConnectReferrer:       'SYNQ_CARECONNECT:CARECONNECT_REFERRER',
-  CareConnectReceiver:       'SYNQ_CARECONNECT:CARECONNECT_RECEIVER',
+  CareConnectReferrer: "SYNQ_CARECONNECT:CARECONNECT_REFERRER",
+  CareConnectReceiver: "SYNQ_CARECONNECT:CARECONNECT_RECEIVER",
   // CC2-INT-B06: role-based network management (not orgType-based)
-  CareConnectNetworkManager: 'SYNQ_CARECONNECT:CARECONNECT_NETWORK_MANAGER',
+  CareConnectNetworkManager: "SYNQ_CARECONNECT:CARECONNECT_NETWORK_MANAGER",
   // SynqFund (product code: SYNQ_FUND)
-  SynqFundReferrer:        'SYNQ_FUND:SYNQFUND_REFERRER',
-  SynqFundFunder:          'SYNQ_FUND:SYNQFUND_FUNDER',
-  SynqFundApplicantPortal: 'SYNQ_FUND:SYNQFUND_APPLICANT_PORTAL',
+  SynqFundReferrer: "SYNQ_FUND:SYNQFUND_REFERRER",
+  SynqFundFunder: "SYNQ_FUND:SYNQFUND_FUNDER",
+  SynqFundApplicantPortal: "SYNQ_FUND:SYNQFUND_APPLICANT_PORTAL",
   // SynqLien (product code: SYNQ_LIENS)
-  SynqLienSeller: 'SYNQ_LIENS:SYNQLIEN_SELLER',
-  SynqLienBuyer:  'SYNQ_LIENS:SYNQLIEN_BUYER',
-  SynqLienHolder: 'SYNQ_LIENS:SYNQLIEN_HOLDER',
+  SynqLienSeller: "SYNQ_LIENS:SYNQLIEN_SELLER",
+  SynqLienBuyer: "SYNQ_LIENS:SYNQLIEN_BUYER",
+  SynqLienHolder: "SYNQ_LIENS:SYNQLIEN_HOLDER",
+  // Xenia (product code: SYNQ_AI)
+  XeniaUser: "SYNQ_AI:XENIA_USER",
+  XeniaAdmin: "SYNQ_AI:XENIA_ADMIN",
 } as const;
-export type ProductRoleValue = typeof ProductRole[keyof typeof ProductRole];
+export type ProductRoleValue = (typeof ProductRole)[keyof typeof ProductRole];
 
 // ── Session shapes ────────────────────────────────────────────────────────────
 
@@ -53,28 +56,28 @@ export type ProductRoleValue = typeof ProductRole[keyof typeof ProductRole];
 export interface PlatformSession {
   // Identity
   userId: string;
-  email:  string;
+  email: string;
 
   // Tenant
-  tenantId:   string;
+  tenantId: string;
   tenantCode: string;
 
   // Organization
-  orgId?:    string;
-  orgType?:  OrgTypeValue;
-  orgName?:  string;
+  orgId?: string;
+  orgType?: OrgTypeValue;
+  orgName?: string;
 
   // Access
-  productRoles:   ProductRoleValue[];
-  systemRoles:    SystemRoleValue[];
-  isPlatformAdmin:  boolean;
-  isTenantAdmin:    boolean;
-  hasOrg:           boolean;
+  productRoles: ProductRoleValue[];
+  systemRoles: SystemRoleValue[];
+  isPlatformAdmin: boolean;
+  isTenantAdmin: boolean;
+  hasOrg: boolean;
 
   // Session
-  avatarDocumentId?:     string;
-  phone?:                string;
-  expiresAt:             Date;
+  avatarDocumentId?: string;
+  phone?: string;
+  expiresAt: Date;
   sessionTimeoutMinutes: number;
 
   // Permissions
@@ -118,17 +121,50 @@ export interface NavItem {
    * should access regardless of product-role provisioning state.
    */
   visibleForTenantAdminInOrgTypes?: OrgTypeValue[];
+  /**
+   * Marks this item as excluded from the current Phase 1 migration scope (LSV3-628).
+   * Hidden from the rendered sidebar until Phase 1 is complete, but kept in the
+   * nav definition so it's easy to re-enable later. Absent/false = visible.
+   */
+  notInPhase1?: boolean;
+  /**
+   * When set, clicking this item shows this message as a toast instead of
+   * navigating to its href. Use for features that are temporarily disabled
+   * but should stay visible in the nav (e.g. "Coming soon").
+   */
+  disabledMessage?: string;
+  /**
+   * Hides this item when the current subdomain resolves to a restricted,
+   * single-product portal (see lib/portal.ts's PORTAL_CONFIGS — e.g. the
+   * CareConnect-only "common portal" subdomain used by CareConnect-only
+   * customers). Use for tenant-configuration screens that only make sense
+   * in the full multi-product tenant portal, not a white-labeled single-
+   * product entry point.
+   */
+  hiddenInProductPortal?: boolean;
+  /**
+   * Nested sub-items rendered under this item as a collapsible dropdown.
+   * When present, the item acts as an expand/collapse toggle in addition
+   * to (or instead of) being a link.
+   */
+  children?: NavItem[];
 }
 
 export interface NavSection {
   heading?: string;
   items: NavItem[];
   sellModeOnly?: boolean;
+  /**
+   * Marks this entire section as excluded from the current Phase 1 migration scope
+   * (LSV3-628). The section is dropped entirely from the rendered sidebar (not just
+   * emptied) until Phase 1 is complete. Absent/false = visible.
+   */
+  notInPhase1?: boolean;
 }
 
 /** @deprecated Use NavSection[] */
 export interface NavGroup {
-  id:    string;
+  id: string;
   label: string;
   icon?: string;
   items: NavItem[];
@@ -147,8 +183,11 @@ export interface TenantBranding {
 
 // ── CareConnect ───────────────────────────────────────────────────────────────
 
-export type CareConnectUserType = 'Provider' | 'CareConnectReceiver';
+export type CareConnectUserType = "Provider" | "CareConnectReceiver";
 
-export interface ApplicantPortalSession extends Pick<PlatformSession, 'userId' | 'email' | 'tenantId' | 'tenantCode' | 'orgId' | 'orgType'> {
-  productRoles: ['SYNQ_FUND:SYNQFUND_APPLICANT_PORTAL'];
+export interface ApplicantPortalSession extends Pick<
+  PlatformSession,
+  "userId" | "email" | "tenantId" | "tenantCode" | "orgId" | "orgType"
+> {
+  productRoles: ["SYNQ_FUND:SYNQFUND_APPLICANT_PORTAL"];
 }

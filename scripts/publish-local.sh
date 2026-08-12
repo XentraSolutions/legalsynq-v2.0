@@ -44,6 +44,7 @@ SERVICE_PROJECTS=(
   "commerce|apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj"
   "billing|apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj"
   "comms|apps/services/comms/Comms.Api/Comms.Api.csproj"
+  "xenia|apps/services/xenia/Xenia.Api/Xenia.Api.csproj"
 )
 
 SERVICES=(
@@ -63,6 +64,7 @@ SERVICES=(
   commerce
   billing
   comms
+  xenia
   gateway
 )
 

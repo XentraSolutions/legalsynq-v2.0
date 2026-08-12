@@ -7,6 +7,7 @@ public class ReferralAttachment : AuditableEntity
     public Guid Id { get; private set; }
     public Guid TenantId { get; private set; }
     public Guid ReferralId { get; private set; }
+    public Guid? ReferralCommentId { get; private set; }
     public string FileName { get; private set; } = string.Empty;
     public string ContentType { get; private set; } = string.Empty;
     public long FileSizeBytes { get; private set; }
@@ -16,6 +17,7 @@ public class ReferralAttachment : AuditableEntity
     public string? Notes { get; private set; }
 
     public Referral? Referral { get; private set; }
+    public ReferralComment? ReferralComment { get; private set; }
 
     private ReferralAttachment() { }
 
@@ -29,13 +31,15 @@ public class ReferralAttachment : AuditableEntity
         string? externalStorageProvider,
         string status,
         string? notes,
-        Guid? createdByUserId)
+        Guid? createdByUserId,
+        Guid? referralCommentId = null)
     {
         return new ReferralAttachment
         {
             Id                       = Guid.CreateVersion7(),
             TenantId                 = tenantId,
             ReferralId               = referralId,
+            ReferralCommentId        = referralCommentId,
             FileName                 = fileName.Trim(),
             ContentType              = contentType.Trim(),
             FileSizeBytes            = fileSizeBytes,

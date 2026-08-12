@@ -12,6 +12,8 @@ public class SellingPortfolio : AuditableEntity
     public string PortfolioNumber { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
     public string? Description { get; private set; }
+    public string? InternalNotes { get; private set; }
+    public string? TargetGrouping { get; private set; }
     public string Status { get; private set; } = SellingPortfolioStatus.Draft;
 
     public int LienCount { get; private set; }
@@ -34,7 +36,9 @@ public class SellingPortfolio : AuditableEntity
         string portfolioNumber,
         string name,
         Guid createdByUserId,
-        string? description = null)
+        string? description = null,
+        string? internalNotes = null,
+        string? targetGrouping = null)
     {
         if (tenantId == Guid.Empty) throw new ArgumentException("TenantId is required.", nameof(tenantId));
         if (sellerOrgId == Guid.Empty) throw new ArgumentException("SellerOrgId is required.", nameof(sellerOrgId));
@@ -51,6 +55,8 @@ public class SellingPortfolio : AuditableEntity
             PortfolioNumber = portfolioNumber.Trim(),
             Name = name.Trim(),
             Description = description?.Trim(),
+            InternalNotes = internalNotes?.Trim(),
+            TargetGrouping = targetGrouping?.Trim(),
             Status = SellingPortfolioStatus.Draft,
             CreatedByUserId = createdByUserId,
             UpdatedByUserId = createdByUserId,
@@ -59,7 +65,12 @@ public class SellingPortfolio : AuditableEntity
         };
     }
 
-    public void Update(string name, Guid updatedByUserId, string? description = null)
+    public void Update(
+        string name,
+        Guid updatedByUserId,
+        string? description = null,
+        string? internalNotes = null,
+        string? targetGrouping = null)
     {
         if (SellingPortfolioStatus.Terminal.Contains(Status))
             throw new InvalidOperationException($"Cannot update a portfolio in terminal status '{Status}'.");
@@ -68,6 +79,8 @@ public class SellingPortfolio : AuditableEntity
 
         Name = name.Trim();
         Description = description?.Trim();
+        InternalNotes = internalNotes?.Trim();
+        TargetGrouping = targetGrouping?.Trim();
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }

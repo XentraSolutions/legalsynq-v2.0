@@ -7,7 +7,15 @@ public interface ILienService
     Task<PaginatedResult<LienResponse>> SearchAsync(
         Guid tenantId, string? search, string? status, string? lienType,
         Guid? caseId, Guid? facilityId, int page, int pageSize,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        DateTime? createdFromUtc = null,
+        DateTime? createdToUtc = null,
+        Guid? visibleOrgId = null,
+        bool includeSellerOrg = false,
+        bool includeBuyerOrg = false,
+        bool includeHolderOrg = false,
+        bool includeMarketplace = false,
+        bool excludeRejectedAndCancelled = false);
 
     Task<LienResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
@@ -20,6 +28,10 @@ public interface ILienService
     Task<LienResponse> UpdateAsync(
         Guid tenantId, Guid id, Guid actingUserId,
         UpdateLienRequest request, CancellationToken ct = default);
+
+    Task<LienResponse> SetLegacyMedicalStatusAsync(
+        Guid tenantId, Guid id, Guid actingUserId,
+        string status, CancellationToken ct = default);
 
     Task DeleteAsync(Guid tenantId, Guid id, Guid actingUserId, CancellationToken ct = default);
 }

@@ -7,7 +7,7 @@ namespace Liens.Api.Tests.Helpers;
 
 /// <summary>
 /// Seeds a deterministic set of reference and test data into the InMemory DB.
-/// Call once per test class after creating the service scope.
+/// Resets and reseeds the database before each test.
 /// All IDs are stable so tests can reference them by value.
 /// </summary>
 public static class SeedHelper
@@ -21,6 +21,7 @@ public static class SeedHelper
     public static readonly Guid MedicalProviderId  = new("40000000-0000-0000-0000-000000000011");
     public static readonly Guid FundingCompanyId   = new("40000000-0000-0000-0000-000000000012");
     public static readonly Guid LeadContactId      = new("40000000-0000-0000-0000-000000000013");
+    public static readonly Guid MedicalFacilityContactId = new("40000000-0000-0000-0000-000000000014");
     public static readonly Guid FacilityId         = new("50000000-0000-0000-0000-000000000001");
     public static readonly Guid FacilityContactId  = new("50000000-0000-0000-0000-000000000002");
     public static readonly Guid CaseId             = new("60000000-0000-0000-0000-000000000001");
@@ -29,12 +30,14 @@ public static class SeedHelper
     public static readonly Guid SettlementId       = new("80000000-0000-0000-0000-000000000002");
     public static readonly Guid PaymentId          = new("80000000-0000-0000-0000-000000000003");
     public static readonly Guid ReportConfigId     = new("90000000-0000-0000-0000-000000000001");
+    public static readonly Guid PayoffStatementDocumentTypeId = new("90000000-0000-0000-0000-000000000002");
 
     public static async Task SeedAsync(IServiceProvider sp)
     {
         var db = sp.GetRequiredService<LiensDbContext>();
 
-        if (db.Cases.Any()) return; // already seeded
+        await db.Database.EnsureDeletedAsync();
+        await db.Database.EnsureCreatedAsync();
 
         // ── Lookup values ────────────────────────────────────────────────────
         var lookupSeed = new (string Category, string Code, string Name)[]
@@ -56,7 +59,11 @@ public static class SeedHelper
             (LookupCategory.ServicingPriority, "Normal",      "Normal"),
             (LookupCategory.ContactType,       ContactType.LawFirm,    "Law Firm"),
             (LookupCategory.ContactType,       ContactType.Provider,   "Medical Provider"),
+            (LookupCategory.ContactType,       ContactType.Facility,   "Facility"),
+            (LookupCategory.ContactType,       ContactType.MedicalFacility, "Medical Facility"),
             (LookupCategory.ContactType,       ContactType.LienHolder, "Funding Company"),
+            (LookupCategory.ContactType,       ContactType.FundingCompany, "Funding Company"),
+            (LookupCategory.ContactType,       ContactType.Lead,       "Lead"),
         };
 
         foreach (var (cat, code, name) in lookupSeed)
@@ -65,6 +72,28 @@ public static class SeedHelper
                 category: cat, code: code, name: name,
                 createdByUserId: UserId, tenantId: TenantId, isSystem: true));
         }
+
+        var payoffStatementDocumentType = LookupValue.Create(
+            LookupCategory.DocumentCategory,
+            "PayoffStatement",
+            "Payoff Statement",
+            UserId,
+            tenantId: TenantId,
+            isSystem: true);
+        SetId(payoffStatementDocumentType, PayoffStatementDocumentTypeId);
+        db.LookupValues.Add(payoffStatementDocumentType);
+
+        db.ManualMedicalCodes.Add(ManualMedicalCode.Create(
+            TenantId,
+            "MANUAL-001",
+            "Manual Procedure",
+            "ASC",
+            100m,
+            10m,
+            70m,
+            30m,
+            110m,
+            UserId));
 
         // ── Contacts ─────────────────────────────────────────────────────────
         var lawFirm = Contact.Create(TenantId, OrgId, ContactType.LawFirm,
@@ -77,6 +106,11 @@ public static class SeedHelper
         SetId(provider, MedicalProviderId);
         db.Contacts.Add(provider);
 
+        var medicalFacilityContact = Contact.Create(TenantId, OrgId, ContactType.MedicalFacility,
+            "Sunrise", "Clinic", UserId, organization: "Sunrise Clinic");
+        SetId(medicalFacilityContact, MedicalFacilityContactId);
+        db.Contacts.Add(medicalFacilityContact);
+
         var funder = Contact.Create(TenantId, OrgId, ContactType.LienHolder,
             "Capital", "Fund", UserId, organization: "Capital Fund LLC");
         SetId(funder, FundingCompanyId);
@@ -87,16 +121,26 @@ public static class SeedHelper
         SetId(lead, LeadContactId);
         db.Contacts.Add(lead);
 
-        // ── Facility + contact person ─────────────────────────────────────────
+        // ── Facility + facility-linked contact person ─────────────────────────
         var facility = Facility.Create(TenantId, OrgId, "Sunrise Clinic", UserId,
             code: "FAC001", city: "Los Angeles", state: "CA");
         SetId(facility, FacilityId);
         db.Facilities.Add(facility);
 
-        var cp = FacilityContactPerson.Create(TenantId, FacilityId,
-            "Alice", "Nurse", UserId, position: "Head Nurse", email: "alice@sunrise.com");
+        var cp = Contact.Create(
+            TenantId,
+            OrgId,
+            ContactType.Facility,
+            "Alice",
+            "Nurse",
+            UserId,
+            facilityId: FacilityId,
+            contactSubtype: ContactSubtype.FacilityContactPerson,
+            title: "Head Nurse",
+            organization: facility.Name,
+            email: "alice@sunrise.com");
         SetId(cp, FacilityContactId);
-        db.FacilityContactPersons.Add(cp);
+        db.Contacts.Add(cp);
 
         // ── Case + Lien ───────────────────────────────────────────────────────
         var caseEntity = Case.Create(TenantId, OrgId, "CASE-TEST-001",

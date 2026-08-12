@@ -10,9 +10,21 @@ public class Facility : AuditableEntity
     public string AddressLine1 { get; private set; } = string.Empty;
     public string City { get; private set; } = string.Empty;
     public string State { get; private set; } = string.Empty;
-    public string PostalCode { get; private set; } = string.Empty;
+    public string? PostalCode { get; private set; }
+    public string? Email { get; private set; }
     public string? Phone { get; private set; }
     public bool IsActive { get; private set; }
+
+    // A mobile/roaming provider has no fixed street address — AddressLine1 instead holds a
+    // human-readable service-area label (e.g. "Greater Las Vegas Metro"), Latitude/Longitude
+    // anchor to a city-level centroid, and ServiceRadiusMiles describes the coverage area.
+    public bool IsMobile { get; private set; }
+    public double? ServiceRadiusMiles { get; private set; }
+
+    public double? Latitude { get; private set; }
+    public double? Longitude { get; private set; }
+    public string? GeoPointSource { get; private set; }
+    public DateTime? GeoUpdatedAtUtc { get; private set; }
 
     // Phase 5: link Facility to an Identity Organization (nullable during migration window)
     public Guid? OrganizationId { get; private set; }
@@ -37,10 +49,16 @@ public class Facility : AuditableEntity
         string addressLine1,
         string city,
         string state,
-        string postalCode,
+        string? postalCode,
         string? phone,
         bool isActive,
-        Guid? createdByUserId)
+        Guid? createdByUserId,
+        string? email = null,
+        double? latitude = null,
+        double? longitude = null,
+        string? geoPointSource = null,
+        bool isMobile = false,
+        double? serviceRadiusMiles = null)
     {
         return new Facility
         {
@@ -50,9 +68,16 @@ public class Facility : AuditableEntity
             AddressLine1 = addressLine1.Trim(),
             City = city.Trim(),
             State = state.Trim(),
-            PostalCode = postalCode.Trim(),
+            PostalCode = string.IsNullOrWhiteSpace(postalCode) ? null : postalCode.Trim(),
+            Email = email?.Trim(),
             Phone = phone?.Trim(),
             IsActive = isActive,
+            Latitude = latitude,
+            Longitude = longitude,
+            GeoPointSource = latitude.HasValue ? (geoPointSource ?? "Manual") : null,
+            GeoUpdatedAtUtc = latitude.HasValue ? DateTime.UtcNow : null,
+            IsMobile = isMobile,
+            ServiceRadiusMiles = isMobile ? serviceRadiusMiles : null,
             CreatedByUserId = createdByUserId,
             UpdatedByUserId = createdByUserId,
             CreatedAtUtc = DateTime.UtcNow,
@@ -60,23 +85,43 @@ public class Facility : AuditableEntity
         };
     }
 
+    public void Deactivate(Guid? updatedByUserId)
+    {
+        IsActive = false;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public void Update(
         string name,
         string addressLine1,
         string city,
         string state,
-        string postalCode,
+        string? postalCode,
         string? phone,
         bool isActive,
-        Guid? updatedByUserId)
+        Guid? updatedByUserId,
+        string? email = null,
+        double? latitude = null,
+        double? longitude = null,
+        string? geoPointSource = null,
+        bool isMobile = false,
+        double? serviceRadiusMiles = null)
     {
         Name = name.Trim();
         AddressLine1 = addressLine1.Trim();
         City = city.Trim();
         State = state.Trim();
-        PostalCode = postalCode.Trim();
+        PostalCode = string.IsNullOrWhiteSpace(postalCode) ? null : postalCode.Trim();
+        Email = email?.Trim();
         Phone = phone?.Trim();
         IsActive = isActive;
+        Latitude = latitude;
+        Longitude = longitude;
+        GeoPointSource = latitude.HasValue ? (geoPointSource ?? "Manual") : null;
+        GeoUpdatedAtUtc = latitude.HasValue ? DateTime.UtcNow : null;
+        IsMobile = isMobile;
+        ServiceRadiusMiles = isMobile ? serviceRadiusMiles : null;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }

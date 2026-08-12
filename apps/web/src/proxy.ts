@@ -5,8 +5,9 @@ import { normalizeCareConnectPortalHost } from "./lib/careconnect-login-url";
  * Global Next.js proxy — route protection + hostname-based routing.
  *
  * Rules:
- *  1. Common portal hostname (CC_COMMON_PORTAL_HOSTNAME):
+ *  1. Common portal hostnames (CC_COMMON_PORTAL_HOSTNAME, SYNQLIEN_COMMON_PORTAL_HOSTNAME):
  *     - Root / → redirect to /careconnect/dashboard (common portal home).
+ *       SynqLien common portal redirects root / → /funding/dashboard.
  *     - All other paths follow the same public/protected logic below.
  *  2. Public routes (/login, /portal, static assets) — always allowed through.
  *  3. Protected routes — require the platform_session cookie to exist.
@@ -31,6 +32,9 @@ import { normalizeCareConnectPortalHost } from "./lib/careconnect-login-url";
 // common portal dashboard. All other path-level routing rules still apply.
 const CC_COMMON_PORTAL_HOSTNAME = normalizeCareConnectPortalHost(
   process.env.CC_COMMON_PORTAL_HOSTNAME,
+);
+const SYNQLIEN_COMMON_PORTAL_HOSTNAME = normalizeCareConnectPortalHost(
+  process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME,
 );
 
 const PUBLIC_PATHS = [
@@ -59,6 +63,14 @@ const PUBLIC_PATHS = [
   // referral links can open attachments without a platform session cookie.
   "/api/documents/access/",
   "/documents/access/",
+  // SynqLien document view/download redemption — namespaced under /api/lien/
+  // to avoid colliding with CareConnect's top-level /api/documents/ routing.
+  "/api/lien/documents/access/",
+  "/api/lien/documents/internal/",
+  // SynqLien buyer offer links are token-gated by the Liens API and must stay
+  // reachable from email before a platform_session exists.
+  "/selling/public/",
+  "/api/lien/api/liens/selling/public/",
   // LSCC-005: Public referral token routes — no session required
   "/referrals/view",
   "/referrals/accept",
@@ -70,6 +82,11 @@ const PUBLIC_PATHS = [
   // CC2-INT-B07: Public tenant network directory — no session required
   "/network",
   "/careconnect/network",
+  // Referral Attribution representative portal — anonymous, access-code gated
+  // (see apps/web/src/app/careconnect/representative/layout.tsx). The code is
+  // re-verified server-side on every request; this only lets the request past
+  // the platform_session cookie check so the access-code gate can run.
+  "/careconnect/representative",
   "/api/public/",
   // CC2-ENROLL: Provider self-enrollment form — no session required
   "/enroll",
@@ -83,7 +100,7 @@ export function proxy(request: NextRequest) {
   // Read the host from x-forwarded-host (set by the reverse proxy) or the raw
   // Host header. Strip the port so "careconnect-demo.legalsynq.com:443" still
   // matches the configured hostname.
-  if (CC_COMMON_PORTAL_HOSTNAME) {
+  if (CC_COMMON_PORTAL_HOSTNAME || SYNQLIEN_COMMON_PORTAL_HOSTNAME) {
     const forwardedHost = request.headers.get("x-forwarded-host") ?? "";
     const rawHost = request.headers.get("host") ?? "";
     const incomingHost = (forwardedHost || rawHost).split(":")[0].toLowerCase();
@@ -98,6 +115,12 @@ export function proxy(request: NextRequest) {
       // /provider/* routes are served from the (common-portal) route group.
       // requireExternalPortal() inside those pages handles auth, so we let
       // them pass through the session-cookie check below without short-circuiting.
+    }
+
+    if (incomingHost === SYNQLIEN_COMMON_PORTAL_HOSTNAME && pathname === "/") {
+      return NextResponse.redirect(
+        new URL("/funding/dashboard", request.url),
+      );
     }
   }
 
@@ -121,6 +144,12 @@ export function proxy(request: NextRequest) {
   if (!sessionCookie) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("reason", "unauthenticated");
+    if (pathname === "/funding" || pathname.startsWith("/funding/")) {
+      loginUrl.searchParams.set(
+        "returnTo",
+        `${pathname}${request.nextUrl.search}`,
+      );
+    }
     return NextResponse.redirect(loginUrl);
   }
 

@@ -3,6 +3,7 @@ using Notifications.Application.Interfaces;
 using Notifications.Infrastructure.Providers.Adapters;
 using System.Net;
 using System.Net.Http;
+using System.Text.Json;
 using Xunit;
 
 namespace Notifications.Tests;
@@ -163,6 +164,58 @@ public class SendGridAdapterTests
         Assert.Equal("msg-abc-123", result.ProviderMessageId);
     }
 
+    [Fact]
+    public async Task SendAsync_includes_inline_attachments_with_content_ids()
+    {
+        var handler = new StubHttpHandler(202, "", messageId: "msg-abc-123");
+        var adapter = BuildAdapter(apiKey: "valid-key", handler: handler);
+        var payload = SamplePayload();
+        payload.Html = "<!doctype html><html><body><img src=\"cid:legalsynq-brand-icon\"></body></html>";
+        payload.Attachments =
+        [
+            new EmailAttachmentPayload
+            {
+                Content = "aW1hZ2U=",
+                Type = "image/png",
+                Filename = "legalsynq-brand-icon.png",
+                Disposition = "inline",
+                ContentId = "legalsynq-brand-icon",
+            },
+        ];
+
+        var result = await adapter.SendAsync(payload);
+
+        Assert.True(result.Success);
+        using var request = JsonDocument.Parse(handler.LastRequestJson!);
+        var attachment = request.RootElement.GetProperty("attachments")[0];
+        Assert.Equal("aW1hZ2U=", attachment.GetProperty("content").GetString());
+        Assert.Equal("image/png", attachment.GetProperty("type").GetString());
+        Assert.Equal("legalsynq-brand-icon.png", attachment.GetProperty("filename").GetString());
+        Assert.Equal("inline", attachment.GetProperty("disposition").GetString());
+        Assert.Equal("legalsynq-brand-icon", attachment.GetProperty("content_id").GetString());
+    }
+
+    [Fact]
+    public async Task SendAsync_disables_click_tracking_when_requested()
+    {
+        var handler = new StubHttpHandler(202, "", messageId: "msg-abc-123");
+        var adapter = BuildAdapter(apiKey: "valid-key", handler: handler);
+        var payload = SamplePayload();
+        payload.Html =
+            "<!doctype html><html><body><a href=\"https://tenant.legalsynq.test/selling/public/token\">View Lien for Sale</a></body></html>";
+        payload.DisableClickTracking = true;
+
+        var result = await adapter.SendAsync(payload);
+
+        Assert.True(result.Success);
+        using var request = JsonDocument.Parse(handler.LastRequestJson!);
+        var clickTracking = request.RootElement
+            .GetProperty("tracking_settings")
+            .GetProperty("click_tracking");
+        Assert.False(clickTracking.GetProperty("enable").GetBoolean());
+        Assert.False(clickTracking.GetProperty("enable_text").GetBoolean());
+    }
+
     // ── HTTP stubs ────────────────────────────────────────────────────────────
 
     private sealed class StubHttpHandler : HttpMessageHandler
@@ -170,6 +223,7 @@ public class SendGridAdapterTests
         private readonly int    _statusCode;
         private readonly string _body;
         private readonly string? _messageId;
+        public string? LastRequestJson { get; private set; }
 
         public StubHttpHandler(int statusCode, string body, string? messageId = null)
         {
@@ -181,6 +235,7 @@ public class SendGridAdapterTests
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            LastRequestJson = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
             var response = new HttpResponseMessage((HttpStatusCode)_statusCode)
             {
                 Content = new StringContent(_body),

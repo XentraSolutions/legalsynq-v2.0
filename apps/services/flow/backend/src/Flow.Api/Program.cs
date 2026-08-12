@@ -161,7 +161,7 @@ builder.Services.AddAuthorization(options =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx =>
                   ctx.User.HasPermission(PermissionCodes.LienSell) ||
-                  ctx.User.HasProductAccess(ProductCodes.SynqLiens) ||
+                  ctx.User.HasProductRole(ProductCodes.SynqLiens, [ProductRoleCodes.SynqLienSeller]) ||
                   (allowMissingPermissions && !ctx.User.GetPermissions().Any())));
 
     options.AddPolicy(Policies.CanReferCareConnect, policy =>

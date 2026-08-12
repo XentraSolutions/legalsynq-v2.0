@@ -1,85 +1,325 @@
-'use client';
+"use client";
 
-import { StatusBadge } from "@/components/careconnect/status-badge";
-import { KpiCard } from "@/components/lien/kpi-card";
+import { ConfirmDialog } from "@/components/lien/modal";
+import { BaseTable } from "@/components/ui/base-table";
+import { useFetchReportColumns } from "@/hooks/use-report";
+import { ApiError } from "@/lib/api-client";
 import { CaseListItem } from "@/lib/cases";
-import { useEffect, useState } from "react";
+import { PaginationMeta } from "@/lib/contacts";
+import {
+  ColumnGroup,
+  CreateReports,
+  ExportReportRequest,
+  ReportColumnOption,
+  ReportListResponse,
+  ReportTotals,
+} from "@/lib/liens/lien-report.types";
+import { lienReportsService } from "@/lib/liens/lien-reports.service";
+import { useLienStore } from "@/stores/lien-store";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+type SummaryTotals = {
+  summaryTotals: ReportTotals;
+};
+interface ReportDisplayProps {
+  report: ReportListResponse &
+    SummaryTotals &
+    ExportReportRequest &
+    CreateReports;
+  onBack: () => void;
+  onEdit?: () => void;
+  onSaved?: () => void;
+  onPaginate?: (pagination: PaginationMeta) => void;
+  loadingData?: boolean;
+}
 
-export default function ReportDisplay({ report, onBack, onEdit }: any) {
+function formatCurrency(amount: number | null): string {
+  if (amount === null || amount === undefined || isNaN(Number(amount)))
+    return "";
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2, // Forces decimals like .00 if needed
+  }).format(Number(amount));
+}
+function formatNumber(amount: number): string {
+  return new Intl.NumberFormat("en-IN", { maximumSignificantDigits: 3 }).format(
+    amount,
+  );
+}
+
+export default function ReportDisplay({
+  report,
+  onBack,
+  onEdit,
+  onSaved,
+  onPaginate,
+  loadingData,
+}: ReportDisplayProps) {
   const [loading, setLoading] = useState(true);
-  const [cases, setCases] = useState<CaseListItem[]>([]);
-  
-  const viewBy = report.type; // 'cases' | 'liens'
+  const [exporting, setExporting] = useState(false);
+  const { defaultColumns, isColumnsLoading } = useFetchReportColumns(
+    report.reportType,
+    report,
+  );
 
+  const [cases, setCases] = useState<CaseListItem[]>([]);
+  const [columns, setColumns] = useState<any>();
+  const addToast = useLienStore((s) => s.addToast);
+  const [confirmAction, setConfirmAction] = useState<boolean>(false);
+  const pagination: PaginationMeta = {
+    page: report.page ?? 1,
+    pageSize: report.pageSize ?? 10,
+    totalCount: report?.totalCount ?? 0,
+    totalPages: report?.totalPages ?? 1,
+  };
+  const viewBy = report?.reportType.toLowerCase() ?? "case"; // 'cases' | 'liens'
   const metrics =
-    viewBy === 'cases'
+    viewBy === "case"
       ? [
-          { label: 'Total Cases', value: 120 },
-          { label: 'Open Cases', value: 45 },
-          { label: 'Closed Cases', value: 75 },
-          { label: 'Total Purchase Amount', value: '$85,000' },
-          { label: 'Total Returned', value: '$12,000' },
-          { label: 'Total Billing Amount', value: '$110,000' },
+          {
+            label: "Total Cases",
+            value:
+              formatNumber(report?.summaryTotals?.totalCases) ??
+              report.totalCount,
+          },
+          {
+            label: "Open Cases",
+            value: formatNumber(report?.summaryTotals?.totalOpenCases) ?? 0,
+          },
+          {
+            label: "Closed Cases",
+            value: formatNumber(report?.summaryTotals?.totalClosedCases) ?? 0,
+          },
+          {
+            label: "Total Purchase Amount",
+            value:
+              formatCurrency(report?.summaryTotals?.totalPurchaseAmt) ??
+              `$ 0.00`,
+          },
+          {
+            label: "Total Returned",
+            value:
+              formatCurrency(report?.summaryTotals?.totalReturnedAmt) ??
+              `$ 0.00`,
+          },
+          {
+            label: "Total Billing Amount",
+            value:
+              formatCurrency(report?.summaryTotals?.totalBillingAmt) ??
+              `$ 0.00`,
+          },
         ]
       : [
-          { label: 'Total Liens', value: 340 },
-          { label: 'Open Liens', value: 140 },
-          { label: 'Closed Liens', value: 200 },
-          { label: 'Total Purchase Amount', value: '$210,000' },
-          { label: 'Total Returned', value: '$32,000' },
-          { label: 'Total Billing Amount', value: '$275,000' },
+          {
+            label: "Total Liens",
+            value: report?.summaryTotals?.totalLiens ?? 0,
+          },
+          {
+            label: "Open Liens",
+            value: report?.summaryTotals?.totalOpenLiens ?? 0,
+          },
+          {
+            label: "Closed Liens",
+            value: report?.summaryTotals?.totalClosedLiens ?? 0,
+          },
+          {
+            label: "Total Purchase Amount",
+            value:
+              formatCurrency(report?.summaryTotals?.totalPurchaseAmt) ??
+              `$ 0.00`,
+          },
+          {
+            label: "Total Returned",
+            value:
+              formatCurrency(report?.summaryTotals?.totalReturnedAmt) ??
+              `$ 0.00`,
+          },
+          {
+            label: "Total Billing Amount",
+            value:
+              formatCurrency(report?.summaryTotals?.totalBillingAmt) ??
+              `$ 0.00`,
+          },
         ];
 
-    useEffect(() => {
-      const timer = setTimeout(() => {
-        setLoading(false);
-      }, 2000); // 2 seconds
+  const onExport = async () => {
+    setExporting(true);
+    const response = await lienReportsService.exportReports({
+      ...report.reportConfig,
+      reportId: report.reportId,
+      format: "csv",
+    });
 
-      return () => clearTimeout(timer);
-    }, []);
+    const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
+    const link = document.createElement("a");
+    link.href = src;
+    link.download = response.data[0]?.filename;
+    link.click();
+    link.remove();
+
+    setExporting(false);
+  };
+
+  const handleConfirmAction = () => {
+    setConfirmAction(false);
+    onDelete();
+  };
+  const onDelete = async () => {
+    try {
+      const response = await lienReportsService.deleteReports(report.reportId);
+
+      if (response) {
+        addToast({
+          type: "success",
+          title: "Report Deleted",
+        });
+        onBack();
+      }
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : "Failed to delete report";
+      addToast({ type: "error", title: "Delete Failed", description: message });
+    }
+  };
+
+  const fetchColumns = useCallback(async () => {
+    if (!report.config?.columns) {
+      const cols = defaultColumns
+        .flatMap((config: any) => config.value)
+        .map((item) => {
+          const isCurrencyField = /amt|amount|price|cost|fee|total/i.test(
+            item.key,
+          );
+
+          const isDefaultMinWidth =
+            item.key.includes("facility") ||
+            item.key.includes("law") ||
+            item.key.includes("case_type")
+              ? { minWidth: "220px", width: "100%" }
+              : item.key.includes("id") || item.key.includes("status")
+                ? { minWidth: "135px", width: "100%" }
+                : { minWidth: "50px" };
+
+          return {
+            id: item.key,
+            header: item.label,
+            accessorFn: (row: any) => row[item.key],
+            meta: {
+              ...isDefaultMinWidth,
+            },
+            cell: ({ row }: any) => {
+              const value = row.original[item.key];
+              let formattedValue = value;
+
+              if (isCurrencyField && value !== null && value !== undefined) {
+                // Remove everything except numbers, periods, and minus signs
+                const cleanString = String(value).replace(/[^0-9.-]+/g, "");
+                const numericValue = parseFloat(cleanString);
+
+                // Format if it successfully parsed into a valid number
+                if (!isNaN(numericValue)) {
+                  formattedValue = formatCurrency(numericValue);
+                }
+              }
+
+              return (
+                <span className="text-sm text-gray-700">{formattedValue}</span>
+              );
+            },
+          };
+        });
+
+      setColumns(cols);
+    } else {
+      const tableColumns = defaultColumns.map((item) => {
+        // Define keywords that identify an amount or numeric column
+        const isCurrencyField = /amt|amount|price|cost|fee|total/i.test(
+          item.key,
+        );
+        const isDefaultMinWidth =
+          item.key.includes("facility") ||
+          item.key.includes("law") ||
+          item.key.includes("case_type") ||
+          item.key.includes("manager")
+            ? { minWidth: "220px", width: "100%" }
+            : item.key.includes("lien_id") ||
+                item.key.includes("case_id") ||
+                item.key.includes("status")
+              ? { minWidth: "135px", width: "100%" }
+              : { minWidth: "50px" };
+        return {
+          id: item.key,
+          header: item.label,
+          accessorFn: (row: any) => row[item.key],
+          meta: {
+            ...isDefaultMinWidth,
+          },
+          cell: ({ row }: any) => {
+            const value = row.original[item.key];
+
+            let formattedValue = value;
+
+            if (isCurrencyField && value !== null && value !== undefined) {
+              // 1. Remove everything except numbers, periods, and minus signs (e.g., "$1,200.50" -> "1200.50")
+              const cleanString = String(value).replace(/[^0-9.-]+/g, "");
+              const numericValue = parseFloat(cleanString);
+
+              // 2. Format if it successfully parsed into a valid number
+              if (!isNaN(numericValue)) {
+                formattedValue = formatCurrency(numericValue);
+              }
+            }
+
+            return (
+              <span className="text-sm text-gray-700">{formattedValue}</span>
+            );
+          },
+        };
+      });
+
+      setColumns(tableColumns);
+    }
+
+    setLoading(false);
+  }, [isColumnsLoading]);
+
+  useEffect(() => {
+    fetchColumns();
+  }, [isColumnsLoading]);
+
+  useEffect(() => {
+    setCases(report.data ?? []);
+  }, [report, report.data]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6 space-y-6">
-
       {/* HEADER */}
       <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200">
         <div>
-          <h2 className="text-lg font-semibold">{report.name}</h2>
+          <h2 className="text-lg font-semibold">{report?.name}</h2>
           <p className="text-sm text-gray-500">
-            {viewBy === 'cases' ? 'Cases Report' : 'Liens Report'}
+            {viewBy === "case" ? "Cases Report" : "Liens Report"}
           </p>
-        </div>
-
-        <div className="flex gap-2">
-          <button className="px-3 py-2 bg-primary text-white rounded-lg text-sm hover:shadow-sm" onClick={onEdit}>
-            Edit Template
-          </button>
-
-          {/* <button onClick={onBack} className="px-3 py-2 border border-gray-200 rounded-lg text-sm">
-            Back
-          </button>
-          <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm">
-            Export CSV
-          </button>
-          <button className="px-3 py-2 bg-primary text-white rounded-lg text-sm">
-            Save Template
-          </button> */}
         </div>
       </div>
 
       {/* METRICS GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6  gap-4">
         {metrics.map((m) => (
-          <div key={m.label} className="border border-gray-200 rounded-xl p-5 hover:shadow-sm">
+          <div
+            key={m.label}
+            className="border border-gray-200 rounded-xl px-4 py-2 hover:shadow-sm break-words"
+          >
             <p className="text-xs text-gray-500">{m.label}</p>
-            <p className="text-lg font-semibold">{m.value}</p>
+            <p className="text-lg font-semibold text-right py-3">{m.value}</p>
           </div>
         ))}
       </div>
 
       {/* TABLE PLACEHOLDER */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-xl overflow-x-scroll h-full">
         {loading ? (
           <div className="py-12 text-center">
             <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -88,46 +328,33 @@ export default function ReportDisplay({ report, onBack, onEdit }: any) {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50/80 border-b border-gray-100">
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Case ID</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Plaintiff Name</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Law Firm</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Case Manager</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Accident Type</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Date of Loss</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">DOB</th>
-                    <th className="px-3 py-2.5 text-left text-[11px] font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {cases.map((c) => (
-                    <tr
-                      key={c.id}
-                      className={`hover:bg-gray-50/80 transition-colors cursor-pointer`}
-                    >
-                      <td className="px-3 py-2.5">
-                        {c.caseNumber}
-                      </td>
-                      <td className="px-3 py-2.5 text-sm text-gray-700 font-medium">{c.clientName}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">{c.lawFirm || '—'}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">{c.caseManager || '—'}</td>
-                      <td className="px-3 py-2.5 text-sm text-gray-600">{c.accidentType || '—'}</td>
-                      <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">{c.dateOfIncident || '—'}</td>
-                      <td className="px-3 py-2.5 text-xs text-gray-500 tabular-nums">{c.clientDob || '—'}</td>
-                      <td className="px-3 py-2.5"><StatusBadge status={c.status} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <BaseTable
+                data={cases ?? []}
+                columns={columns}
+                getRowId={(c) => c.id}
+                isLoading={loadingData}
+                emptyMessage="No data found."
+                manualPagination
+                enableSorting={false}
+                pageCount={pagination.totalPages}
+                totalCount={pagination.totalCount}
+                pagination={{
+                  pageIndex: pagination.page - 1,
+                  pageSize: pagination.pageSize,
+                }}
+                onPaginationChange={(updater) => {
+                  const next =
+                    typeof updater === "function"
+                      ? updater({
+                          pageIndex: pagination.page - 1,
+                          pageSize: pagination.pageSize,
+                        })
+                      : updater;
+                  onPaginate?.({ ...pagination, page: next.pageIndex + 1 });
+                }}
+                className="bg-white border-gray-200 !rounded-none"
+              />
             </div>
-            {cases.length === 0 && !loading && (
-              <div className="py-12 text-center">
-                <i className="ri-folder-open-line text-2xl text-gray-300" />
-                <p className="text-sm text-gray-400 mt-2">No data found.</p>
-              </div>
-            )}
           </>
         )}
       </div>
@@ -143,20 +370,26 @@ export default function ReportDisplay({ report, onBack, onEdit }: any) {
           </button>
           {/* RIGHT */}
           <div className="flex flex-wrap gap-2 sm:gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <button className="px-3 py-2 border border-gray-200 text-red-500 rounded-lg text-sm hover:shadow-sm">
-              Delete Template
-            </button>
-
-            <button className="px-3 py-2 border border-gray-200 text-blue-500 rounded-lg text-sm hover:shadow-sm">
-              Export CSV
-            </button>
-
-            <button className="px-3 py-2 bg-primary text-white rounded-lg text-sm hover:shadow-sm">
-              Save Template
+            <button
+              disabled={exporting}
+              onClick={onExport}
+              className="px-3 py-2 border border-gray-200 text-blue-500 rounded-lg text-sm hover:shadow-sm"
+            >
+              {exporting ? "Exporting..." : "Export CSV"}
             </button>
           </div>
         </div>
       </div>
+      {confirmAction && (
+        <ConfirmDialog
+          open
+          onClose={() => setConfirmAction(false)}
+          onConfirm={handleConfirmAction}
+          title={"Delete Report"}
+          description={`Are you sure you want to delete? This action cannot be undone.`}
+          confirmLabel={"Delete"}
+        />
+      )}
     </div>
   );
 }

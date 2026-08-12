@@ -60,6 +60,7 @@ public static class EnrollmentEndpoints
                 CompanyType:  "Provider",
                 Email:        provider.Email,
                 Phone:        provider.Phone,
+                Title:        provider.Title,
                 AddressLine1: provider.AddressLine1,
                 City:         provider.City,
                 State:        provider.State,
@@ -154,6 +155,8 @@ public static class EnrollmentEndpoints
                 return Results.BadRequest(new { message = "Password must be at least 8 characters." });
             if (string.IsNullOrWhiteSpace(body.FirstName))
                 return Results.BadRequest(new { message = "First name is required." });
+            if (body.Title?.Trim().Length > 50)
+                return Results.BadRequest(new { message = "Title must be 50 characters or fewer." });
             if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(body.Phone, out var normalizedPhone))
                 return Results.BadRequest(new { message = "Phone number must be 10 digits." });
             if (!PostalCodeHelper.IsValidOptionalUsZip(body.PostalCode))
@@ -255,7 +258,8 @@ public static class EnrollmentEndpoints
                 body.FirstName.Trim(),
                 body.LastName?.Trim(),
                 ResolveIdentityEnrollmentPhone(normalizedPhone, provider.Phone),
-                ct);
+                ct,
+                title: body.Title?.Trim());
 
             if (registerResult is { IsOwnerBlocked: true })
             {
@@ -344,6 +348,8 @@ public static class EnrollmentEndpoints
                 return Results.BadRequest(new { message = "Password must be at least 8 characters." });
             if (string.IsNullOrWhiteSpace(body.FirstName))
                 return Results.BadRequest(new { message = "First name is required." });
+            if (body.Title?.Trim().Length > 50)
+                return Results.BadRequest(new { message = "Title must be 50 characters or fewer." });
             if (!PhoneNumberHelper.TryNormalizeOptionalUsPhone(body.Phone, out var normalizedPhone))
                 return Results.BadRequest(new { message = "Phone number must be 10 digits." });
             if (!PostalCodeHelper.IsValidOptionalUsZip(body.PostalCode))
@@ -406,7 +412,8 @@ public static class EnrollmentEndpoints
                 body.FirstName.Trim(),
                 body.LastName?.Trim(),
                 ResolveIdentityEnrollmentPhone(normalizedPhone, null),
-                ct);
+                ct,
+                title: body.Title?.Trim());
 
             if (registerResult is { IsOwnerBlocked: true })
             {
@@ -610,6 +617,7 @@ public static class EnrollmentEndpoints
         string  CompanyType,
         string  Email,
         string  Phone,
+        string? Title,
         string  AddressLine1,
         string  City,
         string  State,
@@ -626,6 +634,7 @@ public static class EnrollmentEndpoints
         string  Password,
         string  FirstName,
         string? LastName     = null,
+        string? Title        = null,
         string? Phone        = null,
         string? AddressLine1 = null,
         string? City         = null,
@@ -641,6 +650,7 @@ public static class EnrollmentEndpoints
         string  Password,
         string  FirstName,
         string? LastName     = null,
+        string? Title        = null,
         string? Phone        = null,
         string? AddressLine1 = null,
         string? City         = null,

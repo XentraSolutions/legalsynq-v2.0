@@ -19,6 +19,7 @@ public class FacilityRepository : IFacilityRepository
         return await _db.Facilities
             .Where(f => f.TenantId == tenantId)
             .OrderBy(f => f.Name)
+            .ThenBy(f => f.City)
             .ToListAsync(ct);
     }
 

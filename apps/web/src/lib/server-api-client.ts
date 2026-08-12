@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { normalizeUtcTimestamps } from '@/lib/normalize-utc';
 
-const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5000';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:5010';
 
 // ── Error ────────────────────────────────────────────────────────────────────
 

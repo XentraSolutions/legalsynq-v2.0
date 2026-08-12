@@ -107,7 +107,12 @@ export function TenantListTable({ tenants, totalCount, page, pageSize }: TenantL
                   <StatusBadge status={tenant.status} />
                 </td>
                 <td className="px-4 py-3">
-                  <ProvisioningBadge status={tenant.provisioningStatus} />
+                  <Link
+                  target='_blank'
+                  href={tenant.url}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800">
+                    {tenant.url}
+                  </Link>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-700">
                   {tenant.primaryContactName}

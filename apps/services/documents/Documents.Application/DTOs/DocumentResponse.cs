@@ -18,16 +18,16 @@ public sealed class DocumentResponse
     public Guid?    CurrentVersionId { get; init; }
     public int      VersionCount     { get; init; }
     public string   ScanStatus       { get; init; } = string.Empty;
-    public DateTime? ScanCompletedAt { get; init; }
+    public DateTimeOffset? ScanCompletedAt { get; init; }
     public List<string> ScanThreats  { get; init; } = new();
     public bool     IsDeleted        { get; init; }
-    public DateTime? DeletedAt       { get; init; }
+    public DateTimeOffset? DeletedAt { get; init; }
     public Guid?    DeletedBy        { get; init; }
-    public DateTime? RetainUntil     { get; init; }
-    public DateTime? LegalHoldAt     { get; init; }
-    public DateTime CreatedAt        { get; init; }
+    public DateTimeOffset? RetainUntil { get; init; }
+    public DateTimeOffset? LegalHoldAt { get; init; }
+    public DateTimeOffset CreatedAt    { get; init; }
     public Guid     CreatedBy        { get; init; }
-    public DateTime UpdatedAt        { get; init; }
+    public DateTimeOffset UpdatedAt    { get; init; }
     public Guid     UpdatedBy        { get; init; }
 
     // storageKey, storageBucket, and checksum are intentionally omitted — never exposed to clients
@@ -48,16 +48,16 @@ public sealed class DocumentResponse
         CurrentVersionId = doc.CurrentVersionId,
         VersionCount     = doc.VersionCount,
         ScanStatus       = doc.ScanStatus.ToString().ToUpperInvariant(),
-        ScanCompletedAt  = doc.ScanCompletedAt,
+        ScanCompletedAt  = ResponseTimestampConverter.Convert(doc.ScanCompletedAt),
         ScanThreats      = doc.ScanThreats,
         IsDeleted        = doc.IsDeleted,
-        DeletedAt        = doc.DeletedAt,
+        DeletedAt        = ResponseTimestampConverter.Convert(doc.DeletedAt),
         DeletedBy        = doc.DeletedBy,
-        RetainUntil      = doc.RetainUntil,
-        LegalHoldAt      = doc.LegalHoldAt,
-        CreatedAt        = doc.CreatedAt,
+        RetainUntil      = ResponseTimestampConverter.Convert(doc.RetainUntil),
+        LegalHoldAt      = ResponseTimestampConverter.Convert(doc.LegalHoldAt),
+        CreatedAt        = ResponseTimestampConverter.Convert(doc.CreatedAt),
         CreatedBy        = doc.CreatedBy,
-        UpdatedAt        = doc.UpdatedAt,
+        UpdatedAt        = ResponseTimestampConverter.Convert(doc.UpdatedAt),
         UpdatedBy        = doc.UpdatedBy,
     };
 }

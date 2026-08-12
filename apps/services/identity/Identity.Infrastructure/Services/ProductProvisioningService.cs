@@ -51,10 +51,14 @@ public class ProductProvisioningService : IProductProvisioningService
             .FirstOrDefaultAsync(t => t.Id == request.TenantId, ct)
             ?? throw new InvalidOperationException($"Tenant '{request.TenantId}' not found.");
 
+        var tenantProductChanged = HasTenantProductStateChanged(tenant, product.Id, request.Enabled);
         bool tpCreated = await ProvisionTenantProduct(tenant, product, request.Enabled, ct);
 
         var (orgCreated, orgUpdated, eligibleOrgs) =
             await ProvisionOrganizationProducts(request.TenantId, product, request.Enabled, ct);
+
+        if (tenantProductChanged)
+            await InvalidateTenantAccessAsync(request.TenantId, ct);
 
         await _db.SaveChangesAsync(ct);
 
@@ -102,6 +106,12 @@ public class ProductProvisioningService : IProductProvisioningService
             handlerResult);
     }
 
+    private static bool HasTenantProductStateChanged(Tenant tenant, Guid productId, bool enabled)
+    {
+        var existing = tenant.TenantProducts.FirstOrDefault(tp => tp.ProductId == productId);
+        return existing is null ? enabled : existing.IsEnabled != enabled;
+    }
+
     private async Task EnsureTenantOwnerProductAccessAsync(
         Tenant tenant,
         string productCode,
@@ -128,6 +138,25 @@ public class ProductProvisioningService : IProductProvisioningService
                 tenant.OwnerUserId.Value,
                 productCode);
         }
+    }
+
+    private async Task InvalidateTenantAccessAsync(Guid tenantId, CancellationToken ct)
+    {
+        var userIds = await _db.UserTenants
+            .Where(ut => ut.TenantId == tenantId)
+            .Select(ut => ut.UserId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        if (userIds.Count == 0)
+            return;
+
+        var users = await _db.Users
+            .Where(u => userIds.Contains(u.Id))
+            .ToListAsync(ct);
+
+        foreach (var user in users)
+            user.IncrementAccessVersion();
     }
 
     // ── LS-COMMERCE-ECO-02: Safe Commerce notification helper ─────────────────

@@ -75,7 +75,10 @@ async function proxy(request: NextRequest, { params }: RouteContext): Promise<Ne
 
   if (isTextOrJson) {
     const responseBody = await gatewayRes.text();
-    return new NextResponse(responseBody, {
+    // Null-body statuses (204/205/304) must not be constructed with a body — even an
+    // empty string throws "Invalid response status code" per the Fetch spec.
+    const isNullBodyStatus = gatewayRes.status === 204 || gatewayRes.status === 205 || gatewayRes.status === 304;
+    return new NextResponse(isNullBodyStatus ? null : responseBody, {
       status:  gatewayRes.status,
       headers: resHeaders,
     });

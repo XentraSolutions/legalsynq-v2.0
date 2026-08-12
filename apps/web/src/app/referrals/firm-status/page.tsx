@@ -83,7 +83,18 @@ export default async function FirmStatusPage({ searchParams }: Props) {
   // Prefer the split ReferrerFirstName/ReferrerLastName fields (no full-name slicing
   // ambiguity); fall back to the legacy single ReferrerName for referrals created
   // before the split existed (e.g. via the authenticated/JWT path).
-  const hasSplitReferrerName = !!(threadData.referrerFirstName || threadData.referrerLastName);
+  //
+  // "Contact first name" is optional on the public referral form, so when it's left
+  // blank the submission fills ReferrerFirstName with the firm name just to satisfy
+  // the backend's required-field validation. That filler value must never be treated
+  // as a real first name here, or it ends up pre-filled (and locked) into the "First
+  // Name" field on the enrollment/portal-access form.
+  const referrerFirstName = (threadData.referrerFirstName as string | null)?.trim() || null;
+  const referrerFirstNameIsFirmNameFiller =
+    !!referrerFirstName &&
+    normalizeNameForComparison(referrerFirstName) === normalizeNameForComparison(firmName);
+  const hasSplitReferrerName =
+    (!!referrerFirstName && !referrerFirstNameIsFirmNameFiller) || !!threadData.referrerLastName;
   const legacyReferrerName = (threadData.referrerName as string | null)?.trim() || null;
   const shouldIncludeLegacyContact =
     !!legacyReferrerName &&
@@ -95,7 +106,7 @@ export default async function FirmStatusPage({ searchParams }: Props) {
     ...(firmName                 ? { firm:  firmName                          } : {}),
     ...(hasSplitReferrerName
       ? {
-          ...(threadData.referrerFirstName ? { contactFirstName: threadData.referrerFirstName as string } : {}),
+          ...(referrerFirstNameIsFirmNameFiller ? {} : (referrerFirstName ? { contactFirstName: referrerFirstName } : {})),
           ...(threadData.referrerLastName  ? { contactLastName:  threadData.referrerLastName  as string } : {}),
         }
       : (shouldIncludeLegacyContact ? { contact: legacyReferrerName } : {})),

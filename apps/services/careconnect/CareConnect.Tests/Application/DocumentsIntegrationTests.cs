@@ -1,6 +1,8 @@
 // CC2-INT-B03: Documents + Notifications Integration Tests
 // Covers: upload → documentId persisted, signed URL retrieval, scope enforcement,
 // token HMAC hard-fails outside Development, PROVIDER_ASSIGNED notification.
+using BuildingBlocks.Authorization;
+using BuildingBlocks.Context;
 using BuildingBlocks.Exceptions;
 using CareConnect.Application.DTOs;
 using CareConnect.Application.Interfaces;
@@ -271,6 +273,105 @@ public class DocumentsIntegrationTests
                 new UploadAttachmentRequest { Scope = AttachmentScope.Shared }));
     }
 
+    [Fact]
+    public async Task ReferralAttachmentService_Upload_CrossTenantParticipant_UsesReferralTenant()
+    {
+        var callerTenantId   = Guid.CreateVersion7();
+        var referralTenantId = Guid.CreateVersion7();
+        var referringOrgId   = Guid.CreateVersion7();
+        var documentId       = Guid.CreateVersion7().ToString();
+        var referral         = CreateMinimalReferral(referralTenantId, referringOrgId: referringOrgId);
+
+        var referralRepo   = new Mock<IReferralRepository>();
+        var attachmentRepo = new Mock<IReferralAttachmentRepository>();
+        var docClient      = new Mock<IDocumentServiceClient>();
+
+        referralRepo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+        docClient.Setup(d => d.UploadAsync(
+                It.IsAny<Stream>(), "records.pdf", "application/pdf", 3,
+                referralTenantId, It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>(),
+                referral.Id.ToString(), "referral", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentUploadResult(true, documentId, null));
+
+        ReferralAttachment? persisted = null;
+        attachmentRepo.Setup(r => r.AddAsync(It.IsAny<ReferralAttachment>(), It.IsAny<CancellationToken>()))
+            .Callback<ReferralAttachment, CancellationToken>((attachment, _) => persisted = attachment)
+            .Returns(Task.CompletedTask);
+
+        var svc = new ReferralAttachmentService(attachmentRepo.Object, referralRepo.Object, docClient.Object);
+
+        await using var stream = new MemoryStream([1, 2, 3]);
+        await svc.UploadAsync(
+            callerTenantId, referral.Id, null, referringOrgId, null, false, stream,
+            "records.pdf", "application/pdf", 3,
+            new UploadAttachmentRequest { Scope = AttachmentScope.Shared },
+            useGlobalLookup: true);
+
+        Assert.NotNull(persisted);
+        Assert.Equal(referralTenantId, persisted!.TenantId);
+        referralRepo.Verify(
+            r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ReferralAttachmentService_GetByReferral_CrossTenantParticipant_UsesReferralTenant()
+    {
+        var callerTenantId   = Guid.CreateVersion7();
+        var referralTenantId = Guid.CreateVersion7();
+        var referringOrgId   = Guid.CreateVersion7();
+        var referral         = CreateMinimalReferral(referralTenantId, referringOrgId: referringOrgId);
+        var attachment       = CreateAttachment(
+            Guid.CreateVersion7(), referralTenantId, referral.Id, "doc-cross-tenant", AttachmentScope.Shared);
+
+        var referralRepo   = new Mock<IReferralRepository>();
+        var attachmentRepo = new Mock<IReferralAttachmentRepository>();
+        referralRepo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+        attachmentRepo.Setup(r => r.GetByReferralAsync(referralTenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([attachment]);
+
+        var svc = new ReferralAttachmentService(
+            attachmentRepo.Object,
+            referralRepo.Object,
+            new Mock<IDocumentServiceClient>().Object);
+
+        var result = await svc.GetByReferralAsync(
+            callerTenantId,
+            referral.Id,
+            referringOrgId,
+            isAdmin: false,
+            useGlobalLookup: true);
+
+        Assert.Single(result);
+        Assert.Equal(attachment.Id, result[0].Id);
+    }
+
+    [Fact]
+    public async Task ReferralAttachmentService_GetByReferral_CrossTenantNonParticipant_ThrowsNotFound()
+    {
+        var referral = CreateMinimalReferral(
+            Guid.CreateVersion7(),
+            referringOrgId: Guid.CreateVersion7(),
+            receivingOrgId: Guid.CreateVersion7());
+        var referralRepo = new Mock<IReferralRepository>();
+        referralRepo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+
+        var svc = new ReferralAttachmentService(
+            new Mock<IReferralAttachmentRepository>().Object,
+            referralRepo.Object,
+            new Mock<IDocumentServiceClient>().Object);
+
+        await Assert.ThrowsAsync<NotFoundException>(() => svc.GetByReferralAsync(
+            Guid.CreateVersion7(),
+            referral.Id,
+            Guid.CreateVersion7(),
+            isAdmin: false,
+            useGlobalLookup: true));
+    }
+
     // ── Signed URL: scope enforcement ─────────────────────────────────────────
 
     [Fact]
@@ -323,6 +424,45 @@ public class DocumentsIntegrationTests
             isDownload:    false);
 
         Assert.NotNull(result);
+    }
+
+    [Fact]
+    public async Task GetSignedUrlAsync_CrossTenantParticipant_UsesReferralTenant()
+    {
+        var callerTenantId   = Guid.CreateVersion7();
+        var referralTenantId = Guid.CreateVersion7();
+        var referringOrgId   = Guid.CreateVersion7();
+        var attachmentId     = Guid.CreateVersion7();
+        var documentId       = "doc-cross-tenant";
+        var referral         = CreateMinimalReferral(referralTenantId, referringOrgId: referringOrgId);
+        var attachment       = CreateAttachment(
+            attachmentId, referralTenantId, referral.Id, documentId, AttachmentScope.Shared);
+
+        var referralRepo   = new Mock<IReferralRepository>();
+        var attachmentRepo = new Mock<IReferralAttachmentRepository>();
+        var docClient      = new Mock<IDocumentServiceClient>();
+        referralRepo.Setup(r => r.GetByIdGlobalAsync(referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(referral);
+        attachmentRepo.Setup(r => r.GetByReferralIncludingMessageAttachmentsAsync(
+                referralTenantId, referral.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([attachment]);
+        docClient.Setup(d => d.GetSignedUrlAsync(
+                referralTenantId, documentId, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentSignedUrlResult("https://s3.example.com/cross-tenant", 300));
+
+        var svc = new ReferralAttachmentService(attachmentRepo.Object, referralRepo.Object, docClient.Object);
+
+        var result = await svc.GetSignedUrlAsync(
+            callerTenantId,
+            referral.Id,
+            attachmentId,
+            callerOrgId: referringOrgId,
+            callerOrgType: OrgType.LawFirm,
+            isAdmin: false,
+            isDownload: false,
+            useGlobalLookup: true);
+
+        Assert.Equal("https://s3.example.com/cross-tenant", result?.Url);
     }
 
     [Fact]
@@ -789,6 +929,8 @@ public class DocumentsIntegrationTests
             .ReturnsAsync(referral);
         attachmentRepo.Setup(r => r.GetByReferralAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(attachments);
+        attachmentRepo.Setup(r => r.GetByReferralIncludingMessageAttachmentsAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(attachments);
 
         return (new ReferralAttachmentService(attachmentRepo.Object, referralRepo.Object, docClient.Object), docClient);
     }
@@ -936,9 +1078,10 @@ public class DocumentsIntegrationTests
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ASPNETCORE_ENVIRONMENT"]          = "Production",
-                ["ReferralToken:Secret"]             = "STRONG-HMAC-SECRET-KEY-32-CHARS-LONG",
-                ["DocumentsService:DocumentTypeId"]  = "11111111-2222-3333-4444-555555555555",
+                ["ASPNETCORE_ENVIRONMENT"]                       = "Production",
+                ["ReferralToken:Secret"]                          = "STRONG-HMAC-SECRET-KEY-32-CHARS-LONG",
+                ["DocumentsService:DocumentTypeId"]               = "11111111-2222-3333-4444-555555555555",
+                ["ReferralAttributionAccessCode:Pepper"]          = "STRONG-ACCESS-CODE-PEPPER-32-CHARS",
             })
             .Build();
 
@@ -965,6 +1108,39 @@ public class DocumentsIntegrationTests
 
     [Fact]
     public void ValidateRequiredConfiguration_MissingDocumentTypeId_Development_DoesNotThrow()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ASPNETCORE_ENVIRONMENT"] = "Development",
+                ["ReferralToken:Secret"]   = "any-secret",
+            })
+            .Build();
+
+        var ex = Record.Exception(() => DependencyInjection.ValidateRequiredConfiguration(config));
+        Assert.Null(ex);
+    }
+
+    [Theory]
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    public void ValidateRequiredConfiguration_MissingAccessCodePepper_NonDev_Throws(string environment)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ASPNETCORE_ENVIRONMENT"]          = environment,
+                ["ReferralToken:Secret"]             = "STRONG-HMAC-SECRET-KEY-32-CHARS-LONG",
+                ["DocumentsService:DocumentTypeId"]  = "11111111-2222-3333-4444-555555555555",
+            })
+            .Build();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            DependencyInjection.ValidateRequiredConfiguration(config));
+    }
+
+    [Fact]
+    public void ValidateRequiredConfiguration_MissingAccessCodePepper_Development_DoesNotThrow()
     {
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>

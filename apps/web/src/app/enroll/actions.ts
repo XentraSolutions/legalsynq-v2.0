@@ -32,6 +32,7 @@ export interface EnrollmentPrefill {
   companyType:  string;
   email:        string;
   phone:        string;
+  title?:       string;
   firstName?:   string;
   lastName?:    string;
   addressLine1: string;
@@ -101,6 +102,7 @@ export interface RegisterPayload {
   companyName:  string;
   email:        string;
   password:     string;
+  title?:       string;
   firstName:    string;
   lastName?:    string;
   phone?:       string;
@@ -118,6 +120,7 @@ export interface FirmRegisterPayload {
   companyName:  string;
   email:        string;
   password:     string;
+  title?:       string;
   firstName:    string;
   lastName?:    string;
   phone?:       string;
@@ -182,6 +185,7 @@ export interface EnrollmentClaims {
   email?:   string;
   firm?:    string;
   phone?:   string;
+  title?:   string;
   /** @deprecated Use contactFirstName/contactLastName instead — kept for tokens issued before the split. */
   contact?: string;
   contactFirstName?: string;
@@ -194,6 +198,7 @@ export interface ExistingEnrollmentPrefill {
   companyName: string;
   email:       string;
   phone:       string;
+  title:       string;
   firstName:   string;
   lastName:    string;
   addressLine1: string;
@@ -227,6 +232,7 @@ export async function fetchExistingEnrollmentPrefill(
       companyName: data.companyName ?? '',
       email:       data.email ?? email,
       phone:       data.phone ?? '',
+      title:       data.title ?? '',
       firstName:   data.firstName ?? '',
       lastName:    data.lastName ?? '',
       addressLine1: data.addressLine1 ?? '',

@@ -237,6 +237,9 @@ const PRODUCT_CODE_ALIASES: Record<string, ProductCode> = {
   synqlien: 'SynqLien',
   synq_liens: 'SynqLien',
   synqliens: 'SynqLien',
+  xenia: 'Xenia',
+  synqai: 'Xenia',
+  synq_ai: 'Xenia',
   synqbill: 'SynqBill',
   synq_bill: 'SynqBill',
   synqrx: 'SynqRx',
@@ -262,6 +265,7 @@ export function mapTenantSummary(raw: unknown): TenantSummary {
     orgCount:           num(r,  'org_count',             'orgCount',           0),
     createdAtUtc:       str(r, 'created_at',            'createdAtUtc',       new Date().toISOString()),
     subdomain:          optStr(r, 'subdomain',          'subdomain'),
+    url:                optStr(r, "url", "url") ?? '',
     provisioningStatus: (r['provisioning_status'] ?? r['provisioningStatus']) as ProvisioningStatus | undefined
       ? oneOf(r, 'provisioning_status', 'provisioningStatus', PROVISIONING_STATUSES, 'Pending', 'mapTenantSummary.provisioningStatus')
       : undefined,
@@ -276,7 +280,7 @@ export function mapTenantSummary(raw: unknown): TenantSummary {
 function mapEntitlement(raw: unknown): ProductEntitlementSummary {
   const r = asObj(raw);
   const PRODUCT_CODES: readonly ProductCode[] = [
-    'SynqFund', 'SynqLien', 'SynqBill', 'SynqRx', 'SynqPayout', 'CareConnect',
+    'SynqFund', 'SynqLien', 'SynqBill', 'SynqRx', 'SynqPayout', 'CareConnect', 'Xenia', 'SynqAI',
   ];
   const ENTITLEMENT_STATUSES: readonly EntitlementStatus[] = ['Active', 'Disabled'];
   const enabled = bool(r, 'enabled', 'enabled', false);
@@ -1013,6 +1017,8 @@ function mapTicketPriority(raw: unknown): SupportCasePriority {
 export function mapSupportCase(raw: unknown): SupportCase {
   const r   = asObj(raw);
   const now = new Date().toISOString();
+  const rawStatus = r['caseStatus'] ?? r['case_status'] ?? r['status'];
+  const rawCaseType = r['caseType'] ?? r['case_type'] ?? r['category'];
 
   const userId = (
     r['requesterUserId'] ?? r['requester_user_id'] ?? r['userId'] ?? r['user_id']
@@ -1033,21 +1039,41 @@ export function mapSupportCase(raw: unknown): SupportCase {
   const assignedUserId = (
     r['assignedUserId'] ?? r['assigned_user_id']
   );
+  const caseManagerUserId = (
+    r['caseManagerUserId'] ?? r['case_manager_user_id']
+  );
+  const caseManagerName = (
+    r['caseManagerName'] ?? r['case_manager_name']
+  );
+  const caseManagerEmail = (
+    r['caseManagerEmail'] ?? r['case_manager_email']
+  );
   const updatedByUserId = (
     r['updatedByUserId'] ?? r['updated_by_user_id']
   );
+  const rawId = (
+    r['id'] ?? r['ticketId'] ?? r['ticket_id'] ?? r['caseId'] ?? r['case_id']
+  );
+  const id = typeof rawId === 'string' ? rawId : '';
+  const caseStatus = mapTicketStatus(rawStatus);
+  const caseType = typeof rawCaseType === 'string' && rawCaseType.length > 0 ? rawCaseType : '';
 
   return {
-    id:               str(r, 'id',          'id',         '',  'mapSupportCase.id'),
+    id,
     title:            str(r, 'title',       'title',      ''),
     tenantId:         str(r, 'tenant_id',   'tenantId',   ''),
     tenantName:       str(r, 'tenant_name', 'tenantName', ''),
     userId:           typeof userId   === 'string' && userId.length   > 0 ? userId   : undefined,
     userName:         typeof userName === 'string' && userName.length > 0 ? userName : undefined,
     requesterEmail:   typeof requesterEmail   === 'string' && requesterEmail.length   > 0 ? requesterEmail   : undefined,
-    status:           mapTicketStatus(r['status']),
-    category:         str(r, 'category', 'category', ''),
+    status:           caseStatus,
+    caseStatus,
+    category:         caseType,
+    caseType,
     priority:         mapTicketPriority(r['priority']),
+    caseManagerUserId: typeof caseManagerUserId === 'string' && caseManagerUserId.length > 0 ? caseManagerUserId : undefined,
+    caseManagerName:   typeof caseManagerName === 'string' && caseManagerName.length > 0 ? caseManagerName : undefined,
+    caseManagerEmail:  typeof caseManagerEmail === 'string' && caseManagerEmail.length > 0 ? caseManagerEmail : undefined,
     assignedUserId:   typeof assignedUserId   === 'string' && assignedUserId.length   > 0 ? assignedUserId   : undefined,
     createdAtUtc:     typeof createdRaw === 'string' && createdRaw.length > 0 ? createdRaw : now,
     updatedAtUtc:     typeof updatedRaw === 'string' && updatedRaw.length > 0 ? updatedRaw : now,

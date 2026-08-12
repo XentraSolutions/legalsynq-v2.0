@@ -42,59 +42,30 @@ interface PublicThreadData {
   clientName:    string;
   service:       string;
   providerName:  string;
+  providerTitle?: string | null;
   providerFirstName?: string | null;
   providerLastName?:  string | null;
   providerEmail?: string;
   providerPhone?: string;
-  providerAddressLine1?: string;
-  providerCity?: string;
-  providerState?: string;
-  providerPostalCode?: string;
+  locationAddressLine1?: string;
+  locationCity?: string;
+  locationState?: string;
+  locationPostalCode?: string;
+  locationIsMobile?: boolean;
   providerHasAccount?: boolean;
   referrerName:  string | null;
-}
-
-function splitName(value: string | null | undefined): { firstName: string; lastName: string } {
-  const trimmed = value?.trim() ?? '';
-  if (!trimmed) return { firstName: '', lastName: '' };
-
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  return {
-    firstName: toDisplayCase(parts[0] ?? ''),
-    lastName: toDisplayCase(parts.slice(1).join(' ')),
-  };
-}
-
-function toDisplayCase(value: string): string {
-  return value
-    .split(/\s+/)
-    .filter(Boolean)
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ');
-}
-
-function deriveNameFromEmail(email: string | undefined): { firstName: string; lastName: string } {
-  const local = email?.split('@')[0] ?? '';
-  const normalized = local
-    .replace(/\+.*/, '')
-    .replace(/[._-]+/g, ' ')
-    .replace(/\d+/g, ' ')
-    .trim();
-
-  return splitName(normalized);
 }
 
 function toEnrollmentPrefill(data: PublicThreadData, fallbackCompanyName?: string): EnrollmentPrefill {
   const companyName = data.providerName.trim() || fallbackCompanyName?.trim() || '';
 
-  // Prefer the provider's actual stored First/Last name (captured directly when the
-  // provider record was created) over guessing from the email address — only fall
-  // back to the email-derived heuristic for providers created before that split existed.
-  const storedFirstName = data.providerFirstName?.trim() ?? '';
-  const storedLastName  = data.providerLastName?.trim() ?? '';
-  const providerContact = storedFirstName || storedLastName
-    ? { firstName: storedFirstName, lastName: storedLastName }
-    : deriveNameFromEmail(data.providerEmail);
+  // Only prefill from the provider's actual stored First/Last name. If neither is on
+  // record, leave both blank — guessing a name from the email address risks writing a
+  // wrong, unreviewable name onto the provider's account (the field is locked once prefilled).
+  const providerContact = {
+    firstName: data.providerFirstName?.trim() ?? '',
+    lastName: data.providerLastName?.trim() ?? '',
+  };
 
   return {
     providerId: data.providerId,
@@ -102,12 +73,16 @@ function toEnrollmentPrefill(data: PublicThreadData, fallbackCompanyName?: strin
     companyType: 'Provider',
     email: data.providerEmail ?? '',
     phone: data.providerPhone ?? '',
+    title: data.providerTitle?.trim() ?? '',
     firstName: providerContact.firstName,
     lastName: providerContact.lastName,
-    addressLine1: data.providerAddressLine1 ?? '',
-    city: data.providerCity ?? '',
-    state: data.providerState ?? '',
-    postalCode: data.providerPostalCode ?? '',
+    // Mobile/roaming providers have no fixed street address — LocationAddressLine1 holds a
+    // human-readable service-area label instead (e.g. "Greater Las Vegas Metro"), so it must
+    // not be prefilled/locked into the account's street address field.
+    addressLine1: data.locationIsMobile ? '' : data.locationAddressLine1 ?? '',
+    city: data.locationIsMobile ? '' : data.locationCity ?? '',
+    state: data.locationState ?? '',
+    postalCode: data.locationIsMobile ? '' : data.locationPostalCode ?? '',
   };
 }
 

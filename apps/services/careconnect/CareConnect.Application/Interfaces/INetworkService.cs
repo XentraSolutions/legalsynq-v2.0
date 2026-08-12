@@ -13,13 +13,15 @@ public interface INetworkService
 
     /// <summary>
     /// CC2-INT-B06-01: Match-or-create flow.
-    /// If ExistingProviderId is set → associate that shared provider.
-    /// If NewProvider is set → create in shared registry (dedup by NPI) then associate.
+    /// If ExistingProviderId + ExistingFacilityId are set → associate that shared provider location.
+    /// If ExistingProviderId + NewProvider are set → create a new location for that shared provider.
+    /// If NewProvider is set alone → create a new shared provider identity and first location.
     /// </summary>
     Task<NetworkProviderItem> AddProviderAsync(Guid tenantId, Guid networkId, AddProviderToNetworkRequest request, Guid? userId, CancellationToken ct = default);
 
-    Task RemoveProviderAsync(Guid tenantId, Guid networkId, Guid providerId, CancellationToken ct = default);
+    Task RemoveProviderAsync(Guid tenantId, Guid networkId, Guid providerId, bool cascadeFacility, Guid? userId, CancellationToken ct = default);
     Task<List<NetworkProviderMarker>> GetMarkersAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
+    Task<NetworkProviderItem> UpdateProviderAsync(Guid tenantId, Guid networkId, Guid providerId, UpdateNetworkProviderRequest request, Guid? userId, CancellationToken ct = default);
 
     /// <summary>CC2-INT-B06-01: Search the shared global provider registry.</summary>
     Task<List<ProviderSearchResult>> SearchProvidersAsync(string? name, string? phone, string? npi, string? city, CancellationToken ct = default);

@@ -71,7 +71,14 @@ public class TenantAdminServiceGetAdminDetailTests
             timeZone:     "America/New_York",
             locale:       "en-US");
 
-        var svc    = BuildService(tenantRepo: new StubTenantRepository(tenant));
+        var svc    = BuildService(
+            tenantRepo: new StubTenantRepository(tenant),
+            identityCompat: new StubIdentityCompatAdapter(
+                snapshot: new TenantIdentityCompatSnapshot(
+                    Type: "LIEN_OWNER",
+                    SessionTimeoutMinutes: null,
+                    Hostname: "acme.legalsynq.net",
+                    PrimaryContactName: "Avery Admin")));
         var result = await svc.GetAdminDetailAsync(tenant.Id);
 
         Assert.NotNull(result);
@@ -80,8 +87,40 @@ public class TenantAdminServiceGetAdminDetailTests
         Assert.Equal("Acme Corp",        result.DisplayName);
         Assert.Equal("Active",           result.Status);
         Assert.True(result.IsActive);
+        Assert.Equal("LIEN_OWNER",       result.Type);
+        Assert.Equal("Avery Admin",      result.PrimaryContactName);
         Assert.Equal("acme",             result.Subdomain);
+        Assert.Equal("https://acme.legalsynq.net", result.Url);
         Assert.Equal("support@acme.com", result.Email);
+    }
+
+    [Fact]
+    public async Task ListAdminAsync_UsesIdentityTypeAndHostname_WhenAvailable()
+    {
+        var tenant = Domain.Tenant.Create(
+            code: "acme",
+            displayName: "Acme Corp",
+            subdomain: "acme");
+
+        var svc = BuildService(
+            tenantRepo: new StubTenantRepository(
+                tenant,
+                items: [tenant],
+                total: 1),
+            identityCompat: new StubIdentityCompatAdapter(
+                snapshot: new TenantIdentityCompatSnapshot(
+                    Type: "PROVIDER",
+                    SessionTimeoutMinutes: null,
+                    Hostname: "portal.acme.example",
+                    PrimaryContactName: "Morgan Manager")));
+
+        var (items, total) = await svc.ListAdminAsync(1, 20);
+
+        var item = Assert.Single(items);
+        Assert.Equal(1, total);
+        Assert.Equal("PROVIDER", item.Type);
+        Assert.Equal("Morgan Manager", item.PrimaryContactName);
+        Assert.Equal("https://portal.acme.example", item.Url);
     }
 
     [Fact]
@@ -275,6 +314,52 @@ public class TenantAdminServiceGetAdminDetailTests
         Assert.NotNull(result);
         Assert.Null(result.SessionTimeoutMinutes);
         Assert.Equal("Unavailable", result.IdentityCompatSource);
+    }
+
+    [Fact]
+    public async Task ToggleEntitlementAsync_RollsBackExistingEntitlement_WhenIdentitySyncFails()
+    {
+        var tenant = Domain.Tenant.Create(code: "acme", displayName: "Acme Corp");
+        var existing = TenantProductEntitlement.Create(
+            tenantId: tenant.Id,
+            productKey: "xenia",
+            productDisplayName: "Xenia",
+            isEnabled: true,
+            isDefault: true,
+            effectiveFromUtc: new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var entitlementRepo = new StubEntitlementRepository([existing]);
+        var identityCompat = new StubIdentityCompatAdapter(setTenantProductEntitlementResult: false);
+        var svc = BuildService(
+            tenantRepo: new StubTenantRepository(tenant),
+            entitlementRepo: entitlementRepo,
+            identityCompat: identityCompat);
+
+        var result = await svc.ToggleEntitlementAsync(tenant.Id, "Xenia", enabled: false);
+        var reloaded = await entitlementRepo.GetByTenantAndProductKeyAsync(tenant.Id, "xenia");
+
+        Assert.False(result.IdentitySynced);
+        Assert.NotNull(reloaded);
+        Assert.True(reloaded!.IsEnabled);
+        Assert.True(reloaded.IsDefault);
+    }
+
+    [Fact]
+    public async Task ToggleEntitlementAsync_RemovesCreatedEntitlement_WhenIdentitySyncFails()
+    {
+        var tenant = Domain.Tenant.Create(code: "acme", displayName: "Acme Corp");
+        var entitlementRepo = new StubEntitlementRepository();
+        var identityCompat = new StubIdentityCompatAdapter(setTenantProductEntitlementResult: false);
+        var svc = BuildService(
+            tenantRepo: new StubTenantRepository(tenant),
+            entitlementRepo: entitlementRepo,
+            identityCompat: identityCompat);
+
+        var result = await svc.ToggleEntitlementAsync(tenant.Id, "Xenia", enabled: true);
+        var reloaded = await entitlementRepo.GetByTenantAndProductKeyAsync(tenant.Id, "xenia");
+
+        Assert.False(result.IdentitySynced);
+        Assert.Null(reloaded);
+        Assert.Empty(await entitlementRepo.ListByTenantAsync(tenant.Id));
     }
 
     [Fact]
@@ -538,6 +623,12 @@ public class TenantAdminServiceGetAdminDetailTests
         private readonly ConcurrencyGuard _guard;
         public GuardedIdentityCompatAdapter(ConcurrencyGuard guard) => _guard = guard;
 
+        public async Task<TenantIdentityCompatSnapshot?> GetTenantAdminSnapshotAsync(Guid tenantId, CancellationToken ct = default)
+        {
+            await _guard.TrackAsync(() => Task.CompletedTask);
+            return null;
+        }
+
         public async Task<int?> GetSessionTimeoutMinutesAsync(Guid tenantId, CancellationToken ct = default)
         {
             await _guard.TrackAsync(() => Task.CompletedTask);
@@ -584,7 +675,18 @@ public class TenantAdminServiceGetAdminDetailTests
     private sealed class StubTenantRepository : ITenantRepository
     {
         private readonly Domain.Tenant? _tenant;
-        public StubTenantRepository(Domain.Tenant? tenant = null) => _tenant = tenant;
+        private readonly List<Domain.Tenant> _items;
+        private readonly int _total;
+
+        public StubTenantRepository(
+            Domain.Tenant? tenant = null,
+            List<Domain.Tenant>? items = null,
+            int? total = null)
+        {
+            _tenant = tenant;
+            _items = items ?? (tenant is null ? new List<Domain.Tenant>() : [tenant]);
+            _total = total ?? _items.Count;
+        }
 
         public Task<Domain.Tenant?> GetByIdAsync(Guid id, CancellationToken ct = default)
             => Task.FromResult(_tenant);
@@ -602,7 +704,7 @@ public class TenantAdminServiceGetAdminDetailTests
             => Task.FromResult(false);
 
         public Task<(List<Domain.Tenant> Items, int Total)> ListAsync(int page, int pageSize, CancellationToken ct = default)
-            => Task.FromResult((new List<Domain.Tenant>(), 0));
+            => Task.FromResult((_items, _total));
 
         public Task AddAsync(Domain.Tenant tenant, CancellationToken ct = default)
             => Task.CompletedTask;
@@ -633,22 +735,25 @@ public class TenantAdminServiceGetAdminDetailTests
             => _entitlements = entitlements ?? new List<TenantProductEntitlement>();
 
         public Task<List<TenantProductEntitlement>> ListByTenantAsync(Guid tenantId, CancellationToken ct = default)
-            => Task.FromResult(_entitlements);
+            => Task.FromResult(_entitlements.Where(e => e.TenantId == tenantId).ToList());
 
         public Task<TenantProductEntitlement?> GetByIdAsync(Guid id, CancellationToken ct = default)
-            => Task.FromResult<TenantProductEntitlement?>(null);
+            => Task.FromResult(_entitlements.FirstOrDefault(e => e.Id == id));
 
         public Task<TenantProductEntitlement?> GetByTenantAndProductKeyAsync(Guid tenantId, string productKey, CancellationToken ct = default)
-            => Task.FromResult<TenantProductEntitlement?>(null);
+            => Task.FromResult(_entitlements.FirstOrDefault(e => e.TenantId == tenantId && e.ProductKey == productKey));
 
         public Task<TenantProductEntitlement?> GetDefaultForTenantAsync(Guid tenantId, CancellationToken ct = default)
-            => Task.FromResult<TenantProductEntitlement?>(null);
+            => Task.FromResult(_entitlements.FirstOrDefault(e => e.TenantId == tenantId && e.IsDefault));
 
         public Task<List<TenantProductEntitlement>> GetDefaultsForTenantAsync(Guid tenantId, CancellationToken ct = default)
-            => Task.FromResult(new List<TenantProductEntitlement>());
+            => Task.FromResult(_entitlements.Where(e => e.TenantId == tenantId && e.IsDefault).ToList());
 
         public Task AddAsync(TenantProductEntitlement entitlement, CancellationToken ct = default)
-            => Task.CompletedTask;
+        {
+            _entitlements.Add(entitlement);
+            return Task.CompletedTask;
+        }
 
         public Task UpdateAsync(TenantProductEntitlement entitlement, CancellationToken ct = default)
             => Task.CompletedTask;
@@ -657,7 +762,10 @@ public class TenantAdminServiceGetAdminDetailTests
             => Task.CompletedTask;
 
         public Task DeleteAsync(TenantProductEntitlement entitlement, CancellationToken ct = default)
-            => Task.CompletedTask;
+        {
+            _entitlements.Remove(entitlement);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubDomainRepository : IDomainRepository
@@ -748,8 +856,21 @@ public class TenantAdminServiceGetAdminDetailTests
     private sealed class StubIdentityCompatAdapter : IIdentityCompatAdapter
     {
         private readonly int? _sessionTimeoutMinutes;
-        public StubIdentityCompatAdapter(int? sessionTimeoutMinutes = null)
-            => _sessionTimeoutMinutes = sessionTimeoutMinutes;
+        private readonly TenantIdentityCompatSnapshot? _snapshot;
+        private readonly bool _setTenantProductEntitlementResult;
+
+        public StubIdentityCompatAdapter(
+            int? sessionTimeoutMinutes = null,
+            TenantIdentityCompatSnapshot? snapshot = null,
+            bool setTenantProductEntitlementResult = true)
+        {
+            _sessionTimeoutMinutes = sessionTimeoutMinutes;
+            _snapshot = snapshot;
+            _setTenantProductEntitlementResult = setTenantProductEntitlementResult;
+        }
+
+        public Task<TenantIdentityCompatSnapshot?> GetTenantAdminSnapshotAsync(Guid tenantId, CancellationToken ct = default)
+            => Task.FromResult<TenantIdentityCompatSnapshot?>(_snapshot ?? new TenantIdentityCompatSnapshot(null, _sessionTimeoutMinutes, null));
 
         public Task<int?> GetSessionTimeoutMinutesAsync(Guid tenantId, CancellationToken ct = default)
             => Task.FromResult(_sessionTimeoutMinutes);
@@ -758,7 +879,7 @@ public class TenantAdminServiceGetAdminDetailTests
             => Task.FromResult(true);
 
         public Task<bool> SetTenantProductEntitlementAsync(Guid tenantId, string productCode, bool enabled, CancellationToken ct = default)
-            => Task.FromResult(true);
+            => Task.FromResult(_setTenantProductEntitlementResult);
     }
 
     private sealed class StubIdentityProvisioningAdapter : IIdentityProvisioningAdapter

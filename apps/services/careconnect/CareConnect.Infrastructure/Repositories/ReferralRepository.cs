@@ -5,11 +5,22 @@ using CareConnect.Domain;
 using CareConnect.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
+using System.Text.RegularExpressions;
 
 namespace CareConnect.Infrastructure.Repositories;
 
 public class ReferralRepository : IReferralRepository
 {
+    private static readonly HashSet<string> ReferralSearchStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "a", "an", "and", "at", "by", "client", "clients", "contact", "contacts",
+        "find", "for", "from", "in", "last", "latest", "law", "list", "look",
+        "lookup", "me", "name", "of", "org", "recent", "recently",
+        "organization", "organizations", "patient", "patients", "provider", "providers",
+        "referral", "referrals", "referrer", "referrers", "search", "sent", "show",
+        "the", "to", "up", "with",
+    };
+
     private readonly CareConnectDbContext _db;
 
     public ReferralRepository(CareConnectDbContext db)
@@ -29,7 +40,9 @@ public class ReferralRepository : IReferralRepository
         {
             q = _db.Referrals
                 .AsNoTracking()
-                .Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
+                .Where(r =>
+                    r.ReceivingOrganizationId == query.ReceivingOrgId.Value ||
+                    (r.Provider != null && r.Provider.OrganizationId == query.ReceivingOrgId.Value));
         }
         else if (query.CrossTenantReferrer &&
                  (query.ReferringOrgId.HasValue || !string.IsNullOrWhiteSpace(query.ReferrerEmail)))
@@ -60,10 +73,43 @@ public class ReferralRepository : IReferralRepository
         }
 
         if (!string.IsNullOrWhiteSpace(query.Status))
-            q = q.Where(r => r.Status == query.Status);
+        {
+            // Comma-separated values group multiple raw statuses under one filter option
+            // (e.g. the Representative Portal's "Pending" = New,NewOpened) without needing
+            // a separate grouped-status concept on the domain model.
+            // List<T>, not string[]: EF's LINQ interpreter mis-evaluates array.Contains(x) in
+            // .NET 10 (it resolves to MemoryExtensions.Contains(ReadOnlySpan<T>, T), which the
+            // parameter-extracting expression visitor cannot compile — see TypeLoadException on
+            // 'System.ReadOnlySpan`1[System.String]'). List<T>.Contains is an unambiguous
+            // instance method and EF translates it to SQL IN exactly the same way.
+            var statuses = query.Status
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+            q = q.Where(r => statuses.Contains(r.Status));
+        }
 
         if (query.ProviderId.HasValue)
             q = q.Where(r => r.ProviderId == query.ProviderId.Value);
+
+        if (!string.IsNullOrWhiteSpace(query.SearchText))
+        {
+            foreach (var token in BuildSearchTokens(query.SearchText, ReferralSearchStopWords))
+            {
+                var search = token;
+                q = q.Where(r =>
+                    r.ClientFirstName.ToLower().Contains(search) ||
+                    r.ClientLastName.ToLower().Contains(search) ||
+                    (r.ClientFirstName.ToLower() + " " + r.ClientLastName.ToLower()).Contains(search) ||
+                    (r.SubjectNameSnapshot != null && r.SubjectNameSnapshot.ToLower().Contains(search)) ||
+                    (r.CaseNumber != null && r.CaseNumber.ToLower().Contains(search)) ||
+                    (r.ReferrerName != null && r.ReferrerName.ToLower().Contains(search)) ||
+                    (r.ReferrerFirmName != null && r.ReferrerFirmName.ToLower().Contains(search)) ||
+                    (r.ReferrerEmail != null && r.ReferrerEmail.ToLower().Contains(search)) ||
+                    (r.Provider != null && (
+                        r.Provider.Name.ToLower().Contains(search) ||
+                        (r.Provider.OrganizationName != null && r.Provider.OrganizationName.ToLower().Contains(search)))));
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(query.ClientName))
         {
@@ -78,6 +124,28 @@ public class ReferralRepository : IReferralRepository
         {
             var cn = query.CaseNumber.Trim().ToLower();
             q = q.Where(r => r.CaseNumber != null && r.CaseNumber.ToLower().Contains(cn));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.ProviderName))
+        {
+            foreach (var token in BuildSearchTokens(query.ProviderName, ReferralSearchStopWords))
+            {
+                var providerName = token;
+                q = q.Where(r => r.Provider != null && (
+                    r.Provider.Name.ToLower().Contains(providerName) ||
+                    (r.Provider.OrganizationName != null && r.Provider.OrganizationName.ToLower().Contains(providerName))));
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.ReferrerName))
+        {
+            foreach (var token in BuildSearchTokens(query.ReferrerName, ReferralSearchStopWords))
+            {
+                var referrerName = token;
+                q = q.Where(r =>
+                    (r.ReferrerName != null && r.ReferrerName.ToLower().Contains(referrerName)) ||
+                    (r.ReferrerFirmName != null && r.ReferrerFirmName.ToLower().Contains(referrerName)));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(query.Urgency))
@@ -105,7 +173,22 @@ public class ReferralRepository : IReferralRepository
         }
 
         if (!query.CrossTenantReceiver && query.ReceivingOrgId.HasValue)
-            q = q.Where(r => r.ReceivingOrganizationId == query.ReceivingOrgId.Value);
+            q = q.Where(r =>
+                r.ReceivingOrganizationId == query.ReceivingOrgId.Value ||
+                (r.Provider != null && r.Provider.OrganizationId == query.ReceivingOrgId.Value));
+
+        if (query.ReferralAttributionId.HasValue)
+            q = q.Where(r => r.ReferralAttributionId == query.ReferralAttributionId.Value);
+
+        // Referral Representative visibility scope — applied last, unconditionally, on top of
+        // whichever branch built `q` above. This is the single enforcement point: every caller
+        // of SearchAsync that sets RestrictedToAttributionIds is scoped here, with no code path
+        // that can reach the return below without passing through this filter.
+        if (query.RestrictedToAttributionIds is not null)
+        {
+            var allowedIds = query.RestrictedToAttributionIds;
+            q = q.Where(r => r.ReferralAttributionId != null && allowedIds.Contains(r.ReferralAttributionId.Value));
+        }
 
         var totalCount = await q.CountAsync(ct);
 
@@ -115,9 +198,36 @@ public class ReferralRepository : IReferralRepository
             .Skip(skip)
             .Take(query.PageSize)
             .Include(r => r.Provider)
+            .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
             .ToListAsync(ct);
 
         return (items, totalCount);
+    }
+
+    private static IReadOnlyList<string> BuildSearchTokens(string? value, ISet<string> stopWords)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return [];
+
+        var tokens = Regex.Split(value.Trim().ToLowerInvariant(), "[^a-z0-9]+")
+            .Where(token => token.Length > 1 && !stopWords.Contains(token))
+            .Distinct()
+            .ToList();
+
+        if (tokens.Count > 1 && tokens.Any(token => token.Length > 2))
+        {
+            var descriptiveTokens = tokens
+                .Where(token => token.Length > 2 || token.Any(char.IsDigit))
+                .ToList();
+
+            if (descriptiveTokens.Count > 0)
+                tokens = descriptiveTokens;
+        }
+
+        return tokens.Count > 0
+            ? tokens
+            : [value.Trim().ToLowerInvariant()];
     }
 
     public async Task<Referral?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
@@ -126,6 +236,25 @@ public class ReferralRepository : IReferralRepository
             .AsNoTracking()
             .Where(r => r.TenantId == tenantId && r.Id == id)
             .Include(r => r.Provider)
+            .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<Referral?> GetByIdForAttributionsAsync(Guid tenantId, Guid id, IReadOnlyList<Guid> allowedAttributionIds, CancellationToken ct = default)
+    {
+        if (allowedAttributionIds.Count == 0)
+            return null;
+
+        return await _db.Referrals
+            .AsNoTracking()
+            .Where(r => r.TenantId == tenantId
+                     && r.Id == id
+                     && r.ReferralAttributionId != null
+                     && allowedAttributionIds.Contains(r.ReferralAttributionId.Value))
+            .Include(r => r.Provider)
+            .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
             .FirstOrDefaultAsync(ct);
     }
 
@@ -135,6 +264,8 @@ public class ReferralRepository : IReferralRepository
             .AsNoTracking()
             .Where(r => r.Id == id)
             .Include(r => r.Provider)
+            .Include(r => r.Facility)
+            .Include(r => r.ReferralAttribution)
             .FirstOrDefaultAsync(ct);
     }
 

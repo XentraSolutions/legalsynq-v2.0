@@ -116,16 +116,47 @@ const CC_HIGHLIGHTS = [
   },
 ];
 
+// ── SynqLien left-panel highlights ───────────────────────────────────────────
+
+const SYNQLIEN_HIGHLIGHTS = [
+  {
+    icon: "ri-folder-chart-line",
+    text: "Track cases, liens, settlements, and servicing work in one focused portal",
+  },
+  {
+    icon: "ri-exchange-dollar-line",
+    text: "Manage lien sales, marketplace activity, and buyer portfolios",
+  },
+  {
+    icon: "ri-file-shield-2-line",
+    text: "Keep documents, payment history, and compliance context organized",
+  },
+  {
+    icon: "ri-team-line",
+    text: "One workspace for law firms, lien owners, buyers, and servicing teams",
+  },
+];
+
 // ── Main export ────────────────────────────────────────────────────────────────
 
-export function LoginPageClient({ isPortal }: { isPortal: boolean }) {
+export function LoginPageClient({
+  portalProductId,
+  portalLandingPath,
+}: {
+  portalProductId?: "careconnect" | "synqlien" | null;
+  portalLandingPath?: string | null;
+}) {
   const [year, setYear] = useState<number | null>(null);
   useEffect(() => {
     setYear(new Date().getFullYear());
   }, []);
 
-  if (isPortal) {
-    return <CareConnectLoginLayout year={year} />;
+  if (portalProductId === "careconnect") {
+    return <CareConnectLoginLayout year={year} defaultReturnTo={portalLandingPath ?? "/careconnect/dashboard"} />;
+  }
+
+  if (portalProductId === "synqlien") {
+    return <SynqLienLoginLayout year={year} defaultReturnTo={portalLandingPath ?? "/funding/dashboard"} />;
   }
 
   return <LegalSynqLoginLayout year={year} />;
@@ -133,7 +164,13 @@ export function LoginPageClient({ isPortal }: { isPortal: boolean }) {
 
 // ── CareConnect layout ─────────────────────────────────────────────────────────
 
-function CareConnectLoginLayout({ year }: { year: number | null }) {
+function CareConnectLoginLayout({
+  year,
+  defaultReturnTo,
+}: {
+  year: number | null;
+  defaultReturnTo: string;
+}) {
   // Deep teal-blue palette — healthcare / CareConnect brand
   const bg = "#0c4a6e";
   const accent = "#38bdf8";
@@ -260,7 +297,7 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
           </div>
 
           <Suspense fallback={null}>
-            <LoginForm />
+            <LoginForm defaultReturnTo={defaultReturnTo} />
           </Suspense>
 
           <p className="mt-6 text-center text-xs text-gray-400">
@@ -274,6 +311,186 @@ function CareConnectLoginLayout({ year }: { year: number | null }) {
           </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── SynqLien layout ───────────────────────────────────────────────────────────
+
+function SynqLienLoginLayout({
+  year,
+  defaultReturnTo,
+}: {
+  year: number | null;
+  defaultReturnTo: string;
+}) {
+  const bg = "#111827";
+  const accent = "#f97316";
+  const accentA = "rgba(249,115,22,0.14)";
+
+  return (
+    <div className="min-h-screen flex flex-col lg:flex-row">
+      {/* ── Left panel — SynqLien branded ────────────────────────────────── */}
+      <div
+        className="hidden lg:flex lg:w-[45%] xl:w-[42%] flex-col p-10 xl:p-14 relative overflow-hidden"
+        style={{ backgroundColor: bg }}
+      >
+        {/* Subtle background texture rings */}
+        <div
+          className="absolute -bottom-40 -left-40 w-[520px] h-[520px] rounded-full opacity-[0.05]"
+          style={{ border: `80px solid ${accent}` }}
+          aria-hidden
+        />
+        <div
+          className="absolute -top-24 -right-24 w-[320px] h-[320px] rounded-full opacity-[0.04]"
+          style={{ border: `60px solid ${accent}` }}
+          aria-hidden
+        />
+
+        {/* Logo */}
+        <div className="relative z-10 mb-auto">
+          <SynqLienLogo testId="sl-desktop-logo" />
+        </div>
+
+        {/* Hero copy */}
+        <div className="relative z-10 py-12">
+          <div
+            className="w-10 h-0.5 mb-6 rounded-full"
+            style={{ backgroundColor: accent }}
+          />
+
+          <h2 className="text-3xl xl:text-4xl font-bold text-white leading-tight tracking-tight mb-4">
+            Your lien operations,
+            <br />
+            all in one place
+          </h2>
+
+          <p
+            className="text-[15px] leading-relaxed mb-10 max-w-sm"
+            style={{ color: "rgba(226,232,240,0.78)" }}
+          >
+            For law firms, lien owners, buyers, and servicing teams managing the
+            lien lifecycle
+          </p>
+
+          <ul className="space-y-5">
+            {SYNQLIEN_HIGHLIGHTS.map(({ icon, text }) => (
+              <li key={text} className="flex items-start gap-3">
+                <span
+                  className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5"
+                  style={{ backgroundColor: accentA }}
+                >
+                  <i
+                    className={`${icon} text-[14px]`}
+                    style={{ color: accent }}
+                  />
+                </span>
+                <span
+                  className="text-[13px] leading-snug"
+                  style={{ color: "rgba(226,232,240,0.82)" }}
+                >
+                  {text}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Footer */}
+        <div
+          className="relative z-10 pt-6 border-t"
+          style={{ borderColor: "rgba(255,255,255,0.08)" }}
+        >
+          <div className="flex items-center gap-3">
+            <p
+              className="text-[11px]"
+              style={{ color: "rgba(226,232,240,0.42)" }}
+              suppressHydrationWarning
+            >
+              &copy; {year ?? ""} LegalSynq SynqLien
+            </p>
+            <span
+              className="text-[10px]"
+              style={{ color: "rgba(226,232,240,0.2)" }}
+            >
+              &bull;
+            </span>
+            <Link
+              href="/coming-soon"
+              className="text-[11px] transition-colors"
+              style={{ color: "rgba(226,232,240,0.42)" }}
+            >
+              Privacy Policy
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Right panel — login form ─────────────────────────────────────── */}
+      <div className="flex-1 flex flex-col items-center justify-center min-h-screen lg:min-h-0 px-6 py-12 bg-gray-50">
+        <div className="lg:hidden mb-10">
+          <SynqLienLogo compact dark testId="sl-mobile-logo" />
+        </div>
+
+        <div className="w-full max-w-sm">
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+              Welcome back
+            </h1>
+            <p className="mt-1.5 text-sm text-gray-500">
+              Sign in to your SynqLien portal
+            </p>
+          </div>
+
+          <Suspense fallback={null}>
+            <LoginForm defaultReturnTo={defaultReturnTo} />
+          </Suspense>
+
+          <p className="mt-6 text-center text-xs text-gray-400">
+            Need access?{" "}
+            <Link
+              href="/coming-soon"
+              className="text-gray-600 hover:text-gray-900 underline underline-offset-2 transition-colors"
+            >
+              Contact support
+            </Link>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SynqLienLogo({
+  compact = false,
+  dark = false,
+  testId,
+}: {
+  compact?: boolean;
+  dark?: boolean;
+  testId: string;
+}) {
+  return (
+    <div className="flex items-center gap-3" data-testid={testId}>
+      <Image
+        src="/product-icons/synqlien.png"
+        alt=""
+        width={64}
+        height={64}
+        priority
+        unoptimized
+        className={compact ? "h-9 w-9 rounded-lg" : "h-14 w-14 rounded-xl"}
+      />
+      <span
+        className={
+          compact
+            ? "text-2xl font-semibold tracking-tight"
+            : "text-[34px] font-semibold tracking-tight"
+        }
+        style={{ color: dark ? "#111827" : "#ffffff" }}
+      >
+        Synq<span style={{ color: "#f97316" }}>Lien</span>
+      </span>
     </div>
   );
 }
@@ -359,20 +576,19 @@ function LegalSynqLoginLayout({ year }: { year: number | null }) {
               &copy; {year ?? ""} LegalSynq
             </p>
             <span className="text-slate-700 text-[10px]">&bull;</span>
-            <a
-              href="/privacy-policy"
-              target="_blank"
-              className="text-[11px] text-slate-600 hover:text-slate-400 transition-colors"
+            <Link
+              href="/coming-soon"
+              className="text-[11px]  text-slate-600 hover:text-slate-400 transition-colors"
             >
               Privacy Policy
-            </a>
+            </Link>
             <span className="text-slate-700 text-[10px]">&bull;</span>
-            <a
-              href="/terms"
-              className="text-[11px] text-slate-600 hover:text-slate-400 transition-colors"
+            <Link
+              href="/coming-soon"
+              className="text-[11px]  text-slate-600 hover:text-slate-400 transition-colors"
             >
               Terms &amp; Conditions
-            </a>
+            </Link>
           </div>
         </div>
       </div>
@@ -413,12 +629,12 @@ function LegalSynqLoginLayout({ year }: { year: number | null }) {
           {/* Footer links */}
           <p className="mt-6 text-center text-xs text-gray-400">
             Need access?{" "}
-            <a
-              href="mailto:support@legalsynq.com"
+            <Link
+              href="/coming-soon"
               className="text-gray-600 hover:text-gray-900 underline underline-offset-2 transition-colors"
             >
               Contact support
-            </a>
+            </Link>
           </p>
         </div>
       </div>

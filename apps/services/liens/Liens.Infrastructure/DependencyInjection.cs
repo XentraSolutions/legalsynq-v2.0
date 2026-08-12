@@ -8,9 +8,11 @@ using Liens.Application.Repositories;
 using Liens.Application.Services;
 using Liens.Infrastructure.Audit;
 using Liens.Infrastructure.Documents;
+using Liens.Infrastructure.Identity;
 using Liens.Infrastructure.Notifications;
 using Liens.Infrastructure.Persistence;
 using Liens.Infrastructure.Repositories;
+using Liens.Infrastructure.Services;
 using Liens.Infrastructure.TaskService;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -41,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IFacilityContactPersonRepository, FacilityContactPersonRepository>();
         services.AddScoped<ILookupValueRepository, LookupValueRepository>();
         services.AddScoped<ILienRepository, LienRepository>();
+        services.AddScoped<ILienStatusHistoryRepository, LienStatusHistoryRepository>();
         services.AddScoped<ILienOfferRepository, LienOfferRepository>();
         services.AddScoped<ISellingPortfolioRepository, SellingPortfolioRepository>();
         services.AddScoped<IBillOfSaleRepository, BillOfSaleRepository>();
@@ -57,11 +60,16 @@ public static class DependencyInjection
         services.AddSingleton<IBillOfSalePdfGenerator, BillOfSalePdfGenerator>();
         services.AddScoped<IBillOfSaleDocumentService, BillOfSaleDocumentService>();
         services.AddScoped<ILegacyDocumentUploadClient, LegacyDocumentUploadClient>();
+        services.AddScoped<ISellingDocumentReferenceValidator, SellingDocumentReferenceValidator>();
         services.AddScoped<ILienSaleService, LienSaleService>();
         services.AddScoped<ILienService, LienService>();
         services.AddScoped<ILienOfferService, LienOfferService>();
         services.AddScoped<ILienEligibilityValidator, LienEligibilityValidator>();
+        services.AddScoped<ISellerOrganizationDisplayResolver, SellerOrganizationDisplayResolver>();
         services.AddScoped<ISellingPortfolioService, SellingPortfolioService>();
+        services.AddScoped<ISellingDashboardService, SellingDashboardService>();
+        services.AddScoped<ISellingBuyerAccessLinkService, SellingBuyerAccessLinkService>();
+        services.AddScoped<ISellingAnalyticsService, SellingAnalyticsService>();
         services.AddScoped<IBillOfSaleService, BillOfSaleService>();
         services.AddScoped<IBillOfSaleDocumentQueryService, BillOfSaleDocumentQueryService>();
         services.AddScoped<ICaseService, CaseService>();
@@ -75,6 +83,7 @@ public static class DependencyInjection
         services.AddScoped<ILienTaskTemplateService, LienTaskTemplateService>();
         services.AddScoped<ILienTaskGenerationRuleService, LienTaskGenerationRuleService>();
         services.AddScoped<ILienTaskGenerationEngine, LienTaskGenerationEngine>();
+        services.AddSingleton<ILienTaskGenerationDispatcher, LienTaskGenerationDispatcher>();
         services.AddScoped<ILienTaskNoteService, LienTaskNoteService>();
         services.AddScoped<ILienCaseNoteService, LienCaseNoteService>();
         // Settlement, Reduction & Payment
@@ -93,6 +102,17 @@ public static class DependencyInjection
         services.AddScoped<IFlowEventHandler, FlowEventHandler>();
         // TASK-B04 — backfill service
         services.AddScoped<ILienTaskBackfillService, LienTaskBackfillService>();
+
+        services.Configure<IdentityServiceOptions>(options =>
+        {
+            configuration.GetSection(IdentityServiceOptions.SectionName).Bind(options);
+            if (string.IsNullOrWhiteSpace(options.BaseUrl))
+                options.BaseUrl = configuration["ExternalServices:Identity:BaseUrl"];
+            if (string.IsNullOrWhiteSpace(options.ProvisioningToken))
+                options.ProvisioningToken = configuration["TenantService:ProvisioningToken"];
+        });
+        services.AddHttpClient("IdentityService");
+        services.AddScoped<IPublicBuyerAccountProvisioningService, IdentityBuyerAccountProvisioningService>();
 
         // TASK-MIG-09: LiensGovernanceSyncService REMOVED. Governance is fully Task-owned.
         // TASK-MIG-09: LiensTemplateSyncService REMOVED. Templates are fully Task-owned.
@@ -121,7 +141,10 @@ public static class DependencyInjection
         services.AddServiceTokenIssuer(configuration, "liens-service");
         services.AddTransient<NotificationsAuthDelegatingHandler>();
 
-        var notifBaseUrl = configuration["Services:NotificationsUrl"] ?? "http://localhost:5008";
+        var notifBaseUrl = configuration["NotificationsService:BaseUrl"]
+                           ?? configuration["Services:NotificationsUrl"]
+                           ?? configuration["ExternalServices:Notifications:BaseUrl"]
+                           ?? "http://localhost:5008";
         services.AddHttpClient("NotificationsService", client =>
         {
             client.BaseAddress = new Uri(notifBaseUrl);

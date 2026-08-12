@@ -23,6 +23,11 @@ public class LiensMigrationDiscoveryTests
         Assert.Contains("20260420000002_AddTaskFlowLinkage", migrationIds);
         Assert.Contains("20260421000002_DropLiensConfigTables", migrationIds);
         Assert.Contains("20260513000001_SeedLookupValues", migrationIds);
+        Assert.Contains("20260625000001_AddLienLegacyMedicalFields", migrationIds);
+        Assert.Contains("20260629164601_AddFacilityLinkedContactSubtype", migrationIds);
+        Assert.Contains("20260731000001_AddLienPurchaseAndSettlementDates", migrationIds);
+        Assert.Contains("20260729163919_SecureSellingBuyerAccessAndAddIdempotencyRecords", migrationIds);
+        Assert.Contains("20260729163918_RecordPublicBuyerAccountActivation", migrationIds);
     }
 
     [Fact]
@@ -35,6 +40,11 @@ public class LiensMigrationDiscoveryTests
             typeof(Liens.Infrastructure.Persistence.Migrations.AddTaskFlowLinkage),
             typeof(Liens.Infrastructure.Persistence.Migrations.DropLiensConfigTables),
             typeof(Liens.Infrastructure.Persistence.Migrations.SeedLookupValues),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddLienLegacyMedicalFields),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddFacilityLinkedContactSubtype),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddLienPurchaseAndSettlementDates),
+            typeof(Liens.Infrastructure.Persistence.Migrations.SecureSellingBuyerAccessAndAddIdempotencyRecords),
+            typeof(Liens.Infrastructure.Persistence.Migrations.RecordPublicBuyerAccountActivation),
         };
 
         foreach (var migrationType in migrationTypes)

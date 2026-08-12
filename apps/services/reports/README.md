@@ -58,6 +58,8 @@ Reports.Worker/         Background ScheduleWorkerService (polls every 60s, max 1
 | XLSX | ClosedXML 0.102.3 — typed cells, auto-width columns |
 | PDF | QuestPDF 2024.3.0 Community — landscape A4, table layout, page numbers |
 
+When a tenant view supplies column configuration, report execution applies its visible, recognized columns before rendering or export. CSV, XLSX, and PDF therefore use the same configured order and labels; unknown, duplicate, and malformed entries are safely ignored.
+
 ## Scheduling
 
 `ScheduleWorkerService` runs as a hosted service inside the Reports API process. Frequencies: Daily, Weekly, Monthly with timezone-aware next-run calculation. Delivery: OnScreen (pass-through), Email (via Notifications), SFTP (stub).

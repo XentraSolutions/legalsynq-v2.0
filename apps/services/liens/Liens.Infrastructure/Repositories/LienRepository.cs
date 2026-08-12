@@ -1,5 +1,6 @@
 using Liens.Application.Repositories;
 using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -38,9 +39,35 @@ public class LienRepository : ILienRepository
     public async Task<(List<Lien> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, string? status, string? lienType,
         Guid? caseId, Guid? facilityId,
-        int page, int pageSize, CancellationToken ct = default)
+        int page, int pageSize,
+        CancellationToken ct = default,
+        DateTime? createdFromUtc = null,
+        DateTime? createdToUtc = null,
+        Guid? visibleOrgId = null,
+        bool includeSellerOrg = false,
+        bool includeBuyerOrg = false,
+        bool includeHolderOrg = false,
+        bool includeMarketplace = false,
+        bool excludeRejectedAndCancelled = false)
     {
         var q = _db.Liens.Where(l => l.TenantId == tenantId);
+
+        if (visibleOrgId.HasValue)
+        {
+            var orgId = visibleOrgId.Value;
+            q = q.Where(l =>
+                (includeSellerOrg && (l.OrgId == orgId || l.SellingOrgId == orgId)) ||
+                (includeBuyerOrg && l.BuyingOrgId == orgId) ||
+                (includeHolderOrg && l.HoldingOrgId == orgId) ||
+                (includeMarketplace && (l.Status == LienStatus.Offered || l.Status == LienStatus.UnderReview)));
+        }
+
+        if (excludeRejectedAndCancelled)
+        {
+            q = q.Where(l =>
+                l.Status != LienStatus.Cancelled &&
+                l.Status != "Rejected");
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -52,8 +79,14 @@ public class LienRepository : ILienRepository
                 (l.Description != null && l.Description.Contains(term)));
         }
 
-        if (!string.IsNullOrWhiteSpace(status))
-            q = q.Where(l => l.Status == status);
+        var statuses = LienStatus.ExpandFilterValues(
+            string.IsNullOrWhiteSpace(status)
+                ? []
+                : status.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        if (statuses.Count == 1)
+            q = q.Where(l => l.Status == statuses.Single());
+        else if (statuses.Count > 1)
+            q = q.Where(l => statuses.Contains(l.Status));
 
         if (!string.IsNullOrWhiteSpace(lienType))
             q = q.Where(l => l.LienType == lienType);
@@ -63,6 +96,12 @@ public class LienRepository : ILienRepository
 
         if (facilityId.HasValue)
             q = q.Where(l => l.FacilityId == facilityId.Value);
+
+        if (createdFromUtc.HasValue)
+            q = q.Where(l => l.CreatedAtUtc >= createdFromUtc.Value);
+
+        if (createdToUtc.HasValue)
+            q = q.Where(l => l.CreatedAtUtc <= createdToUtc.Value);
 
         var totalCount = await q.CountAsync(ct);
 
@@ -78,7 +117,15 @@ public class LienRepository : ILienRepository
     public async Task<(List<Lien> PageItems, List<Lien> AllItems, int TotalCount)> SearchReportAsync(
         Guid tenantId,
         string? search,
-        IReadOnlyCollection<string> statuses,
+        IReadOnlyCollection<string> lienStatuses,
+        IReadOnlyCollection<string> caseStatuses,
+        DateOnly? purchaseDateFrom,
+        DateOnly? purchaseDateTo,
+        DateTime? closedDateFrom,
+        DateTime? closedDateTo,
+        bool useSettlementDateForClosedFilter,
+        string? isBulk,
+        IReadOnlyCollection<Guid> caseIds,
         int page,
         int pageSize,
         CancellationToken ct = default)
@@ -95,10 +142,109 @@ public class LienRepository : ILienRepository
                 (l.Description != null && l.Description.Contains(term)));
         }
 
-        if (statuses.Count > 0)
+        var expandedLienStatuses = LienStatus.ExpandFilterValues(lienStatuses);
+        if (expandedLienStatuses.Count > 0)
         {
-            var statusList = statuses.ToList();
+            var statusList = expandedLienStatuses.ToList();
             q = q.Where(l => statusList.Contains(l.Status));
+        }
+
+        if (caseStatuses.Count > 0)
+        {
+            var statusList = caseStatuses.ToList();
+            q = q.Where(l =>
+                l.CaseId.HasValue &&
+                _db.Cases.Any(c =>
+                    c.TenantId == tenantId &&
+                    c.Id == l.CaseId.Value &&
+                    statusList.Contains(c.Status)));
+        }
+
+        if (purchaseDateFrom.HasValue)
+            q = q.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value >= purchaseDateFrom.Value);
+
+        if (purchaseDateTo.HasValue)
+            q = q.Where(l => l.PurchaseDate.HasValue && l.PurchaseDate.Value <= purchaseDateTo.Value);
+
+        if (closedDateFrom.HasValue || closedDateTo.HasValue)
+        {
+            if (useSettlementDateForClosedFilter)
+            {
+                q = q.Where(l => _db.LienSettlements.Any(settlement =>
+                    settlement.TenantId == tenantId &&
+                    settlement.LienId == l.Id &&
+                    !settlement.IsDeleted &&
+                    settlement.SettlementDate.HasValue));
+
+                if (closedDateFrom.HasValue)
+                {
+                    var closedFrom = DateOnly.FromDateTime(closedDateFrom.Value);
+                    q = q.Where(l => _db.LienSettlements.Any(settlement =>
+                        settlement.TenantId == tenantId &&
+                        settlement.LienId == l.Id &&
+                        !settlement.IsDeleted &&
+                        settlement.SettlementDate.HasValue &&
+                        settlement.SettlementDate.Value >= closedFrom));
+                }
+
+                if (closedDateTo.HasValue)
+                {
+                    var closedTo = DateOnly.FromDateTime(closedDateTo.Value);
+                    q = q.Where(l => !_db.LienSettlements.Any(settlement =>
+                        settlement.TenantId == tenantId &&
+                        settlement.LienId == l.Id &&
+                        !settlement.IsDeleted &&
+                        settlement.SettlementDate.HasValue &&
+                        settlement.SettlementDate.Value > closedTo));
+                }
+            }
+            else
+            {
+                q = q.Where(l =>
+                    l.Status == LienStatus.Settled &&
+                    l.ClosedAtUtc.HasValue);
+
+                if (closedDateFrom.HasValue)
+                    q = q.Where(l => l.ClosedAtUtc!.Value >= closedDateFrom.Value);
+
+                if (closedDateTo.HasValue)
+                    q = q.Where(l => l.ClosedAtUtc!.Value <= closedDateTo.Value);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(isBulk))
+        {
+            var bulk = isBulk.Trim();
+            if (string.Equals(bulk, "No", StringComparison.OrdinalIgnoreCase))
+            {
+                // The legacy UI submits "N", while newly created liens may leave
+                // IsBulk unset. Both represent a non-bulk lien.
+                q = q.Where(l =>
+                    l.IsBulk == null ||
+                    l.IsBulk == string.Empty ||
+                    l.IsBulk == "N" ||
+                    l.IsBulk == "No" ||
+                    l.IsBulk == "False" ||
+                    l.IsBulk == "0");
+            }
+            else if (string.Equals(bulk, "Yes", StringComparison.OrdinalIgnoreCase))
+            {
+                q = q.Where(l =>
+                    l.IsBulk == "Y" ||
+                    l.IsBulk == "Yes" ||
+                    l.IsBulk == "True" ||
+                    l.IsBulk == "1");
+            }
+            else
+            {
+                q = q.Where(l => l.IsBulk == bulk);
+            }
+        }
+
+        if (caseIds.Count > 0)
+        {
+            var ids = caseIds.ToList();
+            q = q.Where(l => l.CaseId.HasValue && ids.Contains(l.CaseId.Value));
         }
 
         var ordered = q.OrderByDescending(l => l.CreatedAtUtc);

@@ -54,6 +54,7 @@ public class Provider : AuditableEntity
     public Guid    Id                { get; private set; }
     public Guid    TenantId          { get; private set; }
     public string  Name              { get; private set; } = string.Empty;
+    public string? Title             { get; private set; }
     public string? FirstName         { get; private set; }
     public string? LastName          { get; private set; }
     public string? OrganizationName  { get; private set; }
@@ -136,6 +137,8 @@ public class Provider : AuditableEntity
     // ─────────────────────────────────────────────────────────────────────────
 
     public List<ProviderCategory> ProviderCategories { get; private set; } = new();
+    public List<ProviderSpecialty> ProviderSpecialties { get; private set; } = new();
+    public List<ProviderFacility> ProviderFacilities { get; private set; } = new();
 
     /// <summary>
     /// Phase 5: link this provider record to the corresponding Identity Organization.
@@ -234,6 +237,20 @@ public class Provider : AuditableEntity
 
     private Provider() { }
 
+    private static string? NormalizeOptional(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string BuildDisplayName(string name, string? title, string? firstName, string? lastName)
+    {
+        var hasSplitName = !string.IsNullOrWhiteSpace(firstName) || !string.IsNullOrWhiteSpace(lastName);
+        if (!hasSplitName)
+            return name.Trim();
+
+        return string.Join(" ", new[] { title, firstName, lastName }
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p!.Trim()));
+    }
+
     public static Provider Create(
         Guid    tenantId,
         string  name,
@@ -252,23 +269,21 @@ public class Provider : AuditableEntity
         string? geoPointSource = null,
         string? npi            = null,
         string? firstName      = null,
-        string? lastName       = null)
+        string? lastName       = null,
+        string? title          = null)
     {
         // firstName/lastName (tenant-portal creation path) take precedence over the
         // legacy single name parameter — when supplied, Name is computed from them so
         // every existing reader keeps seeing the same single display string.
-        var hasSplitName = !string.IsNullOrWhiteSpace(firstName) || !string.IsNullOrWhiteSpace(lastName);
-        var computedName = hasSplitName
-            ? string.Join(" ", new[] { firstName, lastName }
-                .Where(p => !string.IsNullOrWhiteSpace(p))
-                .Select(p => p!.Trim()))
-            : name.Trim();
+        var normalizedTitle = NormalizeOptional(title);
+        var computedName = BuildDisplayName(name, normalizedTitle, firstName, lastName);
 
         return new Provider
         {
             Id               = Guid.CreateVersion7(),
             TenantId         = tenantId,
             Name             = computedName,
+            Title            = normalizedTitle,
             FirstName        = firstName?.Trim(),
             LastName         = lastName?.Trim(),
             OrganizationName = organizationName?.Trim(),
@@ -330,23 +345,25 @@ public class Provider : AuditableEntity
         double? longitude      = null,
         string? geoPointSource = null,
         string? firstName      = null,
-        string? lastName       = null)
+        string? lastName       = null,
+        string? title          = null)
     {
+        var normalizedTitle = NormalizeOptional(title);
         var hasSplitName = !string.IsNullOrWhiteSpace(firstName) || !string.IsNullOrWhiteSpace(lastName);
-        var computedName = hasSplitName
-            ? string.Join(" ", new[] { firstName, lastName }
-                .Where(p => !string.IsNullOrWhiteSpace(p))
-                .Select(p => p!.Trim()))
-            : name.Trim();
+        var computedName = BuildDisplayName(name, normalizedTitle, firstName, lastName);
 
         Name             = computedName;
-        // Only overwrite FirstName/LastName when the caller explicitly supplies them —
-        // callers that still only pass the legacy single `name` leave existing split
-        // values (if any) untouched rather than wiping them back to null.
+        // Legacy single-name callers leave existing split values untouched rather
+        // than wiping them back to null.
         if (hasSplitName)
         {
+            Title = normalizedTitle;
             FirstName = firstName?.Trim();
             LastName  = lastName?.Trim();
+        }
+        else if (title is not null)
+        {
+            Title = normalizedTitle;
         }
         OrganizationName = organizationName?.Trim();
         Email            = email.Trim();

@@ -4,7 +4,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { careConnectApi } from '@/lib/careconnect-api';
 import { ApiError } from '@/lib/api-client';
-import type { CreateReferralRequest, ReferralUrgencyValue } from '@/types/careconnect';
+import type { CreateReferralRequest, ReferralAttributionSummary, ReferralUrgencyValue } from '@/types/careconnect';
 import { URGENCY_OPTIONS } from '@/types/careconnect';
 import { formatPhoneInput, stripPhone, isValidPhone } from '@/lib/phone';
 import { isValidIsoDate, hasReasonableYear } from '@/lib/daterange';
@@ -58,8 +58,11 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
   const [serviceType,     setServiceType]     = useState('General Referral');
   const [treatmentTypeId, setTreatmentTypeId] = useState('');
   const [notes,            setNotes]            = useState('');
+  // Referral Attribution — optional, defaults to blank. Never auto-selected.
+  const [referralAttributionId, setReferralAttributionId] = useState('');
 
   const [treatmentTypes,   setTreatmentTypes]   = useState<TreatmentType[]>([]);
+  const [attributionOptions, setAttributionOptions] = useState<ReferralAttributionSummary[]>([]);
 
   const [loading,          setLoading]          = useState(false);
   const [error,            setError]            = useState<string | null>(null);
@@ -70,6 +73,12 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
       .then(r => r.ok ? r.json() : [])
       .then((data: TreatmentType[]) => setTreatmentTypes(data))
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    careConnectApi.referralAttributions.options()
+      .then(({ data }) => setAttributionOptions(data))
+      .catch(() => {}); // non-fatal — field simply shows no options
   }, []);
 
   function validate(): boolean {
@@ -110,6 +119,7 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
       urgency,
       treatmentTypeId:  treatmentTypeId || undefined,
       notes:            notes.trim() || undefined,
+      referralAttributionId: referralAttributionId || undefined,
       referrerEmail:    referrerEmail || undefined,
       referrerName:     referrerName  || undefined,
     };
@@ -350,6 +360,25 @@ export function CreateReferralForm({ providerId, providerName, onClose, referrer
                     placeholder="Optional"
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                   />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Referral Attribution</label>
+                  <select
+                    value={referralAttributionId}
+                    onChange={e => setReferralAttributionId(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+                  >
+                    <option value="">Select a referral source</option>
+                    {attributionOptions.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.firstName} {a.lastName}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Select the person, Campaign, or partner responsible for originating this referral.
+                  </p>
                 </div>
 
                 <div className="sm:col-span-2">

@@ -1,89 +1,158 @@
-import Link from 'next/link';
-import type { LienSummary } from '@/types/lien';
-import { LIEN_TYPE_LABELS } from '@/types/lien';
-import { LienStatusBadge } from './lien-status-badge';
+"use client";
+import Link from "next/link";
+import { DateDisplay } from "@/components/ui/date-display";
+import { LIEN_TYPE_LABELS } from "@/types/lien";
+import { LienStatusBadge } from "./lien-status-badge";
+import { useMemo, useState } from "react";
+import { ColumnDef, SortingState } from "@tanstack/react-table";
+import { StatusBadge } from "./status-badge";
+import { BaseTable } from "../ui/base-table";
+import { PaginationMeta } from "@/lib/contacts";
+import { LiensQuery } from "@/lib/liens";
+import {
+  EMPTY_LIENS_FILTERS,
+  LiensFilterValues,
+} from "@/app/(platform)/selling/liens/components/liens-filter";
+import { LienListItem } from "@/lib/selling";
+import { useRouter } from "next/navigation";
+import { LienRowActionsMenu } from "@/components/selling/lien-row-actions-menu";
 
 interface PortfolioTableProps {
-  liens: LienSummary[];
+  liens: LienListItem[];
+  sorting: SortingState;
+  onSortingChange: (e: any) => void;
+  pagination: PaginationMeta;
+  handlePageChange: (e: any) => void;
+  onRowSelect: (id: string) => void;
+  onActionComplete?: () => void;
 }
 
 function formatCurrency(amount?: number): string {
-  if (amount == null) return '—';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+  if (amount == null) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(amount);
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+export function PortfolioTable({
+  liens,
+  sorting,
+  onSortingChange,
+  handlePageChange,
+  pagination,
+  onRowSelect,
+  onActionComplete,
+}: PortfolioTableProps) {
+  const columns = useMemo<ColumnDef<LienListItem, any>[]>(
+    () => [
+      {
+        id: "lienId",
+        accessorKey: "lienId",
+        header: "Lien ID",
+        cell: ({ row }) => (
+          <span className="text-xs font-mono text-gray-700">
+            {row.original.lienNumber}
+          </span>
+        ),
+      },
+      {
+        id: "fundingCompany",
+        header: "Funding Company",
+        accessorKey: "fundingCompany",
 
-export function PortfolioTable({ liens }: PortfolioTableProps) {
-  if (liens.length === 0) {
-    return (
-      <div className="bg-white border border-gray-200 rounded-lg p-10 text-center">
-        <p className="text-sm text-gray-400">No liens in your portfolio yet.</p>
-        <p className="text-xs text-gray-300 mt-1">
-          Purchase liens on the{' '}
-          <Link href="/lien/marketplace" className="text-primary hover:underline">marketplace</Link>.
-        </p>
-      </div>
-    );
-  }
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700">
+            {row.original.fundingCompany || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "initialServiceDate",
+        header: "Initial Service Date",
+        accessorKey: "initialServiceDate",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700">
+            {row.original.initialServiceDate || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "billingAmount",
+        header: "Billing Amount",
+        accessorKey: "billingAmount",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700">
+            {formatCurrency(row.original.billingAmount) || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "askAmount",
+        header: "Ask Amount",
+        accessorKey: "askAmount",
+        cell: ({ row }) => (
+          <span className="text-sm text-gray-700">
+            {formatCurrency(row.original.askAmount) || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "status",
+        accessorKey: "status",
+        header: "Lien Status",
+        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      },
+      {
+        id: "actions",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex justify-end">
+            <LienRowActionsMenu
+              lienId={row.original.lienId}
+              lien={row.original}
+              availableActions={row.original.availableActions ?? []}
+              onActionComplete={() => onActionComplete?.()}
+            />
+          </div>
+        ),
+      },
+    ],
+    [onActionComplete],
+  );
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-100">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Lien #</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Subject</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Purchased for</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Original</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Seller</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Acquired</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {liens.map(lien => {
-              const subject = lien.subjectParty
-                ? `${lien.subjectParty.firstName ?? ''} ${lien.subjectParty.lastName ?? ''}`.trim()
-                : '—';
-
-              return (
-                <tr key={lien.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3">
-                    <span className="text-xs font-mono text-gray-600">{lien.lienNumber}</span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {LIEN_TYPE_LABELS[lien.lienType] ?? lien.lienType}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{subject}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{formatCurrency(lien.purchasePrice)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{formatCurrency(lien.originalAmount)}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{lien.sellingOrg?.orgName ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    <LienStatusBadge status={lien.status} />
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                    {formatDate(lien.updatedAtUtc)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/lien/portfolio/${lien.id}`}
-                      className="text-xs text-primary font-medium hover:underline whitespace-nowrap"
-                    >
-                      View →
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+    <div className="bg-white rounded-lg overflow-hidden">
+      <BaseTable
+        data={liens}
+        columns={columns}
+        getRowId={(l) => l.lienId}
+        sorting={sorting}
+        onSortingChange={onSortingChange}
+        manualSorting
+        onRowClick={(l) => onRowSelect(l.lienId)}
+        emptyMessage="No liens match your filters."
+        manualPagination
+        pageCount={pagination.totalPages}
+        totalCount={pagination.totalCount}
+        pagination={{
+          pageIndex: pagination.page - 1,
+          pageSize: pagination.pageSize,
+        }}
+        onPaginationChange={(updater) => {
+          const next =
+            typeof updater === "function"
+              ? updater({
+                  pageIndex: pagination.page - 1,
+                  pageSize: pagination.pageSize,
+                })
+              : updater;
+          handlePageChange(next.pageIndex + 1);
+        }}
+        className="bg-white border-gray-200 rounded-xl"
+      />
     </div>
   );
 }

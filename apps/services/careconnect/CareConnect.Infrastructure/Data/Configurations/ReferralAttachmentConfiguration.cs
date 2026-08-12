@@ -15,6 +15,7 @@ public class ReferralAttachmentConfiguration : IEntityTypeConfiguration<Referral
         builder.Property(a => a.Id).IsRequired();
         builder.Property(a => a.TenantId).IsRequired();
         builder.Property(a => a.ReferralId).IsRequired();
+        builder.Property(a => a.ReferralCommentId);
         builder.Property(a => a.FileName).IsRequired().HasMaxLength(500);
         builder.Property(a => a.ContentType).IsRequired().HasMaxLength(200);
         builder.Property(a => a.FileSizeBytes).IsRequired();
@@ -29,10 +30,19 @@ public class ReferralAttachmentConfiguration : IEntityTypeConfiguration<Referral
 
         builder.HasIndex(a => new { a.TenantId, a.ReferralId, a.CreatedAtUtc });
         builder.HasIndex(a => new { a.TenantId, a.Status });
+        builder.HasIndex(a => a.ReferralCommentId)
+            .HasDatabaseName("IX_cc_ReferralAttachments_ReferralCommentId");
+        builder.HasIndex(a => new { a.TenantId, a.ReferralId, a.ReferralCommentId, a.CreatedAtUtc })
+            .HasDatabaseName("IX_cc_ReferralAttachments_ReferralComment");
 
         builder.HasOne(a => a.Referral)
                .WithMany()
                .HasForeignKey(a => a.ReferralId)
+               .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(a => a.ReferralComment)
+               .WithMany(c => c.Attachments)
+               .HasForeignKey(a => a.ReferralCommentId)
                .OnDelete(DeleteBehavior.Cascade);
     }
 }

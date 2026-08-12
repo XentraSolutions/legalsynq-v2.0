@@ -62,7 +62,7 @@ public class ProviderProvisioningTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(0);
 
-        var sut = new ProviderService(repoMock.Object, referralRepoMock.Object, slotsMock.Object, logger);
+        var sut = new ProviderService(repoMock.Object, referralRepoMock.Object, slotsMock.Object, Mock.Of<ISpecialtyRepository>(), logger);
         return (sut, repoMock, referralRepoMock);
     }
 

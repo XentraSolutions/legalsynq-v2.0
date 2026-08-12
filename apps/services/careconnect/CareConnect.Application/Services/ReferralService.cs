@@ -33,6 +33,8 @@ public class ReferralService : IReferralService
     private readonly ILogger<ReferralService> _logger;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IReferralAttachmentRepository _referralAttachments;
+    private readonly INetworkRepository? _networks;
+    private readonly IReferralAttributionRepository _referralAttributions;
 
     public ReferralService(
         IReferralRepository referrals,
@@ -48,7 +50,9 @@ public class ReferralService : IReferralService
         ILogger<ReferralService> logger,
         IHttpContextAccessor httpContextAccessor,
         IReferralAttachmentRepository referralAttachments,
-        IActivationRequestService? activationRequests = null)
+        IReferralAttributionRepository referralAttributions,
+        IActivationRequestService? activationRequests = null,
+        INetworkRepository? networks = null)
     {
         _referrals            = referrals;
         _providers            = providers;
@@ -64,6 +68,8 @@ public class ReferralService : IReferralService
         _logger               = logger;
         _httpContextAccessor  = httpContextAccessor;
         _referralAttachments  = referralAttachments;
+        _referralAttributions = referralAttributions;
+        _networks             = networks;
     }
 
     public async Task<PagedResponse<ReferralResponse>> SearchAsync(Guid tenantId, GetReferralsQuery query, CancellationToken ct = default)
@@ -149,11 +155,36 @@ public class ReferralService : IReferralService
     {
         ValidateCreate(request);
 
-        // Providers are a platform-wide marketplace (cross-tenant discoverable).
-        // Use GetByIdCrossAsync so a referral can target any active provider regardless
-        // of whether their TenantId matches the referrer's tenant.
-        var provider = await _providers.GetByIdCrossAsync(request.ProviderId, ct)
-            ?? throw new NotFoundException($"Provider '{request.ProviderId}' was not found.");
+        Provider provider;
+        if (request.NetworkProviderId.HasValue)
+        {
+            if (_networks is null)
+                throw new InvalidOperationException("Network membership validation is not configured.");
+
+            var membership = await _networks.GetTenantNetworkMembershipAsync(tenantId, request.NetworkProviderId.Value, ct)
+                ?? throw new NotFoundException($"Network provider '{request.NetworkProviderId.Value}' was not found.");
+
+            if (request.ProviderId != Guid.Empty && request.ProviderId != membership.ProviderId)
+                throw new NotFoundException($"Network provider '{request.NetworkProviderId.Value}' was not found.");
+
+            if (!membership.IsActive || !membership.AcceptingReferrals)
+            {
+                throw new ValidationException("One or more validation errors occurred.",
+                    new() { ["networkProviderId"] = ["Selected provider location is not accepting referrals."] });
+            }
+
+            request.ProviderId = membership.ProviderId;
+            request.FacilityId = membership.FacilityId;
+            provider = membership.Provider;
+        }
+        else
+        {
+            // Providers are a platform-wide marketplace (cross-tenant discoverable).
+            // Use GetByIdCrossAsync so a referral can target any active provider regardless
+            // of whether their TenantId matches the referrer's tenant.
+            provider = await _providers.GetByIdCrossAsync(request.ProviderId, ct)
+                ?? throw new NotFoundException($"Provider '{request.ProviderId}' was not found.");
+        }
 
         request.ReceivingOrganizationId = provider.OrganizationId;
 
@@ -178,6 +209,11 @@ public class ReferralService : IReferralService
                     request.ReferringOrganizationId.Value,
                     request.ReceivingOrganizationId.Value);
         }
+
+        // Referral Attribution: optional, tenant-scoped, must be active. Invalid, inactive,
+        // or cross-tenant values are rejected rather than silently dropped — a law firm user
+        // must see a validation error, not have their selection quietly discarded.
+        var validatedAttributionId = await ResolveAttributionForSubmissionAsync(tenantId, request.ReferralAttributionId, ct);
 
         var referral = Referral.Create(
             tenantId,
@@ -205,7 +241,9 @@ public class ReferralService : IReferralService
             referrerFirmName:  request.ReferrerFirmName,
             referrerPhone:    request.ReferrerPhone,
             treatmentTypeId: request.TreatmentTypeId,
-            dateOfAccident: request.DateOfAccident);
+            dateOfAccident: request.DateOfAccident,
+            facilityId: request.FacilityId,
+            referralAttributionId: validatedAttributionId);
 
         await _referrals.AddAsync(referral, ct);
 
@@ -221,11 +259,21 @@ public class ReferralService : IReferralService
         // avoiding a concurrent-access conflict with the request-scoped context still in use below.
         var scopeFactory = _scopeFactory;
         var logger       = _logger;
+        var createdTenantId = tenantId;
         _ = Task.Run(async () =>
         {
             using var scope    = scopeFactory.CreateScope();
             var       emailSvc = scope.ServiceProvider.GetRequiredService<IReferralEmailService>();
-            try { await emailSvc.SendNewReferralNotificationAsync(referral, provider, treatmentTypeName, CancellationToken.None); }
+            try
+            {
+                // The in-memory `referral` from Referral.Create() has no Facility/Provider
+                // navigation loaded — reload it here (via this scope's own DbContext, so it
+                // never touches the request-scoped context above) so the email can resolve
+                // the correct routed-facility location instead of falling back to nothing.
+                var referralsRepo = scope.ServiceProvider.GetRequiredService<IReferralRepository>();
+                var hydrated = await referralsRepo.GetByIdAsync(createdTenantId, referral.Id, CancellationToken.None) ?? referral;
+                await emailSvc.SendNewReferralNotificationAsync(hydrated, provider, treatmentTypeName, CancellationToken.None);
+            }
             catch (Exception ex)
             {
                 logger.LogWarning(ex,
@@ -265,16 +313,49 @@ public class ReferralService : IReferralService
                 referralId            = referral.Id,
                 tenantId,
                 providerId            = request.ProviderId,
+                facilityId            = request.FacilityId,
+                networkProviderId     = request.NetworkProviderId,
                 requestedService      = request.RequestedService,
                 urgency               = request.Urgency,
                 referringOrganizationId = request.ReferringOrganizationId,
                 receivingOrganizationId = request.ReceivingOrganizationId,
+                referralAttributionId = validatedAttributionId,
             }),
             CorrelationId  = _httpContextAccessor.HttpContext?.Items["CorrelationId"]?.ToString(),
             RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
             IdempotencyKey = IdempotencyKey.For("care-connect", "careconnect.referral.created", referral.Id.ToString()),
             Tags = ["referral", "created"],
         });
+
+        if (validatedAttributionId.HasValue)
+        {
+            _ = _auditClient.IngestAsync(new IngestAuditEventRequest
+            {
+                EventType     = "careconnect.referral_attribution.set_on_submission",
+                EventCategory = EventCategory.Business,
+                SourceSystem  = "care-connect",
+                SourceService = "referral-api",
+                Visibility    = AuditVisibility.Tenant,
+                Severity      = SeverityLevel.Info,
+                OccurredAtUtc = now,
+                Scope = new AuditEventScopeDto { ScopeType = ScopeType.Tenant, TenantId = tenantId.ToString() },
+                Actor = new AuditEventActorDto
+                {
+                    Id   = userId?.ToString(),
+                    Type = userId.HasValue ? ActorType.User : ActorType.System,
+                    Name = actorName ?? userId?.ToString() ?? "(system)",
+                },
+                Entity      = new AuditEventEntityDto { Type = "Referral", Id = referral.Id.ToString() },
+                Action      = "ReferralAttributionSetOnSubmission",
+                Description = $"Referral Attribution set to '{validatedAttributionId}' at law firm submission.",
+                Outcome     = "success",
+                Metadata    = JsonSerializer.Serialize(new { referralId = referral.Id, referralAttributionId = validatedAttributionId }),
+                CorrelationId  = _httpContextAccessor.HttpContext?.Items["CorrelationId"]?.ToString(),
+                RequestId      = _httpContextAccessor.HttpContext?.TraceIdentifier,
+                IdempotencyKey = IdempotencyKey.For("care-connect", "careconnect.referral_attribution.set_on_submission", referral.Id.ToString()),
+                Tags = ["referral", "referral-attribution"],
+            });
+        }
 
         var loaded = await _referrals.GetByIdAsync(tenantId, referral.Id, ct);
         if (loaded is null)
@@ -543,6 +624,25 @@ public class ReferralService : IReferralService
             ? await _referrals.GetTreatmentTypeNameAsync(reloaded.TreatmentTypeId.Value, ct)
             : null;
         return ToResponse(reloaded!, treatmentTypeName: treatmentName);
+    }
+
+    /// <summary>
+    /// Validates a law-firm-submitted Referral Attribution selection: must belong to the
+    /// caller's tenant and be active. Returns null when no selection was made. Throws
+    /// ValidationException (never silently drops the value) for invalid, inactive, or
+    /// cross-tenant selections — the caller preserves the submitted form on error, per §4.
+    /// </summary>
+    private async Task<Guid?> ResolveAttributionForSubmissionAsync(Guid tenantId, Guid? referralAttributionId, CancellationToken ct)
+    {
+        if (!referralAttributionId.HasValue)
+            return null;
+
+        var attribution = await _referralAttributions.GetByIdAsync(tenantId, referralAttributionId.Value, ct);
+        if (attribution is null || !attribution.IsActive)
+            throw new ValidationException("One or more validation errors occurred.",
+                new() { ["referralAttributionId"] = ["Selected referral source is invalid or no longer available."] });
+
+        return attribution.Id;
     }
 
     public async Task<List<ReferralStatusHistoryResponse>> GetHistoryAsync(Guid tenantId, Guid referralId, CancellationToken ct = default, bool isPlatformAdmin = false)
@@ -1322,8 +1422,8 @@ public class ReferralService : IReferralService
     {
         var errors = new Dictionary<string, string[]>();
 
-        if (r.ProviderId == Guid.Empty)
-            errors["providerId"] = new[] { "ProviderId is required." };
+        if (r.ProviderId == Guid.Empty && !r.NetworkProviderId.HasValue)
+            errors["providerId"] = new[] { "ProviderId or NetworkProviderId is required." };
 
         if (string.IsNullOrWhiteSpace(r.ClientFirstName))
             errors["clientFirstName"] = new[] { "ClientFirstName is required." };
@@ -1359,42 +1459,60 @@ public class ReferralService : IReferralService
             throw new ValidationException("One or more validation errors occurred.", errors);
     }
 
-    private static ReferralResponse ToResponse(Referral r, CareConnectNotification? latestNotif = null, string? treatmentTypeName = null) => new()
+    private static ReferralResponse ToResponse(Referral r, CareConnectNotification? latestNotif = null, string? treatmentTypeName = null)
     {
-        Id = r.Id,
-        TenantId = r.TenantId,
-        ProviderId = r.ProviderId,
-        ProviderName = r.Provider?.Name ?? string.Empty,
-        ClientFirstName = r.ClientFirstName,
-        ClientLastName = r.ClientLastName,
-        ClientDob = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null,
-        ClientPhone = r.ClientPhone,
-        ClientEmail = r.ClientEmail,
-        CaseNumber = r.CaseNumber,
-        RequestedService = r.RequestedService,
-        Urgency = r.Urgency,
-        Status = r.Status,
-        Notes = r.Notes,
-        DeclineNotes = r.DeclineNotes,
-        DateOfAccident = r.DateOfAccident?.ToString("yyyy-MM-dd"),
-        CreatedAtUtc = r.CreatedAtUtc,
-        UpdatedAtUtc = r.UpdatedAtUtc,
-        // Phase 5: expose org context fields resolved at creation time
-        ReferringOrganizationId = r.ReferringOrganizationId,
-        ReceivingOrganizationId = r.ReceivingOrganizationId,
-        OrganizationRelationshipId = r.OrganizationRelationshipId,
-        // CC-REFERRER-EMAIL: surface for participant-check in endpoints
-        ReferrerEmail = r.ReferrerEmail,
-        ReferrerName = r.ReferrerName,
-        // LSCC-005-01: hardening fields
-        TokenVersion          = r.TokenVersion,
-        ProviderEmailStatus   = latestNotif?.Status,
-        ProviderEmailAttempts = latestNotif?.AttemptCount ?? 0,
-        ProviderEmailFailureReason = latestNotif?.FailureReason,
-        // Type of Treatment
-        TreatmentTypeId   = r.TreatmentTypeId,
-        TreatmentTypeName = treatmentTypeName,
-    };
+        var location = ReferralLocationResolver.Resolve(r);
+        return new()
+        {
+            Id = r.Id,
+            TenantId = r.TenantId,
+            ProviderId = r.ProviderId,
+            FacilityId = r.FacilityId,
+            ProviderName = GetProviderDisplayName(r.Provider),
+            FacilityName = location.FacilityName,
+            LocationAddressLine1 = location.AddressLine1,
+            LocationCity = location.City,
+            LocationState = location.State,
+            LocationPostalCode = location.PostalCode,
+            ClientFirstName = r.ClientFirstName,
+            ClientLastName = r.ClientLastName,
+            ClientDob = r.ClientDob.HasValue ? r.ClientDob.Value.ToString("yyyy-MM-dd") : null,
+            ClientPhone = r.ClientPhone,
+            ClientEmail = r.ClientEmail,
+            CaseNumber = r.CaseNumber,
+            RequestedService = r.RequestedService,
+            Urgency = r.Urgency,
+            Status = r.Status,
+            Notes = r.Notes,
+            DeclineNotes = r.DeclineNotes,
+            DateOfAccident = r.DateOfAccident?.ToString("yyyy-MM-dd"),
+            CreatedAtUtc = r.CreatedAtUtc,
+            UpdatedAtUtc = r.UpdatedAtUtc,
+            // Phase 5: expose org context fields resolved at creation time
+            ReferringOrganizationId = r.ReferringOrganizationId,
+            ReceivingOrganizationId = r.ReceivingOrganizationId ?? r.Provider?.OrganizationId,
+            OrganizationRelationshipId = r.OrganizationRelationshipId,
+            // CC-REFERRER-EMAIL: surface for participant-check in endpoints
+            ReferrerEmail = r.ReferrerEmail,
+            ReferrerName = r.ReferrerName,
+            // LSCC-005-01: hardening fields
+            TokenVersion          = r.TokenVersion,
+            ProviderEmailStatus   = latestNotif?.Status,
+            ProviderEmailAttempts = latestNotif?.AttemptCount ?? 0,
+            ProviderEmailFailureReason = latestNotif?.FailureReason,
+            // Type of Treatment
+            TreatmentTypeId   = r.TreatmentTypeId,
+            TreatmentTypeName = treatmentTypeName,
+            // Referral Attribution
+            ReferralAttribution = r.ReferralAttribution is null ? null : new ReferralAttributionSummary
+            {
+                Id          = r.ReferralAttribution.Id,
+                FirstName   = r.ReferralAttribution.FirstName,
+                LastName    = r.ReferralAttribution.LastName,
+                IsActive    = r.ReferralAttribution.IsActive,
+            },
+        };
+    }
 
     private static ReferralStatusHistoryResponse ToHistoryResponse(ReferralStatusHistory h) => new()
     {
@@ -1600,6 +1718,7 @@ public class ReferralService : IReferralService
         }
 
         var attachments = await _referralAttachments.GetByReferralAsync(referral.TenantId, referral.Id, ct);
+        var location    = ReferralLocationResolver.Resolve(referral);
 
         return PublicReferralAccessResult<ReferralPublicSummaryResponse>.Success(new ReferralPublicSummaryResponse
         {
@@ -1608,20 +1727,32 @@ public class ReferralService : IReferralService
             ClientFirstName       = referral.ClientFirstName,
             ClientLastName        = referral.ClientLastName,
             ReferrerName          = referral.ReferrerName ?? "",
-            ProviderName          = referral.Provider?.Name ?? "",
+            ProviderName          = GetProviderDisplayName(referral.Provider),
             RequestedService      = referral.RequestedService,
             Status                = referral.Status,
             ProviderPhone         = referral.Provider?.Phone         ?? "",
             ProviderEmail         = referral.Provider?.Email         ?? "",
-            ProviderAddressLine1  = referral.Provider?.AddressLine1  ?? "",
-            ProviderCity          = referral.Provider?.City          ?? "",
-            ProviderState         = referral.Provider?.State         ?? "",
-            ProviderPostalCode    = referral.Provider?.PostalCode    ?? "",
+            // LSCC-referral-location: facility-first (where this referral was routed), falling
+            // back to the provider's own address — see ReferralLocationResolver.
+            ProviderAddressLine1  = location.AddressLine1,
+            ProviderCity          = location.City,
+            ProviderState         = location.State,
+            ProviderPostalCode    = location.PostalCode,
             ProviderHasAccount    = ProviderHasPortalAccount(referral.Provider),
             Attachments           = attachments
                 .Select(a => new PublicAttachmentInfo(a.Id, a.FileName, a.ContentType, a.FileSizeBytes))
                 .ToList(),
         });
+    }
+
+    private static string GetProviderDisplayName(Provider? provider)
+    {
+        if (provider is null)
+            return string.Empty;
+
+        return string.IsNullOrWhiteSpace(provider.OrganizationName)
+            ? provider.Name
+            : provider.OrganizationName;
     }
 
     public async Task<ReferralPublicSummaryResponse?> GetPublicSummaryAsync(

@@ -30,6 +30,7 @@ _svc_label_for() {
     Billing.Api)               echo "Billing" ;;
     Reports.Api)               echo "Reports" ;;
     Comms.Api)                 echo "Comms" ;;
+    Xenia.Api)                 echo "Xenia" ;;
     *)                         echo "$svc_name" ;;
   esac
 }

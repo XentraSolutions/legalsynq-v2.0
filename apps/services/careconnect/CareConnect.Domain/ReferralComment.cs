@@ -12,4 +12,6 @@ public class ReferralComment
     public string SenderName  { get; set; } = string.Empty;
     public string Message     { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public List<ReferralAttachment> Attachments { get; set; } = [];
 }

@@ -17,6 +17,8 @@
     <!-- Security: pin transitive Microsoft.Extensions.Caching.Memory to patched version.
          EFCore packages 8.x pull in 8.0.0 which has GHSA-qj66-m88j-hmgj (high severity). -->
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+    <!-- Legacy code-page support (Windows-1252 etc.) for detecting non-UTF-8 provider import CSVs. -->
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -231,7 +231,8 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
         string            firstName,
         string?           lastName,
         string?           phone,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string?           title = null)
     {
         if (!_isEnabled)
         {
@@ -246,7 +247,7 @@ public sealed class HttpIdentityOrganizationService : IIdentityOrganizationServi
             using var cts    = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
 
-            var body = new { tenantId, email, password, firstName, lastName, phone };
+            var body = new { tenantId, email, password, firstName, lastName, phone, title };
 
             using var response = await client.PostAsJsonAsync(
                 $"api/admin/organizations/{orgId}/self-register", body, cts.Token);

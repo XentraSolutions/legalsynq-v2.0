@@ -7,10 +7,12 @@ using BuildingBlocks.FlowClient;
 using Contracts;
 using Liens.Api.Endpoints;
 using Liens.Api.Middleware;
+using Liens.Api.Serialization;
 using Liens.Domain;
 using Liens.Infrastructure;
 using Liens.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -58,7 +60,25 @@ builder.Services.AddAuthorization(options =>
         policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
 });
 
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new PacificDateTimeJsonConverterFactory());
+});
+
 builder.Services.AddLiensServices(builder.Configuration);
+builder.Services.AddHttpClient("Identity", client =>
+{
+    var baseUrl = builder.Configuration["ExternalServices:Identity:BaseUrl"];
+    if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var identityBaseUri))
+        client.BaseAddress = identityBaseUri;
+
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+builder.Services.AddHttpClient("MedicareProcedureLookup", client =>
+{
+    client.BaseAddress = new Uri("https://www.medicare.gov/api/procedure-price-lookup/api/v1/core/");
+    client.Timeout     = TimeSpan.FromSeconds(20);
+});
 // LS-FLOW-MERGE-P4 — shared Flow HTTP adapter (bearer pass-through, retry, 503 mapping).
 builder.Services.AddFlowClient(builder.Configuration, serviceName: "synqlien");
 
@@ -155,9 +175,15 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
 .RequireAuthorization(Policies.AuthenticatedUser);
 
 app.MapLienEndpoints();
+app.MapLegacyDocumentLinkEndpoints();
+app.MapAssistantToolEndpoints();
 app.MapLienOfferEndpoints();
+app.MapSellingPublicEndpoints();
 app.MapSellingEndpoints();
+app.MapSellingV2Endpoints();
+app.MapSellingAnalyticsEndpoints();
 app.MapBillOfSaleEndpoints();
+app.MapBatchUploadEndpoints();
 app.MapCaseEndpoints();
 // LS-LIENS-CASE-005 — Case Notes Backend & Persistence.
 app.MapCaseNoteEndpoints();
@@ -165,6 +191,7 @@ app.MapServicingEndpoints();
 app.MapContactEndpoints();
 app.MapFacilityEndpoints();
 app.MapSettlementEndpoints();
+app.MapServiceLegacyEndpoints();
 app.MapReportEndpoints();
 // Lookup reference data (states, accident types, contact types, lien statuses, etc.)
 app.MapLookupEndpoints();
@@ -263,5 +290,133 @@ static async Task EnsureLiensSchemaTablesAsync(LiensDbContext db, ILogger logger
     else
     {
         logger.LogInformation("EnsureLiensSchemaTablesAsync: liens_Tasks flow-linkage columns already present.");
+    }
+
+    // LS-LIENS-CONTACT-DRIFT — ensure contact subtype linkage columns exist even
+    // when startup migrations were skipped or partially failed. Without these
+    // columns, simple list reads can fail with MySQL "Unknown column" errors.
+    async Task<bool> HasContactColumnAsync(string columnName)
+    {
+        cmd.CommandText = $"""
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME   = 'liens_Contacts'
+              AND COLUMN_NAME  = '{columnName}'
+            """;
+        return Convert.ToInt64(await cmd.ExecuteScalarAsync()) > 0;
+    }
+
+    if (!await HasContactColumnAsync("ContactSubtype"))
+    {
+        cmd.CommandText = """
+            ALTER TABLE `liens_Contacts`
+                ADD COLUMN `ContactSubtype` varchar(50) NULL
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: Added ContactSubtype to liens_Contacts.");
+    }
+
+    if (!await HasContactColumnAsync("FacilityId"))
+    {
+        cmd.CommandText = """
+            ALTER TABLE `liens_Contacts`
+                ADD COLUMN `FacilityId` char(36) NULL COLLATE ascii_general_ci
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: Added FacilityId to liens_Contacts.");
+    }
+
+    if (!await HasContactColumnAsync("LawFirmId"))
+    {
+        cmd.CommandText = """
+            ALTER TABLE `liens_Contacts`
+                ADD COLUMN `LawFirmId` char(36) NULL COLLATE ascii_general_ci
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: Added LawFirmId to liens_Contacts.");
+    }
+
+    async Task<bool> HasContactIndexAsync(string indexName)
+    {
+        cmd.CommandText = $"""
+            SELECT COUNT(*) FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME   = 'liens_Contacts'
+              AND INDEX_NAME   = '{indexName}'
+            """;
+        return Convert.ToInt64(await cmd.ExecuteScalarAsync()) > 0;
+    }
+
+    if (!await HasContactIndexAsync("IX_Contacts_TenantId_FacilityId_ContactSubtype"))
+    {
+        cmd.CommandText = """
+            CREATE INDEX `IX_Contacts_TenantId_FacilityId_ContactSubtype`
+            ON `liens_Contacts` (`TenantId`, `FacilityId`, `ContactSubtype`)
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: Created IX_Contacts_TenantId_FacilityId_ContactSubtype.");
+    }
+
+    if (!await HasContactIndexAsync("IX_Contacts_TenantId_LawFirmId_ContactSubtype"))
+    {
+        cmd.CommandText = """
+            CREATE INDEX `IX_Contacts_TenantId_LawFirmId_ContactSubtype`
+            ON `liens_Contacts` (`TenantId`, `LawFirmId`, `ContactSubtype`)
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: Created IX_Contacts_TenantId_LawFirmId_ContactSubtype.");
+    }
+
+    // LS-LIENS-LIEN-DRIFT — ensure legacy medical fields exist for dashboard
+    // exports against older dumps that predate migration 20260625000001.
+    async Task<bool> HasLienColumnAsync(string columnName)
+    {
+        cmd.CommandText = $"""
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME   = 'liens_Liens'
+              AND COLUMN_NAME  = '{columnName}'
+            """;
+        return Convert.ToInt64(await cmd.ExecuteScalarAsync()) > 0;
+    }
+
+    if (!await HasLienColumnAsync("InitialServiceDate"))
+    {
+        cmd.CommandText = """
+            ALTER TABLE `liens_Liens`
+                ADD COLUMN `InitialServiceDate` date NULL
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: Added InitialServiceDate to liens_Liens.");
+    }
+
+    if (!await HasLienColumnAsync("EndServiceDate"))
+    {
+        cmd.CommandText = """
+            ALTER TABLE `liens_Liens`
+                ADD COLUMN `EndServiceDate` date NULL
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: Added EndServiceDate to liens_Liens.");
+    }
+
+    if (!await HasLienColumnAsync("IsBulk"))
+    {
+        cmd.CommandText = """
+            ALTER TABLE `liens_Liens`
+                ADD COLUMN `IsBulk` varchar(10) NULL
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: Added IsBulk to liens_Liens.");
+    }
+
+    if (!await HasLienColumnAsync("IsServicing"))
+    {
+        cmd.CommandText = """
+            ALTER TABLE `liens_Liens`
+                ADD COLUMN `IsServicing` varchar(10) NULL
+            """;
+        await cmd.ExecuteNonQueryAsync();
+        logger.LogInformation("EnsureLiensSchemaTablesAsync: Added IsServicing to liens_Liens.");
     }
 }

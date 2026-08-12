@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { FormModal } from '@/components/lien/modal';
 import { useLienStore } from '@/stores/lien-store';
 import { servicingService } from '@/lib/servicing';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface AssignTaskFormProps {
   open: boolean;
@@ -104,8 +105,11 @@ export function AssignTaskForm({ open, onClose, onCreated, caseId, lienId, caseN
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Due Date<span className="text-red-500 ml-0.5">*</span></label>
-            <input type="date" value={form.dueDate} onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-              className={`w-full border rounded-lg px-3 py-2 text-sm ${errors.dueDate ? 'border-red-300' : 'border-gray-200'} focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary`} />
+            <DatePicker
+              value={form.dueDate}
+              onChange={(v) => setForm({ ...form, dueDate: v })}
+              className={errors.dueDate ? 'border-red-300' : undefined}
+            />
             {errors.dueDate && <p className="text-xs text-red-500 mt-1">{errors.dueDate}</p>}
           </div>
         </div>

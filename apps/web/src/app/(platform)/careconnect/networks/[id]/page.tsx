@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { careConnectServerApi } from '@/lib/careconnect-server-api';
 import { ServerApiError } from '@/lib/server-api-client';
 import { NetworkDetailClient } from '@/components/careconnect/network-detail-client';
+import type { SpecialtyOption } from '@/types/careconnect';
 
 interface NetworkDetailPageProps {
   params: Promise<{ id: string }>;
@@ -20,12 +21,14 @@ export default async function NetworkDetailPage({ params }: NetworkDetailPagePro
 
   let network = null;
   let markers = null;
+  let specialtyOptions: SpecialtyOption[] = [];
   let fetchError: string | null = null;
 
   try {
-    [network, markers] = await Promise.all([
+    [network, markers, specialtyOptions] = await Promise.all([
       careConnectServerApi.networks.getById(id),
       careConnectServerApi.networks.getMarkers(id),
+      careConnectServerApi.specialties.list(),
     ]);
   } catch (err) {
     if (err instanceof ServerApiError && err.status === 404) {
@@ -58,6 +61,7 @@ export default async function NetworkDetailPage({ params }: NetworkDetailPagePro
       <NetworkDetailClient
         network={network}
         initialMarkers={markers ?? []}
+        specialtyOptions={specialtyOptions}
       />
     </div>
   );

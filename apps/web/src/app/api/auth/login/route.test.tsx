@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 describe('POST /api/auth/login', () => {
   const originalEnv = process.env.CC_COMMON_PORTAL_HOSTNAME;
+  const originalSynqLienEnv = process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME;
 
   beforeEach(() => {
     vi.resetModules();
@@ -10,6 +11,7 @@ describe('POST /api/auth/login', () => {
 
   afterEach(() => {
     process.env.CC_COMMON_PORTAL_HOSTNAME = originalEnv;
+    process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME = originalSynqLienEnv;
     vi.restoreAllMocks();
   });
 
@@ -96,5 +98,127 @@ describe('POST /api/auth/login', () => {
       message: 'This account is not eligible to access the CareConnect portal.',
     });
     expect(response.cookies.get('platform_session')).toBeUndefined();
+  });
+
+  test('sends SynqLien portalProductCode for SynqLien common portal login', async () => {
+    process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME = 'synqlien-demo.localhost';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        accessToken: 'tok',
+        expiresAtUtc: new Date(Date.now() + 3600_000).toISOString(),
+        user: {
+          id: 'u1',
+          email: 'buyer@example.com',
+          tenantId: 't1',
+          tenantCode: 'BUYER',
+          roles: [],
+          productRoles: ['SYNQ_LIENS:SYNQLIEN_BUYER'],
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { POST } = await import('./route');
+    const request = new NextRequest('http://synqlien-demo.localhost/api/auth/login', {
+      method: 'POST',
+      headers: {
+        host: 'synqlien-demo.localhost',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'buyer@example.com',
+        password: 'Password123!',
+        tenantId: '019ea7f6-21e9-7421-ab54-7846cdc6bc76',
+      }),
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0];
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      tenantCode: null,
+      email: 'buyer@example.com',
+      tenantId: '019ea7f6-21e9-7421-ab54-7846cdc6bc76',
+      resolveByEmail: true,
+      portalProductCode: 'SYNQ_LIENS',
+    });
+  });
+
+  test('rejects SynqLien common portal login when Identity returns buyer and holder roles', async () => {
+    process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME = 'synqlien-demo.localhost';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        accessToken: 'tok',
+        expiresAtUtc: new Date(Date.now() + 3600_000).toISOString(),
+        user: {
+          id: 'u1',
+          email: 'holder@example.com',
+          tenantId: 't1',
+          tenantCode: 'BUYER',
+          roles: [],
+          productRoles: ['SYNQ_LIENS:SYNQLIEN_BUYER', 'SYNQ_LIENS:SYNQLIEN_HOLDER'],
+        },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { POST } = await import('./route');
+    const request = new NextRequest('http://synqlien-demo.localhost/api/auth/login', {
+      method: 'POST',
+      headers: {
+        host: 'synqlien-demo.localhost',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'holder@example.com',
+        password: 'Password123!',
+      }),
+    });
+
+    const response = await POST(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body).toEqual({
+      message: 'This account is not eligible to access the SynqLien funding portal.',
+    });
+    expect(response.cookies.get('platform_session')).toBeUndefined();
+  });
+
+  test('passes through SynqLien portal restriction message on the common portal host', async () => {
+    process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME = 'synqlien-demo.localhost';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        title: 'SynqLienPortalRoleRestricted',
+        detail: 'This account is not eligible to access the SynqLien funding portal.',
+      }),
+    }));
+
+    const { POST } = await import('./route');
+    const request = new NextRequest('http://synqlien-demo.localhost/api/auth/login', {
+      method: 'POST',
+      headers: {
+        host: 'synqlien-demo.localhost',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: 'seller@example.com',
+        password: 'Password123!',
+      }),
+    });
+
+    const response = await POST(request);
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body).toEqual({
+      message: 'This account is not eligible to access the SynqLien funding portal.',
+    });
   });
 });

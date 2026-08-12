@@ -1,14 +1,23 @@
+import {
+  formatLegacyDateOnly,
+  formatLegacyShortTimestamp,
+} from "./format-date";
+
 export function formatCurrency(amount?: number): string {
-  if (amount == null) return '\u2014';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+  if (amount == null) return "\u2014";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2, // Forces decimals like .00 if needed
+  }).format(amount);
 }
 
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return formatLegacyDateOnly(iso);
 }
 
 export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return formatLegacyShortTimestamp(iso, "UTC");
 }
 
 export function timeAgo(iso: string): string {

@@ -1,18 +1,36 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { lienTasksService } from '@/lib/liens/lien-tasks.service';
-import { lienTaskTemplatesService } from '@/lib/liens/lien-task-templates.service';
-import { lienTaskGovernanceService } from '@/lib/liens/lien-task-governance.service';
-import { apiClient } from '@/lib/api-client';
-import { casesApi } from '@/lib/cases/cases.api';
-import type { CasesQuery } from '@/lib/cases/cases.types';
-import { useSession } from '@/hooks/use-session';
-import type { TaskDto, CreateTaskRequest, UpdateTaskRequest, TaskPriority, TaskGovernanceSettings } from '@/lib/liens/lien-tasks.types';
-import type { TaskTemplateDto, TemplateContextType } from '@/lib/liens/lien-task-templates.types';
-import type { TenantUser } from '@/types/tenant';
-import type { CaseResponseDto } from '@/lib/cases/cases.types';
-import { TemplatePicker } from '@/components/lien/template-picker';
+import { useState, useEffect, useRef, useCallback } from "react";
+import { lienTasksService } from "@/lib/liens/lien-tasks.service";
+import { lienTaskTemplatesService } from "@/lib/liens/lien-task-templates.service";
+import { lienTaskGovernanceService } from "@/lib/liens/lien-task-governance.service";
+import { apiClient } from "@/lib/api-client";
+import { casesApi } from "@/lib/cases/cases.api";
+import type {
+  CaseListItem,
+  CaseListResult,
+  CasesQuery,
+} from "@/lib/cases/cases.types";
+import { useSession } from "@/hooks/use-session";
+import {
+  type TaskDto,
+  type CreateTaskRequest,
+  type UpdateTaskRequest,
+  type TaskPriority,
+  type TaskGovernanceSettings,
+  type TaskStatus,
+  TASK_STATUS_LABELS,
+} from "@/lib/liens/lien-tasks.types";
+import type {
+  TaskTemplateDto,
+  TemplateContextType,
+} from "@/lib/liens/lien-task-templates.types";
+import type { TenantUser } from "@/types/tenant";
+import type { CaseResponseDto } from "@/lib/cases/cases.types";
+import { TemplatePicker } from "@/components/lien/template-picker";
+import { casesService } from "@/lib/cases";
+import { DatePicker } from "@/components/ui/date-picker";
+import { dateConvertertoIso } from "@/lib/cases/cases.mapper";
 
 interface CreateEditTaskFormProps {
   open: boolean;
@@ -24,26 +42,48 @@ interface CreateEditTaskFormProps {
   editTask?: TaskDto;
 }
 
-type Step = 'pick-template' | 'fill-form';
+type Step = "pick-template" | "fill-form";
 
-const PRIORITIES: { value: TaskPriority; label: string; icon: string; color: string }[] = [
-  { value: 'LOW',    label: 'Low',    icon: 'ri-arrow-down-line',     color: 'text-gray-500' },
-  { value: 'MEDIUM', label: 'Medium', icon: 'ri-subtract-line',       color: 'text-blue-500' },
-  { value: 'HIGH',   label: 'High',   icon: 'ri-arrow-up-line',       color: 'text-orange-500' },
-  { value: 'URGENT', label: 'Urgent', icon: 'ri-alarm-warning-line',  color: 'text-red-600' },
+const PRIORITIES: {
+  value: TaskPriority;
+  label: string;
+  icon: string;
+  color: string;
+}[] = [
+  {
+    value: "HIGH",
+    label: "High",
+    icon: "ri-arrow-up-line",
+    color: "text-orange-500",
+  },
+  {
+    value: "MEDIUM",
+    label: "Medium",
+    icon: "ri-subtract-line",
+    color: "text-blue-500",
+  },
+  {
+    value: "LOW",
+    label: "Low",
+    icon: "ri-arrow-down-line",
+    color: "text-gray-500",
+  },
 ];
 
-function contextTypeFromProps(prefillCaseId?: string, prefillLienId?: string): TemplateContextType {
-  if (prefillCaseId) return 'CASE';
-  if (prefillLienId) return 'LIEN';
-  return 'GENERAL';
+function contextTypeFromProps(
+  prefillCaseId?: string,
+  prefillLienId?: string,
+): TemplateContextType {
+  if (prefillCaseId) return "CASE";
+  if (prefillLienId) return "LIEN";
+  return "GENERAL";
 }
 
 function calcDueDate(offsetDays?: number | null): string {
-  if (!offsetDays) return '';
+  if (!offsetDays) return "";
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().split('T')[0];
+  return d.toISOString().split("T")[0];
 }
 
 export function CreateEditTaskForm({
@@ -60,32 +100,50 @@ export function CreateEditTaskForm({
   const { session } = useSession();
 
   // ── Step state — skip to fill-form by default for new tasks ──────────────
-  const [step, setStep] = useState<Step>('fill-form');
-  const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplateDto | null>(null);
+  const [step, setStep] = useState<Step>("fill-form");
+  const [selectedTemplate, setSelectedTemplate] =
+    useState<TaskTemplateDto | null>(null);
   const [templates, setTemplates] = useState<TaskTemplateDto[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const templateAutoApplied = useRef(false);
 
   // ── Core form state ───────────────────────────────────────────────────────
-  const [title, setTitle] = useState(editTask?.title ?? '');
-  const [description, setDescription] = useState(editTask?.description ?? '');
-  const [priority, setPriority] = useState<TaskPriority>(editTask?.priority ?? 'MEDIUM');
-  const [dueDate, setDueDate] = useState(editTask?.dueDate ? editTask.dueDate.split('T')[0] : '');
+  const [title, setTitle] = useState(editTask?.title ?? "");
+  const [description, setDescription] = useState(editTask?.description ?? "");
+  const [priority, setPriority] = useState<TaskPriority>(
+    editTask?.priorityId ?? "MEDIUM",
+  );
+  const [status, setStatus] = useState<TaskStatus>(
+    editTask?.statusId ?? "UPCOMING",
+  );
+  console.log(editTask, status);
+
+  const [dueDate, setDueDate] = useState(
+    editTask?.dueDate
+      ? dateConvertertoIso(editTask?.dueDate?.split("T")[0])
+      : "",
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // ── Governance / Users ────────────────────────────────────────────────────
-  const [governance, setGovernance] = useState<TaskGovernanceSettings | null>(null);
+  const [governance, setGovernance] = useState<TaskGovernanceSettings | null>(
+    null,
+  );
   const [users, setUsers] = useState<TenantUser[]>([]);
-  const [assignedUserId, setAssignedUserId] = useState<string>(editTask?.assignedUserId ?? '');
+  const [assignedTo, setAssignedTo] = useState<string>(
+    editTask?.assignedTo ?? "",
+  );
 
   // ── Case autocomplete state ───────────────────────────────────────────────
   // caseId holds the UUID; caseDisplay holds the human-readable label shown in the input
-  const [caseId, setCaseId] = useState<string>(prefillCaseId ?? editTask?.caseId ?? '');
-  const [caseDisplay, setCaseDisplay] = useState<string>('');
-  const [caseQuery, setCaseQuery] = useState<string>('');
-  const [caseSuggestions, setCaseSuggestions] = useState<CaseResponseDto[]>([]);
+  const [caseId, setCaseId] = useState<string>(
+    prefillCaseId ?? editTask?.caseId ?? "",
+  );
+  const [caseDisplay, setCaseDisplay] = useState<string>("");
+  const [caseQuery, setCaseQuery] = useState<string>("");
+  const [caseSuggestions, setCaseSuggestions] = useState<CaseListItem[]>([]);
   const [caseDropdownOpen, setCaseDropdownOpen] = useState(false);
   const caseDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const caseInputRef = useRef<HTMLInputElement>(null);
@@ -94,18 +152,18 @@ export function CreateEditTaskForm({
   useEffect(() => {
     if (!open || isEdit) return;
     // Go directly to fill-form — no template picker step
-    setStep('fill-form');
+    setStep("fill-form");
     setSelectedTemplate(null);
-    setTitle('');
-    setDescription('');
-    setPriority('MEDIUM');
-    setDueDate('');
+    setTitle("");
+    setDescription("");
+    setPriority("MEDIUM");
+    setDueDate("");
     setError(null);
     setFieldErrors({});
-    setAssignedUserId('');
-    setCaseId(prefillCaseId ?? '');
-    setCaseDisplay('');
-    setCaseQuery('');
+    setAssignedTo("");
+    setCaseId(prefillCaseId ?? "");
+    setCaseDisplay("");
+    setCaseQuery("");
     setCaseSuggestions([]);
     setCaseDropdownOpen(false);
     templateAutoApplied.current = false;
@@ -113,7 +171,10 @@ export function CreateEditTaskForm({
     // Load templates in background; auto-apply first one
     setTemplatesLoading(true);
     lienTaskTemplatesService
-      .getContextualTemplates({ contextType, workflowStageId: prefillWorkflowStageId })
+      .getContextualTemplates({
+        contextType,
+        workflowStageId: prefillWorkflowStageId,
+      })
       .then((tpls) => {
         setTemplates(tpls);
         // Auto-apply the first template if form still blank
@@ -121,7 +182,7 @@ export function CreateEditTaskForm({
           const first = tpls[0];
           setSelectedTemplate(first);
           setTitle(first.defaultTitle);
-          setDescription(first.defaultDescription ?? '');
+          setDescription(first.defaultDescription ?? "");
           setPriority(first.defaultPriority as TaskPriority);
           setDueDate(calcDueDate(first.defaultDueOffsetDays));
           templateAutoApplied.current = true;
@@ -131,10 +192,14 @@ export function CreateEditTaskForm({
       .finally(() => setTemplatesLoading(false));
 
     // Load governance settings (graceful fallback)
-    lienTaskGovernanceService.getOrCreate().then(setGovernance).catch(() => setGovernance(null));
+    lienTaskGovernanceService
+      .getOrCreate()
+      .then(setGovernance)
+      .catch(() => setGovernance(null));
 
     // Load tenant users for assignee picker
-    apiClient.get<TenantUser[]>('/identity/api/users')
+    apiClient
+      .get<TenantUser[]>("/identity/api/users")
       .then(({ data }) => setUsers(data ?? []))
       .catch(() => setUsers([]));
   }, [open, isEdit, contextType, prefillWorkflowStageId, prefillCaseId]);
@@ -146,8 +211,9 @@ export function CreateEditTaskForm({
       setCaseDropdownOpen(false);
       return;
     }
-    casesApi.list({ search: q, pageSize: 10 } satisfies CasesQuery)
-      .then(({ data }) => {
+    casesService
+      .getCases({ search: q, pageSize: 10 } satisfies CasesQuery)
+      .then((data) => {
         const items = data?.items ?? [];
         setCaseSuggestions(items);
         setCaseDropdownOpen(items.length > 0);
@@ -163,16 +229,16 @@ export function CreateEditTaskForm({
     setCaseQuery(val);
     // If user clears the input, clear the stored UUID too
     if (!val.trim()) {
-      setCaseId('');
-      setCaseDisplay('');
+      setCaseId("");
+      setCaseDisplay("");
     }
-    if (fieldErrors.caseId) setFieldErrors((p) => ({ ...p, caseId: '' }));
+    if (fieldErrors.caseId) setFieldErrors((p) => ({ ...p, caseId: "" }));
 
     if (caseDebounceRef.current) clearTimeout(caseDebounceRef.current);
     caseDebounceRef.current = setTimeout(() => searchCases(val), 300);
   }
 
-  function handleCaseSelect(c: CaseResponseDto) {
+  function handleCaseSelect(c: CaseListItem) {
     setCaseId(c.id);
     const label = `${c.caseNumber} — ${c.clientDisplayName}`;
     setCaseDisplay(label);
@@ -185,45 +251,55 @@ export function CreateEditTaskForm({
   function handleSelectTemplate(template: TaskTemplateDto) {
     setSelectedTemplate(template);
     setTitle(template.defaultTitle);
-    setDescription(template.defaultDescription ?? '');
-    setPriority(template.defaultPriority as TaskPriority);
+    setDescription(template.defaultDescription ?? "");
+    // setPriority(template.defaultPriority as TaskPriority);
     setDueDate(calcDueDate(template.defaultDueOffsetDays));
-    setStep('fill-form');
+    setStep("fill-form");
   }
 
   function handleScratch() {
     setSelectedTemplate(null);
-    setTitle('');
-    setDescription('');
-    setPriority('MEDIUM');
-    setDueDate('');
-    setStep('fill-form');
+    setTitle("");
+    setDescription("");
+    setPriority("MEDIUM");
+    setDueDate("");
+    setStep("fill-form");
   }
 
   function handleBackToTemplates() {
-    setStep('pick-template');
+    setStep("pick-template");
     setError(null);
     setFieldErrors({});
   }
 
   if (!open) return null;
 
-  const requireAssignee = !isEdit && (governance?.requireAssigneeOnCreate ?? false);
+  const requireAssignee =
+    !isEdit && (governance?.requireAssigneeOnCreate ?? false);
 
   // ── Reporter display helpers ──────────────────────────────────────────────
-  const reporterUser = session ? users.find((u) => u.id === session.userId) : undefined;
+  const reporterUser = session
+    ? users.find((u) => u.id === session.userId)
+    : undefined;
   const reporterLabel = reporterUser
     ? `${reporterUser.firstName} ${reporterUser.lastName} (${reporterUser.email})`
-    : session?.email ?? '—';
+    : (session?.email ?? "—");
 
   // ── Submit ────────────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) { setError('Title is required.'); return; }
+    if (!title.trim()) {
+      setError("Title is required.");
+      return;
+    }
 
     const clientErrors: Record<string, string> = {};
-    if (requireAssignee && !assignedUserId) clientErrors.assignedUserId = 'Task assignee is required.';
-    if (Object.keys(clientErrors).length > 0) { setFieldErrors(clientErrors); return; }
+    if (requireAssignee && !assignedTo)
+      clientErrors.assignedTo = "Task assignee is required.";
+    if (Object.keys(clientErrors).length > 0) {
+      setFieldErrors(clientErrors);
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -232,42 +308,42 @@ export function CreateEditTaskForm({
       let saved: TaskDto;
       if (isEdit) {
         const req: UpdateTaskRequest = {
-          title: title.trim(),
-          description: description.trim() || undefined,
-          priority,
+          taskId: editTask?.id,
           caseId: editTask?.caseId,
-          lienIds: editTask?.linkedLiens.map((l) => l.lienId) ?? [],
+          title: title.trim(),
           dueDate: dueDate || undefined,
-          workflowStageId: editTask?.workflowStageId,
+          priority,
+          status: status,
+          assignedTo: assignedTo || undefined,
+          description: description.trim() || undefined,
         };
-        saved = await lienTasksService.updateTask(editTask!.id, req);
+        saved = await lienTasksService.updateTask(req);
       } else {
         const req: CreateTaskRequest = {
-          title: title.trim(),
-          description: description.trim() || undefined,
-          priority,
-          assignedUserId: assignedUserId || undefined,
           caseId: prefillCaseId ?? (caseId.trim() || undefined),
-          lienIds: prefillLienId ? [prefillLienId] : [],
+          title: title.trim(),
           dueDate: dueDate || undefined,
-          workflowStageId: selectedTemplate?.applicableWorkflowStageId ?? prefillWorkflowStageId,
-          templateId: selectedTemplate?.id,
+          priority,
+          status: status,
+          assignedTo: assignedTo || undefined,
+          description: description.trim() || undefined,
         };
         saved = await lienTasksService.createTask(req);
       }
       onSaved(saved);
       onClose();
     } catch (err) {
-      if (err && typeof err === 'object' && 'errors' in err) {
-        const serverErrors = (err as { errors: Record<string, string[]> }).errors;
+      if (err && typeof err === "object" && "errors" in err) {
+        const serverErrors = (err as { errors: Record<string, string[]> })
+          .errors;
         const mapped: Record<string, string> = {};
         for (const [field, msgs] of Object.entries(serverErrors)) {
           mapped[field] = Array.isArray(msgs) ? msgs[0] : String(msgs);
         }
         setFieldErrors(mapped);
-        setError('Please fix the errors below.');
+        setError("Please fix the errors below.");
       } else {
-        setError(err instanceof Error ? err.message : 'Failed to save task.');
+        setError(err instanceof Error ? err.message : "Failed to save task.");
       }
     } finally {
       setSaving(false);
@@ -276,14 +352,17 @@ export function CreateEditTaskForm({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2 min-w-0">
-            {step === 'pick-template' && !isEdit && (
+            {step === "pick-template" && !isEdit && (
               <button
                 type="button"
-                onClick={() => setStep('fill-form')}
+                onClick={() => setStep("fill-form")}
                 className="text-gray-400 hover:text-gray-600 shrink-0"
                 title="Back to form"
               >
@@ -292,17 +371,17 @@ export function CreateEditTaskForm({
             )}
             <h2 className="text-lg font-semibold text-gray-800 truncate">
               {isEdit
-                ? 'Edit Task'
-                : step === 'pick-template'
-                ? 'Choose a Template'
-                : selectedTemplate
-                ? `From: ${selectedTemplate.name}`
-                : 'Create Task'}
+                ? "Edit Task"
+                : step === "pick-template"
+                  ? "Choose a Template"
+                  : selectedTemplate
+                    ? `From: ${selectedTemplate.name}`
+                    : "Create Task"}
             </h2>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {/* "Use a template" shortcut when in fill-form for new tasks */}
-            {!isEdit && step === 'fill-form' && templates.length > 0 && (
+            {!isEdit && step === "fill-form" && templates.length > 0 && (
               <button
                 type="button"
                 onClick={handleBackToTemplates}
@@ -313,14 +392,17 @@ export function CreateEditTaskForm({
                 Templates
               </button>
             )}
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600"
+            >
               <i className="ri-close-line text-xl" />
             </button>
           </div>
         </div>
 
         <div className="px-6 py-5">
-          {step === 'pick-template' && !isEdit ? (
+          {step === "pick-template" && !isEdit ? (
             <TemplatePicker
               templates={templates}
               contextType={contextType}
@@ -340,7 +422,8 @@ export function CreateEditTaskForm({
                 <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-blue-700">
                   <i className="ri-file-list-3-line shrink-0" />
                   <span>
-                    Pre-filled from <strong>{selectedTemplate.name}</strong>. Edit fields before saving.
+                    Pre-filled from <strong>{selectedTemplate.name}</strong>.
+                    Edit fields before saving.
                   </span>
                 </div>
               )}
@@ -362,7 +445,9 @@ export function CreateEditTaskForm({
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -376,18 +461,25 @@ export function CreateEditTaskForm({
               {!isEdit && !prefillCaseId && (
                 <div className="relative">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Case <span className="text-xs text-gray-400 font-normal">(optional)</span>
+                    Case{" "}
+                    <span className="text-xs text-gray-400 font-normal">
+                      (optional)
+                    </span>
                   </label>
                   <input
                     ref={caseInputRef}
                     type="text"
                     value={caseQuery}
                     onChange={handleCaseInputChange}
-                    onFocus={() => { if (caseSuggestions.length > 0) setCaseDropdownOpen(true); }}
-                    onBlur={() => setTimeout(() => setCaseDropdownOpen(false), 150)}
+                    onFocus={() => {
+                      if (caseSuggestions.length > 0) setCaseDropdownOpen(true);
+                    }}
+                    onBlur={() =>
+                      setTimeout(() => setCaseDropdownOpen(false), 150)
+                    }
                     placeholder="Search by case number or client name..."
                     className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ${
-                      fieldErrors.caseId ? 'border-red-400' : 'border-gray-300'
+                      fieldErrors.caseId ? "border-red-400" : "border-gray-300"
                     }`}
                     autoComplete="off"
                   />
@@ -400,14 +492,20 @@ export function CreateEditTaskForm({
                           onMouseDown={() => handleCaseSelect(c)}
                           className="w-full text-left px-3 py-2 text-sm hover:bg-primary/5 flex flex-col border-b border-gray-50 last:border-0"
                         >
-                          <span className="font-medium text-gray-800">{c.caseNumber}</span>
-                          <span className="text-xs text-gray-500">{c.clientDisplayName}</span>
+                          <span className="font-medium text-gray-800">
+                            {c.caseNumber}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {c.clientDisplayName}
+                          </span>
                         </button>
                       ))}
                     </div>
                   )}
                   {fieldErrors.caseId && (
-                    <p className="mt-1 text-xs text-red-600">{fieldErrors.caseId}</p>
+                    <p className="mt-1 text-xs text-red-600">
+                      {fieldErrors.caseId}
+                    </p>
                   )}
                 </div>
               )}
@@ -429,64 +527,97 @@ export function CreateEditTaskForm({
               {(prefillLienId || (editTask?.linkedLiens?.length ?? 0) > 0) && (
                 <div className="text-xs text-gray-500 flex items-center gap-1">
                   <i className="ri-stack-line" />
-                  {prefillLienId ? '1 lien linked' : `${editTask?.linkedLiens.length} lien(s) linked`}
+                  {prefillLienId
+                    ? "1 lien linked"
+                    : `${editTask?.linkedLiens.length} lien(s) linked`}
                 </div>
               )}
 
               {/* Priority + Due Date */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Priority
+                  </label>
                   <select
                     value={priority}
-                    onChange={(e) => setPriority(e.target.value as TaskPriority)}
+                    onChange={(e) =>
+                      setPriority(e.target.value as TaskPriority)
+                    }
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                   >
                     {PRIORITIES.map((p) => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Due Date</label>
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
-              </div>
-
-              {/* Assignee picker */}
-              {!isEdit && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Assigned To {requireAssignee && <span className="text-red-500">*</span>}
-                  </label>
-                  <select
-                    value={assignedUserId}
-                    onChange={(e) => {
-                      setAssignedUserId(e.target.value);
-                      if (fieldErrors.assignedUserId) setFieldErrors((p) => ({ ...p, assignedUserId: '' }));
-                    }}
-                    className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ${
-                      fieldErrors.assignedUserId ? 'border-red-400' : 'border-gray-300'
-                    }`}
-                  >
-                    <option value="">-- Unassigned --</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.firstName} {u.lastName} ({u.email})
+                      <option key={p.value} value={p.value}>
+                        {p.label}
                       </option>
                     ))}
                   </select>
-                  {fieldErrors.assignedUserId && (
-                    <p className="mt-1 text-xs text-red-600">{fieldErrors.assignedUserId}</p>
-                  )}
                 </div>
-              )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Due Date
+                  </label>
+                  <DatePicker value={dueDate} onChange={setDueDate} />
+                </div>
+              </div>
+
+              {/* Status + Assignee pick */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Status
+                  </label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as TaskStatus)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    {Object.values(TASK_STATUS_LABELS).map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Assignee picker */}
+                {!isEdit && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Assigned To{" "}
+                      {requireAssignee && (
+                        <span className="text-red-500">*</span>
+                      )}
+                    </label>
+                    <select
+                      value={assignedTo}
+                      onChange={(e) => {
+                        setAssignedTo(e.target.value);
+                        if (fieldErrors.assignedTo)
+                          setFieldErrors((p) => ({ ...p, assignedTo: "" }));
+                      }}
+                      className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 ${
+                        fieldErrors.assignedTo
+                          ? "border-red-400"
+                          : "border-gray-300"
+                      }`}
+                    >
+                      <option value="">-- Unassigned --</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.firstName} {u.lastName} ({u.email})
+                        </option>
+                      ))}
+                    </select>
+                    {fieldErrors.assignedTo && (
+                      <p className="mt-1 text-xs text-red-600">
+                        {fieldErrors.assignedTo}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Reporter — read-only, auto-filled from session */}
               {!isEdit && (
@@ -497,7 +628,9 @@ export function CreateEditTaskForm({
                   <div className="w-full border border-gray-200 bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-600 flex items-center gap-2">
                     <i className="ri-user-line text-gray-400 shrink-0" />
                     <span className="truncate">{reporterLabel}</span>
-                    <span className="ml-auto text-xs text-gray-400 shrink-0">You</span>
+                    <span className="ml-auto text-xs text-gray-400 shrink-0">
+                      You
+                    </span>
                   </div>
                 </div>
               )}
@@ -517,7 +650,7 @@ export function CreateEditTaskForm({
                   className="px-4 py-2 text-sm bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-60 flex items-center gap-2"
                 >
                   {saving && <i className="ri-loader-4-line animate-spin" />}
-                  {isEdit ? 'Save Changes' : 'Create Task'}
+                  {isEdit ? "Save Changes" : "Create Task"}
                 </button>
               </div>
             </form>

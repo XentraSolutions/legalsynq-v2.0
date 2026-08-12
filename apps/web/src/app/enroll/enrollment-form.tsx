@@ -35,6 +35,7 @@ interface ReferralPrefill {
   companyName: string;
   email: string;
   phone: string;
+  title?: string;
   firstName: string;
   lastName: string;
   addressLine1: string;
@@ -111,6 +112,8 @@ export function EnrollmentForm({
   const initialFirstName =
     prefill?.firstName ?? referralPrefill?.firstName ?? "";
   const initialLastName = prefill?.lastName ?? referralPrefill?.lastName ?? "";
+  const initialTitle = prefill?.title ?? referralPrefill?.title ?? "";
+  const [title, setTitle] = useState(initialTitle);
   const [firstName, setFirstName] = useState(initialFirstName);
   const [lastName, setLastName] = useState(initialLastName);
   const [password, setPassword] = useState("");
@@ -123,6 +126,7 @@ export function EnrollmentForm({
   const phoneLocked = !!initialPhone;
   const firstNameLocked = !!initialFirstName;
   const lastNameLocked = !!initialLastName;
+  const titleLocked = !!initialTitle;
   const addressLine1Locked = !!initialAddressLine1;
   const cityLocked = !!initialCity;
   const stateLocked = !!initialState;
@@ -287,6 +291,7 @@ export function EnrollmentForm({
         companyName: companyName.trim(),
         email: email.trim(),
         password,
+        title: title.trim() || undefined,
         firstName: firstName.trim(),
         lastName: lastName.trim() || undefined,
         phone: stripPhone(phone) || undefined,
@@ -305,6 +310,7 @@ export function EnrollmentForm({
         companyName: companyName.trim(),
         email: email.trim(),
         password,
+        title: title.trim() || undefined,
         firstName: firstName.trim(),
         lastName: lastName.trim() || undefined,
         phone: stripPhone(phone) || undefined,
@@ -619,7 +625,25 @@ export function EnrollmentForm({
           Your Account
         </h2>
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Title
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => !titleLocked && setTitle(e.target.value)}
+                placeholder="Dr."
+                maxLength={50}
+                disabled={titleLocked}
+                className={`w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  titleLocked
+                    ? "border-gray-200 bg-gray-50 text-gray-500 cursor-not-allowed"
+                    : "border-gray-300"
+                }`}
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 First Name <span className="text-red-500">*</span>

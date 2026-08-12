@@ -5,8 +5,8 @@ namespace CareConnect.Application.Repositories;
 
 public interface IProviderRepository
 {
-    Task<(List<Provider> Items, int TotalCount)> SearchAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default);
-    Task<List<Provider>> GetMarkersAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default);
+    Task<(List<ProviderSearchRow> Items, int TotalCount)> SearchAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default);
+    Task<List<ProviderSearchRow>> GetMarkersAsync(Guid tenantId, GetProvidersQuery query, CancellationToken ct = default);
 
     /// <summary>Cross-tenant read — used for discovery (detail page, availability). No ownership check.</summary>
     Task<Provider?> GetByIdCrossAsync(Guid id, CancellationToken ct = default);
@@ -16,6 +16,7 @@ public interface IProviderRepository
     Task AddAsync(Provider provider, CancellationToken ct = default);
     Task UpdateAsync(Provider provider, CancellationToken ct = default);
     Task SyncCategoriesAsync(Guid providerId, List<Guid> categoryIds, CancellationToken ct = default);
+    Task SyncSpecialtiesAsync(Guid providerId, List<Guid> specialtyIds, CancellationToken ct = default);
 
     /// <summary>
     /// LSCC-002-01: Returns all active providers in the tenant that have no OrganizationId set.

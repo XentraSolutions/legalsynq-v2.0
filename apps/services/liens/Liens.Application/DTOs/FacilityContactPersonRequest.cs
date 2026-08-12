@@ -4,6 +4,8 @@ public sealed class FacilityContactPersonResponse
 {
     public Guid    Id         { get; init; }
     public Guid    FacilityId { get; init; }
+    public string  ContactType { get; init; } = string.Empty;
+    public string? ContactSubtype { get; init; }
     public string  FirstName  { get; init; } = string.Empty;
     public string  LastName   { get; init; } = string.Empty;
     public string? Position   { get; init; }

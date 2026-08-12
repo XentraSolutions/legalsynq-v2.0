@@ -20,4 +20,10 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Reports.Application\Reports.Application.csproj" />
+    <ProjectReference Include="..\..\src\Reports.Contracts\Reports.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Reports.Infrastructure\Reports.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>

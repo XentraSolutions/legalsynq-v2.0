@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
+import { useTimezone } from '@/lib/use-timezone';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { ConfirmDialog } from '@/components/lien/modal';
@@ -15,9 +16,27 @@ const STATUS_DISPLAY: Record<string, string> = {
   LEGAL_HOLD: 'Legal Hold',
 };
 
+function formatDocumentTimestamp(value: string, timezone: string): string {
+  if (!value) return '—';
+
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) return value;
+
+  return timestamp.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: timezone,
+  });
+}
+
 export function DocumentDetailClient({ id }: { id: string }) {
   const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
+  const timezone = useTimezone();
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +106,7 @@ export function DocumentDetailClient({ id }: { id: string }) {
         meta={[
           { label: 'Size', value: doc.fileSize },
           { label: 'Versions', value: `${doc.versionCount}` },
-          { label: 'Created', value: doc.createdAt },
+          { label: 'Created', value: formatDocumentTimestamp(doc.createdAt, timezone) },
         ]}
         actions={canEdit ? (
           <div className="flex gap-2">
@@ -119,8 +138,8 @@ export function DocumentDetailClient({ id }: { id: string }) {
           { label: 'Reference Type', value: doc.referenceType },
           { label: 'Reference ID', value: doc.referenceId },
           { label: 'Product', value: doc.productId },
-          { label: 'Created', value: doc.createdAt },
-          { label: 'Updated', value: doc.updatedAt },
+          { label: 'Created', value: formatDocumentTimestamp(doc.createdAt, timezone) },
+          { label: 'Updated', value: formatDocumentTimestamp(doc.updatedAt, timezone) },
         ]} />
       </div>
 
@@ -162,7 +181,9 @@ export function DocumentDetailClient({ id }: { id: string }) {
                   <td className="px-4 py-2.5 text-sm text-gray-600">{v.label || '\u2014'}</td>
                   <td className="px-4 py-2.5 text-xs text-gray-400">{v.fileSize}</td>
                   <td className="px-4 py-2.5"><StatusBadge status={v.scanStatus} /></td>
-                  <td className="px-4 py-2.5 text-xs text-gray-400">{v.uploadedAt}</td>
+                  <td className="px-4 py-2.5 text-xs text-gray-400">
+                    {formatDocumentTimestamp(v.uploadedAt, timezone)}
+                  </td>
                 </tr>
               ))}
             </tbody>
