@@ -45,6 +45,13 @@ const ALL_PRODUCTS = [
     bg: "#fffbeb",
   },
   {
+    id: "selling",
+    label: "Synq Lien Selling",
+    href: "/selling/portfolio",
+    iconSrc: "/product-icons/synqlien.png",
+    bg: "#ecfeff",
+  },
+  {
     id: "insights",
     label: "Synq Insights",
     href: "/insights/dashboard",
