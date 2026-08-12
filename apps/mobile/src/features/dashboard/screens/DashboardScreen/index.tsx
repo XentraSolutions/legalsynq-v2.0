@@ -196,30 +196,20 @@ export const FACILITY_ALLOCATION: DonutSlice[] = [
 ];
 
 export const LINE_POINTS = [2.4, 3.7, 2.6, 1.0, 2.5, 2.6];
-const DEFAULT_DASHBOARD_DATE = new Date();
+export const ALL_DATES_RANGE: DashboardDateRange = { startDate: '', endDate: '' };
 
-function padDatePart(value: number): string {
-  return String(value).padStart(2, '0');
-}
-
-function formatApiDate(date: Date): string {
-  return `${padDatePart(date.getMonth() + 1)}/${padDatePart(date.getDate())}/${date.getFullYear()}`;
-}
-
-function createSingleDayRange(date: Date): DashboardDateRange {
-  const end = formatApiDate(date);
-  const start = new Date(date);
-  const lastMonth = new Date(start.setMonth(start.getMonth() - 1));
-  return { startDate: formatApiDate(lastMonth), endDate: end };
-}
-
-function buildDashboardReportFilter(dateRange: DashboardDateRange): ReportFilterRequest {
-  return {
+export function buildDashboardReportFilter(dateRange: DashboardDateRange): ReportFilterRequest {
+  const filter: ReportFilterRequest = {
     page: 1,
     limit: 1000000,
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
   };
+
+  if (dateRange.startDate && dateRange.endDate) {
+    filter.startDate = dateRange.startDate;
+    filter.endDate = dateRange.endDate;
+  }
+
+  return filter;
 }
 
 export function DashboardScreen() {
@@ -230,9 +220,7 @@ export function DashboardScreen() {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const refreshInFlightRef = useRef(false);
-  const [dateRange, setDateRange] = useState<DashboardDateRange>(() =>
-    createSingleDayRange(DEFAULT_DASHBOARD_DATE)
-  );
+  const [dateRange, setDateRange] = useState<DashboardDateRange>(ALL_DATES_RANGE);
   const isDark = colorScheme === 'dark';
   const { hydrated: dashboardSettingsHydrated, settings: dashboardSettings } =
     useDashboardSettings();
@@ -286,6 +274,7 @@ export function DashboardScreen() {
           onOpenXenia={() => navigation.navigate('XeniaAI')}
         />
         <DateRangePicker
+          allowAllDates
           containerClassName="mt-4"
           isDark={isDark}
           modalDescription="Filter dashboard reports by selected start and end dates."
@@ -308,12 +297,6 @@ export function DashboardScreen() {
     </SafeAreaView>
   );
 }
-
-
-
-
-
-
 
 export const SLICE_COLORS = [BLUE, ORANGE, GREEN, YELLOW, RED];
 
@@ -437,7 +420,9 @@ function readFacilityName(row: DashboardMedicalProviderReportRow): string {
   return row.label ?? 'Unknown Facility';
 }
 
-export function mapMedicalFacilityReportGrouped(rows: DashboardMedicalProviderReportRow[]): DonutSlice[] {
+export function mapMedicalFacilityReportGrouped(
+  rows: DashboardMedicalProviderReportRow[]
+): DonutSlice[] {
   const groups = new Map<string, { label: string; count: number }>();
   for (const row of rows) {
     const name = readFacilityName(row);

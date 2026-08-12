@@ -59,12 +59,17 @@ function buildDashboardReportFilter(
   page: number,
   limit = DETAIL_PAGE_SIZE
 ): ReportFilterRequest {
-  return {
+  const filter: ReportFilterRequest = {
     page,
     limit,
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
   };
+
+  if (dateRange.startDate && dateRange.endDate) {
+    filter.startDate = dateRange.startDate;
+    filter.endDate = dateRange.endDate;
+  }
+
+  return filter;
 }
 
 function normalizePagination(
