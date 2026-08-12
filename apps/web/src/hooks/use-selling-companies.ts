@@ -24,6 +24,7 @@ import type {
   ContactsExportQuery,
   ReassignCompanyRequest,
   ReassignContactPersonRequest,
+  CompanyDetailsQuery,
 } from "@/lib/selling/companies.types";
 
 function toOptions(items: { id: string; name: string }[]): BaseSelectOption[] {
@@ -136,6 +137,23 @@ export function useCompany(id: string | null | undefined, options?: { enabled?: 
     queryKey: COMPANY_QUERY_KEY(id ?? ""),
     queryFn: () => companiesApi.getCompany(id as string).then(({ data }) => data),
     enabled,
+  });
+}
+
+export const COMPANY_DETAILS_QUERY_KEY = (id: string, query: CompanyDetailsQuery = {}) =>
+  ["selling-company-details", id, query] as const;
+
+export function useCompanyDetailsSummary(
+  id: string | null | undefined,
+  query: CompanyDetailsQuery = {},
+  options?: { enabled?: boolean },
+) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  return useQuery({
+    queryKey: COMPANY_DETAILS_QUERY_KEY(id ?? "", query),
+    queryFn: () => companiesApi.companyDetails(id as string, query).then(({ data }) => data),
+    enabled,
+    placeholderData: keepPreviousData,
   });
 }
 

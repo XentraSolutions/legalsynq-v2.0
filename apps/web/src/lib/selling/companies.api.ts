@@ -20,6 +20,8 @@ import {
   type ContactsExportQuery,
   type ReassignCompanyRequest,
   type ReassignContactPersonRequest,
+  type CompanyDetailsQuery,
+  type CompanyDetailsSummary,
 } from "./companies.types";
 
 const BASE = "/selling/api/liens/selling";
@@ -91,6 +93,12 @@ export const companiesApi = {
 
   getCompany(id: string) {
     return apiClient.get<CompanyDetail>(`${BASE}/companies/${id}`);
+  },
+
+  companyDetails(id: string, query: CompanyDetailsQuery = {}) {
+    return apiClient.get<CompanyDetailsSummary>(
+      `${BASE}/company-details/${id}${toQs(query as Record<string, unknown>)}`,
+    );
   },
 
   updateCompany(id: string, request: UpdateCompanyRequest) {

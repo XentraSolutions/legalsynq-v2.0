@@ -142,6 +142,29 @@ export interface UpdateContactPersonRequest {
 
 export type CompaniesPaginatedResult = PaginatedResultDto<Company>;
 
+export interface CompanyRecentCase {
+  id: string;
+  caseNumber: string;
+  clientName: string;
+  status: string;
+  statusLabel: string;
+  billingAmount: number;
+  updatedAtUtc: string;
+}
+
+export interface CompanyDetailsQuery {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CompanyDetailsSummary {
+  company: CompanyDetail;
+  totalCases: number;
+  activeCases: number;
+  totalBillingForActiveCases: number;
+  recentCases: PaginatedResultDto<CompanyRecentCase>;
+}
+
 export interface ReassignCompanyRequest {
   targetCompanyId: string;
 }

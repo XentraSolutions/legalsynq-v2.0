@@ -7,15 +7,32 @@ function StatCard({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-// Company-level case/billing stats have no backing endpoint yet (companies
-// list only exposes contact info, not case counts or billing totals). Cards
-// render as placeholders until that stats API exists.
-export function CompanyStatsCards() {
+function formatCurrency(amount?: number): string {
+  if (amount == null) return "—";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+export function CompanyStatsCards({
+  totalCases,
+  activeCases,
+  totalBillingForActiveCases,
+}: {
+  totalCases?: number;
+  activeCases?: number;
+  totalBillingForActiveCases?: number;
+}) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <StatCard label="Total Cases" value="—" />
-      <StatCard label="Active Cases" value="—" />
-      <StatCard label="Total Billing For Active Case" value="—" />
+      <StatCard label="Total Cases" value={totalCases ?? "—"} />
+      <StatCard label="Active Cases" value={activeCases ?? "—"} />
+      <StatCard
+        label="Total Billing For Active Case"
+        value={formatCurrency(totalBillingForActiveCases)}
+      />
     </div>
   );
 }
