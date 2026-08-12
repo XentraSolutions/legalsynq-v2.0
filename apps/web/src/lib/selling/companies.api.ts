@@ -22,6 +22,9 @@ import {
   type ReassignContactPersonRequest,
   type CompanyDetailsQuery,
   type CompanyDetailsSummary,
+  type ContactPersonDirectoryDto,
+  type ContactPersonsDirectoryQuery,
+  toContactPersonDirectoryItem,
 } from "./companies.types";
 
 const BASE = "/selling/api/liens/selling";
@@ -142,6 +145,17 @@ export const companiesApi = {
     return apiClient.getBlob(
       `${BASE}/contacts/export${toQs(query as Record<string, unknown>)}`,
     );
+  },
+
+  listContactPersonsDirectory(query: ContactPersonsDirectoryQuery = {}) {
+    return apiClient
+      .get<PaginatedResultDto<ContactPersonDirectoryDto>>(
+        `${BASE}/contact-person${toQs(query as Record<string, unknown>)}`,
+      )
+      .then((res) => ({
+        ...res,
+        data: { ...res.data, items: res.data.items.map(toContactPersonDirectoryItem) },
+      }));
   },
 
   listContactPersons(companyId: string, isActive?: boolean) {
