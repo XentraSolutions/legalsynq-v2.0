@@ -55,7 +55,7 @@ function PricingRowFields({
           onChange={(v, option) => {
             onChange({
               medicalCode: v,
-              description: option.label,
+              description: option?.label ?? "",
             });
           }}
           options={medicalCodes ?? []}

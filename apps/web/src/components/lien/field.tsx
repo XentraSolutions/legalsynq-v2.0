@@ -60,7 +60,7 @@ interface SelectFieldProps<TOption extends BaseSelectOption> extends Omit<
 
   multiple?: false;
   value?: string | null;
-  onChange: (value: string, option: TOption) => void;
+  onChange: (value: string, option: TOption | null) => void;
 }
 
 interface MultiSelectFieldProps<TOption extends BaseSelectOption> extends Omit<

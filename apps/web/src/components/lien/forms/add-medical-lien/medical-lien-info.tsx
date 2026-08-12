@@ -164,7 +164,7 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
                 setForm({
                   ...form,
                   fundingCompanyId: v,
-                  fundingCompany: option.label,
+                  fundingCompany: option?.label ?? "",
                 })
               }
               placeholder="Select funding company..."

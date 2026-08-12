@@ -91,7 +91,7 @@ export default function MedicalFacilityProviderInfo(
                 updateForm({
                   ...form,
                   facilityId: v,
-                  facility: option.label,
+                  facility: option?.label ?? "",
                   facilityContactId: "",
                   facilityContact: "",
                 })
@@ -118,7 +118,7 @@ export default function MedicalFacilityProviderInfo(
                 updateForm({
                   ...form,
                   facilityContactId: v,
-                  facilityContact: option.label,
+                  facilityContact: option?.label ?? "",
                 })
               }
               placeholder="Select contact person..."
@@ -153,7 +153,7 @@ export default function MedicalFacilityProviderInfo(
                 updateForm({
                   ...form,
                   medicalProviderId: v,
-                  medicalProvider: option.label,
+                  medicalProvider: option?.label ?? "",
                 })
               }
               placeholder="Select provider..."
