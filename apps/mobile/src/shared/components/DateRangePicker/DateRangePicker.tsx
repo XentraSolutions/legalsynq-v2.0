@@ -17,6 +17,7 @@ export interface DateRangePickerProps {
   fieldLabel?: string;
   modalDescription?: string;
   modalTitle?: string;
+  allowAllDates?: boolean;
 }
 
 type CalendarDay = {
@@ -67,6 +68,9 @@ function formatDateForDisplay(value: string): string {
 }
 
 function formatDateRangeLabel(value: DateRangePickerValue): string {
+  if (!value.startDate && !value.endDate) {
+    return 'All Dates';
+  }
   if (value.startDate === value.endDate) {
     return formatDateForDisplay(value.startDate);
   }
@@ -140,6 +144,7 @@ export function DateRangePicker({
   fieldLabel,
   modalDescription = 'Filter results by selected start and end dates.',
   modalTitle = 'Date range',
+  allowAllDates = false,
 }: DateRangePickerProps) {
   const [visible, setVisible] = useState(false);
 
@@ -152,6 +157,7 @@ export function DateRangePicker({
         onPress={() => setVisible(true)}
       />
       <DateRangePickerModal
+        allowAllDates={allowAllDates}
         dateRange={value}
         isDark={isDark}
         modalDescription={modalDescription}
@@ -226,6 +232,7 @@ function DateRangeField({
 }
 
 function DateRangePickerModal({
+  allowAllDates,
   dateRange,
   isDark,
   modalDescription,
@@ -234,6 +241,7 @@ function DateRangePickerModal({
   onApply,
   onClose,
 }: {
+  allowAllDates: boolean;
   dateRange: DateRangePickerValue;
   isDark: boolean;
   modalDescription: string;
@@ -250,6 +258,12 @@ function DateRangePickerModal({
 
   useEffect(() => {
     if (visible) {
+      if (!dateRange.startDate && !dateRange.endDate) {
+        setDraftStart(DEFAULT_DATE);
+        setDraftEnd(DEFAULT_DATE);
+        setVisibleMonth(startOfMonth(DEFAULT_DATE));
+        return;
+      }
       const start = parsePickerDate(dateRange.startDate);
       const end = parsePickerDate(dateRange.endDate);
       setDraftStart(start);
@@ -335,6 +349,19 @@ function DateRangePickerModal({
           </View>
 
           <DateRangeField dateRange={draftRange} fieldLabel="Date" focused isDark={isDark} />
+
+          {allowAllDates ? (
+            <Pressable
+              accessibilityRole="button"
+              className="mt-4 h-11 items-center justify-center rounded-xl border border-[#ee7132]"
+              onPress={() => {
+                onApply({ startDate: '', endDate: '' });
+                onClose();
+              }}
+            >
+              <Text className={cx(TYPE.cta, 'text-[#d95f22] dark:text-[#f6905c]')}>All Dates</Text>
+            </Pressable>
+          ) : null}
 
           <View className="mt-4 rounded-[24px] bg-white px-2 pb-3 pt-2 dark:bg-[#202126]">
             <View className="mb-3 flex-row items-center justify-between px-2">

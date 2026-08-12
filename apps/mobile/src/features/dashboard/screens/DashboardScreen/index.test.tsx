@@ -2,7 +2,7 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { RefreshControl } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import { DashboardScreen } from './index';
+import { ALL_DATES_RANGE, buildDashboardReportFilter, DashboardScreen } from './index';
 
 const mockNavigate = jest.fn();
 const mockRefetch = jest.fn(() => Promise.resolve());
@@ -97,6 +97,19 @@ describe('DashboardScreen', () => {
       result.data = undefined;
       result.isError = false;
       result.isFetching = true;
+    });
+  });
+
+  it('omits date parameters for the default All Dates filter', () => {
+    expect(buildDashboardReportFilter(ALL_DATES_RANGE)).toEqual({ page: 1, limit: 1000000 });
+  });
+
+  it('passes matching start and end dates for a custom filter', () => {
+    expect(buildDashboardReportFilter({ startDate: '01/01/2026', endDate: '01/31/2026' })).toEqual({
+      page: 1,
+      limit: 1000000,
+      startDate: '01/01/2026',
+      endDate: '01/31/2026',
     });
   });
 
