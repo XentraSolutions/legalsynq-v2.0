@@ -74,6 +74,13 @@ emails embed the LegalSynq logo as an inline attachment, so rendering does not
 depend on tenant DNS or an externally hosted image.
 The checked-in Development environment override enables self-registration locally.
 
+Self-registration is disabled by default (`TenantRegistration__Enabled=false`). A
+submission creates only a `PendingReview/NotStarted` application. Approval and
+provisioning remain separate; DNS failure leaves the application `Approved/Failed`.
+Submissions are rejected when the proposed administrator email already belongs
+to an Identity account or to another pending registration.
+The checked-in Development environment override enables self-registration locally.
+
 ## Config (`appsettings.json`)
 
 ```json
