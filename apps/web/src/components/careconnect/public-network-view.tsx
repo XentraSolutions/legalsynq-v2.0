@@ -193,13 +193,18 @@ function getProviderLocationFallback(
 }
 
 function buildProviderAddressGeocodeQuery(provider: PublicProviderItem): string | null {
-  const addressLine1 = provider.addressLine1?.trim();
-  if (!addressLine1) return null;
-
   const locality = [provider.city, provider.state, provider.postalCode]
     .map(value => value?.trim() ?? '')
     .filter(Boolean);
   if (locality.length === 0) return null;
+
+  // A mobile facility stores a human-readable service area (for example,
+  // "Greater Las Vegas Metro") in addressLine1 rather than a street address.
+  // Geocode its locality so the map can use a city centroid for the coverage area.
+  if (provider.isMobile) return locality.join(', ');
+
+  const addressLine1 = provider.addressLine1?.trim();
+  if (!addressLine1) return null;
 
   return [addressLine1, ...locality].join(', ');
 }
