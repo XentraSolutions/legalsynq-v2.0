@@ -897,6 +897,57 @@ describe('PublicNetworkView', () => {
     expect(atlas.compareDocumentPosition(bright) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  test('geocodes a mobile provider by locality instead of its service-area label', async () => {
+    const mobileDetail: PublicNetworkDetail = {
+      ...DETAIL,
+      providers: DETAIL.providers.map(provider => ({
+        ...provider,
+        addressLine1: 'Greater Austin Metro',
+        postalCode: null,
+        isMobile: true,
+        serviceAreaLabel: 'Greater Austin Metro',
+        serviceRadiusMiles: 25,
+      })),
+      markers: DETAIL.markers.map(marker => ({
+        ...marker,
+        latitude: 0,
+        longitude: 0,
+        isMobile: true,
+        serviceAreaLabel: 'Greater Austin Metro',
+        serviceRadiusMiles: 25,
+      })),
+    };
+    const geocodeFetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/geocode/address')) {
+        return jsonResponse([{ latitude: 30.2672, longitude: -97.7431 }]);
+      }
+      if (url.includes('/api/public/careconnect/api/public/treatment-types')) return jsonResponse([]);
+      throw new Error(`Unhandled fetch in test: ${url}`);
+    });
+    global.fetch = geocodeFetch as typeof fetch;
+
+    render(
+      <PublicNetworkView
+        detail={mobileDetail}
+        tenantCode="demo"
+        tenantId="tenant-1"
+        loginUrl="https://demo.careconnect.example.com/login"
+      />,
+    );
+
+    await waitFor(() => expect(geocodeFetch).toHaveBeenCalledWith(
+      '/api/geocode/address?q=Austin%2C%20TX&loose=1',
+    ));
+    expect(geocodeFetch.mock.calls.some(([input]) =>
+      decodeURIComponent(String(input)).includes('Greater Austin Metro'),
+    )).toBe(false);
+    await waitFor(() => expect(screen.getByTestId('public-network-map')).toHaveAttribute(
+      'data-marker-ids',
+      '1:network-provider-1',
+    ));
+  });
+
   test('does not label other facilities zero miles when street geocoding uses a shared marker fallback', async () => {
     const user = userEvent.setup();
     const sharedMarkerDetail: PublicNetworkDetail = {
