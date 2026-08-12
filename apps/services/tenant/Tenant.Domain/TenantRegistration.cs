@@ -12,6 +12,10 @@ public sealed class TenantRegistration
     public string TenantCode { get; private set; } = null!;
     public string OrganizationType { get; private set; } = null!;
     public string? StreetAddress { get; private set; }
+    public string? AddressLine1 { get; private set; }
+    public string? AddressCity { get; private set; }
+    public string? AddressState { get; private set; }
+    public string? AddressPostalCode { get; private set; }
     public string AdminFirstName { get; private set; } = null!;
     public string AdminLastName { get; private set; } = null!;
     public string AdminEmail { get; private set; } = null!;
@@ -31,13 +35,15 @@ public sealed class TenantRegistration
     public uint Version { get; private set; }
 
     public static TenantRegistration Create(string tenantName, string tenantCode, string organizationType,
-        string? streetAddress, string adminFirstName, string adminLastName, string adminEmail)
+        string? streetAddress, string adminFirstName, string adminLastName, string adminEmail,
+        string? addressLine1 = null, string? addressCity = null, string? addressState = null, string? addressPostalCode = null)
     {
         var now = DateTime.UtcNow;
         return new TenantRegistration
         {
             Id = Guid.CreateVersion7(), TenantName = tenantName, TenantCode = tenantCode,
             OrganizationType = organizationType, StreetAddress = streetAddress,
+            AddressLine1 = addressLine1, AddressCity = addressCity, AddressState = addressState, AddressPostalCode = addressPostalCode,
             AdminFirstName = adminFirstName, AdminLastName = adminLastName, AdminEmail = adminEmail,
             RegistrationStatus = RegistrationStatus.PendingReview,
             ProvisioningStatus = RegistrationProvisioningStatus.NotStarted,

@@ -39,6 +39,7 @@ const SYNQLIEN_COMMON_PORTAL_HOSTNAME = normalizeCareConnectPortalHost(
 
 const PUBLIC_PATHS = [
   "/login",
+  "/register",
   "/coming-soon",
   "/no-org",
   "/portal/login",
@@ -59,6 +60,7 @@ const PUBLIC_PATHS = [
   "/api/identity/api/tenants/current/branding",
   // Read-source-aware branding endpoint (B06: replaces identity-only call)
   "/api/tenant-branding",
+  "/api/tenant/api/v1/public/tenant-registrations",
   // Documents access-token redemption must remain public so token-gated
   // referral links can open attachments without a platform session cookie.
   "/api/documents/access/",

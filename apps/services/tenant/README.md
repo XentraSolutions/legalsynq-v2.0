@@ -40,6 +40,11 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 | `GET` | `/api/admin/tenants` | List tenants (paged; includes Identity-backed `type`, primary contact, and full `url`) |
 | `GET` | `/api/admin/tenants/{id}` | Tenant admin detail (includes Identity-backed `type`, primary contact, and full `url`) |
 | `POST` | `/api/tenants/provision` | Minimal provision (internal) |
+| `POST` | `/api/v1/public/tenant-registrations` | Anonymous review-first registration (rate limited) |
+| `GET` | `/api/v1/admin/tenant-registrations` | PlatformAdmin application queue |
+| `POST` | `/api/v1/admin/tenant-registrations/{id}/approve` | Approve and provision |
+| `POST` | `/api/v1/admin/tenant-registrations/{id}/decline` | Decline with a reason |
+| `POST` | `/api/v1/admin/tenant-registrations/{id}/provisioning/retry` | Retry incomplete provisioning |
 | `PUT` | `/api/internal/sync` | Idempotent upsert from Identity dual-write |
 | `GET` | `/api/resolution/{code}` | Resolve tenant by code |
 | `GET` | `/api/branding/{tenantId}` | Tenant branding |
@@ -51,9 +56,16 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 
 ## External Integrations
 
-- **Identity service** — `HttpIdentityProvisioningAdapter` calls `POST /api/internal/tenant-provisioning/provision` for canonical tenant create
+- **Identity service** — `HttpIdentityProvisioningAdapter` checks `GET /api/internal/users/account-exists` before accepting a registration and calls `POST /api/internal/tenant-provisioning/provision` for canonical tenant create
 - **Documents service** — logo registration
 - **Commerce** — `ICommerceLifecycleNotifier` wired for `TenantCreated`, `TenantActivated`, `TenantSuspended` events (`Enabled: false` by default)
+
+Self-registration is disabled by default (`TenantRegistration__Enabled=false`). A
+submission creates only a `PendingReview/NotStarted` application. Approval and
+provisioning remain separate; DNS failure leaves the application `Approved/Failed`.
+Submissions are rejected when the proposed administrator email already belongs
+to an Identity account or to another pending registration.
+The checked-in Development environment override enables self-registration locally.
 
 ## Config (`appsettings.json`)
 

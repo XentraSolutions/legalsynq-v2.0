@@ -26,9 +26,15 @@ public sealed class TenantRegistrationService(
         if (await tenants.ExistsByCodeAsync(code, ct)) throw new ConflictException($"Tenant code '{code}' is already in use.");
         if (await registrations.HasPendingConflictAsync(code, email, ct))
             throw new ConflictException("A pending registration already exists for this tenant code or administrator email.");
+        var emailAvailability = await identityProvisioning.CheckAdminEmailAsync(email, ct);
+        if (!emailAvailability.Success)
+            throw new InvalidOperationException("Administrator email availability could not be verified.");
+        if (emailAvailability.Exists)
+            throw new ConflictException("An account with this administrator email already exists.");
 
         var entity = TenantRegistration.Create(request.TenantName.Trim(), code, request.OrganizationType.Trim(),
-            NullIfBlank(request.StreetAddress), request.AdminFirstName.Trim(), request.AdminLastName.Trim(), email);
+            NullIfBlank(request.StreetAddress), request.AdminFirstName.Trim(), request.AdminLastName.Trim(), email,
+            NullIfBlank(request.AddressLine1), NullIfBlank(request.AddressCity), NullIfBlank(request.AddressState), NullIfBlank(request.AddressPostalCode));
         await registrations.AddAsync(entity, ct);
         logger.LogInformation("Tenant registration submitted RegistrationId={RegistrationId} TenantCode={TenantCode}", entity.Id, code);
         return new(entity.Id, entity.RegistrationStatus.ToString(), entity.ProvisioningStatus.ToString(),
@@ -130,7 +136,7 @@ public sealed class TenantRegistrationService(
     }
 
     private static TenantRegistrationResponse? Map(TenantRegistration? x) => x is null ? null : new(x.Id, x.TenantName,
-        x.TenantCode, x.OrganizationType, x.StreetAddress, x.AdminFirstName, x.AdminLastName, x.AdminEmail,
+        x.TenantCode, x.OrganizationType, x.StreetAddress, x.AddressLine1, x.AddressCity, x.AddressState, x.AddressPostalCode, x.AdminFirstName, x.AdminLastName, x.AdminEmail,
         x.RegistrationStatus.ToString(), x.ProvisioningStatus.ToString(), x.TenantId, x.ProvisioningHostname,
         x.ProvisioningError, x.ProvisioningFailureStage, x.DecisionReason, x.ReviewedByUserId, x.ReviewedAtUtc,
         x.ProvisioningStartedAtUtc, x.ProvisionedAtUtc, x.CreatedAtUtc, x.UpdatedAtUtc);

@@ -36,6 +36,41 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
         _logger            = logger;
     }
 
+    public async Task<IdentityEmailAvailabilityResult> CheckAdminEmailAsync(
+        string email,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            using var client = _httpClientFactory.CreateClient("IdentityInternal");
+            var secret = _configuration["IdentityService:ProvisioningSecret"];
+            if (!string.IsNullOrWhiteSpace(secret))
+                client.DefaultRequestHeaders.Add("X-Provisioning-Token", secret);
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(10));
+            using var response = await client.GetAsync(
+                $"/api/internal/users/account-exists?email={Uri.EscapeDataString(email)}",
+                cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "[IdentityProvisioning] Admin email availability returned {StatusCode}",
+                    (int)response.StatusCode);
+                return new(false, false);
+            }
+
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cts.Token));
+            return new(true, TryGetBool(doc.RootElement, "exists"));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "[IdentityProvisioning] Admin email availability check failed");
+            return new(false, false);
+        }
+    }
+
     // ── Initial provisioning ──────────────────────────────────────────────────
 
     public async Task<IdentityProvisioningResult> ProvisionAsync(
@@ -103,17 +138,20 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
 
             using var doc = JsonDocument.Parse(body);
             var root      = doc.RootElement;
+            var explicitSuccess = !root.TryGetProperty("success", out var successElement) || successElement.GetBoolean();
+            var warnings = ReadStringArray(root, "warnings");
+            var errors = ReadStringArray(root, "errors");
 
             return new IdentityProvisioningResult(
-                Success:           true,
+                Success:           explicitSuccess,
                 AdminUserId:       TryGetString(root, "adminUserId"),
                 AdminEmail:        TryGetString(root, "adminEmail"),
                 TemporaryPassword: TryGetString(root, "temporaryPassword"),
                 ProvisioningStatus: TryGetString(root, "provisioningStatus") ?? "Provisioned",
                 Hostname:          TryGetString(root, "hostname"),
                 Subdomain:         TryGetString(root, "subdomain"),
-                Warnings:          [],
-                Errors:            []);
+                Warnings:          warnings,
+                Errors:            errors);
         }
         catch (OperationCanceledException)
         {
@@ -147,6 +185,13 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
                 Warnings:          [],
                 Errors:            [$"Identity provisioning error: {ex.Message}"]);
         }
+    }
+
+    private static List<string> ReadStringArray(JsonElement root, string property)
+    {
+        if (!root.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.Array) return [];
+        return value.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String)
+            .Select(x => x.GetString()).Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().ToList();
     }
 
     // ── Retry provisioning proxy ──────────────────────────────────────────────

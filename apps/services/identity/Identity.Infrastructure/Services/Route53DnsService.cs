@@ -11,6 +11,7 @@ public sealed class Route53DnsOptions
 {
     public string HostedZoneId { get; set; } = string.Empty;
     public string BaseDomain { get; set; } = string.Empty;
+    public string EnvironmentLabel { get; set; } = string.Empty;
     public string RecordType { get; set; } = "A";
     public string RecordValue { get; set; } = string.Empty;
     public string? TxtVerificationValue { get; set; }
@@ -45,7 +46,7 @@ public sealed class Route53DnsService : IDnsService, IDisposable
 
     public async Task<bool> CreateSubdomainAsync(string subdomain, CancellationToken ct = default)
     {
-        var fqdn = $"{subdomain.ToLowerInvariant()}.{_opts.BaseDomain}";
+        var fqdn = BuildHostname(subdomain);
         await DeleteConflictingRecordsAsync(fqdn, ct);
 
         var aSuccess = await UpsertRecordAsync(fqdn, ChangeAction.UPSERT, ct);
@@ -62,7 +63,7 @@ public sealed class Route53DnsService : IDnsService, IDisposable
 
     public async Task<bool> DeleteSubdomainAsync(string subdomain, CancellationToken ct = default)
     {
-        var fqdn = $"{subdomain.ToLowerInvariant()}.{_opts.BaseDomain}";
+        var fqdn = BuildHostname(subdomain);
         var deleted = await UpsertRecordAsync(fqdn, ChangeAction.DELETE, ct);
 
         if (!string.IsNullOrWhiteSpace(_opts.TxtVerificationValue))
@@ -70,6 +71,30 @@ public sealed class Route53DnsService : IDnsService, IDisposable
 
         return deleted;
     }
+
+    public string BuildHostname(string tenantSlug)
+    {
+        var slug = NormalizeLabel(tenantSlug, nameof(tenantSlug));
+        var environment = string.IsNullOrWhiteSpace(_opts.EnvironmentLabel)
+            ? null : NormalizeLabel(_opts.EnvironmentLabel, nameof(_opts.EnvironmentLabel));
+        var domain = _opts.BaseDomain.Trim().Trim('.').ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(domain) || domain.Split('.').Any(x => !IsValidLabel(x)))
+            throw new InvalidOperationException("Route53 BaseDomain is not a valid DNS name.");
+        if (environment is not null && (slug == environment || slug.EndsWith($".{environment}", StringComparison.Ordinal)))
+            throw new ArgumentException("Tenant slug must not include the configured environment label.", nameof(tenantSlug));
+        return environment is null ? $"{slug}.{domain}" : $"{slug}.{environment}.{domain}";
+    }
+
+    private static string NormalizeLabel(string value, string parameter)
+    {
+        var label = value.Trim().Trim('.').ToLowerInvariant();
+        if (!IsValidLabel(label)) throw new ArgumentException("Value must be a valid DNS label.", parameter);
+        return label;
+    }
+
+    private static bool IsValidLabel(string label) => label.Length is >= 1 and <= 63 &&
+        char.IsAsciiLetterOrDigit(label[0]) && char.IsAsciiLetterOrDigit(label[^1]) &&
+        label.All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
 
     private async Task DeleteConflictingRecordsAsync(string fqdn, CancellationToken ct)
     {

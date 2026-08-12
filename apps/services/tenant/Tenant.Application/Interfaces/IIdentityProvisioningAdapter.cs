@@ -20,6 +20,15 @@ namespace Tenant.Application.Interfaces;
 public interface IIdentityProvisioningAdapter
 {
     /// <summary>
+    /// Checks Identity's global user store before accepting a tenant registration.
+    /// The lookup remains internal so the public registration API does not expose
+    /// a reusable account-enumeration endpoint.
+    /// </summary>
+    Task<IdentityEmailAvailabilityResult> CheckAdminEmailAsync(
+        string email,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Calls the Identity internal provisioning endpoint to create the auth/admin
     /// context for a tenant that already exists in the Tenant service DB.
     /// </summary>
@@ -43,6 +52,8 @@ public interface IIdentityProvisioningAdapter
         Guid              tenantId,
         CancellationToken ct = default);
 }
+
+public record IdentityEmailAvailabilityResult(bool Success, bool Exists);
 
 /// <summary>Inputs required to provision a tenant's Identity-side context.</summary>
 public record IdentityProvisioningRequest(

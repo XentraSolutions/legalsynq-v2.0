@@ -123,7 +123,7 @@ public sealed class VerificationRetryService : IVerificationRetryService
                 continue;
             }
 
-            var hostname = $"{tenant.Subdomain}.{_dns.BaseDomain}";
+            var hostname = _dns.BuildHostname(tenant.Subdomain);
 
             try
             {

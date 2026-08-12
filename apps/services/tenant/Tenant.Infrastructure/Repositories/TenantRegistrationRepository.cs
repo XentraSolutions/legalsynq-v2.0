@@ -24,7 +24,9 @@ public sealed class TenantRegistrationRepository(TenantDbContext db) : ITenantRe
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLower();
+            var organizationTerm = term.Replace(" ", "_");
             query = query.Where(x => x.TenantName.ToLower().Contains(term) || x.TenantCode.Contains(term) ||
+                x.OrganizationType.ToLower().Contains(term) || x.OrganizationType.ToLower().Contains(organizationTerm) ||
                 x.AdminFirstName.ToLower().Contains(term) || x.AdminLastName.ToLower().Contains(term) || x.AdminEmail.Contains(term));
         }
         if (submittedFrom is not null) query = query.Where(x => x.CreatedAtUtc >= submittedFrom);

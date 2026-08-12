@@ -569,8 +569,8 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
               </div>
             )}
 
-            {/* Temp password notice */}
-            <div className="space-y-2">
+            {/* Secure administrator setup */}
+            {result.temporaryPassword ? <div className="space-y-2">
               <p className="text-xs font-medium text-gray-700">
                 Temporary password for <span className="font-mono text-gray-900">{result.adminEmail}</span>
               </p>
@@ -594,7 +594,10 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
-            </div>
+            </div> : <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
+              <p className="font-semibold">Secure administrator setup link sent</p>
+              <p className="mt-1">{result.adminEmail} must use the expiring, single-use link in their email to create a password before signing in. No password is displayed or stored here.</p>
+            </div>}
 
             {/* Close */}
             <div className="flex justify-end pt-1">

@@ -884,6 +884,9 @@ public class TenantAdminServiceGetAdminDetailTests
 
     private sealed class StubIdentityProvisioningAdapter : IIdentityProvisioningAdapter
     {
+        public Task<IdentityEmailAvailabilityResult> CheckAdminEmailAsync(string email, CancellationToken ct = default) =>
+            Task.FromResult(new IdentityEmailAvailabilityResult(true, false));
+
         public Task<IdentityProvisioningResult> ProvisionAsync(IdentityProvisioningRequest request, CancellationToken ct = default)
             => Task.FromResult(new IdentityProvisioningResult(
                 Success: false, AdminUserId: null, AdminEmail: null,

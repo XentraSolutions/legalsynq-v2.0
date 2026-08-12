@@ -139,6 +139,36 @@ namespace Tenant.Infrastructure.Data.Migrations
                     b.ToTable("tenant_MigrationRunItems", (string)null);
                 });
 
+            modelBuilder.Entity("Tenant.Domain.TenantRegistration", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("char(36)");
+                    b.Property<string>("AdminEmail").IsRequired().HasMaxLength(320).HasColumnType("varchar(320)");
+                    b.Property<string>("AdminFirstName").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<string>("AdminLastName").IsRequired().HasMaxLength(100).HasColumnType("varchar(100)");
+                    b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<string>("DecisionReason").HasMaxLength(1000).HasColumnType("varchar(1000)");
+                    b.Property<string>("OrganizationType").IsRequired().HasMaxLength(80).HasColumnType("varchar(80)");
+                    b.Property<DateTime?>("ProvisionedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<string>("ProvisioningError").HasMaxLength(2000).HasColumnType("varchar(2000)");
+                    b.Property<string>("ProvisioningFailureStage").HasMaxLength(64).HasColumnType("varchar(64)");
+                    b.Property<string>("ProvisioningHostname").HasMaxLength(253).HasColumnType("varchar(253)");
+                    b.Property<DateTime?>("ProvisioningStartedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<string>("ProvisioningStatus").IsRequired().HasMaxLength(32).HasColumnType("varchar(32)");
+                    b.Property<DateTime?>("ReviewedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<Guid?>("ReviewedByUserId").HasColumnType("char(36)");
+                    b.Property<string>("RegistrationStatus").IsRequired().HasMaxLength(32).HasColumnType("varchar(32)");
+                    b.Property<string>("StreetAddress").HasMaxLength(500).HasColumnType("varchar(500)");
+                    b.Property<string>("TenantCode").IsRequired().HasMaxLength(63).HasColumnType("varchar(63)");
+                    b.Property<Guid?>("TenantId").HasColumnType("char(36)");
+                    b.Property<string>("TenantName").IsRequired().HasMaxLength(200).HasColumnType("varchar(200)");
+                    b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime(6)");
+                    b.Property<uint>("Version").IsConcurrencyToken().HasColumnType("int unsigned");
+                    b.HasKey("Id");
+                    b.HasIndex("AdminEmail"); b.HasIndex("CreatedAtUtc"); b.HasIndex("ProvisioningStatus");
+                    b.HasIndex("RegistrationStatus"); b.HasIndex("TenantCode");
+                    b.ToTable("tenant_Registrations", (string)null);
+                });
+
             modelBuilder.Entity("Tenant.Domain.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
