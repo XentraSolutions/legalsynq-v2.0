@@ -25,6 +25,7 @@ import type {
   ReassignCompanyRequest,
   ReassignContactPersonRequest,
   CompanyDetailsQuery,
+  ContactPersonsDirectoryQuery,
 } from "@/lib/selling/companies.types";
 
 function toOptions(items: { id: string; name: string }[]): BaseSelectOption[] {
@@ -303,6 +304,22 @@ export function useExportContacts() {
 
 // ── Contact persons ──────────────────────────────────────────────────────────
 
+export const CONTACT_PERSONS_DIRECTORY_QUERY_KEY = (
+  query: ContactPersonsDirectoryQuery = {},
+) => ["selling-contact-persons-directory", query] as const;
+
+export function useContactPersonsDirectory(
+  query: ContactPersonsDirectoryQuery = {},
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: CONTACT_PERSONS_DIRECTORY_QUERY_KEY(query),
+    queryFn: () => companiesApi.listContactPersonsDirectory(query).then(({ data }) => data),
+    placeholderData: keepPreviousData,
+    enabled: options?.enabled,
+  });
+}
+
 export const CONTACT_PERSONS_QUERY_KEY = (companyId: string, isActive?: boolean) =>
   ["selling-contact-persons", companyId, isActive ?? true] as const;
 
@@ -358,6 +375,7 @@ export function useCreateContactPerson() {
     }) => companiesApi.createContactPerson(companyId, request).then(({ data }) => data),
     onSuccess: (_data, { companyId }) => {
       queryClient.invalidateQueries({ queryKey: ["selling-contact-persons", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["selling-contact-persons-directory"] });
     },
   });
 }
@@ -379,6 +397,7 @@ export function useUpdateContactPerson() {
         .then(({ data }) => data),
     onSuccess: (_data, { companyId, contactId }) => {
       queryClient.invalidateQueries({ queryKey: ["selling-contact-persons", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["selling-contact-persons-directory"] });
       queryClient.invalidateQueries({ queryKey: CONTACT_PERSON_QUERY_KEY(companyId, contactId) });
     },
   });
@@ -391,6 +410,7 @@ export function useDeactivateContactPerson() {
       companiesApi.deactivateContactPerson(companyId, contactId),
     onSuccess: (_data, { companyId, contactId }) => {
       queryClient.invalidateQueries({ queryKey: ["selling-contact-persons", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["selling-contact-persons-directory"] });
       queryClient.invalidateQueries({ queryKey: CONTACT_PERSON_QUERY_KEY(companyId, contactId) });
     },
   });
@@ -403,6 +423,7 @@ export function useReactivateContactPerson() {
       companiesApi.reactivateContactPerson(companyId, contactId),
     onSuccess: (_data, { companyId, contactId }) => {
       queryClient.invalidateQueries({ queryKey: ["selling-contact-persons", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["selling-contact-persons-directory"] });
       queryClient.invalidateQueries({ queryKey: CONTACT_PERSON_QUERY_KEY(companyId, contactId) });
     },
   });
@@ -425,6 +446,7 @@ export function useReassignContactPerson() {
         .then(({ data }) => data),
     onSuccess: (_data, { companyId, contactId }) => {
       queryClient.invalidateQueries({ queryKey: ["selling-contact-persons", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["selling-contact-persons-directory"] });
       queryClient.invalidateQueries({ queryKey: CONTACT_PERSON_QUERY_KEY(companyId, contactId) });
     },
   });
