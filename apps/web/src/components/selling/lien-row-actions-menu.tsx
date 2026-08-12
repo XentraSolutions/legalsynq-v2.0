@@ -81,11 +81,11 @@ export function LienRowActionsMenu({
   const handleAction = (action: string) => {
     setMenuOpen(false);
     if (action === "prepare-sale") {
-      router.push(`/selling/portfolio/${lienId}/sell`);
+      router.push(`/selling/portfolio/lien/${lienId}/sell`);
       return;
     }
     if (action === "confirm-sale") {
-      router.push(`/selling/portfolio/${lienId}/sell`);
+      router.push(`/selling/portfolio/lien/${lienId}/sell`);
       return;
     }
     if (action === "keep" || action === "withdraw-sale" || action === "archive") {
@@ -198,7 +198,7 @@ export function LienRowActionsMenu({
               disabled={keepLoading}
               onClick={() => {
                 setShowDecisionModal(false);
-                router.push(`/selling/portfolio/${lienId}/sell`);
+                router.push(`/selling/portfolio/lien/${lienId}/sell`);
               }}
             >
               Sell

@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Eye, Trash2 } from "lucide-react";
+import { Eye, SquarePen, Trash2 } from "lucide-react";
 import { DateDisplay } from "@/components/ui/date-display";
 import { LIEN_TYPE_LABELS } from "@/types/lien";
 import { LienStatusBadge } from "../lien/lien-status-badge";
@@ -45,6 +45,8 @@ function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProp
     }
   };
 
+  const canEdit = ["Pending", "Internal", "Draft"].includes(lien.status);
+
   return (
     <>
       <ActionMenu
@@ -52,8 +54,18 @@ function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProp
           {
             label: "View",
             icon: Eye,
-            onClick: () => router.push(`portfolio/${lien.lienId}`),
+            onClick: () => router.push(`/selling/portfolio/lien/${lien.lienId}`),
           },
+          ...(canEdit
+            ? [
+                {
+                  label: "Edit",
+                  icon: SquarePen,
+                  onClick: () =>
+                    router.push(`/selling/portfolio/lien/${lien.lienId}/edit`),
+                },
+              ]
+            : []),
           {
             label: "Delete",
             icon: Trash2,
