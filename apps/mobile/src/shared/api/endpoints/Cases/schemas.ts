@@ -207,8 +207,10 @@ export const reportFilterRequestSchema = z.object({
 });
 
 export const dashboardStatRequestSchema = z.object({
-  fromDate: z.string(),
-  toDate: z.string(),
+  startDate: z.string(),
+  endDate: z.string(),
+  page: z.number().int().positive(),
+  limit: z.number().int().positive(),
 });
 
 export const dashboardStatResponseSchema = z
