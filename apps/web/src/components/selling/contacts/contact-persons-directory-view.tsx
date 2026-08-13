@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Settings2, Trash2, Upload } from "lucide-react";
+import { Eye, Plus, Settings2, Trash2, Upload } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ActionMenu } from "@/components/selling/action-menu";
@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/selling/modal";
 import { BaseTable } from "@/components/ui/base-table";
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
 import { ContactsFilterModal } from "@/components/selling/contacts/contacts-filter-modal";
+import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
 import { Button } from "@/components/ui/button";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { downloadBlob } from "@/lib/utils";
@@ -38,6 +39,7 @@ export function ContactPersonsDirectoryView() {
   const [companyTypeFilter, setCompanyTypeFilter] = useState("");
   const [contactPersonTypeFilter, setContactPersonTypeFilter] = useState("");
   const [showFilter, setShowFilter] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ContactPersonDirectoryItem | null>(null);
   const activeFilterCount =
     (companyTypeFilter ? 1 : 0) + (contactPersonTypeFilter ? 1 : 0);
@@ -231,6 +233,16 @@ export function ContactPersonsDirectoryView() {
           >
             {exportContactsMutation.isPending ? "Exporting..." : "Export"}
           </Button>
+          {ra.can("contact:create") && (
+            <Button
+              iconDivider
+              rightIcon={<Plus className="h-4 w-4" />}
+              className={PRIMARY_BUTTON_CLASSNAME}
+              onClick={() => setShowCreate(true)}
+            >
+              Add Contact Person
+            </Button>
+          )}
         </FilterToolbar>
 
         {showEmptyState ? (
@@ -304,6 +316,19 @@ export function ContactPersonsDirectoryView() {
           );
         }}
       />
+
+      {showCreate && (
+        <ContactPersonFormModal
+          open
+          title="Add Contact Person"
+          companyId=""
+          companyName=""
+          companyTypeId=""
+          allowCompanySelect
+          onClose={() => setShowCreate(false)}
+          onSaved={() => setShowCreate(false)}
+        />
+      )}
 
       {deleteTarget && (
         <ConfirmDialog
