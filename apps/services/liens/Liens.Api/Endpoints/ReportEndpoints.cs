@@ -493,7 +493,13 @@ public static class ReportEndpoints
 
     private static string EscapeCsvValue(string? value)
     {
-        var escaped = (value ?? string.Empty).Replace("\"", "\"\"");
+        var rawValue = value ?? string.Empty;
+        var firstSignificant = rawValue.FirstOrDefault(character =>
+            !char.IsWhiteSpace(character) && !char.IsControl(character));
+        var safeValue = firstSignificant is '=' or '+' or '-' or '@'
+            ? $"'{rawValue}"
+            : rawValue;
+        var escaped = safeValue.Replace("\"", "\"\"");
         return escaped.IndexOfAny([',', '\"', '\r', '\n']) >= 0 ? $"\"{escaped}\"" : escaped;
     }
 
@@ -565,8 +571,8 @@ public static class ReportEndpoints
             ["case_tracking_follow_up_date"] = string.Empty,
             ["case_tracking_contact"] = string.Empty,
             ["case_tracking_contact_email"] = string.Empty,
-            ["last_case_note"] = string.Empty,
-            ["last_case_note_date"] = string.Empty,
+            ["last_case_note"] = r.TrackingNotes,
+            ["last_case_note_date"] = FormatLegacyDate(r.LastTrackingNoteDate),
             ["date_of_loss"] = FormatLegacyDate(r.DateOfLoss),
             ["plaintiff_date_of_birth"] = string.Empty,
             ["plaintiff_phone"] = string.Empty,
@@ -917,8 +923,8 @@ public static class ReportEndpoints
             new("case_tracking_follow_up_date", "Case Tracking Follow Up Date (For later from Servicing)", "caseTrackingInfo"),
             new("case_tracking_contact", "Case Tracking Contact (case manager)", "caseTrackingInfo"),
             new("case_tracking_contact_email", "Case Tracking Contact Email (case manager note)", "caseTrackingInfo"),
-            new("last_case_note", "Last Case Note", "caseTrackingInfo"),
-            new("last_case_note_date", "Last Case Note Date", "caseTrackingInfo"),
+            new("last_case_note", "Tracking Notes", "caseTrackingInfo"),
+            new("last_case_note_date", "Last Tracking Note Date", "caseTrackingInfo"),
             new("plaintiff_date_of_birth", "Plaintiff Date of Birth", "plaintiffInfo"),
             new("plaintiff_phone", "Plaintiff Phone", "plaintiffInfo"),
             new("plaintiff_email", "Plaintiff Email", "plaintiffInfo"),

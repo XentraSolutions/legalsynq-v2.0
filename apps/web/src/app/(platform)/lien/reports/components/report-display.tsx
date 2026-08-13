@@ -225,7 +225,11 @@ export default function ReportDisplay({
               }
 
               return (
-                <span className="text-sm text-gray-700">{formattedValue}</span>
+                <span
+                  className={`text-sm text-gray-700 ${item.key === "last_case_note" ? "whitespace-pre-line" : ""}`}
+                >
+                  {formattedValue}
+                </span>
               );
             },
           };
@@ -273,7 +277,11 @@ export default function ReportDisplay({
             }
 
             return (
-              <span className="text-sm text-gray-700">{formattedValue}</span>
+              <span
+                className={`text-sm text-gray-700 ${item.key === "last_case_note" ? "whitespace-pre-line" : ""}`}
+              >
+                {formattedValue}
+              </span>
             );
           },
         };

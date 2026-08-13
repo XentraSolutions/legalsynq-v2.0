@@ -4,6 +4,9 @@ public sealed class WeeklyBccReportResult
 {
     public DateOnly AsOfDate { get; init; }
     public List<WeeklyBccReportRow> Items { get; init; } = [];
+    public int Page { get; init; } = 1;
+    public int PageSize { get; init; }
+    public int TotalCount { get; init; }
 }
 
 public sealed class WeeklyBccReportRow

@@ -401,6 +401,109 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
+    public async Task RunAndExportReport_include_all_tracking_notes_and_latest_date()
+    {
+        string lienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-NOTES-{Guid.CreateVersion7():N}"[..30],
+                "Tracking",
+                "Notes",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-NOTES-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N");
+
+            var olderTracking = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Older follow-up note",
+                CaseNoteCategory.FollowUp,
+                new DateTime(2026, 8, 10, 8, 0, 0, DateTimeKind.Utc));
+            var newestTracking = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "  =SUM(1,1) newest tracking note",
+                CaseNoteCategory.General,
+                new DateTime(2026, 8, 12, 9, 0, 0, DateTimeKind.Utc));
+            var feedNote = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Feed note must be excluded",
+                CaseNoteCategory.Feed,
+                new DateTime(2026, 8, 13, 9, 0, 0, DateTimeKind.Utc));
+            var deletedTracking = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Deleted note must be excluded",
+                CaseNoteCategory.General,
+                new DateTime(2026, 8, 14, 9, 0, 0, DateTimeKind.Utc));
+            deletedTracking.SoftDelete();
+            var otherTenantNote = CreateCaseNote(
+                caseEntity.Id,
+                Guid.CreateVersion7(),
+                "Other tenant note must be excluded",
+                CaseNoteCategory.General,
+                new DateTime(2026, 8, 15, 9, 0, 0, DateTimeKind.Utc));
+
+            lienNumber = lien.LienNumber;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.LienCaseNotes.AddRange(
+                olderTracking,
+                newestTracking,
+                feedNote,
+                deletedTracking,
+                otherTenantNote);
+            await db.SaveChangesAsync();
+        }
+
+        var request = new
+        {
+            reportType = "LIENS",
+            search = lienNumber,
+            isBulk = "N",
+            columns = new[] { "lien_id", "last_case_note", "last_case_note_date" },
+            page = 1,
+            limit = 50,
+        };
+
+        var runResponse = await _client.PostAsJsonAsync("/report/diy", request);
+        runResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await runResponse.Content.ReadAsStringAsync()}");
+        using var runPayload = JsonDocument.Parse(await runResponse.Content.ReadAsStringAsync());
+        var row = runPayload.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("lien_id").GetString() == lienNumber);
+        row.GetProperty("last_case_note").GetString()
+            .Should().Be("=SUM(1,1) newest tracking note\nOlder follow-up note");
+        row.GetProperty("last_case_note_date").GetString().Should().Be("08/12/2026");
+
+        var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", request);
+        exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await exportResponse.Content.ReadAsStringAsync()}");
+        var exportPayload = await exportResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var export = exportPayload!.RootElement.GetProperty("data").EnumerateArray().Single();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
+        csv.Should().Contain("\"'=SUM(1,1) newest tracking note\nOlder follow-up note\"");
+        csv.Should().NotContain("\"=SUM(1,1) newest tracking note");
+        csv.Should().Contain("08/12/2026");
+        csv.Should().NotContain("Feed note must be excluded");
+        csv.Should().NotContain("Deleted note must be excluded");
+        csv.Should().NotContain("Other tenant note must be excluded");
+    }
+
+    [Fact]
     public async Task RunReport_and_export_include_rejected_and_cancelled_liens_for_all_status_view()
     {
         var prefix = $"LIEN-DIY-EXCLUDED-{Guid.CreateVersion7():N}"[..36];
@@ -1231,6 +1334,12 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         data.EnumerateArray().Should().Contain(x =>
             x.GetProperty("key").GetString() == "date_closed" &&
             x.GetProperty("label").GetString() == "Date Closed");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "last_case_note" &&
+            x.GetProperty("label").GetString() == "Tracking Notes");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "last_case_note_date" &&
+            x.GetProperty("label").GetString() == "Last Tracking Note Date");
         data.EnumerateArray().Count(x => x.GetProperty("key").GetString() == "date_closed")
             .Should().Be(1);
         data.EnumerateArray().Should().Contain(x =>
@@ -1411,5 +1520,24 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         var resp = await anonClient.PostAsJsonAsync("/report/diy",
             new { config = new { } });
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    private static LienCaseNote CreateCaseNote(
+        Guid caseId,
+        Guid tenantId,
+        string content,
+        string category,
+        DateTime createdAtUtc)
+    {
+        var note = LienCaseNote.Create(
+            caseId,
+            tenantId,
+            content,
+            category,
+            SeedHelper.UserId,
+            "Report Author");
+        typeof(LienCaseNote).GetProperty(nameof(LienCaseNote.CreatedAtUtc))!
+            .SetValue(note, createdAtUtc);
+        return note;
     }
 }

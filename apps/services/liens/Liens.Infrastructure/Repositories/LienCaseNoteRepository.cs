@@ -1,5 +1,6 @@
 using Liens.Application.Repositories;
 using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,6 +20,27 @@ public sealed class LienCaseNoteRepository : ILienCaseNoteRepository
         return await _db.LienCaseNotes
             .Where(n => n.TenantId == tenantId && n.CaseId == caseId && !n.IsDeleted)
             .OrderBy(n => n.CreatedAtUtc)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<LienCaseNote>> GetTrackingByCaseIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> caseIds,
+        CancellationToken ct = default)
+    {
+        if (caseIds.Count == 0)
+            return [];
+
+        return await _db.LienCaseNotes
+            .AsNoTracking()
+            .Where(note => note.TenantId == tenantId &&
+                           caseIds.Contains(note.CaseId) &&
+                           !note.IsDeleted &&
+                           (note.Category == CaseNoteCategory.General ||
+                            note.Category == CaseNoteCategory.FollowUp))
+            .OrderBy(note => note.CaseId)
+            .ThenByDescending(note => note.CreatedAtUtc)
+            .ThenByDescending(note => note.Id)
             .ToListAsync(ct);
     }
 

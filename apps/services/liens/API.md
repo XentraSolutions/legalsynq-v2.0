@@ -2089,6 +2089,83 @@ Exports all rows matching `noteType` and the requested ordering; `page` and `lim
 
 CSV generation stops at 10 MiB and returns `400 validation_error` rather than materializing an unbounded export. Tenants with pre-v2 `SL_CASE_NOTES` crosswalk hashes receive `409 legacy_history_not_reconciled` until the documented source-backed category reconciliation is applied.
 
+### POST `/api/liens/reports/auto-generated/{reportId}/execute`
+
+Executes the tenant-scoped stored report using its saved report date. The compatibility alias is `POST /report/auto-generated/{reportId}/execute`. No request body is required.
+
+Query parameters:
+
+- `page`: optional, defaults to `1`, and must be at least `1`.
+- `pageSize`: optional, defaults to `50`, and must be between `1` and `100`.
+
+Eligible Weekly BCC liens are ordered by purchase date, lien number, and record ID before database paging. Only the selected page is enriched. An out-of-range page returns `200` with an empty `data` array while retaining the full-result count and column schema.
+
+```json
+{
+  "isSuccess": true,
+  "message": "Weekly BCC report generated.",
+  "report": {
+    "reportId": 42,
+    "code": "weekly_bcc_2026-08-14",
+    "description": "Weekly BCC - 08/14/2026",
+    "date": "2026-08-14",
+    "createDate": "2026-08-14T11:00:00Z",
+    "tenantId": "11111111-1111-1111-1111-111111111111",
+    "apiPath": "/api/liens/reports/weekly-bcc"
+  },
+  "reportType": "WEEKLY_BCC",
+  "schemaVersion": 1,
+  "asOfDate": "2026-08-14",
+  "page": 1,
+  "pageSize": 50,
+  "totalPages": 4,
+  "totalCount": 187,
+  "columns": [
+    { "key": "plaintiffFirstName", "label": "Plaintiff First Name", "index": 0 },
+    { "key": "caseId", "label": "Case ID", "index": 9 }
+  ],
+  "data": [
+    {
+      "plaintiffFirstName": "Ada",
+      "caseId": "CASE-001"
+    }
+  ]
+}
+```
+
+`columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. The direct `/weekly-bcc` endpoints remain complete and unpaged.
+
+### POST `/api/liens/reports/auto-generated/{reportId}/export`
+
+Exports all eligible rows from the tenant-scoped stored Weekly BCC report. The compatibility alias is `POST /report/auto-generated/{reportId}/export`. No request body or pagination parameters are required.
+
+Rows retain the same deterministic purchase-date, lien-number, and record-ID order as execution. The exporter enriches bounded pages, writes headers in the versioned 57-column order, quotes CSV values, preserves Unicode and multiline content, and neutralizes spreadsheet-formula prefixes. The response uses the established Base64 CSV envelope:
+
+```json
+{
+  "isSuccess": true,
+  "message": "CSV generated successfully.",
+  "data": [
+    {
+      "base64": "UGxhaW50aWZmIEZpcnN0IE5hbWUsLi4u",
+      "filename": "weekly_bcc_20260814.csv",
+      "export_format": "csv"
+    }
+  ]
+}
+```
+
+The 10 MiB limit is enforced before Base64 encoding. An oversized export returns `400` with `error.code = validation_error`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`.
+
 ### GET `/report/diy/columns`
 
 Returns the legacy DIY-report column metadata and the ordered default selection for the requested report type. For `LIENS`, the default selection includes `days_since_reduction_approval` in position 9 (zero-based), followed by `case_status` and `date_of_loss` in positions 14 and 15 respectively. `initial_service_date` and `number_of_liens` remain available as optional columns but are not selected by default.
+
+The existing compatibility keys have these Tracking Notes definitions:
+
+| Key | Label | Value |
+|---|---|---|
+| `last_case_note` | `Tracking Notes` | All active, nonblank General and Follow-up notes for the case, newest first and separated by `\n` line breaks |
+| `last_case_note_date` | `Last Tracking Note Date` | Date of the newest included Tracking Note in `MM/dd/yyyy` format |
+
+Feed, internal, system/history, deleted, blank, and cross-tenant notes are excluded. `POST /report/diy` and its canonical `/api/liens/reports/diy/run` route return the same aggregated value. Both DIY export routes quote the multiline field in the Base64-encoded CSV, so every Tracking Note is retained.

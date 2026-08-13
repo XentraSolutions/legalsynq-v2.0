@@ -6639,6 +6639,79 @@
       ]
     },
     {
+      "name": "Auto Generated Reports",
+      "item": [
+        {
+          "name": "GET api/liens/reports/auto-generated",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/reports/auto-generated?page=1&pageSize=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "reports", "auto-generated"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "50" }
+              ]
+            },
+            "description": "Lists tenant-scoped auto-generated report metadata. The compatibility alias is GET /report/auto-generated."
+          },
+          "response": []
+        },
+        {
+          "name": "POST api/liens/reports/auto-generated/{reportId}/execute",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/reports/auto-generated/{{reportId}}/execute?page=1&pageSize=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "reports", "auto-generated", "{{reportId}}", "execute"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "50" }
+              ]
+            },
+            "description": "Executes the stored Weekly BCC report with database pagination. Returns page metadata, the versioned 57-column schema, and the selected rows. No body is required. The compatibility alias is POST /report/auto-generated/{reportId}/execute."
+          },
+          "response": []
+        },
+        {
+          "name": "POST api/liens/reports/auto-generated/{reportId}/export",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/reports/auto-generated/{{reportId}}/export",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "reports", "auto-generated", "{{reportId}}", "export"]
+            },
+            "description": "Exports every eligible stored Weekly BCC row in the Base64 CSV envelope. No body or pagination parameters are required. The compatibility alias is POST /report/auto-generated/{reportId}/export."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Case Notes History",
       "item": [
         {

@@ -15,22 +15,72 @@ public sealed class WeeklyBccReportService : IWeeklyBccReportService
 
     public WeeklyBccReportService(LiensDbContext db) => _db = db;
 
-    public async Task<WeeklyBccReportResult> GetAsync(
+    public Task<WeeklyBccReportResult> GetAsync(
         Guid tenantId,
         DateOnly asOfDate,
+        CancellationToken ct = default) =>
+        GetAsync(tenantId, asOfDate, page: null, pageSize: null, includeTotalCount: true, ct);
+
+    public Task<WeeklyBccReportResult> GetPageAsync(
+        Guid tenantId,
+        DateOnly asOfDate,
+        int page,
+        int pageSize,
+        bool includeTotalCount = true,
         CancellationToken ct = default)
     {
-        var liens = await _db.Liens
+        ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
+        return GetAsync(tenantId, asOfDate, page, pageSize, includeTotalCount, ct);
+    }
+
+    private async Task<WeeklyBccReportResult> GetAsync(
+        Guid tenantId,
+        DateOnly asOfDate,
+        int? page,
+        int? pageSize,
+        bool includeTotalCount,
+        CancellationToken ct)
+    {
+        var query = _db.Liens
             .AsNoTracking()
             .Where(lien => lien.TenantId == tenantId &&
                            lien.PurchaseDate.HasValue &&
-                           lien.PurchaseDate.Value <= asOfDate)
+                           lien.PurchaseDate.Value <= asOfDate);
+        var orderedQuery = query
             .OrderBy(lien => lien.PurchaseDate)
             .ThenBy(lien => lien.LienNumber)
-            .ToListAsync(ct);
+            .ThenBy(lien => lien.Id);
+
+        int totalCount;
+        List<Lien> liens;
+        if (page.HasValue && pageSize.HasValue)
+        {
+            totalCount = includeTotalCount ? await query.CountAsync(ct) : 0;
+            var offset = (long)(page.Value - 1) * pageSize.Value;
+            liens = includeTotalCount && offset >= totalCount
+                ? []
+                : await orderedQuery
+                    .Skip((int)offset)
+                    .Take(pageSize.Value)
+                    .ToListAsync(ct);
+        }
+        else
+        {
+            liens = await orderedQuery.ToListAsync(ct);
+            totalCount = liens.Count;
+        }
 
         if (liens.Count == 0)
-            return new WeeklyBccReportResult { AsOfDate = asOfDate };
+        {
+            return new WeeklyBccReportResult
+            {
+                AsOfDate = asOfDate,
+                Page = page ?? 1,
+                PageSize = pageSize ?? 0,
+                TotalCount = totalCount,
+            };
+        }
 
         var lienIds = liens.Select(lien => lien.Id).ToHashSet();
         var caseIds = liens
@@ -178,7 +228,14 @@ public sealed class WeeklyBccReportService : IWeeklyBccReportService
                 companyContactsById))
             .ToList();
 
-        return new WeeklyBccReportResult { AsOfDate = asOfDate, Items = rows };
+        return new WeeklyBccReportResult
+        {
+            AsOfDate = asOfDate,
+            Items = rows,
+            Page = page ?? 1,
+            PageSize = pageSize ?? rows.Count,
+            TotalCount = totalCount,
+        };
     }
 
     private static WeeklyBccReportRow BuildRow(

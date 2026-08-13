@@ -21,6 +21,7 @@ public class DIYReportService : IDIYReportService
     private readonly ILienReductionRepository   _reductionRepo;
     private readonly ILienSettlementRepository  _settlementRepo;
     private readonly ISettlementPaymentDetailRepository _paymentDetailRepo;
+    private readonly ILienCaseNoteRepository _caseNoteRepo;
 
     public DIYReportService(
         IDIYReportConfigRepository repo,
@@ -32,7 +33,8 @@ public class DIYReportService : IDIYReportService
         ILookupValueRepository lookupRepo,
         ILienReductionRepository reductionRepo,
         ILienSettlementRepository settlementRepo,
-        ISettlementPaymentDetailRepository paymentDetailRepo)
+        ISettlementPaymentDetailRepository paymentDetailRepo,
+        ILienCaseNoteRepository caseNoteRepo)
     {
         _repo              = repo;
         _lienRepo          = lienRepo;
@@ -44,6 +46,7 @@ public class DIYReportService : IDIYReportService
         _reductionRepo     = reductionRepo;
         _settlementRepo    = settlementRepo;
         _paymentDetailRepo = paymentDetailRepo;
+        _caseNoteRepo      = caseNoteRepo;
     }
 
     public async Task<List<DIYReportConfigResponse>> GetSavedReportsAsync(
@@ -213,6 +216,7 @@ public class DIYReportService : IDIYReportService
             filteredLiens,
             rowCasesById,
             servicingItems,
+            ShouldIncludeTrackingNotes(request),
             ct);
 
         var rows = isCasesReport
@@ -483,6 +487,12 @@ public class DIYReportService : IDIYReportService
             LawFirm = caseDetails.LawFirm,
             CaseType = caseDetails.CaseType,
             CaseManager = caseDetails.CaseManager,
+            TrackingNotes = enrichment.TrackingNotesByCaseId
+                .GetValueOrDefault(l.CaseId ?? Guid.Empty, TrackingNoteReportDetails.Empty)
+                .Notes,
+            LastTrackingNoteDate = enrichment.TrackingNotesByCaseId
+                .GetValueOrDefault(l.CaseId ?? Guid.Empty, TrackingNoteReportDetails.Empty)
+                .LastDate,
             Extra = new Dictionary<string, object?>(),
         };
     }
@@ -579,6 +589,12 @@ public class DIYReportService : IDIYReportService
                     LawFirm = caseDetails.LawFirm,
                     CaseType = caseDetails.CaseType,
                     CaseManager = caseDetails.CaseManager,
+                    TrackingNotes = enrichment.TrackingNotesByCaseId
+                        .GetValueOrDefault(g.Key, TrackingNoteReportDetails.Empty)
+                        .Notes,
+                    LastTrackingNoteDate = enrichment.TrackingNotesByCaseId
+                        .GetValueOrDefault(g.Key, TrackingNoteReportDetails.Empty)
+                        .LastDate,
                     Extra = new Dictionary<string, object?>(),
                 };
             })
@@ -590,6 +606,7 @@ public class DIYReportService : IDIYReportService
         IReadOnlyCollection<Lien> liens,
         IReadOnlyDictionary<Guid, Case> casesById,
         IReadOnlyCollection<ServicingItem> servicingItems,
+        bool includeTrackingNotes,
         CancellationToken ct)
     {
         var lienIds = liens.Select(lien => lien.Id).Distinct().ToList();
@@ -696,12 +713,62 @@ public class DIYReportService : IDIYReportService
             .GroupBy(payment => payment.LienId)
             .ToDictionary(group => group.Key, group => group.Sum(payment => payment.Amount));
 
+        var trackingNotesByCaseId = new Dictionary<Guid, TrackingNoteReportDetails>();
+        if (includeTrackingNotes)
+        {
+            var trackingNotes = await _caseNoteRepo.GetTrackingByCaseIdsAsync(
+                tenantId,
+                casesById.Keys.ToList(),
+                ct);
+            trackingNotesByCaseId = trackingNotes
+                .Where(note => !string.IsNullOrWhiteSpace(note.Content))
+                .GroupBy(note => note.CaseId)
+                .ToDictionary(
+                    group => group.Key,
+                    group =>
+                    {
+                        var orderedNotes = group
+                            .OrderByDescending(note => note.CreatedAtUtc)
+                            .ThenByDescending(note => note.Id)
+                            .ToList();
+                        return new TrackingNoteReportDetails(
+                            string.Join("\n", orderedNotes.Select(note => note.Content)),
+                            DateOnly.FromDateTime(orderedNotes[0].CreatedAtUtc));
+                    });
+        }
+
         return new ReportRowEnrichment(
             medicalFacilityByLienId,
             caseDetailsById,
             reductionAmountsByLienId,
             settlementAmountsByLienId,
-            returnedAmountsByLienId);
+            returnedAmountsByLienId,
+            trackingNotesByCaseId);
+    }
+
+    private static bool ShouldIncludeTrackingNotes(DIYReportRunRequest request)
+    {
+        if (!HasReportProperty(request, "columns", out var columns) ||
+            columns.ValueKind != JsonValueKind.Array ||
+            columns.GetArrayLength() == 0)
+        {
+            return true;
+        }
+
+        return columns.EnumerateArray().Any(column =>
+        {
+            var key = column.ValueKind switch
+            {
+                JsonValueKind.String => column.GetString(),
+                JsonValueKind.Object when column.TryGetProperty("key", out var value) &&
+                                          value.ValueKind == JsonValueKind.String => value.GetString(),
+                JsonValueKind.Object when column.TryGetProperty("name", out var value) &&
+                                          value.ValueKind == JsonValueKind.String => value.GetString(),
+                _ => null,
+            };
+            return string.Equals(key, "last_case_note", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(key, "last_case_note_date", StringComparison.OrdinalIgnoreCase);
+        });
     }
 
     private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
@@ -877,12 +944,18 @@ public class DIYReportService : IDIYReportService
         public static readonly CaseReportDetails Empty = new(string.Empty, string.Empty, string.Empty);
     }
 
+    private sealed record TrackingNoteReportDetails(string Notes, DateOnly? LastDate)
+    {
+        public static readonly TrackingNoteReportDetails Empty = new(string.Empty, null);
+    }
+
     private sealed record ReportRowEnrichment(
         IReadOnlyDictionary<Guid, string> MedicalFacilityByLienId,
         IReadOnlyDictionary<Guid, CaseReportDetails> CaseDetailsById,
         IReadOnlyDictionary<Guid, ReductionReportAmounts> ReductionAmountsByLienId,
         IReadOnlyDictionary<Guid, SettlementReportAmounts> SettlementAmountsByLienId,
-        IReadOnlyDictionary<Guid, decimal> ReturnedAmountsByLienId);
+        IReadOnlyDictionary<Guid, decimal> ReturnedAmountsByLienId,
+        IReadOnlyDictionary<Guid, TrackingNoteReportDetails> TrackingNotesByCaseId);
 
     private readonly record struct ReductionReportAmounts(decimal Amount, DateOnly ReductionDate);
 
