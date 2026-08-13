@@ -143,7 +143,13 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     table,
                     name,
                     columns,
-                    uniqueness == "UNIQUE");
+                    uniqueness == "UNIQUE",
+                    name == "UX_ContactPersonTypes_CompanyTypeId_Code"
+                        ? "UX_ContactPersonTypes_Scope_CompanyTypeId_Code"
+                        : null,
+                    name == "UX_ContactPersonTypes_CompanyTypeId_Code"
+                        ? "TenantId"
+                        : null);
             }
 
             var companyTypes = new[]

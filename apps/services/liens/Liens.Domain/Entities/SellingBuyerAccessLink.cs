@@ -44,6 +44,43 @@ public class SellingBuyerAccessLink : AuditableEntity
         BuyerCompanyContactPersonId = contactPersonId;
     }
 
+    public void ReassignCanonicalBuyerCompany(
+        Guid sourceCompanyId, Guid targetCompanyId, Guid updatedByUserId)
+    {
+        ValidateReassignment(sourceCompanyId, targetCompanyId, updatedByUserId);
+        if (BuyerCompanyId != sourceCompanyId) return;
+        BuyerCompanyId = targetCompanyId;
+        Touch(updatedByUserId);
+    }
+
+    public void ReassignCanonicalBuyerContactPerson(
+        Guid sourceContactPersonId,
+        Guid targetContactPersonId,
+        Guid targetCompanyId,
+        Guid updatedByUserId)
+    {
+        ValidateReassignment(sourceContactPersonId, targetContactPersonId, updatedByUserId);
+        if (targetCompanyId == Guid.Empty) throw new ArgumentException("Target company id is required.", nameof(targetCompanyId));
+        if (BuyerCompanyContactPersonId != sourceContactPersonId) return;
+        BuyerCompanyContactPersonId = targetContactPersonId;
+        BuyerCompanyId = targetCompanyId;
+        Touch(updatedByUserId);
+    }
+
+    private static void ValidateReassignment(Guid sourceId, Guid targetId, Guid updatedByUserId)
+    {
+        if (sourceId == Guid.Empty) throw new ArgumentException("Source id is required.", nameof(sourceId));
+        if (targetId == Guid.Empty) throw new ArgumentException("Target id is required.", nameof(targetId));
+        if (sourceId == targetId) throw new ArgumentException("Source and target ids must differ.", nameof(targetId));
+        if (updatedByUserId == Guid.Empty) throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+    }
+
+    private void Touch(Guid updatedByUserId)
+    {
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public static SellingBuyerAccessLink Create(
         Guid tenantId,
         Guid lienId,

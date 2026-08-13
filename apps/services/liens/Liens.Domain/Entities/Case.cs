@@ -47,6 +47,54 @@ public class Case : AuditableEntity
         CaseManagerContactPersonId = caseManagerContactPersonId;
     }
 
+    public void SetCanonicalCaseParties(
+        Guid? lawFirmCompanyId,
+        Guid? caseManagerContactPersonId,
+        Guid updatedByUserId)
+    {
+        LinkCanonicalCaseParties(lawFirmCompanyId, caseManagerContactPersonId);
+        Touch(updatedByUserId);
+    }
+
+    public void ReassignCanonicalCompany(Guid sourceCompanyId, Guid targetCompanyId, Guid updatedByUserId)
+    {
+        ValidateReassignment(sourceCompanyId, targetCompanyId, updatedByUserId);
+        if (HandlingLawFirmCompanyId != sourceCompanyId) return;
+        HandlingLawFirmCompanyId = targetCompanyId;
+        Touch(updatedByUserId);
+    }
+
+    public void ReassignCanonicalContactPerson(
+        Guid sourceContactPersonId,
+        Guid targetContactPersonId,
+        Guid sourceCompanyId,
+        Guid targetCompanyId,
+        Guid updatedByUserId)
+    {
+        ValidateReassignment(sourceContactPersonId, targetContactPersonId, updatedByUserId);
+        if (sourceCompanyId == Guid.Empty) throw new ArgumentException("Source company id is required.", nameof(sourceCompanyId));
+        if (targetCompanyId == Guid.Empty) throw new ArgumentException("Target company id is required.", nameof(targetCompanyId));
+        if (CaseManagerContactPersonId != sourceContactPersonId) return;
+        CaseManagerContactPersonId = targetContactPersonId;
+        if (HandlingLawFirmCompanyId == sourceCompanyId)
+            HandlingLawFirmCompanyId = targetCompanyId;
+        Touch(updatedByUserId);
+    }
+
+    private static void ValidateReassignment(Guid sourceId, Guid targetId, Guid updatedByUserId)
+    {
+        if (sourceId == Guid.Empty) throw new ArgumentException("Source id is required.", nameof(sourceId));
+        if (targetId == Guid.Empty) throw new ArgumentException("Target id is required.", nameof(targetId));
+        if (sourceId == targetId) throw new ArgumentException("Source and target ids must differ.", nameof(targetId));
+        if (updatedByUserId == Guid.Empty) throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+    }
+
+    private void Touch(Guid updatedByUserId)
+    {
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public static Case Create(
         Guid tenantId,
         Guid orgId,

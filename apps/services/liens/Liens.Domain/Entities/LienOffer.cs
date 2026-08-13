@@ -33,6 +33,19 @@ public class LienOffer : AuditableEntity
         BuyerCompanyId = companyId;
     }
 
+    public void ReassignCanonicalBuyerCompany(
+        Guid sourceCompanyId, Guid targetCompanyId, Guid updatedByUserId)
+    {
+        if (sourceCompanyId == Guid.Empty) throw new ArgumentException("Source company id is required.", nameof(sourceCompanyId));
+        if (targetCompanyId == Guid.Empty) throw new ArgumentException("Target company id is required.", nameof(targetCompanyId));
+        if (sourceCompanyId == targetCompanyId) throw new ArgumentException("Source and target company ids must differ.", nameof(targetCompanyId));
+        if (updatedByUserId == Guid.Empty) throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+        if (BuyerCompanyId != sourceCompanyId) return;
+        BuyerCompanyId = targetCompanyId;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public static LienOffer Create(
         Guid tenantId,
         Guid lienId,

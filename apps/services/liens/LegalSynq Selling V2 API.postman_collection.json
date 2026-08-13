@@ -78,6 +78,7 @@
         {
           "name": "Save Case Information",
           "request": {
+            "description": "Reference IDs may come from either legacy Contacts or the Company Directory. Directory fundingCompanyId and handlingLawFirmId values must identify active Funding Company and Law Firm companies; fundingCompanyContactId must belong to the funding company, and caseManagerId must belong to the law firm with the Case Manager contact-person type.",
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"fundingCompanyContactId\": \"{{fundingCompanyContactId}}\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseId\": \"{{caseId}}\",\n  \"createCaseIfMissing\": false\n}", "options": { "raw": { "language": "json" } } },
