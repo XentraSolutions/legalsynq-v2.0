@@ -65,7 +65,9 @@ export function CompanyContactPersonsTab() {
   }, [search, typeFilter, pageSize]);
 
   const allContacts = contactPersonsQuery.data ?? [];
-  // No backend query params for search/type on the list endpoint yet — filter client-side.
+  // REFACTOR: list endpoint has no server-side pagination or search/type query params yet.
+  // Filtering + paging below is client-side as a stopgap; move to the backend once it supports
+  // filtering contact persons by company type id or code and paginating results.
   const contacts = useMemo(() => {
     const q = search.trim().toLowerCase();
     return allContacts.filter((c) => {
