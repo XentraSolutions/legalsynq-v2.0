@@ -15,8 +15,10 @@ public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Int
             .AddEnvironmentVariables()
             .Build();
 
-        var connectionString = configuration.GetConnectionString("IntakeDatabase")
-            ?? "server=localhost;port=3306;database=intake_design;user=root;password=root";
+        var configuredConnectionString = configuration.GetConnectionString("IntakeDatabase");
+        var connectionString = string.IsNullOrWhiteSpace(configuredConnectionString)
+            ? "server=localhost;port=3306;database=intake_design;user=root;password=root"
+            : configuredConnectionString;
 
         var optionsBuilder = new DbContextOptionsBuilder<IntakeDbContext>();
         optionsBuilder.UseMySql(

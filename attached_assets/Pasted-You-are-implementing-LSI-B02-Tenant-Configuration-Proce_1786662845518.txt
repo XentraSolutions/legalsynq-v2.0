@@ -1,0 +1,923 @@
+You are implementing LSI-B02 — Tenant Configuration & Processing Profile Framework for Synq Intake in the LegalSynq v3 repository.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Required implementation report: /analysis/LSI-B02-report.md
+
+IMPORTANT EXECUTION RULES
+1. Work only on LSI-B02 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, or production deployment work.
+3. Do not implement email ingestion, Gmail/Outlook connectors, Synq AI classification, extraction, matching, review UI, lien creation, funding workflows, or downstream adapters.
+4. Preserve prior reports as read-only.
+5. Create/update only /analysis/LSI-B02-report.md for this ticket.
+6. Reuse LegalSynq v3 conventions and package versions from nearby current services.
+7. Do not introduce an alternate backend, ORM, database, auth model, gateway, or service architecture.
+8. Do not commit uploaded specification files or unrelated generated artifacts.
+9. Do not modify unrelated business-domain services except where a minimal platform integration/configuration change is genuinely required.
+10. Before coding, inspect the current repository state and existing LSI-B01 Intake implementation.
+11. Record the repository baseline and working-tree state in the report before implementation.
+12. If unrelated pre-existing changes exist, do not overwrite or absorb them.
+13. The final result must build and test locally within the repository boundary.
+14. Do not claim GitHub CI, AWS, deployed, or production validation unless separately proven.
+
+LOCKED PLATFORM STACK
+Synq Intake must conform to LegalSynq v3:
+- .NET 10
+- ASP.NET Core Minimal APIs/current LegalSynq conventions
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT Bearer/service-token authentication
+- existing LegalSynq tenant-context conventions
+- existing YARP gateway conventions
+- shared/building-blocks where applicable
+- shared/contracts conventions where applicable
+- LegalSynq.AuditClient where applicable
+- existing configuration/logging/health/test patterns
+- no unrelated package upgrades
+
+ARCHITECTURAL PRINCIPLE
+Synq Intake is tenant-bound, product-neutral, independently deployable, and source-preserving.
+
+Synq Intake owns:
+- tenant Intake configuration
+- processing-profile definitions
+- tenant/profile assignments
+- validated profile configuration
+- configuration versioning
+- configuration resolution
+- Intake-owned persistence
+
+Synq Intake does NOT own:
+- tenant master data
+- organization master data
+- users
+- cases
+- liens
+- patients
+- facilities
+- providers
+- document binaries
+- Flow tasks/workflows
+- notifications
+- AI vendor credentials
+- downstream product databases
+
+Do not add direct implementation dependencies from Intake to:
+- Liens.Infrastructure
+- Fund.Infrastructure
+- CareConnect.Infrastructure
+or equivalent product-specific implementation assemblies.
+
+Use contracts/APIs/adapters/events later where product interaction is needed.
+
+OBJECTIVE
+Build the persistent tenant-scoped configuration framework that controls how Synq Intake behaves for each tenant without coupling Intake to SynqLien, SynqFund, or CareConnect.
+
+The completed framework must be able to answer:
+
+“For this authenticated tenant, which Intake processing profile applies, is it enabled, what validated configuration governs it, and which configuration version was used?”
+
+INITIAL SUPPORTED PROCESSING PROFILE
+Implement exactly one supported profile:
+
+LIEN_INTAKE_V1
+
+Architecture must permit future profiles without schema redesign, but do not implement future profiles yet.
+
+==================================================
+1. DOMAIN MODEL
+==================================================
+
+Implement these Intake-owned concepts.
+
+A. TenantIntakeConfiguration
+
+Conceptual fields:
+- Id
+- TenantId
+- OrgId, only if consistent with current LegalSynq tenancy conventions
+- IsEnabled
+- DefaultProcessingProfileCode
+- RequireHumanReviewByDefault
+- AutoProcessingEnabled
+- ConfigurationVersion
+- CreatedAt
+- CreatedBy
+- UpdatedAt
+- UpdatedBy
+
+Requirements:
+- belongs to exactly one tenant
+- unique per tenant
+- zero or one current configuration row per tenant
+- supports enable/disable
+- supports a default processing profile
+- supports future Intake-wide settings
+- ConfigurationVersion starts at 1
+- ConfigurationVersion increments monotonically on mutation
+- disabling/re-enabling must not reset version
+
+B. ProcessingProfileDefinition
+
+Conceptual fields:
+- Id
+- Code
+- DisplayName
+- Description
+- Version
+- IsActive
+- IsSystemDefined
+- CreatedAt
+- UpdatedAt
+
+Initial record:
+- Code: LIEN_INTAKE_V1
+- DisplayName: Lien Intake V1
+- Version: 1
+- IsActive: true
+- IsSystemDefined: true
+
+Rules:
+- Code is unique
+- Code is immutable once created
+- Code is the stable external identifier
+- avoid exposing database IDs externally
+- inactive profiles cannot be newly assigned or selected for new processing
+- deactivation must not delete historical references
+
+Recommended profile-code validation:
+^[A-Z][A-Z0-9_]{2,63}$
+
+C. TenantProcessingProfile
+
+Conceptual fields:
+- Id
+- TenantId
+- ProcessingProfileDefinitionId
+- IsEnabled
+- IsDefault
+- ConfigurationJson
+- ConfigurationVersion
+- CreatedAt
+- CreatedBy
+- UpdatedAt
+- UpdatedBy
+
+Requirements:
+- unique tenant + profile assignment
+- tenant-specific profile enable/disable
+- zero or one default profile per tenant
+- disabled profile cannot be default
+- inactive system profile cannot become default
+- disabling preserves history/configuration
+- ConfigurationVersion starts at 1 and increments monotonically
+- no normal lifecycle hard-delete requirement
+
+==================================================
+2. PROCESSING PROFILE REGISTRY
+==================================================
+
+Create a reusable registry abstraction, for example:
+
+IProcessingProfileRegistry
+
+Responsibilities:
+- resolve a supported profile by code
+- expose supported version
+- expose canonical defaults
+- validate tenant-specific profile configuration
+- reject unknown profiles
+- expose active/system-supported state as needed
+
+Do not scatter ad-hoc string comparisons for profile codes.
+
+Required behaviors:
+- LIEN_INTAKE_V1 resolves successfully
+- UNKNOWN_PROFILE fails deterministically
+- inactive profile cannot be newly assigned
+
+==================================================
+3. LIEN_INTAKE_V1 CONFIGURATION CONTRACT
+==================================================
+
+Create a strongly typed configuration contract for LIEN_INTAKE_V1.
+
+Required configuration capability:
+
+Review:
+- RequireHumanReview
+- AllowAutoApproval
+
+Confidence policy placeholders:
+- AutoApproveThreshold
+- ReviewThreshold
+- RejectThreshold
+
+Matching policy placeholders:
+- EnablePatientMatching
+- EnableCaseMatching
+- EnableFacilityMatching
+- EnableDuplicateDetection
+
+Processing policy:
+- ProcessAttachments
+- ProcessEmailBody
+- AllowUnsupportedDocuments
+
+Routing placeholder:
+- DestinationAdapterCode
+
+These are configuration values only.
+
+DO NOT implement:
+- confidence engine execution
+- matching engine execution
+- AI extraction/classification
+- adapter invocation
+- lien creation
+
+Use conservative defaults.
+
+Recommended behavioral defaults:
+- RequireHumanReview = true
+- AllowAutoApproval = false
+- ProcessAttachments = true
+- ProcessEmailBody = true
+
+Define all defaults explicitly and make them testable.
+
+Confidence thresholds:
+- each threshold must be between 0.00 and 1.00 inclusive
+- AutoApproveThreshold > ReviewThreshold
+- ReviewThreshold >= RejectThreshold
+
+If you choose specific defaults, document them clearly in the implementation report.
+
+==================================================
+4. CONFIGURATION STORAGE
+==================================================
+
+Use a controlled configuration object for profile-specific options rather than introducing a large premature column set.
+
+Preferred approach:
+- ConfigurationJson persisted by Intake
+- strongly typed application/domain contract
+- explicit serializer options
+- deterministic validation before persistence
+
+Requirements:
+- arbitrary unvalidated JSON is forbidden
+- unsupported/unknown properties should be rejected if consistent with the chosen serializer/validation strategy
+- profile schema must be version-aware
+- configuration data must not be executable code
+- no arbitrary CLR type loading
+- no dynamic code execution from JSON
+
+Database remains MySQL 8 through Pomelo.
+
+==================================================
+5. EFFECTIVE CONFIGURATION RESOLUTION
+==================================================
+
+Create an application-layer resolver, for example:
+
+IIntakeConfigurationResolver
+
+Resolve effective configuration using:
+- TenantId
+- ProcessingProfileCode
+
+Resolution should combine:
+1. system processing-profile definition
+2. tenant Intake configuration
+3. tenant profile assignment
+4. tenant profile configuration
+5. canonical profile defaults
+
+Conceptual result:
+
+ResolvedProcessingConfiguration
+- TenantId
+- ProcessingProfileCode
+- ProcessingProfileVersion
+- TenantConfigurationVersion
+- TenantProfileConfigurationVersion, if separately useful
+- EffectiveConfiguration
+- ResolvedAt
+
+Requirements:
+- deterministic
+- tenant-scoped
+- unknown profile fails
+- inactive global profile fails for new processing
+- disabled tenant assignment fails for new processing
+- no silent fallback to another tenant
+- if no default profile exists, callers must explicitly provide a profile code
+- never infer a profile from tenant type
+
+Establish versioning needed so later Intake items can preserve which configuration governed processing.
+
+Do not implement full intake-item snapshots in B02.
+
+==================================================
+6. DEFAULT PROFILE RULES
+==================================================
+
+Enforce:
+- zero or one default processing profile per tenant
+- default profile must be assigned to that tenant
+- default profile must be enabled
+- global profile definition must be active
+- tenant Intake configuration DefaultProcessingProfileCode must correspond to a valid enabled tenant assignment
+- disabling the current default must either:
+  a. atomically clear the default, or
+  b. reject the operation until default is changed
+Choose one deterministic rule and document it.
+
+No guessing.
+
+==================================================
+7. TENANT ISOLATION
+==================================================
+
+Tenant isolation is mandatory.
+
+Every tenant-scoped configuration operation must use authenticated LegalSynq tenant context.
+
+Tenant A must never be able to:
+- retrieve Tenant B Intake configuration
+- update Tenant B Intake configuration
+- list Tenant B processing profiles
+- resolve Tenant B processing configuration
+- set Tenant B default profile
+- disable Tenant B profile
+- infer Tenant B configuration
+
+Server-side tenant filtering is mandatory.
+
+Do not rely on UI filtering.
+
+Do not treat an arbitrary TenantId in a request body as authoritative.
+
+Use the established LegalSynq JWT/service-token/tenant-context patterns.
+
+Administrative explicit-tenant operations may only exist if the current platform already has a consistent authorized pattern.
+
+==================================================
+8. VERSIONING AND CONCURRENCY
+==================================================
+
+Implement optimistic concurrency.
+
+At minimum:
+- TenantIntakeConfiguration.ConfigurationVersion
+- TenantProcessingProfile.ConfigurationVersion
+
+Behavior:
+- initial version = 1
+- each successful mutation increments version
+- stale client update must not silently overwrite a newer version
+- stale update should return HTTP 409 Conflict
+
+Example:
+- client reads version 4
+- another update creates version 5
+- client attempts update based on version 4
+- result must be conflict, not overwrite
+
+Reuse existing LegalSynq concurrency conventions if available.
+
+==================================================
+9. AUDITABILITY
+==================================================
+
+Configuration changes must produce sufficient audit evidence.
+
+Capture at minimum:
+- TenantId
+- relevant configuration/profile identifier
+- previous version
+- new version
+- actor
+- timestamp
+- operation
+
+Relevant actions include:
+- CREATE
+- UPDATE
+- ENABLE
+- DISABLE
+- SET_DEFAULT
+- REMOVE_DEFAULT
+
+Use LegalSynq.AuditClient where applicable and consistent with platform conventions.
+
+Do not make Intake the central audit system.
+
+==================================================
+10. DATABASE / EF CORE
+==================================================
+
+Extend IntakeDbContext.
+
+Expected Intake-owned tables may include:
+- TenantIntakeConfigurations
+- ProcessingProfileDefinitions
+- TenantProcessingProfiles
+
+Follow existing LegalSynq naming conventions.
+
+Required constraints/indexing:
+- unique TenantId for TenantIntakeConfiguration
+- unique ProcessingProfileDefinition.Code
+- unique TenantId + ProcessingProfileDefinitionId
+- enforce or reliably guarantee one default profile per tenant
+- indexes supporting:
+  - TenantId
+  - ProcessingProfileCode / definition lookup
+  - TenantId + ProcessingProfileDefinitionId
+  - TenantId + IsDefault
+  - IsActive
+
+Use proper foreign keys between Intake-owned entities.
+
+Do not create:
+- Case tables
+- Lien tables
+- Patient tables
+- Facility tables
+- Document tables
+- Email tables
+- AI result tables
+- Flow/task tables
+
+==================================================
+11. FIRST REAL INTAKE MIGRATION
+==================================================
+
+Create the first real Intake EF migration for B02.
+
+Suggested name:
+InitialIntakeConfiguration
+
+or the closest repository-convention equivalent.
+
+Migration must:
+- create only B02-owned configuration schema
+- apply cleanly against MySQL 8
+- preserve reversibility if repository conventions expect Down support
+- introduce no unrelated database schema
+
+Validate the migration against a disposable/local MySQL 8 database.
+
+No shared/cloud database.
+
+==================================================
+12. LIEN_INTAKE_V1 REGISTRATION / SEEDING
+==================================================
+
+Make LIEN_INTAKE_V1 available deterministically.
+
+Use the repository’s preferred pattern:
+- EF model seeding, OR
+- idempotent startup/bootstrap initialization
+
+Requirements:
+- idempotent
+- no duplicate profile rows
+- no destructive reset
+- safe across repeated startup/migration execution
+- profile code remains stable
+
+Document the chosen strategy.
+
+==================================================
+13. API ENDPOINTS
+==================================================
+
+Follow current LegalSynq Minimal API conventions.
+
+Gateway prefix remains:
+- /api/intake/*
+
+Internal Intake routes should align with the existing YARP PathRemovePrefix behavior.
+
+Implement endpoints equivalent to the following unless repository conventions strongly indicate a better naming pattern.
+
+A. Get tenant Intake configuration
+GET /configuration
+
+B. Create/update tenant Intake configuration
+PUT /configuration
+
+Must support optimistic concurrency.
+
+C. List globally available processing profiles
+GET /processing-profiles
+
+Returns available active system profile definitions.
+This does NOT imply tenant enablement.
+
+D. List current tenant profile assignments
+GET /configuration/processing-profiles
+
+E. Assign profile to current tenant
+POST /configuration/processing-profiles
+
+Conceptual request:
+{
+  "processingProfileCode": "LIEN_INTAKE_V1",
+  "isDefault": true,
+  "configuration": {}
+}
+
+F. Get tenant profile configuration
+GET /configuration/processing-profiles/{profileCode}
+
+G. Update tenant profile configuration
+PUT /configuration/processing-profiles/{profileCode}
+
+H. Enable/disable tenant profile
+PATCH /configuration/processing-profiles/{profileCode}/status
+
+Conceptual request:
+{
+  "isEnabled": false,
+  "configurationVersion": 4
+}
+
+Use current platform patterns for request/response DTOs and route groups.
+
+==================================================
+14. API RESPONSE REQUIREMENTS
+==================================================
+
+Responses should expose relevant fields such as:
+- TenantId
+- ProcessingProfileCode
+- ProcessingProfileVersion
+- IsEnabled
+- IsDefault
+- ConfigurationVersion
+- CreatedAt
+- UpdatedAt
+
+Never return:
+- database credentials
+- connection strings
+- JWT signing material
+- service tokens
+- AI credentials
+- unrelated internal secrets
+
+==================================================
+15. AUTHENTICATION / AUTHORIZATION
+==================================================
+
+Reuse LSI-B01 authentication.
+
+Configuration mutation endpoints require authentication.
+
+Use existing LegalSynq authorization conventions to distinguish at least:
+- configuration read access
+- configuration management access
+
+Do not invent an unrelated permission framework if existing roles/policies/claims can be reused.
+
+Health endpoints remain unchanged.
+
+==================================================
+16. ERROR HANDLING
+==================================================
+
+Use established LegalSynq API error conventions.
+
+Required behavior:
+
+400 Bad Request:
+- invalid profile-code format
+- invalid configuration
+- unsupported property/value
+- invalid threshold ranges
+- inconsistent thresholds
+- invalid state transition
+
+401 Unauthorized:
+- no valid authentication
+
+403 Forbidden:
+- authenticated principal lacks required access
+
+404 Not Found:
+- requested profile definition or tenant assignment not found
+
+409 Conflict:
+- duplicate tenant configuration
+- duplicate tenant/profile assignment
+- stale ConfigurationVersion
+- conflicting default-profile operation
+- incompatible configuration version
+
+422 only if already conventional in LegalSynq for semantic validation.
+
+==================================================
+17. LOGGING
+==================================================
+
+Configuration operations should use structured logging containing:
+- CorrelationId
+- TenantId
+- ProfileCode when applicable
+- ConfigurationVersion
+- Operation
+- Result
+
+Do not log:
+- JWTs
+- service tokens
+- secrets
+- unnecessary full configuration payloads
+
+==================================================
+18. REQUIRED TESTS
+==================================================
+
+Add robust tests.
+
+PROFILE REGISTRY
+- LIEN_INTAKE_V1 resolves
+- unknown profile fails
+- inactive profile cannot be newly assigned
+
+TENANT CONFIGURATION
+- create tenant configuration
+- retrieve tenant configuration
+- duplicate tenant configuration prevented
+- configuration version begins at 1
+- mutation increments configuration version
+
+TENANT PROFILE ASSIGNMENT
+- assign LIEN_INTAKE_V1
+- duplicate tenant/profile assignment rejected
+- enable/disable works
+- configuration preserved across disable/re-enable
+- only one default exists
+- disabled profile cannot become default
+- inactive global profile cannot become default
+- disabling default follows the selected deterministic rule
+
+TENANT ISOLATION
+- Tenant A cannot read Tenant B configuration
+- Tenant A cannot update Tenant B configuration
+- Tenant A cannot list Tenant B assignments
+- Tenant A cannot resolve Tenant B profile
+- Tenant A cannot mutate Tenant B profile state
+
+CONFIGURATION VALIDATION
+- valid LIEN_INTAKE_V1 configuration accepted
+- threshold less than 0 rejected
+- threshold greater than 1 rejected
+- invalid threshold ordering rejected
+- unsupported configuration fields rejected where strict parsing is implemented
+- profile defaults are explicit and testable
+
+CONCURRENCY
+- stale TenantIntakeConfiguration update returns conflict
+- stale TenantProcessingProfile update returns conflict
+
+RESOLUTION
+- tenant-specific LIEN_INTAKE_V1 resolves
+- canonical defaults are applied deterministically
+- tenant overrides apply deterministically
+- disabled tenant profile cannot resolve for new processing
+- inactive global profile cannot resolve for new processing
+- missing default does not cause guessing
+- default resolution is deterministic
+
+DATABASE
+- migration can be applied to MySQL 8
+- expected schema exists
+- uniqueness constraints work
+- no unrelated tables are created
+
+==================================================
+19. LOCAL VALIDATION
+==================================================
+
+At minimum run and record:
+
+- dotnet restore as needed
+- Intake API build
+- Intake test suite
+- Gateway build if routing/configuration changes occur
+- full LegalSynq solution build with serialized build if needed
+- dotnet ef dbcontext info
+- dotnet ef migrations list
+- migration apply against disposable MySQL 8
+- schema/constraint validation where practical
+- git diff --check
+- git status --short
+- git diff --stat
+- check no Intake bin/obj files are tracked
+- check no uploaded spec/attached asset was added unintentionally
+
+Do not treat unrelated pre-existing warnings as B02 failures.
+Do explicitly identify any new warnings/errors introduced by B02.
+
+==================================================
+20. SECURITY VALIDATION
+==================================================
+
+Verify and document:
+- no committed secrets
+- no live/shared database used
+- no cloud environment touched
+- no tenant spoofing path introduced
+- no cross-tenant read/write path
+- no arbitrary executable configuration
+- no product-specific database coupling
+- no raw authorization tokens logged
+- no generated build artifacts committed
+
+==================================================
+21. RELATIONSHIP TO FUTURE LSI-B03
+==================================================
+
+B02 must expose a stable configuration/profile framework that B03 can consume.
+
+Future B03 relationship:
+
+Tenant
+  -> TenantIntakeConfiguration
+  -> TenantProcessingProfile
+       -> LIEN_INTAKE_V1
+
+Future TenantIntakeSource
+  -> TenantId
+  -> Purpose
+  -> ProcessingProfileCode
+
+Do not implement TenantIntakeSource yet.
+
+Preserve the locked future email invariant:
+
+Each configured Intake email source will belong to exactly one tenant.
+
+Future correct sequence:
+Inbound source
+-> resolve TenantId from registered source ownership
+-> resolve tenant processing profile
+-> process
+
+Future forbidden sequence:
+Inbound email
+-> inspect sender/body/attachments
+-> infer or guess tenant
+-> process
+
+Processing-profile configuration must never substitute for source-to-tenant ownership resolution.
+
+==================================================
+22. OUT OF SCOPE
+==================================================
+
+Do NOT implement in B02:
+- tenant inbound email addresses
+- Gmail
+- Microsoft 365
+- IMAP
+- SMTP ingestion
+- email polling
+- mailbox webhooks
+- full email repository
+- raw MIME persistence
+- attachments ingestion
+- Documents Service integration
+- Synq AI calls
+- AI classification
+- extraction
+- OCR
+- entity matching
+- confidence engine execution
+- review queue/UI
+- Case creation
+- Lien creation
+- downstream adapter execution
+- Flow tasks
+- notifications
+- SynqFund profile
+- CareConnect profile
+- AWS provisioning
+- deployment/runtime infrastructure
+
+==================================================
+23. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B02 is complete only when all are true:
+
+1. TenantIntakeConfiguration exists and is persisted.
+2. ProcessingProfileDefinition exists and is persisted.
+3. TenantProcessingProfile exists and is persisted.
+4. LIEN_INTAKE_V1 is registered deterministically.
+5. LIEN_INTAKE_V1 exposes canonical typed defaults.
+6. A tenant can enable LIEN_INTAKE_V1.
+7. A tenant can configure LIEN_INTAKE_V1.
+8. A tenant can designate exactly one default profile.
+9. Multiple defaults are prevented.
+10. Disabled profiles cannot be selected for new processing.
+11. Inactive global profiles cannot be selected for new processing.
+12. Tenant configuration versioning works.
+13. Tenant profile configuration versioning works.
+14. Stale tenant configuration updates are rejected.
+15. Stale profile updates are rejected.
+16. Invalid LIEN_INTAKE_V1 configuration is rejected.
+17. Unknown processing profiles are rejected.
+18. Effective configuration resolves by tenant + profile.
+19. Default profile resolution is deterministic.
+20. Tenant A cannot access or mutate Tenant B configuration.
+21. First real Intake EF migration applies successfully to MySQL 8.
+22. Required indexes/constraints exist.
+23. Intake API builds successfully.
+24. Intake tests pass.
+25. Gateway builds if changed.
+26. Full LegalSynq solution build has zero new B02-related errors.
+27. Existing services remain functionally unchanged except necessary platform integration points.
+28. No direct SynqLien/Fund/CareConnect implementation/database dependency is introduced.
+29. No email ingestion is implemented prematurely.
+30. No AI processing is implemented prematurely.
+31. No AWS/deployment work is performed.
+32. No secrets or uploaded specification files are committed.
+33. /analysis/LSI-B02-report.md exists and contains complete implementation/validation evidence.
+
+==================================================
+24. REQUIRED REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B02-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Initial HEAD and origin/xenia relationship
+5. Initial working-tree state
+6. Existing Intake architecture reviewed
+7. Files added
+8. Files modified
+9. Domain model implemented
+10. Database schema
+11. Migration name
+12. Indexes and constraints
+13. Processing profile registry
+14. LIEN_INTAKE_V1 configuration contract
+15. LIEN_INTAKE_V1 defaults
+16. Configuration validation rules
+17. Tenant configuration behavior
+18. Tenant profile assignment behavior
+19. Default-profile behavior
+20. Versioning strategy
+21. Concurrency behavior
+22. Configuration resolver behavior
+23. API endpoints
+24. Authentication/authorization behavior
+25. Tenant isolation evidence
+26. Audit behavior
+27. Logging behavior
+28. Migration validation
+29. MySQL validation environment
+30. Build commands/results
+31. Test commands/results
+32. Full solution build result
+33. Security assessment
+34. Existing-service impact
+35. Git diff summary
+36. Known gaps
+37. Out-of-scope confirmation
+38. Final repository validation status
+39. Recommended next bundle: LSI-B03
+
+Sanitize any local disposable credentials in the report.
+
+==================================================
+25. DEFINITION OF DONE
+==================================================
+
+The implementation is done when Synq Intake can reliably and securely answer:
+
+“For this authenticated tenant, which Intake processing profile applies, is it enabled, what validated configuration governs it, and which configuration version was used?”
+
+without implementing email ingestion, Synq AI processing, matching, review workflows, downstream adapters, or cloud deployment.
+
+When complete, stop and produce the LSI-B02 implementation report.
+
+Do not begin LSI-B03 automatically.

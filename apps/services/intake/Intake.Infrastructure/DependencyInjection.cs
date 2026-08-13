@@ -1,5 +1,8 @@
+using Intake.Application.Configuration;
+using Intake.Infrastructure.Audit;
 using Intake.Infrastructure.Health;
 using Intake.Infrastructure.Persistence;
+using LegalSynq.AuditClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +29,12 @@ public static class DependencyInjection
                     new MySqlServerVersion(new Version(8, 0, 0)));
             }
         });
+
+        services.AddScoped<IIntakeConfigurationRepository, EfIntakeConfigurationRepository>();
+        services.AddSingleton<IProcessingProfileRegistry, ProcessingProfileRegistry>();
+        services.AddScoped<IIntakeConfigurationAuditSink, IntakeConfigurationAuditSink>();
+        services.AddScoped<IIntakeConfigurationService, IntakeConfigurationService>();
+        services.AddAuditEventClient(configuration);
 
         services.AddHealthChecks()
             .AddCheck(

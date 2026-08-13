@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Intake.Domain\Intake.Domain.csproj" />
     <ProjectReference Include="..\Intake.Application\Intake.Application.csproj" />
+    <ProjectReference Include="..\..\..\..\shared\audit-client\LegalSynq.AuditClient\LegalSynq.AuditClient.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,7 +1,9 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using BuildingBlocks.Authentication.ServiceTokens;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using Intake.Api.Authorization;
 using Intake.Api.Endpoints;
 using Intake.Api.Middleware;
 using Intake.Application;
@@ -96,12 +98,13 @@ builder.Services
     })
     .AddServiceTokenBearer(builder.Configuration, failFastIfMissingSecret: false);
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(IntakeAuthorizationPolicies.AddTo);
 
 var app = builder.Build();
 
 app.UseSerilogRequestLogging();
 app.UseCorrelationId();
+app.UseMiddleware<IntakeConfigurationExceptionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -113,6 +116,7 @@ if (app.Environment.IsDevelopment())
 
 app.MapHealthEndpoints();
 app.MapInfoEndpoints();
+app.MapIntakeConfigurationEndpoints();
 
 app.MapGet("/", () => Results.Ok(new
 {
