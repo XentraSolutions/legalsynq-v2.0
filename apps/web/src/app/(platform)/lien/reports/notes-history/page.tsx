@@ -103,7 +103,7 @@ export default function HistoryNotesPage() {
         <Tabs
           bordered={false}
           defaultTab={selectedType}
-          onChange={(key) => {
+          onChange={(key:any) => {
             setSelectedType(key as TabKey);
             setPagination(DEFAULT_PAGINATION);
           }}
