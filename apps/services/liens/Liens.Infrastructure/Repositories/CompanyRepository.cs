@@ -1,5 +1,7 @@
 using Liens.Application.Repositories;
+using Liens.Domain;
 using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
@@ -105,6 +107,82 @@ public sealed class CompanyRepository : ICompanyRepository
         => _db.Companies.Include(value => value.CompanyType)
             .FirstOrDefaultAsync(value => value.TenantId == tenantId && value.OrgId == orgId && value.Id == id, ct);
 
+    public async Task<CompanyDetailsSnapshot> GetCompanyDetailsAsync(
+        Guid tenantId, Guid orgId, Guid companyId, Guid companyTypeId,
+        int page, int pageSize, CancellationToken ct = default)
+    {
+        var scopedLiens = _db.Liens.AsNoTracking().Where(value =>
+            value.TenantId == tenantId &&
+            (value.OrgId == orgId || value.SellingOrgId == orgId));
+        var companyLiens = companyTypeId switch
+        {
+            var id when id == CompanyDirectoryReferenceData.FundingCompanyId =>
+                scopedLiens.Where(value => value.FundingCompanyCompanyId == companyId),
+            var id when id == CompanyDirectoryReferenceData.MedicalProviderId =>
+                scopedLiens.Where(value => value.MedicalProviderCompanyId == companyId),
+            var id when id == CompanyDirectoryReferenceData.MedicalFacilityId =>
+                scopedLiens.Where(value => value.MedicalFacilityCompanyId == companyId),
+            _ => scopedLiens.Where(_ => false),
+        };
+
+        var scopedCases = _db.Cases.AsNoTracking().Where(value =>
+            value.TenantId == tenantId && value.OrgId == orgId);
+        var companyCases = companyTypeId == CompanyDirectoryReferenceData.LawFirmId
+            ? scopedCases.Where(value => value.HandlingLawFirmCompanyId == companyId)
+            : scopedCases.Where(value => companyLiens.Any(lien => lien.CaseId == value.Id));
+
+        var totalCases = await companyCases.CountAsync(ct);
+        var activeCases = companyCases.Where(value =>
+            value.Status != CaseStatus.CaseSettled && value.Status != CaseStatus.Closed);
+        var activeCaseCount = await activeCases.CountAsync(ct);
+        var activeCaseIds = activeCases.Select(value => value.Id);
+        var billableLiens = companyTypeId == CompanyDirectoryReferenceData.LawFirmId
+            ? scopedLiens.Where(value => value.CaseId.HasValue && activeCaseIds.Contains(value.CaseId.Value))
+            : companyLiens.Where(value => value.CaseId.HasValue && activeCaseIds.Contains(value.CaseId.Value));
+        var totalBilling = await billableLiens
+            .Select(value => (decimal?)value.OriginalAmount)
+            .SumAsync(ct) ?? 0m;
+
+        var recentCases = await companyCases
+            .OrderByDescending(value => value.UpdatedAtUtc)
+            .ThenByDescending(value => value.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(value => new
+            {
+                value.Id,
+                value.CaseNumber,
+                value.ClientFirstName,
+                value.ClientLastName,
+                value.Status,
+                value.UpdatedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        var recentCaseIds = recentCases.Select(value => value.Id).ToList();
+        var recentCaseBillings = recentCaseIds.Count == 0
+            ? new Dictionary<Guid, decimal>()
+            : await (companyTypeId == CompanyDirectoryReferenceData.LawFirmId
+                    ? scopedLiens.Where(value => value.CaseId.HasValue && recentCaseIds.Contains(value.CaseId.Value))
+                    : companyLiens.Where(value => value.CaseId.HasValue && recentCaseIds.Contains(value.CaseId.Value)))
+                .GroupBy(value => value.CaseId!.Value)
+                .Select(group => new { CaseId = group.Key, BillingAmount = group.Sum(value => value.OriginalAmount) })
+                .ToDictionaryAsync(value => value.CaseId, value => value.BillingAmount, ct);
+
+        return new CompanyDetailsSnapshot(
+            totalCases,
+            activeCaseCount,
+            totalBilling,
+            recentCases.Select(value => new CompanyRecentCaseSnapshot(
+                value.Id,
+                value.CaseNumber,
+                value.ClientFirstName,
+                value.ClientLastName,
+                value.Status,
+                recentCaseBillings.GetValueOrDefault(value.Id),
+                value.UpdatedAtUtc)).ToList());
+    }
+
     public Task<bool> CompanyNameExistsAsync(
         Guid tenantId, Guid orgId, Guid companyTypeId, string normalizedName,
         Guid? excludingId = null, CancellationToken ct = default)
@@ -189,6 +267,50 @@ public sealed class CompanyRepository : ICompanyRepository
             .Where(value => value.TenantId == tenantId && value.CompanyId == companyId);
         if (isActive.HasValue) query = query.Where(value => value.IsActive == isActive.Value);
         return query.OrderBy(value => value.LastName).ThenBy(value => value.FirstName).ToListAsync(ct);
+    }
+
+    public async Task<(List<CompanyContactPerson> Items, int TotalCount)> SearchContactPersonsAsync(
+        Guid tenantId, Guid orgId, string? search, Guid? companyTypeId,
+        Guid? contactPersonTypeId, bool? isActive, int page, int pageSize,
+        CancellationToken ct = default)
+    {
+        var query = _db.CompanyContactPersons.AsNoTracking()
+            .Include(value => value.Company)
+                .ThenInclude(value => value!.CompanyType)
+            .Include(value => value.ContactPersonType)
+            .Where(value => value.TenantId == tenantId &&
+                value.Company!.OrgId == orgId);
+
+        if (companyTypeId.HasValue)
+            query = query.Where(value => value.Company!.CompanyTypeId == companyTypeId.Value);
+        if (contactPersonTypeId.HasValue)
+            query = query.Where(value => value.ContactPersonTypeId == contactPersonTypeId.Value);
+        if (isActive.HasValue)
+            query = query.Where(value => value.IsActive == isActive.Value);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(value =>
+                value.FirstName.Contains(term) ||
+                value.LastName.Contains(term) ||
+                (value.Email != null && value.Email.Contains(term)) ||
+                (value.Phone != null && value.Phone.Contains(term)) ||
+                value.Company!.Name.Contains(term) ||
+                value.Company.CompanyType!.Name.Contains(term) ||
+                value.ContactPersonType!.Name.Contains(term));
+        }
+
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .OrderBy(value => value.Company!.Name)
+            .ThenBy(value => value.LastName)
+            .ThenBy(value => value.FirstName)
+            .ThenBy(value => value.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+        return (items, totalCount);
     }
 
     public Task<List<CompanyContactPerson>> GetContactPersonsForExportAsync(

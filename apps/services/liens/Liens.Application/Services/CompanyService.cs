@@ -3,6 +3,7 @@ using BuildingBlocks.Exceptions;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
+using Liens.Domain.Enums;
 using Liens.Domain.Entities;
 
 namespace Liens.Application.Services;
@@ -84,6 +85,37 @@ public sealed class CompanyService : ICompanyService
     {
         var company = await _repository.GetCompanyAsync(tenantId, orgId, id, ct);
         return company is null ? null : Map(company);
+    }
+
+    public async Task<CompanyDetailsResponse?> GetCompanyDetailsAsync(
+        Guid tenantId, Guid orgId, Guid companyId, int page, int pageSize,
+        CancellationToken ct = default)
+    {
+        var company = await _repository.GetCompanyAsync(tenantId, orgId, companyId, ct);
+        if (company is null) return null;
+
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var snapshot = await _repository.GetCompanyDetailsAsync(
+            tenantId, orgId, companyId, company.CompanyTypeId, page, pageSize, ct);
+
+        return new CompanyDetailsResponse
+        {
+            Company = Map(company),
+            TotalCases = snapshot.TotalCases,
+            ActiveCases = snapshot.ActiveCases,
+            TotalBillingForActiveCases = snapshot.TotalBillingForActiveCases,
+            RecentCases = new CompanyRecentCasesResponse
+            {
+                Items = snapshot.RecentCases.Select(MapRecentCase).ToList(),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = snapshot.TotalCases,
+                TotalPages = snapshot.TotalCases == 0
+                    ? 0
+                    : (int)Math.Ceiling(snapshot.TotalCases / (double)pageSize),
+            },
+        };
     }
 
     public async Task<CompanyResponse> CreateCompanyAsync(
@@ -182,6 +214,29 @@ public sealed class CompanyService : ICompanyService
     {
         await RequireCompanyAsync(tenantId, orgId, companyId, ct);
         return (await _repository.GetContactPersonsAsync(tenantId, companyId, isActive, ct)).Select(Map).ToList();
+    }
+
+    public async Task<ContactPersonDirectoryResponse> SearchContactPersonsAsync(
+        Guid tenantId, Guid orgId, string? search, Guid? companyTypeId,
+        Guid? contactPersonTypeId, bool? isActive, int page, int pageSize,
+        CancellationToken ct = default)
+    {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        var (items, totalCount) = await _repository.SearchContactPersonsAsync(
+            tenantId, orgId, search, companyTypeId, contactPersonTypeId, isActive,
+            page, pageSize, ct);
+
+        return new ContactPersonDirectoryResponse
+        {
+            Items = items.Select(MapForExport).ToList(),
+            Page = page,
+            Limit = pageSize,
+            TotalCount = totalCount,
+            TotalPages = totalCount == 0
+                ? 0
+                : (int)Math.Ceiling(totalCount / (double)pageSize),
+        };
     }
 
     public async Task<List<CompanyContactPersonExportResponse>> GetContactPersonsForExportAsync(
@@ -456,6 +511,25 @@ public sealed class CompanyService : ICompanyService
         Email = value.Email,
         IsActive = value.IsActive,
         CreatedAtUtc = value.CreatedAtUtc,
+        UpdatedAtUtc = value.UpdatedAtUtc,
+    };
+
+    private static CompanyRecentCaseResponse MapRecentCase(CompanyRecentCaseSnapshot value) => new()
+    {
+        Id = value.Id,
+        CaseNumber = value.CaseNumber,
+        ClientName = $"{value.ClientFirstName} {value.ClientLastName}".Trim(),
+        Status = value.Status,
+        StatusLabel = value.Status switch
+        {
+            CaseStatus.PreDemand => "Pre-Demand",
+            CaseStatus.DemandSent => "Demand Sent",
+            CaseStatus.InNegotiation => "In Negotiation",
+            CaseStatus.CaseSettled => "Case Settled",
+            CaseStatus.Closed => "Closed",
+            _ => value.Status,
+        },
+        BillingAmount = value.BillingAmount,
         UpdatedAtUtc = value.UpdatedAtUtc,
     };
 

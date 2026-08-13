@@ -139,6 +139,14 @@
           }
         },
         {
+          "name": "Get Company Details",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/selling/company-details/{{companyId}}?page=1&pageSize=4",
+            "description": "Returns the Company Details overview: scoped company information, total and active case counts, total original billing for active cases, and paginated recent cases. Active excludes CaseSettled and Closed. Canonical company references determine case association. Requires lien_sale:read."
+          }
+        },
+        {
           "name": "Update Company",
           "request": {
             "method": "PUT",
@@ -172,6 +180,14 @@
     {
       "name": "03 - Company Contact Persons",
       "item": [
+        {
+          "name": "List Contact Persons",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/selling/contact-person?search=jane&isActive=true&companyTypeId={{companyTypeId}}&contactPersonTypeId={{contactPersonTypeId}}&page=1&pageSize=10",
+            "description": "Lists contact persons across companies in the authenticated tenant and seller organization. Every query parameter is optional: search, isActive (defaults to true), companyTypeId, contactPersonTypeId, page (defaults to 1), and pageSize (defaults to 20 and is capped at 200). Remove any filter query pair that is not needed. The legacy filter and limit aliases remain supported. Returns items plus page, limit, totalCount, and totalPages. Requires lien_sale:read."
+          }
+        },
         {
           "name": "List Company Contact Persons",
           "request": {
@@ -342,8 +358,8 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/contacts/export?search=&companyTypeId={{companyTypeId}}&contactPersonTypeId={{contactPersonTypeId}}&isActive=true",
-            "description": "Downloads an uncapped CSV of contact persons across companies in the authenticated tenant and seller organization. Optional filters: search, companyTypeId, contactPersonTypeId, and isActive. Requires lien_sale:read."
+            "url": "{{baseUrl}}/api/liens/selling/contacts/export?search=&companyTypeId={{companyTypeId}}&contactPersonTypeId={{contactPersonTypeFilter}}&isActive=true",
+            "description": "Downloads an uncapped CSV of contact persons across companies in the authenticated tenant and seller organization. Optional filters: search, companyTypeId, contactPersonTypeId, and isActive. Leave contactPersonTypeFilter empty, omit the query parameter, or send literal null to include all contact-person types; set it to a valid contact-person-type GUID to filter. Other nonempty values return 400. Requires lien_sale:read."
           }
         },
         {
@@ -351,8 +367,8 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts/export?search=&contactPersonTypeId={{contactPersonTypeId}}&isActive=true",
-            "description": "Downloads an uncapped CSV of contact persons for one company in the authenticated tenant and seller organization. Optional filters: search, contactPersonTypeId, and isActive. Requires lien_sale:read."
+            "url": "{{baseUrl}}/api/liens/selling/companies/{{companyId}}/contacts/export?search=&contactPersonTypeId={{contactPersonTypeFilter}}&isActive=true",
+            "description": "Downloads an uncapped CSV of contact persons for one company in the authenticated tenant and seller organization. Optional filters: search, contactPersonTypeId, and isActive. Leave contactPersonTypeFilter empty, omit the query parameter, or send literal null to include all contact-person types; set it to a valid contact-person-type GUID to filter. Other nonempty values return 400. Requires lien_sale:read."
           }
         }
       ]
@@ -470,6 +486,10 @@
     {
       "key": "contactPersonTypeId",
       "value": "20000000-0000-0000-0000-000000000001"
+    },
+    {
+      "key": "contactPersonTypeFilter",
+      "value": ""
     },
     {
       "key": "companyId",

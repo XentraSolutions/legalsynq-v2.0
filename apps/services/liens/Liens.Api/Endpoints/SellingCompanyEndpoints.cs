@@ -3,6 +3,7 @@ using System.Text;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
+using BuildingBlocks.Exceptions;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
@@ -34,6 +35,8 @@ public static class SellingCompanyEndpoints
             .RequirePermission(LiensPermissions.LienSaleRead);
         group.MapGet("/companies/{companyId:guid}", GetCompany)
             .RequirePermission(LiensPermissions.LienSaleRead);
+        group.MapGet("/company-details/{companyId:guid}", GetCompanyDetails)
+            .RequirePermission(LiensPermissions.LienSaleRead);
         group.MapPost("/companies", CreateCompany)
             .RequirePermission(LiensPermissions.LienSaleCreate);
         group.MapPut("/companies/{companyId:guid}", UpdateCompany)
@@ -46,6 +49,8 @@ public static class SellingCompanyEndpoints
             .RequirePermission(LiensPermissions.LienSaleUpdate);
 
         group.MapGet("/companies/{companyId:guid}/contacts", GetContactPersons)
+            .RequirePermission(LiensPermissions.LienSaleRead);
+        group.MapGet("/contact-person", GetContactPersonDirectory)
             .RequirePermission(LiensPermissions.LienSaleRead);
         group.MapGet("/contacts/export", ExportContactPersons)
             .RequirePermission(LiensPermissions.LienSaleRead);
@@ -135,6 +140,20 @@ public static class SellingCompanyEndpoints
     {
         var (tenantId, orgId, _) = RequireContext(context);
         var result = await service.GetCompanyAsync(tenantId, orgId, companyId, ct);
+        return result is null ? NotFound("Company", companyId) : Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetCompanyDetails(
+        Guid companyId,
+        ICompanyService service,
+        ICurrentRequestContext context,
+        int page = 1,
+        int pageSize = 4,
+        CancellationToken ct = default)
+    {
+        var (tenantId, orgId, _) = RequireContext(context);
+        var result = await service.GetCompanyDetailsAsync(
+            tenantId, orgId, companyId, page, pageSize, ct);
         return result is null ? NotFound("Company", companyId) : Results.Ok(result);
     }
 
@@ -252,16 +271,42 @@ public static class SellingCompanyEndpoints
         });
     }
 
+    private static async Task<IResult> GetContactPersonDirectory(
+        ICompanyService service,
+        ICurrentRequestContext context,
+        string? search = null,
+        Guid? companyTypeId = null,
+        string? contactPersonTypeId = null,
+        bool? isActive = true,
+        string? filter = null,
+        int page = 1,
+        int pageSize = 20,
+        int? limit = null,
+        CancellationToken ct = default)
+    {
+        var (tenantId, orgId, _) = RequireContext(context);
+        return Results.Ok(await service.SearchContactPersonsAsync(
+            tenantId, orgId,
+            string.IsNullOrWhiteSpace(search) ? filter : search,
+            companyTypeId,
+            ParseOptionalContactPersonTypeId(contactPersonTypeId),
+            isActive,
+            page,
+            limit ?? pageSize,
+            ct));
+    }
+
     private static Task<IResult> ExportContactPersons(
         ICompanyService service,
         ICurrentRequestContext context,
         string? search = null,
         Guid? companyTypeId = null,
-        Guid? contactPersonTypeId = null,
+        string? contactPersonTypeId = null,
         bool? isActive = true,
         CancellationToken ct = default)
         => ExportContactPersonsCore(
-            null, service, context, search, companyTypeId, contactPersonTypeId, isActive,
+            null, service, context, search, companyTypeId,
+            ParseOptionalContactPersonTypeId(contactPersonTypeId), isActive,
             "selling-contact-persons.csv", ct);
 
     private static Task<IResult> ExportContactPersonsByCompany(
@@ -269,12 +314,27 @@ public static class SellingCompanyEndpoints
         ICompanyService service,
         ICurrentRequestContext context,
         string? search = null,
-        Guid? contactPersonTypeId = null,
+        string? contactPersonTypeId = null,
         bool? isActive = true,
         CancellationToken ct = default)
         => ExportContactPersonsCore(
-            companyId, service, context, search, null, contactPersonTypeId, isActive,
+            companyId, service, context, search, null,
+            ParseOptionalContactPersonTypeId(contactPersonTypeId), isActive,
             $"selling-company-{companyId:D}-contact-persons.csv", ct);
+
+    private static Guid? ParseOptionalContactPersonTypeId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        var candidate = value.Trim();
+        if (candidate.Equals("null", StringComparison.OrdinalIgnoreCase)) return null;
+        if (Guid.TryParse(candidate, out var id)) return id;
+
+        const string message = "contactPersonTypeId must be a valid GUID, empty, or null.";
+        throw new ValidationException(
+            "Contact-person type filter is invalid.",
+            new Dictionary<string, string[]> { ["contactPersonTypeId"] = [message] });
+    }
 
     private static async Task<IResult> ExportContactPersonsCore(
         Guid? companyId,

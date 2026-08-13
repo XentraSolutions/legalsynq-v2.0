@@ -15,6 +15,21 @@ public sealed record CompanyContactPersonReassignmentCounts(
     int Cases,
     int BuyerAccessLinks);
 
+public sealed record CompanyDetailsSnapshot(
+    int TotalCases,
+    int ActiveCases,
+    decimal TotalBillingForActiveCases,
+    IReadOnlyList<CompanyRecentCaseSnapshot> RecentCases);
+
+public sealed record CompanyRecentCaseSnapshot(
+    Guid Id,
+    string CaseNumber,
+    string ClientFirstName,
+    string ClientLastName,
+    string Status,
+    decimal BillingAmount,
+    DateTime UpdatedAtUtc);
+
 public interface ICompanyRepository
 {
     Task<List<CompanyType>> GetCompanyTypesAsync(CancellationToken ct = default);
@@ -35,6 +50,9 @@ public interface ICompanyRepository
         Guid tenantId, Guid orgId, string? search, Guid? companyTypeId, bool? isActive,
         CancellationToken ct = default);
     Task<Company?> GetCompanyAsync(Guid tenantId, Guid orgId, Guid id, CancellationToken ct = default);
+    Task<CompanyDetailsSnapshot> GetCompanyDetailsAsync(
+        Guid tenantId, Guid orgId, Guid companyId, Guid companyTypeId,
+        int page, int pageSize, CancellationToken ct = default);
     Task<bool> CompanyNameExistsAsync(
         Guid tenantId, Guid orgId, Guid companyTypeId, string normalizedName,
         Guid? excludingId = null, CancellationToken ct = default);
@@ -45,6 +63,10 @@ public interface ICompanyRepository
         Guid actingUserId, CancellationToken ct = default);
     Task<List<CompanyContactPerson>> GetContactPersonsAsync(
         Guid tenantId, Guid companyId, bool? isActive, CancellationToken ct = default);
+    Task<(List<CompanyContactPerson> Items, int TotalCount)> SearchContactPersonsAsync(
+        Guid tenantId, Guid orgId, string? search, Guid? companyTypeId,
+        Guid? contactPersonTypeId, bool? isActive, int page, int pageSize,
+        CancellationToken ct = default);
     Task<List<CompanyContactPerson>> GetContactPersonsForExportAsync(
         Guid tenantId, Guid orgId, Guid? companyId, string? search, Guid? companyTypeId,
         Guid? contactPersonTypeId, bool? isActive, CancellationToken ct = default);

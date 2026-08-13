@@ -75,6 +75,35 @@ public sealed class CompanyResponse
     public DateTime UpdatedAtUtc { get; init; }
 }
 
+public sealed class CompanyDetailsResponse
+{
+    public CompanyResponse Company { get; init; } = new();
+    public int TotalCases { get; init; }
+    public int ActiveCases { get; init; }
+    public decimal TotalBillingForActiveCases { get; init; }
+    public CompanyRecentCasesResponse RecentCases { get; init; } = new();
+}
+
+public sealed class CompanyRecentCasesResponse
+{
+    public List<CompanyRecentCaseResponse> Items { get; init; } = [];
+    public int Page { get; init; }
+    public int PageSize { get; init; }
+    public int TotalCount { get; init; }
+    public int TotalPages { get; init; }
+}
+
+public sealed class CompanyRecentCaseResponse
+{
+    public Guid Id { get; init; }
+    public string CaseNumber { get; init; } = string.Empty;
+    public string ClientName { get; init; } = string.Empty;
+    public string Status { get; init; } = string.Empty;
+    public string StatusLabel { get; init; } = string.Empty;
+    public decimal BillingAmount { get; init; }
+    public DateTime UpdatedAtUtc { get; init; }
+}
+
 public sealed class CreateCompanyContactPersonRequest
 {
     public Guid ContactPersonTypeId { get; init; }
@@ -148,6 +177,15 @@ public sealed class CompanyContactPersonExportResponse
     public bool IsActive { get; init; }
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; init; }
+}
+
+public sealed class ContactPersonDirectoryResponse
+{
+    public List<CompanyContactPersonExportResponse> Items { get; init; } = [];
+    public int Page { get; init; }
+    public int Limit { get; init; }
+    public int TotalCount { get; init; }
+    public int TotalPages { get; init; }
 }
 
 public sealed class CompanyReassignmentResponse

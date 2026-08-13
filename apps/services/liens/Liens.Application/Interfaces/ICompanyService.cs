@@ -17,6 +17,9 @@ public interface ICompanyService
         Guid tenantId, Guid orgId, string? search, Guid? companyTypeId, bool? isActive,
         CancellationToken ct = default);
     Task<CompanyResponse?> GetCompanyAsync(Guid tenantId, Guid orgId, Guid id, CancellationToken ct = default);
+    Task<CompanyDetailsResponse?> GetCompanyDetailsAsync(
+        Guid tenantId, Guid orgId, Guid companyId, int page, int pageSize,
+        CancellationToken ct = default);
     Task<CompanyResponse> CreateCompanyAsync(
         Guid tenantId, Guid orgId, Guid actingUserId, CreateCompanyRequest request, CancellationToken ct = default);
     Task<CompanyResponse> UpdateCompanyAsync(
@@ -28,6 +31,10 @@ public interface ICompanyService
         Guid actingUserId, CancellationToken ct = default);
     Task<List<CompanyContactPersonResponse>> GetContactPersonsAsync(
         Guid tenantId, Guid orgId, Guid companyId, bool? isActive, CancellationToken ct = default);
+    Task<ContactPersonDirectoryResponse> SearchContactPersonsAsync(
+        Guid tenantId, Guid orgId, string? search, Guid? companyTypeId,
+        Guid? contactPersonTypeId, bool? isActive, int page, int pageSize,
+        CancellationToken ct = default);
     Task<List<CompanyContactPersonExportResponse>> GetContactPersonsForExportAsync(
         Guid tenantId, Guid orgId, Guid? companyId, string? search, Guid? companyTypeId,
         Guid? contactPersonTypeId, bool? isActive, CancellationToken ct = default);

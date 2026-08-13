@@ -1,9 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Application.DTOs;
 using Liens.Domain;
+using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Routing;
@@ -29,15 +32,16 @@ public sealed class SellingCompanyEndpointTests : IClassFixture<LiensApiFactory>
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
-    public void Company_api_surface_remains_the_expected_twenty_routes()
+    public void Company_api_surface_remains_the_expected_twenty_two_routes()
     {
         var patterns = _factory.Services.GetServices<EndpointDataSource>()
             .SelectMany(source => source.Endpoints)
             .OfType<RouteEndpoint>()
             .Select(endpoint => endpoint.RoutePattern.RawText)
             .Where(pattern => pattern is not null &&
-                (pattern.StartsWith("/api/liens/selling/companies", StringComparison.Ordinal) ||
-                 pattern is "/api/liens/selling/contacts/export" ||
+                 (pattern.StartsWith("/api/liens/selling/companies", StringComparison.Ordinal) ||
+                 pattern is "/api/liens/selling/company-details/{companyId:guid}" ||
+                 pattern is "/api/liens/selling/contact-person" or "/api/liens/selling/contacts/export" ||
                  pattern is "/api/liens/selling/lookups/contact-person-types" or
                      "/api/liens/selling/lookups/company-types"))
             .ToList();
@@ -51,11 +55,13 @@ public sealed class SellingCompanyEndpointTests : IClassFixture<LiensApiFactory>
             "/api/liens/selling/companies",
             "/api/liens/selling/companies/export",
             "/api/liens/selling/companies/{companyId:guid}",
+            "/api/liens/selling/company-details/{companyId:guid}",
             "/api/liens/selling/companies/{companyId:guid}",
             "/api/liens/selling/companies/{companyId:guid}",
             "/api/liens/selling/companies/{companyId:guid}/reassign",
             "/api/liens/selling/companies/{companyId:guid}/reactivate",
             "/api/liens/selling/companies/{companyId:guid}/contacts",
+            "/api/liens/selling/contact-person",
             "/api/liens/selling/contacts/export",
             "/api/liens/selling/companies/{companyId:guid}/contacts/export",
             "/api/liens/selling/companies/{companyId:guid}/contacts/{contactId:guid}",
@@ -65,7 +71,7 @@ public sealed class SellingCompanyEndpointTests : IClassFixture<LiensApiFactory>
             "/api/liens/selling/companies/{companyId:guid}/contacts/{contactId:guid}/reassign",
             "/api/liens/selling/companies/{companyId:guid}/contacts/{contactId:guid}/reactivate",
         });
-        patterns.Should().HaveCount(20);
+        patterns.Should().HaveCount(22);
     }
 
     [Fact]
@@ -278,6 +284,319 @@ public sealed class SellingCompanyEndpointTests : IClassFixture<LiensApiFactory>
         var companyCsv = await companyResponse.Content.ReadAsStringAsync();
         companyCsv.Should().Contain(northstarContact.Id.ToString());
         companyCsv.Should().NotContain(otherContact.Id.ToString());
+    }
+
+    [Fact]
+    public async Task Contact_person_directory_supports_page_limit_filter_and_active_scope()
+    {
+        var company = await CreateCompanyAsync(new
+        {
+            companyTypeId = CompanyDirectoryReferenceData.LawFirmId,
+            name = "Directory Law",
+        });
+        var lawFirmRoles = CompanyDirectoryReferenceData.ContactPersonTypes
+            .Where(value => value.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId)
+            .Take(2)
+            .ToList();
+        var activeContact = await CreateContactAsync(
+            company.Id, lawFirmRoles[0].Id, "Active", "Directory");
+        var secondActiveContact = await CreateContactAsync(
+            company.Id, lawFirmRoles[1].Id, "Filtered", "Searchable");
+        var inactiveContact = await CreateContactAsync(
+            company.Id, lawFirmRoles[0].Id, "Inactive", "Directory");
+        var deactivateResponse = await SendMutationAsync(
+            HttpMethod.Delete,
+            $"/api/liens/selling/companies/{company.Id}/contacts/{inactiveContact.Id}");
+        deactivateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var fundingCompany = await CreateCompanyAsync(new
+        {
+            companyTypeId = CompanyDirectoryReferenceData.FundingCompanyId,
+            name = "Funding Directory",
+        });
+        var fundingRole = CompanyDirectoryReferenceData.ContactPersonTypes
+            .First(value => value.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId);
+        var fundingContact = await CreateContactAsync(
+            fundingCompany.Id, fundingRole.Id, "Funding", "Contact");
+
+        var otherOrganizationId = Guid.CreateVersion7();
+        SetAuthorization(otherOrganizationId);
+        var otherCompany = await CreateCompanyAsync(new
+        {
+            companyTypeId = CompanyDirectoryReferenceData.LawFirmId,
+            name = "Other Organization Law",
+        });
+        var otherContact = await CreateContactAsync(
+            otherCompany.Id, lawFirmRoles[0].Id, "Other", "Organization");
+
+        SetAuthorization(SeedHelper.OrgId);
+        var response = await _client.GetAsync("/api/liens/selling/contact-person");
+
+        response.StatusCode.Should().Be(
+            HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var result = await response.Content
+            .ReadFromJsonAsync<ContactPersonDirectoryResponse>();
+        result.Should().NotBeNull();
+        result!.Page.Should().Be(1);
+        result.Limit.Should().Be(20);
+        result.TotalCount.Should().Be(3);
+        result.TotalPages.Should().Be(1);
+        result.Items.Should().ContainSingle(value =>
+            value.Id == activeContact.Id &&
+            value.CompanyId == company.Id &&
+            value.CompanyName == "Directory Law" &&
+            value.IsActive);
+        result.Items.Should().ContainSingle(value => value.Id == secondActiveContact.Id);
+        result.Items.Should().ContainSingle(value => value.Id == fundingContact.Id);
+        result.Items.Should().NotContain(value => value.Id == inactiveContact.Id);
+        result.Items.Should().NotContain(value => value.Id == otherContact.Id);
+
+        var paged = await _client.GetFromJsonAsync<ContactPersonDirectoryResponse>(
+            "/api/liens/selling/contact-person?page=2&limit=1");
+        paged.Should().NotBeNull();
+        paged!.Page.Should().Be(2);
+        paged.Limit.Should().Be(1);
+        paged.TotalCount.Should().Be(3);
+        paged.TotalPages.Should().Be(3);
+        paged.Items.Should().ContainSingle(value => value.Id == secondActiveContact.Id);
+
+        var filtered = await _client.GetFromJsonAsync<ContactPersonDirectoryResponse>(
+            "/api/liens/selling/contact-person?filter=Filtered&page=1&limit=20");
+        filtered.Should().NotBeNull();
+        filtered!.TotalCount.Should().Be(1);
+        filtered.TotalPages.Should().Be(1);
+        filtered.Items.Should().ContainSingle(value => value.Id == secondActiveContact.Id);
+
+        var requestedContract = await _client.GetFromJsonAsync<ContactPersonDirectoryResponse>(
+            $"/api/liens/selling/contact-person?search=Filtered&isActive=true" +
+            $"&companyTypeId={CompanyDirectoryReferenceData.LawFirmId}" +
+            $"&contactPersonTypeId={lawFirmRoles[1].Id}&page=1&pageSize=10");
+        requestedContract.Should().NotBeNull();
+        requestedContract!.Page.Should().Be(1);
+        requestedContract.Limit.Should().Be(10);
+        requestedContract.TotalCount.Should().Be(1);
+        requestedContract.Items.Should().ContainSingle(value => value.Id == secondActiveContact.Id);
+
+        var inactive = await _client.GetFromJsonAsync<ContactPersonDirectoryResponse>(
+            "/api/liens/selling/contact-person?isActive=false");
+        inactive.Should().NotBeNull();
+        inactive!.TotalCount.Should().Be(1);
+        inactive.Items.Should().ContainSingle(value => value.Id == inactiveContact.Id);
+
+        var nullContactType = await _client.GetAsync(
+            "/api/liens/selling/contact-person?contactPersonTypeId=null");
+        nullContactType.StatusCode.Should().Be(
+            HttpStatusCode.OK, await nullContactType.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Company_details_returns_overview_totals_and_paginated_recent_cases()
+    {
+        var company = await CreateCompanyAsync(new
+        {
+            companyTypeId = CompanyDirectoryReferenceData.LawFirmId,
+            name = "Baker & Associates",
+            addressLine1 = "742 Evergreen Terrace",
+            city = "San Francisco",
+            state = "California",
+            postalCode = "94110",
+            phone = "(415) 738-2596",
+            email = "contact@bakerassoc.test",
+        });
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var activeCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "24-04817",
+                "Maria",
+                "Gonzalez",
+                SeedHelper.UserId);
+            activeCase.LinkCanonicalCaseParties(company.Id, null);
+
+            var settledCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "24-00142",
+                "Annie",
+                "Whel",
+                SeedHelper.UserId);
+            settledCase.LinkCanonicalCaseParties(company.Id, null);
+            settledCase.TransitionStatus(CaseStatus.CaseSettled, SeedHelper.UserId);
+
+            var unrelatedCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "24-99999",
+                "Unrelated",
+                "Client",
+                SeedHelper.UserId);
+
+            db.Cases.AddRange(activeCase, settledCase, unrelatedCase);
+            db.Liens.AddRange(
+                Lien.Create(
+                    SeedHelper.TenantId, SeedHelper.OrgId, "LIEN-COMPANY-ACTIVE-1",
+                    LienType.MedicalLien, 100_000m, SeedHelper.UserId, caseId: activeCase.Id),
+                Lien.Create(
+                    SeedHelper.TenantId, SeedHelper.OrgId, "LIEN-COMPANY-ACTIVE-2",
+                    LienType.MedicalLien, 42_500m, SeedHelper.UserId, caseId: activeCase.Id),
+                Lien.Create(
+                    SeedHelper.TenantId, SeedHelper.OrgId, "LIEN-COMPANY-SETTLED",
+                    LienType.MedicalLien, 15_750m, SeedHelper.UserId, caseId: settledCase.Id),
+                Lien.Create(
+                    SeedHelper.TenantId, SeedHelper.OrgId, "LIEN-COMPANY-UNRELATED",
+                    LienType.MedicalLien, 999_999m, SeedHelper.UserId, caseId: unrelatedCase.Id));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/company-details/{company.Id}?page=1&pageSize=4");
+
+        response.StatusCode.Should().Be(
+            HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var details = await response.Content.ReadFromJsonAsync<CompanyDetailsResponse>();
+        details.Should().NotBeNull();
+        details!.Company.Id.Should().Be(company.Id);
+        details.Company.Name.Should().Be("Baker & Associates");
+        details.Company.CompanyTypeName.Should().Be("Law Firm");
+        details.Company.AddressLine1.Should().Be("742 Evergreen Terrace");
+        details.TotalCases.Should().Be(2);
+        details.ActiveCases.Should().Be(1);
+        details.TotalBillingForActiveCases.Should().Be(142_500m);
+        details.RecentCases.Page.Should().Be(1);
+        details.RecentCases.PageSize.Should().Be(4);
+        details.RecentCases.TotalCount.Should().Be(2);
+        details.RecentCases.TotalPages.Should().Be(1);
+        details.RecentCases.Items.Should().ContainSingle(value =>
+            value.CaseNumber == "24-04817" &&
+            value.ClientName == "Maria Gonzalez" &&
+            value.Status == CaseStatus.PreDemand &&
+            value.StatusLabel == "Pre-Demand" &&
+            value.BillingAmount == 142_500m);
+        details.RecentCases.Items.Should().ContainSingle(value =>
+            value.CaseNumber == "24-00142" &&
+            value.Status == CaseStatus.CaseSettled &&
+            value.BillingAmount == 15_750m);
+
+        SetAuthorization(Guid.CreateVersion7());
+        var outOfScopeResponse = await _client.GetAsync(
+            $"/api/liens/selling/company-details/{company.Id}");
+        outOfScopeResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Company_details_uses_type_specific_canonical_lien_links()
+    {
+        var company = await CreateCompanyAsync(new
+        {
+            companyTypeId = CompanyDirectoryReferenceData.FundingCompanyId,
+            name = "Northstar Funding",
+        });
+
+        Guid linkedCaseId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var linkedCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "24-FUND-001",
+                "Funded",
+                "Client",
+                SeedHelper.UserId);
+            linkedCaseId = linkedCase.Id;
+            var linkedLien = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, "LIEN-FUND-LINKED",
+                LienType.MedicalLien, 87_000m, SeedHelper.UserId, caseId: linkedCase.Id);
+            linkedLien.LinkCanonicalSellingParties(company.Id, null, null, null);
+            var unrelatedLien = Lien.Create(
+                SeedHelper.TenantId, SeedHelper.OrgId, "LIEN-FUND-UNRELATED",
+                LienType.MedicalLien, 500_000m, SeedHelper.UserId, caseId: linkedCase.Id);
+
+            db.Cases.Add(linkedCase);
+            db.Liens.AddRange(linkedLien, unrelatedLien);
+            await db.SaveChangesAsync();
+        }
+
+        var details = await _client.GetFromJsonAsync<CompanyDetailsResponse>(
+            $"/api/liens/selling/company-details/{company.Id}");
+
+        details.Should().NotBeNull();
+        details!.TotalCases.Should().Be(1);
+        details.ActiveCases.Should().Be(1);
+        details.TotalBillingForActiveCases.Should().Be(87_000m);
+        details.RecentCases.Items.Should().ContainSingle(value =>
+            value.Id == linkedCaseId && value.BillingAmount == 87_000m);
+    }
+
+    [Fact]
+    public async Task Contact_person_exports_support_optional_contact_person_type_filter()
+    {
+        var company = await CreateCompanyAsync(new
+        {
+            companyTypeId = CompanyDirectoryReferenceData.LawFirmId,
+            name = "Optional Filter Law",
+        });
+        var lawFirmRoles = CompanyDirectoryReferenceData.ContactPersonTypes
+            .Where(value => value.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId)
+            .Take(2)
+            .ToList();
+        var firstContact = await CreateContactAsync(
+            company.Id, lawFirmRoles[0].Id, "Alex", "Attorney");
+        var secondContact = await CreateContactAsync(
+            company.Id, lawFirmRoles[1].Id, "Pat", "Paralegal");
+        var exportRoutes = new[]
+        {
+            "/api/liens/selling/contacts/export",
+            $"/api/liens/selling/companies/{company.Id}/contacts/export",
+        };
+
+        foreach (var route in exportRoutes)
+        {
+            foreach (var noFilterQuery in new[]
+                     {
+                         string.Empty,
+                         "?contactPersonTypeId",
+                         "?contactPersonTypeId=",
+                         "?contactPersonTypeId=%20%20",
+                         "?contactPersonTypeId=null",
+                         "?contactPersonTypeId=NULL",
+                         "?contactPersonTypeId=%20NuLl%20",
+                     })
+            {
+                var response = await _client.GetAsync(route + noFilterQuery);
+                response.StatusCode.Should().Be(
+                    HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+                var csv = await response.Content.ReadAsStringAsync();
+                csv.Should().Contain(firstContact.Id.ToString());
+                csv.Should().Contain(secondContact.Id.ToString());
+            }
+
+            var filteredResponse = await _client.GetAsync(
+                $"{route}?contactPersonTypeId={lawFirmRoles[0].Id}");
+            filteredResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            var filteredCsv = await filteredResponse.Content.ReadAsStringAsync();
+            filteredCsv.Should().Contain(firstContact.Id.ToString());
+            filteredCsv.Should().NotContain(secondContact.Id.ToString());
+
+            var emptyGuidResponse = await _client.GetAsync(
+                $"{route}?contactPersonTypeId={Guid.Empty}");
+            emptyGuidResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            var emptyGuidCsv = await emptyGuidResponse.Content.ReadAsStringAsync();
+            emptyGuidCsv.Should().NotContain(firstContact.Id.ToString());
+            emptyGuidCsv.Should().NotContain(secondContact.Id.ToString());
+
+            var malformedResponse = await _client.GetAsync(
+                $"{route}?contactPersonTypeId=%20not-a-guid%20");
+            malformedResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            using var error = JsonDocument.Parse(await malformedResponse.Content.ReadAsStringAsync());
+            error.RootElement.GetProperty("error").GetProperty("code").GetString()
+                .Should().Be("validation_error");
+            error.RootElement.GetProperty("error").GetProperty("details")
+                .TryGetProperty("contactPersonTypeId", out _).Should().BeTrue();
+        }
     }
 
     [Fact]
