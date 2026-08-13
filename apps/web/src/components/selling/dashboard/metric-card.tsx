@@ -1,3 +1,5 @@
+import { ArrowDownRight, ArrowUpRight } from "lucide-react";
+
 interface MetricCardProps {
   label: string;
   trend?: "up" | "down" | undefined;
@@ -21,6 +23,7 @@ export function MetricCard({
     typeof value === "number" && formatAsCurrency
       ? `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       : value;
+  const TrendIcon = trend === "up" ? ArrowUpRight : ArrowDownRight;
   return (
     <article
       key={label}
@@ -38,14 +41,7 @@ export function MetricCard({
                 : "inline-flex items-center gap-1 rounded-full bg-[#ef4444]/10 px-2 py-0.5 text-xs font-medium text-[#dc2626] break-words"
             }
           >
-            <i
-              className={
-                trend === "up"
-                  ? "ri-arrow-right-up-line"
-                  : "ri-arrow-right-down-line"
-              }
-              aria-hidden
-            />
+            <TrendIcon className="h-4 w-4" aria-hidden />
             {statsPercentage}%
           </span>
         ) : (
@@ -61,14 +57,7 @@ export function MetricCard({
         {trend ? (
           <>
             {trendDescription ?? ""}
-            <i
-              className={
-                trend === "up"
-                  ? "ri-arrow-right-up-line"
-                  : "ri-arrow-right-down-line"
-              }
-              aria-hidden
-            />
+            <TrendIcon className="h-4 w-4 inline" aria-hidden />
           </>
         ) : (
           <span className="text-neutral-400">No trend data</span>

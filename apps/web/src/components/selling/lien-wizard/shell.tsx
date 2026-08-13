@@ -1,11 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/selling/button";
 import { TOTAL_STEPS } from "./shared";
-
-// Selling's brand accent, matching the convention used on other selling pages.
-const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white disabled:bg-[#EE7132]/70";
 
 function ProgressBar({ currentStep }: { currentStep: number }) {
   return (
@@ -59,7 +57,7 @@ export function LienWizardShell({
             href="/selling/portfolio"
             className="text-sm text-gray-500 hover:text-gray-800"
           >
-            <i className="ri-arrow-left-line text-xl" />
+            <ArrowLeft className="h-5 w-5" />
           </Link>
         </nav>
         <ProgressBar currentStep={step} />
@@ -81,7 +79,7 @@ export function LienWizardShell({
                 Back
               </Button>
               <Button
-                className={PRIMARY_BUTTON_CLASSNAME}
+                variant="primary"
                 onClick={onContinue}
                 loading={submitting}
                 disabled={!!continueDisabled || !!submitting}

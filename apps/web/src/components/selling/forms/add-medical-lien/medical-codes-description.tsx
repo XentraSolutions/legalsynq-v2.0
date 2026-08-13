@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Info } from "lucide-react";
 import { BaseSelect } from "@/components/ui/base-select";
 import { CreateMedicalCode } from "../add-medical-code";
 import {
@@ -7,7 +8,7 @@ import {
 } from "@/hooks/use-case-liens";
 import { Input } from "@/components/ui/input";
 import Field from "@/components/lien/field";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 
 export interface MedicalCodesDescriptionProps {
   caseId?: string;
@@ -193,7 +194,7 @@ export default function MedicalCodesDescription(
               type="button"
               className="shrink-0"
               disabled={!isEntryValid}
-              rightIcon={<i className="ri-add-line text-sm" />}
+              rightIcon="plus"
               onClick={handleAddRow}
             >
               Add
@@ -250,7 +251,7 @@ export default function MedicalCodesDescription(
                       colSpan={4}
                       className="px-4 py-6 text-center text-sm text-gray-500"
                     >
-                      <i className="ri-information-line mr-1.5" />
+                      <Info className="inline h-4 w-4 mr-1.5" />
                       No record added yet
                     </td>
                   </tr>

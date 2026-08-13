@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Copy, FileText } from "lucide-react";
 import { LienDetailsResult } from "@/types/lien-selling";
 import { LienInformationPanel } from "./lien-detail/lien-information-panel";
 import { FundingCompanyAndCaseInformationPanel } from "./lien-detail/funding-company-information-panel";
@@ -23,7 +24,7 @@ import {
 import { useToast } from "@/lib/toast-context";
 import { Tabs } from "@/components/ui/tabs";
 import { LienRowActionsMenu } from "./lien-row-actions-menu";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 
 interface LienDetailPanelProps {
   lien: LienDetailsResult;
@@ -94,10 +95,7 @@ export function PortfolioDetailPanel({
               onActionComplete={onRefresh}
               autoOpenDecision={sellerStatus === "Pending"}
               trigger={
-                <Button
-                  className="bg-[#EE7132] hover:bg-[#EE7132]/90 text-white"
-                  rightIcon={<i className="ri-arrow-down-s-line text-base" />}
-                >
+                <Button variant="primary" rightIcon="chevronDown">
                   Manage Lien
                 </Button>
               }
@@ -273,8 +271,7 @@ function DocumentsTab({
           <h3 className="text-md font-semibold">Documents</h3>
           <Button
             variant="secondary"
-            className="px-3 py-1.5"
-            rightIcon={<i className="ri-upload-cloud-2-line text-sm" />}
+            rightIcon="cloudUpload"
             onClick={() => setShowUpload(true)}
           >
             Upload Document
@@ -283,7 +280,7 @@ function DocumentsTab({
 
         {lien.documents.length === 0 ? (
           <div className="py-10 text-center">
-            <i className="ri-file-copy-2-line text-3xl text-gray-300" />
+            <Copy className="h-6 w-6 text-gray-300" />
             <p className="text-sm text-gray-400 mt-2">
               No documents attached to this lien yet
             </p>
@@ -296,7 +293,7 @@ function DocumentsTab({
               return (
                 <div key={doc.id} className="flex items-center gap-3 py-1">
                   <div className="w-10 h-10 rounded bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
-                    <i className="ri-file-text-line text-lg text-gray-500" />
+                    <FileText className="h-5 w-5 text-gray-500" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-gray-800 truncate">
@@ -309,12 +306,11 @@ function DocumentsTab({
                     </p>
                   </div>
                   <Button
-                    variant="icon-square"
-                    className="w-8 h-8 border-red-100 text-red-500 hover:bg-red-50 shrink-0"
+                    variant="icon-square-destructive"
+                    className="w-8 h-8 shrink-0"
+                    icon="trash2"
                     onClick={() => setDeleteTarget(doc.id)}
-                  >
-                    <i className="ri-delete-bin-6-line text-sm" />
-                  </Button>
+                  />
                 </div>
               );
             })}

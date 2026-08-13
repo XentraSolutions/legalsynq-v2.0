@@ -1,14 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowLeft, TriangleAlert } from "lucide-react";
 import { liensService } from "@/lib/selling";
 import { documentsService } from "@/lib/documents";
 import { useSession } from "@/hooks/use-session";
 import { useSessionContext } from "@/providers/session-provider";
 import { useToast } from "@/lib/toast-context";
 import { ConfirmDialog, Modal } from "@/components/selling/modal";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
+import {
+  fileExtLabel,
+  fileIconFor,
+  UploadedFileRow,
+} from "@/components/selling/uploaded-file-row";
 import { LienInformationPanel } from "@/components/selling/lien-detail/lien-information-panel";
 import { FundingCompanyAndCaseInformationPanel } from "@/components/selling/lien-detail/funding-company-information-panel";
 import { MedicalCodesInformationPanel } from "@/components/selling/lien-detail/medical-codes-information-panel";
@@ -27,13 +33,11 @@ import {
 } from "@/lib/selling/selling-detail.mapper";
 import { TOTAL_STEPS, goToStep } from "./shared";
 
-// Selling's brand accent, matching the convention used on other selling pages.
-const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
-
 interface DocSlotState {
   uploading: boolean;
   documentId: string | null;
   displayName: string | null;
+  createdAt: string | null;
 }
 
 function emptyDocSlots(): Record<string, DocSlotState> {
@@ -42,7 +46,12 @@ function emptyDocSlots(): Record<string, DocSlotState> {
     ...REQUIRED_SALE_DOCUMENT_TYPES,
     ...OPTIONAL_SALE_DOCUMENT_TYPES,
   ]) {
-    slots[type] = { uploading: false, documentId: null, displayName: null };
+    slots[type] = {
+      uploading: false,
+      documentId: null,
+      displayName: null,
+      createdAt: null,
+    };
   }
   return slots;
 }
@@ -59,21 +68,46 @@ const SELLING_TYPE_TO_SALE_DOCUMENT_TYPE: Record<string, string> = {
   Other: "PoliceReport",
 };
 
-function docSlotsFromLien(
+// Enriches each slot with the upload timestamp — lien.documents only carries
+// documentId/type/displayName, so the createdAt shown in the card comes from
+// a follow-up fetch per attached document (same pattern as the edit wizard's
+// UploadDocuments component).
+async function docSlotsFromLien(
   documents: LienDetailsResult["documents"],
-): Record<string, DocSlotState> {
+): Promise<Record<string, DocSlotState>> {
   const slots = emptyDocSlots();
+  const refs: {
+    slotType: string;
+    documentId: string;
+    displayName: string | null;
+  }[] = [];
   for (const doc of documents) {
     const data = parseDocumentReference(doc);
     if (!data.documentId) continue;
     const slotType = SELLING_TYPE_TO_SALE_DOCUMENT_TYPE[data.documentType];
     if (!slotType || !slots[slotType]) continue;
-    slots[slotType] = {
-      uploading: false,
+    refs.push({
+      slotType,
       documentId: data.documentId,
       displayName: data.displayName,
-    };
+    });
   }
+  await Promise.all(
+    refs.map(async ({ slotType, documentId, displayName }) => {
+      let createdAt: string | null = null;
+      try {
+        createdAt = (await documentsService.getById(documentId)).createdAt;
+      } catch {
+        // Non-fatal — the card still renders without a timestamp.
+      }
+      slots[slotType] = {
+        uploading: false,
+        documentId,
+        displayName,
+        createdAt,
+      };
+    }),
+  );
   return slots;
 }
 
@@ -84,7 +118,9 @@ export interface ReviewDocumentsStepProps {
 // Step 2/2 — review lien/buyer info, upload the sale documents, then
 // authorize and send. Buyer selection was already persisted by step 1, so
 // this step only reads it off the lien to render the summary panel.
-export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps) {
+export default function ReviewDocumentsStep({
+  lienId,
+}: ReviewDocumentsStepProps) {
   const router = useRouter();
   const { session } = useSession();
   const { lookup } = useSessionContext();
@@ -107,6 +143,8 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
   const [editModal, setEditModal] = useState<
     "lien-information" | "case-information" | "medical-pricing" | null
   >(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,7 +157,9 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
         if (cancelled) return;
         setLien(detail);
         setSellingDocumentTypes(documentTypesRes.data.items);
-        setDocSlots(docSlotsFromLien(detail.documents));
+        const slots = await docSlotsFromLien(detail.documents);
+        if (cancelled) return;
+        setDocSlots(slots);
       } catch (err) {
         showToast(
           err instanceof Error ? err.message : "Failed to load lien",
@@ -163,7 +203,11 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
   const handleFileSelect = async (documentType: string, file: File) => {
     setDocSlots((prev) => ({
       ...prev,
-      [documentType]: { ...prev[documentType], uploading: true },
+      [documentType]: {
+        ...prev[documentType],
+        uploading: true,
+        displayName: file.name,
+      },
     }));
     try {
       const categoryCode = SALE_DOCUMENT_TYPE_TO_CATEGORY_CODE[documentType];
@@ -190,6 +234,7 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
           uploading: false,
           documentId: uploaded.id,
           displayName: file.name,
+          createdAt: uploaded.createdAt,
         },
       };
       setDocSlots(nextSlots);
@@ -202,7 +247,13 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
     } catch (err) {
       setDocSlots((prev) => ({
         ...prev,
-        [documentType]: { ...prev[documentType], uploading: false },
+        [documentType]: {
+          ...prev[documentType],
+          uploading: false,
+          displayName: prev[documentType].documentId
+            ? prev[documentType].displayName
+            : null,
+        },
       }));
       showToast(
         err instanceof Error ? err.message : "Document upload failed",
@@ -211,7 +262,9 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
     }
   };
 
-  const uploadedDocumentRefs = (slots: Record<string, DocSlotState> = docSlots) =>
+  const uploadedDocumentRefs = (
+    slots: Record<string, DocSlotState> = docSlots,
+  ) =>
     Object.entries(slots)
       .filter(([, slot]) => slot.documentId)
       .map(([documentType, slot]) => {
@@ -225,6 +278,35 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
           displayName: slot.displayName ?? undefined,
         };
       });
+
+  const runDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const nextSlots = {
+        ...docSlots,
+        [deleteTarget]: {
+          uploading: false,
+          documentId: null,
+          displayName: null,
+          createdAt: null,
+        },
+      };
+      await liensService.saveDocuments(lienId, {
+        documents: uploadedDocumentRefs(nextSlots),
+      });
+      setDocSlots(nextSlots);
+      setDeleteTarget(null);
+      showToast("Document removed.", "success");
+    } catch (err) {
+      showToast(
+        err instanceof Error ? err.message : "Failed to remove document",
+        "error",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const saveForLater = async () => {
     setSubmitting(true);
@@ -279,14 +361,14 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
   if (!lien) return null;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-10">
+    <div className="w-full space-y-6 pb-10">
       <div className="flex items-center gap-4">
         <button
           type="button"
           onClick={() => goToStep(router, lienId, 1)}
           className="text-gray-400 hover:text-gray-600"
         >
-          <i className="ri-arrow-left-line text-xl" />
+          <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="flex-1 flex gap-2">
           {Array.from({ length: TOTAL_STEPS }, (_, index) => (
@@ -304,24 +386,24 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
           Prepare Your Lien for Sale
         </h1>
         <p className="text-sm text-gray-500">
-          Review the lien information and complete all required documents
-          before submitting it to the selected funding company.
+          Review the lien information and complete all required documents before
+          submitting it to the selected funding company.
         </p>
 
         {!pricingReady && (
           <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <i className="ri-alert-line text-amber-600 shrink-0" />
+            <TriangleAlert className="h-4 w-4 text-amber-600 shrink-0" />
             <p className="text-xs text-amber-700">
               This lien has no medical pricing or ask amount set yet. Edit
-              &ldquo;Medical Code &amp; Marketplace Pricing&rdquo; below
-              before this lien can be sold.
+              &ldquo;Medical Code &amp; Marketplace Pricing&rdquo; below before
+              this lien can be sold.
             </p>
           </div>
         )}
 
         {!requiredDocsReady && (
           <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <i className="ri-alert-line text-amber-600 shrink-0" />
+            <TriangleAlert className="h-4 w-4 text-amber-600 shrink-0" />
             <p className="text-xs text-amber-700">
               Upload all required documents below before this lien can be
               authorized and sent.
@@ -329,7 +411,7 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-4 items-start">
           <div className="space-y-4">
             <LienInformationPanel
               lien={lien.lienInformation}
@@ -369,6 +451,7 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
                   required
                   slot={docSlots[type]}
                   onSelect={(file) => handleFileSelect(type, file)}
+                  onDelete={() => setDeleteTarget(type)}
                 />
               ))}
             </div>
@@ -382,6 +465,7 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
                   type={type}
                   slot={docSlots[type]}
                   onSelect={(file) => handleFileSelect(type, file)}
+                  onDelete={() => setDeleteTarget(type)}
                 />
               ))}
             </div>
@@ -389,7 +473,10 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
         </div>
 
         <div className="flex justify-between items-center pt-4">
-          <Button variant="secondary" onClick={() => goToStep(router, lienId, 1)}>
+          <Button
+            variant="secondary"
+            onClick={() => goToStep(router, lienId, 1)}
+          >
             Back
           </Button>
           <div className="flex gap-3">
@@ -401,7 +488,7 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
               Save for Later
             </Button>
             <Button
-              className={`px-6 ${PRIMARY_BUTTON_CLASSNAME}`}
+              variant="primary"
               disabled={!canAuthorize || submitting}
               onClick={() => setShowConfirm(true)}
             >
@@ -430,6 +517,17 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
         confirmLabel="Yes, Sell"
       />
 
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={runDelete}
+        loading={deleting}
+        title="Remove Document"
+        description="This document will no longer be attached to this lien."
+        confirmLabel="Remove"
+        confirmVariant="danger"
+      />
+
       <Modal
         open={showSuccess}
         onClose={() => router.push(`/selling/portfolio/lien/${lienId}`)}
@@ -437,7 +535,7 @@ export default function ReviewDocumentsStep({ lienId }: ReviewDocumentsStepProps
         size="sm"
         footer={
           <Button
-            className={PRIMARY_BUTTON_CLASSNAME}
+            variant="primary"
             onClick={() => router.push(`/selling/portfolio/lien/${lienId}`)}
           >
             Done
@@ -495,51 +593,81 @@ function DocumentSlot({
   required,
   slot,
   onSelect,
+  onDelete,
 }: {
   type: string;
   required?: boolean;
   slot: DocSlotState;
   onSelect: (file: File) => void;
+  onDelete: () => void;
 }) {
   const meta = SALE_DOCUMENT_LABELS[type];
-  const inputId = `doc-slot-${type}`;
+  const inputRef = useRef<HTMLInputElement>(null);
+
   return (
-    <div className="flex items-center justify-between gap-3 border border-gray-100 rounded-lg px-3 py-2.5">
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-gray-800">
+    <UploadedFileRow
+      icon={slot.displayName ? fileIconFor(slot.displayName) : undefined}
+      title={
+        <>
           {meta?.title ?? type}
           {required && <span className="text-red-500 ml-0.5">*</span>}
-        </p>
-        <p className="text-xs text-gray-400 truncate">
-          {slot.documentId
-            ? slot.displayName
-            : (meta?.description ?? "(Optional)")}
-        </p>
-      </div>
-      <label
-        htmlFor={inputId}
-        className={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border cursor-pointer ${
-          slot.documentId
-            ? "border-green-200 text-green-700 bg-green-50"
-            : "border-gray-200 text-gray-600 hover:bg-gray-50"
-        }`}
-      >
-        {slot.uploading
+        </>
+      }
+      subtitle={
+        slot.uploading
           ? "Uploading..."
           : slot.documentId
-            ? "Replace File"
-            : "Choose File"}
-      </label>
-      <input
-        id={inputId}
-        type="file"
-        className="hidden"
-        disabled={slot.uploading}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onSelect(file);
-        }}
-      />
-    </div>
+            ? `${slot.displayName} · ${fileExtLabel(slot.displayName ?? "")}`
+            : (meta?.description ?? "(Optional)")
+      }
+      timestamp={slot.documentId && !slot.uploading ? slot.createdAt : null}
+      actions={
+        <>
+          {slot.documentId ? (
+            <>
+              <Button
+                type="button"
+                variant="icon-square"
+                icon="cloudBackup"
+                loading={slot.uploading}
+                onClick={() => inputRef.current?.click()}
+                aria-label={slot.uploading ? "Uploading" : "Replace document"}
+              />
+              <Button
+                type="button"
+                variant="icon-square-destructive"
+                icon="trash2"
+                disabled={slot.uploading}
+                onClick={onDelete}
+                aria-label="Delete document"
+              />
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant={slot.uploading ? "icon-square" : "secondary"}
+              icon={slot.uploading ? "cloudUpload" : undefined}
+              loading={slot.uploading}
+              onClick={() => inputRef.current?.click()}
+              aria-label={slot.uploading ? "Uploading" : "Choose file"}
+              rightIcon="cloudUpload"
+            >
+              Choose File
+            </Button>
+          )}
+          <input
+            ref={inputRef}
+            type="file"
+            className="hidden"
+            disabled={slot.uploading}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onSelect(file);
+              e.target.value = "";
+            }}
+          />
+        </>
+      }
+    />
   );
 }

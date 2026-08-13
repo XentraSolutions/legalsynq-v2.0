@@ -3,15 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft, Search } from "lucide-react";
 import { liensService } from "@/lib/selling";
 import { useToast } from "@/lib/toast-context";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 import { useCompanyTypes, useCompanies, useContactPersons } from "@/hooks/use-selling-companies";
 import Field from "@/components/lien/field";
 import { TOTAL_STEPS, goToStep } from "./shared";
-
-// Selling's brand accent, matching the convention used on other selling pages.
-const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 
 export interface BuyerSelectionStepProps {
   lienId: string;
@@ -148,7 +146,7 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
           href={`/selling/portfolio/lien/${lienId}`}
           className="text-gray-400 hover:text-gray-600"
         >
-          <i className="ri-arrow-left-line text-xl" />
+          <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="flex-1 flex gap-2">
           {Array.from({ length: TOTAL_STEPS }, (_, index) => (
@@ -176,7 +174,7 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
           placeholder="Search..."
           value={companySearch}
           onChange={setCompanySearch}
-          prefix={<i className="ri-search-line" />}
+          prefix={<Search className="h-4 w-4" />}
         />
 
         <div className="border border-gray-200 rounded-lg max-h-96 overflow-y-auto">
@@ -223,7 +221,7 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
             ) : (
               <>
                 <div className="relative">
-                  <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
                   <input
                     type="text"
                     placeholder="Search contacts..."
@@ -267,7 +265,7 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
             Cancel
           </Link>
           <Button
-            className={`px-6 ${PRIMARY_BUTTON_CLASSNAME}`}
+            variant="primary"
             disabled={!companyId || savingBuyerSelection}
             loading={savingBuyerSelection}
             onClick={handleContinue}

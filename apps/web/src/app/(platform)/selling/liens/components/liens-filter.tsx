@@ -9,7 +9,7 @@ import {
   InfiniteFilterList,
 } from "@/components/lien/filter-section";
 import { useInfiniteCompanyOptions } from "@/hooks/use-selling-companies";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 
 export interface LiensFilterValues {
   tab: string;
@@ -107,20 +107,19 @@ export function LiensFilter({
       subtitle="Narrow down liens using filters to quickly find relevant results."
       submitLabel="Apply Filters"
       size="lg"
-      headerActions={
+    >
+      <div className="mb-4 flex justify-end">
         <Button
           type="button"
-          variant="ghost"
-          leftIcon={<i className="ri-refresh-line text-sm" />}
-          className="text-xs px-3 py-1.5 text-primary border border-primary/30 hover:bg-primary/5"
+          variant="secondary"
+          leftIcon="refreshCw"
           onClick={handleClear}
         >
           Clear Filter
         </Button>
-      }
-    >
-      <div className="space-y-5">
-        <div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
           <FilterSection
             label="Funding Company"
             source={fundingCompany}
@@ -135,40 +134,28 @@ export function LiensFilter({
             />
           </FilterSection>
         </div>
-        <div>
-          <p className="text-sm font-medium text-gray-700 mb-2">
-            Initial Service Date
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">
-                From Date
-              </label>
-              <DatePicker
-                value={draft.initialServiceDateFrom}
-                onChange={(v) =>
-                  setDraft({ ...draft, initialServiceDateFrom: v })
-                }
-                // Can't be after the To date already picked (also implies
-                // "not in the future", since To is itself capped at today).
-                maxDate={parseLocalDate(draft.initialServiceDateTo)}
-                disableFutureDates
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">
-                To Date
-              </label>
-              <DatePicker
-                value={draft.initialServiceDateTo}
-                onChange={(v) =>
-                  setDraft({ ...draft, initialServiceDateTo: v })
-                }
-                minDate={parseLocalDate(draft.initialServiceDateFrom)}
-                disableFutureDates
-              />
-            </div>
-          </div>
+        <p className="text-sm font-medium text-gray-700 col-span-2 -mb-4 pb-1">
+          Initial Service Date
+        </p>
+        <div className="col-span-1">
+          <label className="block text-xs text-gray-500 mb-1">From Date</label>
+          <DatePicker
+            value={draft.initialServiceDateFrom}
+            onChange={(v) => setDraft({ ...draft, initialServiceDateFrom: v })}
+            // Can't be after the To date already picked (also implies
+            // "not in the future", since To is itself capped at today).
+            maxDate={parseLocalDate(draft.initialServiceDateTo)}
+            disableFutureDates
+          />
+        </div>
+        <div className="col-span-1">
+          <label className="block text-xs text-gray-500 mb-1">To Date</label>
+          <DatePicker
+            value={draft.initialServiceDateTo}
+            onChange={(v) => setDraft({ ...draft, initialServiceDateTo: v })}
+            minDate={parseLocalDate(draft.initialServiceDateFrom)}
+            disableFutureDates
+          />
         </div>
       </div>
     </FormModal>

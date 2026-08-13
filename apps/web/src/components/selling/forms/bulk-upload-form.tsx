@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { CloudUpload, FileText, X } from "lucide-react";
 import { FormModal } from "@/components/selling/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { documentsService } from "@/lib/documents";
@@ -8,7 +9,7 @@ import { liensService } from "@/lib/selling";
 import { liensApi } from "@/lib/selling/selling-liens.api";
 import { useToast } from "@/lib/toast-context";
 import { ApiError } from "@/lib/api-client";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 
 interface BulkUploadFormProps {
   open: boolean;
@@ -160,7 +161,7 @@ export function BulkUploadForm({
         >
           {file ? (
             <div className="flex items-center w-full gap-2">
-              <i className="ri-file-text-line text-2xl" />
+              <FileText className="h-6 w-6" />
               <div className="flex-1 min-w-0  text-left">
                 <span className="block text-sm font-medium text-gray-700 truncate">
                   {file.name}
@@ -178,12 +179,12 @@ export function BulkUploadForm({
                   setFile(null);
                 }}
               >
-                <i className="ri-close-line" />
+                <X className="h-4 w-4" />
               </Button>
             </div>
           ) : (
             <>
-              <i className="ri-upload-cloud-2-line text-3xl p-2 px-3 rounded-lg bg-[#F5F5F5]" />
+              <CloudUpload className="h-6 w-6 p-2 px-3 rounded-lg bg-[#F5F5F5] box-content" />
               <div>
                 <label className="block text-xl font-medium text-gray-700 mb-1 mt-4">
                   Lien Bulk Upload

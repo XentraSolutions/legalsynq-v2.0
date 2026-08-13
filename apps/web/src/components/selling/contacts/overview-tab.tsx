@@ -1,5 +1,6 @@
 "use client";
 
+import { Briefcase } from "lucide-react";
 import { useCompanyDetailContext } from "./context";
 import { ContactsEmptyState } from "./contacts-empty-state";
 import { StatusBadge } from "@/components/lien/status-badge";
@@ -79,7 +80,7 @@ export function CompanyOverviewTab() {
             </div>
           ) : items.length === 0 ? (
             <ContactsEmptyState
-              icon="ri-briefcase-line"
+              icon={Briefcase}
               title="No Cases Yet"
               description="Cases associated with this company will be displayed here."
             />

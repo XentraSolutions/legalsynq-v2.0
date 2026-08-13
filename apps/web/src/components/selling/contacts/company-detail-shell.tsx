@@ -7,7 +7,7 @@ import {
 import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
 import { ReassignCompanyModal } from "@/components/selling/forms/reassign-company-modal";
 import { ConfirmDialog } from "@/components/selling/modal";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import {
   useCompany,
@@ -16,7 +16,7 @@ import {
   useDeactivateCompany,
   useReactivateCompany,
 } from "@/hooks/use-selling-companies";
-import { Mail, Repeat, SquarePen, Trash2 } from "lucide-react";
+import { ArrowLeft, CircleAlert, Mail, Repeat, SquarePen, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -26,8 +26,6 @@ import { CompanyStatsCards } from "./company-stats-cards";
 
 const RECENT_CASES_PAGE_SIZE = 4;
 
-const PRIMARY_BUTTON_CLASSNAME =
-  "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 const BASE_PATH = "/selling/contacts";
 
 const TABS = [
@@ -74,7 +72,7 @@ export function CompanyDetailShell({
   if (!company) {
     return (
       <div className="p-10 text-center space-y-3">
-        <i className="ri-error-warning-line text-3xl text-gray-300" />
+        <CircleAlert className="h-6 w-6 text-gray-300" />
         <p className="text-sm text-gray-500">Company not found.</p>
         <Link href={BASE_PATH} className="text-sm text-primary hover:underline">
           Back to Contacts
@@ -117,7 +115,7 @@ export function CompanyDetailShell({
             aria-label="Back to Contacts"
             className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
           >
-            <i className="ri-arrow-left-line text-lg" />
+            <ArrowLeft className="h-5 w-5" />
           </Link>
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
@@ -139,11 +137,7 @@ export function CompanyDetailShell({
         <ActionMenu
           align="end"
           trigger={
-            <Button
-              className={`${PRIMARY_BUTTON_CLASSNAME} shrink-0`}
-              iconDivider
-              rightIcon={<i className="ri-arrow-down-s-line text-base" />}
-            >
+            <Button variant="primary" className="shrink-0" rightIcon="chevronDown">
               Manage Company
             </Button>
           }

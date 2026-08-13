@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { useSession } from "@/hooks/use-session";
 import { ProductRole } from "@/types";
 import { ApiError } from "@/lib/api-client";
@@ -83,7 +84,7 @@ export default function PortfolioLienDetailPage() {
             href="/selling/portfolio"
             className="text-sm text-gray-500 hover:text-gray-800"
           >
-            <i className="ri-arrow-left-line text-xl" />
+            <ArrowLeft className="h-5 w-5" />
           </Link>
         </nav>
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
@@ -102,7 +103,7 @@ export default function PortfolioLienDetailPage() {
           href="/selling/portfolio"
           className="text-sm text-gray-500 hover:text-gray-800"
         >
-          <i className="ri-arrow-left-line text-xl" />
+          <ArrowLeft className="h-5 w-5" />
         </Link>
       </nav>
 

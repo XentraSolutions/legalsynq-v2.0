@@ -3,7 +3,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, CloudUpload, File, Search, Settings2 } from "lucide-react";
+import { CloudUpload, File, Search } from "lucide-react";
 import { ActionMenu } from "./action-menu";
 import { LiensQuery, liensService } from "@/lib/selling";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -25,7 +25,7 @@ import { BulkUploadForm } from "./forms/bulk-upload-form";
 import { PaginationMeta } from "@/lib/liens";
 import { SortingState } from "@tanstack/react-table";
 import { useLienStore } from "@/stores/lien-store";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 import { PageHeader } from "@/components/lien/page-header";
 import { SkeletonCard, SkeletonTable } from "@/components/lien/skeleton-loader";
 
@@ -212,11 +212,7 @@ export default function PortfolioClient() {
           actions={
             <ActionMenu
               trigger={
-                <Button
-                  className="bg-[#EE7132] hover:bg-[#EE7132]/90 text-white"
-                  rightIcon={<ChevronDown className="h-4 w-4" />}
-                  iconDivider
-                >
+                <Button variant="primary" rightIcon="chevronDown">
                   Add New Lien
                 </Button>
               }
@@ -288,7 +284,7 @@ export default function PortfolioClient() {
             <Button
               variant="secondary"
               className="border-gray-300"
-              leftIcon={<Settings2 className="h-4 w-4" />}
+              leftIcon="settings2"
               onClick={() => setShowFilter(true)}
             >
               Filter

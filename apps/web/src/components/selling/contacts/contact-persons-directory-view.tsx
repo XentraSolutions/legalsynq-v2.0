@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Plus, Settings2, Trash2, Upload } from "lucide-react";
+import { Contact, Eye, Loader, Trash2 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ActionMenu } from "@/components/selling/action-menu";
@@ -13,7 +13,7 @@ import { BaseTable } from "@/components/ui/base-table";
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
 import { ContactsFilterModal } from "@/components/selling/contacts/contacts-filter-modal";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import { downloadBlob } from "@/lib/utils";
 import {
@@ -26,6 +26,9 @@ import {
 import type { ContactPersonDirectoryItem } from "@/lib/selling/companies.types";
 
 const DEFAULT_PAGE_SIZE = 10;
+// Still needed as a passthrough for BaseTable (src/components/ui/base-table),
+// which renders a plain <button> (not the selling Button component) and
+// exposes primaryButtonClassName as a generic override, not selling-specific.
 const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 
 export function ContactPersonsDirectoryView() {
@@ -212,7 +215,7 @@ export function ContactPersonsDirectoryView() {
             <Button
               variant="secondary"
               className="border-gray-300"
-              leftIcon={<Settings2 className="h-4 w-4" />}
+              leftIcon="settings2"
               onClick={() => setShowFilter(true)}
             >
               Filter
@@ -226,8 +229,7 @@ export function ContactPersonsDirectoryView() {
         >
           <Button
             variant="secondary"
-            iconDivider
-            rightIcon={<Upload className="h-4 w-4" />}
+            rightIcon="upload"
             disabled={exportContactsMutation.isPending}
             onClick={handleExport}
           >
@@ -235,9 +237,8 @@ export function ContactPersonsDirectoryView() {
           </Button>
           {ra.can("contact:create") && (
             <Button
-              iconDivider
-              rightIcon={<Plus className="h-4 w-4" />}
-              className={PRIMARY_BUTTON_CLASSNAME}
+              variant="primary"
+              rightIcon="plus"
               onClick={() => setShowCreate(true)}
             >
               Add Contact Person
@@ -247,7 +248,7 @@ export function ContactPersonsDirectoryView() {
 
         {showEmptyState ? (
           <ContactsEmptyState
-            icon="ri-contacts-line"
+            icon={Contact}
             title="No Contact Person Yet"
             description="No contact persons match your search or filters yet."
           />
@@ -255,7 +256,7 @@ export function ContactPersonsDirectoryView() {
           <div className="relative">
             {refreshing && (
               <div className="absolute top-2 right-3 z-10 flex items-center gap-1.5 text-xs text-gray-400">
-                <i className="ri-loader-4-line animate-spin text-sm" />
+                <Loader className="h-4 w-4 animate-spin" />
                 Refreshing...
               </div>
             )}

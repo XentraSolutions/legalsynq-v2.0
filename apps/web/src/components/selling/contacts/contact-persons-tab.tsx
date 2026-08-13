@@ -2,7 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Repeat, Settings2, SquarePen, Trash2 } from "lucide-react";
+import {
+  Contact,
+  LayoutGrid,
+  List,
+  Mail,
+  Phone,
+  Repeat,
+  Search,
+  Settings2,
+  SquarePen,
+  Trash2,
+} from "lucide-react";
 import { ActionMenu, type ActionMenuItem } from "@/components/selling/action-menu";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ConfirmDialog } from "@/components/selling/modal";
@@ -27,9 +38,12 @@ import { ReassignContactPersonModal } from "@/components/selling/forms/reassign-
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
 import type { ContactPerson } from "@/lib/selling/companies.types";
 import { useCompanyDetailContext } from "./context";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 import { downloadBlob } from "@/lib/utils";
 
+// Still needed as a passthrough for BaseTable/Pagination (src/components/ui),
+// which render a plain <button> (not the selling Button component) and
+// expose primaryButtonClassName as a generic override, not selling-specific.
 const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
@@ -208,7 +222,7 @@ export function CompanyContactPersonsTab() {
                 view === "grid" ? "bg-[#EE7132] text-white" : "text-gray-400 hover:text-gray-600"
               }`}
             >
-              <i className="ri-grid-fill text-base" />
+              <LayoutGrid className="h-4 w-4" />
             </button>
             <button
               aria-label="List view"
@@ -217,14 +231,13 @@ export function CompanyContactPersonsTab() {
                 view === "list" ? "bg-[#EE7132] text-white" : "text-gray-400 hover:text-gray-600"
               }`}
             >
-              <i className="ri-list-unordered text-base" />
+              <List className="h-4 w-4" />
             </button>
           </div>
 
           <Button
             variant="secondary"
-            iconDivider
-            rightIcon={<i className="ri-upload-2-line text-base" />}
+            rightIcon="upload"
             disabled={exportMutation.isPending}
             onClick={handleExport}
           >
@@ -233,9 +246,8 @@ export function CompanyContactPersonsTab() {
 
           {canEdit && (
             <Button
-              className={`${PRIMARY_BUTTON_CLASSNAME}`}
-              iconDivider
-              rightIcon={<i className="ri-add-line text-base" />}
+              variant="primary"
+              rightIcon="plus"
               onClick={() => setCreateOpen(true)}
             >
               Add Contact Person
@@ -249,7 +261,7 @@ export function CompanyContactPersonsTab() {
 
         {!contactPersonsQuery.isLoading && allContacts.length === 0 && (
           <ContactsEmptyState
-            icon="ri-contacts-line"
+            icon={Contact}
             title="No Contact Person Yet"
             description="No contact persons have been added yet to this company. Add your first contact person."
             actionLabel={canEdit ? "Add Contact Person" : undefined}
@@ -259,7 +271,7 @@ export function CompanyContactPersonsTab() {
 
         {!contactPersonsQuery.isLoading && allContacts.length > 0 && contacts.length === 0 && (
           <ContactsEmptyState
-            icon="ri-search-line"
+            icon={Search}
             title="No Matching Contact Person"
             description="No contact persons match your search or filter. Try adjusting them."
           />
@@ -292,11 +304,11 @@ export function CompanyContactPersonsTab() {
                 </div>
                 <div className="mt-3 space-y-1.5">
                   <p className="text-xs text-gray-500 flex items-center gap-1.5">
-                    <i className="ri-mail-line text-gray-300" />
+                    <Mail className="h-4 w-4 text-gray-300" />
                     {contact.email || "—"}
                   </p>
                   <p className="text-xs text-gray-500 flex items-center gap-1.5">
-                    <i className="ri-phone-line text-gray-300" />
+                    <Phone className="h-4 w-4 text-gray-300" />
                     {contact.phone || "—"}
                   </p>
                 </div>
