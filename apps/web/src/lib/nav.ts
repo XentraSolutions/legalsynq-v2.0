@@ -1,5 +1,6 @@
 import type {
   NavSection,
+  NavItem,
   PlatformSession,
   ProductRoleValue,
   OrgTypeValue,
@@ -157,14 +158,26 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
       heading: "MY TOOLS",
       items: [
         {
-          href: "/lien/templates",
-          label: "Report Templates",
+          heading: "Reports",
           icon: "ri-file-list-3-line",
-        },
-        {
-          href: "/lien/reports",
-          label: "Reports",
-          icon: "ri-file-list-2-line",
+
+          children: [
+            {
+              href: "/lien/templates",
+              label: "Report Templates",
+              icon: "ri-file-list-3-line",
+            },
+            {
+              href: "/lien/reports",
+              label: "Reports",
+              icon: "ri-file-list-2-line",
+            },
+            {
+              href: "/lien/reports/auto-generated",
+              label: "Auto Generated Reports",
+              icon: "ri-file-list-2-line",
+            },
+          ],
         },
         {
           href: "/lien/batch-entry",
@@ -419,6 +432,110 @@ export function resolveEnabledNavKeys(enabledProducts: string[]): Set<string> {
   return keys;
 }
 
+function filterItemsByRoles(
+  items: NavItem[],
+  userRoles: ProductRoleValue[],
+  isTenantAdmin = false,
+  orgType?: OrgTypeValue | null,
+): NavItem[] {
+  return items
+    .map((item) => {
+      const children = item.children
+        ? filterItemsByRoles(item.children, userRoles, isTenantAdmin, orgType)
+        : [];
+
+      // LSV3-628: hide items not part of the Phase 1 migration scope.
+      if (item.notInPhase1 && children.length === 0) return null;
+
+      // Hide immediately if the user holds any excluded role.
+      if (
+        item.excludedRoles?.some((role) => userRoles.includes(role)) &&
+        children.length === 0
+      )
+        return null;
+
+      // TenantAdmin override: show this item if the user is a tenant admin in
+      // a matching org type, regardless of product-role state.
+      if (
+        item.visibleForTenantAdminInOrgTypes &&
+        isTenantAdmin &&
+        orgType &&
+        item.visibleForTenantAdminInOrgTypes.includes(orgType)
+      ) {
+        return {
+          ...(item as NavItem),
+          ...(children.length > 0 ? { children } : {}),
+        };
+      }
+
+      if (!item.requiredRoles || item.requiredRoles.length === 0) {
+        return {
+          ...(item as NavItem),
+          ...(children.length > 0 ? { children } : {}),
+        };
+      }
+
+      if (item.requiredRoles.some((role) => userRoles.includes(role))) {
+        return {
+          ...(item as NavItem),
+          ...(children.length > 0 ? { children } : {}),
+        };
+      }
+
+      // If item itself is not allowed but children exist, keep the parent to act as grouping.
+      if (children.length > 0) return { ...(item as NavItem), children };
+
+      return null;
+    })
+    .filter(Boolean) as NavItem[];
+}
+
+function filterItemsByAccess(
+  items: NavItem[],
+  userRoles: ProductRoleValue[],
+  isSellMode: boolean,
+  orgType?: OrgTypeValue | null,
+  isTenantAdmin = false,
+  isProductPortal = false,
+  isAdmin = false,
+): NavItem[] {
+  return items
+    .map((item) => {
+      const children = item.children
+        ? filterItemsByAccess(
+            item.children,
+            userRoles,
+            isSellMode,
+            orgType,
+            isTenantAdmin,
+            isProductPortal,
+            isAdmin,
+          )
+        : [];
+
+      if (item.sellModeOnly && !isSellMode && children.length === 0)
+        return null;
+      if (
+        item.hiddenForOrgTypes &&
+        orgType &&
+        item.hiddenForOrgTypes.includes(orgType) &&
+        children.length === 0
+      )
+        return null;
+      if (item.adminOnly && !isAdmin && children.length === 0) return null;
+      if (
+        item.hiddenInProductPortal &&
+        isProductPortal &&
+        children.length === 0
+      )
+        return null;
+
+      if (children.length > 0) return { ...(item as NavItem), children };
+      return item;
+    })
+    .filter(Boolean) as NavItem[];
+}
+
 export function filterNavByRoles(
   sections: NavSection[],
   userRoles: ProductRoleValue[],
@@ -429,27 +546,12 @@ export function filterNavByRoles(
     .filter((section) => !section.notInPhase1)
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => {
-        // LSV3-628: hide items not part of the Phase 1 migration scope.
-        if (item.notInPhase1) return false;
-
-        // Hide immediately if the user holds any excluded role.
-        if (item.excludedRoles?.some((role) => userRoles.includes(role)))
-          return false;
-
-        // TenantAdmin override: show this item if the user is a tenant admin in
-        // a matching org type, regardless of product-role state.
-        if (
-          item.visibleForTenantAdminInOrgTypes &&
-          isTenantAdmin &&
-          orgType &&
-          item.visibleForTenantAdminInOrgTypes.includes(orgType)
-        )
-          return true;
-
-        if (!item.requiredRoles || item.requiredRoles.length === 0) return true;
-        return item.requiredRoles.some((role) => userRoles.includes(role));
-      }),
+      items: filterItemsByRoles(
+        section.items,
+        userRoles,
+        isTenantAdmin,
+        orgType,
+      ),
     }))
     .filter((section) => section.items.length > 0);
 }
@@ -467,18 +569,15 @@ export function filterNavByAccess(
     .filter((s) => !s.sellModeOnly || isSellMode)
     .map((s) => ({
       ...s,
-      items: s.items.filter((item) => {
-        if (item.sellModeOnly && !isSellMode) return false;
-        if (
-          item.hiddenForOrgTypes &&
-          orgType &&
-          item.hiddenForOrgTypes.includes(orgType)
-        )
-          return false;
-        if (item.adminOnly && !isAdmin) return false;
-        if (item.hiddenInProductPortal && isProductPortal) return false;
-        return true;
-      }),
+      items: filterItemsByAccess(
+        s.items,
+        userRoles,
+        isSellMode,
+        orgType,
+        isTenantAdmin,
+        isProductPortal,
+        isAdmin,
+      ),
     }))
     .filter((s) => s.items.length > 0);
 }
