@@ -103,6 +103,7 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
                 longitude      = request.Longitude,
                 geoPointSource = request.GeoPointSource,
                 products       = request.Products ?? [],
+                tenantRegistrationApproval = request.TenantRegistrationApproval,
             };
 
             var json    = JsonSerializer.Serialize(payload);

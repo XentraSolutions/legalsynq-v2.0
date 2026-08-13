@@ -15,6 +15,7 @@ public sealed class TenantRegistrationService(
     ITenantRepository tenants,
     ITenantAdminService tenantAdmin,
     IIdentityProvisioningAdapter identityProvisioning,
+    ITenantRegistrationNotificationClient notifications,
     ILogger<TenantRegistrationService> logger) : ITenantRegistrationService
 {
     public async Task<SubmitTenantRegistrationResponse> SubmitAsync(SubmitTenantRegistrationRequest request, CancellationToken ct = default)
@@ -37,6 +38,10 @@ public sealed class TenantRegistrationService(
             NullIfBlank(request.AddressLine1), NullIfBlank(request.AddressCity), NullIfBlank(request.AddressState), NullIfBlank(request.AddressPostalCode));
         await registrations.AddAsync(entity, ct);
         logger.LogInformation("Tenant registration submitted RegistrationId={RegistrationId} TenantCode={TenantCode}", entity.Id, code);
+        var submittedEmail = await notifications.SendSubmittedAsync(
+            entity.Id, entity.AdminEmail, $"{entity.AdminFirstName} {entity.AdminLastName}".Trim(), entity.TenantName, ct);
+        if (!submittedEmail.Success)
+            logger.LogWarning("Registration submitted email failed RegistrationId={RegistrationId}: {Error}", entity.Id, submittedEmail.Error);
         return new(entity.Id, entity.RegistrationStatus.ToString(), entity.ProvisioningStatus.ToString(),
             "Your registration has been submitted for review.");
     }
@@ -74,7 +79,8 @@ public sealed class TenantRegistrationService(
             var result = await tenantAdmin.CreateTenantAsync(new AdminCreateTenantRequest(
                 registration.TenantName, registration.TenantCode,
                 registration.AdminEmail, registration.AdminFirstName, registration.AdminLastName, registration.OrganizationType,
-                registration.StreetAddress, null, null, null, null, null, null), ct);
+                registration.StreetAddress, null, null, null, null, null, null),
+                ct, tenantRegistrationApproval: true);
             var success = result.IdentityProvisioned && result.ProvisioningStatus is "Active" or "Provisioned";
             registration.CompleteApproval(Guid.Parse(result.TenantId), result.Hostname, success,
                 result.ProvisioningErrors.Count > 0 ? string.Join("; ", result.ProvisioningErrors) : null,
@@ -95,6 +101,12 @@ public sealed class TenantRegistrationService(
         var registration = await registrations.GetAsync(id, ct) ?? throw new NotFoundException($"Registration '{id}' was not found.");
         registration.Decline(reviewerId, reason);
         await registrations.SaveAsync(ct);
+        var declinedEmail = await notifications.SendDeclinedAsync(
+            registration.Id, registration.AdminEmail,
+            $"{registration.AdminFirstName} {registration.AdminLastName}".Trim(),
+            registration.TenantName, reason, ct);
+        if (!declinedEmail.Success)
+            logger.LogWarning("Registration declined email failed RegistrationId={RegistrationId}: {Error}", registration.Id, declinedEmail.Error);
         return Map(registration)!;
     }
 

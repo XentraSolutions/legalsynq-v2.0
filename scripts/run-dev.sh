@@ -210,6 +210,8 @@ PID_CC=$!
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
     TenantRegistration__Enabled=true \
+    NotificationsService__BaseUrl=http://127.0.0.1:5008 \
+    FLOW_SERVICE_TOKEN_SECRET="${FLOW_SERVICE_TOKEN_SECRET:-dev-flow-service-token-signing-key-32chars!}" \
     dotnet run --no-build --project "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" &
   sleep 5
 

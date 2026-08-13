@@ -187,22 +187,39 @@ public static class TenantProvisioningEndpoints
                     "[TenantProvisioning] Duplicate role assignments skipped for user {UserId}: [{Roles}]",
                     user.Id, string.Join(", ", rolesResult.SkippedDuplicates));
 
-            // ── Provision subdomain (DNS + TenantDomain record) ───────────
-            var provResult = await provisioningService.ProvisionAsync(identityTenant, ct);
-
             var warnings = new List<string>();
-            var errors = new List<string>();
-            if (!provResult.Success) errors.Add(provResult.ErrorMessage ?? "DNS provisioning failed.");
             var setupLink = TenantPortalUrlHelper.Build(identityTenant, "accept-invite", rawSetupToken, notificationOptions.Value);
             if (setupLink is null)
             {
                 warnings.Add("Administrator setup link was created but the portal URL is not configured.");
             }
-            else
+            else if (body.TenantRegistrationApproval)
             {
                 var displayNameForEmail = $"{user.FirstName} {user.LastName}".Trim();
-                var emailResult = await emailClient.SendInviteEmailAsync(user.Email, displayNameForEmail, setupLink, identityTenant.Id, ct);
-                if (!emailResult.Success) warnings.Add($"Administrator setup email failed: {emailResult.Error ?? "delivery unavailable"}");
+                var emailResult = await emailClient.SendTenantRegistrationApprovedEmailAsync(
+                    user.Email, displayNameForEmail, displayName, setupLink, setupExpiryHours, identityTenant.Id, ct);
+                if (!emailResult.Success)
+                    warnings.Add($"Tenant acceptance email failed: {emailResult.Error ?? "delivery unavailable"}");
+            }
+
+            // The acceptance notification is intentionally dispatched before
+            // infrastructure provisioning begins. It confirms the review decision;
+            // it does not claim that DNS or product setup has completed.
+            var provResult = await provisioningService.ProvisionAsync(identityTenant, ct);
+
+            var errors = new List<string>();
+            if (!provResult.Success) errors.Add(provResult.ErrorMessage ?? "DNS provisioning failed.");
+
+            // Preserve the established generic provisioning behavior: manually
+            // created tenants receive their setup invitation after the DNS attempt,
+            // regardless of that attempt's result.
+            if (!body.TenantRegistrationApproval && setupLink is not null)
+            {
+                var displayNameForEmail = $"{user.FirstName} {user.LastName}".Trim();
+                var emailResult = await emailClient.SendInviteEmailAsync(
+                    user.Email, displayNameForEmail, setupLink, identityTenant.Id, ct);
+                if (!emailResult.Success)
+                    warnings.Add($"Administrator setup email failed: {emailResult.Error ?? "delivery unavailable"}");
             }
 
             if (provResult.Success)
@@ -278,5 +295,6 @@ public static class TenantProvisioningEndpoints
         double?  Latitude        = null,
         double?  Longitude       = null,
         string?  GeoPointSource  = null,
-        List<string>? Products   = null);
+        List<string>? Products   = null,
+        bool TenantRegistrationApproval = false);
 }

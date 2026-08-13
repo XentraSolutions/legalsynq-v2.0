@@ -72,7 +72,8 @@ public record IdentityProvisioningRequest(
     double?  Latitude              = null,
     double?  Longitude             = null,
     string?  GeoPointSource        = null,
-    List<string>? Products         = null);
+    List<string>? Products         = null,
+    bool TenantRegistrationApproval = false);
 
 /// <summary>Result returned by the Identity provisioning adapter.</summary>
 public record IdentityProvisioningResult(

@@ -9,6 +9,8 @@ using Tenant.Infrastructure.Data;
 using Tenant.Infrastructure.Repositories;
 using Tenant.Infrastructure.Services;
 using Microsoft.Extensions.Logging;
+using BuildingBlocks.Authentication.ServiceTokens;
+using BuildingBlocks.Notifications;
 
 namespace Tenant.Infrastructure;
 
@@ -63,6 +65,12 @@ public static class DependencyInjection
         services.AddScoped<ITenantSyncAdapter,       NoOpTenantSyncAdapter>();
         services.AddScoped<ITenantAdminService,      TenantAdminService>();
         services.AddScoped<ITenantRegistrationService, TenantRegistrationService>();
+        services.AddScoped<ITenantRegistrationNotificationClient, TenantRegistrationNotificationClient>();
+
+        services.AddServiceTokenIssuer(configuration, "tenant-service");
+        services.AddTransient<NotificationsAuthDelegatingHandler>();
+        services.AddHttpClient("NotificationsService")
+            .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
 
         // ── TENANT-B11: Identity compat adapter (read-through for sessionTimeoutMinutes) ──
         services.AddHttpClient("IdentityInternal", client =>
