@@ -79,6 +79,11 @@ submission creates only a `PendingReview/NotStarted` application. Approval and
 provisioning remain separate; DNS failure leaves the application `Approved/Failed`.
 Submissions are rejected when the proposed administrator email already belongs
 to an Identity account or to another pending registration.
+Successful submissions send a pending-review confirmation email. Declines send
+the applicant a decision email containing the recorded reason. Notification
+delivery is best-effort and does not roll back the registration state. These
+emails embed the LegalSynq logo as an inline attachment, so rendering does not
+depend on tenant DNS or an externally hosted image.
 The checked-in Development environment override enables self-registration locally.
 
 ## Config (`appsettings.json`)
