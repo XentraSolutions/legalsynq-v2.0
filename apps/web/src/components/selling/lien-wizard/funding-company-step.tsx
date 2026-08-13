@@ -33,7 +33,7 @@ export default function FundingCompanyStep({
       try {
         const lien = await liensService.getLienById(lienId);
         if (cancelled) return;
-        setFormData(buildFormsFromLien(lien).fundingCompany);
+        setFormData(buildFormsFromLien(lien).caseInformation);
       } catch (err) {
         showToast(
           err instanceof Error ? err.message : "Failed to load lien",
@@ -59,10 +59,10 @@ export default function FundingCompanyStep({
     setSubmitting(true);
     try {
       await liensService.saveCaseInformation(lienId, {
+        medicalProviderId: formData?.medicalProviderId || undefined,
         fundingCompanyId: formData?.fundingCompanyId || undefined,
         fundingCompanyContactId:
           formData?.fundingCompanyContactId || undefined,
-        medicalProviderId: formData?.medicalProviderId || undefined,
         handlingLawFirmId: formData?.lawfirmId || undefined,
         caseManagerId: formData?.caseManagerId || undefined,
         caseId: caseId || undefined,

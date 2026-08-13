@@ -10,6 +10,7 @@ import { useSessionContext } from "@/providers/session-provider";
 import { useToast } from "@/lib/toast-context";
 import { ConfirmDialog, Modal } from "@/components/selling/modal";
 import { Button } from "@/components/ui/button";
+import { useCompanyTypes, useCompanies, useContactPersons } from "@/hooks/use-selling-companies";
 
 // Selling's brand accent, matching the convention used on other selling pages.
 const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
@@ -18,10 +19,7 @@ import { LienInformationPanel } from "@/components/selling/lien-detail/lien-info
 import { FundingCompanyAndCaseInformationPanel } from "@/components/selling/lien-detail/funding-company-information-panel";
 import { MedicalCodesInformationPanel } from "@/components/selling/lien-detail/medical-codes-information-panel";
 import { EditMedicalPricingModal } from "@/components/selling/lien-detail/edit-medical-pricing-modal";
-import {
-  sellingLookupsApi,
-  type SellingLookupItem,
-} from "@/lib/selling/lookup.api";
+import { sellingLookupsApi } from "@/lib/selling/lookup.api";
 import type { LienDetailsResult } from "@/types/lien-selling";
 import {
   REQUIRED_SALE_DOCUMENT_TYPES,
@@ -91,14 +89,12 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
   const [step, setStep] = useState<1 | 2>(1);
 
   // Step 1 — buyer selection
-  const [companies, setCompanies] = useState<SellingLookupItem[]>([]);
   const [companySearch, setCompanySearch] = useState("");
-  const [companyId, setCompanyId] = useState<string | null>(null);
+  const [companyId, setCompanyId] = useState<string>("");
   const [companyName, setCompanyName] = useState<string>("");
-  const [contacts, setContacts] = useState<SellingLookupItem[]>([]);
-  const [contactId, setContactId] = useState<string | null>(null);
   const [contactSearch, setContactSearch] = useState("");
-  const [loadingContacts, setLoadingContacts] = useState(false);
+  const [contactId, setContactId] = useState<string>("");
+  const [contactName, setContactName] = useState<string>("");
   const selectedCompanyRef = useRef<HTMLLabelElement | null>(null);
 
   // Step 2 — documents + message.
@@ -119,14 +115,12 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
     let cancelled = false;
     (async () => {
       try {
-        const [detail, companyList, documentTypesRes] = await Promise.all([
+        const [detail, documentTypesRes] = await Promise.all([
           liensService.getLienById(lienId),
-          liensService.getFundingCompanies(),
           sellingLookupsApi.documentTypes(),
         ]);
         if (cancelled) return;
         setLien(detail);
-        setCompanies(companyList);
         setSellingDocumentTypes(documentTypesRes.data.items);
         setDocSlots(docSlotsFromLien(detail.documents));
         if (detail.fundingCompany) {
@@ -134,6 +128,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
           setCompanyName(detail.fundingCompany.name);
           if (detail.fundingCompany.contact) {
             setContactId(detail.fundingCompany.contact.id);
+            setContactName(detail.fundingCompany.contact.name);
           }
         }
       } catch (err) {
@@ -163,30 +158,30 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
     }
   };
 
+  const companyTypesQuery = useCompanyTypes();
+  const fundingCompanyType = companyTypesQuery.data?.find(
+    (t) => t.code === "FundingCompany",
+  );
+  const companiesQuery = useCompanies(
+    { companyTypeId: fundingCompanyType?.id },
+    { enabled: Boolean(fundingCompanyType?.id) },
+  );
+  const companies = companiesQuery.options;
+
+  const contactPersonsQuery = useContactPersons(companyId || null, true, {
+    enabled: Boolean(companyId),
+  });
+  const contacts = contactPersonsQuery.options;
+  const loadingContacts = contactPersonsQuery.isLoading;
+
+  // Auto-select the only contact when a company has exactly one.
   useEffect(() => {
-    if (!companyId) {
-      setContacts([]);
-      return;
+    if (contacts.length === 1) {
+      setContactId(contacts[0].value);
+      setContactName(contacts[0].label);
     }
-    let cancelled = false;
-    setLoadingContacts(true);
-    liensService
-      .getFundingCompanyContacts(companyId)
-      .then((items) => {
-        if (cancelled) return;
-        setContacts(items);
-        if (items.length === 1) setContactId(items[0].id);
-      })
-      .catch(() => {
-        if (!cancelled) setContacts([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingContacts(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [companyId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactPersonsQuery.data]);
 
   useEffect(() => {
     if (!companyId || step !== 1) return;
@@ -199,17 +194,16 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
   const filteredCompanies = useMemo(() => {
     if (!companySearch.trim()) return companies;
     const q = companySearch.trim().toLowerCase();
-    return companies.filter((c) => c.name.toLowerCase().includes(q));
+    return companies.filter((c) => c.label.toLowerCase().includes(q));
   }, [companies, companySearch]);
 
-  // Cap the unfiltered render — the lookup has been observed to return
-  // thousands of rows for a single company (see the comment above the
-  // contact list JSX), so render nothing until the user searches.
+  // Cap the unfiltered render — the contacts lookup can return a lot of rows
+  // for a single company, so render nothing until the user searches.
   const filteredContacts = useMemo(() => {
     if (!contactSearch.trim()) return contacts.slice(0, 25);
     const q = contactSearch.trim().toLowerCase();
     return contacts
-      .filter((c) => c.name.toLowerCase().includes(q))
+      .filter((c) => c.label.toLowerCase().includes(q))
       .slice(0, 50);
   }, [contacts, contactSearch]);
 
@@ -426,23 +420,26 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
             )}
             {filteredCompanies.map((company) => (
               <label
-                key={company.id}
-                ref={companyId === company.id ? selectedCompanyRef : undefined}
+                key={company.value}
+                ref={
+                  companyId === company.value ? selectedCompanyRef : undefined
+                }
                 className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50"
               >
                 <input
                   type="radio"
                   name="fundingCompany"
-                  checked={companyId === company.id}
+                  checked={companyId === company.value}
                   onChange={() => {
-                    setCompanyId(company.id);
-                    setCompanyName(company.name);
-                    setContactId(null);
+                    setCompanyId(company.value);
+                    setCompanyName(company.label);
+                    setContactId("");
+                    setContactName("");
                     setContactSearch("");
                   }}
                   className="accent-[#EE7132]"
                 />
-                <span className="text-sm text-gray-700">{company.name}</span>
+                <span className="text-sm text-gray-700">{company.label}</span>
               </label>
             ))}
           </div>
@@ -460,11 +457,6 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
                 </p>
               ) : (
                 <>
-                  {/* The funding-company-contacts lookup can return far more
-                      rows than belong to the selected company (seen live:
-                      thousands, spanning unrelated law firms/people) — a
-                      plain <select> would be unusable at that volume, so
-                      this is a searchable list instead of a native dropdown. */}
                   <div className="relative">
                     <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
                     <input
@@ -475,11 +467,6 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
                       className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
-                  {contactId && (
-                    <p className="text-xs text-gray-500 mt-1.5">
-                      Selected: {contacts.find((c) => c.id === contactId)?.name}
-                    </p>
-                  )}
                   <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto mt-2">
                     {filteredContacts.length === 0 && (
                       <p className="px-4 py-3 text-sm text-gray-400 text-center">
@@ -488,17 +475,20 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
                     )}
                     {filteredContacts.map((c) => (
                       <label
-                        key={c.id}
+                        key={c.value}
                         className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50"
                       >
                         <input
                           type="radio"
                           name="fundingContact"
-                          checked={contactId === c.id}
-                          onChange={() => setContactId(c.id)}
+                          checked={contactId === c.value}
+                          onChange={() => {
+                            setContactId(c.value);
+                            setContactName(c.label);
+                          }}
                           className="accent-[#EE7132]"
                         />
-                        <span className="text-sm text-gray-700">{c.name}</span>
+                        <span className="text-sm text-gray-700">{c.label}</span>
                       </label>
                     ))}
                   </div>
@@ -567,13 +557,10 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
                     ? {
                         id: companyId,
                         name: companyName,
+                        contactPerson: contactName || null,
+                        emailAddress: null,
                         contact: contactId
-                          ? {
-                              id: contactId,
-                              name:
-                                contacts.find((c) => c.id === contactId)
-                                  ?.name ?? "",
-                            }
+                          ? { id: contactId, name: contactName }
                           : null,
                       }
                     : null

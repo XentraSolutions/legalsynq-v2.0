@@ -12,10 +12,10 @@ export interface FundingCompanyInfoProps {
 }
 
 const INITIAL_FORM = {
-  fundingCompanyId: "",
-  fundingCompany: "",
   medicalProviderId: "",
   medicalProvider: "",
+  fundingCompanyId: "",
+  fundingCompany: "",
 };
 
 type DropdownData = {
@@ -65,17 +65,36 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
     <div className="row mt-5">
       <div className="col-12 mb-2">
         <span className="font-semibold mb-2 text-2xl mt-1">
-          Funding Company & Case Information
+          Case Information
         </span>
         <p className="font-normal text-sm text-gray-600 mb-2 mt-1">
-          Provide the neccessary funding company and case information to create
-          and associate this lien
+          Provide the necessary funding company and case information to
+          create and associate this lien.
         </p>
       </div>
 
       <div className="row form-indent">
         <div className="col-12 mb-2">
           <div className="grid grid-cols-2 gap-4 mt-4 mx-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Medical Provider
+              </label>
+              <SellingEntitySelect
+                entityType="MedicalProvider"
+                value={form.medicalProviderId}
+                onChange={(v, option) =>
+                  setForm({
+                    ...form,
+                    medicalProviderId: v,
+                    medicalProvider: option?.label ?? "",
+                  })
+                }
+                placeholder="Select medical provider..."
+                searchPlaceholder="Search medical providers..."
+              />
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Funding Company<span className="text-red-500 ml-0.5">*</span>
@@ -96,10 +115,12 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
                 createLabel="Add Funding Company"
               />
             </div>
+          </div>
 
+          <div className="grid grid-cols-1 gap-4 mt-4 mx-2">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Select Contact Person
+                Contact Person
               </label>
               <SellingEntitySelect
                 entityType="FundingCompany"
@@ -115,7 +136,7 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
                     fundingCompanyContact: option?.label ?? "",
                   })
                 }
-                placeholder="Select contact person..."
+                placeholder="Select representative"
                 searchPlaceholder="Search contacts..."
                 allowCreate
                 createLabel="Add New Contact Person"
@@ -179,7 +200,7 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
               parentHint="Select a law firm first"
               value={form.caseManagerId}
               onChange={(v) => setForm({ ...form, caseManagerId: v })}
-              placeholder="Select case manager..."
+              placeholder="Enter or select case manager"
               searchPlaceholder="Search case managers..."
               allowCreate
               createLabel="Add Case Manager"
