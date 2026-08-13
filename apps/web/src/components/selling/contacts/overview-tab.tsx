@@ -1,16 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useCompanyDetailContext } from "./context";
-import { useCompanyDetailsSummary } from "@/hooks/use-selling-companies";
-import { CompanyStatsCards } from "./company-stats-cards";
 import { ContactsEmptyState } from "./contacts-empty-state";
 import { StatusBadge } from "@/components/lien/status-badge";
 import { Pagination } from "@/components/ui/pagination";
 import type { CompanyRecentCase } from "@/lib/selling/companies.types";
 
 const PRIMARY_BUTTON_CLASSNAME = "border-[#EE7132] bg-[#EE7132] text-white";
-const RECENT_CASES_PAGE_SIZE = 4;
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -47,13 +43,8 @@ function RecentCaseRow({ item }: { item: CompanyRecentCase }) {
 }
 
 export function CompanyOverviewTab() {
-  const { id, company } = useCompanyDetailContext();
-  const [page, setPage] = useState(1);
-
-  const detailsQuery = useCompanyDetailsSummary(id, {
-    page,
-    pageSize: RECENT_CASES_PAGE_SIZE,
-  });
+  const { company, detailsQuery, recentCasesPage: page, setRecentCasesPage: setPage } =
+    useCompanyDetailContext();
 
   const recentCases = detailsQuery.data?.recentCases;
   const items = recentCases?.items ?? [];
@@ -63,12 +54,6 @@ export function CompanyOverviewTab() {
 
   return (
     <div className="space-y-5">
-      <CompanyStatsCards
-        totalCases={detailsQuery.data?.totalCases}
-        activeCases={detailsQuery.data?.activeCases}
-        totalBillingForActiveCases={detailsQuery.data?.totalBillingForActiveCases}
-      />
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="bg-white border border-gray-200 rounded-xl px-6 py-5">
           <h2 className="text-sm font-semibold text-gray-700 mb-4">Company Information</h2>

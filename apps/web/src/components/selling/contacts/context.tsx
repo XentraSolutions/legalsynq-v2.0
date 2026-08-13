@@ -1,12 +1,16 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { CompanyDetail } from "@/lib/selling/companies.types";
+import type { CompanyDetail, CompanyDetailsSummary } from "@/lib/selling/companies.types";
+import type { UseQueryResult } from "@tanstack/react-query";
 
 export type CompanyDetailContextValue = {
   id: string;
   company: CompanyDetail;
   canEdit: boolean;
+  detailsQuery: UseQueryResult<CompanyDetailsSummary>;
+  recentCasesPage: number;
+  setRecentCasesPage: (page: number) => void;
 };
 
 const CompanyDetailContext = createContext<CompanyDetailContextValue | null>(null);

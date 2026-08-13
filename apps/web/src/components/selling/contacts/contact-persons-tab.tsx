@@ -25,7 +25,6 @@ import {
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
 import { ReassignContactPersonModal } from "@/components/selling/forms/reassign-contact-person-modal";
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
-import { CompanyStatsCards } from "@/components/selling/contacts/company-stats-cards";
 import type { ContactPerson } from "@/lib/selling/companies.types";
 import { useCompanyDetailContext } from "./context";
 import { Button } from "@/components/ui/button";
@@ -184,8 +183,6 @@ export function CompanyContactPersonsTab() {
 
   return (
     <div className="space-y-5">
-      <CompanyStatsCards />
-
       <div className="bg-white border border-gray-200 rounded-xl">
         <FilterToolbar
           bare
