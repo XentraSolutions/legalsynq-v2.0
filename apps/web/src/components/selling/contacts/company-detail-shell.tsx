@@ -181,7 +181,7 @@ export function CompanyDetailShell({
         />
       </div>
 
-      <nav className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+      <nav className="flex items-center h-[38px] gap-1 bg-[#FAFAFA] rounded-md p-1">
         {TABS.map((tab) => {
           const href = `${BASE_PATH}/${id}/${tab.key}`;
           const isActive = pathname?.startsWith(href);
@@ -190,10 +190,10 @@ export function CompanyDetailShell({
               key={tab.key}
               href={href}
               className={[
-                "flex-1 text-center px-4 py-2.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap",
+                "flex-1 h-[30px] flex items-center justify-center text-sm font-medium rounded-md transition-colors whitespace-nowrap border",
                 isActive
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700",
+                  ? "bg-white border-[#E5E5E5] shadow-sm text-gray-900"
+                  : "border-transparent text-gray-500 hover:text-gray-700",
               ].join(" ")}
             >
               {tab.label}
@@ -283,7 +283,7 @@ function CompanyDetailShellSkeleton() {
         <div className="h-10 w-40 bg-gray-100 rounded-lg" />
       </div>
 
-      <div className="h-12 bg-gray-100 rounded-xl" />
+      <div className="h-[38px] bg-[#FAFAFA] rounded-md" />
 
       <div className="h-64 bg-white border border-gray-200 rounded-xl" />
     </div>

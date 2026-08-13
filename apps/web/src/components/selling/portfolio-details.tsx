@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Copy } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Copy } from "lucide-react";
 import { LienDetailsResult } from "@/types/lien-selling";
 import { LienInformationPanel } from "./lien-detail/lien-information-panel";
 import { FundingCompanyAndCaseInformationPanel } from "./lien-detail/funding-company-information-panel";
@@ -12,11 +13,11 @@ import { EditMedicalPricingModal } from "./lien-detail/edit-medical-pricing-moda
 import { ConfirmDialog, Modal } from "@/components/selling/modal";
 import UploadDocuments from "./forms/add-medical-lien/medical-upload-document";
 import { fileIconFor, UploadedFileRow } from "./uploaded-file-row";
-import { sellerStatusLabel, SALE_DOCUMENT_LABELS } from "@/lib/selling/selling-detail.mapper";
+import { SALE_DOCUMENT_LABELS } from "@/lib/selling/selling-detail.mapper";
 import { useLienDocuments, useSaveLienDocuments } from "@/lib/selling/use-lien-documents";
 import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
 import { useToast } from "@/lib/toast-context";
-import { Tabs } from "@/components/ui/tabs";
+import { Tabs } from "@/components/selling/tabs";
 import { LienRowActionsMenu } from "./lien-row-actions-menu";
 import { Button } from "@/components/selling/button";
 
@@ -25,30 +26,7 @@ interface LienDetailPanelProps {
   onRefresh: () => void;
 }
 
-const SELLER_STATUS_STYLES: Record<string, string> = {
-  Draft: "bg-gray-50 text-gray-600 border-gray-200",
-  Pending: "bg-amber-50 text-amber-700 border-amber-200",
-  Internal: "bg-blue-50 text-blue-700 border-blue-200",
-  PreparedForSale: "bg-blue-50 text-blue-700 border-blue-200",
-  SubmittedForSale: "bg-amber-50 text-amber-700 border-amber-200",
-  Accepted: "bg-green-50 text-green-700 border-green-200",
-  Declined: "bg-red-50 text-red-600 border-red-200",
-  Sold: "bg-green-50 text-green-700 border-green-200",
-  Withdrawn: "bg-red-50 text-red-600 border-red-200",
-  Archived: "bg-gray-50 text-gray-500 border-gray-200",
-};
-
-function SellerStatusBadge({ status }: { status: string }) {
-  const style =
-    SELLER_STATUS_STYLES[status] ?? "bg-gray-50 text-gray-600 border-gray-200";
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border font-medium px-2.5 py-1 text-sm ${style}`}
-    >
-      {sellerStatusLabel(status)}
-    </span>
-  );
-}
+const BASE_PATH = "/selling/portfolio";
 
 const TABS = [
   { key: "details", label: "Details" },
@@ -57,6 +35,45 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 type EditModalKey = "lien-information" | "case-information" | "medical-pricing";
+
+export function PortfolioDetailSkeleton() {
+  return (
+    <div className="space-y-5 animate-pulse">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-gray-100 shrink-0" />
+          <div className="space-y-2">
+            <div className="h-6 w-56 bg-gray-100 rounded" />
+            <div className="h-3.5 w-40 bg-gray-100 rounded" />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="h-7 w-20 bg-gray-100 rounded-full" />
+          <div className="h-10 w-32 bg-gray-100 rounded-lg" />
+        </div>
+      </div>
+
+      <div className="h-[38px] w-64 bg-[#FAFAFA] rounded-md" />
+
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div
+          key={i}
+          className="bg-white border border-gray-200 rounded-lg px-6 py-5 space-y-4"
+        >
+          <div className="h-4 w-40 bg-gray-100 rounded" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+            {Array.from({ length: 4 }).map((_, j) => (
+              <div key={j} className="space-y-2">
+                <div className="h-3 w-24 bg-gray-100 rounded" />
+                <div className="h-4 w-32 bg-gray-100 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function PortfolioDetailPanel({
   lien,
@@ -70,47 +87,52 @@ export function PortfolioDetailPanel({
   const canEdit = ["Draft", "Pending", "Internal"].includes(sellerStatus);
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white border border-gray-200 rounded-lg">
-        <div className="px-6 py-4 flex items-start justify-between gap-4">
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link
+            href={BASE_PATH}
+            aria-label="Back to Portfolio"
+            className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
           <div className="min-w-0">
-            <h1 className="text-xl font-bold text-gray-900 truncate">
+            <h1 className="text-2xl font-bold text-gray-900 truncate">
               {title}
             </h1>
-            <p className="text-xs text-gray-400 mt-1 font-medium">
+            <p className="text-sm text-gray-400 mt-1 truncate">
               {lien.lienInformation.lienNumber}
             </p>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <SellerStatusBadge status={sellerStatus} />
-            <LienRowActionsMenu
-              lienId={lien.lienId}
-              availableActions={lien.availableActions}
-              onActionComplete={onRefresh}
-              autoOpenDecision={sellerStatus === "Pending"}
-              trigger={
-                <Button variant="primary" rightIcon="chevronDown">
-                  Manage Lien
-                </Button>
-              }
-            />
-          </div>
         </div>
-        <div className="border-t border-gray-100 px-6 py-3">
-          <div className="basis-2/4">
-            <Tabs
-              bordered={false}
-              defaultTab={activeTab}
-              onChange={(key) => setActiveTab(key as TabKey)}
-              tabs={TABS.map((tab) => ({
-                key: tab.key,
-                label: tab.label,
-                badge:
-                  tab.key === "documents" ? lien.documents.length : undefined,
-              }))}
-            />
-          </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <LienRowActionsMenu
+            lienId={lien.lienId}
+            availableActions={lien.availableActions}
+            onActionComplete={onRefresh}
+            autoOpenDecision={sellerStatus === "Pending"}
+            trigger={
+              <Button variant="primary" rightIcon="chevronDown">
+                Manage Lien
+              </Button>
+            }
+          />
         </div>
+      </div>
+
+      <div className="basis-2/4">
+        <Tabs
+          bordered={false}
+          defaultTab={activeTab}
+          onChange={(key) => setActiveTab(key as TabKey)}
+          tabs={TABS.map((tab) => ({
+            key: tab.key,
+            label: tab.label,
+            badge:
+              tab.key === "documents" ? lien.documents.length : undefined,
+          }))}
+        />
       </div>
 
       {activeTab === "details" && (
