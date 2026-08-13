@@ -578,6 +578,7 @@ export function SellLienWizard({ lienId }: { lienId: string }) {
                       }
                     : null
                 }
+                medicalProvider={lien.medicalProvider}
                 caseInformation={lien.caseInformation}
               />
               <MedicalCodesInformationPanel

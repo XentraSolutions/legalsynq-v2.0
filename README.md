@@ -76,6 +76,11 @@ Run the full local development stack:
 bash scripts/run-dev.sh
 ```
 
+The full-stack launcher explicitly rebuilds `Liens.Api` with conservative
+memory settings before starting it. If that targeted build fails, the backend
+startup stops instead of serving a stale cached Liens binary with missing API
+routes.
+
 Run backend services only:
 
 ```bash

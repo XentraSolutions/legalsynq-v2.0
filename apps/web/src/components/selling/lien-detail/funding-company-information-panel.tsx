@@ -1,8 +1,13 @@
-import { LienCaseDetail, LienFundingCompanyDetail } from "@/types/lien-selling";
+import {
+  LienCaseDetail,
+  LienFundingCompanyDetail,
+  LienMedicalProviderDetail,
+} from "@/types/lien-selling";
 import { PanelShell } from "./panel-shell";
 
 interface LienDetailPanelProps {
   fundingCompany: LienFundingCompanyDetail | null;
+  medicalProvider: LienMedicalProviderDetail | null;
   caseInformation: LienCaseDetail | null;
   onEdit?: () => void;
 }
@@ -20,6 +25,7 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
 
 export function FundingCompanyAndCaseInformationPanel({
   fundingCompany,
+  medicalProvider,
   caseInformation,
   onEdit,
 }: LienDetailPanelProps) {
@@ -30,6 +36,7 @@ export function FundingCompanyAndCaseInformationPanel({
         <Field label="Handling Law Firm" value={caseInformation?.lawFirm} />
         <Field label="Contact Person" value={fundingCompany?.contact?.name} />
         <Field label="Case Manager" value={caseInformation?.caseManagerName} />
+        <Field label="Medical Provider" value={medicalProvider?.name} />
       </div>
     </PanelShell>
   );

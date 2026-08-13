@@ -164,6 +164,13 @@ public static class SellingV2Endpoints
             ? await db.CompanyContactPersons.AsNoTracking().FirstOrDefaultAsync(c =>
                 c.TenantId == tenantId && c.Id == lien.FundingCompanyContactPersonId.Value, ct)
             : null;
+        var canonicalMedicalProvider = lien.MedicalProviderCompanyId.HasValue
+            ? await db.Companies.AsNoTracking().FirstOrDefaultAsync(c =>
+                c.TenantId == tenantId &&
+                c.OrgId == sellerOrgId &&
+                c.Id == lien.MedicalProviderCompanyId.Value &&
+                c.CompanyTypeId == CompanyDirectoryReferenceData.MedicalProviderId, ct)
+            : null;
         var legacyFundingCompany = lien.FundingCompanyId.HasValue
             ? await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == lien.FundingCompanyId.Value, ct)
             : null;
@@ -253,6 +260,11 @@ public static class SellingV2Endpoints
                 contactPerson = effectiveFundingContactName,
                 emailAddress = effectiveFundingContactEmail,
                 contact = !effectiveFundingContactId.HasValue ? null : new { Id = effectiveFundingContactId.Value, name = effectiveFundingContactName },
+            },
+            medicalProvider = canonicalMedicalProvider is null ? null : new
+            {
+                id = canonicalMedicalProvider.Id,
+                name = canonicalMedicalProvider.Name,
             },
             medicalPricing = new { lien.AskAmount, billingAmount = lien.OriginalAmount, rows = pricing },
             documents,
@@ -378,6 +390,19 @@ public static class SellingV2Endpoints
             }
         }
 
+        Company? canonicalMedicalProvider = null;
+        if (request.MedicalProviderId.HasValue)
+        {
+            canonicalMedicalProvider = await db.Companies.AsNoTracking().FirstOrDefaultAsync(company =>
+                company.TenantId == tenantId &&
+                company.OrgId == sellerOrgId &&
+                company.Id == request.MedicalProviderId.Value &&
+                company.CompanyTypeId == CompanyDirectoryReferenceData.MedicalProviderId &&
+                company.IsActive, ct);
+            if (canonicalMedicalProvider is null)
+                return ValidationError("medicalProviderId", "Medical provider must be an active Medical Provider company owned by the seller organization.");
+        }
+
         Case? caseEntity = null;
         if (request.CaseId.HasValue && request.CaseId.Value != Guid.Empty)
         {
@@ -450,6 +475,8 @@ public static class SellingV2Endpoints
             canonicalFundingCompany?.Id,
             canonicalFundingContact?.Id,
             userId);
+        if (canonicalMedicalProvider is not null)
+            lien.SetCanonicalMedicalProvider(canonicalMedicalProvider.Id, userId);
 
         if (canonicalLawFirm is not null || canonicalCaseManager is not null)
         {
@@ -482,6 +509,7 @@ public static class SellingV2Endpoints
             caseId = lien.CaseId,
             fundingCompanyId = lien.FundingCompanyCompanyId ?? lien.FundingCompanyId,
             fundingCompanyContactId = lien.FundingCompanyContactPersonId ?? lien.FundingCompanyContactId,
+            medicalProviderId = lien.MedicalProviderCompanyId,
             handlingLawFirmId = caseEntity.HandlingLawFirmCompanyId ?? (legacyLawFirmSelected ? request.HandlingLawFirmId : null),
             caseManagerId = caseEntity.CaseManagerContactPersonId ?? (legacyCaseManagerSelected ? request.CaseManagerId : null),
         });
@@ -591,12 +619,41 @@ public static class SellingV2Endpoints
             return ValidationError("sellerStatus", "Only Pending or Internal liens can be prepared for sale.");
 
         Contact? buyerContact = null;
+        CompanyContactPerson? canonicalBuyerContact = null;
         if (request.BuyerContactId is { } buyerContactId && buyerContactId != Guid.Empty)
         {
             buyerContact = await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c =>
                 c.TenantId == tenantId && c.Id == buyerContactId && c.IsActive, ct);
             if (buyerContact is null)
-                return ValidationError("buyerContactId", "Buyer contact must be active and belong to this tenant.");
+            {
+                canonicalBuyerContact = await db.CompanyContactPersons
+                    .AsNoTracking()
+                    .Include(contact => contact.Company)
+                    .Include(contact => contact.ContactPersonType)
+                    .FirstOrDefaultAsync(contact =>
+                        contact.TenantId == tenantId &&
+                        contact.Id == buyerContactId &&
+                        contact.IsActive &&
+                        contact.Company != null &&
+                        contact.Company.TenantId == tenantId &&
+                        contact.Company.OrgId == sellerOrgId &&
+                        contact.Company.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
+                        contact.Company.IsActive &&
+                        contact.ContactPersonType != null &&
+                        contact.ContactPersonType.IsActive &&
+                        contact.ContactPersonType.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
+                        (contact.ContactPersonType.TenantId == null ||
+                         (contact.ContactPersonType.TenantId == tenantId && contact.ContactPersonType.OrgId == sellerOrgId)),
+                        ct);
+                if (canonicalBuyerContact is null)
+                    return ValidationError("buyerContactId", "Buyer contact must be an active legacy or Company Directory funding-company contact in this tenant.");
+                if (request.BuyerFundingCompanyId is { } requestedCompanyId &&
+                    requestedCompanyId != Guid.Empty &&
+                    canonicalBuyerContact.CompanyId != requestedCompanyId)
+                {
+                    return ValidationError("buyerFundingCompanyId", "Buyer contact must belong to the selected funding company.");
+                }
+            }
         }
         var pricingRows = await db.ServicingItems.AnyAsync(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingMedicalPricingTaskType, ct);
         var documents = await db.ServicingItems.AnyAsync(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingDocumentTaskType, ct);
@@ -611,12 +668,27 @@ public static class SellingV2Endpoints
             db, tenantId, "User", userId, "/api/liens/selling/liens/{lienId}/prepare-sale", "Lien", lienId.ToString(), idempotencyKey!, request, ct);
         if (started.Result is not null) return started.Result;
 
+        if (canonicalBuyerContact is not null)
+        {
+            lien.SetSellingFundingReferences(
+                null,
+                null,
+                canonicalBuyerContact.CompanyId,
+                canonicalBuyerContact.Id,
+                userId);
+        }
+        else if (buyerContact is not null)
+        {
+            // Legacy buyer organization IDs are carried by Contact.OrgId.
+            lien.SetSellingFundingReferences(
+                buyerContact.OrgId,
+                buyerContact.Id,
+                null,
+                null,
+                userId);
+        }
         lien.UpdateSellingAnalyticsFields(userId,
             listingVisibility: visibility,
-            // A buyer is optional while preparing. When selected, its organization
-            // is derived from the contact rather than a separate company record.
-            fundingCompanyId: buyerContact?.OrgId,
-            fundingCompanyContactId: buyerContact?.Id,
             askAmount: request.AskAmount);
         lien.SetBuyerMessage(request.MessageToBuyer, userId);
         AddActivity(db, lien, userId, "Sale preparation details saved; lien remains in intake until confirmation succeeds.");
@@ -1313,17 +1385,72 @@ public static class SellingV2Endpoints
 
     private static async Task<IResult> GetFundingCompanies(LiensDbContext db, ICurrentRequestContext context, CancellationToken ct)
     {
-        var (tenantId, _, _) = RequireSellerContext(context);
-        var items = await db.Contacts.AsNoTracking().Where(c => c.TenantId == tenantId && c.IsActive && (c.ContactType == ContactType.FundingCompany || c.ContactType == ContactType.LienHolder)).OrderBy(c => c.Organization).Select(c => new { c.Id, name = DisplayName(c), c.OrgId }).ToListAsync(ct);
+        var (tenantId, sellerOrgId, _) = RequireSellerContext(context);
+        var legacyItems = await db.Contacts.AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.IsActive &&
+                (c.ContactType == ContactType.FundingCompany || c.ContactType == ContactType.LienHolder))
+            .Select(c => new FundingCompanyLookupItem(
+                c.Id,
+                c.Organization == null || c.Organization == string.Empty ? c.DisplayName : c.Organization,
+                c.OrgId))
+            .ToListAsync(ct);
+        var canonicalItems = await db.Companies.AsNoTracking()
+            .Where(company =>
+                company.TenantId == tenantId &&
+                company.OrgId == sellerOrgId &&
+                company.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
+                company.IsActive)
+            .Select(company => new FundingCompanyLookupItem(company.Id, company.Name, company.Id))
+            .ToListAsync(ct);
+        var items = legacyItems.Concat(canonicalItems)
+            .DistinctBy(item => item.Id)
+            .OrderBy(item => item.Name)
+            .ThenBy(item => item.Id)
+            .ToList();
         return Results.Ok(new { items });
     }
 
     private static async Task<IResult> GetFundingCompanyContacts(Guid fundingCompanyId, LiensDbContext db, ICurrentRequestContext context, CancellationToken ct)
     {
-        var (tenantId, _, _) = RequireSellerContext(context);
+        var (tenantId, sellerOrgId, _) = RequireSellerContext(context);
+        var canonicalCompany = await db.Companies.AsNoTracking().FirstOrDefaultAsync(company =>
+            company.TenantId == tenantId &&
+            company.OrgId == sellerOrgId &&
+            company.Id == fundingCompanyId &&
+            company.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
+            company.IsActive, ct);
+        if (canonicalCompany is not null)
+        {
+            var canonicalItems = await db.CompanyContactPersons.AsNoTracking()
+                .Where(contact =>
+                    contact.TenantId == tenantId &&
+                    contact.CompanyId == canonicalCompany.Id &&
+                    contact.IsActive &&
+                    contact.ContactPersonType != null &&
+                    contact.ContactPersonType.IsActive &&
+                    contact.ContactPersonType.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
+                    (contact.ContactPersonType.TenantId == null ||
+                     (contact.ContactPersonType.TenantId == tenantId && contact.ContactPersonType.OrgId == sellerOrgId)))
+                .OrderBy(contact => contact.LastName)
+                .ThenBy(contact => contact.FirstName)
+                .Select(contact => new FundingCompanyContactLookupItem(
+                    contact.Id,
+                    (contact.FirstName + " " + contact.LastName).Trim(),
+                    contact.Email))
+                .ToListAsync(ct);
+            return Results.Ok(new { items = canonicalItems });
+        }
+
         var company = await GetFundingCompanyAsync(db, tenantId, fundingCompanyId, ct);
         if (company is null) return ValidationError("fundingCompanyId", "Funding company was not found in this tenant.");
-        var items = await db.Contacts.AsNoTracking().Where(c => c.TenantId == tenantId && c.OrgId == company.OrgId && c.IsActive).OrderBy(c => c.DisplayName).Select(c => new { c.Id, name = DisplayName(c), c.Email }).ToListAsync(ct);
+        var items = await db.Contacts.AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.OrgId == company.OrgId && c.IsActive)
+            .OrderBy(c => c.DisplayName)
+            .Select(c => new FundingCompanyContactLookupItem(
+                c.Id,
+                c.Organization == null || c.Organization == string.Empty ? c.DisplayName : c.Organization,
+                c.Email))
+            .ToListAsync(ct);
         return Results.Ok(new { items });
     }
 
@@ -1523,6 +1650,8 @@ public static class SellingV2Endpoints
             || string.Equals(contact.DisplayName, name.Trim(), StringComparison.OrdinalIgnoreCase);
     private static bool ImportFacilityNameMatches(Facility facility, string name)
         => string.Equals(facility.Name, name.Trim(), StringComparison.OrdinalIgnoreCase);
+    private sealed record FundingCompanyLookupItem(Guid Id, string Name, Guid? OrgId);
+    private sealed record FundingCompanyContactLookupItem(Guid Id, string Name, string? Email);
     private static (string Code, string Description) ParseImportMedicalCode(string? value)
     {
         var normalized = value?.Trim() ?? string.Empty;

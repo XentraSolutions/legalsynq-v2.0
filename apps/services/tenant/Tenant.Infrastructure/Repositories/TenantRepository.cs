@@ -1,10 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Tenant.Application.Interfaces;
+using Tenant.Domain;
 using Tenant.Infrastructure.Data;
 
 namespace Tenant.Infrastructure.Repositories;
 
-public class TenantRepository : ITenantRepository
+public class TenantRepository : ITenantRepository, IEligibleTenantRepository
 {
     private readonly TenantDbContext _db;
 
@@ -37,6 +38,35 @@ public class TenantRepository : ITenantRepository
             .Take(pageSize)
             .ToListAsync(ct);
         return (items, total);
+    }
+
+    public Task<List<Guid>> ListActiveTenantIdsByProductKeysAsync(
+        IReadOnlyCollection<string> productKeys,
+        DateTime utcNow,
+        CancellationToken ct = default)
+    {
+        var normalizedKeys = productKeys
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .Select(TenantProductEntitlement.NormalizeKey)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (normalizedKeys.Length == 0)
+            return Task.FromResult(new List<Guid>());
+
+        return _db.ProductEntitlements
+            .AsNoTracking()
+            .Where(entitlement =>
+                entitlement.IsEnabled &&
+                normalizedKeys.Contains(entitlement.ProductKey) &&
+                (!entitlement.EffectiveFromUtc.HasValue || entitlement.EffectiveFromUtc.Value <= utcNow) &&
+                (!entitlement.EffectiveToUtc.HasValue || entitlement.EffectiveToUtc.Value > utcNow) &&
+                entitlement.Tenant != null &&
+                entitlement.Tenant.Status == TenantStatus.Active)
+            .Select(entitlement => entitlement.TenantId)
+            .Distinct()
+            .OrderBy(tenantId => tenantId)
+            .ToListAsync(ct);
     }
 
     public async Task AddAsync(Domain.Tenant tenant, CancellationToken ct = default)

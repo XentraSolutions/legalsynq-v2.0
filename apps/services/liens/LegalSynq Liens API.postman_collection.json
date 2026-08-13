@@ -6639,6 +6639,131 @@
       ]
     },
     {
+      "name": "Case Notes History",
+      "item": [
+        {
+          "name": "POST api/liens/reports/case-notes-history",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/reports/case-notes-history",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "reports", "case-notes-history"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"noteType\": \"TRACKING\",\n  \"page\": 1,\n  \"limit\": 10,\n  \"sortBy\": \"noteDate\",\n  \"sortDirection\": \"desc\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Canonical paged Case Notes History report. Change noteType to FEED for Feed Notes."
+          },
+          "response": []
+        },
+        {
+          "name": "POST api/liens/reports/case-notes-history/export",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/reports/case-notes-history/export",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liens", "reports", "case-notes-history", "export"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"noteType\": \"TRACKING\",\n  \"page\": 1,\n  \"limit\": 10,\n  \"sortBy\": \"noteDate\",\n  \"sortDirection\": \"desc\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Canonical Base64 CSV export; page and limit are ignored."
+          },
+          "response": []
+        },
+        {
+          "name": "POST report/case-notes-history (legacy alias)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/report/case-notes-history",
+              "host": ["{{baseUrl}}"],
+              "path": ["report", "case-notes-history"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"noteType\": \"TRACKING\",\n  \"page\": 1,\n  \"limit\": 10,\n  \"sortBy\": \"noteDate\",\n  \"sortDirection\": \"desc\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Legacy compatibility alias."
+          },
+          "response": []
+        },
+        {
+          "name": "POST report/case-notes-history/export (legacy alias)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/report/case-notes-history/export",
+              "host": ["{{baseUrl}}"],
+              "path": ["report", "case-notes-history", "export"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"noteType\": \"TRACKING\",\n  \"page\": 1,\n  \"limit\": 10,\n  \"sortBy\": \"noteDate\",\n  \"sortDirection\": \"desc\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Legacy Base64 CSV export alias."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Legacy Settlement",
       "item": [
         {

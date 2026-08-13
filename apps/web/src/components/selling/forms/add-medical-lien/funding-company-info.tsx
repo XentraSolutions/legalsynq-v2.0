@@ -14,6 +14,8 @@ export interface FundingCompanyInfoProps {
 const INITIAL_FORM = {
   fundingCompanyId: "",
   fundingCompany: "",
+  medicalProviderId: "",
+  medicalProvider: "",
 };
 
 type DropdownData = {
@@ -117,6 +119,27 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
                 searchPlaceholder="Search contacts..."
                 allowCreate
                 createLabel="Add New Contact Person"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Medical Provider
+              </label>
+              <SellingEntitySelect
+                entityType="MedicalProvider"
+                value={form.medicalProviderId}
+                onChange={(v, option) =>
+                  setForm({
+                    ...form,
+                    medicalProviderId: v,
+                    medicalProvider: option?.label ?? "",
+                  })
+                }
+                placeholder="Select medical provider..."
+                searchPlaceholder="Search medical providers..."
+                allowCreate
+                createLabel="Add Medical Provider"
               />
             </div>
           </div>

@@ -274,6 +274,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     {
         Company fundingCompany;
         CompanyContactPerson fundingContact;
+        Company medicalProvider;
         Company lawFirm;
         CompanyContactPerson caseManager;
         using (var scope = _factory.Services.CreateScope())
@@ -300,6 +301,12 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
                 "Funder",
                 SeedHelper.UserId,
                 email: "diana@directory-capital.test");
+            medicalProvider = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.MedicalProviderId,
+                "Directory Medical Group",
+                SeedHelper.UserId);
             lawFirm = Company.Create(
                 SeedHelper.TenantId,
                 SeedHelper.OrgId,
@@ -314,7 +321,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
                 "Manager",
                 SeedHelper.UserId,
                 email: "cameron@directory-law.test");
-            db.AddRange(fundingCompany, fundingContact, lawFirm, caseManager);
+            db.AddRange(fundingCompany, fundingContact, medicalProvider, lawFirm, caseManager);
             await db.SaveChangesAsync();
         }
 
@@ -325,6 +332,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
             {
                 fundingCompanyId = fundingCompany.Id,
                 fundingCompanyContactId = fundingContact.Id,
+                medicalProviderId = medicalProvider.Id,
                 handlingLawFirmId = lawFirm.Id,
                 caseManagerId = caseManager.Id,
                 createCaseIfMissing = true,
@@ -334,6 +342,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         using var savedPayload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         savedPayload.RootElement.GetProperty("fundingCompanyId").GetGuid().Should().Be(fundingCompany.Id);
         savedPayload.RootElement.GetProperty("fundingCompanyContactId").GetGuid().Should().Be(fundingContact.Id);
+        savedPayload.RootElement.GetProperty("medicalProviderId").GetGuid().Should().Be(medicalProvider.Id);
         savedPayload.RootElement.GetProperty("handlingLawFirmId").GetGuid().Should().Be(lawFirm.Id);
         savedPayload.RootElement.GetProperty("caseManagerId").GetGuid().Should().Be(caseManager.Id);
         var caseId = savedPayload.RootElement.GetProperty("caseId").GetGuid();
@@ -344,6 +353,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
             var persistedLien = await db.Liens.SingleAsync(item => item.Id == lienId);
             persistedLien.FundingCompanyCompanyId.Should().Be(fundingCompany.Id);
             persistedLien.FundingCompanyContactPersonId.Should().Be(fundingContact.Id);
+            persistedLien.MedicalProviderCompanyId.Should().Be(medicalProvider.Id);
             persistedLien.FundingCompanyId.Should().BeNull();
             persistedLien.FundingCompanyContactId.Should().BeNull();
 
@@ -360,11 +370,46 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         companyDetail.GetProperty("name").GetString().Should().Be("Directory Capital LLC");
         companyDetail.GetProperty("contactPerson").GetString().Should().Be("Diana Funder");
         companyDetail.GetProperty("emailAddress").GetString().Should().Be("diana@directory-capital.test");
+        var medicalProviderDetail = detailPayload.RootElement.GetProperty("medicalProvider");
+        medicalProviderDetail.GetProperty("id").GetGuid().Should().Be(medicalProvider.Id);
+        medicalProviderDetail.GetProperty("name").GetString().Should().Be("Directory Medical Group");
         var caseDetail = detailPayload.RootElement.GetProperty("caseInformation");
         caseDetail.GetProperty("lawFirmId").GetGuid().Should().Be(lawFirm.Id);
         caseDetail.GetProperty("lawFirm").GetString().Should().Be("Directory Law LLP");
         caseDetail.GetProperty("caseManagerId").GetGuid().Should().Be(caseManager.Id);
         caseDetail.GetProperty("caseManagerName").GetString().Should().Be("Cameron Manager");
+    }
+
+    [Fact]
+    public async Task Case_information_rejects_a_medical_provider_with_the_wrong_company_type()
+    {
+        Company fundingCompany;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            fundingCompany = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.FundingCompanyId,
+                "Not A Medical Provider",
+                SeedHelper.UserId);
+            db.Companies.Add(fundingCompany);
+            await db.SaveChangesAsync();
+        }
+
+        var lienId = await CreateSellingLienAsync();
+        var response = await _client.PutAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/case-information",
+            new
+            {
+                fundingCompanyId = SeedHelper.FundingCompanyId,
+                medicalProviderId = fundingCompany.Id,
+                caseId = SeedHelper.CaseId,
+                createCaseIfMissing = false,
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+        (await response.Content.ReadAsStringAsync()).Should().Contain("medicalProviderId");
     }
 
     [Fact]
@@ -488,6 +533,90 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
             .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{documents[0].GetProperty("id").GetGuid():D}/view");
         documents[0].GetProperty("downloadUrl").GetString()
             .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{documents[0].GetProperty("id").GetGuid():D}/download");
+    }
+
+    [Fact]
+    public async Task Prepare_and_confirm_sale_accept_company_directory_buyer_contact()
+    {
+        Company buyerCompany;
+        CompanyContactPerson buyerContact;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var fundingRoleId = CompanyDirectoryReferenceData.ContactPersonTypes
+                .First(role => role.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId)
+                .Id;
+            buyerCompany = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.FundingCompanyId,
+                "Canonical Buyer Capital",
+                SeedHelper.UserId);
+            buyerContact = CompanyContactPerson.Create(
+                SeedHelper.TenantId,
+                buyerCompany.Id,
+                fundingRoleId,
+                "Carla",
+                "Buyer",
+                SeedHelper.UserId,
+                email: "carla@canonical-buyer.test");
+            var sellerContact = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.LawFirm,
+                "Seller",
+                "Representative",
+                SeedHelper.UserId,
+                organization: "Seller Law LLP",
+                email: "seller@canonical-buyer.test");
+            db.AddRange(buyerCompany, buyerContact, sellerContact);
+            await db.SaveChangesAsync();
+        }
+
+        var lienId = await PrepareSellingLienAsync(buyerCompany.Id, buyerContact.Id);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var preparedLien = await db.Liens.SingleAsync(item => item.Id == lienId);
+            preparedLien.FundingCompanyCompanyId.Should().Be(buyerCompany.Id);
+            preparedLien.FundingCompanyContactPersonId.Should().Be(buyerContact.Id);
+            preparedLien.FundingCompanyId.Should().BeNull();
+            preparedLien.FundingCompanyContactId.Should().BeNull();
+        }
+
+        using var confirm = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/confirm-sale")
+        {
+            Content = JsonContent.Create(new { confirmationAccepted = true, sendBuyerNotification = true }),
+        };
+        confirm.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        var confirmResponse = await _client.SendAsync(confirm);
+        confirmResponse.StatusCode.Should().Be(HttpStatusCode.OK, await confirmResponse.Content.ReadAsStringAsync());
+        using var confirmJson = JsonDocument.Parse(await confirmResponse.Content.ReadAsStringAsync());
+        var portalUrl = confirmJson.RootElement.GetProperty("notification").GetProperty("buyerPortalUrl").GetString();
+        portalUrl.Should().NotBeNullOrWhiteSpace();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var link = await db.SellingBuyerAccessLinks.SingleAsync(item =>
+                item.LienId == lienId &&
+                item.Purpose == SellingAccessLinkPurposes.ConfirmSaleBuyerResponse);
+            link.BuyerOrgId.Should().Be(buyerCompany.Id);
+            link.BuyerContactId.Should().Be(buyerContact.Id);
+            link.BuyerCompanyId.Should().Be(buyerCompany.Id);
+            link.BuyerCompanyContactPersonId.Should().Be(buyerContact.Id);
+        }
+
+        var token = portalUrl!.Split('/').Last();
+        using var anonymousClient = _factory.CreateClient();
+        var publicResponse = await anonymousClient.GetAsync($"/api/liens/selling/public/{token}");
+        publicResponse.StatusCode.Should().Be(HttpStatusCode.OK, await publicResponse.Content.ReadAsStringAsync());
+        using var publicJson = JsonDocument.Parse(await publicResponse.Content.ReadAsStringAsync());
+        var buyer = publicJson.RootElement.GetProperty("buyer");
+        buyer.GetProperty("contactName").GetString().Should().Be("Carla Buyer");
+        buyer.GetProperty("company").GetString().Should().Be("Canonical Buyer Capital");
+        buyer.GetProperty("email").GetString().Should().Be("carla@canonical-buyer.test");
     }
 
     [Fact]

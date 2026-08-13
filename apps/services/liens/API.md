@@ -2025,6 +2025,70 @@ Update the status of a servicing item.
 
 ## Reports Endpoints
 
+### POST `/api/liens/reports/case-notes-history`
+
+Returns the tenant-wide Case Notes History report used by the Case Tracking Notes and Feed Notes tabs. The compatibility alias is `POST /report/case-notes-history`. Both routes require authenticated SynqLien product access and `SYNQ_LIENS.case:read`, use the tenant from the authenticated request context, and return `Cache-Control: no-store`.
+
+Request:
+
+```json
+{
+  "noteType": "TRACKING",
+  "page": 1,
+  "limit": 10,
+  "sortBy": "noteDate",
+  "sortDirection": "desc"
+}
+```
+
+`noteType` is required and accepts `TRACKING` or `FEED` case-insensitively. `TRACKING` includes `general` and `follow-up` notes; `FEED` includes only `feed`. Deleted, blank, internal, case-created, and settlement-history notes are excluded. `page` defaults to 1, `limit` defaults to 10 and is limited to 1-100. `sortBy` accepts `caseId`, `caseName`, `noteType`, `noteDate`, `noteAuthor`, or `noteContent`; every order is stabilized by note timestamp and ID.
+
+```json
+{
+  "isSuccess": true,
+  "message": "Case notes history retrieved.",
+  "data": [
+    {
+      "noteId": "019f0000-0000-7000-8000-000000000001",
+      "caseRecordId": "019f0000-0000-7000-8000-000000000002",
+      "caseId": "26-31959",
+      "caseName": "Greenfield Holdings",
+      "noteType": "TRACKING",
+      "noteTypeLabel": "Case Tracking Note",
+      "noteDate": "2026-07-28",
+      "createdAtUtc": "2026-07-28T16:30:00.0000000Z",
+      "noteAuthor": "Sarah Mitchell",
+      "noteContent": "Complete full note text"
+    }
+  ],
+  "page": 1,
+  "limit": 10,
+  "totalCount": 37
+}
+```
+
+The legacy alias omits only the additive `createdAtUtc` property. An empty or out-of-range page is `200` with an empty `data` array. Invalid selectors, paging, or sort values return `400` with `error.code = validation_error`.
+
+### POST `/api/liens/reports/case-notes-history/export`
+
+Exports all rows matching `noteType` and the requested ordering; `page` and `limit` are ignored. The compatibility alias is `POST /report/case-notes-history/export`. The CSV contains the six visible report columns, preserves complete Unicode/multiline content, quotes CSV fields, and neutralizes spreadsheet-formula prefixes. The Base64 CSV envelope is retained for legacy clients:
+
+```json
+{
+  "isSuccess": true,
+  "message": "CSV generated successfully.",
+  "data": [
+    {
+      "base64": "Q2FzZSBJRCxDYXNlIE5hbWUuLi4=",
+      "filename": "case_notes_history_tracking_20260813123000.csv",
+      "export_format": "csv"
+    }
+  ]
+}
+```
+
+CSV generation stops at 10 MiB and returns `400 validation_error` rather than materializing an unbounded export. Tenants with pre-v2 `SL_CASE_NOTES` crosswalk hashes receive `409 legacy_history_not_reconciled` until the documented source-backed category reconciliation is applied.
+
 ### GET `/report/diy/columns`
 
 Returns the legacy DIY-report column metadata and the ordered default selection for the requested report type. For `LIENS`, the default selection includes `days_since_reduction_approval` in position 9 (zero-based), followed by `case_status` and `date_of_loss` in positions 14 and 15 respectively. `initial_service_date` and `number_of_liens` remain available as optional columns but are not selected by default.

@@ -42,7 +42,11 @@ builder.Services
             RoleClaimType            = "role",
             ClockSkew                = TimeSpan.Zero
         };
-    });
+    })
+    .AddServiceTokenBearer(
+        builder.Configuration,
+        failFastIfMissingSecret: !builder.Environment.IsDevelopment() &&
+                                 !builder.Environment.IsEnvironment("Testing"));
 
 builder.Services.AddAuthorization(options =>
 {
@@ -54,6 +58,11 @@ builder.Services.AddAuthorization(options =>
 
     options.AddPolicy(Policies.PlatformOrTenantAdmin, policy =>
         policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
+
+    options.AddPolicy("InternalService", policy =>
+        policy
+            .AddAuthenticationSchemes(ServiceTokenAuthenticationDefaults.Scheme)
+            .RequireRole(ServiceTokenAuthenticationDefaults.ServiceRole));
 });
 
 // ── Feature flags ─────────────────────────────────────────────────────────────
@@ -163,5 +172,6 @@ app.MapRuntimeMetricsEndpoints();
 app.MapLogoAdminEndpoints();
 app.MapTenantAdminEndpoints();
 app.MapActivationEndpoints();     // BLK-TS-02
+app.MapEligibleTenantEndpoints();
 
 app.Run();

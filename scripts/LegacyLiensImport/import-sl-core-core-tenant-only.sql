@@ -114,10 +114,10 @@ BEGIN
         (table_name = 'SL_CASE' AND column_name IN ('CASE_ID','CASE_CODE','CASE_FNAME','CASE_LNAME','CASE_DOB','CASE_ADDRESS','CASE_CITY','CASE_STATE','CASE_ZIPCODE','CASE_STATUS','CASE_DATE_OF_LOSS','CASE_NOTE','CASE_CREATED','CASE_UPDATED','CASE_PROGRAM','CASE_IS_DELETED')) OR
         (table_name = 'SL_LEINS_MEDICAL' AND column_name IN ('LM_ID','LM_CASE_ID','LM_STATUS','LM_INITIAL_SERVICE_DATE','LM_END_SERVICE_DATE','LM_NOTE','LM_CREATED','LM_UPDATED','LM_CODE','LM_IS_DELETED','LM_IS_BULK','LM_IS_SERVICING')) OR
         (table_name = 'SL_LEINS_MEDICAL_CODE' AND column_name IN ('LMC_LM_ID','LMC_BILLING_AMOUNT','LMC_PURCHASE_AMOUNT')) OR
-        (table_name = 'SL_CASE_NOTES' AND column_name IN ('CN_ID','CN_CASE_ID','CN_NOTE','CN_CREATED','CN_CREATED_BY','CN_IS_DELETED')) OR
+        (table_name = 'SL_CASE_NOTES' AND column_name IN ('CN_ID','CN_CASE_ID','CN_NOTE','CN_CREATED','CN_CREATED_BY','CN_IS_DELETED','CN_USER_ID')) OR
         (table_name = 'SL_MIGRATION_SOURCE_PROVENANCE' AND column_name IN ('PROVENANCE_KEY','SOURCE_FINGERPRINT','IMPORT_SCOPE'))
     );
-    IF v_column_count <> 40 THEN
+    IF v_column_count <> 41 THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTI-006 source column contract is incomplete';
     END IF;
 
@@ -284,7 +284,8 @@ BEGIN
     CREATE TEMPORARY TABLE tmp_sl_core_notes AS
     SELECT n.CN_ID AS LegacyNoteId, UUID() AS TargetNoteId, c.TargetCaseId, NULLIF(TRIM(n.CN_NOTE),'') AS Content,
            n.CN_CREATED AS CreatedAtUtc, NULLIF(TRIM(n.CN_CREATED_BY),'') AS CreatedByName, n.CN_IS_DELETED AS IsDeleted,
-           SHA2(CONCAT_WS('|',n.CN_ID,n.CN_CASE_ID,n.CN_NOTE,n.CN_CREATED,n.CN_CREATED_BY,n.CN_IS_DELETED,v_source_fingerprint),256) AS SourceHash
+           n.CN_USER_ID AS LegacyUserId,
+           CONCAT('case-note-v2:',SHA2(CONCAT_WS('|',n.CN_ID,n.CN_CASE_ID,n.CN_NOTE,n.CN_CREATED,n.CN_CREATED_BY,n.CN_IS_DELETED,n.CN_USER_ID,v_source_fingerprint),256)) AS SourceHash
     FROM `SL-CORE`.`SL_CASE_NOTES` n
     INNER JOIN tmp_sl_core_cases c ON c.LegacyCaseId = n.CN_CASE_ID
     WHERE NULLIF(TRIM(n.CN_NOTE),'') IS NOT NULL;
@@ -319,7 +320,7 @@ BEGIN
         SET v_liens_inserted = ROW_COUNT();
 
         INSERT INTO liens_CaseNotes (Id,CaseId,TenantId,Content,Category,IsPinned,CreatedByUserId,CreatedByName,IsEdited,IsDeleted,CreatedAtUtc,UpdatedAtUtc)
-        SELECT TargetNoteId,TargetCaseId,v_tenant_id,Content,'general',0,v_migration_user_id,COALESCE(CreatedByName,'Legacy SL-CORE'),0,CASE WHEN UPPER(COALESCE(IsDeleted,'N')) = 'Y' THEN 1 ELSE 0 END,COALESCE(CreatedAtUtc,UTC_TIMESTAMP(6)),NULL FROM tmp_sl_core_notes;
+        SELECT TargetNoteId,TargetCaseId,v_tenant_id,Content,CASE WHEN LegacyUserId IS NULL THEN 'general' ELSE 'feed' END,0,v_migration_user_id,COALESCE(CreatedByName,'Legacy SL-CORE'),0,CASE WHEN UPPER(COALESCE(IsDeleted,'N')) = 'Y' THEN 1 ELSE 0 END,COALESCE(CreatedAtUtc,UTC_TIMESTAMP(6)),NULL FROM tmp_sl_core_notes;
         SET v_notes_inserted = ROW_COUNT();
 
         INSERT INTO liens_LegacyIdCrosswalks (Id,TenantId,SourceSystem,SourceTable,LegacyId,TargetEntity,TargetId,SourceHash,ImportRunId,CreatedAtUtc)

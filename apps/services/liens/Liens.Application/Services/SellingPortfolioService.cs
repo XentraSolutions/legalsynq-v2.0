@@ -8,6 +8,7 @@ using BuildingBlocks.Notifications;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
+using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Microsoft.Extensions.Logging;
@@ -20,6 +21,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private readonly ILienRepository _lienRepo;
     private readonly ICaseRepository _caseRepo;
     private readonly IContactRepository _contactRepo;
+    private readonly ICompanyRepository _companyRepo;
     private readonly ILienSettlementRepository _settlementRepo;
     private readonly ISettlementPaymentDetailRepository _paymentDetailRepo;
     private readonly IServicingItemRepository _servicingItemRepo;
@@ -37,6 +39,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         ILienRepository lienRepo,
         ICaseRepository caseRepo,
         IContactRepository contactRepo,
+        ICompanyRepository companyRepo,
         ILienSettlementRepository settlementRepo,
         ISettlementPaymentDetailRepository paymentDetailRepo,
         IServicingItemRepository servicingItemRepo,
@@ -53,6 +56,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         _lienRepo = lienRepo;
         _caseRepo = caseRepo;
         _contactRepo = contactRepo;
+        _companyRepo = companyRepo;
         _settlementRepo = settlementRepo;
         _paymentDetailRepo = paymentDetailRepo;
         _servicingItemRepo = servicingItemRepo;
@@ -876,6 +880,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 sellerOrgId,
                 notificationContext.BuyerContact.OrgId,
                 notificationContext.BuyerContact.Id,
+                notificationContext.BuyerContact.CompanyId,
+                notificationContext.BuyerContact.CompanyContactPersonId,
                 actingUserId,
                 buyerNotificationIdempotencyKey,
                 TimeSpan.FromDays(30),
@@ -887,6 +893,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 sellerOrgId,
                 notificationContext.BuyerContact.OrgId,
                 notificationContext.BuyerContact.Id,
+                notificationContext.BuyerContact.CompanyId,
+                notificationContext.BuyerContact.CompanyContactPersonId,
                 actingUserId,
                 sellerNotificationIdempotencyKey,
                 TimeSpan.FromDays(30),
@@ -938,30 +946,86 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         CancellationToken ct)
     {
         var errors = new Dictionary<string, string[]>();
+        var hasCanonicalCompany = lien.FundingCompanyCompanyId is { } canonicalCompanyId && canonicalCompanyId != Guid.Empty;
+        var hasCanonicalContact = lien.FundingCompanyContactPersonId is { } canonicalContactId && canonicalContactId != Guid.Empty;
+        if (hasCanonicalCompany != hasCanonicalContact)
+            errors["fundingCompanyContactId"] = ["Canonical funding company and contact references must be supplied together."];
 
-        if (!lien.FundingCompanyId.HasValue || lien.FundingCompanyId.Value == Guid.Empty)
+        var useCanonicalBuyer = hasCanonicalCompany && hasCanonicalContact;
+        if (!useCanonicalBuyer && (!lien.FundingCompanyId.HasValue || lien.FundingCompanyId.Value == Guid.Empty))
             errors["fundingCompanyId"] = ["FundingCompanyId is required before sending the buyer notification."];
 
-        if (!lien.FundingCompanyContactId.HasValue || lien.FundingCompanyContactId.Value == Guid.Empty)
+        if (!useCanonicalBuyer && (!lien.FundingCompanyContactId.HasValue || lien.FundingCompanyContactId.Value == Guid.Empty))
             errors["fundingCompanyContactId"] = ["FundingCompanyContactId is required before sending the buyer notification."];
 
         if (!lien.InitialServiceDate.HasValue)
             errors["initialServiceDate"] = ["InitialServiceDate is required before sending the buyer notification."];
 
-        if (errors.Count > 0)
-            throw new ValidationException("One or more required fields are missing or invalid.", errors);
+        BuyerContactSnapshot? buyerContact = null;
+        if (useCanonicalBuyer)
+        {
+            var company = await _companyRepo.GetCompanyAsync(
+                tenantId, sellerOrgId, lien.FundingCompanyCompanyId!.Value, ct);
+            if (company is null || !company.IsActive ||
+                company.CompanyTypeId != CompanyDirectoryReferenceData.FundingCompanyId)
+            {
+                errors["fundingCompanyId"] = ["Buyer funding company must be an active Company Directory funding company owned by the seller organization."];
+            }
 
-        var buyerContact = await _contactRepo.GetByIdAsync(tenantId, lien.FundingCompanyContactId!.Value, ct)
-            ?? throw new NotFoundException($"Buyer contact '{lien.FundingCompanyContactId.Value}' not found for tenant '{tenantId}'.");
+            var contact = company is null
+                ? null
+                : await _companyRepo.GetContactPersonAsync(
+                    tenantId, company.Id, lien.FundingCompanyContactPersonId!.Value, ct);
+            if (contact is null || !contact.IsActive)
+            {
+                errors["fundingCompanyContactId"] = ["Buyer contact must be active and belong to the selected Company Directory funding company."];
+            }
+            else if (string.IsNullOrWhiteSpace(contact.Email))
+            {
+                errors["fundingCompanyContactId"] = ["Buyer contact must have an email address."];
+            }
 
-        if (!buyerContact.IsActive)
-            errors["fundingCompanyContactId"] = ["Buyer contact must be active."];
+            if (company is not null && contact is not null)
+            {
+                buyerContact = new BuyerContactSnapshot(
+                    contact.Id,
+                    company.Id,
+                    company.Id,
+                    contact.Id,
+                    $"{contact.FirstName} {contact.LastName}".Trim(),
+                    company.Name,
+                    contact.Email,
+                    contact.Phone,
+                    contact.FirstName,
+                    contact.LastName);
+            }
+        }
+        else if (errors.Count == 0)
+        {
+            var legacyContact = await _contactRepo.GetByIdAsync(tenantId, lien.FundingCompanyContactId!.Value, ct)
+                ?? throw new NotFoundException($"Buyer contact '{lien.FundingCompanyContactId.Value}' not found for tenant '{tenantId}'.");
 
-        if (buyerContact.OrgId != lien.FundingCompanyId!.Value)
-            errors["fundingCompanyContactId"] = ["Buyer contact must belong to the selected funding company."];
+            if (!legacyContact.IsActive)
+                errors["fundingCompanyContactId"] = ["Buyer contact must be active."];
 
-        if (string.IsNullOrWhiteSpace(buyerContact.Email))
-            errors["fundingCompanyContactId"] = ["Buyer contact must have an email address."];
+            if (legacyContact.OrgId != lien.FundingCompanyId!.Value)
+                errors["fundingCompanyContactId"] = ["Buyer contact must belong to the selected funding company."];
+
+            if (string.IsNullOrWhiteSpace(legacyContact.Email))
+                errors["fundingCompanyContactId"] = ["Buyer contact must have an email address."];
+
+            buyerContact = new BuyerContactSnapshot(
+                legacyContact.Id,
+                legacyContact.OrgId,
+                null,
+                null,
+                legacyContact.DisplayName,
+                legacyContact.Organization,
+                legacyContact.Email,
+                legacyContact.Phone,
+                legacyContact.FirstName,
+                legacyContact.LastName);
+        }
 
         var caseEntity = lien.CaseId.HasValue
             ? await _caseRepo.GetByIdAsync(tenantId, lien.CaseId.Value, ct)
@@ -997,7 +1061,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         var documents = await GetSupportingDocumentsAsync(tenantId, lien, ct);
 
         return new ConfirmSaleNotificationContext(
-            buyerContact,
+            buyerContact!,
             sellerContact!,
             sellerDisplay,
             sellerEmail!,
@@ -1962,7 +2026,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         => WebUtility.HtmlEncode(value);
 
     private sealed record ConfirmSaleNotificationContext(
-        Contact BuyerContact,
+        BuyerContactSnapshot BuyerContact,
         Contact SellerContact,
         SellerOrganizationDisplay SellerDisplay,
         string SellerEmail,
@@ -1970,6 +2034,18 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         Contact HandlingLawFirmContact,
         string? CaseManager,
         IReadOnlyList<ConfirmSaleDocument> Documents);
+
+    private sealed record BuyerContactSnapshot(
+        Guid Id,
+        Guid OrgId,
+        Guid? CompanyId,
+        Guid? CompanyContactPersonId,
+        string DisplayName,
+        string? Organization,
+        string? Email,
+        string? Phone,
+        string FirstName,
+        string LastName);
 
     private sealed record ConfirmSaleDocument(string FileName, string? Category);
 

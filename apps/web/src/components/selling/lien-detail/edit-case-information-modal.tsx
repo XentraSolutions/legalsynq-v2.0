@@ -5,11 +5,16 @@ import { FormModal } from "@/components/selling/modal";
 import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
 import { liensService } from "@/lib/selling";
 import { useToast } from "@/lib/toast-context";
-import type { LienCaseDetail, LienFundingCompanyDetail } from "@/types/lien-selling";
+import type {
+  LienCaseDetail,
+  LienFundingCompanyDetail,
+  LienMedicalProviderDetail,
+} from "@/types/lien-selling";
 
 interface EditCaseInformationModalProps {
   lienId: string;
   fundingCompany: LienFundingCompanyDetail | null;
+  medicalProvider: LienMedicalProviderDetail | null;
   caseInformation: LienCaseDetail | null;
   onClose: () => void;
   onSaved: () => void;
@@ -18,6 +23,7 @@ interface EditCaseInformationModalProps {
 export function EditCaseInformationModal({
   lienId,
   fundingCompany,
+  medicalProvider,
   caseInformation,
   onClose,
   onSaved,
@@ -28,6 +34,9 @@ export function EditCaseInformationModal({
   );
   const [fundingCompanyContactId, setFundingCompanyContactId] = useState(
     fundingCompany?.contact?.id ?? "",
+  );
+  const [medicalProviderId, setMedicalProviderId] = useState(
+    medicalProvider?.id ?? "",
   );
   const [lawFirmId, setLawFirmId] = useState(caseInformation?.lawFirmId ?? "");
   const [caseManagerId, setCaseManagerId] = useState(
@@ -41,12 +50,13 @@ export function EditCaseInformationModal({
       await liensService.saveCaseInformation(lienId, {
         fundingCompanyId: fundingCompanyId || undefined,
         fundingCompanyContactId: fundingCompanyContactId || undefined,
+        medicalProviderId: medicalProviderId || undefined,
         handlingLawFirmId: lawFirmId || undefined,
         caseManagerId: caseManagerId || undefined,
         caseId: caseInformation?.id,
         createCaseIfMissing: !caseInformation?.id,
       });
-      showToast("Funding company & case information updated.", "success");
+      showToast("Funding company, medical provider & case information updated.", "success");
       onSaved();
     } catch (err) {
       showToast(
@@ -101,6 +111,20 @@ export function EditCaseInformationModal({
             searchPlaceholder="Search contacts..."
             allowCreate
             createLabel="Add New Contact Person"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Medical Provider
+          </label>
+          <SellingEntitySelect
+            entityType="MedicalProvider"
+            value={medicalProviderId}
+            onChange={(v) => setMedicalProviderId(v)}
+            placeholder="Select medical provider..."
+            searchPlaceholder="Search medical providers..."
+            allowCreate
+            createLabel="Add Medical Provider"
           />
         </div>
         <div>

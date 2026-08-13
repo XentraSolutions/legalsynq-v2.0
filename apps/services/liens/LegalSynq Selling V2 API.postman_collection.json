@@ -15,6 +15,7 @@
     { "key": "buyerAccessToken", "value": "" },
     { "key": "fundingCompanyId", "value": "00000000-0000-0000-0000-000000000000" },
     { "key": "fundingCompanyContactId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "medicalProviderId", "value": "00000000-0000-0000-0000-000000000000" },
     { "key": "buyerFundingCompanyId", "value": "00000000-0000-0000-0000-000000000000" },
     { "key": "buyerContactId", "value": "00000000-0000-0000-0000-000000000000" },
     { "key": "handlingLawFirmId", "value": "00000000-0000-0000-0000-000000000000" },
@@ -78,10 +79,10 @@
         {
           "name": "Save Case Information",
           "request": {
-            "description": "Reference IDs may come from either legacy Contacts or the Company Directory. Directory fundingCompanyId and handlingLawFirmId values must identify active Funding Company and Law Firm companies; fundingCompanyContactId must belong to the funding company, and caseManagerId must belong to the law firm with the Case Manager contact-person type.",
+            "description": "Reference IDs may come from either legacy Contacts or the Company Directory. Directory fundingCompanyId and handlingLawFirmId values must identify active Funding Company and Law Firm companies; medicalProviderId must identify an active Medical Provider company owned by the seller organization; fundingCompanyContactId must belong to the funding company, and caseManagerId must belong to the law firm with the Case Manager contact-person type.",
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"fundingCompanyContactId\": \"{{fundingCompanyContactId}}\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseId\": \"{{caseId}}\",\n  \"createCaseIfMissing\": false\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"fundingCompanyContactId\": \"{{fundingCompanyContactId}}\",\n  \"medicalProviderId\": \"{{medicalProviderId}}\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseId\": \"{{caseId}}\",\n  \"createCaseIfMissing\": false\n}", "options": { "raw": { "language": "json" } } },
             "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/case-information"
           }
         },
@@ -106,6 +107,7 @@
         {
           "name": "Prepare Sale",
           "request": {
+            "description": "buyerFundingCompanyId and buyerContactId may identify either a legacy funding-company/contact pair or an active Company Directory Funding Company/contact-person pair owned by the authenticated seller organization.",
             "method": "POST",
             "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"buyerFundingCompanyId\": \"{{buyerFundingCompanyId}}\",\n  \"buyerContactId\": \"{{buyerContactId}}\",\n  \"askAmount\": 12500,\n  \"listingVisibility\": \"Private\",\n  \"messageToBuyer\": \"Please review this lien for purchase consideration.\"\n}", "options": { "raw": { "language": "json" } } },

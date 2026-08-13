@@ -144,6 +144,16 @@ PID_CC=$!
     --no-restore --configuration Debug --verbosity quiet -maxcpucount:1 \
     || echo "[tenant] Build error — will run from cached binary"
 
+  # Liens.Api owns tenant-facing report routes. A failed full solution build
+  # must not leave the local stack serving an older cached endpoint map.
+  echo "[liens] Building Liens.Api with conservative memory settings..."
+  if ! DOTNET_GCConserveMemory=9 \
+    dotnet build "$ROOT/apps/services/liens/Liens.Api/Liens.Api.csproj" \
+    --no-restore --configuration Debug --verbosity quiet -maxcpucount:1; then
+    echo "[liens] ERROR: Build failed; refusing to start a cached Liens.Api binary." >&2
+    exit 1
+  fi
+
   # ── Service startup ──────────────────────────────────────────────────────────
   # Gateway starts FIRST: it is stateless (no DB migration) and needs memory
   # before the 15+ other services are initialized.  Once all DB services are

@@ -498,13 +498,44 @@ public static class SellingEndpoints
         if (lien is null)
             return Results.NotFound(new { error = new { code = "not_found", message = $"Offered lien '{accessLinkId}' not found." } });
 
-        var buyerContact = await db.Contacts
-            .AsNoTracking()
-            .FirstOrDefaultAsync(contact =>
-                contact.TenantId == tenantId &&
-                contact.Id == accessLink.BuyerContactId &&
-                contact.OrgId == accessLink.BuyerOrgId,
-                ct);
+        BuyerContactDisplay? buyerContact;
+        if (accessLink.BuyerCompanyId.HasValue && accessLink.BuyerCompanyContactPersonId.HasValue)
+        {
+            var canonicalContact = await db.CompanyContactPersons
+                .AsNoTracking()
+                .Include(contact => contact.Company)
+                .FirstOrDefaultAsync(contact =>
+                    contact.TenantId == tenantId &&
+                    contact.Id == accessLink.BuyerCompanyContactPersonId.Value &&
+                    contact.CompanyId == accessLink.BuyerCompanyId.Value &&
+                    contact.Company != null &&
+                    contact.Company.OrgId == accessLink.SellerOrgId,
+                    ct);
+            buyerContact = canonicalContact?.Company is null
+                ? null
+                : new BuyerContactDisplay(
+                    $"{canonicalContact.FirstName} {canonicalContact.LastName}".Trim(),
+                    canonicalContact.Company.Name,
+                    canonicalContact.Email,
+                    canonicalContact.Phone);
+        }
+        else
+        {
+            var legacyContact = await db.Contacts
+                .AsNoTracking()
+                .FirstOrDefaultAsync(contact =>
+                    contact.TenantId == tenantId &&
+                    contact.Id == accessLink.BuyerContactId &&
+                    contact.OrgId == accessLink.BuyerOrgId,
+                    ct);
+            buyerContact = legacyContact is null
+                ? null
+                : new BuyerContactDisplay(
+                    legacyContact.DisplayName,
+                    legacyContact.Organization,
+                    legacyContact.Email,
+                    legacyContact.Phone);
+        }
 
         var sellerContacts = await db.Contacts
             .AsNoTracking()
@@ -863,6 +894,22 @@ public static class SellingEndpoints
         foreach (var contactId in contactIds)
             buyerContactIds.Add(contactId);
 
+        var canonicalContactIds = await db.CompanyContactPersons
+            .AsNoTracking()
+            .Where(contact =>
+                contact.TenantId == tenantId &&
+                contact.IsActive &&
+                contact.Email != null &&
+                contact.Email.ToLower() == normalizedEmail &&
+                contact.Company != null &&
+                contact.Company.IsActive &&
+                contact.Company.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId)
+            .Select(contact => contact.Id)
+            .ToListAsync(ct);
+
+        foreach (var contactId in canonicalContactIds)
+            buyerContactIds.Add(contactId);
+
         return buyerContactIds;
     }
 
@@ -1188,7 +1235,7 @@ public static class SellingEndpoints
         SellingBuyerAccessLink accessLink,
         Lien lien,
         SellerOrganizationDisplay sellerDisplay,
-        Contact? buyerContact,
+        BuyerContactDisplay? buyerContact,
         string? providerName,
         IReadOnlyList<BuyerOfferedLienDocument> documents,
         IReadOnlyList<SellingPortalMessage> messages)
@@ -2732,6 +2779,12 @@ public static class SellingEndpoints
         string Name,
         string? Company,
         string? Email);
+
+    private sealed record BuyerContactDisplay(
+        string DisplayName,
+        string? Organization,
+        string? Email,
+        string? Phone);
 
     private sealed record BuyerOfferedLienBuyerDetail(
         string? ContactName,

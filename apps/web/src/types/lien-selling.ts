@@ -20,6 +20,11 @@ export interface LienFundingCompanyDetail {
   contact: LienFundingCompanyContact | null;
 }
 
+export interface LienMedicalProviderDetail {
+  id: string;
+  name: string;
+}
+
 export interface LienCaseDetail {
   id: string;
   caseNumber: string;
@@ -73,6 +78,7 @@ export interface LienDetailsResult {
   lienInformation: LienDetail;
   caseInformation: LienCaseDetail | null;
   fundingCompany: LienFundingCompanyDetail | null;
+  medicalProvider: LienMedicalProviderDetail | null;
   medicalPricing: {
     askAmount: number;
     billingAmount: number;

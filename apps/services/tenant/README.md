@@ -44,6 +44,7 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 | `GET` | `/api/resolution/{code}` | Resolve tenant by code |
 | `GET` | `/api/branding/{tenantId}` | Tenant branding |
 | `GET` | `/api/v1/public/tenants/{tenantId}/capabilities/{capabilityKey}` | Public/service-to-service single-capability read (boolean) — used by product services (e.g. CareConnect's Referral Representative Portal flag) to check a tenant feature without AdminOnly credentials |
+| `GET` | `/api/internal/tenants/eligible/synqliens` | Service-token-only list of active tenants with a currently effective enabled SynqLiens entitlement. Used by the Liens weekly report scheduler. |
 
 ## Database
 
@@ -62,6 +63,7 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
   "IdentityService": { "InternalUrl": "http://127.0.0.1:5001" },
   "DocumentsService": { "InternalUrl": "http://127.0.0.1:5006" },
   "CommerceIntegration": { "Enabled": false, "BaseUrl": "http://127.0.0.1:5030" },
+  "ServiceTokens": { "Audience": "tenant-service", "SigningKey": "" },
   "Features": {
     "TenantReadSource": "Tenant",
     "TenantDualWriteEnabled": true
@@ -73,3 +75,4 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 
 - Tenant record is the canonical source of truth. Identity-side tenant records are kept in sync via the dual-write adapter.
 - `TenantStatus` enum: `Active`, `Inactive`, `Suspended`. No `Closed` status exists in the current domain model.
+- Internal eligible-tenant discovery validates platform service tokens. Non-development deployments must provide the shared `FLOW_SERVICE_TOKEN_SECRET` used by the calling Liens service.

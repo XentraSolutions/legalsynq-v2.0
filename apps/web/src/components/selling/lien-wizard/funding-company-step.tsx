@@ -62,6 +62,7 @@ export default function FundingCompanyStep({
         fundingCompanyId: formData?.fundingCompanyId || undefined,
         fundingCompanyContactId:
           formData?.fundingCompanyContactId || undefined,
+        medicalProviderId: formData?.medicalProviderId || undefined,
         handlingLawFirmId: formData?.lawfirmId || undefined,
         caseManagerId: formData?.caseManagerId || undefined,
         caseId: caseId || undefined,

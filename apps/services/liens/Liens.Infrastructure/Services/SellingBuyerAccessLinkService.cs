@@ -34,12 +34,39 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
         string idempotencyKey,
         TimeSpan ttl,
         CancellationToken ct = default)
+        => CreateOrGetForConfirmSaleAsync(
+            tenantId,
+            lienId,
+            sellerOrgId,
+            buyerOrgId,
+            buyerContactId,
+            null,
+            null,
+            actingUserId,
+            idempotencyKey,
+            ttl,
+            ct);
+
+    public Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid? buyerCompanyId,
+        Guid? buyerCompanyContactPersonId,
+        Guid actingUserId,
+        string idempotencyKey,
+        TimeSpan ttl,
+        CancellationToken ct = default)
         => CreateOrGetAsync(
             tenantId,
             lienId,
             sellerOrgId,
             buyerOrgId,
             buyerContactId,
+            buyerCompanyId,
+            buyerCompanyContactPersonId,
             actingUserId,
             LegacyConfirmSaleRoute,
             SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
@@ -64,6 +91,8 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
             sellerOrgId,
             buyerOrgId,
             buyerContactId,
+            null,
+            null,
             actingUserId,
             route,
             SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
@@ -81,12 +110,39 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
         string idempotencyKey,
         TimeSpan ttl,
         CancellationToken ct = default)
+        => CreateOrGetForConfirmSaleSellerViewAsync(
+            tenantId,
+            lienId,
+            sellerOrgId,
+            buyerOrgId,
+            buyerContactId,
+            null,
+            null,
+            actingUserId,
+            idempotencyKey,
+            ttl,
+            ct);
+
+    public Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleSellerViewAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid? buyerCompanyId,
+        Guid? buyerCompanyContactPersonId,
+        Guid actingUserId,
+        string idempotencyKey,
+        TimeSpan ttl,
+        CancellationToken ct = default)
         => CreateOrGetAsync(
             tenantId,
             lienId,
             sellerOrgId,
             buyerOrgId,
             buyerContactId,
+            buyerCompanyId,
+            buyerCompanyContactPersonId,
             actingUserId,
             ConfirmSaleSellerViewRoute,
             SellingAccessLinkPurposes.ConfirmSaleSellerView,
@@ -100,6 +156,8 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
         Guid sellerOrgId,
         Guid buyerOrgId,
         Guid buyerContactId,
+        Guid? buyerCompanyId,
+        Guid? buyerCompanyContactPersonId,
         Guid actingUserId,
         string route,
         string purpose,
@@ -109,6 +167,8 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
     {
         if (ttl <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(ttl), "Access-link TTL must be positive.");
+        if (buyerCompanyId.HasValue != buyerCompanyContactPersonId.HasValue)
+            throw new ArgumentException("Canonical buyer company and contact-person IDs must be supplied together.");
 
         ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
 
@@ -132,6 +192,13 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
 
         if (existing is not null)
         {
+            if (buyerCompanyId.HasValue &&
+                (existing.BuyerCompanyId != buyerCompanyId ||
+                 existing.BuyerCompanyContactPersonId != buyerCompanyContactPersonId))
+            {
+                existing.LinkCanonicalBuyer(buyerCompanyId, buyerCompanyContactPersonId);
+                await _db.SaveChangesAsync(ct);
+            }
             // A raw token is intentionally unrecoverable after the first response.
             // Replays may expose link metadata, but never recreate the secret URL.
             return Map(existing, portalBaseUrl, rawToken: null, alreadyExisted: true);
@@ -150,6 +217,8 @@ public sealed class SellingBuyerAccessLinkService : ISellingBuyerAccessLinkServi
             trimmedIdempotencyKey,
             DateTime.UtcNow.Add(ttl),
             actingUserId);
+        if (buyerCompanyId.HasValue)
+            link.LinkCanonicalBuyer(buyerCompanyId, buyerCompanyContactPersonId);
 
         await _db.SellingBuyerAccessLinks.AddAsync(link, ct);
         await _db.SaveChangesAsync(ct);

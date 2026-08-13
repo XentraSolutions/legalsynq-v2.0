@@ -1478,6 +1478,8 @@ public static class SellingPublicEndpoints
                 currentAccessLink.SellerOrgId,
                 currentAccessLink.BuyerOrgId,
                 currentAccessLink.BuyerContactId,
+                currentAccessLink.BuyerCompanyId,
+                currentAccessLink.BuyerCompanyContactPersonId,
                 actingUserId,
                 idempotencyKey,
                 TimeSpan.FromDays(30),
@@ -1488,6 +1490,8 @@ public static class SellingPublicEndpoints
                 currentAccessLink.SellerOrgId,
                 currentAccessLink.BuyerOrgId,
                 currentAccessLink.BuyerContactId,
+                currentAccessLink.BuyerCompanyId,
+                currentAccessLink.BuyerCompanyContactPersonId,
                 actingUserId,
                 idempotencyKey,
                 TimeSpan.FromDays(30),
@@ -1888,13 +1892,52 @@ public static class SellingPublicEndpoints
                 .FirstOrDefaultAsync(c => c.TenantId == accessLink.TenantId && c.Id == lien.CaseId.Value, ct)
             : null;
 
-        var buyerContact = await db.Contacts
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c =>
-                c.TenantId == accessLink.TenantId &&
-                c.Id == accessLink.BuyerContactId &&
-                c.OrgId == accessLink.BuyerOrgId,
-                ct);
+        PublicBuyerContact? buyerContact;
+        if (accessLink.BuyerCompanyId.HasValue && accessLink.BuyerCompanyContactPersonId.HasValue)
+        {
+            var canonicalContact = await db.CompanyContactPersons
+                .AsNoTracking()
+                .Include(contact => contact.Company)
+                .FirstOrDefaultAsync(contact =>
+                    contact.TenantId == accessLink.TenantId &&
+                    contact.Id == accessLink.BuyerCompanyContactPersonId.Value &&
+                    contact.CompanyId == accessLink.BuyerCompanyId.Value &&
+                    contact.Company != null &&
+                    contact.Company.OrgId == accessLink.SellerOrgId,
+                    ct);
+            buyerContact = canonicalContact?.Company is null
+                ? null
+                : new PublicBuyerContact(
+                    canonicalContact.Id,
+                    canonicalContact.Company.Id,
+                    $"{canonicalContact.FirstName} {canonicalContact.LastName}".Trim(),
+                    canonicalContact.Company.Name,
+                    canonicalContact.Email,
+                    canonicalContact.Phone,
+                    canonicalContact.FirstName,
+                    canonicalContact.LastName);
+        }
+        else
+        {
+            var legacyContact = await db.Contacts
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c =>
+                    c.TenantId == accessLink.TenantId &&
+                    c.Id == accessLink.BuyerContactId &&
+                    c.OrgId == accessLink.BuyerOrgId,
+                    ct);
+            buyerContact = legacyContact is null
+                ? null
+                : new PublicBuyerContact(
+                    legacyContact.Id,
+                    legacyContact.OrgId,
+                    legacyContact.DisplayName,
+                    legacyContact.Organization,
+                    legacyContact.Email,
+                    legacyContact.Phone,
+                    legacyContact.FirstName,
+                    legacyContact.LastName);
+        }
 
         var sellerContacts = await db.Contacts
             .AsNoTracking()
@@ -2574,7 +2617,7 @@ public static class SellingPublicEndpoints
         SellingBuyerAccessLink AccessLink,
         Lien Lien,
         Case? Case,
-        Contact? BuyerContact,
+        PublicBuyerContact? BuyerContact,
         Contact? SellerContact,
         SellerOrganizationDisplay SellerDisplay,
         Contact? HandlingLawFirmContact,
@@ -2583,6 +2626,16 @@ public static class SellingPublicEndpoints
         IReadOnlyList<SellingPortalMessage> Messages,
         SellingBuyerAccessLink? BuyerResponseAccessLink,
         string? BuyerAccountEmail);
+
+    private sealed record PublicBuyerContact(
+        Guid Id,
+        Guid OrgId,
+        string DisplayName,
+        string? Organization,
+        string? Email,
+        string? Phone,
+        string FirstName,
+        string LastName);
 
     private sealed record PublicDocumentView(Guid? DocumentId, string FileName, string? Category, string SizeOrType);
 

@@ -89,6 +89,11 @@ Blank legacy case-note records are excluded because they have no target
 content. They do not receive a target note or a crosswalk. Preflight and the
 completed import summary report this as `BlankCaseNotesSkipped`; nonblank notes
 still fail validation if they exceed the target content or author-name limits.
+For each imported note, `CN_USER_ID IS NULL` maps to the tracking category
+`general`; a non-null `CN_USER_ID` maps to `feed`. The discriminator and source
+fingerprint are included in the `case-note-v2:` crosswalk hash. Older completed
+imports must run the guarded reconciliation documented in the main importer
+README before the Case Notes History API is enabled for that tenant.
 
 ## Medical-code amount backfill
 

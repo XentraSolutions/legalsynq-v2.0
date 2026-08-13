@@ -131,6 +131,7 @@ export function PortfolioDetailPanel({
           />
           <FundingCompanyAndCaseInformationPanel
             fundingCompany={lien.fundingCompany}
+            medicalProvider={lien.medicalProvider}
             caseInformation={lien.caseInformation}
             onEdit={
               canEdit ? () => setEditModal("case-information") : undefined
@@ -161,6 +162,7 @@ export function PortfolioDetailPanel({
         <EditCaseInformationModal
           lienId={lien.lienId}
           fundingCompany={lien.fundingCompany}
+          medicalProvider={lien.medicalProvider}
           caseInformation={lien.caseInformation}
           onClose={() => setEditModal(null)}
           onSaved={() => {

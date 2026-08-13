@@ -12,7 +12,11 @@ import {
 } from "@/hooks/use-selling-companies";
 
 /** A company type (`GET /lookups/company-types`), matched by its `code`. */
-export type SellingEntityType = "FundingCompany" | "Facility" | "LawFirm";
+export type SellingEntityType =
+  | "FundingCompany"
+  | "Facility"
+  | "LawFirm"
+  | "MedicalProvider";
 
 interface SellingEntitySelectProps {
   /** The company type to select from. When `isContactPerson` is set, this is the type of the *parent* company whose contacts are listed. */

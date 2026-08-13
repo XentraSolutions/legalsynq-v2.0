@@ -107,6 +107,17 @@ public class Lien : AuditableEntity
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
+    public void SetCanonicalMedicalProvider(Guid medicalProviderCompanyId, Guid updatedByUserId)
+    {
+        if (medicalProviderCompanyId == Guid.Empty)
+            throw new ArgumentException("Medical provider company id is required.", nameof(medicalProviderCompanyId));
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        MedicalProviderCompanyId = medicalProviderCompanyId;
+        Touch(updatedByUserId);
+    }
+
     public void ReassignCanonicalCompany(Guid sourceCompanyId, Guid targetCompanyId, Guid updatedByUserId)
     {
         ValidateReassignment(sourceCompanyId, targetCompanyId, updatedByUserId);

@@ -19,6 +19,7 @@ public sealed class SaveSellingCaseInformationRequest
 {
     public Guid? FundingCompanyId { get; init; }
     public Guid? FundingCompanyContactId { get; init; }
+    public Guid? MedicalProviderId { get; init; }
     public Guid? HandlingLawFirmId { get; init; }
     public Guid? CaseManagerId { get; init; }
     public Guid? CaseId { get; init; }

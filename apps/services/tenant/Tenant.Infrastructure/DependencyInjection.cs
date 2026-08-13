@@ -42,6 +42,7 @@ public static class DependencyInjection
         // ── Repositories ──────────────────────────────────────────────────────
 
         services.AddScoped<ITenantRepository,       TenantRepository>();
+        services.AddScoped<IEligibleTenantRepository, TenantRepository>();
         services.AddScoped<IBrandingRepository,     BrandingRepository>();
         services.AddScoped<IDomainRepository,       DomainRepository>();
         services.AddScoped<IEntitlementRepository,  EntitlementRepository>();
@@ -61,6 +62,8 @@ public static class DependencyInjection
         services.AddScoped<IMigrationUtilityService, MigrationUtilityService>();
         services.AddScoped<ITenantSyncAdapter,       NoOpTenantSyncAdapter>();
         services.AddScoped<ITenantAdminService,      TenantAdminService>();
+        services.AddScoped<IEligibleTenantService,   EligibleTenantService>();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
 
         // ── TENANT-B11: Identity compat adapter (read-through for sessionTimeoutMinutes) ──
         services.AddHttpClient("IdentityInternal", client =>

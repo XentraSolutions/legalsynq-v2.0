@@ -25,6 +25,13 @@ public static class ReportEndpoints
 
     public static void MapReportEndpoints(this WebApplication app)
     {
+        var reports = app.MapGroup("/api/liens/reports")
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductAccess(LiensPermissions.ProductCode);
+
+        reports.MapPost("/weekly-bcc", GetWeeklyBccReport)
+            .RequirePermission(LiensPermissions.CaseRead);
+
         // ── v2 routes ─────────────────────────────────────────────────────────
         var v2 = app.MapGroup("/api/liens/reports/diy")
             .RequireAuthorization(Policies.AuthenticatedUser)
@@ -61,6 +68,9 @@ public static class ReportEndpoints
         legacy.MapPost("/diy", RunReport)
             .RequirePermission(LiensPermissions.CaseRead);
 
+        legacy.MapPost("/weekly-bcc", GetWeeklyBccReport)
+            .RequirePermission(LiensPermissions.CaseRead);
+
         // POST /report/diy/export  — export as CSV
         legacy.MapPost("/diy/export", ExportReport)
             .RequirePermission(LiensPermissions.CaseRead);
@@ -95,6 +105,59 @@ public static class ReportEndpoints
     }
 
     // ── Handlers ──────────────────────────────────────────────────────────────
+
+    private static async Task<IResult> GetWeeklyBccReport(
+        WeeklyBccReportRequest? request,
+        IWeeklyBccReportService svc,
+        ICurrentRequestContext ctx,
+        HttpContext httpContext,
+        CancellationToken ct = default)
+    {
+        httpContext.Response.Headers.CacheControl = "no-store";
+        if (request is null)
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "Request body is required.",
+            });
+        }
+
+        if (!TryParseWeeklyBccAsOfDate(request.AsOfDate, out var asOfDate))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "A valid asOfDate is required. Use MM/dd/yyyy or yyyy-MM-dd.",
+            });
+        }
+
+        var tenantId = CaseEndpoints.RequireTenantId(ctx);
+        var result = await svc.GetAsync(tenantId, asOfDate, ct);
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Weekly BCC report generated.",
+            asOfDate = result.AsOfDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            totalCount = result.Items.Count,
+            data = result.Items,
+        });
+    }
+
+    private static bool TryParseWeeklyBccAsOfDate(string? value, out DateOnly asOfDate)
+    {
+        asOfDate = default;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        string[] formats = ["MM/dd/yyyy", "M/d/yyyy", "yyyy-MM-dd", "yyyy-M-d"];
+        return DateOnly.TryParseExact(
+            value.Trim(),
+            formats,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out asOfDate);
+    }
 
     private static async Task<IResult> GetSavedReports(
         IDIYReportService svc,

@@ -452,7 +452,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"fundingCompanyContactId\": \"{{fundingCompanyContactId}}\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseId\": null,\n  \"createCaseIfMissing\": true\n}",
+              "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"fundingCompanyContactId\": \"{{fundingCompanyContactId}}\",\n  \"medicalProviderId\": \"{{medicalProviderId}}\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseId\": null,\n  \"createCaseIfMissing\": true\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -460,7 +460,7 @@
               }
             },
             "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/case-information",
-            "description": "Saves Company Directory references on the selling lien and case. fundingCompanyId must be an active Funding Company, fundingCompanyContactId must belong to it, handlingLawFirmId must be an active Law Firm, and caseManagerId must belong to that firm with the CaseManager contact-person type. Legacy Contact IDs remain accepted. Requires lien_sale:update."
+            "description": "Saves Company Directory references on the selling lien and case. fundingCompanyId must be an active Funding Company, fundingCompanyContactId must belong to it, medicalProviderId must be an active Medical Provider company owned by the seller organization, handlingLawFirmId must be an active Law Firm, and caseManagerId must belong to that firm with the CaseManager contact-person type. Legacy Contact IDs remain accepted for the existing fields. Requires lien_sale:update."
           }
         }
       ]
@@ -517,6 +517,10 @@
     },
     {
       "key": "fundingCompanyContactId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "medicalProviderId",
       "value": "00000000-0000-0000-0000-000000000000"
     },
     {
