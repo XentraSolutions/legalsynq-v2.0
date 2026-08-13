@@ -5,9 +5,11 @@ import { normalizeCareConnectPortalHost } from "./lib/careconnect-login-url";
  * Global Next.js proxy — route protection + hostname-based routing.
  *
  * Rules:
- *  1. Common portal hostnames (CC_COMMON_PORTAL_HOSTNAME, SYNQLIEN_COMMON_PORTAL_HOSTNAME):
+ *  1. Common portal hostnames (CC_COMMON_PORTAL_HOSTNAME,
+ *     SYNQLIEN_COMMON_PORTAL_HOSTNAME, TENANT_COMMON_PORTAL_HOSTNAME):
  *     - Root / → redirect to /careconnect/dashboard (common portal home).
  *       SynqLien common portal redirects root / → /funding/dashboard.
+ *       Tenant registration portal redirects root / → /register.
  *     - All other paths follow the same public/protected logic below.
  *  2. Public routes (/login, /portal, static assets) — always allowed through.
  *  3. Protected routes — require the platform_session cookie to exist.
@@ -35,6 +37,9 @@ const CC_COMMON_PORTAL_HOSTNAME = normalizeCareConnectPortalHost(
 );
 const SYNQLIEN_COMMON_PORTAL_HOSTNAME = normalizeCareConnectPortalHost(
   process.env.SYNQLIEN_COMMON_PORTAL_HOSTNAME,
+);
+const TENANT_COMMON_PORTAL_HOSTNAME = normalizeCareConnectPortalHost(
+  process.env.TENANT_COMMON_PORTAL_HOSTNAME ?? "tenant-demo.localhost",
 );
 
 const PUBLIC_PATHS = [
@@ -97,16 +102,38 @@ const PUBLIC_PATHS = [
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const forwardedHost = request.headers.get("x-forwarded-host") ?? "";
+  const rawHost = request.headers.get("host") ?? "";
+  const incomingHost = (forwardedHost || rawHost)
+    .split(",")[0]
+    .trim()
+    .split(":")[0]
+    .toLowerCase();
+
+  const isTenantRegistrationRoute =
+    pathname === "/register" ||
+    pathname.startsWith("/register/") ||
+    pathname.startsWith("/api/tenant/api/v1/public/tenant-registrations");
+
+  // Tenant self-registration is intentionally exposed only on its dedicated
+  // common-portal hostname. Return 404 on every other host so neither the form
+  // nor its submission endpoint can be reached from a tenant/product portal.
+  if (
+    isTenantRegistrationRoute &&
+    incomingHost !== TENANT_COMMON_PORTAL_HOSTNAME
+  ) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
 
   // ── Common portal hostname routing ─────────────────────────────────────────
   // Read the host from x-forwarded-host (set by the reverse proxy) or the raw
   // Host header. Strip the port so "careconnect-demo.legalsynq.com:443" still
   // matches the configured hostname.
-  if (CC_COMMON_PORTAL_HOSTNAME || SYNQLIEN_COMMON_PORTAL_HOSTNAME) {
-    const forwardedHost = request.headers.get("x-forwarded-host") ?? "";
-    const rawHost = request.headers.get("host") ?? "";
-    const incomingHost = (forwardedHost || rawHost).split(":")[0].toLowerCase();
-
+  if (
+    CC_COMMON_PORTAL_HOSTNAME ||
+    SYNQLIEN_COMMON_PORTAL_HOSTNAME ||
+    TENANT_COMMON_PORTAL_HOSTNAME
+  ) {
     if (incomingHost === CC_COMMON_PORTAL_HOSTNAME) {
       // Root → common portal dashboard
       if (pathname === "/") {
@@ -123,6 +150,10 @@ export function proxy(request: NextRequest) {
       return NextResponse.redirect(
         new URL("/funding/dashboard", request.url),
       );
+    }
+
+    if (incomingHost === TENANT_COMMON_PORTAL_HOSTNAME && pathname === "/") {
+      return NextResponse.redirect(new URL("/register", request.url));
     }
   }
 
