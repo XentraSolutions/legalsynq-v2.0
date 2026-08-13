@@ -21,6 +21,7 @@ _svc_label_for() {
     Fund.Api)                  echo "Fund API" ;;
     CareConnect.Api)           echo "CareConnect" ;;
     Documents.Api)             echo "Documents" ;;
+    Intake.Api)                echo "Synq Intake" ;;
     Liens.Api)                 echo "Liens" ;;
     Monitoring.Api)            echo "Monitoring" ;;
     Task.Api)                  echo "Task" ;;
