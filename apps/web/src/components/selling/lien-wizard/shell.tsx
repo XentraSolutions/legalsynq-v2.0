@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/selling/button";
+import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
 import { TOTAL_STEPS } from "./shared";
-
-// Selling's brand accent, matching the convention used on other selling pages.
-const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white disabled:bg-[#EE7132]/70";
 
 function ProgressBar({ currentStep }: { currentStep: number }) {
   return (
@@ -30,6 +29,10 @@ function ProgressBar({ currentStep }: { currentStep: number }) {
 export interface LienWizardShellProps {
   step: number;
   hydrating?: boolean;
+  // Shown in place of the hydration spinner, sized to closely match the
+  // step's real content so nothing jumps once data arrives. Falls back to a
+  // generic form-field grid for steps that don't pass one.
+  skeleton?: React.ReactNode;
   submitting?: boolean;
   continueDisabled?: boolean;
   continueLabel?: string;
@@ -44,6 +47,7 @@ export interface LienWizardShellProps {
 export function LienWizardShell({
   step,
   hydrating,
+  skeleton,
   submitting,
   continueDisabled,
   continueLabel = "Continue",
@@ -59,7 +63,7 @@ export function LienWizardShell({
             href="/selling/portfolio"
             className="text-sm text-gray-500 hover:text-gray-800"
           >
-            <i className="ri-arrow-left-line text-xl" />
+            <ArrowLeft className="h-5 w-5" />
           </Link>
         </nav>
         <ProgressBar currentStep={step} />
@@ -69,9 +73,12 @@ export function LienWizardShell({
       </p>
       <div className="mt-5 position-relative ">
         {hydrating ? (
-          <div className="py-16 text-center">
-            <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          </div>
+          skeleton ?? (
+            <div className="space-y-4 animate-pulse">
+              <div className="h-6 bg-gray-100 rounded w-48" />
+              <SkeletonFormGrid fields={4} />
+            </div>
+          )
         ) : (
           <>
             {children}
@@ -81,7 +88,7 @@ export function LienWizardShell({
                 Back
               </Button>
               <Button
-                className={PRIMARY_BUTTON_CLASSNAME}
+                variant="primary"
                 onClick={onContinue}
                 loading={submitting}
                 disabled={!!continueDisabled || !!submitting}

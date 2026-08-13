@@ -9,6 +9,19 @@ import { useToast } from "@/lib/toast-context";
 import LienInfo from "../forms/add-medical-lien/lien-info";
 import { LienWizardShell } from "./shell";
 import { buildFormsFromLien } from "./shared";
+import { SkeletonField, SkeletonFormGrid } from "@/components/lien/skeleton-loader";
+
+// Mirrors LienInfo's layout: title, a 2x2 field grid (status/date,
+// date/select), then a full-width notes textarea.
+function LienInfoSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse pb-3">
+      <div className="h-6 bg-gray-100 rounded w-44" />
+      <SkeletonFormGrid fields={4} />
+      <SkeletonField full />
+    </div>
+  );
+}
 
 export interface LienInfoStepProps {
   // Existing lien being edited (route: edit/step-1). Omitted on the
@@ -107,6 +120,7 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
     <LienWizardShell
       step={1}
       hydrating={hydrating}
+      skeleton={<LienInfoSkeleton />}
       submitting={submitting}
       continueDisabled={!formValid}
       onBack={() => router.back()}

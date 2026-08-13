@@ -27,7 +27,7 @@ export default function UploadDocsStep({ lienId, caseId }: UploadDocsStepProps) 
   return (
     <LienWizardShell
       step={4}
-      continueLabel="Add Lien"
+      continueLabel="Finish"
       onBack={() => goToStep(router, lienId, 3)}
       onContinue={handleContinue}
     >

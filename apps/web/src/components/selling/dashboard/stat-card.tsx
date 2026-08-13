@@ -1,5 +1,6 @@
 "use client";
 
+import { ListTodo, type LucideIcon } from "lucide-react";
 import { DonutChart } from "@/components/lien/dashboard/donut-chart";
 import { AdditionalStat, Segment } from "@/components/lien/dashboard/types";
 import Link from "next/link";
@@ -9,7 +10,7 @@ export function StatCard({
   total,
   segments,
   additionalStats,
-  icon = "ri-todo-line",
+  icon: Icon = ListTodo,
   totalStats,
   statsType,
   showHeaderStat = true,
@@ -21,7 +22,7 @@ export function StatCard({
   total: number;
   segments: Segment[];
   additionalStats?: AdditionalStat[];
-  icon?: string;
+  icon?: LucideIcon;
   totalStats: number;
   statsType: string;
   /** Hides the "Total X: $Y" line in the header — some cards (e.g. Liens by Status) only show a title. */
@@ -66,9 +67,7 @@ export function StatCard({
           <div className="space-y-3 mb-4">
             {additionalStats?.map((stat, i) => (
               <div key={i} className="flex items-start gap-2">
-                <i
-                  className={`${icon} text-gray-400 text-sm mt-0.5 shrink-0`}
-                />
+                <Icon className="h-4 w-4 text-gray-400 mt-0.5 shrink-0" />
                 <div>
                   <p className="text-xs text-gray-500">{stat.label}</p>
                   <p className="text-sm font-bold text-blue-600">

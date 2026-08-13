@@ -325,14 +325,15 @@ export function BaseTable<TData>({
         </TableHeader>
         <TableBody>
           {isLoading ? (
-            <TableRow>
-              <TableCell
-                colSpan={totalCols}
-                className="text-center py-8 text-sm text-gray-400"
-              >
-                Loading...
-              </TableCell>
-            </TableRow>
+            Array.from({ length: currentPageSize }).map((_, i) => (
+              <TableRow key={i} className="animate-pulse">
+                {Array.from({ length: totalCols }).map((_, j) => (
+                  <TableCell key={j}>
+                    <div className="h-4 bg-gray-100 rounded w-3/4" />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
           ) : rows.length === 0 ? (
             <TableRow>
               <TableCell

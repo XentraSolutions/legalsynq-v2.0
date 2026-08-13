@@ -3,12 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { useSession } from "@/hooks/use-session";
 import { ProductRole } from "@/types";
 import { ApiError } from "@/lib/api-client";
 import type { LienDetailsResult } from "@/types/lien-selling";
 import { liensService } from "@/lib/selling";
-import { PortfolioDetailPanel } from "@/components/selling/portfolio-details";
+import {
+  PortfolioDetailPanel,
+  PortfolioDetailSkeleton,
+} from "@/components/selling/portfolio-details";
 
 /**
  * /lien/portfolio/[id] — Held lien detail for buyers and holders.
@@ -78,14 +82,13 @@ export default function PortfolioLienDetailPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <nav>
-          <Link
-            href="/selling/portfolio"
-            className="text-sm text-gray-500 hover:text-gray-800"
-          >
-            <i className="ri-arrow-left-line text-xl" />
-          </Link>
-        </nav>
+        <Link
+          href="/selling/portfolio"
+          aria-label="Back to Portfolio"
+          className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">
           {error}
         </div>
@@ -93,20 +96,9 @@ export default function PortfolioLienDetailPage() {
     );
   }
 
-  if (!lien) return null;
+  if (loading || !lien) {
+    return <PortfolioDetailSkeleton />;
+  }
 
-  return (
-    <div className="space-y-4">
-      <nav>
-        <Link
-          href="/selling/portfolio"
-          className="text-sm text-gray-500 hover:text-gray-800"
-        >
-          <i className="ri-arrow-left-line text-xl" />
-        </Link>
-      </nav>
-
-      <PortfolioDetailPanel lien={lien} onRefresh={load} />
-    </div>
-  );
+  return <PortfolioDetailPanel lien={lien} onRefresh={load} />;
 }

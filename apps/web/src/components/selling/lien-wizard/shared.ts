@@ -29,13 +29,13 @@ export function buildFormsFromLien(lien: Lien) {
       endServiceDate: lien.lienInformation.endServiceDate ?? "",
       notes: lien.lienInformation.notes ?? "",
     },
-    fundingCompany: {
+    caseInformation: {
+      medicalProviderId: lien.medicalProvider?.id ?? "",
+      medicalProvider: lien.medicalProvider?.name ?? "",
       fundingCompanyId: lien.fundingCompany?.id ?? "",
       fundingCompany: lien.fundingCompany?.name ?? "",
       fundingCompanyContactId: lien.fundingCompany?.contact?.id ?? "",
       fundingCompanyContact: lien.fundingCompany?.contact?.name ?? "",
-      medicalProviderId: lien.medicalProvider?.id ?? "",
-      medicalProvider: lien.medicalProvider?.name ?? "",
       lawfirmId: lien.caseInformation?.lawFirmId ?? "",
       caseManagerId: lien.caseInformation?.caseManagerId ?? "",
     },

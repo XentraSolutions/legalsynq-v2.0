@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Info } from "lucide-react";
 import { BaseSelect } from "@/components/ui/base-select";
 import { CreateMedicalCode } from "../add-medical-code";
 import {
@@ -7,13 +8,16 @@ import {
 } from "@/hooks/use-case-liens";
 import { Input } from "@/components/ui/input";
 import Field from "@/components/lien/field";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 
 export interface MedicalCodesDescriptionProps {
   caseId?: string;
   lienId?: string;
   data?: any;
   onFormValid?: (valid: boolean, data?: any) => void;
+  // Set when rendered inside a modal that already shows its own title (e.g.
+  // EditMedicalPricingModal) so this doesn't duplicate the heading.
+  embedded?: boolean;
 }
 
 interface PricingRow {
@@ -52,7 +56,7 @@ function parseNumber(value: string) {
 export default function MedicalCodesDescription(
   props: MedicalCodesDescriptionProps,
 ) {
-  const { data = {}, onFormValid } = props;
+  const { data = {}, onFormValid, embedded = false } = props;
   const { data: medicalCodes, isLoading: isLoadingMedicalCodes } =
     useMedicareProcedureCodes();
 
@@ -127,13 +131,17 @@ export default function MedicalCodesDescription(
   return (
     <div className="container-fluid">
       <div className="col-12 mb-2">
-        <span className="font-semibold mb-2 text-2xl mt-1">
-          Medical Code & Marketplace Pricing
-        </span>
-        <p className="font-normal text-sm text-gray-600 mb-2 mt-1">
-          Provide the necessary medical code and marketplace pricing information
-          to support lien valuation and processing.
-        </p>
+        {!embedded && (
+          <>
+            <span className="font-semibold mb-2 text-2xl mt-1">
+              Medical Code & Marketplace Pricing
+            </span>
+            <p className="font-normal text-sm text-gray-600 mb-2 mt-1">
+              Provide the necessary medical code and marketplace pricing
+              information to support lien valuation and processing.
+            </p>
+          </>
+        )}
 
         <div className="grid grid-cols-1 mt-4">
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -193,7 +201,7 @@ export default function MedicalCodesDescription(
               type="button"
               className="shrink-0"
               disabled={!isEntryValid}
-              rightIcon={<i className="ri-add-line text-sm" />}
+              rightIcon="plus"
               onClick={handleAddRow}
             >
               Add
@@ -250,7 +258,7 @@ export default function MedicalCodesDescription(
                       colSpan={4}
                       className="px-4 py-6 text-center text-sm text-gray-500"
                     >
-                      <i className="ri-information-line mr-1.5" />
+                      <Info className="inline h-4 w-4 mr-1.5" />
                       No record added yet
                     </td>
                   </tr>

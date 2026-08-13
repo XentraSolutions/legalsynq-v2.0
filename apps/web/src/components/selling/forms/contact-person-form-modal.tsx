@@ -298,7 +298,7 @@ export function ContactPersonFormModal({
               type="email"
               value={form.email}
               onChange={(e) => setField("email", e.target.value)}
-              placeholder="e.g. example@gmail.com"
+              placeholder="e.g. user@example.com"
               className={inputCls("email")}
             />
             {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}

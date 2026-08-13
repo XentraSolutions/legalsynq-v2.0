@@ -1,8 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
-import { useSessionContext } from "@/providers/session-provider";
-import { BaseSelectOption } from "@/components/ui/base-select";
+import React, { useEffect, useState } from "react";
 import Field from "@/components/lien/field";
+import { LienScheduleFields } from "./lien-schedule-fields";
 
 export interface LienInfoProps {
   caseId?: string;
@@ -42,16 +40,6 @@ export default function LienInfo(props: LienInfoProps) {
       return { key: c.id, value: c.code, label: c.name };
     }) ?? [];
 
-  // Values must match the backend's ListingVisibility casing ("Public" /
-  // "Private") — a lowercase mismatch here means a hydrated lien's saved
-  // value never matches an option, showing the select as unset.
-  const listingVisibility = [
-    { key: "Public", value: "Public", label: "Public" },
-    { key: "Private", value: "Private", label: "Private" },
-  ];
-
-  // Default new liens to "Pending" status once the status list is available
-
   useEffect(() => {
     validateForm();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,7 +60,7 @@ export default function LienInfo(props: LienInfoProps) {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+        <div className="grid grid-cols-1 gap-4 mt-4">
           <Field
             required
             label="Lien Status"
@@ -83,42 +71,13 @@ export default function LienInfo(props: LienInfoProps) {
             }}
             type="select"
           />
-          <Field
-            type="date"
-            required
-            label="Initial Service Date"
-            value={form.initialServiceDate}
-            onChange={(v) =>
-              setForm({ ...form, initialServiceDate: v.toString() })
-            }
-          />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-          <Field
-            type="date"
-            label="End Service Date"
-            value={form.endServiceDate}
-            onChange={(v) => setForm({ ...form, endServiceDate: v.toString() })}
-          />
-          <Field
-            type="select"
-            options={listingVisibility}
-            required
-            label="Listing Visibility"
-            value={form.listingVisibility}
-            onChange={(v: string) =>
-              setForm({ ...form, listingVisibility: v.toString() })
-            }
-          />
-        </div>
-        <div className="grid grid-cols-1 gap-4 mt-4">
-          <Field
-            type="textarea"
-            label="Notes"
-            value={form.notes}
-            onChange={(v) => setForm({ ...form, notes: v.toString() })}
-          />
-        </div>
+        <LienScheduleFields
+          value={form}
+          onChange={(patch) => setForm({ ...form, ...patch })}
+          requireInitialServiceDate
+          requireListingVisibility
+        />
       </div>
     </div>
   );

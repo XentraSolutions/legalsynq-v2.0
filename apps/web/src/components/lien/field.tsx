@@ -154,6 +154,7 @@ export default function Field<
           filterLocally={props.filterLocally}
           className={props.className}
           onOpen={props.onOpen}
+          clearable={props.clearable}
         />
       ) : props.type === "select" ? (
         <BaseSelect
@@ -175,6 +176,7 @@ export default function Field<
           filterLocally={props.filterLocally}
           className={props.className}
           onOpen={props.onOpen}
+          clearable={props.clearable}
         />
       ) : props.type === "checkbox" ? (
         <input

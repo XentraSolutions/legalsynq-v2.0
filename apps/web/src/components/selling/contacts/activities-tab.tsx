@@ -1,5 +1,6 @@
 "use client";
 
+import { Clipboard } from "lucide-react";
 import { ContactsEmptyState } from "./contacts-empty-state";
 
 // Companies have no activity feed endpoint yet — this renders the designed
@@ -8,7 +9,7 @@ export function CompanyActivitiesTab() {
   return (
     <div className="bg-white border border-gray-200 rounded-xl">
       <ContactsEmptyState
-        icon="ri-clipboard-line"
+        icon={Clipboard}
         title="No Recent Activities"
         description="There are no recent activities to display. New updates will appear here as they occur."
       />

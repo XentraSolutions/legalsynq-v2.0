@@ -30,13 +30,13 @@ export function FundingCompanyAndCaseInformationPanel({
   onEdit,
 }: LienDetailPanelProps) {
   return (
-    <PanelShell title="Funding Company & Case Information" onEdit={onEdit}>
+    <PanelShell title="Case Information" onEdit={onEdit}>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-x-6 gap-y-5">
-        <Field label="Funding Company" value={fundingCompany?.name} />
-        <Field label="Handling Law Firm" value={caseInformation?.lawFirm} />
-        <Field label="Contact Person" value={fundingCompany?.contact?.name} />
-        <Field label="Case Manager" value={caseInformation?.caseManagerName} />
         <Field label="Medical Provider" value={medicalProvider?.name} />
+        <Field label="Handling Law Firm" value={caseInformation?.lawFirm} />
+        <Field label="Funding Company" value={fundingCompany?.name} />
+        <Field label="Case Manager" value={caseInformation?.caseManagerName} />
+        <Field label="Contact Person" value={fundingCompany?.contact?.name} />
       </div>
     </PanelShell>
   );
