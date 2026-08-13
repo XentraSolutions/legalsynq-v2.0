@@ -204,6 +204,7 @@ export interface LienListItem {
   subjectName: string;
   createdAt: string;
   updatedAt: string;
+  reductionDate: string;
 }
 
 export interface LienDetail {
