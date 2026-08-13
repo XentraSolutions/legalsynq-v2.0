@@ -10,6 +10,7 @@ YARP reverse proxy that is the single entry point for all API traffic from both 
 - Request routing to downstream services via YARP
 - Tenant context propagation (`X-Tenant-Code`, `X-Tenant-Id` headers forwarded)
 - Correlation ID forwarding
+- Explicit anonymous routing for `POST /tenant/api/v1/public/tenant-registrations`; the Tenant API enforces a per-IP fixed-window submission limit
 
 ## Key Files
 

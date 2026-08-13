@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Tenant.Domain\Tenant.Domain.csproj" />
     <ProjectReference Include="..\Tenant.Application\Tenant.Application.csproj" />
+    <ProjectReference Include="..\Tenant.Infrastructure\Tenant.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

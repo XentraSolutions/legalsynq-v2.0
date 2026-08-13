@@ -123,6 +123,7 @@ NEXT_PUBLIC_TENANT_CODE= \
 GATEWAY_URL=http://127.0.0.1:5010 \
 SYNQLIEN_COMMON_PORTAL_HOSTNAME="${SYNQLIEN_COMMON_PORTAL_HOSTNAME:-synqlien-demo.localhost}" \
 PORTAL_SYNQLIEN_SUBDOMAIN="${PORTAL_SYNQLIEN_SUBDOMAIN:-synqlien-demo}" \
+TENANT_COMMON_PORTAL_HOSTNAME="${TENANT_COMMON_PORTAL_HOSTNAME:-tenant-demo.localhost}" \
 node "$NEXT_BIN" build --webpack
 
 echo "====== Building control center ======"

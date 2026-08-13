@@ -2,6 +2,13 @@
 
 This document explains how tenant subdomain provisioning works in the Identity service and how to configure AWS Route53, application settings, and verification so tenant creation succeeds.
 
+`Route53:EnvironmentLabel` optionally inserts a DNS label between the tenant slug
+and base domain. Empty produces `{tenant}.{baseDomain}`; `nonprod` produces
+`{tenant}.nonprod.{baseDomain}`. Set it with `Route53__EnvironmentLabel=nonprod`.
+The checked-in Development environment override uses `nonprod`.
+The hosted zone remains the base-domain zone. Create, delete, verification, and
+retry paths use the authoritative `IDnsService.BuildHostname` method.
+
 ## Scope
 
 This setup applies to the Identity service subdomain provisioning flow used when Control Center creates a tenant.

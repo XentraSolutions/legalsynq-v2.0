@@ -40,6 +40,11 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 | `GET` | `/api/admin/tenants` | List tenants (paged; includes Identity-backed `type`, primary contact, and full `url`) |
 | `GET` | `/api/admin/tenants/{id}` | Tenant admin detail (includes Identity-backed `type`, primary contact, and full `url`) |
 | `POST` | `/api/tenants/provision` | Minimal provision (internal) |
+| `POST` | `/api/v1/public/tenant-registrations` | Anonymous review-first registration (rate limited) |
+| `GET` | `/api/v1/admin/tenant-registrations` | PlatformAdmin application queue |
+| `POST` | `/api/v1/admin/tenant-registrations/{id}/approve` | Approve and provision |
+| `POST` | `/api/v1/admin/tenant-registrations/{id}/decline` | Decline with a reason |
+| `POST` | `/api/v1/admin/tenant-registrations/{id}/provisioning/retry` | Retry incomplete provisioning |
 | `PUT` | `/api/internal/sync` | Idempotent upsert from Identity dual-write |
 | `GET` | `/api/resolution/{code}` | Resolve tenant by code |
 | `GET` | `/api/branding/{tenantId}` | Tenant branding |
@@ -52,9 +57,22 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 
 ## External Integrations
 
-- **Identity service** — `HttpIdentityProvisioningAdapter` calls `POST /api/internal/tenant-provisioning/provision` for canonical tenant create
+- **Identity service** — `HttpIdentityProvisioningAdapter` checks `GET /api/internal/users/account-exists` before accepting a registration and calls `POST /api/internal/tenant-provisioning/provision` for canonical tenant create
 - **Documents service** — logo registration
 - **Commerce** — `ICommerceLifecycleNotifier` wired for `TenantCreated`, `TenantActivated`, `TenantSuspended` events (`Enabled: false` by default)
+- **Notifications service** — branded registration-submitted and registration-declined emails through the canonical producer endpoint
+
+Self-registration is disabled by default (`TenantRegistration__Enabled=false`). A
+submission creates only a `PendingReview/NotStarted` application. Approval and
+provisioning remain separate; DNS failure leaves the application `Approved/Failed`.
+Submissions are rejected when the proposed administrator email already belongs
+to an Identity account or to another pending registration.
+Successful submissions send a pending-review confirmation email. Declines send
+the applicant a decision email containing the recorded reason. Notification
+delivery is best-effort and does not roll back the registration state. These
+emails embed the LegalSynq logo as an inline attachment, so rendering does not
+depend on tenant DNS or an externally hosted image.
+The checked-in Development environment override enables self-registration locally.
 
 ## Config (`appsettings.json`)
 
@@ -62,6 +80,8 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 {
   "IdentityService": { "InternalUrl": "http://127.0.0.1:5001" },
   "DocumentsService": { "InternalUrl": "http://127.0.0.1:5006" },
+  "NotificationsService": { "BaseUrl": "http://127.0.0.1:5008" },
+  "ServiceTokens": { "SigningKey": "development-only; use FLOW_SERVICE_TOKEN_SECRET outside local development" },
   "CommerceIntegration": { "Enabled": false, "BaseUrl": "http://127.0.0.1:5030" },
   "ServiceTokens": { "Audience": "tenant-service", "SigningKey": "" },
   "Features": {
@@ -70,6 +90,10 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
   }
 }
 ```
+
+Tenant registration notification calls require a service JWT. Local development
+uses the development-only `ServiceTokens:SigningKey` override; deployed environments
+must provide the shared `FLOW_SERVICE_TOKEN_SECRET` to both Tenant and Notifications.
 
 ## Notes
 

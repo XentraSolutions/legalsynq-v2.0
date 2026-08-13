@@ -2,6 +2,9 @@ using Identity.Application.Interfaces;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Identity.Api.Helpers;
+using Identity.Infrastructure.Services;
+using Microsoft.Extensions.Options;
 
 namespace Identity.Api.Endpoints;
 
@@ -41,6 +44,8 @@ public static class TenantProvisioningEndpoints
             ITenantProvisioningService   provisioningService,
             IProductProvisioningService  productProvisioningEngine,
             IUserMembershipService       membershipService,          // BLK-ID-02
+            INotificationsEmailClient    emailClient,
+            IOptions<NotificationsServiceOptions> notificationOptions,
             IConfiguration              configuration,
             ILoggerFactory              loggerFactory,
             CancellationToken           ct) =>
@@ -98,8 +103,10 @@ public static class TenantProvisioningEndpoints
             };
 
             // ── Generate temporary password ────────────────────────────────
-            var tempPassword = GenerateTemporaryPassword();
-            var passwordHash = passwordHasher.Hash(tempPassword);
+            // The generated bootstrap secret is never returned or emailed. The user
+            // remains inactive until the single-use, hashed setup invitation is consumed.
+            var bootstrapSecret = GenerateTemporaryPassword();
+            var passwordHash = passwordHasher.Hash(bootstrapSecret);
 
             // ── Create Identity-side entities ──────────────────────────────
             // Use the tenantId supplied by Tenant service so both DBs share the same UUID.
@@ -132,6 +139,7 @@ public static class TenantProvisioningEndpoints
                 passwordHash: passwordHash,
                 firstName:    body.AdminFirstName?.Trim() ?? "Admin",
                 lastName:     body.AdminLastName?.Trim()  ?? "User");
+            user.Deactivate();
             db.Users.Add(user);
             db.UserTenants.Add(UserTenant.Create(user.Id, identityTenant.Id));
             identityTenant.SetOwner(user.Id);
@@ -141,6 +149,14 @@ public static class TenantProvisioningEndpoints
                 organizationId: org.Id,
                 memberRole:     MemberRole.Admin);
             db.UserOrganizationMemberships.Add(membership);
+
+            var rawSetupToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));
+            var setupTokenHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(rawSetupToken)));
+            var setupExpiryHours = configuration.GetValue("TenantRegistration:SetupTokenExpiryHours", 72);
+            var setupInvitation = UserInvitation.Create(user.Id, identityTenant.Id, setupTokenHash,
+                UserInvitation.PortalOrigins.TenantPortal, expiryHours: setupExpiryHours);
+            db.UserInvitations.Add(setupInvitation);
 
             // Save tenant, org, user, and org membership in one batch.
             // Role assignment is done separately via IUserMembershipService (BLK-ID-02).
@@ -171,8 +187,40 @@ public static class TenantProvisioningEndpoints
                     "[TenantProvisioning] Duplicate role assignments skipped for user {UserId}: [{Roles}]",
                     user.Id, string.Join(", ", rolesResult.SkippedDuplicates));
 
-            // ── Provision subdomain (DNS + TenantDomain record) ───────────
+            var warnings = new List<string>();
+            var setupLink = TenantPortalUrlHelper.Build(identityTenant, "accept-invite", rawSetupToken, notificationOptions.Value);
+            if (setupLink is null)
+            {
+                warnings.Add("Administrator setup link was created but the portal URL is not configured.");
+            }
+            else if (body.TenantRegistrationApproval)
+            {
+                var displayNameForEmail = $"{user.FirstName} {user.LastName}".Trim();
+                var emailResult = await emailClient.SendTenantRegistrationApprovedEmailAsync(
+                    user.Email, displayNameForEmail, displayName, setupLink, setupExpiryHours, identityTenant.Id, ct);
+                if (!emailResult.Success)
+                    warnings.Add($"Tenant acceptance email failed: {emailResult.Error ?? "delivery unavailable"}");
+            }
+
+            // The acceptance notification is intentionally dispatched before
+            // infrastructure provisioning begins. It confirms the review decision;
+            // it does not claim that DNS or product setup has completed.
             var provResult = await provisioningService.ProvisionAsync(identityTenant, ct);
+
+            var errors = new List<string>();
+            if (!provResult.Success) errors.Add(provResult.ErrorMessage ?? "DNS provisioning failed.");
+
+            // Preserve the established generic provisioning behavior: manually
+            // created tenants receive their setup invitation after the DNS attempt,
+            // regardless of that attempt's result.
+            if (!body.TenantRegistrationApproval && setupLink is not null)
+            {
+                var displayNameForEmail = $"{user.FirstName} {user.LastName}".Trim();
+                var emailResult = await emailClient.SendInviteEmailAsync(
+                    user.Email, displayNameForEmail, setupLink, identityTenant.Id, ct);
+                if (!emailResult.Success)
+                    warnings.Add($"Administrator setup email failed: {emailResult.Error ?? "delivery unavailable"}");
+            }
 
             if (provResult.Success)
             {
@@ -207,13 +255,17 @@ public static class TenantProvisioningEndpoints
             // ── Respond ────────────────────────────────────────────────────
             return Results.Ok(new
             {
+                success            = provResult.Success,
                 tenantId           = identityTenant.Id,
                 adminUserId        = user.Id,
                 adminEmail         = user.Email,
-                temporaryPassword  = tempPassword,
+                temporaryPassword  = (string?)null,
                 subdomain          = identityTenant.Subdomain,
                 hostname           = provResult.Hostname,
                 provisioningStatus = identityTenant.ProvisioningStatus.ToString(),
+                failureStage       = provResult.Success ? null : "DnsRecord",
+                warnings,
+                errors,
                 productsProvisioned = productResults,
             });
         });
@@ -243,5 +295,6 @@ public static class TenantProvisioningEndpoints
         double?  Latitude        = null,
         double?  Longitude       = null,
         string?  GeoPointSource  = null,
-        List<string>? Products   = null);
+        List<string>? Products   = null,
+        bool TenantRegistrationApproval = false);
 }

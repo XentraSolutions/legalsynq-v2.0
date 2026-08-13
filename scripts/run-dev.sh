@@ -28,6 +28,7 @@ require_free_port 5020 "artifacts API"
 
 SYNQLIEN_COMMON_PORTAL_HOSTNAME="${SYNQLIEN_COMMON_PORTAL_HOSTNAME:-synqlien-demo.localhost}"
 PORTAL_SYNQLIEN_SUBDOMAIN="${PORTAL_SYNQLIEN_SUBDOMAIN:-synqlien-demo}"
+TENANT_COMMON_PORTAL_HOSTNAME="${TENANT_COMMON_PORTAL_HOSTNAME:-tenant-demo.localhost}"
 Liens__Selling__BuyerPortalBaseUrl="${Liens__Selling__BuyerPortalBaseUrl:-http://${SYNQLIEN_COMMON_PORTAL_HOSTNAME}:5000/selling/public}"
 
 # Start Next.js on an internal port; the proxy on :5000 gates requests
@@ -60,6 +61,7 @@ fi
   CC_COMMON_PORTAL_HOSTNAME="${CC_COMMON_PORTAL_HOSTNAME:-careconnect-demo.legalsynq.com}" \
   SYNQLIEN_COMMON_PORTAL_HOSTNAME="$SYNQLIEN_COMMON_PORTAL_HOSTNAME" \
   PORTAL_SYNQLIEN_SUBDOMAIN="$PORTAL_SYNQLIEN_SUBDOMAIN" \
+  TENANT_COMMON_PORTAL_HOSTNAME="$TENANT_COMMON_PORTAL_HOSTNAME" \
   exec "$NODE" "$WEB_NEXT_BIN" dev -p "$NEXT_INTERNAL_PORT") &
 PID_WEB=$!
 
@@ -219,6 +221,9 @@ PID_CC=$!
   # Tenant starts 5th — only 4 processes running before it.
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
+    TenantRegistration__Enabled=true \
+    NotificationsService__BaseUrl=http://127.0.0.1:5008 \
+    FLOW_SERVICE_TOKEN_SECRET="${FLOW_SERVICE_TOKEN_SECRET:-dev-flow-service-token-signing-key-32chars!}" \
     dotnet run --no-build --project "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" &
   sleep 5
 
@@ -248,7 +253,10 @@ PID_CC=$!
     DOTNET_GCConserveMemory=9 \
     NotificationsService__BaseUrl=http://127.0.0.1:5008 \
     NotificationsService__PortalBaseUrl=http://localhost:3000 \
+    NotificationsService__PortalBaseDomain=nonprod.legalsynq.net \
     NotificationsService__CareConnectPortalBaseUrl=http://careconnect-demo.localhost:3000 \
+    Route53__BaseDomain=legalsynq.net \
+    Route53__EnvironmentLabel=nonprod \
     dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \

@@ -6,6 +6,7 @@ using Contracts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.Threading.RateLimiting;
 using Tenant.Application.Configuration;
 using Tenant.Api.Endpoints;
 using Tenant.Api.Middleware;
@@ -70,6 +71,28 @@ builder.Services.Configure<TenantFeatures>(
     builder.Configuration.GetSection(TenantFeatures.SectionName));
 
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            error = "Too many registration attempts. Please wait a few minutes and try again."
+        }, cancellationToken);
+    };
+    options.AddPolicy("tenant-registration", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
 
 // ── BLK-OPS-01: Production fail-fast (supersedes BLK-SEC-01 inline checks) ────
 if (!builder.Environment.IsDevelopment())
@@ -145,6 +168,7 @@ catch (Exception ex)
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -173,5 +197,6 @@ app.MapLogoAdminEndpoints();
 app.MapTenantAdminEndpoints();
 app.MapActivationEndpoints();     // BLK-TS-02
 app.MapEligibleTenantEndpoints();
+app.MapTenantRegistrationEndpoints();
 
 app.Run();

@@ -49,6 +49,21 @@ public class SmtpAdapter : IEmailProviderAdapter
 
             var bodyBuilder = new BodyBuilder { TextBody = payload.Body };
             if (payload.Html != null) bodyBuilder.HtmlBody = payload.Html;
+            foreach (var attachment in payload.Attachments)
+            {
+                var content = Convert.FromBase64String(attachment.Content);
+                if (string.Equals(attachment.Disposition, "inline", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(attachment.ContentId))
+                {
+                    var resource = bodyBuilder.LinkedResources.Add(
+                        attachment.Filename, content, ContentType.Parse(attachment.Type));
+                    resource.ContentId = attachment.ContentId;
+                }
+                else
+                {
+                    bodyBuilder.Attachments.Add(attachment.Filename, content, ContentType.Parse(attachment.Type));
+                }
+            }
             message.Body = bodyBuilder.ToMessageBody();
 
             var result = await client.SendAsync(message);
