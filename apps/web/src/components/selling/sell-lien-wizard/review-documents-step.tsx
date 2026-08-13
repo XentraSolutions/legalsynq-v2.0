@@ -22,6 +22,7 @@ import { EditLienInformationModal } from "@/components/selling/lien-detail/edit-
 import { EditCaseInformationModal } from "@/components/selling/lien-detail/edit-case-information-modal";
 import { EditMedicalPricingModal } from "@/components/selling/lien-detail/edit-medical-pricing-modal";
 import { sellingLookupsApi } from "@/lib/selling/lookup.api";
+import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
 import type { LienDetailsResult } from "@/types/lien-selling";
 import {
   REQUIRED_SALE_DOCUMENT_TYPES,
@@ -32,6 +33,62 @@ import {
   parseDocumentReference,
 } from "@/lib/selling/selling-detail.mapper";
 import { TOTAL_STEPS, goToStep } from "./shared";
+
+// Mirrors the loaded page below: header/progress, title/description, the
+// left column's info panels, and the right column's document sections.
+function ReviewDocumentsSkeleton() {
+  return (
+    <div className="w-full space-y-6 pb-10 animate-pulse">
+      <div className="flex items-center gap-4">
+        <div className="h-5 w-5 rounded bg-gray-100 shrink-0" />
+        <div className="flex-1 flex gap-2">
+          {Array.from({ length: TOTAL_STEPS }, (_, index) => (
+            <div
+              key={index}
+              className={`h-1 flex-1 rounded-full ${index < 2 ? "bg-[#EE7132]/40" : "bg-gray-200"}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="h-3 bg-gray-100 rounded w-16" />
+        <div className="h-7 bg-gray-100 rounded w-80" />
+        <div className="h-3 bg-gray-100 rounded w-full max-w-xl" />
+
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-4 items-start">
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className="bg-white border border-gray-200 rounded-lg p-5 space-y-3"
+              >
+                <div className="h-4 bg-gray-100 rounded w-1/3" />
+                <div className="h-3 bg-gray-100 rounded w-full" />
+                <div className="h-3 bg-gray-100 rounded w-2/3" />
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-4">
+              <div className="h-4 bg-gray-100 rounded w-40" />
+              {Array.from({ length: 3 }).map((_, i) => (
+                <SkeletonFileRow key={i} />
+              ))}
+            </div>
+            <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-4">
+              <div className="h-4 bg-gray-100 rounded w-52" />
+              {Array.from({ length: 2 }).map((_, i) => (
+                <SkeletonFileRow key={i} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface DocSlotState {
   uploading: boolean;
@@ -351,11 +408,7 @@ export default function ReviewDocumentsStep({
   };
 
   if (loading) {
-    return (
-      <div className="p-10 text-center">
-        <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
+    return <ReviewDocumentsSkeleton />;
   }
 
   if (!lien) return null;

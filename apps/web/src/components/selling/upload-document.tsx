@@ -156,7 +156,7 @@ const SellingUploadDocument = forwardRef<
         <input {...getInputProps()} />
 
         <CloudUpload
-          className={`h-6 w-6 mb-2 ${disabled ? "text-gray-200" : "text-gray-300"}`}
+          className={`h-6 w-6 mb-2 mx-auto ${disabled ? "text-gray-200" : "text-gray-300"}`}
         />
         <p className={`text-sm ${disabled ? "text-gray-400" : "text-gray-500"}`}>
           Click or drag file to upload
