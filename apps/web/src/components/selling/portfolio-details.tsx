@@ -81,6 +81,7 @@ export function PortfolioDetailPanel({
 }: LienDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("details");
   const [editModal, setEditModal] = useState<EditModalKey | null>(null);
+  const { data: docs = [] } = useLienDocuments(lien.lienId);
 
   const title = lien.fundingCompany?.name || lien.lienInformation.lienNumber;
   const sellerStatus = lien.lienInformation.sellerStatus;
@@ -129,8 +130,7 @@ export function PortfolioDetailPanel({
           tabs={TABS.map((tab) => ({
             key: tab.key,
             label: tab.label,
-            badge:
-              tab.key === "documents" ? lien.documents.length : undefined,
+            badge: tab.key === "documents" ? docs.length : undefined,
           }))}
         />
       </div>
@@ -157,9 +157,7 @@ export function PortfolioDetailPanel({
           />
         </>
       )}
-      {activeTab === "documents" && (
-        <DocumentsTab lien={lien} onRefresh={onRefresh} />
-      )}
+      {activeTab === "documents" && <DocumentsTab lien={lien} />}
 
       {editModal === "lien-information" && (
         <EditLienInformationModal
@@ -200,13 +198,7 @@ export function PortfolioDetailPanel({
   );
 }
 
-function DocumentsTab({
-  lien,
-  onRefresh,
-}: {
-  lien: LienDetailsResult;
-  onRefresh: () => void;
-}) {
+function DocumentsTab({ lien }: { lien: LienDetailsResult }) {
   const { show: showToast } = useToast();
   const { data: docs = [], isLoading } = useLienDocuments(lien.lienId);
   const saveLienDocuments = useSaveLienDocuments(lien.lienId);
@@ -223,7 +215,6 @@ function DocumentsTab({
       );
       showToast("Document removed.", "success");
       setDeleteTarget(null);
-      onRefresh();
     } catch (err) {
       showToast(
         err instanceof Error ? err.message : "Failed to remove document",
@@ -290,10 +281,7 @@ function DocumentsTab({
       {showUpload && (
         <UploadDocumentModal
           lienId={lien.lienId}
-          onClose={() => {
-            setShowUpload(false);
-            onRefresh();
-          }}
+          onClose={() => setShowUpload(false)}
         />
       )}
 
