@@ -27,6 +27,7 @@ import { SortingState } from "@tanstack/react-table";
 import { useLienStore } from "@/stores/lien-store";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/lien/page-header";
+import { SkeletonCard, SkeletonTable } from "@/components/lien/skeleton-loader";
 
 const PORTFOLIO_STATUSES = [
   { key: "Pending", label: "Pending" },
@@ -61,6 +62,40 @@ const INITIAL_QUERY: Record<string, unknown> = {
   page: 1,
   pageSize: 20,
 };
+
+function PortfolioSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-2">
+          <div className="h-5 bg-gray-200 rounded w-40" />
+          <div className="h-3 bg-gray-100 rounded w-80" />
+        </div>
+        <div className="h-9 bg-gray-100 rounded-lg w-36" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <SkeletonCard key={i} />
+        ))}
+      </div>
+
+      <div className="flex gap-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-8 bg-gray-100 rounded-lg w-20" />
+        ))}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="h-9 bg-gray-100 rounded-lg flex-1 max-w-md" />
+          <div className="h-9 bg-gray-100 rounded-lg w-24" />
+        </div>
+        <SkeletonTable rows={6} cols={6} />
+      </div>
+    </div>
+  );
+}
 
 export default function PortfolioClient() {
   const router = useRouter();
@@ -159,7 +194,7 @@ export default function PortfolioClient() {
     return () => clearTimeout(timeout);
   }, [searchInput]);
 
-  if (isPending) return <p>Loading...</p>;
+  if (isPending) return <PortfolioSkeleton />;
 
   if (error) return <p>Something went wrong.</p>;
 
@@ -278,6 +313,7 @@ export default function PortfolioClient() {
             onSortingChange={setSorting}
             handlePageChange={handlePageChange}
             liens={liens?.items ?? []}
+            isLoading={isLiensPending}
             onRowSelect={(id) => router.push(`/selling/portfolio/lien/${id}`)}
             onActionComplete={() => {
               refetchLiens();

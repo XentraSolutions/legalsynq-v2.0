@@ -96,6 +96,7 @@ interface PortfolioTableProps {
   handlePageChange: (e: any) => void;
   onRowSelect: (id: string) => void;
   onActionComplete?: () => void;
+  isLoading?: boolean;
 }
 
 function formatCurrency(amount?: number): string {
@@ -115,6 +116,7 @@ export function PortfolioTable({
   pagination,
   onRowSelect,
   onActionComplete,
+  isLoading,
 }: PortfolioTableProps) {
   const columns = useMemo<ColumnDef<LienListItem, any>[]>(
     () => [
@@ -198,6 +200,7 @@ export function PortfolioTable({
         data={liens}
         columns={columns}
         getRowId={(l) => l.lienId}
+        isLoading={isLoading}
         sorting={sorting}
         onSortingChange={onSortingChange}
         manualSorting
