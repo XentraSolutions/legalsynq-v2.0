@@ -105,7 +105,7 @@ export interface ReportRowDto {
 export interface ExportReportRequest {
   templateId: string;
   tenantId: string;
-  format: 'CSV' | 'XLSX' | 'PDF';
+  format: "CSV" | "XLSX" | "PDF";
   filterParametersJson?: string;
   requestedByUserId: string;
   viewId?: string;
@@ -273,14 +273,16 @@ export interface UpdateAssignmentRequest {
   updatedByUserId: string;
 }
 
-export type ExportFormat = 'CSV' | 'XLSX' | 'PDF';
-export type DeliveryMethod = 'OnScreen' | 'Email' | 'SFTP';
+export type ExportFormat = "CSV" | "XLSX" | "PDF";
+export type DeliveryMethod = "OnScreen" | "Email" | "SFTP";
 
 export interface PaginatedResult<T> {
   items: T[];
   totalCount: number;
   page: number;
   pageSize: number;
+  totalPages?: number;
+  limit?: number;
 }
 
 export interface ColumnConfig {
@@ -293,7 +295,16 @@ export interface ColumnConfig {
 
 export interface FilterRule {
   field: string;
-  operator: 'equals' | 'not_equals' | 'contains' | 'starts_with' | 'ends_with' | 'greaterThan' | 'lessThan' | 'between' | 'in';
+  operator:
+    | "equals"
+    | "not_equals"
+    | "contains"
+    | "starts_with"
+    | "ends_with"
+    | "greaterThan"
+    | "lessThan"
+    | "between"
+    | "in";
   value: string;
   value2?: string;
 }
@@ -350,13 +361,19 @@ export interface FormulaDefinition {
   fieldName: string;
   label: string;
   expression: string;
-  dataType: 'number' | 'string' | 'boolean' | 'date';
+  dataType: "number" | "string" | "boolean" | "date";
   order: number;
 }
 
 export interface ColumnFormattingRule {
   fieldName: string;
-  formatType: 'currency' | 'number' | 'percentage' | 'date' | 'boolean' | 'text';
+  formatType:
+    | "currency"
+    | "number"
+    | "percentage"
+    | "date"
+    | "boolean"
+    | "text";
   formatPattern?: string;
   decimalPlaces?: number;
   prefix?: string;
@@ -365,5 +382,5 @@ export interface ColumnFormattingRule {
   falseLabel?: string;
   nullLabel?: string;
   dateFormat?: string;
-  textTransform?: 'uppercase' | 'lowercase' | 'capitalize';
+  textTransform?: "uppercase" | "lowercase" | "capitalize";
 }

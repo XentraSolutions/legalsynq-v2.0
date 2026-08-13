@@ -6597,6 +6597,85 @@ public static class CaseEndpoints
             return Results.BadRequest(new { isSuccess = false, message = validationMessage });
         }
 
+        if (!periodStart.HasValue && !periodEnd.HasValue)
+        {
+            var liens = await db.Liens
+                .AsNoTracking()
+                .Where(lien => lien.TenantId == tenantId)
+                .Select(lien => new
+                {
+                    lien.Id,
+                    lien.PayoffAmount,
+                })
+                .ToListAsync(ct);
+
+            var settlementNotes = await db.LienSettlements
+                .AsNoTracking()
+                .Where(settlement =>
+                    settlement.TenantId == tenantId &&
+                    !settlement.IsDeleted &&
+                    settlement.Note != null)
+                .Select(settlement => new
+                {
+                    settlement.LienId,
+                    settlement.Note,
+                })
+                .ToListAsync(ct);
+
+            var importedReturnedAmountsByLienId = settlementNotes
+                .Select(settlement => new
+                {
+                    settlement.LienId,
+                    HasReturnedAmount = TryGetLegacyTotalSettledAmount(settlement.Note, out var amount),
+                    Amount = amount,
+                })
+                .Where(settlement => settlement.HasReturnedAmount)
+                .GroupBy(settlement => settlement.LienId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Sum(settlement => settlement.Amount));
+
+            var paymentAmountsByLienId = await db.SettlementPaymentDetails
+                .AsNoTracking()
+                .Where(payment => payment.TenantId == tenantId && !payment.IsDeleted)
+                .GroupBy(payment => payment.LienId)
+                .Select(group => new
+                {
+                    LienId = group.Key,
+                    Amount = group.Sum(payment => payment.Amount),
+                })
+                .ToDictionaryAsync(group => group.LienId, group => group.Amount, ct);
+
+            var returnedAmounts = liens
+                .Select(lien =>
+                {
+                    if (importedReturnedAmountsByLienId.TryGetValue(lien.Id, out var importedReturnedAmount))
+                        return (HasSource: true, Amount: importedReturnedAmount);
+
+                    if (lien.PayoffAmount.HasValue)
+                        return (HasSource: true, Amount: lien.PayoffAmount.Value);
+
+                    return paymentAmountsByLienId.TryGetValue(lien.Id, out var paymentAmount)
+                        ? (HasSource: true, Amount: paymentAmount)
+                        : (HasSource: false, Amount: 0m);
+                })
+                .Where(result => result.HasSource)
+                .ToList();
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Dashboard cash received metric retrieved successfully.",
+                data = new
+                {
+                    periodStart = string.Empty,
+                    periodEnd = string.Empty,
+                    totalAmount = returnedAmounts.Sum(result => result.Amount).ToString("0.00", CultureInfo.InvariantCulture),
+                    totalCount = returnedAmounts.Count,
+                },
+            });
+        }
+
         var settlementsQuery = db.LienSettlements.AsNoTracking()
             .Where(s => s.TenantId == tenantId &&
                         !s.IsDeleted &&

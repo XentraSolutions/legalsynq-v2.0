@@ -1,7 +1,7 @@
 # Biometric Login — Backend API Documentation
 
-Backend implementation of the biometric login integration described in *Biometric
-Login Integration for React Native Expo Mobile Application* (BRD v1.0,
+Backend implementation of the biometric login integration described in _Biometric
+Login Integration for React Native Expo Mobile Application_ (BRD v1.0,
 2026-07-31), covering requirements BE-BIO-001 through BE-BIO-025. This document
 covers the **new/changed backend surface only** — the mobile app's on-device
 SecureStore/Face ID/Touch ID handling is out of scope here and is unchanged by
@@ -56,9 +56,9 @@ Mobile and other external clients must call these APIs through the gateway.
 The endpoint examples in this document therefore use gateway paths rather
 than direct Identity service paths.
 
-| Environment | Gateway base URL |
-|---|---|
-| Local development | `http://localhost:5010` |
+| Environment           | Gateway base URL                                      |
+| --------------------- | ----------------------------------------------------- |
+| Local development     | `http://localhost:5010`                               |
 | Deployed environments | The environment's configured LegalSynq gateway origin |
 
 Gateway routing removes the `/identity` prefix before forwarding requests to
@@ -90,8 +90,8 @@ Clients must not call the Identity service port directly.
 - The `biometricEnabled` flag on a device session is **administrative
   metadata only**. It is never checked as an authorization condition (BRD
   §12.6, SEC-006).
-- `logout-all` and revoking a device *other than the caller's own current
-  session* require step-up: the calling session's `LastPrimaryAuthenticationAtUtc`
+- `logout-all` and revoking a device _other than the caller's own current
+  session_ require step-up: the calling session's `LastPrimaryAuthenticationAtUtc`
   must be within a configurable recency window, or the request is rejected
   with `SESSION_REAUTHENTICATION_REQUIRED` (SEC-014).
 
@@ -156,17 +156,17 @@ additional machine-readable `errorCode` extension:
 }
 ```
 
-| Code | HTTP Status | Meaning |
-|---|---|---|
-| `REFRESH_TOKEN_INVALID` | 401 | Token doesn't match the session's current token. Also returned (identically) for confirmed reuse — see [Security Model](#security-model). |
-| `REFRESH_TOKEN_EXPIRED` | 401 | Session's absolute or inactivity expiry has passed. |
-| `REFRESH_TOKEN_REVOKED` | 401 | Reserved for future use; currently surfaced as `DEVICE_SESSION_REVOKED`. |
-| `DEVICE_SESSION_REVOKED` | 401 | Session was revoked (logout, biometric-disable, admin action, or reuse detection). |
-| `DEVICE_SESSION_NOT_FOUND` | 404 | Session ID doesn't exist, or (for owner-scoped endpoints) doesn't belong to the caller — intentionally indistinguishable from "doesn't exist" to avoid confirming existence to a non-owner. |
-| `ACCOUNT_DISABLED` | 403 | User account is inactive. |
-| `ACCOUNT_LOCKED` | 403 | User account is administratively locked. |
-| `SESSION_REAUTHENTICATION_REQUIRED` | 403 | Step-up required — the calling device session's last successful authentication is outside the configured recency window. |
-| `RATE_LIMIT_EXCEEDED` | 429 | Rate limit hit (returned by the platform's standard rate-limiter rejection, not a custom body). |
+| Code                                | HTTP Status | Meaning                                                                                                                                                                                     |
+| ----------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `REFRESH_TOKEN_INVALID`             | 401         | Token doesn't match the session's current token. Also returned (identically) for confirmed reuse — see [Security Model](#security-model).                                                   |
+| `REFRESH_TOKEN_EXPIRED`             | 401         | Session's absolute or inactivity expiry has passed.                                                                                                                                         |
+| `REFRESH_TOKEN_REVOKED`             | 401         | Reserved for future use; currently surfaced as `DEVICE_SESSION_REVOKED`.                                                                                                                    |
+| `DEVICE_SESSION_REVOKED`            | 401         | Session was revoked (logout, biometric-disable, admin action, or reuse detection).                                                                                                          |
+| `DEVICE_SESSION_NOT_FOUND`          | 404         | Session ID doesn't exist, or (for owner-scoped endpoints) doesn't belong to the caller — intentionally indistinguishable from "doesn't exist" to avoid confirming existence to a non-owner. |
+| `ACCOUNT_DISABLED`                  | 403         | User account is inactive.                                                                                                                                                                   |
+| `ACCOUNT_LOCKED`                    | 403         | User account is administratively locked.                                                                                                                                                    |
+| `SESSION_REAUTHENTICATION_REQUIRED` | 403         | Step-up required — the calling device session's last successful authentication is outside the configured recency window.                                                                    |
+| `RATE_LIMIT_EXCEEDED`               | 429         | Rate limit hit (returned by the platform's standard rate-limiter rejection, not a custom body).                                                                                             |
 
 Production error responses never reveal internal token-validation state
 beyond the codes above (SEC-010).
@@ -180,6 +180,7 @@ optional `deviceInfo` object to the request body to additionally receive a
 refresh token:
 
 **Request**
+
 ```json
 {
   "email": "user@example.com",
@@ -195,12 +196,13 @@ refresh token:
 ```
 
 **Response** (existing fields unchanged; three new nullable fields added)
+
 ```json
 {
   "accessToken": "<jwt>",
   "expiresAtUtc": "2026-08-07T12:00:00Z",
   "user": { "...": "..." },
-  "tenants": [ "..." ],
+  "tenants": ["..."],
   "refreshToken": "<opaque token>",
   "refreshTokenExpiresAtUtc": "2026-11-05T12:00:00Z",
   "deviceSessionId": "0198e2b1-..."
@@ -224,6 +226,7 @@ the point of calling this).
 **Rate limit:** `auth-refresh` (30/5min per IP).
 
 **Request**
+
 ```json
 { "refreshToken": "<opaque token>", "deviceSessionId": "0198e2b1-..." }
 ```
@@ -249,6 +252,7 @@ retains the legacy stateless, cookie-deletion-only behavior.
 **Idempotent** — repeated calls return `204` without error.
 
 **Request** — possession of the refresh token authenticates the logout even when the access token is expired.
+
 ```json
 { "refreshToken": "<opaque token>", "deviceSessionId": "0198e2b1-..." }
 ```
@@ -266,6 +270,7 @@ the call. Always requires step-up.
 **Rate limit:** `auth-logout-all` (5/15min per IP).
 
 **Response** `200 OK`
+
 ```json
 { "revokedCount": 3 }
 ```
@@ -325,14 +330,14 @@ the same operation (BE-BIO-012).
 
 ## Rate Limits
 
-| Policy | Limit | Window | Partition |
-|---|---|---|---|
-| `auth-refresh` | 30 | 5 min | IP + account/device/client context |
-| `auth-logout` | 20 | 5 min | IP + account/device/client context |
-| `auth-logout-all` | 5 | 15 min | IP + account/device/client context |
-| `auth-biometric-toggle` | 20 | 5 min | IP + account/device/client context |
-| `auth-device-session-list` | 30 | 5 min | IP + account/device/client context |
-| `auth-device-session-revoke` | 15 | 5 min | IP + account/device/client context |
+| Policy                       | Limit | Window | Partition                          |
+| ---------------------------- | ----- | ------ | ---------------------------------- |
+| `auth-refresh`               | 30    | 5 min  | IP + account/device/client context |
+| `auth-logout`                | 20    | 5 min  | IP + account/device/client context |
+| `auth-logout-all`            | 5     | 15 min | IP + account/device/client context |
+| `auth-biometric-toggle`      | 20    | 5 min  | IP + account/device/client context |
+| `auth-device-session-list`   | 30    | 5 min  | IP + account/device/client context |
+| `auth-device-session-revoke` | 15    | 5 min  | IP + account/device/client context |
 
 Client IP is resolved from `X-Forwarded-For` (set by the gateway), matching
 the existing `auth-login`/`auth-forgot-password` policies.
@@ -352,17 +357,17 @@ platform audit client, `EventCategory=Security`, tagged for filtering.
 Payloads never contain raw tokens, token hashes, passwords, or biometric
 data — only opaque IDs and non-sensitive metadata.
 
-| Event Type | Severity | Emitted On |
-|---|---|---|
-| `identity.session.device_created` | Info | Device session created at login |
-| `identity.session.refresh_succeeded` | Info | Successful rotation |
-| `identity.session.refresh_failed` | Warn | Any refresh failure (not-found/expired/revoked/account-disabled) |
-| `identity.session.refresh_reused` | **Critical** | Confirmed token reuse — structured with `tokenFamilyId`/`deviceSessionId`/`userId` for future alerting |
-| `identity.session.device_revoked` | Info/Warn | Any session revocation |
-| `identity.user.biometric_enabled` | Info | Biometric flag enabled |
-| `identity.user.biometric_disabled` | Info | Biometric flag disabled (+ session revoked) |
-| `identity.user.logged_out` | Info | `POST /identity/api/auth/logout` |
-| `identity.user.logged_out_all_sessions` | Warn | `POST /identity/api/auth/logout-all` |
+| Event Type                              | Severity     | Emitted On                                                                                             |
+| --------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------------ |
+| `identity.session.device_created`       | Info         | Device session created at login                                                                        |
+| `identity.session.refresh_succeeded`    | Info         | Successful rotation                                                                                    |
+| `identity.session.refresh_failed`       | Warn         | Any refresh failure (not-found/expired/revoked/account-disabled)                                       |
+| `identity.session.refresh_reused`       | **Critical** | Confirmed token reuse — structured with `tokenFamilyId`/`deviceSessionId`/`userId` for future alerting |
+| `identity.session.device_revoked`       | Info/Warn    | Any session revocation                                                                                 |
+| `identity.user.biometric_enabled`       | Info         | Biometric flag enabled                                                                                 |
+| `identity.user.biometric_disabled`      | Info         | Biometric flag disabled (+ session revoked)                                                            |
+| `identity.user.logged_out`              | Info         | `POST /identity/api/auth/logout`                                                                       |
+| `identity.user.logged_out_all_sessions` | Warn         | `POST /identity/api/auth/logout-all`                                                                   |
 
 ## Configuration
 

@@ -30,6 +30,7 @@ import {
   servicingService,
   type UpdateServicingDetailsRequestDto,
 } from "@/lib/servicing";
+import { dateConverter } from "@/lib/cases/cases.mapper";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -160,6 +161,8 @@ async function enrichLiens(
 
   // Keep only the latest reduction per lienId (by reductionDate desc, then createdAtUtc desc)
   const latestReductionByLien = new Map<string, number>();
+  const latestReductionDateByLien = new Map<string, string>();
+
   const sortedReductions = [...reductions].sort((a, b) => {
     const dateDiff = b.reductionDate.localeCompare(a.reductionDate);
     return dateDiff !== 0
@@ -169,6 +172,7 @@ async function enrichLiens(
   for (const r of sortedReductions) {
     if (!latestReductionByLien.has(r.lienId)) {
       latestReductionByLien.set(r.lienId, r.amount);
+      latestReductionDateByLien.set(r.lienId, dateConverter(r.reductionDate));
     }
   }
   function facilityName(facilityId: string | null) {
@@ -180,6 +184,7 @@ async function enrichLiens(
     // fields, so there is no fallback to them here.
     const paymentAmount = paymentsByLien.get(lien.id) ?? null;
     const reductionAmount = latestReductionByLien.get(lien.id) ?? null;
+    const reductionDate = latestReductionDateByLien.get(lien.id) ?? null;
     // A lien can bundle multiple medical billing line items; totalBilling is
     // the server-aggregated sum across those. The DTO also has a legacy
     // single-value originalAmount field, but we don't consume it on the
@@ -194,6 +199,7 @@ async function enrichLiens(
       purchaseDateDate: lien.purchaseDate,
       originalAmount,
       reductionAmount,
+      reductionDate,
       purchaseAmount: lien.purchaseAmount ?? 0,
       isServicing: lien.isServicing ?? false,
       paymentAmount,
