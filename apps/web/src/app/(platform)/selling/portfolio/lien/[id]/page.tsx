@@ -96,8 +96,8 @@ export default function PortfolioLienDetailPage() {
     );
   }
 
-  if (loading || !lien) {
-    return <PortfolioDetailSkeleton />;
+  if (!lien) {
+    return loading ? <PortfolioDetailSkeleton /> : null;
   }
 
   return <PortfolioDetailPanel lien={lien} onRefresh={load} />;
