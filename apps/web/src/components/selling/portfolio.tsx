@@ -8,7 +8,7 @@ import { ActionMenu } from "./action-menu";
 import { LiensQuery, liensService } from "@/lib/selling";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MetricCard } from "./dashboard/metric-card";
-import { Tabs } from "../ui/tabs";
+import { Tabs } from "./tabs";
 import { PortfolioTable } from "./portfolio-table";
 import { Card } from "../ui/dashboard-card";
 import {
