@@ -14,6 +14,8 @@ interface CompanyFormModalProps {
   open: boolean;
   title: string;
   companyTypeId: string;
+  /** Locks the Company Type field to `companyTypeId` (e.g. when created from an entity-scoped picker). */
+  lockCompanyType?: boolean;
   /** Present in edit mode; the company being edited. */
   editTarget?: Company | null;
   onClose: () => void;
@@ -51,6 +53,7 @@ export function CompanyFormModal({
   open,
   title,
   companyTypeId,
+  lockCompanyType,
   editTarget,
   onClose,
   onSaved,
@@ -178,7 +181,7 @@ export function CompanyFormModal({
               onChange={(v) => setField("companyTypeId", v)}
               options={companyTypesQuery.options}
               placeholder="Select type"
-              disabled={isEdit}
+              disabled={isEdit || lockCompanyType}
             />
             {errors.companyTypeId && (
               <p className="text-xs text-red-500 mt-1">{errors.companyTypeId}</p>

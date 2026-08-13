@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 import { FormModal } from "@/components/selling/modal";
 import { BaseSelect } from "@/components/ui/base-select";
 import Field from "@/components/lien/field";
@@ -10,7 +11,7 @@ import { useToast } from "@/lib/toast-context";
 import { parsePricingRow } from "@/lib/selling/selling-detail.mapper";
 import type { MedicalPricingRowDetail } from "@/types/lien-selling";
 import type { SellingMedicalPricingRowRequest } from "@/lib/selling/liens.types";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 
 type PricingRow = SellingMedicalPricingRowRequest & { key: string };
 
@@ -97,7 +98,7 @@ function PricingRowFields({
           onClick={onRemove}
           aria-label="Remove row"
         >
-          <i className="ri-close-line" />
+          <X className="h-4 w-4" />
         </Button>
       </td>
     </tr>

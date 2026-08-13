@@ -1,17 +1,23 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Loader } from "lucide-react";
 import { useSessionContext } from "@/providers/session-provider";
 import { useSession } from "@/hooks/use-session";
 import { liensService } from "@/lib/selling";
 import { documentsService } from "@/lib/documents";
 import UploadDocumentComponent, {
   FileDropzoneRef,
-} from "@/components/lien/upload-document";
+} from "@/components/selling/upload-document";
+import {
+  fileExtLabel,
+  fileIconFor,
+  UploadedFileRow,
+} from "@/components/selling/uploaded-file-row";
 import Field from "@/components/lien/field";
 import { ConfirmDialog } from "@/components/selling/modal";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import { parseDocumentReference } from "@/lib/selling/selling-detail.mapper";
 import type { SellingDocumentReferenceRequest } from "@/lib/selling/liens.types";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 
 export interface UploadDocumentsProps {
   caseId?: string;
@@ -29,20 +35,6 @@ interface AttachedDoc {
   fileSize: string;
 }
 
-function getFileIcon(filename: string): string {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  if (ext === "pdf") return "ri-file-pdf-2-line";
-  if (["doc", "docx"].includes(ext)) return "ri-file-word-2-line";
-  if (["xls", "xlsx", "csv"].includes(ext)) return "ri-file-excel-2-line";
-  if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext))
-    return "ri-image-line";
-  return "ri-file-text-line";
-}
-
-function fileExtLabel(filename: string): string {
-  return filename.split(".").pop()?.toUpperCase() ?? "FILE";
-}
-
 function toDocumentRefs(
   docs: AttachedDoc[],
 ): SellingDocumentReferenceRequest[] {
@@ -53,11 +45,16 @@ function toDocumentRefs(
   }));
 }
 
+function byNewestFirst(docs: AttachedDoc[]): AttachedDoc[] {
+  return [...docs].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+}
+
 export default function UploadDocuments(props: UploadDocumentsProps) {
   const { lienId, onUploaded, onFormValid } = props;
   const { lookup } = useSessionContext();
   const { session } = useSession();
-  const { show: showToast } = useToast();
   const dropzoneRef = useRef<FileDropzoneRef>(null);
 
   const documentTypes = lookup?.DocumentCategory ?? [];
@@ -70,7 +67,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
   const [documentTypeId, setDocumentTypeId] = useState("");
   const [docs, setDocs] = useState<AttachedDoc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
+  const [pendingFileName, setPendingFileName] = useState<string | null>(null);
   const [showDropzone, setShowDropzone] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -92,9 +89,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
             const parsed = parseDocumentReference(doc);
             if (!parsed.documentId) return null;
             try {
-              const detail = await documentsService.getById(
-                parsed.documentId,
-              );
+              const detail = await documentsService.getById(parsed.documentId);
               return {
                 documentId: parsed.documentId,
                 documentType: parsed.documentType,
@@ -108,7 +103,9 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           }),
         );
         if (cancelled) return;
-        const resolved = enriched.filter((d): d is AttachedDoc => !!d);
+        const resolved = byNewestFirst(
+          enriched.filter((d): d is AttachedDoc => !!d),
+        );
         setDocs(resolved);
         setShowDropzone(resolved.length === 0);
       } finally {
@@ -131,12 +128,12 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     if (!file) return;
 
     if (!documentTypeId) {
-      showToast("Select a document type first", "error");
+      toast.error("Select a document type first");
       dropzoneRef.current?.reset();
       return;
     }
 
-    setUploading(true);
+    setPendingFileName(file.name);
     try {
       const uploaded = await documentsService.upload({
         file,
@@ -150,7 +147,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
       const documentType =
         documentTypes.find((t) => t.id === documentTypeId)?.name ??
         documentTypeId;
-      const nextDocs: AttachedDoc[] = [
+      const nextDocs: AttachedDoc[] = byNewestFirst([
         ...docs,
         {
           documentId: uploaded.id,
@@ -159,7 +156,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           createdAt: uploaded.createdAt,
           fileSize: uploaded.fileSize,
         },
-      ];
+      ]);
       // Persist immediately so the attachment survives navigating away — the
       // wizard's final step doesn't re-save documents, it just confirms.
       await liensService.saveDocuments(lienId ?? "", {
@@ -167,15 +164,15 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
       });
       setDocs(nextDocs);
       setShowDropzone(false);
-      showToast("Document uploaded.", "success");
+      setDocumentTypeId("");
+      toast.success("Document uploaded.");
     } catch (err) {
-      showToast(
+      toast.error(
         err instanceof Error ? err.message : "Failed to upload document",
-        "error",
       );
     } finally {
       dropzoneRef.current?.reset();
-      setUploading(false);
+      setPendingFileName(null);
     }
   };
 
@@ -189,11 +186,10 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
       });
       setDocs(remaining);
       setDeleteTarget(null);
-      showToast("Document removed.", "success");
+      toast.success("Document removed.");
     } catch (err) {
-      showToast(
+      toast.error(
         err instanceof Error ? err.message : "Failed to remove document",
-        "error",
       );
     } finally {
       setDeleting(false);
@@ -221,68 +217,48 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           onChange={(v: string) => setDocumentTypeId(v)}
           placeholder="Select document type"
           type="select"
+          clearable
         />
-
-        {!loading && docs.length > 0 && (
-          <div className="mt-4 space-y-3">
+        <div className="mt-4">
+          <UploadDocumentComponent
+            ref={dropzoneRef}
+            isMultiple={false}
+            disabled={!documentTypeId}
+            onUploaded={handleFilesSelected}
+          />
+        </div>
+        {!loading && (docs.length > 0 || pendingFileName) && (
+          <div className="mt-4 space-y-3 max-h-70 overflow-y-auto pr-1">
+            {pendingFileName && (
+              <UploadedFileRow
+                icon={fileIconFor(pendingFileName)}
+                title={pendingFileName}
+                subtitle="Uploading..."
+                actions={
+                  <Loader className="w-4 h-4 text-gray-400 animate-spin" />
+                }
+              />
+            )}
             {docs.map((doc) => (
-              <div
+              <UploadedFileRow
                 key={doc.documentId}
-                className="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-3"
-              >
-                <div className="w-10 h-10 rounded bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0 text-gray-500">
-                  <i className={`${getFileIcon(doc.displayName)} text-lg`} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-800 truncate">
-                    {doc.displayName}
-                  </p>
-                  <p className="text-xs text-gray-400 truncate">
-                    {doc.documentType} · {fileExtLabel(doc.displayName)}
-                  </p>
-                </div>
-                {doc.createdAt && (
-                  <p className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
-                    {new Date(doc.createdAt).toLocaleDateString()} ·{" "}
-                    {new Date(doc.createdAt).toLocaleTimeString()}
-                  </p>
-                )}
-                <Button
-                  type="button"
-                  variant="icon-square"
-                  className="w-8 h-8 border-red-100 text-red-500 hover:bg-red-50 shrink-0"
-                  onClick={() => setDeleteTarget(doc.documentId)}
-                  aria-label="Delete document"
-                >
-                  <i className="ri-delete-bin-6-line text-sm" />
-                </Button>
-              </div>
+                icon={fileIconFor(doc.displayName)}
+                title={doc.displayName}
+                subtitle={`${doc.documentType} · ${fileExtLabel(doc.displayName)}`}
+                timestamp={doc.createdAt}
+                actions={
+                  <Button
+                    type="button"
+                    variant="icon-square-destructive"
+                    className="w-8 h-8"
+                    icon="trash2"
+                    onClick={() => setDeleteTarget(doc.documentId)}
+                    aria-label="Delete document"
+                  />
+                }
+              />
             ))}
           </div>
-        )}
-
-        {showDropzone ? (
-          <div className="mt-4">
-            <UploadDocumentComponent
-              ref={dropzoneRef}
-              isMultiple={false}
-              onUploaded={handleFilesSelected}
-            />
-            {uploading && (
-              <p className="text-xs text-gray-400 mt-2">Uploading...</p>
-            )}
-          </div>
-        ) : (
-          <Button
-            type="button"
-            variant="secondary"
-            className="mt-4"
-            disabled={uploading}
-            rightIcon={<i className="ri-upload-cloud-2-line text-sm" />}
-            onClick={() => setShowDropzone(true)}
-          >
-            Upload More
-          </Button>
         )}
       </div>
 

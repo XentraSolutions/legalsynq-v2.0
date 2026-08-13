@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Modal, ConfirmDialog } from "@/components/selling/modal";
 import { ActionMenu, type ActionMenuItem } from "@/components/selling/action-menu";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 import { LienDetail, LienListItem, liensService } from "@/lib/selling";
 import { useToast } from "@/lib/toast-context";
 
@@ -27,9 +27,6 @@ interface LienRowActionsMenuProps {
   /** Show the Keep/Sell decision modal automatically when this lien loads. */
   autoOpenDecision?: boolean;
 }
-
-// Selling's brand accent, matching the convention used on other selling pages.
-const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 
 const ACTION_LABELS: Record<
   string,
@@ -166,7 +163,7 @@ export function LienRowActionsMenu({
               {keepLoading ? "Keeping..." : "Keep"}
             </Button>
             <Button
-              className={PRIMARY_BUTTON_CLASSNAME}
+              variant="primary"
               disabled={keepLoading}
               onClick={() => {
                 setShowDecisionModal(false);

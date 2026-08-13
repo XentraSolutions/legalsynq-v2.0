@@ -6,12 +6,11 @@ import { toast } from "sonner";
 import {
   Building2,
   Eye,
-  Plus,
+  Loader,
   Repeat,
   Settings2,
   SquarePen,
   Trash2,
-  Upload,
   UserCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/lien/page-header";
@@ -33,16 +32,16 @@ import { ConfirmDialog } from "@/components/selling/modal";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 import type { Company } from "@/lib/selling/companies.types";
 import { downloadBlob } from "@/lib/utils";
 
 const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
-// Selling's brand accent — used on every primary action button on this page
-// and everything opened from it, instead of the tenant bg-primary blue used
-// on the lien side.
+// Still needed as a passthrough for BaseTable (src/components/ui/base-table),
+// which renders a plain <button> (not the selling Button component) and
+// exposes primaryButtonClassName as a generic override, not selling-specific.
 const PRIMARY_BUTTON_CLASSNAME =
   "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 
@@ -324,8 +323,7 @@ function CompaniesListView() {
     >
       <Button
         variant="secondary"
-        iconDivider
-        rightIcon={<Upload className="h-4 w-4" />}
+        rightIcon="upload"
         disabled={exportCompaniesMutation.isPending}
         onClick={handleExport}
       >
@@ -333,9 +331,8 @@ function CompaniesListView() {
       </Button>
       {ra.can("contact:create") && (
         <Button
-          iconDivider
-          rightIcon={<Plus className="h-4 w-4" />}
-          className={PRIMARY_BUTTON_CLASSNAME}
+          variant="primary"
+          rightIcon="plus"
           onClick={() => setShowCreate(true)}
         >
           Add Company
@@ -350,7 +347,7 @@ function CompaniesListView() {
         {toolbar}
         {showEmptyState ? (
           <ContactsEmptyState
-            icon="ri-building-4-line"
+            icon={Building2}
             title={`No ${selectedCompanyTypeName} Yet`}
             description={`No ${selectedCompanyTypeNamePlural.toLowerCase()} have been added yet. Add your first ${selectedCompanyTypeName.toLowerCase()} to get started.`}
             actionLabel={
@@ -366,7 +363,7 @@ function CompaniesListView() {
           <div className="relative">
             {refreshing && (
               <div className="absolute top-2 right-3 z-10 flex items-center gap-1.5 text-xs text-gray-400">
-                <i className="ri-loader-4-line animate-spin text-sm" />
+                <Loader className="h-4 w-4 animate-spin" />
                 Refreshing...
               </div>
             )}
@@ -426,7 +423,6 @@ function CompaniesListView() {
           description="The new company has been added. Would you like to add contact person associated with this company? You can always do this later."
           confirmLabel="Add Contact Person"
           cancelLabel="Maybe Later"
-          primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
         />
       )}
 
@@ -462,7 +458,6 @@ function CompaniesListView() {
           description="The new contact person has been added to the company. You can add another contact person if needed."
           confirmLabel="Add More"
           cancelLabel="Done"
-          primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
         />
       )}
 

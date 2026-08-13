@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Stethoscope } from "lucide-react";
 import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
 import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
 import Field from "@/components/lien/field";
@@ -70,7 +71,7 @@ export default function MedicalFacilityProviderInfo(
       <div className="row border-bottom border-solid">
         <div className="col-12 mb-2">
           <span className="inline-block w-[30px] text-center text-white mr-2 rounded bg-primary">
-            <i className="ri-stethoscope-line text-light" />
+            <Stethoscope className="h-4 w-4 text-light" />
           </span>
           <span className="font-semibold mb-2 mt-1">
             Medical Facility and Provider Information{" "}
