@@ -8,6 +8,30 @@ import { useToast } from "@/lib/toast-context";
 import MedicalCodesDescription from "../forms/add-medical-lien/medical-codes-description";
 import { LienWizardShell } from "./shell";
 import { buildFormsFromLien, goToStep } from "./shared";
+import { SkeletonField, SkeletonTable } from "@/components/lien/skeleton-loader";
+
+// Mirrors MedicalCodesDescription's layout: title + description, the
+// code/billing/target-amount entry fields, and the pricing rows table.
+function MedicalCodesStepSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse pt-5">
+      <div className="h-6 bg-gray-100 rounded w-72" />
+      <div className="h-3 bg-gray-100 rounded w-full max-w-lg" />
+      <SkeletonField full />
+      <SkeletonField full />
+      <div className="flex gap-3 items-end">
+        <div className="flex-1">
+          <SkeletonField full />
+        </div>
+        <div className="flex-1">
+          <SkeletonField full />
+        </div>
+        <div className="h-9 w-20 bg-gray-100 rounded-lg shrink-0" />
+      </div>
+      <SkeletonTable rows={3} cols={4} />
+    </div>
+  );
+}
 
 export interface MedicalCodesStepProps {
   lienId: string;
@@ -94,6 +118,7 @@ export default function MedicalCodesStep({
     <LienWizardShell
       step={3}
       hydrating={hydrating}
+      skeleton={<MedicalCodesStepSkeleton />}
       submitting={submitting}
       continueDisabled={!formValid}
       onBack={() => goToStep(router, lienId, 2)}

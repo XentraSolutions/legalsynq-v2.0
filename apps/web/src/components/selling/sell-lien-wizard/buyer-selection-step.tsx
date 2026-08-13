@@ -9,7 +9,35 @@ import { useToast } from "@/lib/toast-context";
 import { Button } from "@/components/selling/button";
 import { useCompanyTypes, useCompanies, useContactPersons } from "@/hooks/use-selling-companies";
 import Field from "@/components/lien/field";
+import { SkeletonListRows } from "@/components/lien/skeleton-loader";
 import { TOTAL_STEPS, goToStep } from "./shared";
+
+// Mirrors the loaded page below: back+progress header, step label, title,
+// description, search field, and the funding-company list.
+function BuyerSelectionSkeleton() {
+  return (
+    <div className="max-w-4xl mx-auto space-y-6 pb-10 animate-pulse">
+      <div className="flex items-center gap-4">
+        <div className="h-5 w-5 rounded bg-gray-100 shrink-0" />
+        <div className="flex-1 flex gap-2">
+          {Array.from({ length: TOTAL_STEPS }, (_, index) => (
+            <div
+              key={index}
+              className={`h-1 flex-1 rounded-full ${index < 1 ? "bg-[#EE7132]/40" : "bg-gray-200"}`}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="space-y-4">
+        <div className="h-3 bg-gray-100 rounded w-16" />
+        <div className="h-7 bg-gray-100 rounded w-64" />
+        <div className="h-3 bg-gray-100 rounded w-full max-w-lg" />
+        <div className="h-10 bg-gray-100 rounded-lg w-full" />
+        <SkeletonListRows rows={5} />
+      </div>
+    </div>
+  );
+}
 
 export interface BuyerSelectionStepProps {
   lienId: string;
@@ -132,11 +160,7 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
   };
 
   if (hydrating) {
-    return (
-      <div className="p-10 text-center">
-        <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
+    return <BuyerSelectionSkeleton />;
   }
 
   return (

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Copy, FileText } from "lucide-react";
+import { useState } from "react";
+import { Copy } from "lucide-react";
 import { LienDetailsResult } from "@/types/lien-selling";
 import { LienInformationPanel } from "./lien-detail/lien-information-panel";
 import { FundingCompanyAndCaseInformationPanel } from "./lien-detail/funding-company-information-panel";
@@ -9,18 +9,12 @@ import { MedicalCodesInformationPanel } from "./lien-detail/medical-codes-inform
 import { EditLienInformationModal } from "./lien-detail/edit-lien-information-modal";
 import { EditCaseInformationModal } from "./lien-detail/edit-case-information-modal";
 import { EditMedicalPricingModal } from "./lien-detail/edit-medical-pricing-modal";
-import { ConfirmDialog, FormModal } from "@/components/selling/modal";
-import { liensService } from "@/lib/selling";
-import { documentsService } from "@/lib/documents";
-import { useSession } from "@/hooks/use-session";
-import { useSessionContext } from "@/providers/session-provider";
-import Field from "@/components/lien/field";
-import UploadDocumentComponent from "@/components/lien/upload-document";
-import {
-  parseDocumentReference,
-  sellerStatusLabel,
-  SALE_DOCUMENT_LABELS,
-} from "@/lib/selling/selling-detail.mapper";
+import { ConfirmDialog, Modal } from "@/components/selling/modal";
+import UploadDocuments from "./forms/add-medical-lien/medical-upload-document";
+import { fileIconFor, UploadedFileRow } from "./uploaded-file-row";
+import { sellerStatusLabel, SALE_DOCUMENT_LABELS } from "@/lib/selling/selling-detail.mapper";
+import { useLienDocuments, useSaveLienDocuments } from "@/lib/selling/use-lien-documents";
+import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
 import { useToast } from "@/lib/toast-context";
 import { Tabs } from "@/components/ui/tabs";
 import { LienRowActionsMenu } from "./lien-row-actions-menu";
@@ -191,66 +185,20 @@ function DocumentsTab({
   lien: LienDetailsResult;
   onRefresh: () => void;
 }) {
-  const { session } = useSession();
   const { show: showToast } = useToast();
-  const [enriched, setEnriched] = useState<
-    Record<string, { title: string; createdAt: string; fileSize: string }>
-  >({});
+  const { data: docs = [], isLoading } = useLienDocuments(lien.lienId);
+  const saveLienDocuments = useSaveLienDocuments(lien.lienId);
   const [showUpload, setShowUpload] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all(
-      lien.documents.map(async (doc) => {
-        const data = parseDocumentReference(doc);
-        if (!data.documentId) return null;
-        try {
-          const detail = await documentsService.getById(data.documentId);
-          return [
-            data.documentId,
-            {
-              title: detail.title,
-              createdAt: detail.createdAt,
-              fileSize: detail.fileSize,
-            },
-          ] as const;
-        } catch {
-          return null;
-        }
-      }),
-    ).then((results) => {
-      if (cancelled) return;
-      const map: Record<
-        string,
-        { title: string; createdAt: string; fileSize: string }
-      > = {};
-      for (const r of results) {
-        if (r) map[r[0]] = r[1];
-      }
-      setEnriched(map);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [lien.documents]);
 
   const runDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const remaining = lien.documents
-        .filter((doc) => doc.id !== deleteTarget)
-        .map((doc) => {
-          const data = parseDocumentReference(doc);
-          return {
-            documentId: data.documentId,
-            documentType: data.documentType,
-            displayName: data.displayName ?? undefined,
-          };
-        });
-      await liensService.saveDocuments(lien.lienId, { documents: remaining });
+      await saveLienDocuments((current) =>
+        current.filter((d) => d.documentId !== deleteTarget),
+      );
       showToast("Document removed.", "success");
       setDeleteTarget(null);
       onRefresh();
@@ -278,7 +226,12 @@ function DocumentsTab({
           </Button>
         </div>
 
-        {lien.documents.length === 0 ? (
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+            <SkeletonFileRow />
+            <SkeletonFileRow />
+          </div>
+        ) : docs.length === 0 ? (
           <div className="py-10 text-center">
             <Copy className="h-6 w-6 text-gray-300" />
             <p className="text-sm text-gray-400 mt-2">
@@ -287,33 +240,27 @@ function DocumentsTab({
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
-            {lien.documents.map((doc) => {
-              const data = parseDocumentReference(doc);
-              const meta = enriched[data.documentId];
-              return (
-                <div key={doc.id} className="flex items-center gap-3 py-1">
-                  <div className="w-10 h-10 rounded bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
-                    <FileText className="h-5 w-5 text-gray-500" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-800 truncate">
-                      {meta?.title || data.displayName || doc.description}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {meta?.createdAt ? `${meta.createdAt} · ` : ""}
-                      {SALE_DOCUMENT_LABELS[data.documentType]?.title ??
-                        data.documentType}
-                    </p>
-                  </div>
+            {docs.map((doc) => (
+              <UploadedFileRow
+                key={doc.documentId}
+                icon={fileIconFor(doc.displayName)}
+                title={doc.displayName}
+                subtitle={
+                  SALE_DOCUMENT_LABELS[doc.documentType]?.title ??
+                  doc.documentType
+                }
+                timestamp={doc.createdAt}
+                actions={
                   <Button
                     variant="icon-square-destructive"
-                    className="w-8 h-8 shrink-0"
+                    className="w-8 h-8"
                     icon="trash2"
-                    onClick={() => setDeleteTarget(doc.id)}
+                    onClick={() => setDeleteTarget(doc.documentId)}
+                    aria-label="Delete document"
                   />
-                </div>
-              );
-            })}
+                }
+              />
+            ))}
           </div>
         )}
       </div>
@@ -321,10 +268,7 @@ function DocumentsTab({
       {showUpload && (
         <UploadDocumentModal
           lienId={lien.lienId}
-          tenantId={session?.tenantId ?? ""}
-          existingDocuments={lien.documents}
-          onClose={() => setShowUpload(false)}
-          onUploaded={() => {
+          onClose={() => {
             setShowUpload(false);
             onRefresh();
           }}
@@ -345,105 +289,29 @@ function DocumentsTab({
   );
 }
 
+// Files upload (and persist to the lien) as soon as each one is dropped in
+// UploadDocuments — same auto-commit behavior as the edit wizard's step-4 —
+// so there's no separate submit step, just a "Done" button to close up.
 function UploadDocumentModal({
   lienId,
-  tenantId,
-  existingDocuments,
   onClose,
-  onUploaded,
 }: {
   lienId: string;
-  tenantId: string;
-  existingDocuments: LienDetailsResult["documents"];
   onClose: () => void;
-  onUploaded: () => void;
 }) {
-  const { show: showToast } = useToast();
-  const { lookup } = useSessionContext();
-  const [file, setFile] = useState<File | null>(null);
-  const documentTypes = lookup?.DocumentCategory ?? [];
-  const documentTypeOptions = documentTypes.map((type) => ({
-    value: type.id,
-    label: type.name,
-  }));
-  const [documentTypeId, setDocumentTypeId] = useState("");
-  const [uploading, setUploading] = useState(false);
-
-  useEffect(() => {
-    if (!documentTypeId && documentTypes.length > 0) {
-      setDocumentTypeId(documentTypes[0].id);
-      // setDocumentTypeId('00000000-0000-0000-0000-000000000001');
-    }
-  }, [documentTypes, documentTypeId]);
-
-  const handleSubmit = async () => {
-    if (!file || !documentTypeId) return;
-    setUploading(true);
-    try {
-      const uploaded = await documentsService.upload({
-        file,
-        tenantId,
-        productId: "SYNQ_LIENS",
-        referenceType: "Lien",
-        referenceId: lienId,
-        documentTypeId,
-        title: file.name,
-      });
-      const documentType =
-        documentTypes.find((t) => t.id === documentTypeId)?.name ??
-        documentTypeId;
-      const documents = [
-        ...existingDocuments.map((doc) => {
-          const data = parseDocumentReference(doc);
-          return {
-            documentId: data.documentId,
-            documentType: data.documentType,
-            displayName: data.displayName ?? undefined,
-          };
-        }),
-        { documentId: uploaded.id, documentType, displayName: file.name },
-      ];
-      await liensService.saveDocuments(lienId, { documents });
-      showToast("Document uploaded.", "success");
-      onUploaded();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to upload document",
-        "error",
-      );
-    } finally {
-      setUploading(false);
-    }
-  };
-
   return (
-    <FormModal
+    <Modal
       open
       onClose={onClose}
-      onSubmit={handleSubmit}
-      title="Upload Document"
-      submitLabel={uploading ? "Uploading..." : "Upload"}
-      submitDisabled={!file || !documentTypeId || uploading}
-      size="sm"
+      title="Upload Documents"
+      size="lg"
+      footer={
+        <Button variant="primary" onClick={onClose}>
+          Done
+        </Button>
+      }
     >
-      <div className="space-y-4">
-        <Field
-          label="Document Type"
-          type="select"
-          value={documentTypeId}
-          options={documentTypeOptions}
-          onChange={(value: string) => setDocumentTypeId(value)}
-        />
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            File
-          </label>
-          <UploadDocumentComponent
-            isMultiple={false}
-            onUploaded={(files) => setFile(files[0] ?? null)}
-          />
-        </div>
-      </div>
-    </FormModal>
+      <UploadDocuments lienId={lienId} hideHeading hideExistingDocuments />
+    </Modal>
   );
 }

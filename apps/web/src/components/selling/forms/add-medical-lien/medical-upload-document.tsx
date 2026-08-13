@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { Loader } from "lucide-react";
 import { useSessionContext } from "@/providers/session-provider";
 import { useSession } from "@/hooks/use-session";
-import { liensService } from "@/lib/selling";
 import { documentsService } from "@/lib/documents";
 import UploadDocumentComponent, {
   FileDropzoneRef,
@@ -13,10 +12,14 @@ import {
   UploadedFileRow,
 } from "@/components/selling/uploaded-file-row";
 import Field from "@/components/lien/field";
+import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
 import { ConfirmDialog } from "@/components/selling/modal";
 import { toast } from "sonner";
-import { parseDocumentReference } from "@/lib/selling/selling-detail.mapper";
-import type { SellingDocumentReferenceRequest } from "@/lib/selling/liens.types";
+import {
+  sortByNewestFirst,
+  useLienDocuments,
+  useSaveLienDocuments,
+} from "@/lib/selling/use-lien-documents";
 import { Button } from "@/components/selling/button";
 
 export interface UploadDocumentsProps {
@@ -25,34 +28,15 @@ export interface UploadDocumentsProps {
   data?: any;
   onFormValid?: (valid: boolean, data?: any) => void;
   onUploaded?: (valid: boolean, data?: any) => void;
-}
-
-interface AttachedDoc {
-  documentId: string;
-  documentType: string;
-  displayName: string;
-  createdAt: string;
-  fileSize: string;
-}
-
-function toDocumentRefs(
-  docs: AttachedDoc[],
-): SellingDocumentReferenceRequest[] {
-  return docs.map((doc) => ({
-    documentId: doc.documentId,
-    documentType: doc.documentType,
-    displayName: doc.displayName,
-  }));
-}
-
-function byNewestFirst(docs: AttachedDoc[]): AttachedDoc[] {
-  return [...docs].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
+  /** Hides the built-in "Upload Documents" heading/description — for callers (e.g. a modal) that already render their own title. */
+  hideHeading?: boolean;
+  /** Skips displaying documents already attached to the lien — for callers (e.g. a modal launched from a page that already lists them) that should only show files uploaded in this session. The full set is still fetched/persisted so saves append rather than overwrite. */
+  hideExistingDocuments?: boolean;
 }
 
 export default function UploadDocuments(props: UploadDocumentsProps) {
-  const { lienId, onUploaded, onFormValid } = props;
+  const { lienId, onUploaded, onFormValid, hideHeading, hideExistingDocuments } =
+    props;
   const { lookup } = useSessionContext();
   const { session } = useSession();
   const dropzoneRef = useRef<FileDropzoneRef>(null);
@@ -65,57 +49,14 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
   }));
 
   const [documentTypeId, setDocumentTypeId] = useState("");
-  const [docs, setDocs] = useState<AttachedDoc[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: docs = [], isLoading: loading } = useLienDocuments(lienId);
+  const saveLienDocuments = useSaveLienDocuments(lienId);
+  // Uploaded during this component's lifetime — when hideExistingDocuments is
+  // set, only these render, while the full cached list still backs saves.
+  const [newDocumentIds, setNewDocumentIds] = useState<Set<string>>(new Set());
   const [pendingFileName, setPendingFileName] = useState<string | null>(null);
-  const [showDropzone, setShowDropzone] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  // A draft lien may already have documents attached from a previous visit —
-  // hydrate from the lien itself (same source sell-lien-wizard/portfolio-details
-  // use) rather than assuming this step always starts empty.
-  useEffect(() => {
-    let cancelled = false;
-    if (!lienId) {
-      setLoading(false);
-      return;
-    }
-    (async () => {
-      try {
-        const lien = await liensService.getLienById(lienId);
-        const enriched = await Promise.all(
-          lien.documents.map(async (doc) => {
-            const parsed = parseDocumentReference(doc);
-            if (!parsed.documentId) return null;
-            try {
-              const detail = await documentsService.getById(parsed.documentId);
-              return {
-                documentId: parsed.documentId,
-                documentType: parsed.documentType,
-                displayName: parsed.displayName ?? detail.title,
-                createdAt: detail.createdAt,
-                fileSize: detail.fileSize,
-              } as AttachedDoc;
-            } catch {
-              return null;
-            }
-          }),
-        );
-        if (cancelled) return;
-        const resolved = byNewestFirst(
-          enriched.filter((d): d is AttachedDoc => !!d),
-        );
-        setDocs(resolved);
-        setShowDropzone(resolved.length === 0);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [lienId]);
 
   useEffect(() => {
     onFormValid?.(true, docs);
@@ -147,23 +88,23 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
       const documentType =
         documentTypes.find((t) => t.id === documentTypeId)?.name ??
         documentTypeId;
-      const nextDocs: AttachedDoc[] = byNewestFirst([
-        ...docs,
-        {
-          documentId: uploaded.id,
-          documentType,
-          displayName: file.name,
-          createdAt: uploaded.createdAt,
-          fileSize: uploaded.fileSize,
-        },
-      ]);
       // Persist immediately so the attachment survives navigating away — the
       // wizard's final step doesn't re-save documents, it just confirms.
-      await liensService.saveDocuments(lienId ?? "", {
-        documents: toDocumentRefs(nextDocs),
-      });
-      setDocs(nextDocs);
-      setShowDropzone(false);
+      // Appends onto the latest server-side list (fetched inside
+      // saveLienDocuments), not the possibly-stale `docs` in local state.
+      await saveLienDocuments((current) =>
+        sortByNewestFirst([
+          ...current,
+          {
+            documentId: uploaded.id,
+            documentType,
+            displayName: file.name,
+            createdAt: uploaded.createdAt,
+            fileSize: uploaded.fileSize,
+          },
+        ]),
+      );
+      setNewDocumentIds((prev) => new Set(prev).add(uploaded.id));
       setDocumentTypeId("");
       toast.success("Document uploaded.");
     } catch (err) {
@@ -180,11 +121,9 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const remaining = docs.filter((d) => d.documentId !== deleteTarget);
-      await liensService.saveDocuments(lienId ?? "", {
-        documents: toDocumentRefs(remaining),
-      });
-      setDocs(remaining);
+      await saveLienDocuments((current) =>
+        current.filter((d) => d.documentId !== deleteTarget),
+      );
       setDeleteTarget(null);
       toast.success("Document removed.");
     } catch (err) {
@@ -196,18 +135,24 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     }
   };
 
+  const visibleDocs = hideExistingDocuments
+    ? docs.filter((doc) => newDocumentIds.has(doc.documentId))
+    : docs;
+
   return (
     <div className="container-fluid">
       <div className="row border-bottom border-solid pb-3 mb-3">
-        <div className="col-12 mb-2">
-          <span className="font-semibold mb-2 text-2xl mt-1">
-            Upload Documents
-          </span>
-          <p className="font-normal text-sm text-gray-600 mb-2 mt-1">
-            Upload supporting documents to provide additional information for
-            this lien.
-          </p>
-        </div>
+        {!hideHeading && (
+          <div className="col-12 mb-2">
+            <span className="font-semibold mb-2 text-2xl mt-1">
+              Upload Documents
+            </span>
+            <p className="font-normal text-sm text-gray-600 mb-2 mt-1">
+              Upload supporting documents to provide additional information
+              for this lien.
+            </p>
+          </div>
+        )}
 
         <Field
           label="Document Type"
@@ -227,7 +172,13 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
             onUploaded={handleFilesSelected}
           />
         </div>
-        {!loading && (docs.length > 0 || pendingFileName) && (
+        {loading && (
+          <div className="mt-4 space-y-3">
+            <SkeletonFileRow />
+            <SkeletonFileRow />
+          </div>
+        )}
+        {!loading && (visibleDocs.length > 0 || pendingFileName) && (
           <div className="mt-4 space-y-3 max-h-70 overflow-y-auto pr-1">
             {pendingFileName && (
               <UploadedFileRow
@@ -239,7 +190,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                 }
               />
             )}
-            {docs.map((doc) => (
+            {visibleDocs.map((doc) => (
               <UploadedFileRow
                 key={doc.documentId}
                 icon={fileIconFor(doc.displayName)}

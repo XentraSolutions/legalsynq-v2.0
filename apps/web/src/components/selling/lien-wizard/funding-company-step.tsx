@@ -8,6 +8,20 @@ import { useToast } from "@/lib/toast-context";
 import FundingCompanyInfo from "../forms/add-medical-lien/funding-company-info";
 import { LienWizardShell } from "./shell";
 import { buildFormsFromLien, goToStep } from "./shared";
+import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
+
+// Mirrors FundingCompanyInfo's layout: title + description, then three rows
+// of two selects each (medical provider/funding company, contact/medical
+// provider, law firm/case manager).
+function FundingCompanyStepSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse pt-5">
+      <div className="h-6 bg-gray-100 rounded w-52" />
+      <div className="h-3 bg-gray-100 rounded w-full max-w-md" />
+      <SkeletonFormGrid fields={6} />
+    </div>
+  );
+}
 
 export interface FundingCompanyStepProps {
   lienId: string;
@@ -84,6 +98,7 @@ export default function FundingCompanyStep({
     <LienWizardShell
       step={2}
       hydrating={hydrating}
+      skeleton={<FundingCompanyStepSkeleton />}
       submitting={submitting}
       continueDisabled={!formValid}
       onBack={() => goToStep(router, lienId, 1)}
