@@ -60,6 +60,19 @@ public interface INotificationsEmailClient
         CancellationToken ct = default);
 
     /// <summary>
+    /// Dispatches the approval and administrator-account setup email created by
+    /// the tenant self-registration review flow.
+    /// </summary>
+    Task<(bool EmailConfigured, bool Success, string? Error)> SendTenantRegistrationApprovedEmailAsync(
+        string            toEmail,
+        string            displayName,
+        string            tenantName,
+        string            activationLink,
+        int               expiryHours,
+        Guid              tenantId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Dispatches a tenant-access-granted notification email to an existing active user
     /// who has been provisioned on an additional tenant. No set-password link is included
     /// since the user already has a password. Best-effort — callers should log but not
@@ -84,9 +97,11 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
 
     private const string PasswordResetEventKey        = "identity.user.password.reset";
     private const string InviteEventKey               = "identity.user.invite.sent";
+    private const string TenantRegistrationApprovedEventKey = "identity.tenant.registration.approved";
     private const string TenantAccessGrantedEventKey  = "identity.user.tenant.access.granted";
     private const string PasswordResetSubject         = "Reset your LegalSynq password";
     private const string InviteSubject                = "You've been invited to LegalSynq";
+    private const string TenantRegistrationApprovedSubject = "Your LegalSynq tenant application has been accepted";
     private const string TenantAccessGrantedSubject   = "You now have access to a new LegalSynq network";
 
     private readonly IHttpClientFactory                _httpClientFactory;
@@ -166,6 +181,43 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
             body:         body,
             templateData: templateData,
             logTag:       "LS-NOTIF-CORE-024/invite",
+            ct:           ct);
+    }
+
+    public Task<(bool EmailConfigured, bool Success, string? Error)> SendTenantRegistrationApprovedEmailAsync(
+        string            toEmail,
+        string            displayName,
+        string            tenantName,
+        string            activationLink,
+        int               expiryHours,
+        Guid              tenantId,
+        CancellationToken ct = default)
+    {
+        var body = new
+        {
+            type    = TenantRegistrationApprovedEventKey,
+            subject = TenantRegistrationApprovedSubject,
+            html    = BuildTenantRegistrationApprovedHtmlBody(displayName, tenantName, activationLink, expiryHours),
+            body    = $"Your LegalSynq tenant application has been accepted\n\nHello {displayName},\n\nGreat news — your application for {tenantName} has been accepted. We are now provisioning your LegalSynq tenant. Set your password to activate your tenant administrator account while setup continues (link expires in {expiryHours} hours):\n{activationLink}\n\nIf you did not submit this application, please contact LegalSynq support.",
+            attachments = LegalSynqEmailBranding.CreateInlineLogoAttachment(),
+        };
+
+        var templateData = new Dictionary<string, string>
+        {
+            ["displayName"]    = displayName,
+            ["tenantName"]     = tenantName,
+            ["activationLink"] = activationLink,
+            ["subject"]        = TenantRegistrationApprovedSubject,
+        };
+
+        return SubmitAsync(
+            eventKey:     TenantRegistrationApprovedEventKey,
+            subject:      TenantRegistrationApprovedSubject,
+            toEmail:      toEmail,
+            tenantId:     tenantId,
+            body:         body,
+            templateData: templateData,
+            logTag:       "tenant-registration-approved",
             ct:           ct);
     }
 
@@ -456,6 +508,62 @@ public sealed class NotificationsEmailClient : INotificationsEmailClient
                 <p style="margin:0;font-size:13px;line-height:1.5;color:#9ca3af;">
                   If you weren&rsquo;t expecting this invitation, you can safely ignore
                   this email. No account will be created unless you follow the link above.
+                </p>
+
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+        """;
+    }
+
+    private static string BuildTenantRegistrationApprovedHtmlBody(string name, string tenantName, string link, int expiryHours)
+    {
+        var safeName       = HtmlEncode(name);
+        var safeTenantName = HtmlEncode(tenantName);
+        var safeLink       = HtmlEncode(link);
+
+        return $"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Your LegalSynq tenant application has been accepted</title>
+        </head>
+        <body style="margin:0;padding:32px 16px;background:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;margin:0 auto;">
+            <tr>
+              <td style="background:#ffffff;border-radius:12px;padding:40px;border:1px solid #e5e7eb;">
+
+                <img src="{LegalSynqEmailBranding.LogoSource}" width="145" alt="LegalSynq" style="display:block;width:145px;height:auto;border:0;margin:0 auto 16px;" />
+                <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 28px;" />
+
+                <h1 style="margin:0 0 12px;font-size:20px;line-height:1.4;font-weight:700;color:#111827;">Your tenant application has been accepted</h1>
+
+                <p style="margin:0 0 24px;font-size:15px;line-height:1.65;color:#374151;">
+                  Hello <strong>{safeName}</strong>,<br /><br />
+                  Great news &mdash; your application for <strong>{safeTenantName}</strong> has been accepted.
+                  We are now provisioning your LegalSynq tenant. Set your password to activate your tenant
+                  administrator account while setup continues. This secure link expires
+                  in&nbsp;{expiryHours}&nbsp;hours.
+                </p>
+
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                  <tr>
+                    <td style="border-radius:8px;background:#f97316;">
+                      <a href="{safeLink}"
+                         style="display:inline-block;padding:13px 28px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">
+                        Set up your account
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <hr style="border:none;border-top:1px solid #f3f4f6;margin:0 0 20px;" />
+                <p style="margin:0;font-size:13px;line-height:1.5;color:#9ca3af;">
+                  If you did not submit this tenant application, please contact LegalSynq support.
                 </p>
 
               </td>

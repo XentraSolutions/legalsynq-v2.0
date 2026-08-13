@@ -44,3 +44,25 @@
 [data-sonner-toaster] [data-sonner-toast] [data-button].sonner-action-button:hover {
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
+
+@keyframes registration-success-breathe {
+  0%, 100% {
+    transform: scale(1);
+    background-color: rgba(34, 197, 94, 0.15);
+  }
+  50% {
+    transform: scale(1.06);
+    background-color: rgba(34, 197, 94, 0.24);
+  }
+}
+
+.registration-success-breathe {
+  animation: registration-success-breathe 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .registration-success-breathe {
+    animation: none;
+  }
+}

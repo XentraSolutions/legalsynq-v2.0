@@ -71,7 +71,7 @@ permissions seeded by `20260627000002_SeedSynqLienSalePermissions`.
 ## External Integrations
 
 - **AWS Route53** — DNS record management for tenant subdomain provisioning
-- **Notifications service** — transactional email delivery (invite, password reset)
+- **Notifications service** — transactional email delivery (tenant-registration acceptance before DNS/product provisioning, invite, password reset). Registration acceptance embeds the LegalSynq logo as an inline attachment so it does not depend on the not-yet-provisioned tenant hostname.
 - **Tenant service** — dual-write sync for tenant data consistency
 - **Documents service** — logo registration after tenant logo upload
 - **Audit service** — all identity events published via `LegalSynq.AuditClient`

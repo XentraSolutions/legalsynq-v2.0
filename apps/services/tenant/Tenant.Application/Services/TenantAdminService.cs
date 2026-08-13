@@ -224,7 +224,8 @@ public class TenantAdminService : ITenantAdminService
 
     public async Task<AdminCreateTenantResponse> CreateTenantAsync(
         AdminCreateTenantRequest request,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool tenantRegistrationApproval = false)
     {
         // ── Validate inputs ────────────────────────────────────────────────────
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -282,7 +283,8 @@ public class TenantAdminService : ITenantAdminService
             Latitude:          request.Latitude,
             Longitude:         request.Longitude,
             GeoPointSource:    request.GeoPointSource,
-            Products:          null);
+            Products:          null,
+            TenantRegistrationApproval: tenantRegistrationApproval);
 
         var provResult = await _identityProvisioning.ProvisionAsync(provisioningRequest, ct);
 

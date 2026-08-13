@@ -49,7 +49,8 @@ public interface ITenantAdminService
     /// </summary>
     Task<AdminCreateTenantResponse> CreateTenantAsync(
         AdminCreateTenantRequest request,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool tenantRegistrationApproval = false);
 
     /// <summary>
     /// TENANT-B12 — Admin entitlement toggle (Tenant-first).

@@ -20,6 +20,20 @@ namespace BuildingBlocks.Notifications;
 /// </summary>
 public static class NotificationTaxonomy
 {
+    // ── Tenant registration domain ───────────────────────────────────────────
+
+    public static class Tenant
+    {
+        public const string ProductKey   = "tenant";
+        public const string SourceSystem = "tenant-service";
+
+        public static class Events
+        {
+            public const string RegistrationSubmitted = "tenant.registration.submitted";
+            public const string RegistrationDeclined  = "tenant.registration.declined";
+        }
+    }
+
     // ── Liens domain ──────────────────────────────────────────────────────────
 
     /// <summary>All canonical event keys produced by the Liens service.</summary>
