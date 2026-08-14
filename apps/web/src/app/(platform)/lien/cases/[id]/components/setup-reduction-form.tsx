@@ -476,7 +476,7 @@ export function SetupReductionForm({
       title="Reduction Details"
       submitLabel={saving ? "Saving..." : "Save"}
       submitDisabled={saving || checkedIds.size === 0}
-      size="lg"
+      size="xl"
     >
       <div className="space-y-5">
         <div>

@@ -568,7 +568,7 @@ export function CreateCaseForm({
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Notes
+              Case Tracking Notes
             </label>
             <textarea
               value={form.notes}

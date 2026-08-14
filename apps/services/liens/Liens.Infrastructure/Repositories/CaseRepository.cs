@@ -39,6 +39,13 @@ public class CaseRepository : ICaseRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<Case?> GetByExternalReferenceAsync(Guid tenantId, string externalReference, CancellationToken ct = default)
+    {
+        return await _db.Cases
+            .Where(c => c.TenantId == tenantId && c.ExternalReference == externalReference)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<List<Case>> GetByCaseNumberPrefixAsync(Guid tenantId, string caseNumberPrefix, CancellationToken ct = default)
     {
         return await _db.Cases

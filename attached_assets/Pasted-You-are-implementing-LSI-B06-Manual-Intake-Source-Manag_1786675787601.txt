@@ -1,0 +1,1875 @@
+You are implementing LSI-B06 — Manual Intake & Source Management for Synq Intake in the LegalSynq v3 repository.
+
+EXECUTION DIRECTIVE
+
+Execute this ticket now.
+
+Do not stop after reviewing requirements.
+Do not return a plan for approval.
+Do not ask whether to proceed.
+Implement the full scoped LSI-B06 work in this execution, run the required local validation, and produce /analysis/LSI-B06-report.md when complete.
+
+If a minor implementation decision is needed and the requirements already establish the intended behavior, make the safest architecture-consistent decision and continue.
+
+Only stop for a genuine blocking condition that cannot be resolved from the repository or these requirements.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Required implementation report: /analysis/LSI-B06-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B06 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, or production deployment work.
+3. Do not implement Synq AI classification/extraction, OCR, matching, confidence scoring, human review, Case/Lien creation, downstream routing, Flow, notifications, real mailbox polling, Graph/Gmail/IMAP ingestion, SFTP, HL7, archive recursive extraction, or custom malware scanning.
+4. Preserve all prior analysis reports as read-only.
+5. Create/update only /analysis/LSI-B06-report.md for this ticket.
+6. Reuse the current LegalSynq v3 architecture, packages, authentication, authorization, tenant context, EF, MySQL, audit, Documents client, Intake artifact services, logging, and frontend conventions.
+7. Before coding, inspect:
+   - current branch and git status;
+   - HEAD vs origin/xenia;
+   - B02 tenant configuration/profile framework;
+   - B03 TenantIntakeSource/source-management APIs;
+   - B04 InboundEmail repository and processing status;
+   - B05 IntakeArtifact model and Documents adapter/client;
+   - current IntakeDbContext and migrations;
+   - current API authorization policies;
+   - current tenant portal/frontend conventions;
+   - existing form/upload/navigation patterns;
+   - current Intake tests and any HTTP integration-test infrastructure.
+8. Record repository baseline and initial working-tree state in /analysis/LSI-B06-report.md before implementation.
+9. Preserve unrelated pre-existing changes.
+10. Do not commit uploaded specifications, prompt assets, generated binaries, local databases, secrets, or unrelated artifacts.
+11. Local/repository validation is required.
+12. Do not claim GitHub CI, deployed runtime, AWS, cloud, or production validation unless separately proven.
+13. Do not begin LSI-B07 automatically.
+14. Do not push unless explicitly requested.
+
+LOCKED PLATFORM STACK
+Use existing LegalSynq v3 conventions:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT Bearer/service-token authentication
+- existing ICurrentRequestContext tenant conventions
+- existing YARP gateway conventions
+- LegalSynq.AuditClient where applicable
+- existing Documents Service adapter/client/contracts from B05
+- existing React/Next.js/Tailwind tenant frontend conventions where frontend scope is implemented
+- existing structured logging, configuration, health, and testing conventions
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+
+Synq Intake remains:
+- tenant-bound
+- product-neutral
+- independently deployable
+- source-preserving
+- profile-driven
+
+B06 adds a second intake path but must converge on the same canonical artifact pipeline.
+
+LOCKED HIGH-LEVEL FLOW
+
+EMAIL:
+TenantIntakeSource
+-> InboundEmail
+-> IntakeArtifact
+-> Documents Service
+
+MANUAL:
+Authenticated Tenant User
+-> Manual Intake Submission
+-> IntakeArtifact
+-> Documents Service
+
+Both paths must converge on the same artifact/document-management model.
+
+OBJECTIVE
+
+Implement two operational capabilities:
+
+A. Manual Intake
+Allow authorized tenant users to manually submit one or more files into Synq Intake, preserve submission provenance, validate B02 processing profile configuration, create/reuse B05-style IntakeArtifacts, upload files through Documents Service, expose submission state, and allow retry of failed artifacts.
+
+B. Source Management
+Expose the existing B03 source-management capability as a usable tenant-administration experience for listing, creating, editing, enabling/disabling, default selection, validation, connector testing, provider capability inspection, and source-health/status inspection.
+
+The implementation must not classify or interpret document business meaning.
+
+==================================================
+1. MANUAL SOURCE TYPE
+==================================================
+
+Extend the Intake source-type registry to support:
+
+EMAIL
+MANUAL
+
+Manual intake tenant identity comes only from:
+
+Authenticated request context
+-> TenantId
+
+Do NOT accept arbitrary TenantId as authoritative input from normal tenant requests.
+
+Do NOT infer tenant from:
+- uploaded filenames;
+- document contents;
+- metadata;
+- purpose;
+- processing profile;
+- user-entered notes.
+
+==================================================
+2. MANUAL INTAKE SUBMISSION MODEL
+==================================================
+
+Create an Intake-owned aggregate:
+
+ManualIntakeSubmission
+
+or a broader IntakeSubmission abstraction only if it can be introduced without destabilizing B04/B05.
+
+Recommended conceptual fields:
+
+- Id
+- TenantId
+- OrgId if supported
+- SourceType = MANUAL
+- Purpose
+- ProcessingProfileCode
+- TenantConfigurationVersion
+- TenantProfileConfigurationVersion
+- SubmittedByUserId
+- SubmittedByDisplayName if available
+- SubmittedAt
+- Title
+- ExternalReference
+- Notes
+- Status
+- ArtifactProcessingStatus if separate
+- Version / ConfigurationVersion
+- ClientRequestId or equivalent idempotency key if implemented
+- CreatedAt
+- UpdatedAt
+
+Do not add AI, review, Case, Lien, or downstream-routing fields.
+
+==================================================
+3. MANUAL INTAKE PROVENANCE
+==================================================
+
+Every manual submission must preserve:
+
+- TenantId
+- OrgId where available
+- SubmittedByUserId
+- SubmittedByDisplayName where available
+- SubmittedAt
+- SourceType = MANUAL
+- Purpose
+- ProcessingProfileCode
+- TenantConfigurationVersion
+- TenantProfileConfigurationVersion
+
+Optional user-entered provenance:
+
+- Title
+- ExternalReference
+- Notes
+
+Tenant provenance must become immutable after final submission.
+
+==================================================
+4. PURPOSE
+==================================================
+
+Initial supported purpose:
+
+LIEN_INTAKE
+
+Purpose must be explicit.
+
+Do not infer purpose from:
+- filename;
+- file content;
+- user identity;
+- document metadata.
+
+==================================================
+5. PROCESSING PROFILE
+==================================================
+
+Initial supported profile:
+
+LIEN_INTAKE_V1
+
+Validate through B02:
+
+1. tenant Intake exists and is enabled;
+2. global profile definition exists;
+3. global profile is active;
+4. tenant profile assignment exists;
+5. tenant profile assignment is enabled;
+6. LIEN_INTAKE is compatible with LIEN_INTAKE_V1.
+
+Do not duplicate B02 configuration inside B06.
+
+==================================================
+6. DEFAULT PROFILE BEHAVIOR
+==================================================
+
+For manual intake:
+
+If the tenant has a valid B02 default processing profile compatible with LIEN_INTAKE:
+- allow the API/UI to default to it.
+
+If no compatible default exists:
+- require explicit profile selection.
+
+Do not infer profile from document content.
+
+==================================================
+7. SUBMISSION LIFECYCLE
+==================================================
+
+Use a simple deterministic lifecycle.
+
+Recommended:
+
+DRAFT
+SUBMITTED
+PROCESSING
+READY
+PARTIAL
+FAILED
+CANCELLED
+
+Do not introduce AI/review states.
+
+READY means:
+- submission metadata persisted;
+- all eligible artifacts processed successfully;
+- durable Documents references available;
+- submission is ready for later B07 classification.
+
+PARTIAL means:
+- some artifacts completed;
+- at least one eligible artifact failed/skipped according to policy.
+
+FAILED means:
+- no eligible artifact completed successfully or submission cannot proceed.
+
+==================================================
+8. DRAFT STRATEGY
+==================================================
+
+If draft support is practical with current architecture:
+
+Allow:
+- create draft;
+- edit title/reference/notes;
+- add/remove files before final submission;
+- select/change compatible profile before final submission;
+- cancel draft.
+
+After SUBMITTED:
+- TenantId immutable;
+- Purpose immutable;
+- ProcessingProfileCode immutable;
+- SubmittedBy immutable;
+- SubmittedAt immutable;
+- source artifact provenance immutable.
+
+If draft support would significantly complicate the architecture, an atomic create-and-submit flow is acceptable.
+
+Document the chosen model.
+
+==================================================
+9. SUBMISSION CONCURRENCY
+==================================================
+
+Mutable submissions must use optimistic concurrency.
+
+Add:
+
+Version
+or
+ConfigurationVersion
+
+Rules:
+- starts at 1;
+- increments on mutable changes;
+- stale update returns HTTP 409;
+- final submission prevents silent overwrite.
+
+Suggested error:
+
+STALE_MANUAL_INTAKE_VERSION
+
+==================================================
+10. MANUAL FILE SUBMISSION
+==================================================
+
+Support one or more files per manual intake submission.
+
+Every file must enter the same B05 artifact/document pipeline.
+
+Flow:
+
+ManualIntakeSubmission
+-> source file descriptor
+-> IntakeArtifact
+-> Documents Service
+-> durable Documents reference
+
+Do not create a second document storage system.
+
+==================================================
+11. REUSE B05 INTAKEARTIFACT
+==================================================
+
+Reuse and generalize the existing B05 IntakeArtifact model where possible.
+
+Manual artifact provenance must distinguish manual source origin.
+
+Preferred options:
+
+A. Nullable explicit parent references:
+
+InboundEmailId
+ManualIntakeSubmissionId
+
+with a source-parent invariant.
+
+or
+
+B. Generic source-parent model:
+
+ArtifactSourceType
+ArtifactSourceRecordId
+
+Choose the least disruptive architecture that preserves B04/B05 referential integrity.
+
+Avoid introducing a completely separate ManualArtifact entity unless absolutely necessary.
+
+==================================================
+12. ARTIFACT PARENT INVARIANT
+==================================================
+
+Each IntakeArtifact must belong to exactly one supported source parent.
+
+Conceptually:
+
+InboundEmail XOR ManualIntakeSubmission
+
+Enforce:
+- in application code;
+- in database constraints where practical.
+
+Existing email artifacts must continue to work unchanged.
+
+==================================================
+13. MANUAL ARTIFACT PROVENANCE
+==================================================
+
+Manual artifacts should preserve:
+
+- TenantId
+- ManualIntakeSubmissionId
+- TenantIntakeSourceId only if semantically applicable; normally null for manual
+- ArtifactType
+- ArtifactRole
+- ArtifactOrdinal
+- OriginalFileName
+- EffectiveFileName
+- DeclaredContentType
+- SizeBytes
+- Sha256
+- ArtifactKey
+- Documents identifiers/reference
+- lifecycle/failure/retry fields
+
+Use an artifact type/role that clearly represents manual-upload provenance.
+
+Do not represent a manual upload as an EMAIL_ATTACHMENT.
+
+Add an appropriate stable type, for example:
+
+MANUAL_UPLOAD
+
+Use existing artifact role semantics where possible.
+
+==================================================
+14. DOCUMENTS SERVICE REUSE
+==================================================
+
+Manual file processing must use the existing B05 Documents adapter/client.
+
+Do not:
+- write directly to Documents DB;
+- write directly to Documents storage;
+- duplicate Documents upload logic;
+- create a second signed-token implementation if B05 already has one.
+
+Reuse:
+- tenant scoping;
+- idempotency/reconciliation;
+- service-token behavior;
+- safe metadata;
+- error mapping;
+- retry behavior.
+
+==================================================
+15. DOCUMENTS METADATA
+==================================================
+
+When supported by Documents Service, send safe provenance such as:
+
+SourceSystem = SYNQ_INTAKE
+SourceType = MANUAL
+TenantId
+OrgId
+ManualIntakeSubmissionId
+IntakeArtifactId
+Purpose
+ProcessingProfileCode
+OriginalFileName
+ContentType
+Sha256
+
+Do not add business-document classifications.
+
+==================================================
+16. FILE SAFETY
+==================================================
+
+Reuse B05 safety behavior:
+
+- path traversal prevention;
+- filename normalization;
+- deterministic effective filename;
+- SHA-256;
+- size validation;
+- file-count validation;
+- total byte limit;
+- unsupported-type handling;
+- no execution;
+- no archive recursive extraction.
+
+Do not trust declared MIME type for execution/security.
+
+==================================================
+17. MANUAL FILE LIMITS
+==================================================
+
+Reuse B05 limits where appropriate.
+
+At minimum support configurable:
+
+MaxArtifactBytes
+MaxArtifactsPerSubmission
+MaxTotalArtifactBytesPerSubmission
+
+If the existing B05 options already provide equivalent configuration, reuse them.
+
+Do not create conflicting duplicate limits unless necessary.
+
+==================================================
+18. UNSUPPORTED FILE POLICY
+==================================================
+
+Use B02 effective configuration:
+
+AllowUnsupportedDocuments
+
+Behavior must match the B05 artifact-processing policy.
+
+If unsupported content is not allowed:
+- mark that artifact SKIPPED or FAILED according to existing B05 semantics;
+- preserve metadata;
+- do not fail unrelated valid files unless profile policy explicitly requires all-or-nothing behavior.
+
+==================================================
+19. MANUAL ARTIFACT IDEMPOTENCY
+==================================================
+
+Manual file processing must be retry-safe.
+
+Use deterministic ArtifactKey identity.
+
+Potential key inputs:
+
+ManualIntakeSubmissionId
++
+ArtifactOrdinal
++
+SHA-256
++
+safe filename/source identity
+
+Enforce uniqueness at database level.
+
+Repeated processing must not duplicate IntakeArtifact rows.
+
+==================================================
+20. DOCUMENT UPLOAD IDEMPOTENCY
+==================================================
+
+Reuse B05 Documents idempotency/reconciliation strategy.
+
+Completed artifact:
+- must not upload again.
+
+Retryable failed artifact:
+- may retry.
+
+Ambiguous upstream outcome:
+- reconcile using deterministic Documents reference before blindly creating another document.
+
+Do not weaken B05 semantics.
+
+==================================================
+21. SUBMISSION IDEMPOTENCY
+==================================================
+
+Avoid duplicate manual submissions caused by network/client retry.
+
+Prefer:
+
+ClientRequestId
+
+or existing platform idempotency convention.
+
+For a supplied idempotency key:
+
+TenantId + ClientRequestId
+
+should resolve to one canonical submission.
+
+Do not duplicate submission/artifacts on replay.
+
+==================================================
+22. PARTIAL SUCCESS
+==================================================
+
+Support partial success.
+
+Example:
+
+5 submitted files
+4 COMPLETED
+1 FAILED
+
+Submission status:
+
+PARTIAL
+
+Successful artifacts remain usable.
+
+Retry should operate only on failed/retryable artifacts.
+
+==================================================
+23. RETRY
+==================================================
+
+Allow retry of failed manual artifacts.
+
+Requirements:
+- tenant-scoped;
+- AttemptCount increments;
+- completed artifacts not re-uploaded;
+- failed/retryable only;
+- safe Documents reconciliation;
+- submission aggregate state recalculated afterward.
+
+==================================================
+24. CANCELLATION
+==================================================
+
+Cancellation must be non-destructive.
+
+Recommended:
+
+DRAFT -> CANCELLED
+
+Optionally allow FAILED/PARTIAL -> CANCELLED if consistent with product behavior.
+
+Cancellation must NOT:
+- delete Documents records;
+- delete completed artifacts;
+- purge audit history.
+
+Do not allow cancellation of READY/SUBMITTED state if it creates ambiguous historical evidence unless current lifecycle explicitly supports it.
+
+==================================================
+25. MANUAL INTAKE SERVICE
+==================================================
+
+Create:
+
+IManualIntakeService
+
+or closest repository convention.
+
+Responsibilities:
+
+- create submission;
+- validate tenant/profile;
+- list tenant submissions;
+- get tenant submission;
+- update mutable draft metadata;
+- submit;
+- cancel;
+- attach/register files;
+- initiate B05 artifact processing;
+- retry failed artifact;
+- recompute submission status;
+- emit audit/log events;
+- enforce idempotency/concurrency.
+
+Do not duplicate Documents logic already present in B05 services.
+
+==================================================
+26. PROCESSING FLOW
+==================================================
+
+Preferred flow:
+
+create/update submission
+-> commit submission metadata
+-> create/claim IntakeArtifacts
+-> commit
+-> upload artifacts through B05/Documents logic
+-> persist per-artifact outcomes
+-> recalculate submission status
+
+Do not hold a database transaction open during long file/network upload operations.
+
+==================================================
+27. PROCESSING TRIGGER
+==================================================
+
+After final submit:
+
+commit submission
+-> trigger artifact processing
+
+Use existing LegalSynq durable event/outbox mechanism if available and appropriate.
+
+Otherwise use a safe internal command/application invocation after commit.
+
+Do not introduce a new distributed messaging platform.
+
+==================================================
+28. OPTIONAL EVENT
+==================================================
+
+If current architecture uses events, a versioned event may be added:
+
+ManualIntakeSubmittedV1
+
+Fields:
+
+- TenantId
+- SubmissionId
+- Purpose
+- ProcessingProfileCode
+- OccurredAt
+- CorrelationId
+
+Do not place file bytes or sensitive content on the event.
+
+==================================================
+29. MANUAL INTAKE APIs
+==================================================
+
+Recommended routes:
+
+GET /manual-intake
+POST /manual-intake
+GET /manual-intake/{submissionId}
+PUT /manual-intake/{submissionId}
+POST /manual-intake/{submissionId}/submit
+POST /manual-intake/{submissionId}/cancel
+
+If an atomic create-and-submit flow is selected:
+
+POST /manual-intake
+
+may perform both.
+
+Follow current API conventions.
+
+==================================================
+30. MANUAL FILE UPLOAD API
+==================================================
+
+Use the repository-standard multipart pattern.
+
+Potential route:
+
+POST /manual-intake/{submissionId}/files
+
+or multipart:
+
+POST /manual-intake
+
+if using direct submission.
+
+Requirements:
+- tenant-scoped;
+- bounded upload;
+- no TenantId override;
+- file count validation;
+- size validation;
+- safe filename handling;
+- no direct client write to Documents storage.
+
+==================================================
+31. MANUAL ARTIFACT API
+==================================================
+
+Reuse B05 artifact behavior where practical.
+
+Potential routes:
+
+GET /manual-intake/{submissionId}/artifacts
+POST /manual-intake/{submissionId}/artifacts/{artifactId}/retry
+
+If generic B05 artifact routes can support manual submissions cleanly, reuse those instead of duplicating endpoint logic.
+
+==================================================
+32. MANUAL INTAKE LIST
+==================================================
+
+GET /manual-intake
+
+Requirements:
+- tenant-scoped;
+- paginated;
+- projection only;
+- no document binaries;
+- no large content.
+
+Support useful filters:
+
+status
+purpose
+processingProfileCode
+submittedBy
+fromDate
+toDate
+hasFailures
+
+Default sort:
+
+SubmittedAt DESC
+Id DESC
+
+==================================================
+33. MANUAL INTAKE DETAIL
+==================================================
+
+GET /manual-intake/{submissionId}
+
+Return:
+- submission metadata;
+- source type;
+- tenant-safe provenance;
+- submitter;
+- purpose/profile;
+- status;
+- version;
+- artifact summary;
+- artifact list/reference metadata;
+- safe failure information;
+- timestamps.
+
+Do not return binary files directly.
+
+==================================================
+34. MANUAL INTAKE ANALYTICS
+==================================================
+
+Add lightweight tenant-scoped analytics.
+
+Suggested:
+
+TotalManualSubmissions
+SubmissionsByStatus
+SubmissionsByDay
+ArtifactsUploaded
+ArtifactFailures
+AverageFilesPerSubmission
+
+Potential route:
+
+GET /manual-intake/analytics
+
+Do not build a broad BI platform.
+
+==================================================
+35. UNIFIED SOURCE-TYPE ANALYTICS
+==================================================
+
+Where cleanly possible, allow high-level Intake reporting to distinguish:
+
+EMAIL
+MANUAL
+
+Do not rewrite B04 analytics architecture merely to achieve this.
+
+Keep the extension minimal.
+
+==================================================
+36. AUTHORIZATION — MANUAL INTAKE
+==================================================
+
+Introduce/reuse policies such as:
+
+intake.manual.read
+intake.manual.create
+intake.manual.manage
+
+Map existing PlatformAdmin/TenantAdmin roles where appropriate.
+
+Do not automatically grant all authenticated users unless current platform conventions explicitly do so.
+
+==================================================
+37. TENANT ISOLATION — MANUAL
+==================================================
+
+Mandatory:
+
+- Tenant A cannot list Tenant B submissions.
+- Tenant A cannot get Tenant B submission.
+- Tenant A cannot update Tenant B draft.
+- Tenant A cannot submit Tenant B record.
+- Tenant A cannot cancel Tenant B record.
+- Tenant A cannot upload to Tenant B submission.
+- Tenant A cannot retry Tenant B artifact.
+- Tenant A cannot cause Tenant B Documents upload.
+- caller-provided TenantId cannot override authenticated context.
+
+==================================================
+38. MANUAL INTAKE AUDIT
+==================================================
+
+Suggested operations:
+
+MANUAL_INTAKE_CREATED
+MANUAL_INTAKE_UPDATED
+MANUAL_INTAKE_FILE_ADDED
+MANUAL_INTAKE_SUBMITTED
+MANUAL_INTAKE_CANCELLED
+MANUAL_INTAKE_ARTIFACT_RETRIED
+
+Safe metadata:
+
+- TenantId
+- SubmissionId
+- Purpose
+- ProcessingProfileCode
+- status
+- artifact count
+- ActorId
+- CorrelationId
+- Version
+
+Do not place:
+- file bytes;
+- document contents;
+- secrets;
+- full sensitive notes if unnecessary
+in audit events.
+
+==================================================
+39. MANUAL INTAKE LOGGING
+==================================================
+
+Structured logs may include:
+
+- CorrelationId
+- TenantId
+- SubmissionId
+- Purpose
+- ProcessingProfileCode
+- ArtifactCount
+- Status
+- ActorId
+- Result
+
+Never log:
+- file bytes;
+- raw document text;
+- Documents tokens;
+- mailbox credentials;
+- authorization headers.
+
+==================================================
+40. STABLE MANUAL ERRORS
+==================================================
+
+Define deterministic error codes such as:
+
+MANUAL_INTAKE_NOT_FOUND
+MANUAL_INTAKE_INVALID_STATE
+MANUAL_INTAKE_PROFILE_UNAVAILABLE
+MANUAL_INTAKE_FILE_LIMIT_EXCEEDED
+MANUAL_INTAKE_FILE_SIZE_EXCEEDED
+MANUAL_INTAKE_NO_FILES
+MANUAL_INTAKE_DUPLICATE_REQUEST
+STALE_MANUAL_INTAKE_VERSION
+
+Reuse B05 artifact/Documents error codes where applicable.
+
+==================================================
+41. SOURCE MANAGEMENT — REUSE B03
+==================================================
+
+Do not rebuild source-management business rules.
+
+B06 source management is the operational/UI exposure of B03.
+
+Reuse:
+
+GET /sources
+POST /sources
+GET /sources/{sourceId}
+PUT /sources/{sourceId}
+PATCH /sources/{sourceId}/status
+POST /sources/{sourceId}/validate
+POST /sources/{sourceId}/test
+
+and B03 provider/source registries.
+
+==================================================
+42. SOURCE MANAGEMENT CAPABILITIES
+==================================================
+
+Tenant administrators must be able to:
+
+- list sources;
+- create source;
+- edit source;
+- enable/disable;
+- set/remove default where supported;
+- validate;
+- test connector;
+- inspect provider capabilities;
+- inspect validation state;
+- inspect configuration version.
+
+Do not create duplicate source-management persistence.
+
+==================================================
+43. SOURCE LIST VIEW MODEL
+==================================================
+
+Expose/display:
+
+- DisplayName where available
+- EmailAddress
+- SourceType
+- Provider
+- Purpose
+- ProcessingProfileCode
+- IsActive
+- IsDefault
+- ValidationStatus
+- LastValidatedAt
+- ConfigurationVersion
+
+Do not expose credential values.
+
+==================================================
+44. SOURCE CREATE EXPERIENCE
+==================================================
+
+Source creation should guide:
+
+Source Type
+-> Email Address
+-> Provider
+-> Purpose
+-> Processing Profile
+-> Connector Configuration
+-> Credential Reference
+-> Validate
+-> Save
+
+Registry/dropdown data should come from APIs where practical.
+
+Do not hardcode provider/profile lists in frontend when APIs already expose them.
+
+==================================================
+45. SOURCE EDIT EXPERIENCE
+==================================================
+
+Use B03 optimistic concurrency.
+
+Expected ConfigurationVersion must be included.
+
+On:
+
+409 STALE_SOURCE_CONFIGURATION_VERSION
+
+UI/API should clearly require refresh rather than silently overwrite.
+
+==================================================
+46. SOURCE DISABLE EXPERIENCE
+==================================================
+
+Respect B03:
+
+- disabling source stops future ingestion;
+- historical emails remain;
+- email ownership remains reserved.
+
+If source is current default:
+
+DEFAULT_SOURCE_MUST_BE_CHANGED_FIRST
+
+must surface clearly to the user.
+
+==================================================
+47. SOURCE VALIDATION EXPERIENCE
+==================================================
+
+Expose B03 source validation.
+
+Status values may include:
+
+NOT_VALIDATED
+VALID
+INVALID
+UNAVAILABLE
+
+Show safe validation messages only.
+
+Do not expose tokens, credential contents, or raw provider failures containing secrets.
+
+==================================================
+48. CONNECTOR TEST EXPERIENCE
+==================================================
+
+Where B03 supports connector test:
+
+Test Connection
+
+If provider is configuration-only and live mailbox connectivity is not implemented, report that accurately.
+
+Do not display false success.
+
+==================================================
+49. PROVIDER CAPABILITIES
+==================================================
+
+Expose B03 registry capability information:
+
+SupportsPolling
+SupportsWebhook
+SupportsOAuth
+SupportsAttachmentRetrieval
+SupportsMessageIdLookup
+SupportsMailboxFolders
+
+Display only actual implemented capabilities.
+
+==================================================
+50. SOURCE AUTHORIZATION
+==================================================
+
+Reuse:
+
+intake.sources.read
+intake.sources.manage
+
+Source administration remains administrator/authorized-management behavior.
+
+Do not introduce weaker B06-specific source permissions.
+
+==================================================
+51. SOURCE TENANT ISOLATION
+==================================================
+
+Mandatory operational/API tests:
+
+- Tenant A cannot list Tenant B sources.
+- Tenant A cannot read Tenant B source.
+- Tenant A cannot edit Tenant B source.
+- Tenant A cannot disable Tenant B source.
+- Tenant A cannot validate/test Tenant B source.
+- Tenant A cannot set Tenant B default.
+
+==================================================
+52. FRONTEND SCOPE
+==================================================
+
+Inspect current tenant/admin frontend structure.
+
+If a suitable tenant portal exists, implement operational UI for:
+
+Intake
+- Manual Intake
+- Manual Intake History
+- Sources
+
+Use current LegalSynq layout/navigation/component conventions.
+
+Do not create a second frontend framework.
+
+==================================================
+53. MANUAL INTAKE PAGE
+==================================================
+
+Provide a usable manual submission experience.
+
+Recommended UI:
+
+Manual Intake
+
+Purpose
+Processing Profile
+
+Files
+[ Add Files ]
+
+Optional Reference
+Notes
+
+[ Submit Intake ]
+
+Show:
+- selected files;
+- file count;
+- file sizes;
+- validation errors;
+- upload/submission state;
+- per-file artifact result where available;
+- retry action for failed artifacts.
+
+==================================================
+54. MANUAL INTAKE HISTORY PAGE
+==================================================
+
+Display:
+
+- Submission ID
+- Submitted At
+- Submitted By
+- Purpose
+- Profile
+- File count
+- Status
+- failure indicator
+
+Support:
+- pagination;
+- status filter;
+- date filter;
+- purpose/profile filter as practical.
+
+==================================================
+55. MANUAL INTAKE DETAIL PAGE
+==================================================
+
+Show:
+
+- submission summary;
+- source type;
+- submitter;
+- purpose/profile;
+- timestamps;
+- artifacts;
+- Documents state/reference metadata;
+- safe failures;
+- retries where authorized.
+
+Do not expose raw document bytes.
+
+==================================================
+56. SOURCE MANAGEMENT PAGE
+==================================================
+
+Recommended columns:
+
+Source
+Email
+Provider
+Purpose
+Profile
+Active
+Default
+Validation
+Last Validated
+
+Actions:
+
+Edit
+Validate
+Test
+Enable/Disable
+Set Default
+
+Use existing visual/status conventions.
+
+==================================================
+57. SOURCE CREATE/EDIT PAGE
+==================================================
+
+Drive fields from B03 registry APIs:
+
+Source Type
+Display Name
+Email Address
+Provider
+Purpose
+Processing Profile
+Connector Configuration
+Credential Reference
+Active
+Default
+
+Do not display resolved secrets.
+
+==================================================
+58. SENSITIVE INPUT HANDLING
+==================================================
+
+Credential references may be displayed only as references where needed.
+
+Never:
+- fetch secret values into frontend;
+- prepopulate raw credentials;
+- display OAuth refresh tokens;
+- display provider passwords.
+
+==================================================
+59. ACCESSIBILITY / UX
+==================================================
+
+Frontend must follow existing accessibility standards.
+
+At minimum:
+- keyboard accessible controls;
+- labels for inputs;
+- non-color-only status indicators;
+- clear validation messages;
+- visible upload errors;
+- clear retry state;
+- disabled/loading states.
+
+==================================================
+60. API CLIENT INTEGRATION
+==================================================
+
+Reuse existing frontend API-client/auth patterns.
+
+Do not:
+- hardcode tenant IDs;
+- bypass gateway conventions;
+- call service-internal ports directly from browser;
+- duplicate auth token handling.
+
+==================================================
+61. DATABASE SCHEMA
+==================================================
+
+Create:
+
+ManualIntakeSubmissions
+
+or approved generic IntakeSubmissions equivalent.
+
+Potential columns:
+
+- Id
+- TenantId
+- OrgId
+- SourceType
+- Purpose
+- ProcessingProfileCode
+- TenantConfigurationVersion
+- TenantProfileConfigurationVersion
+- SubmittedByUserId
+- SubmittedByDisplayName
+- SubmittedAt
+- Title
+- ExternalReference
+- Notes
+- Status
+- Version
+- ClientRequestId
+- CreatedAt
+- UpdatedAt
+
+Only include fields justified by implemented behavior.
+
+==================================================
+62. ARTIFACT SCHEMA UPDATE
+==================================================
+
+Extend IntakeArtifacts as necessary to support manual source provenance.
+
+Potential:
+
+ManualIntakeSubmissionId nullable
+
+while preserving:
+
+InboundEmailId nullable/required according to refactor.
+
+Enforce source-parent exclusivity.
+
+Existing B05 email artifacts must remain valid.
+
+==================================================
+63. MANUAL SUBMISSION INDEXES
+==================================================
+
+Add indexes based on actual queries.
+
+Likely:
+
+(TenantId, SubmittedAt)
+(TenantId, Status, SubmittedAt)
+(TenantId, Purpose, SubmittedAt)
+(TenantId, SubmittedByUserId, SubmittedAt)
+
+If ClientRequestId is implemented:
+
+UNIQUE (TenantId, ClientRequestId)
+
+with appropriate nullable/idempotency behavior.
+
+==================================================
+64. MIGRATION
+==================================================
+
+Create a B06 migration.
+
+Suggested:
+
+AddManualIntakeSubmissions
+
+or closest repository convention.
+
+Migration may:
+- create ManualIntakeSubmissions;
+- safely extend IntakeArtifacts.
+
+Do not create AI, review, Case, Lien, Flow, Notification, or product-domain tables.
+
+==================================================
+65. HTTP INTEGRATION TEST PRIORITY
+==================================================
+
+B06 should strongly prioritize HTTP integration tests because B02-B05 carried this testing gap.
+
+Use WebApplicationFactory or the current repository equivalent if practical.
+
+Do not stop implementation merely because the repository lacks existing HTTP infrastructure; add the smallest maintainable integration-test foundation if feasible.
+
+==================================================
+66. REQUIRED HTTP TESTS — MANUAL
+==================================================
+
+Cover:
+
+POST /manual-intake
+GET /manual-intake
+GET /manual-intake/{id}
+
+If implemented:
+
+PUT /manual-intake/{id}
+POST /manual-intake/{id}/submit
+POST /manual-intake/{id}/cancel
+POST file-upload route
+artifact retry route
+analytics route
+
+Validate:
+
+- 401
+- 403
+- 404
+- 409
+- tenant isolation
+- multipart upload
+- file size/count errors
+- stale version
+- idempotent create where supported.
+
+==================================================
+67. REQUIRED HTTP TESTS — SOURCES
+==================================================
+
+Cover operational source routes:
+
+GET /sources
+POST /sources
+GET /sources/{id}
+PUT /sources/{id}
+PATCH /sources/{id}/status
+POST /sources/{id}/validate
+POST /sources/{id}/test where available
+
+Validate:
+
+- 401
+- 403
+- 404
+- 409
+- tenant isolation
+- duplicate normalized email
+- stale version
+- default-disable conflict.
+
+Avoid duplicating every B03 unit test; focus on HTTP/operational behavior.
+
+==================================================
+68. REQUIRED TESTS — MANUAL DOMAIN/APPLICATION
+==================================================
+
+Test:
+
+- create valid manual submission;
+- tenant binding;
+- LIEN_INTAKE;
+- LIEN_INTAKE_V1;
+- tenant Intake disabled;
+- profile unavailable;
+- profile disabled;
+- default profile use;
+- one file;
+- multiple files;
+- Unicode filename;
+- safe filename normalization;
+- oversized file;
+- too many files;
+- total byte limit;
+- unsupported file;
+- partial Documents success;
+- full success;
+- full failure;
+- retry;
+- stale submission version;
+- immutable submitted provenance;
+- cancellation rules.
+
+==================================================
+69. REQUIRED TESTS — MANUAL IDEMPOTENCY
+==================================================
+
+Test:
+
+- duplicate ClientRequestId returns same/canonical submission if implemented;
+- repeated process does not duplicate artifacts;
+- completed artifact not duplicated;
+- retry does not duplicate Documents record;
+- unique DB constraint protects submission idempotency where used.
+
+==================================================
+70. REQUIRED TESTS — MANUAL TENANT ISOLATION
+==================================================
+
+Test:
+
+- Tenant A cannot list Tenant B submissions;
+- cannot get Tenant B submission;
+- cannot update Tenant B draft;
+- cannot upload into Tenant B submission;
+- cannot submit/cancel Tenant B submission;
+- cannot retry Tenant B artifact;
+- Documents request receives only trusted tenant.
+
+==================================================
+71. REQUIRED TESTS — B05 REUSE
+==================================================
+
+Verify manual intake reuses existing B05 behavior for:
+
+- artifact hashing;
+- filename safety;
+- Documents upload;
+- Documents idempotency/reconciliation;
+- retry;
+- failure mapping;
+- tenant scoping.
+
+Do not fork duplicate implementations.
+
+==================================================
+72. MYSQL VALIDATION
+==================================================
+
+Apply the entire Intake migration chain to a clean disposable/local MySQL 8 instance.
+
+This validation should also close outstanding B04/B05 migration evidence if still pending.
+
+Verify at minimum:
+
+- B02 configuration tables;
+- B03 TenantIntakeSources;
+- B04 InboundEmails;
+- B04 InboundEmailCaptureFailures;
+- B05 IntakeArtifacts;
+- B06 ManualIntakeSubmissions;
+- updated artifact parent columns/constraints;
+- required FKs;
+- idempotency/uniqueness constraints;
+- tenant/date indexes.
+
+Run direct DB checks for:
+
+- duplicate ClientRequestId rejection if used;
+- artifact source-parent integrity where DB-enforced;
+- duplicate ArtifactKey rejection;
+- valid manual submission/artifact insert.
+
+Use no cloud/shared database.
+
+Clean up disposable container/data afterward.
+
+==================================================
+73. BACKEND BUILD VALIDATION
+==================================================
+
+At minimum run:
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj --no-restore -m:1
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj --no-restore -m:1
+
+dotnet build LegalSynq.sln --no-restore -m:1
+
+dotnet ef dbcontext info using repository-pinned tooling
+
+dotnet ef migrations list using repository-pinned tooling
+
+git diff --check
+
+git status --short
+
+git diff --stat
+
+git diff --name-status against B05 baseline
+
+Verify:
+- no Intake bin/obj tracked;
+- no secrets;
+- no uploaded spec assets added to implementation;
+- no unrelated product-domain changes.
+
+==================================================
+74. FRONTEND VALIDATION
+==================================================
+
+If frontend is implemented, run repository-standard equivalents of:
+
+- lint
+- typecheck
+- production build or app build where practical
+- focused component/page tests if existing framework supports them
+
+Do not introduce a new frontend test framework solely for B06.
+
+Document any pre-existing unrelated frontend failures separately.
+
+==================================================
+75. SECURITY VALIDATION
+==================================================
+
+Verify:
+
+- no arbitrary TenantId selection;
+- no cross-tenant manual submission access;
+- no cross-tenant source management;
+- no cross-tenant Documents upload;
+- no document bytes logged;
+- no secrets logged;
+- no credential values exposed in source UI/API;
+- no path traversal;
+- bounded uploads;
+- no direct Documents DB/storage access;
+- no arbitrary file execution;
+- no HTML/script execution;
+- no build artifacts tracked.
+
+==================================================
+76. PERFORMANCE REQUIREMENTS
+==================================================
+
+Manual submission list must use projection queries.
+
+Do not load:
+- document binaries;
+- unrelated artifact content;
+- raw email data.
+
+Uploads should:
+- stream where existing APIs allow;
+- enforce size/count limits;
+- avoid long DB transactions;
+- reuse B05 Documents client efficiently.
+
+==================================================
+77. AUDITABILITY
+==================================================
+
+The implementation must make it possible to answer:
+
+Who submitted this?
+When?
+For which tenant?
+Under which purpose/profile?
+Which files were included?
+Which IntakeArtifacts were created?
+Which Documents records were created?
+What failed?
+What was retried?
+What is the current submission state?
+
+without needing raw server logs.
+
+==================================================
+78. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- Synq AI classification
+- Synq AI extraction
+- OCR
+- medical document parsing
+- patient extraction
+- case extraction
+- facility extraction
+- business matching
+- confidence scoring
+- human review queue
+- Case creation
+- Lien creation
+- lien sale
+- SynqFund routing
+- CareConnect routing
+- Flow tasks
+- notifications
+- mailbox polling
+- Microsoft Graph retrieval
+- Gmail retrieval
+- IMAP retrieval
+- mailbox webhooks
+- SFTP
+- HL7
+- external API Intake
+- archive recursive extraction
+- custom malware engine
+- AWS
+- RDS
+- ECS
+- Route53
+- deployment
+
+==================================================
+79. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B06 is complete only when all are true:
+
+1. MANUAL is supported as an Intake source type.
+2. Authorized tenant users can create manual intake submissions.
+3. TenantId comes only from authenticated request context.
+4. LIEN_INTAKE is supported.
+5. LIEN_INTAKE_V1 is supported.
+6. B02 tenant Intake enablement is enforced.
+7. B02 global profile activation is enforced.
+8. B02 tenant profile assignment is enforced.
+9. B02 purpose/profile compatibility is enforced.
+10. default compatible profile may be used.
+11. manual submission provenance is persisted.
+12. submitter identity is persisted.
+13. submission lifecycle exists.
+14. mutable submission version/concurrency exists where applicable.
+15. submitted provenance becomes immutable.
+16. one or more files can be submitted.
+17. file count limits are enforced.
+18. per-file size limits are enforced.
+19. total size limits are enforced.
+20. filename/path safety is enforced.
+21. SHA-256 is computed.
+22. manual artifacts reuse IntakeArtifact.
+23. email artifacts remain compatible.
+24. artifact source-parent provenance is explicit.
+25. manual artifact type is distinct from email attachment type.
+26. Documents Service is reused through B05 adapter/client.
+27. Intake does not write directly to Documents DB/storage.
+28. Documents calls carry correct tenant scope.
+29. artifact/document idempotency is preserved.
+30. repeated processing does not duplicate artifacts.
+31. repeated retry does not duplicate Documents records.
+32. partial success is supported.
+33. failed artifacts can be retried.
+34. completed artifacts are not re-uploaded.
+35. submission status recalculates correctly after retry.
+36. cancellation is non-destructive.
+37. manual intake list exists.
+38. manual intake detail exists.
+39. pagination exists.
+40. useful filters exist.
+41. manual intake analytics exists where implemented.
+42. source-management list is operational.
+43. source create is operational.
+44. source edit is operational.
+45. source enable/disable is operational.
+46. default-source management is operational.
+47. source validation is operational.
+48. connector testing accurately reflects provider capabilities.
+49. provider capability metadata is exposed.
+50. source concurrency conflicts surface correctly.
+51. source secrets are never exposed.
+52. Tenant A cannot access Tenant B manual submissions.
+53. Tenant A cannot upload to Tenant B submission.
+54. Tenant A cannot retry Tenant B artifact.
+55. Tenant A cannot manage Tenant B source.
+56. Tenant A cannot cause Tenant B Documents upload.
+57. manual intake audit evidence exists.
+58. source actions continue using B03 audit behavior.
+59. logs omit file/document content and secrets.
+60. B06 migration exists.
+61. migration applies successfully to disposable MySQL 8.
+62. complete B02-B06 migration chain applies cleanly.
+63. B04/B05 previously pending MySQL migrations are validated as part of the chain if still outstanding.
+64. required FKs/indexes/uniqueness constraints exist.
+65. manual-intake domain/application tests pass.
+66. idempotency tests pass.
+67. tenant-isolation tests pass.
+68. source-management operational tests pass.
+69. HTTP integration tests cover critical manual/source paths where practical.
+70. Intake API builds with zero new B06 errors.
+71. Intake tests pass.
+72. frontend lint/typecheck/build passes if UI is added, except clearly documented pre-existing unrelated failures.
+73. full LegalSynq solution builds with zero new B06 errors.
+74. no Synq AI/OCR/matching/review/downstream routing is introduced.
+75. no deployment/cloud work is performed.
+76. no secrets/specification assets/build artifacts are introduced.
+77. /analysis/LSI-B06-report.md exists with complete evidence.
+
+==================================================
+80. REQUIRED REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B06-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree state
+8. B02/B03/B04/B05 architecture reviewed
+9. Existing B05 Documents adapter/client reuse
+10. Frontend architecture reviewed
+11. Files added
+12. Files modified
+13. Manual source-type implementation
+14. ManualIntakeSubmission model
+15. submission provenance
+16. submission lifecycle
+17. optimistic concurrency
+18. submission idempotency
+19. B02 profile validation/default behavior
+20. artifact parent-model strategy
+21. manual artifact type/provenance
+22. B05 artifact logic reuse
+23. Documents Service integration reuse
+24. file safety/limits
+25. unsupported-file policy
+26. processing flow
+27. trigger/event strategy
+28. partial-success behavior
+29. retry behavior
+30. cancellation behavior
+31. manual-intake APIs
+32. manual artifact APIs
+33. manual analytics
+34. source-management APIs reused
+35. provider/capability behavior
+36. source validation/testing behavior
+37. frontend pages/components
+38. frontend API integration
+39. authorization
+40. tenant isolation
+41. audit behavior
+42. logging behavior
+43. migration name
+44. database schema
+45. indexes/constraints
+46. full B02-B06 MySQL migration validation
+47. B04/B05 outstanding DB validation closure
+48. manual-intake tests
+49. idempotency tests
+50. tenant-isolation tests
+51. source-management tests
+52. HTTP integration tests
+53. frontend validation
+54. Intake API build result
+55. full solution build result
+56. security assessment
+57. performance considerations
+58. known gaps
+59. out-of-scope confirmation
+60. git diff summary
+61. final repository validation status
+62. recommended next bundle: LSI-B07
+
+Sanitize all local credentials, tokens, and disposable DB values.
+
+==================================================
+81. DEFINITION OF DONE
+==================================================
+
+The implementation is done when an authorized tenant user can:
+
+- manually submit files into Synq Intake;
+- preserve tenant, submitter, purpose, and processing-profile provenance;
+- have files processed through the same B05 IntakeArtifact/Documents pipeline used by email;
+- inspect submission and artifact status;
+- retry failed artifacts safely;
+- view historical manual submissions;
+- administer their tenant's Intake email sources through a usable management experience;
+
+while preserving tenant isolation and without introducing AI, OCR, matching, review, downstream product routing, or deployment work.
+
+At that point the primary MVP intake paths are:
+
+EMAIL
++
+MANUAL
+-> canonical Synq Intake artifacts
+
+When complete:
+
+- execute all required implementation work now;
+- run all required local validation;
+- create /analysis/LSI-B06-report.md;
+- stop;
+- do not begin LSI-B07;
+- do not deploy;
+- do not push unless explicitly requested.

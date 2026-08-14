@@ -1,0 +1,2427 @@
+You are implementing LSI-B09 — Normalization & Evidence for Synq Intake in the LegalSynq v3 repository.
+
+EXECUTION DIRECTIVE
+
+Execute this ticket now.
+
+Do not stop after reviewing requirements.
+Do not return a plan for approval.
+Do not ask whether to proceed.
+Implement the full scoped LSI-B09 work in this execution, run the required local validation, and produce /analysis/LSI-B09-report.md when complete.
+
+If a minor implementation decision is needed and the requirements already establish the intended behavior, make the safest architecture-consistent decision and continue.
+
+Only stop for a genuine blocking condition that cannot be resolved from the repository or these requirements.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Required implementation report: /analysis/LSI-B09-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B09 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, production deployment, push, PR, or merge work.
+3. Do not implement tenant-record matching, fuzzy database search, duplicate detection, confidence-based routing, human review, Case creation, Lien creation, SynqFund routing, CareConnect routing, Flow, notifications, OCR, external address verification, currency conversion, or downstream adapters.
+4. Preserve all prior analysis reports as read-only.
+5. Create/update only /analysis/LSI-B09-report.md for this ticket.
+6. Reuse B08 extraction/fact/evidence models and B02 processing-profile conventions rather than creating parallel structures unnecessarily.
+7. Prefer deterministic code-based normalization. Do not introduce AI for routine normalization.
+8. Before coding, inspect:
+   - current git branch/status;
+   - HEAD vs origin/xenia;
+   - B02 LIEN_INTAKE_V1 configuration/profile framework;
+   - B08 ArtifactExtraction and ArtifactExtractedFact persistence;
+   - B08 fact catalog/data types/evidence model;
+   - B08 current-result/history/idempotency patterns;
+   - B07/B08 authorization and API conventions;
+   - current IntakeDbContext and migrations;
+   - existing utility libraries for names, dates, phones, email, Unicode, addresses, and money;
+   - existing event/outbox patterns;
+   - Intake tests and HTTP integration-test infrastructure.
+9. Record repository baseline and initial working-tree state in /analysis/LSI-B09-report.md before implementation.
+10. Preserve unrelated pre-existing changes.
+11. Do not commit uploaded specifications, prompt assets, generated binaries, local databases, secrets, or unrelated artifacts.
+12. Local/repository validation is required.
+13. Do not claim GitHub CI, deployed runtime, production DB validation, or release validation unless separately proven.
+14. Do not begin LSI-B10 automatically.
+15. Do not push unless explicitly requested.
+
+LOCKED PLATFORM STACK
+Use existing LegalSynq v3 conventions:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT Bearer/service-token authentication
+- existing ICurrentRequestContext tenant conventions
+- existing YARP gateway conventions
+- LegalSynq.AuditClient where applicable
+- existing Intake persistence/history/idempotency conventions
+- existing structured logging, configuration, health, event/outbox, and testing conventions
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+
+B09 is deterministic normalization and evidence preservation.
+
+The intended chain is:
+
+B08 ArtifactExtraction
+-> ArtifactExtractedFact.RawValue
+-> B09 deterministic normalization
+-> normalized comparison-ready candidate
+-> structural validation
+-> preserved evidence
+-> B10 matching
+
+B09 answers:
+
+“How should this extracted value be represented consistently for comparison, and what source evidence supports it?”
+
+B09 MUST NOT answer:
+
+“Which patient, provider, facility, case, lien, attorney, or other LegalSynq master record does this value match?”
+
+==================================================
+1. NORMALIZATION PROFILE
+==================================================
+
+Create a versioned normalization profile:
+
+LIEN_INTAKE_NORMALIZATION_V1
+
+The profile should define or reference:
+
+- supported FactCodes
+- normalizer selection
+- validation rules
+- comparison-key strategy
+- Unicode strategy
+- date culture
+- default country
+- default currency
+- ambiguity policy
+- profile version
+
+Conceptual fields:
+
+- Id
+- Code
+- DisplayName
+- Description
+- Version
+- IsActive
+- IsSystemDefined
+- CreatedAt
+- UpdatedAt
+
+Use B07/B08 definition/versioning conventions where practical.
+
+==================================================
+2. B02 NORMALIZATION CONFIGURATION
+==================================================
+
+Extend LIEN_INTAKE_V1 through B02 as needed.
+
+Recommended controls:
+
+EnableNormalization
+NormalizationProfileCode
+DefaultCountryCode
+DefaultCurrencyCode
+DateCulture
+AllowAmbiguousDateNormalization
+
+Use exact naming consistent with existing configuration style.
+
+Recommended defaults:
+
+EnableNormalization = true
+NormalizationProfileCode = LIEN_INTAKE_NORMALIZATION_V1
+DefaultCountryCode = US
+DefaultCurrencyCode = USD
+DateCulture = en-US
+AllowAmbiguousDateNormalization = false
+
+Do not put normalization configuration into an unrelated store.
+
+==================================================
+3. NORMALIZATION EXECUTION MODEL
+==================================================
+
+Create an Intake-owned aggregate such as:
+
+ArtifactNormalization
+
+Conceptual fields:
+
+- Id
+- TenantId
+- ArtifactId
+- ArtifactExtractionId
+
+- NormalizationProfileCode
+- NormalizationProfileVersion
+
+- Status
+- ExecutionKey
+- IsCurrent
+- CurrentMarker if required by existing history pattern
+
+- RequestedAt
+- CompletedAt
+- CreatedAt
+- UpdatedAt
+
+- FailureCode
+- FailureMessage
+
+Only add fields justified by implementation.
+
+==================================================
+4. NORMALIZED FACT MODEL
+==================================================
+
+Create:
+
+ArtifactNormalizedFact
+
+or closest architecture-compatible name.
+
+Conceptual fields:
+
+- Id
+- TenantId
+- ArtifactNormalizationId
+- ArtifactExtractedFactId
+
+- FactCode
+- DataType
+
+- RawValue
+- NormalizedValue
+- NormalizedJson
+- ComparisonKey
+
+- NormalizationStatus
+- ValidationStatus
+
+- NormalizationMethod
+- NormalizationVersion
+
+- SourceConfidence
+
+- WarningCodesJson
+- EvidenceReferenceJson
+
+- Ordinal
+- CreatedAt
+- UpdatedAt
+
+Do not overwrite B08 ArtifactExtractedFact.RawValue.
+
+If duplication of RawValue is unnecessary, reference the source fact and expose RawValue through projection; choose the cleanest architecture.
+
+==================================================
+5. SOURCE-PRESERVATION RULE
+==================================================
+
+B08 RawValue is immutable source evidence.
+
+Required relationship:
+
+ArtifactExtractedFact.RawValue
+-> ArtifactNormalizedFact normalized candidate
+
+Never rewrite:
+
+ArtifactExtractedFact.RawValue
+
+Never treat normalized data as the original extracted evidence.
+
+==================================================
+6. EXTRACTION BINDING
+==================================================
+
+Every normalization execution must bind to the exact:
+
+ArtifactExtractionId
+
+and, where useful:
+
+ArtifactExtraction execution identity/version.
+
+If current B08 extraction changes:
+- old normalization remains historical;
+- old normalization must not silently remain current for the new extraction;
+- new normalization is required.
+
+==================================================
+7. SOURCE FACT BINDING
+==================================================
+
+Every normalized fact must bind to:
+
+ArtifactExtractedFactId
+
+This is mandatory.
+
+Multiple source facts with the same FactCode must remain independently traceable.
+
+==================================================
+8. DETERMINISTIC NORMALIZATION
+==================================================
+
+Normalization should be deterministic.
+
+The same:
+
+RawValue
++
+FactCode/DataType
++
+NormalizationProfileVersion
+
+should produce the same normalized output.
+
+Do not use AI for:
+- whitespace cleanup;
+- Unicode normalization;
+- name tokenization;
+- date parsing;
+- money parsing;
+- phone parsing;
+- email validation;
+- identifier cleanup;
+- simple address structuring.
+
+==================================================
+9. AI BOUNDARY
+==================================================
+
+Do not introduce AI into B09 V1 unless the repository already has an approved deterministic fallback abstraction and its use is explicitly necessary.
+
+Default B09 behavior must be local deterministic code.
+
+If deterministic parsing cannot safely resolve a value:
+- return AMBIGUOUS, PARTIAL, INVALID, or UNSUPPORTED;
+- preserve RawValue.
+
+Do not ask AI to guess.
+
+==================================================
+10. NORMALIZATION STATUS
+==================================================
+
+Use stable status values such as:
+
+NOT_NORMALIZED
+NORMALIZED
+PARTIAL
+INVALID
+AMBIGUOUS
+UNSUPPORTED
+
+Semantics:
+
+NORMALIZED
+- normalized successfully.
+
+PARTIAL
+- useful structure extracted but incomplete.
+
+INVALID
+- structurally invalid for expected FactCode/DataType.
+
+AMBIGUOUS
+- more than one plausible representation exists.
+
+UNSUPPORTED
+- no normalization rule exists.
+
+==================================================
+11. VALIDATION STATUS
+==================================================
+
+Keep structural validation separate from normalization.
+
+Recommended values:
+
+VALID
+INVALID_FORMAT
+INCOMPLETE
+AMBIGUOUS
+UNVERIFIED
+
+Important:
+
+VALID means structurally valid only.
+
+It does NOT mean:
+- externally verified;
+- matched to a LegalSynq record;
+- legally valid;
+- clinically valid;
+- financially correct.
+
+==================================================
+12. SOURCE CONFIDENCE
+==================================================
+
+Preserve the B08 fact confidence as:
+
+SourceConfidence
+
+Do not generate a second AI confidence score.
+
+Example:
+
+RawValue = "01/31/1980"
+SourceConfidence = 0.55
+NormalizationStatus = NORMALIZED
+ValidationStatus = VALID
+
+This is valid.
+
+==================================================
+13. LOW-CONFIDENCE FACTS
+==================================================
+
+Critical requirement:
+
+Do NOT discard a schema-valid B08 fact solely because SourceConfidence is below a later downstream threshold.
+
+If B08 persisted it, B09 should normalize it unless:
+- structurally invalid;
+- unsupported;
+- explicitly unusable under deterministic rules.
+
+Low confidence is uncertainty evidence, not a reason for data loss.
+
+==================================================
+14. NORMALIZER REGISTRY
+==================================================
+
+Create:
+
+IFactNormalizerRegistry
+
+Responsibilities:
+
+FactCode/DataType
+-> appropriate normalizer
+
+Potential normalizers:
+
+- NameNormalizer
+- OrganizationNormalizer
+- DateNormalizer
+- MoneyNormalizer
+- PhoneNormalizer
+- EmailNormalizer
+- AddressNormalizer
+- IdentifierNormalizer
+- TextNormalizer
+
+Avoid a single large switch where clean registry/dependency injection is more maintainable.
+
+==================================================
+15. NORMALIZER INTERFACE
+==================================================
+
+Create:
+
+IFactNormalizer
+
+or closest convention.
+
+A normalizer should accept:
+
+- FactCode
+- DataType
+- RawValue
+- normalization profile/configuration
+- optional source metadata
+
+and return a provider-neutral deterministic result such as:
+
+- NormalizedValue
+- NormalizedJson
+- ComparisonKey
+- NormalizationStatus
+- ValidationStatus
+- WarningCodes
+- NormalizationMethod
+- NormalizationVersion
+
+Normalizers must not query business-domain databases.
+
+==================================================
+16. GENERIC TEXT NORMALIZATION
+==================================================
+
+For generic text:
+
+- trim leading/trailing whitespace;
+- collapse repeated whitespace where appropriate;
+- normalize line breaks;
+- remove control characters;
+- apply consistent Unicode normalization;
+- preserve substantive content;
+- do not paraphrase;
+- do not rewrite meaning.
+
+==================================================
+17. UNICODE NORMALIZATION
+==================================================
+
+Use a consistent Unicode normalization strategy.
+
+Recommended:
+
+NFKC
+
+or repository-approved equivalent.
+
+Document the chosen form.
+
+Preserve original RawValue.
+
+Be cautious where Unicode normalization may alter semantics.
+
+==================================================
+18. DIACRITIC STRATEGY
+==================================================
+
+Preserve diacritics in display normalized values.
+
+Example:
+
+José García
+
+Normalized display:
+José García
+
+Optional comparison representation:
+JOSE GARCIA
+
+Do not destroy original spelling.
+
+Comparison-key normalization may remove diacritics separately.
+
+==================================================
+19. WHITESPACE NORMALIZATION
+==================================================
+
+Example:
+
+"John   A.   Smith"
+
+becomes normalized display:
+
+"John A. Smith"
+
+while RawValue remains unchanged in B08.
+
+==================================================
+20. PUNCTUATION RULES
+==================================================
+
+Use FactCode-specific punctuation rules.
+
+Do not globally remove punctuation.
+
+Examples:
+
+O'Connor
+Anne-Marie
+
+must preserve meaningful punctuation in display values.
+
+ComparisonKey may remove or standardize punctuation separately.
+
+==================================================
+21. PERSON NAME NORMALIZATION
+==================================================
+
+Support:
+
+PATIENT_FULL_NAME
+PATIENT_FIRST_NAME
+PATIENT_MIDDLE_NAME
+PATIENT_LAST_NAME
+ATTORNEY_NAME
+
+Where FactCode represents a person name, normalized structured output may include:
+
+- FullName
+- FirstName
+- MiddleName
+- LastName
+- Suffix
+- ComparisonKey
+
+Do not fabricate missing components.
+
+==================================================
+22. PERSON NAME EXAMPLES
+==================================================
+
+Input:
+
+Smith, John A.
+
+Possible normalized structure:
+
+{
+  "firstName": "John",
+  "middleName": "A",
+  "lastName": "Smith",
+  "suffix": null,
+  "comparisonKey": "JOHNASMITH"
+}
+
+Input:
+
+John Smith
+
+must not invent a middle name.
+
+==================================================
+23. AMBIGUOUS NAMES
+==================================================
+
+Names such as:
+
+Maria De La Cruz
+
+may have ambiguous component boundaries.
+
+Do not aggressively guess.
+
+Acceptable behavior:
+
+NormalizationStatus = PARTIAL
+ValidationStatus = AMBIGUOUS
+
+and preserve a normalized full-name representation/comparison key.
+
+==================================================
+24. ORGANIZATION NORMALIZATION
+==================================================
+
+Support:
+
+PROVIDER_NAME
+FACILITY_NAME
+LAW_FIRM_NAME
+INSURANCE_CARRIER_NAME
+
+Normalize conservatively:
+
+- Unicode;
+- whitespace;
+- casing;
+- punctuation where safe;
+- controlled corporate suffix representation.
+
+Do not remove meaningful words.
+
+==================================================
+25. CORPORATE SUFFIXES
+==================================================
+
+Handle known suffix variants such as:
+
+LLC
+L.L.C.
+INC
+INC.
+PLLC
+PC
+P.C.
+CORP
+CORPORATION
+
+Preserve normalized display separately from comparison representation.
+
+Do not silently erase suffixes from the display-normalized value.
+
+==================================================
+26. ORGANIZATION ABBREVIATIONS
+==================================================
+
+Do not over-normalize abbreviations.
+
+Example:
+
+Sunrise Imaging Ctr.
+
+must not automatically become:
+
+Sunrise Imaging Center
+
+unless an explicit approved mapping exists.
+
+Do not infer semantic expansions casually.
+
+==================================================
+27. DATE NORMALIZATION
+==================================================
+
+Support:
+
+PATIENT_DATE_OF_BIRTH
+DATE_OF_ACCIDENT
+DATE_OF_SERVICE
+SERVICE_DATE_FROM
+SERVICE_DATE_TO
+DOCUMENT_DATE
+
+Preferred canonical representation:
+
+YYYY-MM-DD
+
+Preserve:
+- RawValue;
+- parsed date;
+- parse method;
+- ambiguity status.
+
+==================================================
+28. DATE CULTURE
+==================================================
+
+Use B02 normalization configuration:
+
+DateCulture
+
+Recommended default:
+
+en-US
+
+Do not hardcode the assumption globally.
+
+==================================================
+29. AMBIGUOUS DATES
+==================================================
+
+Input:
+
+03/04/2026
+
+may be ambiguous.
+
+If configured DateCulture deterministically resolves it, use that culture and record method/warning if appropriate.
+
+If ambiguity cannot safely be resolved and:
+
+AllowAmbiguousDateNormalization = false
+
+then:
+
+NormalizationStatus = AMBIGUOUS
+ValidationStatus = AMBIGUOUS
+
+Do not silently guess.
+
+==================================================
+30. INVALID DATES
+==================================================
+
+Examples:
+
+02/30/2026
+13/45/2025
+
+must result in:
+
+NormalizationStatus = INVALID
+ValidationStatus = INVALID_FORMAT
+
+Do not coerce them.
+
+==================================================
+31. DATE RANGE VALIDATION
+==================================================
+
+For:
+
+SERVICE_DATE_FROM
+SERVICE_DATE_TO
+
+B09 may perform structural cross-fact validation:
+
+SERVICE_DATE_FROM <= SERVICE_DATE_TO
+
+If violated:
+- preserve both values;
+- add a stable warning/error;
+- do not swap them automatically.
+
+==================================================
+32. MONEY NORMALIZATION
+==================================================
+
+Support:
+
+BILLED_AMOUNT
+OUTSTANDING_BALANCE
+LIEN_AMOUNT
+SETTLEMENT_AMOUNT
+ALLOWED_AMOUNT
+PAID_AMOUNT
+PATIENT_RESPONSIBILITY
+
+Normalize into:
+
+- Decimal amount
+- CurrencyCode
+
+Example:
+
+"$12,450.00"
+
+becomes:
+
+Amount = 12450.00
+CurrencyCode = USD
+
+RawValue remains unchanged upstream.
+
+==================================================
+33. DEFAULT CURRENCY
+==================================================
+
+Use B02:
+
+DefaultCurrencyCode
+
+Recommended:
+
+USD
+
+Only assume default currency when profile policy explicitly permits it.
+
+When assumed, add a stable warning such as:
+
+CURRENCY_ASSUMED
+
+Do not silently hide the assumption.
+
+==================================================
+34. EXPLICIT CURRENCY
+==================================================
+
+If input explicitly identifies another currency:
+- preserve that currency;
+- do not convert it to USD;
+- do not perform exchange-rate conversion.
+
+Currency conversion is out of scope.
+
+==================================================
+35. NEGATIVE AMOUNTS
+==================================================
+
+Support common negative formats:
+
+-$100.00
+($100.00)
+
+Canonical amount:
+
+-100.00
+
+Do not reject negative values merely because they are unusual.
+
+==================================================
+36. MONEY SEMANTIC PRESERVATION
+==================================================
+
+Normalization changes representation only.
+
+Never convert:
+
+BILLED_AMOUNT
+
+into:
+
+LIEN_AMOUNT
+
+or:
+
+SETTLEMENT_AMOUNT
+
+FactCode must remain unchanged.
+
+==================================================
+37. PHONE NORMALIZATION
+==================================================
+
+Support:
+
+PROVIDER_PHONE
+ATTORNEY_PHONE
+
+Where possible produce:
+
+- CountryCode
+- NationalNumber
+- Extension
+- E164
+- ComparisonKey
+
+Example:
+
+(702) 555-1212
+-> +17025551212
+
+==================================================
+38. DEFAULT PHONE COUNTRY
+==================================================
+
+Use B02:
+
+DefaultCountryCode
+
+Recommended:
+
+US
+
+If country is assumed, record:
+
+PHONE_COUNTRY_ASSUMED
+
+Do not hardcode global US behavior outside the profile.
+
+==================================================
+39. PHONE EXTENSIONS
+==================================================
+
+Support common extension syntax where practical:
+
+ext
+ext.
+x
+
+Example:
+
+702-555-1212 ext 45
+
+should preserve:
+
+E164 = +17025551212
+Extension = 45
+
+where parser supports it.
+
+==================================================
+40. EMAIL NORMALIZATION
+==================================================
+
+Support:
+
+ATTORNEY_EMAIL
+
+Rules:
+- trim;
+- validate syntax;
+- lowercase domain;
+- preserve local-part case unless existing platform convention dictates otherwise;
+- create comparison representation according to existing email-normalization semantics.
+
+Do not silently repair malformed addresses.
+
+==================================================
+41. INVALID EMAILS
+==================================================
+
+Input:
+
+invalid-address
+
+should result in:
+
+NormalizationStatus = INVALID
+ValidationStatus = INVALID_FORMAT
+
+RawValue remains preserved.
+
+==================================================
+42. ADDRESS NORMALIZATION
+==================================================
+
+Support:
+
+PROVIDER_ADDRESS
+
+B09 V1 should use conservative structural parsing.
+
+Potential normalized structure:
+
+- AddressLine1
+- AddressLine2
+- City
+- State
+- PostalCode
+- Country
+- ComparisonKey
+
+Do not implement external postal verification.
+
+==================================================
+43. ADDRESS VALIDATION
+==================================================
+
+B09 may validate structural elements such as:
+
+- two-letter US state format where applicable;
+- ZIP/ZIP+4 syntax;
+- country code syntax;
+- obvious completeness.
+
+B09 does not verify that the address physically exists.
+
+==================================================
+44. ADDRESS AMBIGUITY
+==================================================
+
+If an address cannot be reliably segmented:
+- preserve normalized text;
+- return PARTIAL/AMBIGUOUS;
+- do not fabricate city/state/postal components.
+
+==================================================
+45. IDENTIFIER NORMALIZATION
+==================================================
+
+Support:
+
+CASE_NUMBER
+CLAIM_NUMBER
+ACCOUNT_NUMBER
+MEDICAL_RECORD_NUMBER
+PATIENT_ACCOUNT_NUMBER
+INSURANCE_POLICY_NUMBER
+
+Rules:
+- trim;
+- normalize Unicode;
+- collapse irrelevant whitespace;
+- standardize casing;
+- remove only clearly non-semantic surrounding punctuation.
+
+Do not remove meaningful delimiters from display-normalized value without an explicit rule.
+
+==================================================
+46. IDENTIFIER COMPARISON KEYS
+==================================================
+
+Preserve:
+
+NormalizedValue
+
+and generate:
+
+ComparisonKey
+
+Example:
+
+NormalizedValue = 24-CV-98531
+ComparisonKey = 24CV98531
+
+B10 may use ComparisonKey.
+
+ComparisonKey is not authoritative truth.
+
+==================================================
+47. COMPARISON KEYS
+==================================================
+
+Generate deterministic matching aids where useful.
+
+Examples:
+
+Person:
+JOHNASMITH
+
+Organization:
+SUNRISEIMAGINGCENTER
+
+Phone:
+17025551212
+
+Identifier:
+24CV98531
+
+Comparison keys must:
+- be deterministic;
+- derive only from normalized candidate;
+- not query business databases;
+- remain tenant-scoped.
+
+==================================================
+48. COMPARISON KEY PRIVACY
+==================================================
+
+Do not expose comparison keys unnecessarily to ordinary tenant users.
+
+They are internal matching aids.
+
+Avoid logging comparison keys if they contain direct PHI/PII unless operationally necessary.
+
+==================================================
+49. MULTIPLE VALUES
+==================================================
+
+Repeated B08 facts remain repeated normalized records.
+
+Example:
+
+DATE_OF_SERVICE ordinal 1
+DATE_OF_SERVICE ordinal 2
+
+must remain separate.
+
+Preserve:
+- ArtifactExtractedFactId;
+- ordinal;
+- RawValue;
+- normalized output;
+- evidence.
+
+==================================================
+50. DUPLICATE NORMALIZED VALUES
+==================================================
+
+If multiple source facts normalize to the same value, preserve each.
+
+Example:
+
+"John Smith"
+"JOHN SMITH"
+
+may both normalize to:
+
+John Smith
+
+Do not deduplicate source facts in B09.
+
+Deduplication/matching belongs later.
+
+==================================================
+51. EVIDENCE PRESERVATION
+==================================================
+
+B09 must preserve B08 evidence.
+
+At minimum normalized fact response/persistence must maintain traceability to:
+
+ArtifactExtractedFact
+-> B08 Evidence
+
+Do not lose evidence when creating normalized candidates.
+
+==================================================
+52. EVIDENCE MODEL
+==================================================
+
+If first-class evidence persistence is useful, create:
+
+FactEvidence
+
+or equivalent.
+
+Potential fields:
+
+- Id
+- TenantId
+- ArtifactExtractedFactId
+- ArtifactNormalizedFactId
+- ArtifactId
+- DocumentId
+- PageNumber
+- Snippet
+- BoundingBoxJson
+- StartOffset
+- EndOffset
+- EvidenceType
+- SourceLocator
+- CreatedAt
+
+Only persist fields actually supported upstream.
+
+If B08 evidence JSON is already sufficient, reference/preserve it rather than duplicating excessively.
+
+==================================================
+53. EVIDENCE TYPES
+==================================================
+
+Potential types:
+
+TEXT_SNIPPET
+PAGE_REFERENCE
+CHARACTER_RANGE
+BOUNDING_BOX
+SOURCE_METADATA
+
+Do not implement unsupported evidence types merely to fill fields.
+
+==================================================
+54. NO EVIDENCE FABRICATION
+==================================================
+
+If B08 supplies only:
+
+Snippet = "Patient: John Smith"
+
+do not invent:
+
+PageNumber = 1
+
+Do not fabricate:
+- page;
+- offset;
+- bounding box;
+- source locator.
+
+Evidence fidelity is mandatory.
+
+==================================================
+55. EVIDENCE IMMUTABILITY
+==================================================
+
+Original B08 evidence is historical provenance.
+
+B09 must not rewrite it.
+
+Later human corrections should create correction/override records rather than modifying original AI evidence.
+
+==================================================
+56. EVIDENCE PHI/PII
+==================================================
+
+Evidence snippets may contain PHI/PII.
+
+Requirements:
+- tenant-scoped;
+- bounded;
+- excluded from general logs;
+- excluded from cross-tenant analytics;
+- returned only to authorized callers.
+
+==================================================
+57. NORMALIZATION SERVICE
+==================================================
+
+Create:
+
+IFactNormalizationService
+
+or closest repository convention.
+
+Responsibilities:
+
+1. load tenant-scoped current B08 extraction;
+2. validate extraction readiness;
+3. resolve B02 normalization policy;
+4. resolve normalization profile;
+5. create/reuse normalization execution;
+6. enumerate source facts;
+7. select deterministic normalizers;
+8. normalize each fact;
+9. perform safe cross-fact validation;
+10. preserve evidence;
+11. persist normalized candidates;
+12. determine aggregate status;
+13. finalize current result;
+14. emit safe audit/logging;
+15. return canonical result.
+
+==================================================
+58. ELIGIBILITY
+==================================================
+
+Normalization requires:
+
+- artifact exists;
+- tenant matches trusted context;
+- current B08 extraction exists;
+- extraction is successfully completed;
+- B02 EnableNormalization = true;
+- normalization profile resolves and is active.
+
+Do not normalize a failed/incomplete extraction unless current architecture explicitly supports partial extraction normalization safely.
+
+If partial extraction is supported, document the rule.
+
+==================================================
+59. NORMALIZATION EXECUTION KEY
+==================================================
+
+Execution identity should include at least:
+
+ArtifactExtractionId
+Extraction execution identity/version
+NormalizationProfileCode
+NormalizationProfileVersion
+
+Use a deterministic key.
+
+Repeated identical normalization must reuse the same result.
+
+==================================================
+60. IDEMPOTENCY
+==================================================
+
+Protect through:
+
+- application duplicate detection;
+- database unique constraint.
+
+Repeated identical requests must not duplicate:
+
+ArtifactNormalization
+ArtifactNormalizedFact rows
+
+==================================================
+61. NORMALIZATION HISTORY
+==================================================
+
+Never overwrite historical normalization runs.
+
+Create a new run when:
+- B08 extraction changes;
+- normalization profile version changes;
+- normalization method/rule version changes materially.
+
+Historical results remain queryable/auditable.
+
+==================================================
+62. CURRENT RESULT
+==================================================
+
+Only one current normalization result should be selected for a given current extraction context.
+
+Reuse B07/B08 current-marker transaction patterns where appropriate.
+
+Finalization should be atomic.
+
+==================================================
+63. PARTIAL NORMALIZATION
+==================================================
+
+A malformed individual fact should not necessarily fail the whole run.
+
+Example:
+
+20 facts
+18 NORMALIZED
+1 AMBIGUOUS
+1 INVALID
+
+Aggregate:
+
+PARTIAL
+
+Preserve every fact result.
+
+==================================================
+64. NORMALIZATION AGGREGATE STATUS
+==================================================
+
+Recommended:
+
+PROCESSING
+COMPLETED
+PARTIAL
+FAILED
+
+COMPLETED:
+- all processable facts successfully normalized or deterministically handled according to policy.
+
+PARTIAL:
+- at least one useful normalized result exists and one or more facts are ambiguous/invalid/unsupported.
+
+FAILED:
+- execution cannot produce usable normalization result.
+
+==================================================
+65. NORMALIZATION WARNINGS
+==================================================
+
+Define stable warning codes.
+
+Examples:
+
+DATE_AMBIGUOUS
+DATE_RANGE_INVALID
+PHONE_COUNTRY_ASSUMED
+ADDRESS_INCOMPLETE
+NAME_COMPONENTS_PARTIAL
+CURRENCY_ASSUMED
+IDENTIFIER_FORMAT_UNRECOGNIZED
+EMAIL_INVALID
+ORGANIZATION_NORMALIZATION_PARTIAL
+
+Warnings must be structured codes, not only free-form text.
+
+==================================================
+66. CROSS-FACT VALIDATION
+==================================================
+
+Perform only safe deterministic structural checks.
+
+Examples:
+
+SERVICE_DATE_FROM <= SERVICE_DATE_TO
+
+PATIENT_DATE_OF_BIRTH <= DOCUMENT_DATE
+
+DATE_OF_ACCIDENT <= DOCUMENT_DATE
+
+If violated:
+- keep original/normalized values;
+- add warnings/validation issue;
+- do not silently rewrite.
+
+==================================================
+67. CROSS-FACT VALIDATION BOUNDARY
+==================================================
+
+Do not implement:
+
+- medical plausibility;
+- legal validity;
+- lien enforceability;
+- settlement sufficiency;
+- provider/patient relationship verification;
+- attorney representation verification.
+
+Those are outside B09.
+
+==================================================
+68. API
+==================================================
+
+Recommended generic routes:
+
+GET /artifacts/{artifactId}/normalization
+GET /artifacts/{artifactId}/normalization/history
+
+POST /artifacts/{artifactId}/normalization
+
+Optional:
+
+GET /normalization/profiles
+
+Do not create separate normalization engines for email/manual artifacts.
+
+==================================================
+69. NORMALIZATION READ RESPONSE
+==================================================
+
+Return:
+
+- NormalizationId
+- ArtifactId
+- ArtifactExtractionId
+- NormalizationProfileCode
+- NormalizationProfileVersion
+- Status
+- IsCurrent
+- RequestedAt
+- CompletedAt
+- Facts[]
+
+Each fact should expose:
+
+- NormalizedFactId
+- SourceExtractedFactId
+- FactCode
+- DataType
+- RawValue
+- NormalizedValue
+- NormalizedJson
+- ComparisonKey where authorized/appropriate
+- NormalizationStatus
+- ValidationStatus
+- WarningCodes
+- SourceConfidence
+- Evidence
+- Ordinal
+
+Do not hide RawValue.
+
+==================================================
+70. AUTHORIZATION
+==================================================
+
+Reuse existing Intake intelligence permissions where practical.
+
+Preferred:
+
+intake.ai.read
+intake.ai.manage
+
+If separate normalization permissions materially improve control, introduce them carefully.
+
+Avoid unnecessary permission proliferation.
+
+==================================================
+71. TENANT ISOLATION
+==================================================
+
+Mandatory:
+
+- Tenant A cannot read Tenant B normalization.
+- Tenant A cannot read Tenant B normalized facts.
+- Tenant A cannot read Tenant B evidence.
+- Tenant A cannot trigger Tenant B normalization.
+- normalization TenantId must equal extraction/artifact TenantId.
+- source fact TenantId must equal normalization TenantId.
+
+==================================================
+72. TRIGGER MODEL
+==================================================
+
+Preferred future flow:
+
+B08 Extraction Completed
+-> B09 Normalization
+
+Since normalization is deterministic/local, automatic execution may be reasonable.
+
+Use existing event/outbox conventions if available.
+
+Do not run normalization inside the B08 transaction.
+
+==================================================
+73. EVENT CONTRACT
+==================================================
+
+If event-driven, define:
+
+ArtifactExtractionCompletedV1
+
+Fields:
+
+- TenantId
+- ArtifactId
+- ArtifactExtractionId
+- ProcessingProfileCode
+- OccurredAt
+- CorrelationId
+
+Do not place fact values/PHI on the event.
+
+==================================================
+74. AUDIT
+==================================================
+
+Suggested operations:
+
+NORMALIZATION_REQUESTED
+NORMALIZATION_COMPLETED
+NORMALIZATION_FAILED
+NORMALIZATION_RECOMPUTED
+
+Safe metadata:
+
+- TenantId
+- ArtifactId
+- ArtifactExtractionId
+- NormalizationId
+- ProfileCode
+- FactCount
+- NormalizedCount
+- InvalidCount
+- AmbiguousCount
+- Status
+- CorrelationId
+
+Do not put RawValue, normalized PHI/PII, or evidence snippets into audit records.
+
+==================================================
+75. LOGGING
+==================================================
+
+Safe structured logs:
+
+- CorrelationId
+- TenantId
+- ArtifactId
+- ArtifactExtractionId
+- NormalizationId
+- FactCode
+- NormalizationStatus
+- ValidationStatus
+- WarningCode
+- aggregate counts
+- Result
+
+Do not log:
+- RawValue;
+- NormalizedValue;
+- ComparisonKey where PHI/PII-bearing;
+- names;
+- DOB;
+- phone;
+- email;
+- address;
+- amounts;
+- evidence snippets.
+
+==================================================
+76. ANALYTICS
+==================================================
+
+Lightweight tenant-scoped metrics may include:
+
+NormalizationRuns
+FactsNormalized
+FactsInvalid
+FactsAmbiguous
+FactsPartial
+FactsUnsupported
+
+Do not expose raw values.
+
+Do not create business analytics.
+
+==================================================
+77. DATABASE SCHEMA
+==================================================
+
+Expected B09 entities:
+
+NormalizationProfileDefinitions
+ArtifactNormalizations
+ArtifactNormalizedFacts
+
+Optional:
+
+FactEvidence
+
+only if first-class evidence persistence is justified.
+
+Prefer consistency with B07/B08 definition/history patterns.
+
+==================================================
+78. DATABASE CONSTRAINTS
+==================================================
+
+At minimum consider:
+
+UNIQUE (NormalizationProfileCode, Version)
+
+ArtifactNormalizations:
+ExecutionKey UNIQUE
+
+ArtifactNormalizedFacts:
+FK ArtifactNormalizationId
+FK ArtifactExtractedFactId
+
+Prevent the same ArtifactExtractedFactId from being normalized more than once inside the same ArtifactNormalization.
+
+Use database constraints where practical.
+
+==================================================
+79. INDEXES
+==================================================
+
+ArtifactNormalizations:
+
+- TenantId
+- ArtifactId
+- ArtifactExtractionId
+- TenantId + Status
+- ExecutionKey UNIQUE
+- current-result lookup
+
+ArtifactNormalizedFacts:
+
+- ArtifactNormalizationId
+- ArtifactExtractedFactId
+- FactCode
+- TenantId + FactCode where useful
+
+Avoid indexing RawValue or NormalizedValue unless explicitly justified.
+
+==================================================
+80. MIGRATION
+==================================================
+
+Create a B09 migration.
+
+Suggested name:
+
+AddNormalizationAndEvidence
+
+or repository-standard equivalent.
+
+Do not create:
+- matching tables;
+- duplicate-detection tables;
+- review tables;
+- Case/Lien tables;
+- downstream-routing tables.
+
+==================================================
+81. TESTS — NORMALIZATION PROFILE
+==================================================
+
+Test:
+
+- valid profile resolves;
+- unknown profile rejected;
+- inactive profile rejected;
+- B02 normalization disabled;
+- profile version participates in execution identity.
+
+==================================================
+82. TESTS — NAMES
+==================================================
+
+Test synthetic values:
+
+John Smith
+Smith, John
+John A. Smith
+José García
+O'Connor, Anne-Marie
+Maria De La Cruz
+
+Verify:
+- RawValue preserved;
+- normalized display;
+- comparison key;
+- suffix/middle behavior;
+- ambiguity/partial behavior;
+- diacritics preserved in display.
+
+==================================================
+83. TESTS — ORGANIZATIONS
+==================================================
+
+Test:
+
+Sunrise Imaging Center, LLC
+SUNRISE IMAGING CENTER LLC
+Sunrise Imaging Ctr.
+Acme Medical, P.C.
+
+Verify:
+- whitespace/case normalization;
+- corporate suffix handling;
+- no unjustified abbreviation expansion.
+
+==================================================
+84. TESTS — DATES
+==================================================
+
+Test:
+
+01/31/1980
+1980-01-31
+Jan 31, 1980
+03/04/2026
+02/30/2026
+13/45/2025
+
+Verify:
+- canonical YYYY-MM-DD;
+- culture handling;
+- ambiguity;
+- invalid dates;
+- warning behavior.
+
+==================================================
+85. TESTS — DATE RANGE
+==================================================
+
+Test:
+
+SERVICE_DATE_FROM < SERVICE_DATE_TO
+SERVICE_DATE_FROM = SERVICE_DATE_TO
+SERVICE_DATE_FROM > SERVICE_DATE_TO
+
+The invalid relationship must be flagged, not silently corrected.
+
+==================================================
+86. TESTS — MONEY
+==================================================
+
+Test:
+
+$12,450.00
+12450
+12,450.00 USD
+($100.00)
+-$100.00
+EUR 250.00
+
+Verify:
+- decimal parsing;
+- explicit/default currency;
+- negative values;
+- currency-assumption warning;
+- no currency conversion.
+
+==================================================
+87. TESTS — MONEY SEMANTICS
+==================================================
+
+Verify that normalization of:
+
+BILLED_AMOUNT
+OUTSTANDING_BALANCE
+LIEN_AMOUNT
+SETTLEMENT_AMOUNT
+PAID_AMOUNT
+ALLOWED_AMOUNT
+
+never changes the FactCode.
+
+==================================================
+88. TESTS — PHONE
+==================================================
+
+Test:
+
+(702) 555-1212
+702-555-1212 ext 45
++1 702 555 1212
+
+Verify:
+- E164 where possible;
+- extension;
+- default-country behavior;
+- PHONE_COUNTRY_ASSUMED warning.
+
+==================================================
+89. TESTS — EMAIL
+==================================================
+
+Test:
+
+Attorney@Example.COM
+ attorney@example.com 
+invalid-address
+
+Verify:
+- trim;
+- domain lowercase;
+- local-part treatment consistent with platform;
+- invalid syntax status.
+
+==================================================
+90. TESTS — ADDRESSES
+==================================================
+
+Use synthetic US addresses.
+
+Verify:
+- basic structural parsing;
+- state/postal validation;
+- partial behavior;
+- no external verification;
+- no fabricated missing components.
+
+==================================================
+91. TESTS — IDENTIFIERS
+==================================================
+
+Test:
+
+24-CV-98531
+ 24-CV-98531 
+24 CV 98531
+
+Verify:
+- normalized display;
+- comparison key;
+- meaningful punctuation preserved in display;
+- stable casing.
+
+==================================================
+92. TESTS — TEXT / UNICODE
+==================================================
+
+Test:
+- repeated spaces;
+- tabs/newlines;
+- Unicode compatibility forms;
+- diacritics;
+- control characters.
+
+Verify deterministic output.
+
+==================================================
+93. TESTS — EVIDENCE
+==================================================
+
+Verify:
+- B08 snippet preserved;
+- page preserved when present;
+- page not fabricated when absent;
+- evidence remains tied to source fact;
+- evidence remains bounded;
+- normalization does not rewrite evidence.
+
+==================================================
+94. TESTS — LOW CONFIDENCE
+==================================================
+
+Critical test:
+
+B08 fact:
+
+FactCode = PATIENT_FULL_NAME
+RawValue = "John Smith"
+Confidence = 0.45
+
+Expected B09:
+
+SourceConfidence = 0.45
+NormalizationStatus = NORMALIZED
+ValidationStatus = VALID
+
+unless the value itself is structurally invalid.
+
+Do not discard solely due to confidence.
+
+==================================================
+95. TESTS — MULTI-VALUE FACTS
+==================================================
+
+Verify:
+- repeated DATE_OF_SERVICE values remain separate;
+- repeated PROVIDER_NAME values remain separate;
+- identical normalized values do not collapse source provenance.
+
+==================================================
+96. TESTS — IDEMPOTENCY / HISTORY
+==================================================
+
+Verify:
+- same extraction + profile reuses existing normalization;
+- duplicate request does not duplicate normalized facts;
+- new extraction creates new normalization;
+- new profile version creates new normalization;
+- prior normalization remains historical;
+- current result deterministic.
+
+==================================================
+97. TESTS — PARTIAL RUNS
+==================================================
+
+Example:
+
+10 source facts
+8 normalized
+1 ambiguous
+1 invalid
+
+Expected:
+
+Aggregate Status = PARTIAL
+
+All 10 source-fact outcomes remain represented.
+
+==================================================
+98. TESTS — TENANT ISOLATION
+==================================================
+
+Verify:
+- Tenant A cannot read Tenant B normalization;
+- Tenant A cannot read Tenant B normalized facts;
+- Tenant A cannot read Tenant B evidence;
+- Tenant A cannot execute Tenant B normalization;
+- repository queries include tenant scope.
+
+==================================================
+99. HTTP INTEGRATION TESTS
+==================================================
+
+Use existing HTTP integration infrastructure if available.
+
+Test:
+
+GET /artifacts/{artifactId}/normalization
+GET /artifacts/{artifactId}/normalization/history
+POST /artifacts/{artifactId}/normalization
+GET /normalization/profiles
+
+Cover:
+
+- 401;
+- 403;
+- 404;
+- tenant isolation;
+- extraction-not-ready;
+- B02 normalization disabled;
+- idempotency.
+
+If HTTP infrastructure is still absent, add the smallest maintainable foundation if practical and document the limitation.
+
+==================================================
+100. MYSQL VALIDATION
+==================================================
+
+Apply the full Intake migration chain through B09 against clean disposable/local MySQL 8.
+
+This should also close remaining B04-B08 database-validation debt if still pending.
+
+Verify:
+
+- B02 profile/configuration schema;
+- B03 source schema;
+- B04 email/failure schema;
+- B05 artifact schema;
+- B06 manual-intake schema;
+- B07 classification schema;
+- B08 extraction/fact schema;
+- B09 normalization schema;
+- FK ArtifactNormalization -> ArtifactExtraction;
+- FK normalized fact -> source extracted fact;
+- ExecutionKey uniqueness;
+- profile/version uniqueness;
+- current-result behavior;
+- one source fact per normalization-run constraint;
+- full migration history.
+
+Use no cloud/shared DB.
+
+Clean up disposable DB/container afterward.
+
+==================================================
+101. PERFORMANCE
+==================================================
+
+B09 should:
+
+- perform normalization without external network calls;
+- avoid DB transactions across unnecessary work;
+- normalize facts in memory;
+- avoid per-fact DB round trips where practical;
+- persist normalized facts in a bounded batch;
+- use projection queries for current/history reads;
+- avoid loading old normalization history unless requested.
+
+==================================================
+102. SECURITY VALIDATION
+==================================================
+
+Verify:
+
+- no RawValue in general logs;
+- no NormalizedValue containing PHI in general logs;
+- no ComparisonKey containing PHI in general logs;
+- no evidence snippets in operational logs;
+- no cross-tenant normalized data;
+- no cross-tenant evidence;
+- no AI credentials involved;
+- no business database queries;
+- no matching behavior;
+- no chain-of-thought;
+- no uploaded specification assets introduced;
+- no bin/obj artifacts tracked.
+
+==================================================
+103. EXISTING SERVICE IMPACT
+==================================================
+
+Keep B09 within:
+
+- Intake;
+- B02 configuration boundary;
+- B08 extraction/fact/evidence boundary;
+- existing auth/audit/events.
+
+Do not modify business logic in:
+
+- SynqLien;
+- SynqFund;
+- CareConnect;
+- Flow;
+- Notifications;
+- Identity internals.
+
+Do not query tenant business databases for matching.
+
+==================================================
+104. FAILURE CODES
+==================================================
+
+Define stable aggregate/per-fact errors as appropriate.
+
+Suggested:
+
+NORMALIZATION_EXTRACTION_REQUIRED
+NORMALIZATION_PROFILE_UNAVAILABLE
+NORMALIZATION_FACT_UNSUPPORTED
+NORMALIZATION_INVALID_FORMAT
+NORMALIZATION_AMBIGUOUS
+NORMALIZATION_FAILED
+
+Per-fact warnings should remain separate where possible.
+
+Do not use free-form exception text as the primary error contract.
+
+==================================================
+105. B10 READINESS
+==================================================
+
+B09 must produce exactly the kind of data B10 can consume:
+
+FactCode
+RawValue
+NormalizedValue
+NormalizedJson
+ComparisonKey
+NormalizationStatus
+ValidationStatus
+WarningCodes
+SourceConfidence
+Evidence
+Ordinal
+ArtifactExtractedFactId
+ArtifactExtractionId
+
+B10 should not need to reimplement basic normalization/parsing.
+
+==================================================
+106. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- patient matching;
+- provider matching;
+- facility matching;
+- attorney matching;
+- law-firm matching;
+- case matching;
+- lien matching;
+- fuzzy entity search;
+- duplicate detection;
+- matching scores;
+- candidate ranking;
+- confidence policy engine;
+- human review;
+- correction UI;
+- Case creation;
+- Lien creation;
+- automated routing;
+- AI extraction changes beyond compatibility;
+- OCR;
+- external postal-address validation;
+- phone-owner verification;
+- currency conversion;
+- legal conclusions;
+- AWS;
+- RDS;
+- ECS;
+- Route53;
+- deployment.
+
+==================================================
+107. BUILD / VALIDATION
+==================================================
+
+At minimum run and record:
+
+dotnet restore if required
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet build LegalSynq.sln --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet ef dbcontext info using repository-pinned tooling
+
+dotnet ef migrations list using repository-pinned tooling
+
+Apply full B02-B09 migration chain to disposable MySQL 8
+
+Validate B09 schema/indexes/FKs/uniqueness
+
+git diff --check
+
+git status --short
+
+git diff --stat
+
+git diff --name-status against B08 baseline
+
+Verify:
+- no Intake bin/obj tracked;
+- no secrets;
+- no uploaded spec assets added;
+- no unrelated product-domain changes.
+
+Clearly distinguish pre-existing warnings from new B09 errors/warnings.
+
+==================================================
+108. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B09 is complete only when all are true:
+
+1. LIEN_INTAKE_NORMALIZATION_V1 exists.
+2. Normalization profile is versioned.
+3. B02 normalization configuration exists.
+4. Successful/current B08 extraction is required.
+5. ArtifactNormalization persistence exists.
+6. ArtifactNormalizedFact persistence exists.
+7. Normalization binds to exact ArtifactExtractionId.
+8. Every normalized fact binds to exact ArtifactExtractedFactId.
+9. B08 RawValue remains immutable.
+10. Normalized values are stored separately.
+11. Deterministic normalization is used.
+12. AI is not required for routine normalization.
+13. Normalizer registry exists.
+14. Person-name normalization exists.
+15. Organization-name normalization exists.
+16. Date normalization exists.
+17. Money normalization exists.
+18. Phone normalization exists.
+19. Email normalization exists.
+20. Conservative address normalization exists.
+21. Identifier normalization exists.
+22. Generic text normalization exists.
+23. Unicode normalization strategy exists.
+24. Diacritics remain preserved in display values.
+25. Comparison representations may normalize diacritics separately.
+26. Meaningful punctuation is preserved in display values.
+27. ComparisonKey is separate from display-normalized value.
+28. Ambiguous dates are not silently guessed.
+29. Invalid dates are rejected structurally.
+30. Date range inconsistencies are flagged, not corrected.
+31. Money values retain original FactCode semantics.
+32. Default currency behavior is configuration-driven.
+33. Currency assumptions are explicitly warned.
+34. Explicit currencies are preserved.
+35. No currency conversion occurs.
+36. Negative amounts are supported.
+37. Phone default-country behavior is configuration-driven.
+38. Email domain normalization follows established rules.
+39. Invalid email syntax is not silently corrected.
+40. Address parsing does not fabricate missing components.
+41. Identifier display and comparison representations remain distinct.
+42. Repeated source facts remain separate.
+43. Duplicate normalized values do not destroy source provenance.
+44. SourceConfidence is preserved.
+45. Low-confidence B08 facts are not discarded solely for low confidence.
+46. Normalization status is separate from SourceConfidence.
+47. ValidationStatus is separate from SourceConfidence.
+48. Evidence is preserved.
+49. Evidence locations are never fabricated.
+50. Evidence remains tied to source fact.
+51. Evidence remains tenant-scoped.
+52. Evidence snippets are not logged.
+53. Cross-fact structural validation exists where appropriate.
+54. Structural inconsistencies are flagged, not silently corrected.
+55. Normalization is idempotent.
+56. ExecutionKey uniqueness exists.
+57. Duplicate normalization requests do not duplicate runs/facts.
+58. Historical normalization runs are preserved.
+59. New extraction produces new normalization.
+60. New profile version produces new normalization.
+61. One current normalization result is deterministically identifiable.
+62. Partial normalization is supported.
+63. One invalid fact does not necessarily fail the whole run.
+64. Tenant A cannot access Tenant B normalized data.
+65. Tenant A cannot access Tenant B evidence.
+66. Tenant A cannot execute Tenant B normalization.
+67. Audit events exist without PHI/PII values.
+68. Operational logs omit RawValue/NormalizedValue/evidence.
+69. Normalization APIs exist.
+70. Authorization is enforced.
+71. Analytics contain no raw values.
+72. normalization-profile tests pass.
+73. name normalization tests pass.
+74. organization tests pass.
+75. date tests pass.
+76. date-range tests pass.
+77. money tests pass.
+78. money-semantic tests pass.
+79. phone tests pass.
+80. email tests pass.
+81. address tests pass.
+82. identifier tests pass.
+83. text/Unicode tests pass.
+84. evidence tests pass.
+85. low-confidence preservation tests pass.
+86. multi-value tests pass.
+87. idempotency/history tests pass.
+88. partial-run tests pass.
+89. tenant-isolation tests pass.
+90. HTTP integration tests cover critical paths where practical.
+91. B09 migration exists.
+92. full B02-B09 migration chain applies successfully to MySQL 8.
+93. B09 FK/index/uniqueness constraints are verified.
+94. prior Intake schema remains intact.
+95. Intake API builds with zero new B09 errors.
+96. Intake tests pass.
+97. full LegalSynq solution builds with zero new B09 errors.
+98. no matching/duplicate/review/Case/Lien creation is introduced.
+99. no cloud/deployment work is performed.
+100. no secrets/specification assets/build artifacts are introduced.
+101. /analysis/LSI-B09-report.md exists with complete evidence.
+
+==================================================
+109. REQUIRED IMPLEMENTATION REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B09-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree state
+8. B02-B08 architecture reviewed
+9. B08 extraction integration
+10. Files added
+11. Files modified
+12. normalization profile
+13. B02 normalization configuration
+14. ArtifactNormalization model
+15. ArtifactNormalizedFact model
+16. source-fact binding
+17. extraction binding
+18. raw-value preservation
+19. normalizer registry
+20. normalizer interface
+21. text normalization
+22. Unicode strategy
+23. diacritic strategy
+24. whitespace/punctuation strategy
+25. person-name normalization
+26. organization normalization
+27. date normalization
+28. ambiguous-date behavior
+29. date-range validation
+30. money normalization
+31. currency/default-currency behavior
+32. negative amount handling
+33. phone normalization
+34. email normalization
+35. address normalization
+36. identifier normalization
+37. comparison-key strategy
+38. comparison-key privacy
+39. multi-value handling
+40. duplicate normalized-value behavior
+41. SourceConfidence handling
+42. low-confidence preservation
+43. normalization statuses
+44. validation statuses
+45. warning codes
+46. cross-fact validation
+47. evidence model
+48. evidence preservation
+49. evidence immutability
+50. evidence PHI/PII controls
+51. normalization service
+52. eligibility
+53. execution key
+54. idempotency
+55. history/current-result strategy
+56. partial-run behavior
+57. trigger/event strategy
+58. APIs
+59. authorization
+60. tenant isolation
+61. audit behavior
+62. logging/privacy behavior
+63. analytics if implemented
+64. migration name
+65. database schema
+66. indexes/constraints
+67. full B02-B09 MySQL migration validation
+68. prior pending DB-validation closure
+69. profile tests
+70. name tests
+71. organization tests
+72. date/date-range tests
+73. money/money-semantic tests
+74. phone/email tests
+75. address tests
+76. identifier tests
+77. text/Unicode tests
+78. evidence tests
+79. low-confidence preservation tests
+80. multi-value tests
+81. idempotency/history tests
+82. partial-run tests
+83. tenant-isolation tests
+84. HTTP integration tests
+85. Intake API build result
+86. full solution build result
+87. security assessment
+88. performance considerations
+89. known gaps
+90. out-of-scope confirmation
+91. git diff summary
+92. final repository validation status
+93. recommended next bundle: LSI-B10
+
+Sanitize all local credentials, tokens, PHI/PII test values, and disposable database connection details from the report.
+
+==================================================
+110. DEFINITION OF DONE
+==================================================
+
+The implementation is done when Synq Intake can take the source-preserved facts produced by B08 and reliably produce:
+
+- deterministic normalized candidates;
+- typed normalized structures;
+- comparison-ready keys;
+- structural validation;
+- stable warning codes;
+- preserved SourceConfidence;
+- preserved RawValue;
+- preserved bounded evidence;
+- immutable normalization history;
+- deterministic current-result selection;
+- tenant-isolated PHI/PII handling;
+
+while clearly distinguishing:
+
+extracted
+from
+normalized
+from
+validated structurally
+from
+matched
+from
+verified
+from
+approved.
+
+When complete:
+
+- execute all required implementation work now;
+- run all required local validation;
+- create /analysis/LSI-B09-report.md;
+- stop;
+- do not begin LSI-B10;
+- do not deploy;
+- do not push unless explicitly requested.

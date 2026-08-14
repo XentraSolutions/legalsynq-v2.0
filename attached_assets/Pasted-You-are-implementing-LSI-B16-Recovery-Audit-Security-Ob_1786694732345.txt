@@ -1,0 +1,1949 @@
+You are implementing LSI-B16 — Recovery, Audit, Security, Observability & Analytics for Synq Intake in the LegalSynq v3 repository.
+
+EXECUTION DIRECTIVE
+
+Execute this ticket now.
+
+Do not stop after reviewing requirements.
+Do not return a plan for approval.
+Do not ask whether to proceed.
+Implement the full scoped LSI-B16 work in this execution, run the required local validation, and produce /analysis/LSI-B16-report.md when complete.
+
+If a minor implementation decision is needed and the requirements already establish the intended behavior, make the safest architecture-consistent decision and continue.
+
+Only stop for a genuine blocking condition that cannot be resolved from the repository or these requirements.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Related integration services: Documents and Liens/SynqLien where B16 hardening requires them
+- Required implementation report: /analysis/LSI-B16-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B16 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime deployment, staging deployment, production deployment, push, PR, or merge work.
+3. Do not implement B17+ features such as External API Intake, HL7/EHR, SFTP/Batch, SynqFund profiles, CareConnect profiles, or straight-through processing.
+4. Do not add new business functionality unrelated to operational hardening.
+5. Preserve all prior analysis reports as read-only.
+6. Create/update only /analysis/LSI-B16-report.md for this ticket.
+7. Treat B01-B15 business behavior and immutable history as authoritative.
+8. Do not mutate immutable B08-B13 history for operational convenience.
+9. Do not use manual DB edits as a recovery mechanism.
+10. Recovery must be safe under multiple Intake replicas.
+11. Recovery must not create duplicate Case, Lien, or document associations.
+12. All operational/audit/log/metric data must remain PHI-safe.
+13. Before coding, inspect:
+   - current git branch/status;
+   - HEAD vs origin/xenia;
+   - all persisted processing/status models from B04-B15;
+   - current B13 adapter claim-token/retry semantics;
+   - current B14 Case/Lien idempotency and external-reference behavior;
+   - current B15 document-association persistence and retry semantics;
+   - existing hosted/background-worker conventions;
+   - current auth/permission conventions;
+   - current audit client usage;
+   - current health endpoints;
+   - existing logging abstractions;
+   - existing metrics/OpenTelemetry support;
+   - existing correlation/trace propagation;
+   - current exception/error middleware;
+   - current frontend admin/operations patterns;
+   - current MySQL migrations/indexes;
+   - existing security/service-token test infrastructure;
+   - current dependency/security scanning tooling.
+14. Record repository baseline and initial working-tree state in /analysis/LSI-B16-report.md before implementation.
+15. Preserve unrelated pre-existing changes.
+16. Do not commit uploaded specifications, local databases, generated binaries, secrets, test credentials, or unrelated artifacts.
+17. Local/repository validation is required.
+18. Do not claim deployed/runtime/production/GitHub evidence unless separately proven.
+19. Do not begin B17 automatically.
+20. Do not push unless explicitly requested.
+
+LOCKED PLATFORM STACK
+
+Backend:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT/service-token authentication
+- existing current-request/tenant context
+- existing LegalSynq audit conventions
+- existing HttpClient/resilience conventions
+- existing metrics/tracing tooling if already present
+
+Frontend:
+- Next.js 15
+- React
+- TypeScript
+- Tailwind
+- minimal operations/admin UI only where appropriate
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+
+B16 is operational hardening over the existing pipeline:
+
+Source
+-> Documents
+-> Classification
+-> Extraction
+-> Normalization
+-> Matching
+-> Policy
+-> Human Review
+-> Approved Snapshot
+-> SynqLien Routing
+-> Case / Lien
+-> Document Association
+-> Recovery / Audit / Security / Observability / Analytics
+
+B16 must answer:
+
+“What is stuck, why did it fail, is it retryable, has downstream work already happened, can it be recovered safely, who acted on it, and are tenant/PHI boundaries intact?”
+
+==================================================
+1. STALE-WORK INVENTORY
+==================================================
+
+Inspect persisted stages and identify those that can remain in:
+
+PROCESSING
+CREATING
+PENDING
+RETRYABLE
+
+or equivalent non-terminal states.
+
+At minimum review:
+
+- email/artifact processing;
+- classification;
+- extraction;
+- normalization;
+- matching;
+- policy;
+- snapshot creation;
+- adapter execution;
+- document-association execution/items.
+
+Do not create recovery handlers for states that cannot genuinely stall.
+
+==================================================
+2. RECOVERY CONFIGURATION
+==================================================
+
+Add typed configuration such as:
+
+Intake:Recovery:Enabled
+Intake:Recovery:ScanIntervalSeconds
+Intake:Recovery:ProcessingStaleAfterMinutes
+Intake:Recovery:MaxItemsPerScan
+Intake:Recovery:MaxRecoveryAttempts
+Intake:Recovery:MaxConcurrentRecoveries
+
+Add stage-specific overrides only where justified.
+
+Use safe defaults:
+- bounded scans;
+- bounded concurrency;
+- finite retries;
+- no write storms.
+
+==================================================
+3. RECOVERY BACKGROUND WORKER
+==================================================
+
+Implement a hosted recovery/reconciliation worker using existing application hosting conventions.
+
+Responsibilities:
+
+1. scan bounded stale work;
+2. order oldest stale work first;
+3. atomically claim;
+4. resolve stage-specific recovery handler;
+5. reconcile before replay where downstream writes may already exist;
+6. transition safely;
+7. record attempts;
+8. schedule backoff/NextRetryAt where appropriate;
+9. emit safe audit/log/metrics;
+10. never duplicate product writes.
+
+==================================================
+4. MULTI-INSTANCE SAFETY
+==================================================
+
+Assume multiple Intake replicas.
+
+Recovery must use:
+
+- optimistic concurrency;
+- atomic status/claim changes;
+- claim token;
+- unique recovery identity;
+
+or an existing equivalent mechanism.
+
+Two workers must not recover the same logical operation simultaneously.
+
+==================================================
+5. RECOVERY REGISTRY
+==================================================
+
+Create:
+
+IIntakeRecoveryHandler
+IIntakeRecoveryRegistry
+
+or repository-equivalent.
+
+Avoid a monolithic stage switch containing direct DB logic.
+
+==================================================
+6. RECOVERY HANDLERS
+==================================================
+
+Potential stage codes:
+
+EMAIL_CAPTURE
+ARTIFACT_PROCESSING
+CLASSIFICATION
+EXTRACTION
+NORMALIZATION
+MATCHING
+POLICY
+SNAPSHOT
+ADAPTER_EXECUTION
+DOCUMENT_ASSOCIATION
+
+Only implement handlers justified by persisted lifecycle models.
+
+==================================================
+7. RECOVERY ATTEMPTS
+==================================================
+
+Track, using existing or new operational state:
+
+- AttemptCount
+- LastRecoveryAttemptAt
+- NextRetryAt
+- LastFailureCode
+- LastSafeMessage
+- RecoveryStatus
+- RecoverySource
+- ExhaustedAt
+
+Use UTC.
+
+==================================================
+8. RECOVERY EXHAUSTION
+==================================================
+
+After configured max attempts:
+
+- stop automatic retries;
+- surface operation in attention queue;
+- set safe operational state equivalent to:
+  REQUIRES_ATTENTION
+  or DEAD_LETTERED
+
+Prefer an operational wrapper/status rather than rewriting every domain aggregate.
+
+Use stable code:
+
+RECOVERY_EXHAUSTED
+
+or equivalent.
+
+==================================================
+9. NO ARBITRARY SUCCESS OVERRIDE
+==================================================
+
+Operators must not be able to simply force:
+
+SUCCEEDED
+
+for downstream work.
+
+A successful operational reconciliation must be evidence-based.
+
+Example:
+- Adapter may be reconciled to success only if downstream Case/Lien existence is verified.
+- Document association may be reconciled only if matching destination association is verified.
+
+==================================================
+10. ADAPTER RECOVERY
+==================================================
+
+For B13/B14 adapter executions:
+
+- detect stale PROCESSING;
+- inspect claim token/attempt;
+- inspect durable CASE/LIEN references;
+- verify downstream state where required;
+- preserve stable idempotency key;
+- reuse prior Case/Lien;
+- retry only unresolved operation;
+- never create duplicates.
+
+==================================================
+11. DOCUMENT-ASSOCIATION RECOVERY
+==================================================
+
+For B15:
+
+- detect stale execution/items;
+- inspect successful item state;
+- reconcile destination association;
+- preserve destination idempotency key;
+- retry only unresolved items;
+- do not rerun successful items;
+- never duplicate destination links.
+
+==================================================
+12. SNAPSHOT RECOVERY
+==================================================
+
+If B13 snapshots can remain CREATING:
+
+- detect stale record;
+- check transaction/current state;
+- either mark FAILED safely or recreate idempotently;
+- never mutate READY payload;
+- never overwrite immutable historical snapshot.
+
+==================================================
+13. DETERMINISTIC UPSTREAM RECOVERY
+==================================================
+
+For deterministic B08-B11 stages:
+
+- retry against exact recorded upstream lineage;
+- do not silently rebind to newer upstream versions;
+- fail/supersede stale lineage safely.
+
+==================================================
+14. MANUAL RECOVERY API
+==================================================
+
+Implement operator APIs following current route conventions.
+
+Recommended:
+
+GET /api/intake/operations/recovery/items
+POST /api/intake/operations/recovery/{stage}/{id}
+POST /api/intake/operations/recovery/{stage}/{id}/cancel
+
+Optional bounded bulk retry may be implemented if safe.
+
+No unbounded “retry all”.
+
+==================================================
+15. RECOVERY AUTHORIZATION
+==================================================
+
+Prefer:
+
+intake.operations.read
+intake.operations.recover
+intake.operations.admin
+
+or closest existing platform convention.
+
+==================================================
+16. MANUAL RETRY
+==================================================
+
+Authorized manual retry may bypass scheduled NextRetryAt when safe.
+
+It must not bypass:
+- tenant checks;
+- terminal domain invariants;
+- duplicate protection;
+- required authentication.
+
+==================================================
+17. MANUAL CANCEL
+==================================================
+
+Cancellation must:
+
+- prevent continued automatic recovery;
+- safely finalize active operational state;
+- be audited.
+
+Do not mutate completed business history.
+
+==================================================
+18. RECOVERY WORKER HEALTH
+==================================================
+
+Expose safe worker state:
+
+- Enabled
+- LastScanAt
+- LastSuccessfulScanAt
+- ItemsScanned
+- StaleItemsFound
+- RecoveredCount
+- FailedCount
+- LastFailureCode
+
+No payloads.
+
+==================================================
+19. WORKER FAILURE
+==================================================
+
+A scan failure should:
+
+- log safely;
+- emit a metric;
+- preserve process availability;
+- not crash Intake unless a fundamental startup dependency is invalid.
+
+==================================================
+20. SHUTDOWN
+==================================================
+
+Worker must honor cancellation on application shutdown.
+
+Claimed records must not be corrupted by shutdown.
+
+==================================================
+21. RECOVERY BACKOFF
+==================================================
+
+Implement bounded retry backoff/NextRetryAt for repeated transient recovery failures.
+
+Avoid hammering unavailable downstream services.
+
+==================================================
+22. AUDIT TAXONOMY
+==================================================
+
+Review and standardize Intake audit action codes.
+
+Suggested families:
+
+INTAKE_SOURCE_*
+INTAKE_EMAIL_*
+INTAKE_ARTIFACT_*
+INTAKE_AI_*
+INTAKE_MATCH_*
+INTAKE_POLICY_*
+INTAKE_REVIEW_*
+INTAKE_SNAPSHOT_*
+INTAKE_ADAPTER_*
+INTAKE_DOCUMENT_ASSOCIATION_*
+INTAKE_RECOVERY_*
+INTAKE_SECURITY_*
+
+Use stable codes, not arbitrary free text.
+
+==================================================
+23. AUDIT COVERAGE MATRIX
+==================================================
+
+Review B01-B15 audit coverage for:
+
+- source changes;
+- email receipt/capture;
+- artifact processing;
+- classification;
+- extraction;
+- normalization;
+- matching;
+- policy;
+- review creation/claim/assignment/correction/completion;
+- snapshot creation/supersession;
+- adapter execution/retry/failure;
+- Case/Lien routing;
+- document association;
+- manual recovery/cancel.
+
+Add missing material audit events where practical.
+
+==================================================
+24. AUDIT PRIVACY
+==================================================
+
+Allowed safe metadata:
+
+TenantId
+OrgId
+UserId
+SourceId
+ArtifactId
+ReviewId
+SnapshotId
+ExecutionId
+DocumentId
+CaseId
+LienId
+Status
+FailureCode
+Stage
+CorrelationId
+
+Forbidden unless explicitly justified:
+
+- patient names;
+- medical values;
+- extracted fact values;
+- email body;
+- raw subject;
+- document content;
+- AI prompt/response;
+- raw destination responses;
+- PHI-bearing filenames.
+
+==================================================
+25. AUDIT FAILURE SEMANTICS
+==================================================
+
+Reuse existing platform audit behavior.
+
+Where current architecture is persist-first/non-blocking:
+- business operation should not be corrupted by audit-sink outage.
+
+Document any actions that are transactionally required.
+
+==================================================
+26. OPERATOR ACTION AUDIT
+==================================================
+
+Manual retry/cancel/acknowledge must record:
+
+- actor;
+- tenant;
+- stage;
+- object ID;
+- previous operational status;
+- new operational status;
+- reason/action code;
+- correlation.
+
+==================================================
+27. SECURITY REGRESSION
+==================================================
+
+Perform a focused B01-B15 security regression covering:
+
+- tenant isolation;
+- IDOR;
+- service-token boundaries;
+- user/service-token separation;
+- cross-service tenant mismatch;
+- org-context enforcement;
+- PHI logging;
+- secrets;
+- unsafe error responses.
+
+==================================================
+28. TENANT ISOLATION MATRIX
+==================================================
+
+Add automated tenant-isolation coverage for major resource types:
+
+- sources;
+- emails;
+- artifacts;
+- manual submissions;
+- classification;
+- extraction;
+- normalization;
+- matching;
+- policy;
+- reviews;
+- snapshots;
+- adapter executions;
+- external references;
+- document associations;
+- operations/recovery resources.
+
+For each:
+
+Tenant A can access A.
+Tenant A cannot access Tenant B.
+
+==================================================
+29. IDOR
+==================================================
+
+For ID-based APIs:
+
+Tenant A requesting Tenant B resource must return:
+
+404
+or platform-standard access denial
+
+without leaking resource details.
+
+==================================================
+30. SERVICE TOKEN MATRIX
+==================================================
+
+Add dedicated tests for internal endpoints including:
+
+Documents internal metadata
+Liens internal SynqLien
+Liens internal document association
+other B14/B15 internal surfaces
+
+Scenarios:
+
+Valid service token + tenant -> success
+No token -> 401
+Ordinary user JWT -> 401/403
+Wrong audience/service -> 401/403
+Missing tenant claim -> reject
+Tenant mismatch -> reject
+Missing org where required -> reject
+
+==================================================
+31. USER/SERVICE TOKEN SEPARATION
+==================================================
+
+Internal service-only endpoints must not accidentally accept ordinary tenant JWTs unless explicitly intended.
+
+==================================================
+32. SECRET HANDLING
+==================================================
+
+Use repository-supported scanning where available for:
+
+- API keys;
+- tokens;
+- connection strings;
+- embedded secrets.
+
+Do not introduce a new scanning tool unnecessarily.
+
+==================================================
+33. PHI LOGGING REVIEW
+==================================================
+
+Review logging across Intake/Documents/Liens integration paths.
+
+Never log:
+
+- email body;
+- patient name;
+- medical values;
+- extracted/normalized fact values;
+- AI response body;
+- raw document content;
+- raw destination response;
+- unsafe filenames.
+
+==================================================
+34. STRUCTURED LOGGING
+==================================================
+
+Use safe stable fields:
+
+TenantId
+CorrelationId
+ArtifactId
+ReviewId
+SnapshotId
+ExecutionId
+Stage
+Status
+FailureCode
+DurationMs
+Attempt
+
+==================================================
+35. FAILURE SANITIZER
+==================================================
+
+Create or reuse a central sanitizer:
+
+Exception / downstream error
+->
+FailureCode
+FailureCategory
+SafeMessage
+Retryable
+
+No stack traces or PHI in persisted operational failures.
+
+==================================================
+36. FAILURE CATEGORIES
+==================================================
+
+Standardize:
+
+VALIDATION
+AUTHORIZATION
+TENANT_ISOLATION
+DEPENDENCY
+TIMEOUT
+RATE_LIMIT
+CONFIGURATION
+CONCURRENCY
+INTEGRITY
+DATA
+UNKNOWN
+
+Map detailed codes to these operational categories.
+
+==================================================
+37. API ERROR MODEL
+==================================================
+
+Responses should contain:
+
+- stable code;
+- safe message;
+- correlation ID.
+
+Do not expose stack traces in non-development responses.
+
+==================================================
+38. HEALTH ARCHITECTURE
+==================================================
+
+Review current health conventions.
+
+Prefer distinct semantics:
+
+/health/live
+/health/ready
+
+if consistent with platform conventions.
+
+==================================================
+39. LIVENESS
+==================================================
+
+Liveness should indicate process viability.
+
+Optional downstream service outage must not cause liveness failure.
+
+==================================================
+40. READINESS
+==================================================
+
+Readiness should reflect critical dependencies needed for configured behavior.
+
+At minimum assess:
+
+- Intake DB;
+- Documents;
+- Liens;
+- Synq AI if enabled;
+- candidate source if enabled;
+- audit dependency where appropriate.
+
+==================================================
+41. OPTIONAL DEPENDENCIES
+==================================================
+
+Disabled integrations should report:
+
+Disabled
+or NotConfigured
+
+not Unhealthy.
+
+==================================================
+42. HEALTH PRIVACY
+==================================================
+
+Health output must not expose:
+
+- secrets;
+- connection strings;
+- tokens;
+- stack traces;
+- PHI;
+- raw downstream bodies.
+
+==================================================
+43. METRICS TAXONOMY
+==================================================
+
+Implement/standardize metrics for:
+
+INTAKE:
+- email volume;
+- manual submissions;
+- artifacts.
+
+AI:
+- classifications;
+- extractions;
+- failures;
+- latency.
+
+PROCESSING:
+- normalization;
+- matching;
+- policy;
+- reviews.
+
+ROUTING:
+- snapshots;
+- adapters;
+- Cases created/reused;
+- Liens created.
+
+DOCUMENTS:
+- association attempts/success/failure.
+
+RECOVERY:
+- stale found;
+- recovered;
+- failed;
+- exhausted;
+- manual retries.
+
+==================================================
+44. DURATION METRICS
+==================================================
+
+Track stage durations where existing instrumentation allows:
+
+capture
+artifact
+classify
+extract
+normalize
+match
+policy
+review age
+snapshot
+adapter
+document association
+recovery
+
+==================================================
+45. LOW-CARDINALITY METRICS
+==================================================
+
+Safe labels:
+
+Stage
+Status
+ProviderCode
+AdapterCode
+FailureCategory
+
+Do not use:
+
+TenantId
+PatientId
+ArtifactId
+DocumentId
+CaseId
+LienId
+SnapshotId
+
+as general metric labels.
+
+==================================================
+46. OBSERVABILITY CORRELATION
+==================================================
+
+Ensure CorrelationId propagates where supported:
+
+Intake
+-> Documents
+-> Synq AI
+-> Candidate source
+-> Liens
+-> Audit
+
+==================================================
+47. TRACE CONTEXT
+==================================================
+
+If existing platform uses W3C/OpenTelemetry:
+
+preserve:
+
+traceparent
+tracestate
+
+across HttpClient calls.
+
+Do not introduce an incompatible tracing model.
+
+==================================================
+48. OPENTELEMETRY
+==================================================
+
+If already present, instrument Intake spans such as:
+
+intake.capture
+intake.artifact.process
+intake.classify
+intake.extract
+intake.normalize
+intake.match
+intake.policy
+intake.review
+intake.snapshot
+intake.adapter.synqlien
+intake.document.associate
+intake.recovery
+
+No PHI attributes.
+
+==================================================
+49. ALERT-READINESS METRICS
+==================================================
+
+Expose measurable signals for future alerts:
+
+- stale work count;
+- recovery exhaustion;
+- adapter failure rate;
+- Documents failure rate;
+- AI provider failures;
+- review backlog age;
+- DB readiness failure.
+
+Do not configure cloud alerting.
+
+==================================================
+50. OPERATIONAL SUMMARY API
+==================================================
+
+Implement tenant-safe operational summary.
+
+Recommended:
+
+GET /api/intake/operations/summary
+
+Return bounded aggregate counts:
+
+- received;
+- processing;
+- waiting review;
+- completed;
+- failed;
+- retryable;
+- stale;
+- recovered;
+- adapter success/failure;
+- document association success/failure.
+
+==================================================
+51. STAGE FUNNEL API
+==================================================
+
+Implement:
+
+GET /api/intake/operations/stages
+
+Provide counts:
+
+Received
+Documented
+Classified
+Extracted
+Normalized
+Matched
+Policy Evaluated
+Reviewed
+Snapshot Ready
+Routed
+Documents Associated
+
+==================================================
+52. FAILURE ANALYTICS
+==================================================
+
+Implement:
+
+GET /api/intake/operations/failures
+
+Aggregate by:
+
+- stage;
+- category;
+- code;
+- retryability.
+
+No PHI.
+
+==================================================
+53. RECOVERY ANALYTICS
+==================================================
+
+Implement:
+
+GET /api/intake/operations/recovery
+
+Return:
+
+- stale;
+- recovered;
+- failed;
+- exhausted;
+- average attempts;
+- recent recovery activity.
+
+==================================================
+54. ATTENTION QUEUE
+==================================================
+
+Provide an operational queue for work needing action.
+
+Fields:
+
+- Stage
+- ObjectId
+- Status
+- FailureCode
+- FailureCategory
+- Retryable
+- AttemptCount
+- LastAttemptAt
+- NextRetryAt
+- StaleSince
+- CreatedAt
+- CorrelationId
+
+No business payload.
+
+==================================================
+55. ATTENTION QUEUE FILTERS
+==================================================
+
+Support bounded filters:
+
+- stage;
+- status;
+- failure category;
+- retryable;
+- date range.
+
+==================================================
+56. PAGINATION
+==================================================
+
+All operational lists must be paginated/bounded.
+
+No full-table API responses.
+
+==================================================
+57. TIME RANGE
+==================================================
+
+Support:
+
+24h
+7d
+30d
+
+or bounded explicit dates.
+
+Do not permit unbounded analytics scans.
+
+==================================================
+58. TENANT SCOPE
+==================================================
+
+Tenant users:
+- tenant-only analytics.
+
+Platform operators:
+- cross-tenant aggregate only if existing platform authorization supports it.
+
+Do not introduce new cross-tenant data access casually.
+
+==================================================
+59. REVIEW BACKLOG ANALYTICS
+==================================================
+
+Provide:
+
+- waiting count;
+- oldest waiting age;
+- high-priority count;
+- stale review count.
+
+No names/facts.
+
+==================================================
+60. ADAPTER ANALYTICS
+==================================================
+
+Aggregate:
+
+NOOP_V1
+SYNQLIEN_V1
+
+by:
+
+success
+retryable
+failed
+duration
+attempt count
+
+==================================================
+61. DOCUMENT ASSOCIATION ANALYTICS
+==================================================
+
+Return:
+
+- workflow executions;
+- items;
+- Case associations;
+- Lien associations;
+- skipped;
+- retryable;
+- permanent failures.
+
+==================================================
+62. SOURCE ANALYTICS
+==================================================
+
+Aggregate:
+
+- email intake volume;
+- manual intake volume;
+- source failures.
+
+Avoid exposing inbound addresses unless authorization explicitly requires it.
+
+==================================================
+63. AI ANALYTICS
+==================================================
+
+Use existing telemetry to aggregate:
+
+- call count;
+- success/failure;
+- provider;
+- profile/schema;
+- latency;
+- token/usage data already captured.
+
+Do not expose prompt/content.
+
+==================================================
+64. OPERATIONS UI
+==================================================
+
+If current frontend architecture supports it, add:
+
+/intake/operations
+
+Minimal operational dashboard only.
+
+==================================================
+65. OPERATIONS DASHBOARD
+==================================================
+
+Potential sections:
+
+- pipeline summary;
+- stage funnel;
+- review backlog;
+- failure summary;
+- recovery status;
+- adapter status;
+- document association status;
+- worker health.
+
+No PHI-heavy cards.
+
+==================================================
+66. ATTENTION QUEUE UI
+==================================================
+
+Display:
+
+- stage;
+- status;
+- failure code;
+- retryable;
+- attempts;
+- age;
+- retry/cancel.
+
+No raw payload.
+
+==================================================
+67. DETAIL NAVIGATION
+==================================================
+
+Link to existing authorized Intake detail/review/snapshot pages.
+
+Do not duplicate full domain UIs.
+
+==================================================
+68. OPERATIONAL ACKNOWLEDGEMENT
+==================================================
+
+Optional:
+
+ACKNOWLEDGED
+
+for attention-queue tracking only.
+
+Acknowledgement must not change underlying business result.
+
+==================================================
+69. INDEX REVIEW
+==================================================
+
+Review indexes supporting:
+
+- stale scan;
+- attention queue;
+- status/tenant/date;
+- NextRetryAt;
+- analytics time range;
+- current markers.
+
+Add narrowly scoped indexes where needed.
+
+==================================================
+70. ANALYTICS STORAGE
+==================================================
+
+Prefer current transactional tables.
+
+Do not create an analytics warehouse.
+
+Only add materialized/summary persistence if performance evidence justifies it.
+
+==================================================
+71. RETENTION REVIEW
+==================================================
+
+Document current retention behavior for:
+
+- raw email/MIME;
+- documents;
+- AI histories;
+- reviews;
+- snapshots;
+- adapter attempts;
+- document association attempts;
+- audit events.
+
+Do not introduce destructive retention unless already authorized.
+
+==================================================
+72. SENSITIVE FAILURE STORAGE
+==================================================
+
+Review all FailureMessage fields.
+
+Store only sanitized diagnostic messages.
+
+==================================================
+73. E2E INTEGRATION HARNESS
+==================================================
+
+Where practical, create a local/test harness covering:
+
+Intake
+-> Documents
+-> B13 snapshot
+-> B14 Liens
+-> B15 document association
+
+Use local/test service hosts and disposable databases.
+
+No cloud required.
+
+==================================================
+74. E2E HAPPY PATH
+==================================================
+
+Validate:
+
+1. READY snapshot;
+2. Case reused/created;
+3. Lien created;
+4. Documents associated;
+5. statuses succeed;
+6. audit safe;
+7. metrics increment.
+
+==================================================
+75. E2E RETRY PATH
+==================================================
+
+Simulate temporary Documents or Liens failure.
+
+Verify:
+- retry;
+- idempotency;
+- no duplicates.
+
+==================================================
+76. E2E TENANT ISOLATION
+==================================================
+
+Attempt cross-tenant:
+
+- document;
+- Case;
+- Lien;
+- operational read.
+
+Must fail.
+
+==================================================
+77. E2E RESPONSE LOSS
+==================================================
+
+Simulate downstream write success with lost response.
+
+Retry/recovery must reconcile existing destination state.
+
+==================================================
+78. MYSQL VALIDATION
+==================================================
+
+Apply full Intake migration chain B02-B16 against clean disposable/local MySQL 8 if environment permits.
+
+Also validate:
+
+Liens migration chain
+Documents migration chain if modified.
+
+Document every result.
+
+==================================================
+79. MIGRATION DEBT CLOSURE
+==================================================
+
+Attempt to close accumulated B04-B15 live MySQL validation gaps.
+
+Do not falsely claim closure if environment blocks it.
+
+==================================================
+80. QUERY VALIDATION
+==================================================
+
+Validate realistic queries for:
+
+- stale scan;
+- attention queue;
+- analytics summary;
+- stage funnel.
+
+Ensure indexes support them.
+
+==================================================
+81. DEPENDENCY / SECURITY SCAN
+==================================================
+
+Run repository-supported:
+
+- dependency audit;
+- secret scan;
+- security/static checks where available.
+
+Do not add heavyweight new tooling.
+
+==================================================
+82. VULNERABILITY CLASSIFICATION
+==================================================
+
+Inventory warnings affecting:
+
+Intake
+Documents
+Liens
+
+Classify:
+
+- severity;
+- direct/transitive;
+- likely exploitable/not;
+- blocking/non-blocking.
+
+Do not broadly upgrade packages outside ticket scope.
+
+==================================================
+83. RECOVERY TEST — CONCURRENCY
+==================================================
+
+Run concurrent recovery on same item.
+
+Exactly one worker claims it.
+
+==================================================
+84. RECOVERY TEST — STALE ADAPTER
+==================================================
+
+Stale SYNQLIEN_V1 execution with existing CASE ref.
+
+Recovery:
+- reuses Case;
+- preserves key;
+- does not duplicate Case.
+
+==================================================
+85. RECOVERY TEST — STALE DOCUMENT ASSOCIATION
+==================================================
+
+Stale B15 item where destination link exists.
+
+Recovery reconciles to success.
+
+==================================================
+86. RECOVERY TEST — EXHAUSTION
+==================================================
+
+After max attempts:
+- attention state;
+- no further automatic retry.
+
+==================================================
+87. RECOVERY TEST — CANCELLATION
+==================================================
+
+Operator cancel prevents automatic recovery until explicitly reset/changed according to design.
+
+==================================================
+88. AUDIT TESTS
+==================================================
+
+Verify audit for:
+
+- review completion;
+- snapshot creation;
+- SynqLien routing;
+- document association;
+- manual recovery;
+- manual cancel.
+
+==================================================
+89. PHI AUDIT TEST
+==================================================
+
+Inject representative sensitive strings.
+
+Assert absent from:
+
+- audit metadata;
+- logs;
+- events;
+- metrics.
+
+==================================================
+90. TENANT MATRIX TESTS
+==================================================
+
+Tenant A vs Tenant B tests across major Intake resources.
+
+==================================================
+91. SERVICE TOKEN TESTS
+==================================================
+
+Test internal endpoint matrix:
+
+valid token
+missing token
+user JWT
+wrong service/audience
+missing tenant
+tenant mismatch
+missing org where required
+
+==================================================
+92. HEALTH TESTS
+==================================================
+
+Verify:
+
+healthy dependencies -> Ready
+critical DB down -> not Ready
+disabled optional integration -> not failure
+optional destination unavailable -> semantics consistent with config
+no secrets in health response
+
+==================================================
+93. METRICS TESTS
+==================================================
+
+Verify:
+
+- counters increment;
+- durations recorded;
+- stable categories;
+- low-cardinality labels;
+- no PHI.
+
+==================================================
+94. ANALYTICS TESTS
+==================================================
+
+Use deterministic fixture records.
+
+Verify:
+
+- counts;
+- time filtering;
+- stage grouping;
+- tenant scope.
+
+==================================================
+95. ATTENTION QUEUE TESTS
+==================================================
+
+Verify:
+
+stale
+retryable
+failed
+exhausted
+
+appear.
+
+Successful completed work does not.
+
+==================================================
+96. RECOVERY API TESTS
+==================================================
+
+Test:
+
+401
+403
+wrong tenant
+unsupported stage
+non-retryable item
+exhausted item
+successful retry
+concurrent retry
+cancel
+
+==================================================
+97. HISTORICAL INTEGRITY TESTS
+==================================================
+
+Recovery must never mutate immutable:
+
+- extraction history;
+- normalization history;
+- matching history;
+- policy history;
+- completed review history;
+- READY snapshots.
+
+==================================================
+98. FRONTEND TESTS
+==================================================
+
+If operations frontend changed:
+
+- validate TypeScript for changed files;
+- run relevant tests;
+- distinguish pre-existing unrelated failures.
+
+==================================================
+99. BUILD VALIDATION
+==================================================
+
+At minimum run:
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+If Liens changed:
+- build Liens service;
+- run focused/relevant tests.
+
+If Documents changed:
+- build Documents service;
+- run relevant tests.
+
+Run:
+
+dotnet build LegalSynq.sln --no-restore -m:1 /p:BuildInParallel=false
+
+If migrations added:
+
+dotnet ef dbcontext info
+dotnet ef migrations list
+
+Apply relevant migrations to disposable MySQL 8 where environment permits.
+
+Run:
+
+git diff --check
+git status --short
+git diff --stat
+git diff --name-status against B15 baseline
+
+Verify:
+- no secrets;
+- no bin/obj tracked;
+- no uploaded specs tracked;
+- no unrelated generated artifacts;
+- no B17+ business feature changes.
+
+Classify results explicitly:
+
+Passed
+Partially Completed
+Blocked
+Unavailable
+Failed
+
+==================================================
+100. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- External API Intake;
+- HL7/EHR;
+- SFTP/Batch;
+- SynqFund profile;
+- CareConnect profile;
+- automatic straight-through processing;
+- new AI models;
+- new matching algorithms;
+- lien selling;
+- Flow workflow integration;
+- notification expansion;
+- cloud alert configuration;
+- AWS/RDS/ECS/Route53;
+- deployment;
+- production migration;
+- unrelated package upgrade programs.
+
+==================================================
+101. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B16 is complete only when all are true:
+
+1. stale work inventory completed.
+2. recovery config exists.
+3. recovery worker exists.
+4. scans are bounded.
+5. scan order is safe.
+6. multi-instance safety exists.
+7. atomic claim exists.
+8. recovery registry exists.
+9. stage handlers exist where required.
+10. attempts tracked.
+11. retry backoff exists where appropriate.
+12. NextRetryAt or equivalent exists where required.
+13. max attempts enforced.
+14. exhausted work enters attention state.
+15. adapter stale recovery exists.
+16. B15 stale recovery exists.
+17. duplicate Case prevented during recovery.
+18. duplicate Lien prevented during recovery.
+19. duplicate document association prevented.
+20. snapshot immutability preserved.
+21. historical immutable upstream state preserved.
+22. manual recovery API exists.
+23. manual cancel exists.
+24. recovery authorization exists.
+25. recovery actions audited.
+26. arbitrary success override is prohibited.
+27. audit taxonomy standardized.
+28. audit coverage reviewed across B01-B15.
+29. material missing audit actions added.
+30. audit contains no PHI.
+31. logs contain no PHI.
+32. events contain no PHI.
+33. metrics contain no PHI.
+34. failure sanitizer exists/reused.
+35. standard failure categories exist.
+36. safe failure message persisted.
+37. stack traces not returned from production APIs.
+38. tenant isolation matrix exists.
+39. IDOR tests exist.
+40. service-token matrix exists.
+41. user JWT rejected from internal-only endpoints.
+42. missing tenant rejected.
+43. tenant mismatch rejected.
+44. missing org rejected where required.
+45. secrets not committed.
+46. secret scanning performed where supported.
+47. liveness exists/documented.
+48. readiness exists/documented.
+49. critical dependency health covered.
+50. optional disabled integrations do not fail readiness incorrectly.
+51. health output contains no secrets.
+52. recovery worker health exposed.
+53. pipeline metrics exist.
+54. recovery metrics exist.
+55. duration metrics exist.
+56. metric labels low-cardinality.
+57. operational summary API exists.
+58. stage funnel exists.
+59. failure analytics exists.
+60. recovery analytics exists.
+61. attention queue exists.
+62. queue is paginated.
+63. queue filters exist.
+64. tenant analytics tenant-scoped.
+65. review backlog analytics exists.
+66. adapter analytics exists.
+67. document association analytics exists.
+68. source analytics exists.
+69. AI telemetry aggregates use existing data.
+70. no analytics warehouse introduced.
+71. analytics date ranges bounded.
+72. operational-query indexes reviewed.
+73. stale scan query indexed appropriately.
+74. attention queue query indexed appropriately.
+75. CorrelationId propagated.
+76. trace context preserved where supported.
+77. OpenTelemetry reused if already available.
+78. no PHI in spans.
+79. alert-readiness metrics exist.
+80. E2E happy-path test exists where practical.
+81. E2E retry test exists where practical.
+82. E2E tenant test exists where practical.
+83. E2E response-loss test exists where practical.
+84. Intake MySQL migration chain validated if environment permits.
+85. Liens migration chain validated if modified.
+86. Documents migration chain validated if modified.
+87. migration debt documented accurately.
+88. recovery concurrency test passes.
+89. stale adapter test passes.
+90. stale B15 test passes.
+91. exhaustion test passes.
+92. cancellation test passes.
+93. audit tests pass.
+94. PHI audit/log tests pass.
+95. tenant matrix tests pass.
+96. service-token tests pass.
+97. health tests pass.
+98. metrics tests pass.
+99. analytics tests pass.
+100. attention queue tests pass.
+101. recovery API tests pass.
+102. historical integrity tests pass.
+103. Intake API builds with zero new B16 errors.
+104. Intake tests pass.
+105. Liens builds/tests pass if changed.
+106. Documents builds/tests pass if changed.
+107. full solution build has zero new B16 errors or unrelated blockers documented.
+108. frontend changes validate if implemented.
+109. dependency/security scan results documented.
+110. vulnerability warnings classified.
+111. retention behavior documented.
+112. no B17+ feature introduced.
+113. no cloud/deployment work performed.
+114. no secrets/spec/build artifacts introduced.
+115. /analysis/LSI-B16-report.md exists.
+
+==================================================
+102. REQUIRED IMPLEMENTATION REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B16-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree state
+8. B01-B15 operational architecture reviewed
+9. stale-stage inventory
+10. recovery configuration
+11. recovery worker
+12. scan interval
+13. batch size
+14. concurrency limit
+15. multi-instance behavior
+16. claiming strategy
+17. claim token/version behavior
+18. recovery attempts
+19. NextRetryAt/backoff
+20. max-attempt behavior
+21. exhaustion behavior
+22. attention/dead-letter model
+23. recovery registry
+24. recovery handlers
+25. adapter recovery
+26. document-association recovery
+27. upstream recovery
+28. snapshot recovery
+29. manual recovery APIs
+30. manual cancel
+31. recovery permissions
+32. recovery worker health
+33. recovery audit
+34. audit taxonomy
+35. audit coverage matrix
+36. audit privacy
+37. operator-action audit
+38. logging privacy review
+39. failure sanitizer
+40. failure categories
+41. API error model
+42. tenant-isolation review
+43. IDOR protection
+44. service-token review
+45. user/service token separation
+46. tenant claim validation
+47. org validation
+48. secret handling
+49. secret scan
+50. health architecture
+51. liveness
+52. readiness
+53. dependency health
+54. optional dependency behavior
+55. recovery-worker health endpoint/state
+56. metrics architecture
+57. intake volume metrics
+58. AI metrics
+59. processing metrics
+60. routing metrics
+61. document association metrics
+62. recovery metrics
+63. duration metrics
+64. label-cardinality policy
+65. CorrelationId propagation
+66. trace context
+67. OpenTelemetry changes if any
+68. alert-readiness metrics
+69. operational summary API
+70. stage funnel API
+71. failure analytics
+72. recovery analytics
+73. attention queue
+74. queue filters
+75. pagination
+76. time ranges
+77. review backlog analytics
+78. adapter analytics
+79. document association analytics
+80. source analytics
+81. AI analytics
+82. operations UI if implemented
+83. UI authorization
+84. index review
+85. retention review
+86. sensitive failure storage review
+87. E2E integration harness
+88. E2E happy-path result
+89. E2E retry result
+90. E2E tenant-isolation result
+91. E2E response-loss result
+92. Intake MySQL migration-chain result
+93. Liens migration-chain result if applicable
+94. Documents migration-chain result if applicable
+95. migration debt closure
+96. stale-scan query validation
+97. attention-query validation
+98. analytics-query validation
+99. recovery concurrency tests
+100. stale adapter tests
+101. stale B15 tests
+102. recovery exhaustion tests
+103. recovery cancellation tests
+104. audit tests
+105. PHI-safety tests
+106. tenant matrix tests
+107. service-token matrix tests
+108. health tests
+109. metrics tests
+110. analytics tests
+111. attention queue tests
+112. recovery API tests
+113. historical integrity tests
+114. Intake API build
+115. Intake test result
+116. Liens build/test result if modified
+117. Documents build/test result if modified
+118. frontend validation if changed
+119. full solution build
+120. dependency/security scan
+121. vulnerability classification
+122. configuration inventory
+123. safe-default assessment
+124. performance considerations
+125. known gaps
+126. out-of-scope confirmation
+127. git diff summary
+128. final MVP readiness assessment
+129. recommended next step after MVP
+
+Sanitize:
+
+- credentials;
+- service tokens;
+- PHI/PII;
+- email/document content;
+- raw AI prompts/responses;
+- raw destination responses;
+- sensitive filenames;
+- internal connection strings;
+- stack traces containing data.
+
+==================================================
+103. DEFINITION OF DONE
+==================================================
+
+LSI-B16 is complete when the existing B01-B15 Synq Intake pipeline is not only functionally implemented but also operationally supportable.
+
+An authorized operator must be able to determine:
+
+- what is currently processing;
+- what is stale;
+- what failed;
+- why it failed;
+- whether it is retryable;
+- whether a downstream write already occurred;
+- whether reconciliation can prove prior success;
+- whether recovery can proceed without duplicates;
+- how many recovery attempts occurred;
+- when automatic recovery has been exhausted;
+- what requires human operational attention;
+- who performed a manual recovery action;
+- whether tenant boundaries remain intact;
+- whether logs/audit/metrics are PHI-safe;
+- whether key dependencies are ready.
+
+The final MVP architecture after B16 should be:
+
+Source
+-> Documents
+-> AI Processing
+-> Matching
+-> Policy
+-> Human Review
+-> Approved Snapshot
+-> SynqLien Routing
+-> Case / Lien
+-> Document Association
+-> Recovery / Audit / Security / Observability / Analytics
+
+When complete:
+
+- execute all scoped work now;
+- run all required local validation;
+- create /analysis/LSI-B16-report.md;
+- provide an evidence-based final MVP readiness assessment;
+- stop;
+- do not begin B17;
+- do not deploy;
+- do not push unless explicitly requested.

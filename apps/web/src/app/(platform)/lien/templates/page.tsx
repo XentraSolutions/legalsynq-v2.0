@@ -131,39 +131,48 @@ export default function TemplatesPage() {
         />
 
         {/* LIST */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {reports &&
-            reports.map((r: ReportListItem) => (
-              <div
-                key={r.id}
-                className="border border-gray-200 rounded-xl p-3 bg-white hover:bg-gray-50 cursor-pointer transition-colors"
-              >
-                <div className="flex justify-between items-center">
-                  <div className="w-full" onClick={() => setTemplateId(r.id)}>
-                    <div className="text-sm font-medium text-gray-900">
-                      {r.name}
+        {loading ? (
+          <div className="overflow-hidden">
+            <div className="text-center py-8">
+              <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-sm text-gray-400 mt-2">Loading reports...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {reports &&
+              reports.map((r: ReportListItem) => (
+                <div
+                  key={r.id}
+                  className="border border-gray-200 rounded-xl p-3 bg-white hover:bg-gray-50 cursor-pointer transition-colors"
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="w-full" onClick={() => setTemplateId(r.id)}>
+                      <div className="text-sm font-medium text-gray-900">
+                        {r.name}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {r.description}
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-2">
+                        Created {r.createdAt}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {r.description}
+                    <div>
+                      <button
+                        onClick={() =>
+                          setConfirmAction({ action: true, id: r.id })
+                        }
+                        className="p-1.5 text-gray-400 hover:text-red-500 cursor-pointer"
+                      >
+                        <i className="ri-delete-bin-line text-sm" />
+                      </button>
                     </div>
-                    <div className="text-[11px] text-gray-400 mt-2">
-                      Created {r.createdAt}
-                    </div>
-                  </div>
-                  <div>
-                    <button
-                      onClick={() =>
-                        setConfirmAction({ action: true, id: r.id })
-                      }
-                      className="p-1.5 text-gray-400 hover:text-red-500 cursor-pointer"
-                    >
-                      <i className="ri-delete-bin-line text-sm" />
-                    </button>
                   </div>
                 </div>
-              </div>
-            ))}
-        </div>
+              ))}
+          </div>
+        )}
       </>
       {showCreate.isOpen && (
         <CreateUpdateReport

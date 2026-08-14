@@ -305,6 +305,7 @@ export interface CaseLienItem {
 export interface CaseLienItemMetadata {
   closedAtUtc: string | null;
   reductionAmount: number | null;
+  reductionDate: string | null;
   paymentAmount: number | null;
   balance: number;
 }

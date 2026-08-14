@@ -53,6 +53,16 @@ const closedLienDisplayColumns: LienColumnDef[] = [
     ),
   },
   {
+    id: "reductionDate",
+    header: "Reduction Date",
+    align: "right",
+    cell: (l) => (
+      <span className="text-sm text-green-600 tabular-nums">
+        {l.reductionDate}
+      </span>
+    ),
+  },
+  {
     id: "balance",
     header: "Amount to Settle",
     align: "right",

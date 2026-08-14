@@ -47,7 +47,8 @@ export function mapLienToListItem(dto: LienResponseDto): LienListItem {
     lienTypeLabel: LIEN_TYPE_LABELS[dto.lienType] ?? dto.lienType,
     facility: dto.facilityId ?? null,
     facilityId: dto.facilityId ?? null,
-    facilityName: dto.medicalFacility ?? dto.facilityName ?? dto.facility ?? null,
+    facilityName:
+      dto.medicalFacility ?? dto.facilityName ?? dto.facility ?? null,
     plaintiff: dto.plaintiff ?? null,
     lawFirm: dto.lawFirm ?? null,
     caseManager: dto.caseManager ?? null,
@@ -71,6 +72,7 @@ export function mapLienToListItem(dto: LienResponseDto): LienListItem {
     subjectName: buildSubjectName(dto),
     createdAt: formatDateField(dto.createdAtUtc),
     updatedAt: formatDateField(dto.updatedAtUtc),
+    reductionDate: safeString(dto?.reductionDate) ?? null,
   };
 }
 

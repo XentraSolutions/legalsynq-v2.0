@@ -210,6 +210,14 @@ public sealed class CaseService : ICaseService
         if (errors.Count > 0)
             throw new ValidationException("One or more required fields are missing.", errors);
 
+        if (!string.IsNullOrWhiteSpace(request.ExternalReference))
+        {
+            var idempotent = await _caseRepo.GetByExternalReferenceAsync(
+                tenantId, request.ExternalReference.Trim(), ct);
+            if (idempotent is not null)
+                return await MapToResponseAsync(tenantId, idempotent, ct);
+        }
+
         var caseNumber = string.IsNullOrWhiteSpace(request.CaseNumber)
             ? await GenerateCaseNumberAsync(tenantId, ct)
             : request.CaseNumber.Trim();
@@ -563,7 +571,7 @@ public sealed class CaseService : ICaseService
             Sex = GetMetadataValue(metadata, "gender"),
             CaseType = GetMetadataValue(metadata, "accidentType"),
             CurrentMedicalStatus = GetMetadataValue(metadata, "currentMedicalStatus"),
-            StateOfIncident = GetMetadataValue(metadata, "accidentState"),
+            StateOfIncident = GetMetadataValue(metadata, "stateOfIncident", "accidentState", "state"),
             TrackingFollowUpDate = ParseMetadataDate(GetMetadataValue(metadata, "trackingFollowUpDate")),
             LeadId = GetMetadataValue(metadata, "leadId"),
             ShareCase = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "shareCase")),
@@ -590,6 +598,19 @@ public sealed class CaseService : ICaseService
             CreatedAtUtc = entity.CreatedAtUtc,
             UpdatedAtUtc = entity.UpdatedAtUtc,
         };
+    }
+
+    private static string? GetMetadataValue(
+        IReadOnlyDictionary<string, string> metadata,
+        params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (metadata.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
     }
 
     private static Dictionary<string, string> BuildMetadata(

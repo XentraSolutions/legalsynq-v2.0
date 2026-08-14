@@ -298,6 +298,7 @@ public static class CaseEndpoints
     private sealed class LegacyGenerateCaseCsvRequest
     {
         public string? caseId { get; init; }
+        public string? keyword { get; init; }
         public string? lawFirmId { get; init; }
         public string? accidentTypeId { get; init; }
         public string? statusId { get; init; }
@@ -3970,7 +3971,7 @@ public static class CaseEndpoints
             {
                 var result = await caseService.SearchAsync(
                     tenantId,
-                    search: null,
+                    search: string.IsNullOrWhiteSpace(request.keyword) ? null : request.keyword,
                     status: string.IsNullOrWhiteSpace(request.statusId) ? null : request.statusId,
                     page: page,
                     pageSize: pageSize,
@@ -4873,11 +4874,16 @@ public static class CaseEndpoints
         ICaseService caseService,
         ILienCaseNoteService caseNoteService,
         ICurrentRequestContext ctx,
+        HttpRequest httpRequest,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
         var orgId = RequireOrgId(ctx);
         var userId = RequireUserId(ctx);
+        var idempotencyKey = httpRequest.Headers["Idempotency-Key"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(request.ExternalReference) &&
+            !string.IsNullOrWhiteSpace(idempotencyKey))
+            request = request with { ExternalReference = idempotencyKey };
         var result = await caseService.CreateAsync(tenantId, orgId, userId, request, ct);
         await CreateCaseHistoryEntryAsync(result, caseNoteService, tenantId, userId, ctx, ct);
         return Results.Created($"/api/liens/cases/{result.Id}", result);
@@ -6631,6 +6637,85 @@ public static class CaseEndpoints
             return Results.BadRequest(new { isSuccess = false, message = validationMessage });
         }
 
+        if (!periodStart.HasValue && !periodEnd.HasValue)
+        {
+            var liens = await db.Liens
+                .AsNoTracking()
+                .Where(lien => lien.TenantId == tenantId)
+                .Select(lien => new
+                {
+                    lien.Id,
+                    lien.PayoffAmount,
+                })
+                .ToListAsync(ct);
+
+            var settlementNotes = await db.LienSettlements
+                .AsNoTracking()
+                .Where(settlement =>
+                    settlement.TenantId == tenantId &&
+                    !settlement.IsDeleted &&
+                    settlement.Note != null)
+                .Select(settlement => new
+                {
+                    settlement.LienId,
+                    settlement.Note,
+                })
+                .ToListAsync(ct);
+
+            var importedReturnedAmountsByLienId = settlementNotes
+                .Select(settlement => new
+                {
+                    settlement.LienId,
+                    HasReturnedAmount = TryGetLegacyTotalSettledAmount(settlement.Note, out var amount),
+                    Amount = amount,
+                })
+                .Where(settlement => settlement.HasReturnedAmount)
+                .GroupBy(settlement => settlement.LienId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Sum(settlement => settlement.Amount));
+
+            var paymentAmountsByLienId = await db.SettlementPaymentDetails
+                .AsNoTracking()
+                .Where(payment => payment.TenantId == tenantId && !payment.IsDeleted)
+                .GroupBy(payment => payment.LienId)
+                .Select(group => new
+                {
+                    LienId = group.Key,
+                    Amount = group.Sum(payment => payment.Amount),
+                })
+                .ToDictionaryAsync(group => group.LienId, group => group.Amount, ct);
+
+            var returnedAmounts = liens
+                .Select(lien =>
+                {
+                    if (importedReturnedAmountsByLienId.TryGetValue(lien.Id, out var importedReturnedAmount))
+                        return (HasSource: true, Amount: importedReturnedAmount);
+
+                    if (lien.PayoffAmount.HasValue)
+                        return (HasSource: true, Amount: lien.PayoffAmount.Value);
+
+                    return paymentAmountsByLienId.TryGetValue(lien.Id, out var paymentAmount)
+                        ? (HasSource: true, Amount: paymentAmount)
+                        : (HasSource: false, Amount: 0m);
+                })
+                .Where(result => result.HasSource)
+                .ToList();
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Dashboard cash received metric retrieved successfully.",
+                data = new
+                {
+                    periodStart = string.Empty,
+                    periodEnd = string.Empty,
+                    totalAmount = returnedAmounts.Sum(result => result.Amount).ToString("0.00", CultureInfo.InvariantCulture),
+                    totalCount = returnedAmounts.Count,
+                },
+            });
+        }
+
         var settlementsQuery = db.LienSettlements.AsNoTracking()
             .Where(s => s.TenantId == tenantId &&
                         !s.IsDeleted &&
@@ -6671,6 +6756,38 @@ public static class CaseEndpoints
                 totalCount = aggregate?.TotalCount ?? 0,
             },
         });
+    }
+
+    private static bool TryGetLegacyTotalSettledAmount(string? notes, out decimal amount)
+    {
+        amount = 0m;
+        if (string.IsNullOrWhiteSpace(notes))
+            return false;
+
+        var rawMetadata = notes;
+        var markerIndex = notes.IndexOf(LegacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+            rawMetadata = notes[(markerIndex + LegacyMetadataMarker.Length)..].Trim();
+
+        var found = false;
+        foreach (var segment in rawMetadata.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0 ||
+                !string.Equals(segment[..separator].Trim(), "totalSettledAmount", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            found = true;
+            decimal.TryParse(
+                segment[(separator + 1)..].Trim(),
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out amount);
+        }
+
+        return found;
     }
 
     private static bool TryGetLegacyMedicalPurchaseAmount(string? notes, out decimal amount)
@@ -8128,6 +8245,7 @@ public static class CaseEndpoints
         return (page, limit);
     }
 
+    // ── Dashboard reports ─────────────────────────────────────────────────────
     private static DashboardReportResult<T> BuildDashboardReportResult<T>(
         List<T> rows,
         int page,

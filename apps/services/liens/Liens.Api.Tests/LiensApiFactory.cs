@@ -45,6 +45,10 @@ public class LiensApiFactory : WebApplicationFactory<Program>
             StubIdentityServiceHandler.ExpectedProvisioningToken);
 
         // Service token issuer requires a signing key.
+        Environment.SetEnvironmentVariable("FLOW_SERVICE_TOKEN_SECRET",
+            JwtTokenHelper.SigningKey);
+        Environment.SetEnvironmentVariable("ServiceTokens__SigningKey",
+            JwtTokenHelper.SigningKey);
         Environment.SetEnvironmentVariable("ServiceTokens__liens-service__SigningKey",
             JwtTokenHelper.SigningKey);
     }

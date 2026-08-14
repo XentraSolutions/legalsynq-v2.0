@@ -47,7 +47,11 @@ builder.Services
             RoleClaimType            = "role",
             ClockSkew                = TimeSpan.Zero
         };
-    });
+    })
+    .AddServiceTokenBearer(
+        builder.Configuration,
+        audience: "liens-service",
+        failFastIfMissingSecret: false);
 
 builder.Services.AddAuthorization(options =>
 {
@@ -59,6 +63,12 @@ builder.Services.AddAuthorization(options =>
 
     options.AddPolicy(Policies.PlatformOrTenantAdmin, policy =>
         policy.RequireRole(Roles.PlatformAdmin, Roles.TenantAdmin));
+    options.AddPolicy("SynqLienInternal", policy =>
+    {
+        policy.AddAuthenticationSchemes(ServiceTokenAuthenticationDefaults.Scheme);
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole(ServiceTokenAuthenticationDefaults.ServiceRole);
+    });
 });
 
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -232,6 +242,7 @@ app.MapGet("/context", (ICurrentRequestContext ctx) =>
 })
 .RequireAuthorization(Policies.AuthenticatedUser);
 
+app.MapSynqLienInternalEndpoints();
 app.MapLienEndpoints();
 app.MapLegacyDocumentLinkEndpoints();
 app.MapAssistantToolEndpoints();

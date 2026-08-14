@@ -1,0 +1,8 @@
+.expo/
+.expo-shared/
+node_modules/
+dist/
+*.tsbuildinfo
+ios/
+android/
+.env.local

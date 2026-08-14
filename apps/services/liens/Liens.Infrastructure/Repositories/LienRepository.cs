@@ -36,6 +36,13 @@ public class LienRepository : ILienRepository
             .FirstOrDefaultAsync(ct);
     }
 
+    public async Task<Lien?> GetByExternalReferenceAsync(Guid tenantId, string externalReference, CancellationToken ct = default)
+    {
+        return await _db.Liens
+            .Where(l => l.TenantId == tenantId && l.ExternalReference == externalReference)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task<(List<Lien> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, string? status, string? lienType,
         Guid? caseId, Guid? facilityId,

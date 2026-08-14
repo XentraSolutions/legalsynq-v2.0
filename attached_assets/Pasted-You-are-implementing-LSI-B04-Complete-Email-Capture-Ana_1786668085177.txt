@@ -1,0 +1,1681 @@
+You are implementing LSI-B04 — Complete Email Capture & Analytics Repository for Synq Intake in the LegalSynq v3 repository.
+
+EXECUTION DIRECTIVE
+
+Execute this ticket now.
+
+Do not stop after reviewing requirements.
+Do not return a plan for approval.
+Do not ask whether to proceed.
+Implement the full scoped LSI-B04 work in this execution, run the required local validation, and produce /analysis/LSI-B04-report.md when complete.
+
+If a minor implementation decision is needed and the requirements already establish the intent, make the safest architecture-consistent decision and continue.
+
+Only stop for a genuine blocking condition that cannot be resolved from the repository or these requirements.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Required implementation report: /analysis/LSI-B04-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B04 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, or production deployment work.
+3. Do not implement Documents Service integration, Synq AI classification/extraction, OCR, matching, confidence scoring, review workflows, Case/Lien creation, downstream adapters, Flow, notifications, or product routing.
+4. Preserve all prior analysis reports as read-only.
+5. Create/update only /analysis/LSI-B04-report.md for this ticket.
+6. Reuse current LegalSynq v3 conventions, package versions, authentication, authorization, tenant context, logging, EF, MySQL, audit, and Minimal API patterns.
+7. Do not introduce an alternate backend, ORM, database, auth model, gateway, deployment stack, or unrelated infrastructure.
+8. Do not commit uploaded specifications, prompt assets, generated binaries, local databases, secrets, or unrelated artifacts.
+9. Before coding, inspect:
+   - current branch and git status;
+   - HEAD vs origin/xenia;
+   - B03 implementation;
+   - TenantIntakeSource;
+   - IIntakeSourceResolver;
+   - B02 profile/configuration framework;
+   - IntakeDbContext;
+   - API authorization conventions;
+   - exception middleware;
+   - audit client integration;
+   - current migrations;
+   - current test structure.
+10. Record repository baseline and initial working-tree state in /analysis/LSI-B04-report.md.
+11. Preserve unrelated pre-existing working-tree changes if any.
+12. Local/repository validation is required.
+13. Do not claim GitHub CI, deployed runtime, AWS, production, or cloud validation unless separately proven.
+14. Do not begin LSI-B05 automatically after completing this ticket.
+
+LOCKED PLATFORM STACK
+Use existing LegalSynq v3 conventions:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT Bearer/service-token authentication
+- existing ICurrentRequestContext tenant conventions
+- existing YARP gateway conventions
+- LegalSynq.AuditClient where applicable
+- existing structured logging, correlation IDs, health, configuration, and test patterns
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+
+Synq Intake remains:
+- tenant-bound
+- product-neutral
+- independently deployable
+- source-preserving
+
+LOCKED TENANT-BINDING INVARIANT
+
+B04 MUST NOT determine tenant ownership independently.
+
+The authoritative path is:
+
+Inbound recipient address
+-> B03 TenantIntakeSource
+-> authoritative TenantId
+-> Purpose
+-> ProcessingProfileCode
+-> email capture
+
+Tenant ownership MUST NOT be inferred from:
+- sender email
+- sender domain
+- recipient content other than registered B03 source resolution
+- subject
+- body
+- patient names
+- provider names
+- law firm
+- facility
+- attachments
+- document metadata
+- AI output
+- downstream entity matches
+
+Once B03 resolves TenantId for the inbound event, that tenant binding is immutable.
+
+OBJECTIVE
+
+Implement a durable, tenant-safe, Intake-owned inbound email repository that preserves the complete inbound email source record needed for later:
+- classification;
+- extraction;
+- human review;
+- analytics;
+- replay;
+- audit;
+- troubleshooting;
+- downstream processing.
+
+The completed B04 system must be able to answer:
+
+“What email did we receive, through which registered tenant source, when was it received, who sent it, who received it, what content and metadata did it contain, and what processing profile governed it?”
+
+without yet performing Documents integration, AI, matching, review, or downstream routing.
+
+==================================================
+1. CORE EMAIL AGGREGATE
+==================================================
+
+Create an Intake-owned email aggregate.
+
+Preferred naming:
+
+InboundEmail
+
+or closest repository-convention equivalent.
+
+The aggregate should contain only capture/repository concerns.
+
+Conceptual fields:
+
+- Id
+- TenantId
+- OrgId if current architecture supports it
+- TenantIntakeSourceId
+- SourceConfigurationVersion
+- Purpose
+- ProcessingProfileCode
+- TenantConfigurationVersion if available
+- TenantProfileConfigurationVersion if available
+- Provider
+- ProviderMessageId
+- ProviderThreadId
+- InternetMessageId
+- InReplyToMessageId if available
+- ReceivedAt
+- ProviderCreatedAt if available
+- CapturedAt
+- FromAddress
+- FromDisplayName
+- SenderAddress if semantically distinct
+- SenderDisplayName if semantically distinct
+- ReplyToAddress
+- ReplyToDisplayName
+- Subject
+- TextBody
+- HtmlBody
+- HeadersJson or equivalent
+- RawMessageContent OR RawMessageStorageReference according to the approved B04 storage strategy
+- RawMessageHash if useful
+- RawMessageSizeBytes if useful
+- HasAttachments
+- AttachmentCount
+- CaptureStatus
+- ProcessingStatus if required
+- CreatedAt
+- UpdatedAt
+
+Do not add AI, matching, review, Case, Lien, routing, or Documents fields.
+
+==================================================
+2. SOURCE PROVENANCE
+==================================================
+
+Every captured email must preserve the B03 source state used when it entered Intake.
+
+Persist at minimum:
+
+- TenantIntakeSourceId
+- TenantId
+- SourceConfigurationVersion
+- Purpose
+- ProcessingProfileCode
+
+Also persist when available from B02 resolution:
+
+- TenantConfigurationVersion
+- TenantProfileConfigurationVersion
+
+These values form historical provenance and must not later be rewritten merely because source/profile configuration changes.
+
+==================================================
+3. IMMUTABLE SOURCE FACTS
+==================================================
+
+After successful capture, treat these as immutable historical facts:
+
+- TenantId
+- TenantIntakeSourceId
+- SourceConfigurationVersion
+- Purpose
+- ProcessingProfileCode
+- Provider
+- ProviderMessageId
+- InternetMessageId
+- ReceivedAt
+
+Do not allow later AI, review, matching, downstream product behavior, or configuration changes to rewrite source provenance.
+
+==================================================
+4. MESSAGE IDENTITY
+==================================================
+
+Support provider and RFC-level identities separately.
+
+Fields should include where available:
+
+- Provider
+- ProviderMessageId
+- ProviderThreadId
+- InternetMessageId
+- InReplyToMessageId
+- References
+
+Do not assume InternetMessageId alone is always sufficient for idempotency.
+
+==================================================
+5. IDEMPOTENCY
+==================================================
+
+Email capture must be idempotent.
+
+External email systems can deliver the same event more than once.
+
+Preferred primary idempotency identity:
+
+TenantIntakeSourceId
++
+Provider
++
+ProviderMessageId
+
+If ProviderMessageId is unavailable, use a deterministic fallback based on:
+
+TenantIntakeSourceId
++
+InternetMessageId
+
+only where InternetMessageId exists.
+
+Do not use subject/body hashes as the preferred message identity if a stable provider/message identifier exists.
+
+Duplicate delivery behavior must be deterministic.
+
+Preferred behavior:
+- do not insert a second email row;
+- return the existing canonical email record or an explicit duplicate result;
+- log/audit the duplicate attempt;
+- preserve duplicate analytics without duplicating the actual email.
+
+==================================================
+6. CAPTURE COMMAND
+==================================================
+
+Create an application-layer command/request contract such as:
+
+CaptureInboundEmailCommand
+
+Conceptual properties:
+
+- SourceId
+- TenantId
+- SourceConfigurationVersion
+- Purpose
+- ProcessingProfileCode
+- TenantConfigurationVersion
+- TenantProfileConfigurationVersion
+- Provider
+- ProviderMessageId
+- ProviderThreadId
+- InternetMessageId
+- InReplyToMessageId
+- References
+- ReceivedAt
+- ProviderCreatedAt
+- From
+- Sender if distinct
+- ReplyTo
+- To
+- Cc
+- Bcc
+- Subject
+- TextBody
+- HtmlBody
+- Headers
+- AttachmentMetadata
+- RawMessage
+
+TenantId and SourceId must come from an already resolved/trusted source context.
+
+Normal tenant-facing API users must not be allowed to arbitrarily forge TenantId/SourceId capture commands.
+
+==================================================
+7. CAPTURE SERVICE
+==================================================
+
+Create an application service such as:
+
+IEmailCaptureService
+
+Responsibilities:
+
+1. validate capture request;
+2. validate trusted B03 source context;
+3. verify source/TenantId relationship;
+4. verify supported source type EMAIL;
+5. verify source provenance and profile/purpose relationship;
+6. enforce idempotency;
+7. validate size limits;
+8. persist email;
+9. persist recipients;
+10. persist attachment metadata;
+11. persist headers;
+12. persist raw message according to chosen strategy;
+13. update capture state atomically;
+14. emit audit/log events after successful persistence;
+15. return canonical result.
+
+Do not call Synq AI.
+Do not call Documents Service.
+Do not create downstream Case/Lien records.
+
+==================================================
+8. B03 SOURCE VALIDATION DURING CAPTURE
+==================================================
+
+Before new capture persistence:
+
+- source must exist;
+- source TenantId must equal capture TenantId;
+- source type must be EMAIL;
+- source Purpose must match the capture provenance;
+- source ProcessingProfileCode must match the capture provenance;
+- source must be eligible for the capture according to the race-condition policy below.
+
+Do NOT re-resolve tenant based on message content.
+
+==================================================
+9. SOURCE DISABLED AFTER DELIVERY RACE CONDITION
+==================================================
+
+Implement and document deterministic behavior for messages delivered before a source is disabled but processed slightly afterward.
+
+Preferred policy:
+
+A message may still be captured after source deactivation ONLY when the capture request contains verifiable source/version provenance showing that the event was accepted/delivered while that source version was active.
+
+Otherwise:
+- if the source is currently inactive;
+- and there is no trusted prior-delivery provenance;
+
+reject the new capture.
+
+Do not silently process arbitrary new messages against an inactive source.
+
+If the current architecture cannot prove delivery-time source state, use the safer rule:
+- inactive source = reject new capture.
+
+Document the selected policy precisely in the report.
+
+==================================================
+10. RECIPIENT ENTITY
+==================================================
+
+Create a structured recipient entity such as:
+
+InboundEmailRecipient
+
+Fields:
+
+- Id
+- InboundEmailId
+- RecipientType
+- EmailAddress
+- NormalizedEmailAddress
+- DisplayName
+- Ordinal if useful
+
+Supported types:
+
+TO
+CC
+BCC
+
+Do not flatten all recipients into a single comma-delimited string.
+
+Preserve multiple recipient records.
+
+==================================================
+11. RECIPIENT NORMALIZATION
+==================================================
+
+Use deterministic email normalization consistent with B03 where possible.
+
+Preserve original display values separately from normalized lookup values.
+
+Do not implement provider-specific Gmail-style alias collapsing.
+
+==================================================
+12. SENDER / REPLY-TO MODEL
+==================================================
+
+Preserve at minimum:
+
+- FromAddress
+- FromDisplayName
+
+Also preserve when supplied:
+
+- SenderAddress
+- SenderDisplayName
+- ReplyToAddress
+- ReplyToDisplayName
+
+Sender metadata must never influence tenant ownership.
+
+==================================================
+13. HEADER PRESERVATION
+==================================================
+
+Preserve meaningful inbound headers.
+
+At minimum support:
+- Message-ID
+- In-Reply-To
+- References
+- Date
+- From
+- Sender
+- To
+- CC
+- Reply-To
+- Subject
+- MIME-Version
+- Content-Type
+- useful provider delivery metadata
+
+Use a controlled JSON or structured representation.
+
+Requirements:
+- deterministic serialization;
+- preserve original values;
+- allow multi-value headers;
+- do not execute content;
+- do not log full headers indiscriminately;
+- do not persist provider authorization secrets;
+- do not expose cross-tenant header content.
+
+==================================================
+14. RAW MESSAGE PRESERVATION
+==================================================
+
+Preserve the original inbound message sufficiently for audit, replay, and forensic review.
+
+Choose the safest architecture-compatible strategy.
+
+Option A:
+Store raw MIME/message content in Intake persistence.
+
+If using this approach:
+- use an appropriate large-object representation;
+- enforce configurable size limits;
+- do not load raw content in list/analytics queries;
+- avoid logging it;
+- preserve an integrity hash and size if useful.
+
+Option B:
+Store:
+- RawMessageStorageReference
+- RawMessageHash
+- RawMessageSizeBytes
+
+while raw content is stored in an already approved generic storage layer.
+
+However:
+- do NOT implement Documents Service integration in B04;
+- do NOT create new AWS/object storage infrastructure;
+- do NOT introduce a new external storage dependency solely for B04.
+
+If no existing approved storage layer is available without broadening scope, use Intake-local persistence with strict size/performance controls and explain that decision in the report.
+
+==================================================
+15. BODY PRESERVATION
+==================================================
+
+Preserve both where present:
+
+- TextBody
+- HtmlBody
+
+Requirements:
+- preserve original decoded content;
+- do not AI-summarize;
+- do not mutate the stored source into a lossy representation;
+- support Unicode;
+- use utf8mb4-compatible database columns;
+- do not log full bodies.
+
+Persisted HTML is untrusted content.
+
+Do not assume it is safe for direct browser rendering.
+
+==================================================
+16. HTML SECURITY
+==================================================
+
+The repository stores original HTML faithfully.
+
+Contracts/documentation must clearly establish:
+- HTML is untrusted;
+- downstream UI must sanitize or isolate it before rendering;
+- B04 does not need to build frontend HTML sanitization unless current API serialization requires minimal safe handling.
+
+Do not strip or rewrite persisted source HTML merely to make it presentation-safe.
+
+==================================================
+17. ATTACHMENT METADATA
+==================================================
+
+Create attachment metadata persistence such as:
+
+InboundEmailAttachmentMetadata
+
+Fields may include:
+
+- Id
+- InboundEmailId
+- ProviderAttachmentId
+- FileName
+- ContentType
+- ContentDisposition
+- ContentId
+- SizeBytes
+- Sha256
+- IsInline
+- Ordinal
+
+B04 stores metadata only.
+
+Do NOT:
+- upload attachment binaries to Documents Service;
+- OCR files;
+- classify files;
+- associate files to Cases/Liens;
+- treat attachment metadata as a document record.
+
+==================================================
+18. MESSAGE VS ARTIFACT COMPLETION
+==================================================
+
+Maintain a clear distinction:
+
+Email capture complete
+
+is NOT the same as:
+
+Attachment/document artifact processing complete
+
+B04 is responsible only for complete email repository capture.
+
+B05 will own email artifact/Documents integration.
+
+==================================================
+19. CAPTURE STATUS
+==================================================
+
+Create a stable capture status contract.
+
+Use only statuses justified by B04.
+
+Potential values:
+
+RECEIVED
+CAPTURED
+CAPTURE_FAILED
+READY_FOR_PROCESSING
+QUARANTINED
+
+Avoid unnecessary future workflow states.
+
+If persistence is atomic and intermediate RECEIVED state is unnecessary, use a simpler model.
+
+==================================================
+20. PROCESSING STATUS
+==================================================
+
+Do not overload CaptureStatus with AI or downstream state.
+
+If future compatibility requires a ProcessingStatus field, initialize it to a minimal state such as:
+
+NOT_STARTED
+
+Do not implement future processing transitions in B04.
+
+==================================================
+21. MESSAGE SIZE LIMITS
+==================================================
+
+Introduce configurable limits rather than scattered hardcoded values.
+
+Recommended settings:
+
+- MaxInboundMessageBytes
+- MaxTextBodyBytes
+- MaxHtmlBodyBytes
+- MaxHeaderBytes
+- MaxAttachmentMetadataCount
+- MaxRecipientsPerMessage
+
+Use repository-appropriate defaults.
+
+Oversize content must fail deterministically.
+
+Suggested error:
+
+EMAIL_CAPTURE_SIZE_LIMIT_EXCEEDED
+
+Do not allow unbounded raw/body/header persistence.
+
+==================================================
+22. TIMESTAMPS
+==================================================
+
+Persist timestamps in UTC.
+
+Preserve separately where available:
+
+- ReceivedAt
+- ProviderCreatedAt
+- CapturedAt
+- CreatedAt
+- UpdatedAt
+
+Do not rely on local server time for external message chronology.
+
+==================================================
+23. EMAIL REPOSITORY
+==================================================
+
+Create:
+
+IInboundEmailRepository
+
+or closest repository-convention equivalent.
+
+Responsibilities:
+
+- create capture;
+- find by canonical email ID;
+- find by provider/source identity;
+- find by InternetMessageId fallback;
+- tenant-scoped get;
+- tenant-scoped list;
+- filter/search;
+- recipients retrieval;
+- attachment metadata retrieval;
+- analytics queries;
+- duplicate detection support.
+
+Repository methods must be server-side tenant-scoped where applicable.
+
+==================================================
+24. TRANSACTIONAL CAPTURE
+==================================================
+
+Persist the email aggregate atomically.
+
+Email row, recipients, attachment metadata, and other normalized child records must not leave a partially captured message.
+
+Use one transaction/SaveChanges boundary appropriate to EF/MySQL conventions.
+
+Audit/log publication should occur only after successful commit.
+
+A failed persistence transaction must not emit a successful EMAIL_CAPTURED audit.
+
+==================================================
+25. DUPLICATE RACE PROTECTION
+==================================================
+
+Application-level duplicate checks are not sufficient alone.
+
+Use database uniqueness for primary provider idempotency.
+
+Preferred unique index when ProviderMessageId exists:
+
+(TenantIntakeSourceId, Provider, ProviderMessageId)
+
+Account for nullable provider IDs correctly under MySQL semantics.
+
+If needed, introduce an explicit normalized idempotency key rather than relying on fragile nullable composite uniqueness behavior.
+
+The implementation must prevent concurrent duplicate delivery from creating two canonical records.
+
+==================================================
+26. FALLBACK INTERNET MESSAGE ID
+==================================================
+
+Add an index for:
+
+(TenantIntakeSourceId, InternetMessageId)
+
+where useful.
+
+Do not blindly make InternetMessageId globally unique.
+
+Two providers/sources may legitimately expose overlapping or duplicated RFC IDs.
+
+Use fallback logic only when primary provider message identity is unavailable.
+
+==================================================
+27. DUPLICATE ANALYTICS
+==================================================
+
+B04 analytics should be able to report duplicate deliveries prevented.
+
+Do not create duplicate email rows to count duplicates.
+
+Choose a lightweight design such as:
+- DuplicateCaptureCount on the canonical email;
+- a compact duplicate-attempt record;
+- another repository-appropriate metric mechanism.
+
+The design must remain tenant-scoped and must not store full duplicate message bodies unnecessarily.
+
+==================================================
+28. AUDIT
+==================================================
+
+Use existing LegalSynq audit conventions.
+
+Suggested operations:
+
+EMAIL_CAPTURED
+EMAIL_CAPTURE_DUPLICATE
+EMAIL_CAPTURE_FAILED
+EMAIL_CAPTURE_QUARANTINED
+RAW_EMAIL_ACCESSED if raw access is exposed
+
+Safe audit metadata may include:
+- TenantId
+- EmailRecordId
+- SourceId
+- Provider
+- ProviderMessageId where appropriate
+- Purpose
+- ProcessingProfileCode
+- CaptureStatus
+- correlation ID
+- timestamp
+
+Do not put:
+- full body
+- raw MIME
+- full headers
+- attachment contents
+- secrets
+in audit events.
+
+==================================================
+29. STRUCTURED LOGGING
+==================================================
+
+Capture logs should include safe operational metadata:
+
+- CorrelationId
+- TenantId
+- SourceId
+- EmailRecordId
+- Provider
+- ProviderMessageId
+- InternetMessageId
+- Purpose
+- ProcessingProfileCode
+- CaptureStatus
+- AttachmentCount
+- Result
+
+Never log:
+- full raw MIME
+- TextBody
+- HtmlBody
+- passwords
+- OAuth tokens
+- client secrets
+- authorization headers
+- service tokens
+
+==================================================
+30. PII / PHI HANDLING
+==================================================
+
+Treat captured email as sensitive legal/medical data.
+
+Email may contain:
+- patient identities
+- diagnoses/treatment data
+- medical billing details
+- case information
+- settlement information
+- contact details
+- financial information
+
+Therefore:
+- no body/raw MIME logging;
+- tenant isolation is mandatory;
+- analytics must use aggregate/projection queries;
+- raw access must be restricted;
+- no content should cross tenant boundaries;
+- no test fixtures should contain real secrets or real sensitive production data.
+
+==================================================
+31. EMAIL LIST API
+==================================================
+
+Add tenant-scoped API:
+
+GET /emails
+
+Must:
+- derive TenantId from authenticated request context;
+- paginate;
+- default to ReceivedAt descending;
+- avoid loading raw MIME;
+- avoid loading full TextBody/HtmlBody;
+- return projection DTOs only.
+
+==================================================
+32. EMAIL LIST FILTERS
+==================================================
+
+Support practical filters such as:
+
+- sourceId
+- provider
+- purpose
+- processingProfileCode
+- captureStatus
+- fromDate
+- toDate
+- hasAttachments
+- fromAddress
+
+Optional:
+- subject search if efficiently supportable
+
+Do not add full-body search unless a proper search design already exists.
+
+==================================================
+33. PAGINATION
+==================================================
+
+Use current LegalSynq pagination conventions.
+
+At minimum support:
+
+page
+pageSize
+
+or the existing platform cursor model if that is already standardized.
+
+Enforce a maximum page size.
+
+Return deterministic metadata where repository conventions support it.
+
+==================================================
+34. SORT ORDER
+==================================================
+
+Default list sort:
+
+ReceivedAt DESC
+
+Use deterministic secondary ordering such as:
+
+Id DESC
+
+to avoid unstable pagination.
+
+==================================================
+35. EMAIL DETAIL API
+==================================================
+
+Add:
+
+GET /emails/{emailId}
+
+Tenant-scoped detail should include as appropriate:
+
+- source metadata
+- source/version provenance
+- provider IDs
+- sender
+- recipients
+- subject
+- received/captured timestamps
+- TextBody
+- HtmlBody
+- headers according to permission policy
+- attachment metadata
+- CaptureStatus
+- ProcessingStatus if used
+- duplicate-delivery metadata if useful
+
+Never expose another tenant's email by ID.
+
+==================================================
+36. RAW MESSAGE ACCESS
+==================================================
+
+If raw message retrieval is necessary in B04, expose it separately.
+
+Possible endpoint:
+
+GET /emails/{emailId}/raw
+
+Requirements:
+- authenticated;
+- tenant-scoped;
+- explicitly authorized;
+- audited;
+- return correct content type;
+- do not include raw MIME in generic detail/list responses.
+
+If there is no current business requirement for user-facing raw access, keep raw retrieval internal.
+
+Document the decision.
+
+==================================================
+37. ANALYTICS REPOSITORY
+==================================================
+
+Add server-side tenant-scoped email analytics.
+
+At minimum support:
+
+- TotalEmails
+- EmailsByDay
+- EmailsBySource
+- EmailsByProvider
+- EmailsByPurpose
+- EmailsByCaptureStatus
+- EmailsWithAttachments
+- AverageAttachmentsPerEmail
+- DuplicateDeliveriesPrevented
+- CaptureFailures
+
+Use SQL/EF aggregation and projection.
+
+Do not load email bodies or raw MIME to calculate analytics.
+
+==================================================
+38. ANALYTICS API
+==================================================
+
+Add:
+
+GET /emails/analytics
+
+Support date range:
+
+from
+to
+
+Optionally support grouping when useful:
+
+groupBy=day|source|provider|purpose|status
+
+Normal tenant users receive only their tenant's data.
+
+Do not expose global cross-tenant analytics without explicit PlatformAdmin behavior.
+
+==================================================
+39. ANALYTICS INDEXING
+==================================================
+
+Create indexes based on actual queries.
+
+Likely useful indexes:
+
+(TenantId, ReceivedAt)
+(TenantId, TenantIntakeSourceId, ReceivedAt)
+(TenantId, Provider, ReceivedAt)
+(TenantId, CaptureStatus, ReceivedAt)
+(TenantId, Purpose, ReceivedAt)
+
+Do not over-index blindly.
+
+Document actual indexes and rationale.
+
+==================================================
+40. THREAD / CONVERSATION METADATA
+==================================================
+
+Preserve where supplied:
+
+- ProviderThreadId
+- InReplyToMessageId
+- References
+
+Do not implement threaded conversation UI.
+
+Do not infer tenant or case association from thread metadata.
+
+==================================================
+41. RETENTION READINESS
+==================================================
+
+B04 does not implement purge/retention execution.
+
+If consistent with current platform compliance architecture, add future-ready fields such as:
+
+- RetentionUntil
+- LegalHoldFlag
+
+Do not invent a retention policy if none exists.
+
+Do not implement automatic deletion.
+
+==================================================
+42. DELETION
+==================================================
+
+Do not add a normal tenant DELETE email endpoint.
+
+Captured inbound email is historical source evidence.
+
+Future deletion/purge must be governed by separate retention/compliance requirements.
+
+==================================================
+43. DATABASE ENTITIES
+==================================================
+
+Expected B04 persistence:
+
+InboundEmails
+InboundEmailRecipients
+InboundEmailAttachmentMetadata
+
+Optional:
+InboundEmailDuplicateAttempts
+InboundEmailHeaders
+
+Use HeadersJson instead of a header table if that is simpler and efficient.
+
+Do not create:
+- Documents tables
+- AI result tables
+- matching tables
+- review tables
+- product domain tables
+
+==================================================
+44. RELATIONSHIPS
+==================================================
+
+Required conceptual relationships:
+
+TenantIntakeSource 1 -> many InboundEmails
+
+InboundEmail 1 -> many InboundEmailRecipients
+
+InboundEmail 1 -> many InboundEmailAttachmentMetadata
+
+Use restricted deletion where historical preservation requires it.
+
+Disabling/deactivating a TenantIntakeSource must never delete historical emails.
+
+==================================================
+45. DATABASE CONSTRAINTS
+==================================================
+
+At minimum:
+
+- FK from InboundEmails.TenantIntakeSourceId to TenantIntakeSources.Id
+- provider-message idempotency constraint
+- tenant/date indexes
+- source/date indexes
+- appropriate recipient and attachment FK indexes
+
+Application logic must verify:
+
+InboundEmail.TenantId == TenantIntakeSource.TenantId
+
+Do not trust arbitrary caller input.
+
+==================================================
+46. MIGRATION
+==================================================
+
+Create a B04 EF migration.
+
+Suggested name:
+
+AddInboundEmailRepository
+
+Use repository migration naming conventions.
+
+Migration must contain only B04 repository schema.
+
+Do not add:
+- Documents integration tables
+- AI tables
+- matching tables
+- review tables
+- Case/Lien tables
+- cloud resources
+
+==================================================
+47. INTERNAL CAPTURE API
+==================================================
+
+If required by current connector/runtime architecture, add a protected internal capture endpoint:
+
+POST /internal/emails/capture
+
+Requirements:
+- service-authorized;
+- no unrestricted public access;
+- trusted source context;
+- no arbitrary tenant spoofing;
+- strict validation;
+- idempotent response behavior.
+
+If capture occurs inside the same Intake process, prefer direct application service invocation rather than unnecessary HTTP.
+
+==================================================
+48. AUTHORIZATION
+==================================================
+
+Use current LegalSynq authorization conventions.
+
+Recommended semantic policies:
+
+intake.emails.read
+intake.emails.analytics
+intake.emails.raw.read
+
+Internal capture should require a service-level policy/claim if exposed via HTTP.
+
+Tenant-facing reads must derive TenantId from ICurrentRequestContext or current equivalent.
+
+==================================================
+49. TENANT ISOLATION
+==================================================
+
+Mandatory behavior:
+
+- Tenant A cannot list Tenant B emails.
+- Tenant A cannot get Tenant B email.
+- Tenant A cannot access Tenant B recipients.
+- Tenant A cannot access Tenant B attachment metadata.
+- Tenant A cannot see Tenant B analytics.
+- Tenant A cannot retrieve Tenant B raw MIME.
+- capture cannot bind Tenant A source to Tenant B.
+- request payload TenantId must not override authenticated/trusted source context.
+
+==================================================
+50. HTTP RESPONSE PERFORMANCE
+==================================================
+
+Email list endpoints must not load:
+- raw message content;
+- full TextBody;
+- full HtmlBody;
+- attachment binary content.
+
+Use projection DTOs.
+
+Detail endpoints may load body content.
+
+Analytics endpoints must execute database aggregation.
+
+==================================================
+51. REQUIRED TESTS — CAPTURE
+==================================================
+
+Add tests for:
+
+- valid email capture;
+- source provenance persistence;
+- TenantId persistence;
+- SourceConfigurationVersion persistence;
+- Purpose persistence;
+- ProcessingProfileCode persistence;
+- provider message identity persistence;
+- InternetMessageId persistence;
+- timestamps stored correctly;
+- CaptureStatus assigned correctly.
+
+==================================================
+52. REQUIRED TESTS — IDEMPOTENCY
+==================================================
+
+Test:
+
+- same provider message submitted twice -> one canonical email row;
+- duplicate returns canonical record or duplicate result;
+- duplicate does not increase TotalEmails;
+- duplicate analytics increases correctly if tracked;
+- duplicate action logged/audited;
+- concurrent/idempotency database protection where practical;
+- provider message identity scoped correctly.
+
+==================================================
+53. REQUIRED TESTS — TENANT BINDING
+==================================================
+
+Test:
+
+- Source A / Tenant A captures correctly;
+- Source A cannot be captured as Tenant B;
+- tenant binding cannot be mutated afterward;
+- sender cannot influence tenant;
+- subject/body cannot influence tenant;
+- downstream metadata cannot override TenantId.
+
+==================================================
+54. REQUIRED TESTS — RECIPIENTS
+==================================================
+
+Test:
+
+- one TO recipient;
+- multiple TO recipients;
+- CC recipients;
+- BCC recipients when provider supplies them;
+- Unicode display names;
+- normalized recipient addresses;
+- recipient ordering where preserved.
+
+==================================================
+55. REQUIRED TESTS — BODIES
+==================================================
+
+Test:
+
+- text-only email;
+- HTML-only email;
+- multipart email with text + HTML;
+- empty body;
+- Unicode content;
+- oversized text;
+- oversized HTML;
+- raw message size limit if applicable.
+
+Persisted source content must not be destructively sanitized.
+
+==================================================
+56. REQUIRED TESTS — HEADERS
+==================================================
+
+Test:
+
+- Message-ID;
+- In-Reply-To;
+- References;
+- common headers;
+- duplicate/multi-value headers;
+- provider-specific headers;
+- malformed/unsupported input handled deterministically;
+- secret-bearing values are not emitted into structured logs.
+
+==================================================
+57. REQUIRED TESTS — ATTACHMENT METADATA
+==================================================
+
+Test:
+
+- zero attachments;
+- one attachment;
+- multiple attachments;
+- inline attachment;
+- filename;
+- ContentType;
+- ContentDisposition;
+- ContentId;
+- size;
+- hash if used;
+- metadata only;
+- no Documents Service dependency.
+
+==================================================
+58. REQUIRED TESTS — QUERY / PAGINATION
+==================================================
+
+Test:
+
+- tenant-scoped list;
+- pagination;
+- maximum page size;
+- stable sort;
+- date filtering;
+- source filtering;
+- provider filtering;
+- purpose filtering;
+- capture-status filtering;
+- hasAttachments filtering;
+- fromAddress filtering;
+- list projection excludes raw/body payloads.
+
+==================================================
+59. REQUIRED TESTS — ANALYTICS
+==================================================
+
+Test tenant-scoped calculations for:
+
+- total emails;
+- emails by day;
+- source;
+- provider;
+- purpose;
+- capture status;
+- attachment presence;
+- average attachment count;
+- duplicate deliveries prevented;
+- capture failures;
+- date ranges.
+
+==================================================
+60. HTTP INTEGRATION TESTS
+==================================================
+
+B04 should attempt to close the HTTP-test gap carried from B02/B03.
+
+Use WebApplicationFactory or the current repository equivalent if practical.
+
+Priority routes:
+
+GET /emails
+GET /emails/{emailId}
+GET /emails/analytics
+
+Also test:
+- 401 unauthenticated;
+- 403 unauthorized;
+- tenant isolation;
+- pagination;
+- invalid date ranges;
+- raw access if implemented;
+- internal capture authorization if endpoint exists.
+
+Do not create an excessive parallel test architecture if existing repository patterns can be reused.
+
+==================================================
+61. MYSQL VALIDATION
+==================================================
+
+Apply B04 migration against disposable/local MySQL 8.
+
+Confirm:
+
+- InboundEmails exists;
+- InboundEmailRecipients exists;
+- InboundEmailAttachmentMetadata exists;
+- optional duplicate/header tables exist if implemented;
+- FK to TenantIntakeSources exists;
+- provider-message idempotency protection exists;
+- tenant/date indexes exist;
+- source/date indexes exist;
+- recipient/attachment FKs work;
+- duplicate provider message insertion is rejected at DB layer;
+- B02/B03 tables remain intact;
+- utf8mb4 supports expected Unicode content.
+
+Use no cloud/shared database.
+
+Clean up disposable validation data/container after validation.
+
+==================================================
+62. SECURITY VALIDATION
+==================================================
+
+Verify and document:
+
+- no raw connector secret committed;
+- no OAuth token committed;
+- no mailbox password committed;
+- no production connection string committed;
+- no public unrestricted capture route;
+- no TenantId spoofing;
+- no cross-tenant list/detail/raw/analytics access;
+- no raw MIME logging;
+- no body logging;
+- no attachment binary persistence outside approved scope;
+- no arbitrary HTML execution;
+- no Documents coupling;
+- no Synq AI coupling;
+- no direct product-domain database access;
+- no uploaded prompt/spec assets introduced by this implementation;
+- no bin/obj artifacts tracked.
+
+==================================================
+63. BUILD / VALIDATION
+==================================================
+
+At minimum run and record:
+
+dotnet restore if required
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj --no-restore -m:1
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj --no-restore -m:1
+
+dotnet build LegalSynq.sln --no-restore -m:1
+
+dotnet ef dbcontext info using repository-pinned tooling
+
+dotnet ef migrations list using repository-pinned tooling
+
+Apply B04 migration to disposable MySQL 8
+
+Perform direct schema/index/idempotency validation
+
+git diff --check
+
+git status --short
+
+git diff --stat
+
+git diff --name-status against the B03 repository baseline
+
+Verify no Intake bin/obj tracked
+
+Verify no new secrets or specification assets were added
+
+If running application workflows cause build DLL locks, stop/restart them only as necessary for local validation and document this.
+
+Do not treat unrelated pre-existing repository warnings as B04 failures.
+
+Identify new B04 warnings/errors separately.
+
+==================================================
+64. EXISTING-SERVICE IMPACT
+==================================================
+
+Keep B04 within the Intake bounded context.
+
+Do not introduce direct business/database coupling to:
+
+- SynqLien
+- SynqFund
+- CareConnect
+- Identity domain internals
+- Documents persistence
+- Flow
+- Notifications
+- AI providers
+
+Use platform contracts/interfaces only where already appropriate.
+
+==================================================
+65. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- Documents Service attachment upload
+- document association
+- OCR
+- Synq AI classification
+- Synq AI extraction
+- patient matching
+- case matching
+- facility matching
+- duplicate business-record matching
+- confidence engine
+- review queue
+- Case creation
+- Lien creation
+- Fund routing
+- CareConnect routing
+- downstream adapter execution
+- Flow tasks
+- notifications
+- straight-through processing
+- HL7
+- SFTP
+- external API Intake
+- AWS
+- RDS
+- ECS
+- Route53
+- production deployment
+- QA deployment
+
+Mailbox polling, Graph/Gmail/IMAP message retrieval, and webhook ingestion are also NOT the core B04 objective.
+
+If minimal adapter plumbing is unavoidable to exercise the internal capture contract, keep it non-operational and do not broaden into full provider ingestion.
+
+==================================================
+66. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B04 is complete only when all are true:
+
+1. Durable Intake-owned email repository exists.
+2. Every email is tenant-bound through B03 source provenance.
+3. TenantIntakeSourceId is persisted.
+4. TenantId is persisted.
+5. SourceConfigurationVersion is persisted.
+6. Purpose is persisted.
+7. ProcessingProfileCode is persisted.
+8. B02 configuration/profile versions are persisted when available.
+9. Provider is persisted.
+10. ProviderMessageId is persisted when available.
+11. ProviderThreadId is preserved when available.
+12. InternetMessageId is preserved when available.
+13. InReplyTo/References metadata is preserved when available.
+14. sender metadata is preserved.
+15. Reply-To metadata is preserved.
+16. recipients are structurally persisted.
+17. TO is supported.
+18. CC is supported.
+19. BCC is supported when supplied.
+20. Subject is preserved.
+21. TextBody is preserved.
+22. HtmlBody is preserved.
+23. useful headers are preserved.
+24. raw message preservation strategy is implemented.
+25. raw/body data is excluded from list projections.
+26. attachment metadata is persisted.
+27. attachment binaries are not integrated with Documents Service.
+28. capture lifecycle/status exists.
+29. processing state is not conflated with future AI workflow.
+30. configurable size limits exist.
+31. oversize input fails deterministically.
+32. provider/source message identity supports idempotency.
+33. duplicate provider delivery creates only one canonical email record.
+34. database-level duplicate protection exists.
+35. duplicate capture outcome is deterministic.
+36. duplicate attempts are auditable/logged.
+37. duplicate analytics are available.
+38. source/tenant binding cannot be overridden.
+39. inactive-source capture policy is deterministic and documented.
+40. email list API exists.
+41. email detail API exists.
+42. email list is tenant-scoped.
+43. email detail is tenant-scoped.
+44. pagination exists.
+45. useful filters exist.
+46. default sort is deterministic.
+47. analytics repository exists.
+48. analytics API exists.
+49. analytics are tenant-scoped.
+50. analytics use server-side aggregation.
+51. raw message access is either properly protected or intentionally kept internal.
+52. capture audit evidence exists.
+53. structured logs omit message bodies/raw MIME.
+54. PII/PHI-sensitive handling is documented.
+55. tenant-isolation tests pass.
+56. capture tests pass.
+57. duplicate tests pass.
+58. source-provenance tests pass.
+59. recipient tests pass.
+60. body tests pass.
+61. header tests pass.
+62. attachment metadata tests pass.
+63. query/pagination tests pass.
+64. analytics tests pass.
+65. HTTP integration tests are added where practical.
+66. B04 EF migration exists.
+67. migration applies successfully to MySQL 8.
+68. required FK/index/idempotency constraints exist.
+69. B02/B03 schema remains intact.
+70. Intake API builds with zero new B04 errors.
+71. Intake tests pass.
+72. full LegalSynq solution builds with zero new B04 errors.
+73. no Documents Service integration is introduced.
+74. no AI processing is introduced.
+75. no matching/review/downstream routing is introduced.
+76. no AWS/deployment work is performed.
+77. no secrets/specification assets/build artifacts are introduced.
+78. /analysis/LSI-B04-report.md exists with complete evidence.
+
+==================================================
+67. REQUIRED REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B04-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree status
+8. Existing B03 architecture reviewed
+9. Files added
+10. Files modified
+11. Email aggregate design
+12. Source provenance strategy
+13. Tenant-binding invariant
+14. Immutable source facts
+15. Message identity strategy
+16. Idempotency strategy
+17. Duplicate-race database protection
+18. Duplicate analytics strategy
+19. Recipient model
+20. sender/reply-to model
+21. Header preservation
+22. Raw message preservation strategy
+23. Body preservation
+24. HTML security treatment
+25. Attachment metadata model
+26. Capture lifecycle/status
+27. Processing-state separation
+28. Message-size limits
+29. Capture service
+30. Email repository
+31. Transactional capture behavior
+32. Inactive-source race policy
+33. Tenant-isolation behavior
+34. Query APIs
+35. Pagination/filtering/sorting
+36. Analytics model
+37. Analytics API
+38. Raw message access policy
+39. Authorization behavior
+40. Audit behavior
+41. Logging behavior
+42. PII/PHI handling
+43. Migration name
+44. Database schema
+45. indexes/constraints
+46. MySQL validation
+47. duplicate-message validation
+48. tests
+49. HTTP integration tests
+50. Intake API build result
+51. full solution build result
+52. performance considerations
+53. security assessment
+54. existing-service impact
+55. git diff summary
+56. known gaps
+57. out-of-scope confirmation
+58. final repository validation status
+59. recommended next bundle: LSI-B05
+
+Sanitize disposable database credentials and any local secret values from the report.
+
+==================================================
+68. DEFINITION OF DONE
+==================================================
+
+The implementation is done when Synq Intake can reliably preserve and query the complete inbound email source record and answer:
+
+“What email did we receive, through which registered tenant source, when was it received, who sent it, who received it, what content and metadata did it contain, and what processing profile governed it?”
+
+while retaining the B03 tenant/source binding as authoritative and without performing Documents integration, AI classification/extraction, matching, human review, or downstream product routing.
+
+When complete:
+
+- run all required local validation;
+- create /analysis/LSI-B04-report.md;
+- stop;
+- do not begin LSI-B05;
+- do not deploy;
+- do not push unless explicitly requested.

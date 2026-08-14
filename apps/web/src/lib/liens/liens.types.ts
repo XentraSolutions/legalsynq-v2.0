@@ -39,6 +39,7 @@ export interface LienResponseDto {
   closedAtUtc?: string | null;
   createdAtUtc: string;
   updatedAtUtc: string;
+  reductionDate?: string | null;
 }
 
 export interface LienOfferResponseDto {
@@ -204,6 +205,7 @@ export interface LienListItem {
   subjectName: string;
   createdAt: string;
   updatedAt: string;
+  reductionDate: string;
 }
 
 export interface LienDetail {
