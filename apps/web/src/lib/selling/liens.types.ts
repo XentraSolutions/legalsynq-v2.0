@@ -323,3 +323,19 @@ export interface SubmitSellingLienRequest {
   sellerStatus: string;
   listingVisibility: string;
 }
+
+// Shape returned by GET {lienId}/activity (SellingV2Endpoints.GetLienActivity) —
+// distinct field names from the `activity` array embedded in GetLienDetail
+// (LienActivityItem), which uses changedByUserId/changedAtUtc instead.
+export interface LienActivityFeedItem {
+  id: string;
+  eventType: string;
+  description: string;
+  actorUserId: string;
+  timestampUtc: string;
+}
+
+export interface LienActivityFeedResult {
+  lienId: string;
+  items: LienActivityFeedItem[];
+}

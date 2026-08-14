@@ -22,6 +22,7 @@ import type {
   ArchiveSellingLienRequest,
   SubmitSellingLienRequest,
   LienListItem,
+  LienActivityFeedResult,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
@@ -67,6 +68,10 @@ export const liensApi = {
 
   getById(id: string) {
     return apiClient.get<LienDetailsResult>(`${BASE}/liens/${id}`);
+  },
+
+  getActivity(id: string) {
+    return apiClient.get<LienActivityFeedResult>(`${BASE}/liens/${id}/activity`);
   },
 
   getDashboard(query: DashboardQuery = {}) {
