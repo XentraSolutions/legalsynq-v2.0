@@ -1,0 +1,2525 @@
+You are implementing LSI-B13 — Approved Snapshot & Adapter Framework for Synq Intake in the LegalSynq v3 repository.
+
+EXECUTION DIRECTIVE
+
+Execute this ticket now.
+
+Do not stop after reviewing requirements.
+Do not return a plan for approval.
+Do not ask whether to proceed.
+Implement the full scoped LSI-B13 work in this execution, run the required local validation, and produce /analysis/LSI-B13-report.md when complete.
+
+If a minor implementation decision is needed and the requirements already establish the intended behavior, make the safest architecture-consistent decision and continue.
+
+Only stop for a genuine blocking condition that cannot be resolved from the repository or these requirements.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Frontend scope: only minimal tenant/admin additions if justified by current app conventions
+- Required implementation report: /analysis/LSI-B13-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B13 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, production deployment, push, PR, or merge work.
+3. Do not implement B14 SynqLien-specific Case creation, Lien creation, downstream document association, SynqFund writes, CareConnect writes, Flow tasks, notifications, straight-through product routing, or other product-domain writes.
+4. Preserve all prior analysis reports as read-only.
+5. Create/update only /analysis/LSI-B13-report.md for this ticket.
+6. Consume the canonical B12 effective reviewed projection. Do not independently reconstruct human corrections/decisions throughout B13.
+7. Keep downstream adapters isolated from B07-B12 EF/domain internals.
+8. Do not allow adapters to receive IntakeDbContext, review aggregates, normalization aggregates, or raw internal persistence entities.
+9. Use a product-neutral immutable snapshot contract.
+10. Build only a safe NOOP/test adapter in B13.
+11. Do not activate SynqLien or other product writes.
+12. Before coding, inspect:
+   - current git branch/status;
+   - HEAD vs origin/xenia;
+   - B12 IntakeReview lifecycle;
+   - B12 effective reviewed projection contract/service;
+   - B12 eligible/ineligible outcomes;
+   - B12 staleness/revision semantics;
+   - B04/B05 artifact/document references;
+   - B07-B11 lineage identifiers;
+   - current Intake profile/versioning conventions;
+   - current event/outbox conventions;
+   - current audit/logging conventions;
+   - current auth/permission conventions;
+   - IntakeDbContext and migrations;
+   - existing cross-service adapter/client abstractions if any;
+   - current frontend routes if a minimal snapshot status surface is appropriate;
+   - current HTTP test infrastructure.
+13. Record repository baseline and initial working-tree state in /analysis/LSI-B13-report.md before implementation.
+14. Preserve unrelated pre-existing changes.
+15. Do not commit uploaded specifications, generated binaries, local databases, secrets, or unrelated artifacts.
+16. Local/repository validation is required.
+17. Do not claim GitHub CI, deployed runtime, production DB validation, or release validation unless separately proven.
+18. Do not begin LSI-B14 automatically.
+19. Do not push unless explicitly requested.
+
+LOCKED PLATFORM STACK
+
+Backend:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT Bearer/service-token authentication
+- existing tenant/current-request context
+- LegalSynq.AuditClient where applicable
+- existing event/outbox conventions
+- existing Intake persistence/history/idempotency conventions
+
+Frontend:
+- Next.js 15
+- React
+- TypeScript
+- Tailwind
+- existing LegalSynq frontend conventions
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+
+B13 is the immutable approval and integration boundary.
+
+The intended chain is:
+
+B12 Effective Reviewed Projection
+-> B13 Approved Snapshot
+-> B13 Product-Neutral Adapter Framework
+-> B14+ Product-Specific Adapters
+
+B13 answers:
+
+“What exact reviewed data was approved, and what stable contract can downstream product adapters consume safely?”
+
+B13 MUST NOT answer:
+
+“How should SynqLien create a Case or Lien?”
+
+==================================================
+1. APPROVED SNAPSHOT SCHEMA
+==================================================
+
+Create a versioned snapshot schema:
+
+LIEN_INTAKE_APPROVED_SNAPSHOT_V1
+
+This schema is distinct from:
+
+LIEN_INTAKE_V1
+
+processing profile.
+
+The approved snapshot schema defines the stable downstream contract.
+
+Use repository-standard definition/versioning patterns where practical.
+
+==================================================
+2. SNAPSHOT SCHEMA DEFINITION
+==================================================
+
+Create:
+
+ApprovedSnapshotSchemaDefinition
+
+or equivalent.
+
+Conceptual fields:
+
+- Id
+- Code
+- DisplayName
+- Description
+- Version
+- IsActive
+- IsSystemDefined
+- CreatedAt
+- UpdatedAt
+
+Seed:
+
+LIEN_INTAKE_APPROVED_SNAPSHOT_V1
+Version = 1
+
+==================================================
+3. SNAPSHOT ELIGIBILITY
+==================================================
+
+Snapshot creation requires:
+
+- tenant-scoped review;
+- review Status = COMPLETED;
+- review is not stale/superseded;
+- review effective projection is available;
+- review outcome is eligible;
+- no reprocessing requirement remains.
+
+Initial eligible outcomes:
+
+APPROVED
+APPROVED_WITH_CORRECTIONS
+
+Initial ineligible outcomes:
+
+REJECTED
+DUPLICATE_CONFIRMED
+RETURN_FOR_REPROCESSING
+
+NO_MATCH_CONFIRMED is not automatically eligible unless the implementation/profile explicitly establishes it as an approved business outcome.
+
+Default to ineligible unless repository/business intent clearly supports otherwise.
+
+==================================================
+4. B12 REVIEWED PROJECTION
+==================================================
+
+Consume:
+
+IReviewedIntakeProjectionService
+
+or the exact canonical B12 equivalent.
+
+Do not reconstruct:
+
+- corrections;
+- additions;
+- rejected facts;
+- selected matches;
+- duplicate decisions;
+- classification overrides;
+
+independently throughout B13.
+
+B12 is the authority for effective reviewed state.
+
+==================================================
+5. APPROVED SNAPSHOT AGGREGATE
+==================================================
+
+Create:
+
+ApprovedIntakeSnapshot
+
+Conceptual fields:
+
+- Id
+- TenantId
+- ArtifactId
+- ReviewId
+- PolicyEvaluationId
+
+- ProcessingProfileCode
+
+- SchemaCode
+- SchemaVersion
+- SnapshotVersion
+
+- Status
+
+- PayloadJson
+- SnapshotHash
+
+- ExecutionKey
+- IsCurrent
+
+- ApprovedByUserId
+- ApprovedAt
+
+- SupersedesSnapshotId
+
+- CreatedAt
+- UpdatedAt if repository convention requires it
+
+Only add fields justified by implementation.
+
+==================================================
+6. SNAPSHOT STATUS
+==================================================
+
+Support:
+
+CREATING
+READY
+FAILED
+SUPERSEDED
+
+Optional:
+
+REVOKED
+
+only if there is a real current use case. Do not add speculative state unnecessarily.
+
+Once READY:
+- snapshot business payload is immutable.
+
+==================================================
+7. SNAPSHOT VERSIONING
+==================================================
+
+Initial approved review:
+
+SnapshotVersion = 1
+
+A later approved review revision for the same artifact may create:
+
+SnapshotVersion = 2
+SupersedesSnapshotId = Snapshot V1
+
+Never overwrite old snapshot payload.
+
+==================================================
+8. SNAPSHOT CURRENT SEMANTICS
+==================================================
+
+Only one snapshot should be considered current for the active approved lineage of an artifact.
+
+Use atomic current-marker behavior consistent with B07-B12.
+
+Historical snapshots remain queryable.
+
+==================================================
+9. TYPED SNAPSHOT CONTRACT
+==================================================
+
+Create a strongly typed downstream contract:
+
+ApprovedIntakeSnapshotV1
+
+or repository-equivalent name.
+
+This must be separate from EF entities.
+
+Adapters consume the typed contract.
+
+==================================================
+10. SNAPSHOT CONTRACT STRUCTURE
+==================================================
+
+The contract should include bounded, downstream-relevant sections such as:
+
+- Classification
+- Facts[]
+- Entities[]
+- Documents[]
+- DuplicateDecision
+- Review
+- Provenance
+
+Do not create a dump of every B07-B12 table/history.
+
+==================================================
+11. APPROVED CLASSIFICATION
+==================================================
+
+Snapshot classification should include:
+
+- OriginalClassification
+- EffectiveClassification
+- WasHumanOverridden
+
+If the classification override caused RETURN_FOR_REPROCESSING or stale downstream intelligence:
+- snapshot creation must fail.
+
+==================================================
+12. APPROVED FACT CONTRACT
+==================================================
+
+Each approved fact should include, where applicable:
+
+- FactCode
+- DataType
+- Value
+- ValueJson
+- ValidationStatus
+
+- SourceType
+- HumanCorrected
+- HumanAdded
+
+- SourceExtractedFactId
+- SourceNormalizedFactId
+- CorrectionId
+
+- SourceConfidence only where AI-derived
+
+- EvidenceReferences[]
+- Ordinal
+
+Use exact current FactCode/DataType conventions.
+
+==================================================
+13. FACT SOURCE TYPES
+==================================================
+
+Represent provenance clearly.
+
+Potential stable sources:
+
+AI_EXTRACTION
+NORMALIZED_AI
+HUMAN_CORRECTION
+HUMAN_ADDITION
+
+If existing B12/B09 source naming differs, reuse established codes rather than inventing duplicates.
+
+==================================================
+14. NO FAKE HUMAN CONFIDENCE
+==================================================
+
+Do not assign AI confidence to human-added/corrected facts.
+
+Do not set:
+
+SourceConfidence = 1.0
+
+simply because a reviewer approved a value.
+
+Use explicit provenance/approval metadata instead.
+
+==================================================
+15. REJECTED FACTS
+==================================================
+
+Facts rejected by B12 must not appear as active approved facts.
+
+Do not mutate/delete historical B08/B09/B12 records.
+
+If excluded-fact provenance is useful, preserve it outside the active fact collection without bloating the snapshot.
+
+==================================================
+16. HUMAN-CORRECTED FACTS
+==================================================
+
+Snapshot must use B12 effective corrected values.
+
+Critical rule:
+
+B09 original normalized value
++ B12 correction
+-> snapshot uses B12 effective value
+
+Do not revert to B09 original value.
+
+==================================================
+17. HUMAN-ADDED FACTS
+==================================================
+
+Human-added facts must appear with:
+
+SourceType = HUMAN or established equivalent
+HumanAdded = true
+SourceConfidence = null/not applicable
+
+Preserve correction/addition ID.
+
+==================================================
+18. APPROVED ENTITY DECISIONS
+==================================================
+
+Snapshot should include B12 effective entity decisions.
+
+Each should include:
+
+- EntityType
+- Decision
+- SelectedEntityId
+- SourceMatchId
+- IsManualSelection
+- ReasonCode
+
+Supported entities may include:
+
+PATIENT
+PROVIDER
+FACILITY
+ATTORNEY
+LAW_FIRM
+CASE
+
+Do not create downstream entities.
+
+==================================================
+19. NO_MATCH PRESERVATION
+==================================================
+
+If reviewer confirmed:
+
+EntityType = CASE
+Decision = NO_MATCH
+SelectedEntityId = null
+
+preserve this exactly.
+
+Do not invent IDs.
+
+This is important input for B14.
+
+==================================================
+20. MANUAL ENTITY SELECTION
+==================================================
+
+If B12 manually selected an entity:
+
+IsManualSelection = true
+
+Preserve:
+- selected entity ID;
+- source review decision;
+- reviewer provenance where appropriate.
+
+Do not rewrite it as if it were a B10 algorithmic match.
+
+==================================================
+21. DUPLICATE DECISION
+==================================================
+
+Snapshot must contain final B12 duplicate adjudication when applicable.
+
+A READY snapshot must not contain unresolved required duplicate decisions.
+
+If review outcome is DUPLICATE_CONFIRMED:
+- normal approved snapshot creation must be rejected.
+
+==================================================
+22. DOCUMENT REFERENCES
+==================================================
+
+Snapshot should reference relevant Intake/Documents records.
+
+Conceptual fields:
+
+- DocumentId
+- ArtifactId
+- DocumentRole
+- Filename
+- MimeType
+- Sha256
+
+Use actual B05 artifact/document metadata and role conventions.
+
+Do not copy binaries into Intake DB.
+
+==================================================
+23. DOCUMENT ROLE
+==================================================
+
+Potential roles:
+
+PRIMARY_SOURCE
+SUPPORTING_DOCUMENT
+EMAIL_BODY
+ATTACHMENT
+
+Reuse actual existing artifact role codes where possible.
+
+==================================================
+24. EVIDENCE REFERENCES
+==================================================
+
+Approved facts may retain bounded evidence references back to:
+
+- DocumentId
+- ArtifactId
+- SourceExtractedFactId
+- source evidence locator/snippet reference
+
+Do not unnecessarily duplicate full B08 evidence blobs.
+
+Do not fabricate page/location data.
+
+==================================================
+25. REVIEW METADATA
+==================================================
+
+Snapshot should include safe review metadata:
+
+- ReviewId
+- ReviewOutcome
+- ApprovedByUserId
+- ApprovedAt
+
+Do not copy all review activities/comments into snapshot payload.
+
+==================================================
+26. COMPLETE PROVENANCE
+==================================================
+
+Snapshot must retain exact upstream lineage IDs:
+
+- ArtifactId
+- ClassificationId
+- ArtifactExtractionId
+- ArtifactNormalizationId
+- ArtifactMatchRunId
+- ArtifactPolicyEvaluationId
+- ReviewId
+
+This must be sufficient for audit reconstruction.
+
+==================================================
+27. SNAPSHOT HASH
+==================================================
+
+Calculate deterministic:
+
+SHA-256
+
+over canonical snapshot business content.
+
+Persist:
+
+SnapshotHash
+
+==================================================
+28. CANONICAL SERIALIZATION
+==================================================
+
+Implement deterministic canonical serialization.
+
+Requirements:
+
+- stable property ordering;
+- stable collection ordering;
+- culture-invariant numeric representation;
+- stable ISO date/date-time formats;
+- deterministic null handling;
+- deterministic enum/code serialization;
+- no runtime-specific formatting.
+
+==================================================
+29. HASH CONTENT BOUNDARY
+==================================================
+
+Include business/provenance content necessary to establish snapshot identity.
+
+Avoid including volatile non-semantic runtime fields such as:
+- persistence CreatedAt;
+- transient processing duration;
+- random correlation IDs;
+
+unless they intentionally define snapshot identity.
+
+==================================================
+30. HASH DETERMINISM
+==================================================
+
+Same effective reviewed projection + same snapshot schema version must generate same hash.
+
+Equivalent list ordering in memory must canonicalize consistently.
+
+==================================================
+31. HASH CHANGE
+==================================================
+
+Changing a meaningful approved value must change SnapshotHash.
+
+Examples:
+
+- corrected amount changes;
+- selected Patient changes;
+- NO_MATCH becomes selected Case;
+- effective classification changes.
+
+==================================================
+32. SNAPSHOT EXECUTION KEY
+==================================================
+
+Create deterministic execution key using at least:
+
+TenantId
+ReviewId
+Review revision/current identity
+SchemaCode
+SchemaVersion
+
+or a deterministic reviewed projection fingerprint.
+
+==================================================
+33. SNAPSHOT IDEMPOTENCY
+==================================================
+
+Repeated creation for identical eligible review/schema must return/reuse the same snapshot.
+
+Use:
+- application lookup/claim;
+- database uniqueness.
+
+Do not duplicate snapshot rows.
+
+==================================================
+34. SNAPSHOT SUPERSESSION
+==================================================
+
+New approved review revision may produce a new snapshot version.
+
+Old snapshot:
+- remains immutable;
+- becomes non-current/SUPERSEDED according to repository convention.
+
+New snapshot:
+- becomes current.
+
+Perform switch atomically.
+
+==================================================
+35. SNAPSHOT CREATION SERVICE
+==================================================
+
+Create:
+
+IApprovedIntakeSnapshotService
+
+or exact repository-convention equivalent.
+
+Responsibilities:
+
+1. load tenant-scoped review;
+2. validate review completed;
+3. validate eligible outcome;
+4. validate review current/not stale;
+5. resolve active snapshot schema;
+6. load B12 effective reviewed projection;
+7. validate projection completeness;
+8. build typed snapshot contract;
+9. canonicalize;
+10. hash;
+11. create/reuse idempotent snapshot;
+12. atomically finalize READY/current state;
+13. emit safe audit/event;
+14. return canonical result.
+
+==================================================
+36. SNAPSHOT VALIDATION
+==================================================
+
+Before READY verify:
+
+- eligible review;
+- review not stale;
+- no unresolved required duplicate decision;
+- no unresolved reprocessing state;
+- reviewed facts structurally valid as required;
+- required entity decisions present as required by reviewed projection;
+- schema contract valid.
+
+Do not add SynqLien-specific business requirements here.
+
+==================================================
+37. SNAPSHOT FAILURE CODES
+==================================================
+
+Use stable codes such as:
+
+SNAPSHOT_REVIEW_REQUIRED
+SNAPSHOT_REVIEW_NOT_APPROVED
+SNAPSHOT_REVIEW_STALE
+SNAPSHOT_REPROCESSING_REQUIRED
+SNAPSHOT_SCHEMA_UNAVAILABLE
+SNAPSHOT_PAYLOAD_INVALID
+SNAPSHOT_HASH_FAILED
+SNAPSHOT_CREATION_FAILED
+SNAPSHOT_TENANT_CONTEXT_INVALID
+
+Use exact repository naming conventions.
+
+==================================================
+38. SNAPSHOT API
+==================================================
+
+Implement:
+
+POST /reviews/{reviewId}/snapshot
+
+GET /snapshots/{snapshotId}
+
+GET /artifacts/{artifactId}/snapshots
+
+GET /artifacts/{artifactId}/snapshots/current
+
+Optional:
+
+GET /snapshot/schemas
+
+if useful and consistent.
+
+==================================================
+39. SNAPSHOT READ RESPONSE
+==================================================
+
+Return:
+
+- SnapshotId
+- ArtifactId
+- ReviewId
+- SnapshotVersion
+- SchemaCode
+- SchemaVersion
+- ProcessingProfileCode
+- Status
+- SnapshotHash
+- IsCurrent
+- ApprovedByUserId
+- ApprovedAt
+- CreatedAt
+- typed Payload
+
+Do not expose raw persistence JSON if a typed contract can be returned.
+
+==================================================
+40. SNAPSHOT AUTHORIZATION
+==================================================
+
+Prefer permissions:
+
+intake.snapshot.read
+intake.snapshot.manage
+
+or justify reuse of review permissions.
+
+Separate manage authority is preferred because snapshot creation is the formal downstream handoff boundary.
+
+==================================================
+41. TENANT ISOLATION
+==================================================
+
+Mandatory:
+
+- Tenant A cannot create Tenant B snapshot.
+- Tenant A cannot read Tenant B snapshot.
+- Tenant A cannot list Tenant B snapshots.
+- Tenant A cannot execute adapter for Tenant B snapshot.
+- all review/artifact/upstream references must share tenant.
+
+==================================================
+42. ADAPTER FRAMEWORK
+==================================================
+
+Create a generic product-neutral adapter framework.
+
+Conceptually:
+
+ApprovedIntakeSnapshotV1
+-> Adapter Registry
+-> Registered Destination Adapter
+-> Product-neutral Adapter Result
+
+B13 framework only.
+
+==================================================
+43. ADAPTER INTERFACE
+==================================================
+
+Create:
+
+IIntakeDestinationAdapter
+
+or repository-equivalent.
+
+Adapter should expose:
+
+- AdapterCode
+- AdapterVersion
+- supported snapshot schema(s)
+- supported processing profile(s)
+- capability metadata
+
+and methods conceptually:
+
+Validate(snapshot, context)
+Execute(snapshot, context, cancellationToken)
+
+==================================================
+44. ADAPTER INPUT BOUNDARY
+==================================================
+
+Adapters MUST receive:
+
+ApprovedIntakeSnapshotV1 or abstract stable approved snapshot contract
+
+They MUST NOT receive:
+
+- IntakeDbContext;
+- IntakeReview;
+- ArtifactNormalization;
+- ArtifactMatchRun;
+- ArtifactPolicyEvaluation;
+- B08/B09 internal entities.
+
+This is a mandatory anti-coupling requirement.
+
+==================================================
+45. ADAPTER REGISTRY
+==================================================
+
+Create:
+
+IIntakeDestinationAdapterRegistry
+
+mapping:
+
+AdapterCode
+-> registered implementation
+
+Use dependency injection.
+
+Avoid hardcoded orchestration switches.
+
+==================================================
+46. ADAPTER CAPABILITIES
+==================================================
+
+Adapters may advertise:
+
+- AdapterCode
+- AdapterVersion
+- SupportedSnapshotSchemas
+- SupportedProcessingProfiles
+- SupportsDryRun
+- SupportsRetry
+
+Only include metadata useful to orchestration.
+
+==================================================
+47. NOOP ADAPTER
+==================================================
+
+Implement safe:
+
+NOOP_V1
+
+for B13 framework validation.
+
+It must:
+- accept supported snapshot contract;
+- perform deterministic validation;
+- return deterministic success;
+- perform no network call;
+- perform no business-domain write;
+- expose no PHI externally.
+
+==================================================
+48. NO PRODUCT ADAPTERS
+==================================================
+
+Do NOT implement:
+
+SYNQLIEN_V1
+
+business behavior in B13.
+
+Do not create:
+- Case;
+- Lien;
+- Patient;
+- Provider;
+- document associations.
+
+B14 owns SynqLien-specific behavior.
+
+==================================================
+49. ADAPTER CONFIGURATION
+==================================================
+
+Extend Intake/profile configuration only as needed.
+
+Potential:
+
+DestinationAdapterCode
+EnableAdapterExecution
+
+Safe B13 default:
+
+EnableAdapterExecution = false
+
+If NOOP execution is available explicitly, it may be invoked without enabling product writes.
+
+Do not set LIEN_INTAKE_V1 -> SYNQLIEN_V1 as active yet.
+
+==================================================
+50. ADAPTER EXECUTION AGGREGATE
+==================================================
+
+Create:
+
+IntakeAdapterExecution
+
+Conceptual fields:
+
+- Id
+- TenantId
+- SnapshotId
+
+- AdapterCode
+- AdapterVersion
+
+- Status
+- ExecutionKey
+
+- AttemptNumber
+
+- RequestedByUserId
+- RequestedAt
+- StartedAt
+- CompletedAt
+
+- FailureCode
+- FailureMessage
+
+- ResultJson
+
+- CreatedAt
+- UpdatedAt
+
+Only add fields justified by implementation.
+
+==================================================
+51. ADAPTER EXECUTION STATUS
+==================================================
+
+Support:
+
+PENDING
+PROCESSING
+SUCCEEDED
+FAILED
+RETRYABLE
+CANCELLED
+
+Optional:
+
+NOT_APPLICABLE
+
+only if useful.
+
+==================================================
+52. ADAPTER RESULT CONTRACT
+==================================================
+
+Create product-neutral result:
+
+- Success
+- Status
+- Retryable
+- FailureCode
+- Warnings[]
+- ExternalReferences[]
+
+Do not embed SynqLien-specific object models.
+
+==================================================
+53. EXTERNAL REFERENCE CONTRACT
+==================================================
+
+Support multiple references:
+
+- ReferenceType
+- ReferenceId
+
+Future examples:
+
+CASE
+LIEN
+DOCUMENT_ASSOCIATION
+
+B13 NOOP may return no references or a clearly synthetic safe test reference if current tests benefit from it.
+
+Prefer no references unless needed.
+
+==================================================
+54. EXTERNAL REFERENCE PERSISTENCE
+==================================================
+
+If first-class persistence is warranted, create:
+
+IntakeAdapterExternalReference
+
+Conceptual:
+
+- Id
+- TenantId
+- AdapterExecutionId
+- ReferenceType
+- ReferenceId
+- CreatedAt
+
+Do not create product-domain records.
+
+==================================================
+55. ADAPTER EXECUTION SERVICE
+==================================================
+
+Create:
+
+IIntakeAdapterExecutionService
+
+Responsibilities:
+
+1. load tenant-scoped READY snapshot;
+2. resolve adapter;
+3. validate adapter compatibility;
+4. validate execution enabled/authorized;
+5. create/reuse execution;
+6. atomically claim execution;
+7. commit claim;
+8. call adapter outside DB transaction;
+9. persist success/failure;
+10. persist external references;
+11. classify retryability;
+12. emit safe audit/events;
+13. return execution state.
+
+==================================================
+56. EXECUTION TRANSACTION BOUNDARY
+==================================================
+
+Never hold Intake DB transaction open while calling adapter.
+
+Correct:
+
+claim execution
+-> commit
+-> adapter call
+-> new persistence transaction for result
+
+==================================================
+57. ADAPTER EXECUTION KEY
+==================================================
+
+Create deterministic execution identity including:
+
+TenantId
+SnapshotId
+AdapterCode
+AdapterVersion
+
+Same snapshot/adapter/version should reuse execution context.
+
+==================================================
+58. ADAPTER IDEMPOTENCY
+==================================================
+
+Repeated identical execute request must not duplicate downstream work.
+
+Protect with:
+- ExecutionKey uniqueness;
+- atomic claim;
+- downstream IdempotencyKey.
+
+==================================================
+59. DOWNSTREAM IDEMPOTENCY KEY
+==================================================
+
+Adapter execution context must expose stable:
+
+IdempotencyKey
+
+derived from:
+
+TenantId
+SnapshotId
+AdapterCode
+AdapterVersion
+
+or stable execution key.
+
+B14 must be able to pass this to downstream services.
+
+==================================================
+60. ADAPTER REQUEST CONTEXT
+==================================================
+
+Provide:
+
+- TenantId
+- SnapshotId
+- CorrelationId
+- IdempotencyKey
+- RequestedByUserId
+- DryRun/ValidateOnly where applicable
+
+Do not pass HTTP request object.
+
+==================================================
+61. ADAPTER VALIDATION
+==================================================
+
+Before execute, adapter may validate:
+
+- snapshot schema compatibility;
+- schema version;
+- processing profile;
+- required generic contract structure.
+
+Do not encode SynqLien-specific fields in framework validation.
+
+==================================================
+62. DRY RUN
+==================================================
+
+If cleanly supported, add:
+
+DryRun or ValidateOnly
+
+NOOP adapter should support this naturally.
+
+Do not make dry-run mandatory if it complicates current conventions.
+
+==================================================
+63. RETRY MODEL
+==================================================
+
+Support safe retry for retryable execution failures.
+
+Retry must:
+- reuse same stable execution identity/idempotency key;
+- increment attempt count;
+- avoid duplicate downstream records.
+
+==================================================
+64. RETRYABLE VS PERMANENT
+==================================================
+
+Distinguish retryable from permanent failure.
+
+Examples:
+
+timeout
+-> retryable
+
+temporary service unavailable
+-> retryable
+
+invalid snapshot schema
+-> permanent/non-retryable
+
+unsupported adapter/profile
+-> permanent
+
+==================================================
+65. ADAPTER FAILURE CODES
+==================================================
+
+Use generic stable codes such as:
+
+ADAPTER_NOT_CONFIGURED
+ADAPTER_DISABLED
+ADAPTER_UNAVAILABLE
+ADAPTER_VALIDATION_FAILED
+ADAPTER_EXECUTION_FAILED
+ADAPTER_TIMEOUT
+ADAPTER_RETRY_EXHAUSTED
+ADAPTER_RESULT_INVALID
+ADAPTER_TENANT_CONTEXT_INVALID
+
+==================================================
+66. ADAPTER TIMEOUT
+==================================================
+
+Use bounded adapter execution timeout.
+
+Reuse existing options patterns.
+
+Do not leave external calls unbounded.
+
+NOOP adapter should execute immediately.
+
+==================================================
+67. CANCELLATION
+==================================================
+
+If cancellation occurs after execution claim:
+
+do not leave:
+
+PROCESSING
+
+permanently.
+
+Finalize to:
+- CANCELLED;
+- RETRYABLE;
+- FAILED;
+
+according to implementation semantics.
+
+Reuse cancellation hardening patterns from prior Intake bundles.
+
+==================================================
+68. CONCURRENT EXECUTION
+==================================================
+
+Two callers/workers must not execute the same:
+
+Snapshot + Adapter + Version
+
+concurrently.
+
+Use:
+- unique execution key;
+- atomic claim/status transition.
+
+==================================================
+69. EXECUTION HISTORY
+==================================================
+
+Retain safe attempt history.
+
+At minimum preserve:
+- AttemptNumber;
+- timestamps;
+- failure status/code.
+
+If existing patterns justify first-class attempts, create:
+
+IntakeAdapterExecutionAttempt
+
+Otherwise retain bounded history using current execution/audit model.
+
+Do not overwrite useful historical failure evidence.
+
+==================================================
+70. SNAPSHOT EVENT
+==================================================
+
+Where existing outbox/event conventions support it, emit:
+
+ApprovedIntakeSnapshotReadyV1
+
+Fields:
+
+- TenantId
+- ArtifactId
+- ReviewId
+- SnapshotId
+- SchemaCode
+- SchemaVersion
+- ProcessingProfileCode
+- OccurredAt
+- CorrelationId
+
+No PHI.
+
+==================================================
+71. ADAPTER EVENTS
+==================================================
+
+Potential:
+
+IntakeAdapterExecutionRequestedV1
+IntakeAdapterExecutionSucceededV1
+IntakeAdapterExecutionFailedV1
+
+Identifiers/status only.
+
+Do not publish snapshot payload.
+
+==================================================
+72. EVENT / NETWORK BOUNDARY
+==================================================
+
+Snapshot persistence must complete before any downstream adapter execution.
+
+Do not call adapter inside snapshot DB transaction.
+
+==================================================
+73. SNAPSHOT AUDIT
+==================================================
+
+Suggested operations:
+
+APPROVED_SNAPSHOT_CREATED
+APPROVED_SNAPSHOT_SUPERSEDED
+
+Safe metadata:
+
+- TenantId
+- ArtifactId
+- ReviewId
+- SnapshotId
+- SnapshotVersion
+- SchemaCode
+- ApprovedByUserId
+
+No payload.
+
+==================================================
+74. ADAPTER AUDIT
+==================================================
+
+Suggested:
+
+INTAKE_ADAPTER_REQUESTED
+INTAKE_ADAPTER_SUCCEEDED
+INTAKE_ADAPTER_FAILED
+INTAKE_ADAPTER_RETRIED
+
+Safe metadata:
+
+- TenantId
+- SnapshotId
+- AdapterCode
+- AdapterVersion
+- ExecutionId
+- AttemptNumber
+- Status
+- FailureCode
+
+No snapshot payload.
+
+==================================================
+75. SNAPSHOT PHI/PII
+==================================================
+
+Snapshot payload contains PHI/PII.
+
+Requirements:
+
+- strict tenant scoping;
+- authorized access;
+- no payload in operational logs;
+- no payload in audit metadata;
+- no payload in events;
+- no cross-tenant cache;
+- existing platform at-rest protection applies.
+
+==================================================
+76. LOGGING
+==================================================
+
+Safe snapshot logs:
+
+- TenantId
+- SnapshotId
+- ReviewId
+- SchemaCode
+- SchemaVersion
+- Status
+
+Safe adapter logs:
+
+- TenantId
+- SnapshotId
+- AdapterCode
+- AdapterVersion
+- ExecutionId
+- AttemptNumber
+- Status
+- FailureCode
+
+Never log PayloadJson or fact/entity values.
+
+==================================================
+77. SNAPSHOT STORAGE BOUNDARY
+==================================================
+
+Canonical structured snapshot belongs in Intake DB.
+
+Documents Service remains binary/document owner.
+
+Do not store approved structured snapshot solely as a document.
+
+==================================================
+78. ADAPTER CREDENTIAL BOUNDARY
+==================================================
+
+Do not place credentials in:
+- snapshot;
+- adapter execution payload/result;
+- events.
+
+Future product adapters use existing service-to-service/integration credential conventions.
+
+==================================================
+79. SNAPSHOT QUERY API
+==================================================
+
+Support tenant-scoped history:
+
+GET /artifacts/{artifactId}/snapshots
+
+Allow bounded/paginated result if history can grow.
+
+==================================================
+80. ADAPTER EXECUTION API
+==================================================
+
+Implement:
+
+POST /snapshots/{snapshotId}/adapters/{adapterCode}/execute
+
+For B13, only safe registered adapters such as NOOP_V1 may execute.
+
+Unknown/unregistered adapter must fail safely.
+
+==================================================
+81. ADAPTER EXECUTION READ API
+==================================================
+
+Implement:
+
+GET /snapshots/{snapshotId}/adapter-executions
+
+GET /snapshots/{snapshotId}/adapter-executions/{executionId}
+
+or closest route convention.
+
+==================================================
+82. RETRY API
+==================================================
+
+If retry is supported:
+
+POST /snapshots/{snapshotId}/adapter-executions/{executionId}/retry
+
+Allow only eligible retryable states.
+
+==================================================
+83. SNAPSHOT PERMISSIONS
+==================================================
+
+Prefer:
+
+intake.snapshot.read
+intake.snapshot.manage
+
+==================================================
+84. ADAPTER PERMISSIONS
+==================================================
+
+Prefer:
+
+intake.adapter.read
+intake.adapter.execute
+
+Snapshot creation and adapter execution authority should be separable.
+
+==================================================
+85. AUTHORITY SEPARATION
+==================================================
+
+Possible:
+
+Reviewer
+-> completes B12
+
+Snapshot Manager
+-> creates snapshot
+
+Integration User
+-> executes adapter
+
+Same user may possess multiple permissions, but authorization should not assume they are always the same.
+
+==================================================
+86. AUTOMATIC SNAPSHOT CREATION
+==================================================
+
+V1 preferred behavior:
+
+Approved B12 review
+-> eligible for explicit snapshot creation
+
+If existing event/outbox architecture makes automatic snapshot creation clean and idempotent, it may be supported.
+
+Do not automatically trigger product adapter/domain writes.
+
+==================================================
+87. AUTOMATIC ADAPTER EXECUTION
+==================================================
+
+Do not enable automatic product adapter execution in B13.
+
+B13 should expose the framework and explicit execution surface only.
+
+==================================================
+88. ADAPTER ROUTING CONFIG
+==================================================
+
+Design may support future:
+
+ProcessingProfileCode
+-> DestinationAdapterCode
+
+Example future:
+
+LIEN_INTAKE_V1
+-> SYNQLIEN_V1
+
+Do not activate SYNQLIEN_V1 in B13.
+
+==================================================
+89. MULTIPLE ADAPTERS
+==================================================
+
+Design storage/registry so one snapshot may support multiple adapter executions over time.
+
+Do not hardcode exactly one destination forever.
+
+V1 may still configure one preferred adapter.
+
+==================================================
+90. SNAPSHOT IMMUTABILITY
+==================================================
+
+Once READY, prohibit:
+- payload changes;
+- fact changes;
+- entity-decision changes;
+- review linkage changes.
+
+Changes require new approved review revision + new snapshot.
+
+==================================================
+91. SNAPSHOT REPRODUCIBILITY
+==================================================
+
+Unit-test that canonical payload and hash are reproducible from the same reviewed projection.
+
+==================================================
+92. SNAPSHOT INTEGRITY
+==================================================
+
+At minimum:
+- persist hash;
+- enforce immutable READY payload.
+
+Optionally recompute/verify hash before adapter execution if cleanly practical.
+
+Document whether implemented.
+
+==================================================
+93. DATABASE SCHEMA
+==================================================
+
+Expected B13 tables:
+
+ApprovedSnapshotSchemaDefinitions
+ApprovedIntakeSnapshots
+IntakeAdapterExecutions
+
+Optional:
+
+IntakeAdapterExternalReferences
+IntakeAdapterExecutionAttempts
+
+only if justified.
+
+==================================================
+94. APPROVED SNAPSHOT COLUMNS
+==================================================
+
+Conceptual:
+
+- Id
+- TenantId
+- ArtifactId
+- ReviewId
+- PolicyEvaluationId
+- ProcessingProfileCode
+- SchemaCode
+- SchemaVersion
+- SnapshotVersion
+- Status
+- PayloadJson
+- SnapshotHash
+- ExecutionKey
+- IsCurrent
+- ApprovedByUserId
+- ApprovedAt
+- SupersedesSnapshotId
+- CreatedAt
+
+==================================================
+95. ADAPTER EXECUTION COLUMNS
+==================================================
+
+Conceptual:
+
+- Id
+- TenantId
+- SnapshotId
+- AdapterCode
+- AdapterVersion
+- ExecutionKey
+- Status
+- AttemptNumber
+- RequestedByUserId
+- RequestedAt
+- StartedAt
+- CompletedAt
+- FailureCode
+- FailureMessage
+- ResultJson
+- CreatedAt
+- UpdatedAt
+
+Do not duplicate snapshot payload into execution row.
+
+==================================================
+96. DATABASE CONSTRAINTS
+==================================================
+
+At minimum consider:
+
+UNIQUE (SchemaCode, Version)
+UNIQUE ApprovedIntakeSnapshot.ExecutionKey
+UNIQUE IntakeAdapterExecution.ExecutionKey
+
+Use tenant-aware FKs.
+
+SnapshotHash uniqueness should be scoped only if semantics justify it.
+
+Do not make identical business payload across different reviews globally impossible by accident.
+
+==================================================
+97. SNAPSHOT INDEXES
+==================================================
+
+ApprovedIntakeSnapshots:
+
+- TenantId + ArtifactId
+- TenantId + ReviewId
+- TenantId + Status
+- TenantId + IsCurrent
+- ExecutionKey UNIQUE
+- SnapshotHash
+- CreatedAt
+
+==================================================
+98. ADAPTER INDEXES
+==================================================
+
+IntakeAdapterExecutions:
+
+- TenantId + SnapshotId
+- TenantId + Status
+- AdapterCode
+- ExecutionKey UNIQUE
+- CreatedAt
+
+External references if implemented:
+- AdapterExecutionId
+- ReferenceType
+- ReferenceId
+
+==================================================
+99. MIGRATION
+==================================================
+
+Create B13 migration.
+
+Suggested:
+
+AddApprovedSnapshotAndAdapterFrameworkV1
+
+or repository-standard equivalent.
+
+Do not create B14 product-domain schema.
+
+==================================================
+100. MINIMAL FRONTEND SCOPE
+==================================================
+
+If current B12 completed-review UI supports natural extension, add minimal snapshot status.
+
+Potential:
+
+Ready for Snapshot
+Snapshot Created
+Snapshot Version
+Snapshot Status
+Schema
+Created At
+
+Do not build product-domain routing UI.
+
+==================================================
+101. SNAPSHOT DETAIL UI
+==================================================
+
+Optional minimal metadata view:
+
+- Snapshot ID
+- Version
+- Schema version
+- Hash
+- Review reference
+- Approved by
+- Created
+- Current status
+- Adapter execution summaries
+
+Do not expose raw JSON to ordinary review users.
+
+==================================================
+102. ADAPTER ADMIN UI
+==================================================
+
+Optional only if current app already has a suitable integration/admin surface.
+
+Potential:
+
+- AdapterCode
+- Version
+- execution status
+- attempts
+- retry
+
+Do not let frontend broaden B13 substantially.
+
+==================================================
+103. B14 CONTRACT
+==================================================
+
+B14 must be able to implement:
+
+SynqLienAdapterV1
+
+using only:
+
+ApprovedIntakeSnapshot contract
++
+adapter execution context
+
+B14 should not require direct B07-B12 database access.
+
+==================================================
+104. MULTIPLE DOWNSTREAM REFERENCES
+==================================================
+
+Result model must support multiple future references such as:
+
+CASE
+LIEN
+DOCUMENT_ASSOCIATION
+
+without schema redesign.
+
+==================================================
+105. SNAPSHOT CREATION TESTS
+==================================================
+
+Test:
+
+- APPROVED review creates snapshot;
+- APPROVED_WITH_CORRECTIONS creates snapshot;
+- REJECTED denied;
+- DUPLICATE_CONFIRMED denied;
+- RETURN_FOR_REPROCESSING denied;
+- stale review denied;
+- wrong tenant denied.
+
+==================================================
+106. EFFECTIVE REVIEWED VALUE TEST
+==================================================
+
+Critical:
+
+B09 value = original
+B12 value = corrected
+
+Snapshot must contain B12 corrected effective value.
+
+==================================================
+107. HUMAN-ADDED FACT TEST
+==================================================
+
+Human-added fact appears in snapshot with human provenance and no fabricated SourceConfidence.
+
+==================================================
+108. REJECTED FACT TEST
+==================================================
+
+B12 rejected fact does not appear as active approved fact.
+
+==================================================
+109. MANUAL MATCH TEST
+==================================================
+
+Manual B12 entity selection appears:
+
+IsManualSelection = true
+
+with selected entity ID.
+
+==================================================
+110. NO_MATCH TEST
+==================================================
+
+Confirmed NO_MATCH remains:
+
+Decision = NO_MATCH
+SelectedEntityId = null
+
+==================================================
+111. DUPLICATE TEST
+==================================================
+
+Unresolved required duplicate decision blocks snapshot.
+
+NOT_DUPLICATE can allow approved snapshot when rest of review is eligible.
+
+DUPLICATE_CONFIRMED review cannot create normal approved snapshot.
+
+==================================================
+112. CLASSIFICATION OVERRIDE TEST
+==================================================
+
+Classification override requiring reprocessing must prevent snapshot creation until a later eligible approved review exists.
+
+==================================================
+113. HASH DETERMINISM TEST
+==================================================
+
+Same reviewed projection/schema:
+
+same SnapshotHash
+
+regardless of incidental in-memory dictionary/property ordering.
+
+==================================================
+114. HASH CHANGE TEST
+==================================================
+
+Change:
+- approved value;
+- selected entity;
+- effective classification;
+
+and verify SnapshotHash changes.
+
+==================================================
+115. VOLATILE FIELD HASH TEST
+==================================================
+
+Changing unrelated runtime timestamp/correlation data outside canonical contract must not change hash.
+
+==================================================
+116. SNAPSHOT IDEMPOTENCY TEST
+==================================================
+
+Repeated same review/schema request returns same snapshot.
+
+No duplicate DB row.
+
+==================================================
+117. SNAPSHOT SUPERSESSION TEST
+==================================================
+
+Approved Review Revision 1
+-> Snapshot V1
+
+Approved Review Revision 2
+-> Snapshot V2 current
+
+V1 remains immutable historical.
+
+==================================================
+118. SNAPSHOT TENANT ISOLATION TEST
+==================================================
+
+Tenant A cannot:
+- create from Tenant B review;
+- read Tenant B snapshot;
+- list Tenant B snapshots.
+
+==================================================
+119. ADAPTER REGISTRY TESTS
+==================================================
+
+Verify:
+
+- NOOP_V1 resolves;
+- unknown adapter rejected;
+- incompatible snapshot schema rejected;
+- incompatible processing profile rejected if capability model enforces it.
+
+==================================================
+120. NOOP ADAPTER TESTS
+==================================================
+
+Verify:
+
+- receives typed snapshot contract;
+- deterministic validation;
+- deterministic success;
+- no network calls;
+- no business-domain writes;
+- no PHI emitted externally.
+
+==================================================
+121. ADAPTER EXECUTION IDEMPOTENCY
+==================================================
+
+Repeated:
+
+Snapshot X
++ NOOP_V1
++ same version
+
+must reuse same execution context and not execute concurrently/duplicate results.
+
+==================================================
+122. ADAPTER RETRY TEST
+==================================================
+
+Use fake retryable adapter/test double:
+
+first attempt = retryable failure
+retry = success
+
+Verify:
+- AttemptNumber increments;
+- stable IdempotencyKey retained;
+- execution history retained.
+
+==================================================
+123. PERMANENT FAILURE TEST
+==================================================
+
+Simulate incompatible/invalid snapshot.
+
+Verify:
+- permanent failure;
+- not endlessly retryable;
+- stable FailureCode.
+
+==================================================
+124. ADAPTER CONCURRENCY TEST
+==================================================
+
+Two simultaneous execute requests:
+
+only one claim performs adapter call.
+
+==================================================
+125. ADAPTER CANCELLATION TEST
+==================================================
+
+Cancellation after claim must not leave PROCESSING permanently.
+
+==================================================
+126. EXTERNAL REFERENCE TEST
+==================================================
+
+If external references are implemented:
+
+verify multiple safe references can persist and round-trip.
+
+==================================================
+127. AUDIT TEST
+==================================================
+
+Verify:
+
+- snapshot creation audit;
+- supersession audit;
+- adapter request/success/failure audit;
+- retry audit where implemented.
+
+No payload/PHI in audit metadata.
+
+==================================================
+128. EVENT TEST
+==================================================
+
+Verify ApprovedIntakeSnapshotReadyV1 where implemented.
+
+Payload must contain IDs/version/status only.
+
+==================================================
+129. HTTP INTEGRATION TESTS
+==================================================
+
+Where infrastructure exists, cover:
+
+POST /reviews/{reviewId}/snapshot
+GET /snapshots/{snapshotId}
+GET /artifacts/{artifactId}/snapshots
+GET /artifacts/{artifactId}/snapshots/current
+
+POST /snapshots/{snapshotId}/adapters/{adapterCode}/execute
+GET /snapshots/{snapshotId}/adapter-executions
+GET /snapshots/{snapshotId}/adapter-executions/{executionId}
+POST /snapshots/{snapshotId}/adapter-executions/{executionId}/retry
+
+Test:
+
+- 401;
+- 403;
+- 404;
+- wrong tenant;
+- ineligible review;
+- stale review;
+- snapshot idempotency;
+- unknown adapter;
+- disabled adapter;
+- adapter execution idempotency.
+
+If HTTP test infrastructure remains absent, add the smallest maintainable foundation if practical and document the limitation.
+
+==================================================
+130. MYSQL VALIDATION
+==================================================
+
+Apply the full Intake migration chain through B13 against clean disposable/local MySQL 8.
+
+This should also close prior B04-B12 migration-validation debt if environment permits.
+
+Verify:
+
+- B02-B12 prior schema;
+- ApprovedSnapshotSchemaDefinitions;
+- ApprovedIntakeSnapshots;
+- IntakeAdapterExecutions;
+- optional external references/attempts;
+- same-tenant FKs;
+- schema code/version uniqueness;
+- snapshot execution-key uniqueness;
+- adapter execution-key uniqueness;
+- current snapshot behavior;
+- supersession relationship;
+- full migration history.
+
+Use no cloud/shared DB.
+
+Clean up disposable DB/container afterward.
+
+==================================================
+131. PERFORMANCE
+==================================================
+
+B13 should:
+
+- load B12 effective projection once;
+- avoid loading full B07-B12 histories;
+- build canonical payload in memory;
+- hash in memory;
+- persist snapshot in bounded transaction;
+- never call adapter inside snapshot transaction;
+- use bounded/paginated history reads;
+- avoid N+1 artifact/document reads where possible.
+
+==================================================
+132. SECURITY VALIDATION
+==================================================
+
+Verify:
+
+- no cross-tenant snapshot access;
+- no cross-tenant adapter execution;
+- no snapshot payload in logs;
+- no snapshot payload in audit;
+- no snapshot payload in events;
+- no credentials in snapshot;
+- no arbitrary reflection/dynamic code adapter loading;
+- registry resolves only registered adapter implementations;
+- NOOP adapter performs no external/product write;
+- B14 business logic absent;
+- no uploaded specification assets tracked;
+- no bin/obj/frontend build artifacts tracked.
+
+==================================================
+133. EXISTING SERVICE IMPACT
+==================================================
+
+Keep B13 within:
+
+- Intake;
+- B12 reviewed projection;
+- Documents reference metadata;
+- existing auth/audit/events;
+- adapter integration boundary;
+- minimal frontend if justified.
+
+Do not modify business logic in:
+
+- SynqLien;
+- SynqFund;
+- CareConnect;
+- Flow;
+- Notifications;
+- Identity internals.
+
+==================================================
+134. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- SynqLien Case creation;
+- SynqLien Lien creation;
+- Patient creation;
+- Provider creation;
+- Facility creation;
+- downstream document association writes;
+- SynqFund routing;
+- CareConnect routing;
+- automatic product adapter routing;
+- straight-through execution;
+- Flow tasks;
+- notifications;
+- payment logic;
+- legal adjudication;
+- AWS;
+- RDS;
+- ECS;
+- Route53;
+- deployment.
+
+==================================================
+135. BUILD / VALIDATION
+==================================================
+
+At minimum run and record:
+
+dotnet restore if required
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet build LegalSynq.sln --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet ef dbcontext info using repository-pinned tooling
+
+dotnet ef migrations list using repository-pinned tooling
+
+Apply full B02-B13 migration chain to disposable MySQL 8
+
+Run relevant frontend typecheck/build/test commands only if frontend B13 changes are made.
+
+Validate B13 schema/indexes/FKs/uniqueness.
+
+git diff --check
+
+git status --short
+
+git diff --stat
+
+git diff --name-status against B12 baseline
+
+Verify:
+- no Intake bin/obj tracked;
+- no frontend build outputs tracked;
+- no secrets;
+- no uploaded spec assets added;
+- no SynqLien/product-domain implementation changes;
+- no unrelated files changed.
+
+Clearly distinguish pre-existing warnings from new B13 errors/warnings.
+
+==================================================
+136. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B13 is complete only when all are true:
+
+1. LIEN_INTAKE_APPROVED_SNAPSHOT_V1 exists.
+2. Snapshot schema is versioned.
+3. ApprovedSnapshotSchemaDefinition persistence/definition exists.
+4. ApprovedIntakeSnapshot persistence exists.
+5. Snapshot only uses completed eligible B12 review.
+6. APPROVED review is eligible.
+7. APPROVED_WITH_CORRECTIONS is eligible.
+8. REJECTED review is not eligible.
+9. DUPLICATE_CONFIRMED review is not eligible.
+10. RETURN_FOR_REPROCESSING review is not eligible.
+11. stale/superseded review is not eligible.
+12. snapshot consumes B12 effective reviewed projection.
+13. B13 does not independently rebuild human corrections.
+14. snapshot binds to exact ReviewId.
+15. snapshot preserves ArtifactId.
+16. snapshot preserves ClassificationId.
+17. snapshot preserves ExtractionId.
+18. snapshot preserves NormalizationId.
+19. snapshot preserves MatchRunId.
+20. snapshot preserves PolicyEvaluationId.
+21. snapshot version exists.
+22. snapshot supersession exists.
+23. current snapshot is deterministic.
+24. READY snapshot payload is immutable.
+25. typed ApprovedIntakeSnapshot contract exists.
+26. effective classification exists.
+27. approved facts exist.
+28. B12 corrections are reflected.
+29. B12 additions are reflected.
+30. B12 rejected facts are excluded.
+31. human provenance exists.
+32. no fake AI confidence is added to human values.
+33. approved entity decisions exist.
+34. NO_MATCH is preserved explicitly.
+35. manual selections are explicitly identified.
+36. duplicate decision is preserved.
+37. document references exist.
+38. binaries are not copied.
+39. evidence/provenance references are preserved.
+40. review approval metadata exists.
+41. SnapshotHash exists.
+42. SHA-256 or equivalent approved cryptographic hash is used.
+43. canonical serialization is deterministic.
+44. same semantic payload produces same hash.
+45. meaningful payload change produces different hash.
+46. volatile runtime metadata does not destabilize hash.
+47. deterministic snapshot ExecutionKey exists.
+48. snapshot creation is idempotent.
+49. duplicate snapshot rows are prevented.
+50. historical snapshots remain immutable.
+51. IApprovedIntakeSnapshotService exists.
+52. snapshot validation exists.
+53. stable snapshot failure codes exist.
+54. snapshot APIs exist.
+55. snapshot authorization exists.
+56. snapshot tenant isolation exists.
+57. IIntakeDestinationAdapter exists.
+58. adapter receives typed snapshot contract only.
+59. adapter cannot depend directly on IntakeDbContext/B07-B12 entities.
+60. adapter registry exists.
+61. adapter capability metadata exists where useful.
+62. NOOP_V1 adapter exists.
+63. NOOP adapter performs no network call.
+64. NOOP adapter performs no product-domain write.
+65. adapter execution persistence exists.
+66. adapter execution statuses exist.
+67. adapter execution key exists.
+68. adapter execution is idempotent.
+69. downstream IdempotencyKey is available.
+70. adapter execution context is product-neutral.
+71. adapter result contract exists.
+72. multiple external references are supported.
+73. retryable/permanent failure distinction exists.
+74. retry support exists where adapter says retryable.
+75. attempt history is preserved sufficiently.
+76. adapter timeout is bounded.
+77. concurrent execution is prevented.
+78. cancellation does not strand PROCESSING.
+79. adapter is called outside Intake DB transaction.
+80. snapshot transaction contains no downstream network call.
+81. ApprovedIntakeSnapshotReadyV1 exists where event/outbox patterns support it.
+82. event contains no PHI.
+83. snapshot audit exists.
+84. adapter audit exists.
+85. audit contains no snapshot payload.
+86. operational logs contain no snapshot payload.
+87. snapshot payload access is tenant-scoped.
+88. snapshot permissions exist/reuse is justified.
+89. adapter read/execute permissions exist/reuse is justified.
+90. snapshot creation and adapter execution authority are separable.
+91. no automatic SynqLien adapter execution occurs.
+92. no SynqLien Case creation exists.
+93. no SynqLien Lien creation exists.
+94. B14 business logic is absent.
+95. snapshot eligibility tests pass.
+96. corrected-fact snapshot tests pass.
+97. human-added fact tests pass.
+98. rejected-fact tests pass.
+99. manual-selection tests pass.
+100. NO_MATCH tests pass.
+101. duplicate-decision tests pass.
+102. classification/reprocessing tests pass.
+103. hash determinism tests pass.
+104. hash-change tests pass.
+105. volatile-field hash tests pass.
+106. snapshot idempotency tests pass.
+107. snapshot supersession tests pass.
+108. snapshot tenant-isolation tests pass.
+109. adapter registry tests pass.
+110. NOOP adapter tests pass.
+111. adapter execution idempotency tests pass.
+112. retry tests pass.
+113. permanent-failure tests pass.
+114. concurrency tests pass.
+115. cancellation tests pass.
+116. audit/event tests pass.
+117. HTTP integration tests cover critical paths where practical.
+118. B13 migration exists.
+119. full B02-B13 migration chain applies successfully to MySQL 8.
+120. B13 FKs/indexes/uniqueness are verified.
+121. prior Intake schema remains intact.
+122. Intake API builds with zero new B13 errors.
+123. Intake tests pass.
+124. full LegalSynq solution builds with zero new B13 errors.
+125. frontend B13 changes, if any, typecheck/build without new B13 errors.
+126. no Flow/notification integration is introduced.
+127. no cloud/deployment work is performed.
+128. no secrets/specification assets/build artifacts are introduced.
+129. /analysis/LSI-B13-report.md exists with complete evidence.
+
+==================================================
+137. REQUIRED IMPLEMENTATION REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B13-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree state
+8. B12 architecture reviewed
+9. reviewed-projection integration
+10. files added
+11. files modified
+12. approved snapshot schema
+13. snapshot schema versioning
+14. ApprovedIntakeSnapshot aggregate
+15. snapshot status lifecycle
+16. review eligibility
+17. review staleness handling
+18. typed snapshot contract
+19. effective classification
+20. approved fact model
+21. human correction provenance
+22. human addition provenance
+23. rejected fact handling
+24. entity decisions
+25. NO_MATCH handling
+26. manual selection handling
+27. duplicate decision handling
+28. document references
+29. evidence references
+30. complete upstream lineage
+31. review metadata
+32. canonical serialization
+33. snapshot hash
+34. hash determinism
+35. execution key
+36. snapshot idempotency
+37. snapshot versioning
+38. supersession/current semantics
+39. snapshot validation
+40. failure codes
+41. snapshot creation service
+42. snapshot APIs
+43. snapshot authorization
+44. tenant isolation
+45. adapter interface
+46. adapter input boundary
+47. adapter registry
+48. adapter capability metadata
+49. NOOP adapter
+50. adapter configuration
+51. adapter execution aggregate
+52. adapter execution statuses
+53. adapter result contract
+54. external reference model
+55. adapter execution service
+56. adapter execution key
+57. adapter idempotency
+58. downstream idempotency key
+59. request context
+60. adapter validation
+61. dry-run behavior if implemented
+62. retry model
+63. retryable/permanent failure behavior
+64. timeout behavior
+65. cancellation recovery
+66. concurrency/claiming
+67. attempt history
+68. snapshot transaction boundary
+69. adapter transaction boundary
+70. snapshot event/outbox behavior
+71. adapter events
+72. snapshot audit
+73. adapter audit
+74. logging/PHI controls
+75. snapshot permissions
+76. adapter permissions
+77. authority separation
+78. automatic snapshot strategy
+79. automatic adapter-execution confirmation
+80. adapter routing readiness
+81. multiple-adapter readiness
+82. B14 boundary
+83. frontend additions if any
+84. migration name
+85. database schema
+86. indexes/constraints
+87. full B02-B13 MySQL migration validation
+88. prior pending DB-validation closure
+89. snapshot eligibility tests
+90. corrected/added/rejected fact tests
+91. manual-selection/NO_MATCH tests
+92. duplicate tests
+93. classification/reprocessing tests
+94. hash determinism/change tests
+95. idempotency/supersession tests
+96. snapshot tenant-isolation tests
+97. adapter registry tests
+98. NOOP adapter tests
+99. adapter execution tests
+100. retry/permanent-failure tests
+101. concurrency/cancellation tests
+102. audit/event tests
+103. HTTP integration tests
+104. Intake API build result
+105. Intake test result
+106. frontend validation if changed
+107. full solution build result
+108. security assessment
+109. performance considerations
+110. known gaps
+111. out-of-scope confirmation
+112. git diff summary
+113. final repository validation status
+114. recommended next bundle: LSI-B14
+
+Sanitize all local credentials, tokens, PHI/PII test values, snapshot payload values, external references, and disposable database connection details from the report.
+
+==================================================
+138. DEFINITION OF DONE
+==================================================
+
+The implementation is done when LegalSynq can take a completed approved B12 review and reliably produce:
+
+- an immutable approved snapshot;
+- versioned snapshot schema;
+- deterministic canonical payload;
+- SHA-256 integrity hash;
+- exact B07-B12 provenance;
+- effective human-reviewed facts;
+- approved entity decisions;
+- NO_MATCH/manual-selection provenance;
+- document/evidence references;
+- deterministic snapshot idempotency;
+- immutable snapshot history/supersession;
+- a typed product-neutral adapter contract;
+- a registry-based adapter framework;
+- safe NOOP adapter validation;
+- idempotent adapter execution;
+- retry/concurrency/cancellation handling;
+- product-neutral external-reference results;
+- PHI-safe audit/events/logging;
+
+while clearly distinguishing:
+
+live Intake intelligence
+from
+human-reviewed effective data
+from
+immutable approved snapshot
+from
+adapter execution
+from
+product-specific business writes.
+
+When complete:
+
+- execute all required implementation work now;
+- run all required local validation;
+- create /analysis/LSI-B13-report.md;
+- stop;
+- do not begin LSI-B14;
+- do not deploy;
+- do not push unless explicitly requested.

@@ -28,6 +28,7 @@ Log.Logger = new LoggerConfiguration()
 builder.Host.UseSerilog();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentRequestContext, CurrentRequestContext>();
+builder.Services.AddServiceTokenIssuer(builder.Configuration, ServiceName);
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<IIntakeFoundationService, IntakeFoundationService>();
 builder.Services.AddEndpointsApiExplorer();
@@ -117,6 +118,17 @@ if (app.Environment.IsDevelopment())
 app.MapHealthEndpoints();
 app.MapInfoEndpoints();
 app.MapIntakeConfigurationEndpoints();
+app.MapIntakeSourceEndpoints();
+app.MapInboundEmailEndpoints();
+app.MapManualIntakeEndpoints();
+app.MapClassificationEndpoints();
+app.MapExtractionEndpoints();
+app.MapNormalizationEndpoints();
+app.MapMatchingEndpoints();
+app.MapPolicyEndpoints();
+app.MapReviewEndpoints();
+app.MapSnapshotEndpoints();
+app.MapOperationsEndpoints();
 
 app.MapGet("/", () => Results.Ok(new
 {

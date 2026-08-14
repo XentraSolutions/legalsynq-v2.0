@@ -974,11 +974,16 @@ public static class LienEndpoints
         CreateLienRequest request,
         ILienService lienService,
         ICurrentRequestContext ctx,
+        HttpRequest httpRequest,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
         var orgId = RequireOrgId(ctx);
         var userId = RequireUserId(ctx);
+        var idempotencyKey = httpRequest.Headers["Idempotency-Key"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(request.ExternalReference) &&
+            !string.IsNullOrWhiteSpace(idempotencyKey))
+            request = request with { ExternalReference = idempotencyKey };
         var result = await lienService.CreateAsync(tenantId, orgId, userId, request, ct);
         return Results.Created($"/api/liens/liens/{result.Id}", result);
     }

@@ -163,6 +163,14 @@ public sealed class LienService : ILienService
         if (errors.Count > 0)
             throw new ValidationException("One or more required fields are missing or invalid.", errors);
 
+        if (!string.IsNullOrWhiteSpace(request.ExternalReference))
+        {
+            var idempotent = await _lienRepo.GetByExternalReferenceAsync(
+                tenantId, request.ExternalReference.Trim(), ct);
+            if (idempotent is not null)
+                return await MapToResponseAsync(tenantId, idempotent, ct);
+        }
+
         Case? caseEntity = null;
         if (request.CaseId.HasValue)
         {

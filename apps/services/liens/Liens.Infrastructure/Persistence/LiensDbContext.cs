@@ -55,6 +55,8 @@ public class LiensDbContext : DbContext
     public DbSet<LegacyImportRun> LegacyImportRuns => Set<LegacyImportRun>();
     public DbSet<LegacyIdCrosswalk> LegacyIdCrosswalks => Set<LegacyIdCrosswalk>();
     public DbSet<LegacyImportException> LegacyImportExceptions => Set<LegacyImportException>();
+    public DbSet<SynqLienDocumentAssociation> SynqLienDocumentAssociations =>
+        Set<SynqLienDocumentAssociation>();
     // TASK-MIG-09: LienTaskGovernanceSettings DbSet removed — liens_TaskGovernanceSettings dropped (MIG-09 migration)
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using BuildingBlocks.Authentication.ServiceTokens;
 using Liens.Api.Tests.Helpers;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
@@ -10,6 +11,7 @@ using Liens.Infrastructure.Persistence;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Liens.Api.Tests.Tests;
 
@@ -32,6 +34,123 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task CreateLien_reuses_the_same_record_for_a_repeated_idempotency_key()
+    {
+        using var firstRequest = new HttpRequestMessage(
+            HttpMethod.Post, "/api/liens/liens")
+        {
+            Content = JsonContent.Create(new
+            {
+                lienNumber = $"B14-IDEMP-{Guid.NewGuid():N}",
+                lienType = LienType.MedicalLien,
+                caseId = SeedHelper.CaseId,
+                originalAmount = 125m,
+            }),
+        };
+        firstRequest.Headers.Add("Idempotency-Key", "b14-lien-idempotency-test");
+        var first = await _client.SendAsync(firstRequest);
+        first.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await first.Content.ReadAsStringAsync()}");
+        var firstBody = await first.Content.ReadFromJsonAsync<LienResponseBody>();
+
+        using var secondRequest = new HttpRequestMessage(
+            HttpMethod.Post, "/api/liens/liens")
+        {
+            Content = JsonContent.Create(new
+            {
+                lienNumber = $"B14-IDEMP-DIFFERENT-{Guid.NewGuid():N}",
+                lienType = LienType.MedicalLien,
+                caseId = SeedHelper.CaseId,
+                originalAmount = 999m,
+            }),
+        };
+        secondRequest.Headers.Add("Idempotency-Key", "b14-lien-idempotency-test");
+        var second = await _client.SendAsync(secondRequest);
+        second.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await second.Content.ReadAsStringAsync()}");
+        var secondBody = await second.Content.ReadFromJsonAsync<LienResponseBody>();
+
+        secondBody!.Id.Should().Be(firstBody!.Id);
+        secondBody.LienNumber.Should().Be(firstBody.LienNumber);
+    }
+
+    [Fact]
+    public async Task SynqLien_document_association_is_service_token_protected_idempotent_and_relationship_checked()
+    {
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", CreateSynqLienServiceToken());
+        var request = new
+        {
+            documentId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+            targetType = "LIEN",
+            targetId = SeedHelper.LienId,
+            documentRole = "MEDICAL_BILL",
+            documentReference = "documents:test",
+            relatedCaseId = SeedHelper.CaseId,
+        };
+
+        using var first = new HttpRequestMessage(
+            HttpMethod.Post, "/api/internal/synqlien/document-associations")
+        {
+            Content = JsonContent.Create(request),
+        };
+        first.Headers.Add("Idempotency-Key", "b15-association-idempotency");
+        var firstResponse = await _client.SendAsync(first);
+        firstResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await firstResponse.Content.ReadAsStringAsync()}");
+        var firstBody = await firstResponse.Content.ReadFromJsonAsync<AssociationResponse>();
+
+        using var replay = new HttpRequestMessage(
+            HttpMethod.Post, "/api/internal/synqlien/document-associations")
+        {
+            Content = JsonContent.Create(new
+            {
+                request.documentId,
+                request.targetType,
+                request.targetId,
+                documentRole = "different-role",
+                request.documentReference,
+                request.relatedCaseId,
+            }),
+        };
+        replay.Headers.Add("Idempotency-Key", "b15-association-idempotency");
+        var replayResponse = await _client.SendAsync(replay);
+        replayResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var replayBody = await replayResponse.Content.ReadFromJsonAsync<AssociationResponse>();
+        replayBody!.Data.AssociationId.Should().Be(firstBody!.Data.AssociationId);
+
+        using var mismatch = new HttpRequestMessage(
+            HttpMethod.Post, "/api/internal/synqlien/document-associations")
+        {
+            Content = JsonContent.Create(new
+            {
+                request.documentId,
+                request.targetType,
+                request.targetId,
+                request.documentRole,
+                request.documentReference,
+                relatedCaseId = Guid.Parse("61111111-1111-1111-1111-111111111111"),
+            }),
+        };
+        mismatch.Headers.Add("Idempotency-Key", "b15-association-relationship-mismatch");
+        var mismatchResponse = await _client.SendAsync(mismatch);
+        mismatchResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    private static string CreateSynqLienServiceToken() =>
+        new ServiceTokenIssuer(Options.Create(new ServiceTokenOptions
+        {
+            SigningKey = JwtTokenHelper.SigningKey,
+            ServiceName = "intake",
+        })).IssueToken(
+            SeedHelper.TenantId.ToString(),
+            SeedHelper.UserId.ToString(),
+            audience: "liens-service");
+
+    private sealed record AssociationResponse(AssociationData Data);
+    private sealed record AssociationData(Guid AssociationId);
 
     [Fact]
     public async Task CreateLien_defaults_lien_number_from_case_number_and_next_sequence()
@@ -1200,6 +1319,7 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
 
     private sealed class LienResponseBody
     {
+        public Guid Id { get; init; }
         public string LienNumber { get; init; } = string.Empty;
     }
 

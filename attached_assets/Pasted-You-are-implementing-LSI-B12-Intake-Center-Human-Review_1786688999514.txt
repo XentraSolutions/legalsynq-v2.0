@@ -1,0 +1,2686 @@
+You are implementing LSI-B12 — Intake Center / Human Review for Synq Intake in the LegalSynq v3 repository.
+
+EXECUTION DIRECTIVE
+
+Execute this ticket now.
+
+Do not stop after reviewing requirements.
+Do not return a plan for approval.
+Do not ask whether to proceed.
+Implement the full scoped LSI-B12 work in this execution, run the required local validation, and produce /analysis/LSI-B12-report.md when complete.
+
+If a minor implementation decision is needed and the requirements already establish the intended behavior, make the safest architecture-consistent decision and continue.
+
+Only stop for a genuine blocking condition that cannot be resolved from the repository or these requirements.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Frontend scope: tenant web application using current LegalSynq Next.js conventions
+- Required implementation report: /analysis/LSI-B12-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B12 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, production deployment, push, PR, or merge work.
+3. Do not implement B13 approved snapshot persistence, Case creation, Lien creation, SynqFund routing, CareConnect routing, Flow task creation, notifications, straight-through processing, external reviewer portal, AI reprompting, or downstream adapter execution.
+4. Preserve all prior analysis reports as read-only.
+5. Create/update only /analysis/LSI-B12-report.md for this ticket.
+6. Reuse B04-B11 persisted outputs and service boundaries. Do not mutate historical classification, extraction, normalization, matching, duplicate, or policy records.
+7. Reuse B09 deterministic normalizers for validation of human-corrected values where practical.
+8. Reuse B10 tenant-scoped candidate-provider boundaries for any optional manual candidate lookup. Do not directly query product/master-data tables from Intake.
+9. Reuse the existing Documents Service boundary for source-document access.
+10. Before coding, inspect:
+   - current git branch/status;
+   - HEAD vs origin/xenia;
+   - B04/B05 email/artifact/source context;
+   - B06 manual intake;
+   - B07 classification;
+   - B08 extracted facts/evidence;
+   - B09 normalized facts/normalizers;
+   - B10 candidate matches/duplicates;
+   - B11 policy evaluations/findings/dispositions;
+   - Identity/user resolution conventions;
+   - tenant request context;
+   - authorization/permission conventions;
+   - audit/activity/event conventions;
+   - current Intake DbContext/migrations;
+   - current tenant frontend application/routes/components/data-fetching patterns;
+   - current frontend testing infrastructure;
+   - current HTTP integration-test infrastructure.
+11. Record repository baseline and initial working-tree state in /analysis/LSI-B12-report.md before implementation.
+12. Preserve unrelated pre-existing changes.
+13. Do not commit uploaded specifications, generated binaries, local databases, secrets, or unrelated artifacts.
+14. Local/repository validation is required.
+15. Do not claim GitHub CI, deployed runtime, production DB validation, or release validation unless separately proven.
+16. Do not begin LSI-B13 automatically.
+17. Do not push unless explicitly requested.
+
+LOCKED PLATFORM STACK
+
+Backend:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT Bearer/service-token authentication
+- existing ICurrentRequestContext tenant conventions
+- existing Identity/user boundaries
+- existing Documents Service
+- LegalSynq.AuditClient where applicable
+- existing Intake persistence/history/idempotency conventions
+
+Frontend:
+- Next.js 15
+- React
+- TypeScript
+- Tailwind
+- existing LegalSynq frontend conventions/components
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+
+B12 is a human adjudication layer over immutable B07-B11 intelligence.
+
+The intended flow is:
+
+B04/B05/B06 Source + Artifact
+-> B07 Classification
+-> B08 Extraction
+-> B09 Normalization
+-> B10 Matching / Duplicate Signals
+-> B11 Policy Evaluation
+-> B12 Human Review
+-> B13 Approved Snapshot
+
+B12 may create HUMAN review decisions/corrections.
+
+B12 MUST NOT rewrite historical AI/deterministic intelligence outputs.
+
+==================================================
+1. REVIEW AGGREGATE
+==================================================
+
+Create an Intake-owned aggregate:
+
+IntakeReview
+
+Prefer this name over ReviewCase to avoid confusion with legal Case entities.
+
+Conceptual fields:
+
+- Id
+- TenantId
+- ArtifactId
+
+- ClassificationId
+- ArtifactExtractionId
+- ArtifactNormalizationId
+- ArtifactMatchRunId
+- ArtifactPolicyEvaluationId
+
+- Status
+- Priority
+- ReviewOutcome
+
+- AssignedToUserId
+- AssignedAt
+
+- StartedAt
+- CompletedAt
+- CompletedByUserId
+
+- CompletionReasonCode
+- CompletionComment
+
+- RevisionNumber
+- SupersedesReviewId if review revisions are implemented
+
+- Version/concurrency token
+
+- CreatedAt
+- UpdatedAt
+
+Only add fields justified by implementation.
+
+==================================================
+2. REVIEW STATUS
+==================================================
+
+Support stable statuses:
+
+PENDING
+ASSIGNED
+IN_REVIEW
+COMPLETED
+CANCELLED
+SUPERSEDED
+
+Optional:
+
+ON_HOLD
+
+only if operationally useful.
+
+Do not mix these with Case/Lien business statuses.
+
+==================================================
+3. REVIEW OUTCOME
+==================================================
+
+Support final outcomes:
+
+APPROVED
+APPROVED_WITH_CORRECTIONS
+REJECTED
+DUPLICATE_CONFIRMED
+NOT_DUPLICATE
+NO_MATCH_CONFIRMED
+RETURN_FOR_REPROCESSING
+
+Optional:
+
+INSUFFICIENT_INFORMATION
+
+only if useful.
+
+Status and outcome must remain separate.
+
+Example:
+
+Status = COMPLETED
+Outcome = APPROVED_WITH_CORRECTIONS
+
+==================================================
+4. REVIEW ELIGIBILITY
+==================================================
+
+A review requires:
+
+- tenant-scoped artifact;
+- current completed B11 policy evaluation;
+- reviewable B11 disposition;
+- consistent B07-B11 upstream lineage.
+
+Reviewable dispositions should include at least:
+
+REVIEW_REQUIRED
+NO_MATCH
+CONFLICTED
+DUPLICATE
+BLOCKED
+
+AUTO_ACCEPTABLE items may optionally be visible to supervisors but should not automatically require review unless configured.
+
+==================================================
+5. REVIEW CREATION
+==================================================
+
+Use a deterministic review identity per current policy context.
+
+At minimum:
+
+TenantId
++ ArtifactId
++ ArtifactPolicyEvaluationId
+
+Prevent duplicate active review records.
+
+A review may be:
+- created explicitly through service/API; or
+- created from a policy-completion event if existing event patterns support this cleanly.
+
+Do not create B12 rows inside the B11 persistence transaction.
+
+==================================================
+6. UPSTREAM BINDING
+==================================================
+
+Persist exact IDs:
+
+ClassificationId
+ArtifactExtractionId
+ArtifactNormalizationId
+ArtifactMatchRunId
+ArtifactPolicyEvaluationId
+
+These represent the intelligence context being reviewed.
+
+==================================================
+7. REVIEW STALENESS
+==================================================
+
+Before every important mutation/completion verify the review still points to current upstream intelligence.
+
+If any current B07-B11 result changes:
+
+mark review stale/superseded or return:
+
+REVIEW_STALE
+
+Do not allow stale review completion.
+
+A newer policy evaluation should be able to supersede an open review.
+
+==================================================
+8. REVIEW HISTORY
+==================================================
+
+Completed reviews are immutable.
+
+If a completed review must be reconsidered:
+- prefer a new review revision;
+- link it with SupersedesReviewId / RevisionNumber;
+- do not rewrite the old completed review.
+
+==================================================
+9. REVIEW QUEUE
+==================================================
+
+Create a tenant-scoped paginated Intake Center queue.
+
+Recommended route:
+
+GET /reviews
+
+Queue should support filters:
+
+- Status
+- Priority
+- B11 Disposition
+- ClassificationCode
+- SourceType
+- AssignedToUserId
+- UnassignedOnly
+- CreatedDateFrom
+- CreatedDateTo
+- Age/older-than if consistent with API conventions
+
+==================================================
+10. QUEUE PAGINATION
+==================================================
+
+Pagination is mandatory.
+
+Recommended:
+
+DefaultPageSize = 25
+MaxPageSize = 100
+
+Use current API pagination conventions if available.
+
+Do not return all reviews.
+
+==================================================
+11. QUEUE SORTING
+==================================================
+
+Recommended default:
+
+Priority DESC
+CreatedAt ASC
+
+or:
+
+Priority DESC
+Age DESC
+
+Use deterministic tie-breaking by ReviewId.
+
+==================================================
+12. QUEUE SUMMARY
+==================================================
+
+Add:
+
+GET /reviews/summary
+
+Potential tenant metrics:
+
+Pending
+Assigned
+InReview
+CompletedToday
+HighPriority
+DuplicateReviews
+NoMatchReviews
+ConflictedReviews
+OldestPendingAge
+
+Do not include raw PHI.
+
+==================================================
+13. ASSIGNMENT
+==================================================
+
+Support:
+
+Assign to self
+Assign to another authorized reviewer
+Unassign
+Reassign
+
+Persist current assignee:
+
+AssignedToUserId
+AssignedAt
+
+Retain assignment actions in activity history.
+
+==================================================
+14. REVIEWER IDENTITY
+==================================================
+
+Reviewer identity must come from authenticated LegalSynq identity.
+
+Persist stable UserId.
+
+Do not trust arbitrary user identity from request payload.
+
+When assigning another user, validate that the user belongs to/is authorized within the tenant through the existing Identity/user boundary.
+
+==================================================
+15. OPTIMISTIC CONCURRENCY
+==================================================
+
+Use optimistic concurrency for review mutations.
+
+At minimum protect:
+
+- assignment;
+- claim;
+- corrections;
+- match decisions;
+- duplicate decisions;
+- finding decisions;
+- completion.
+
+Use current repository version/concurrency pattern.
+
+No silent last-write-wins for competing reviewers.
+
+==================================================
+16. CLAIM REVIEW
+==================================================
+
+Add action such as:
+
+POST /reviews/{reviewId}/claim
+
+Expected:
+
+PENDING/ASSIGNED
+-> IN_REVIEW
+
+subject to:
+- tenant authorization;
+- assignment rules;
+- concurrency version.
+
+Repeated self-claim should be safe/idempotent where practical.
+
+==================================================
+17. ASSIGNMENT APIs
+==================================================
+
+Recommended:
+
+POST /reviews/{reviewId}/assign
+POST /reviews/{reviewId}/claim
+POST /reviews/{reviewId}/unassign
+
+Payloads should include version/concurrency token where needed.
+
+==================================================
+18. REVIEW WORKSPACE READ MODEL
+==================================================
+
+Create one cohesive read API:
+
+GET /reviews/{reviewId}
+
+It should return bounded projections for:
+
+- review metadata;
+- assignment;
+- source context;
+- documents/artifacts;
+- B07 classification;
+- B08 extracted facts/evidence;
+- B09 normalized facts;
+- B10 entity matches;
+- B10 duplicate signals;
+- B11 policy evaluation/findings;
+- current B12 human decisions;
+- activity timeline.
+
+Do not require the frontend to manually reconstruct the entire review from many unrelated services where a bounded aggregate read can safely provide it.
+
+==================================================
+19. SOURCE CONTEXT
+==================================================
+
+Expose only useful source context:
+
+- SourceType
+- received/submitted timestamp
+- email subject
+- sender if authorized
+- manual submission title/reference
+- artifact/document list
+
+Avoid unnecessary email headers.
+
+==================================================
+20. DOCUMENT VIEWING
+==================================================
+
+Reuse Documents Service.
+
+Do not store binary documents in B12 tables.
+
+Do not expose storage bucket/object keys.
+
+Use existing authorized document-view/download mechanisms.
+
+==================================================
+21. CLASSIFICATION DISPLAY
+==================================================
+
+Review workspace should show B07:
+
+ClassificationCode
+ClassificationLabel
+Confidence
+safe Reason if available
+
+Reviewer must understand the classification used downstream.
+
+==================================================
+22. CLASSIFICATION OVERRIDE
+==================================================
+
+Allow a human classification override.
+
+Create a human correction record.
+
+Do not update B07 ArtifactClassification.
+
+Example:
+
+OriginalClassification = MEDICAL_BILL
+HumanOverride = LIEN_DOCUMENT
+
+==================================================
+23. CLASSIFICATION OVERRIDE CONSEQUENCE
+==================================================
+
+If classification override changes semantic document type:
+
+- mark review as requiring reprocessing;
+- prevent approval against stale B08-B11 intelligence;
+- recommended completion/action:
+  RETURN_FOR_REPROCESSING
+
+Do not manually reinterpret/rewrite B08-B11 outputs.
+
+==================================================
+24. CORRECTION MODEL
+==================================================
+
+Create:
+
+IntakeReviewCorrection
+
+Conceptual fields:
+
+- Id
+- TenantId
+- IntakeReviewId
+
+- TargetType
+- TargetId
+- FactCode
+
+- OriginalExtractedFactId
+- OriginalNormalizedFactId
+
+- CorrectionType
+
+- CorrectedValue
+- CorrectedJson
+
+- ReasonCode
+- Comment
+
+- CreatedByUserId
+- CreatedAt
+
+- SupersedesCorrectionId if immutable/superseding correction model is used
+
+Prefer immutable correction history.
+
+==================================================
+25. CORRECTION TYPES
+==================================================
+
+Support:
+
+VALUE_CORRECTION
+FACT_ADDED
+FACT_REJECTED
+CLASSIFICATION_OVERRIDE
+
+Match and duplicate decisions should preferably have their own specialized models rather than be forced into correction rows.
+
+==================================================
+26. FACT REVIEW
+==================================================
+
+For each fact expose:
+
+FactCode
+RawValue
+NormalizedValue
+SourceConfidence
+NormalizationStatus
+ValidationStatus
+WarningCodes
+Evidence
+Current Human Decision
+Effective Reviewed Value
+
+Visually and semantically distinguish:
+
+AI-extracted
+deterministically normalized
+human-corrected
+
+==================================================
+27. VALUE CORRECTION
+==================================================
+
+Human value corrections must:
+
+- preserve original B08/B09 records;
+- store corrected value separately;
+- preserve actor/time/reason;
+- reuse B09 deterministic normalization/validation logic where possible.
+
+Example:
+
+B08 RawValue = "$14,500"
+B09 NormalizedValue = "14500.00"
+B12 HumanCorrectedValue = "1450.00"
+
+All must remain traceable.
+
+==================================================
+28. HUMAN VALUE NORMALIZATION
+==================================================
+
+When a reviewer enters:
+- date;
+- money;
+- phone;
+- email;
+- identifier;
+- name;
+- address;
+
+reuse B09 normalizers rather than implementing duplicate parsing logic.
+
+Store:
+- human-entered value;
+- normalized human candidate;
+- structural validation result.
+
+Do not assign fake AI confidence.
+
+==================================================
+29. HUMAN CONFIDENCE BOUNDARY
+==================================================
+
+Human-corrected values should identify:
+
+SourceType = HUMAN
+
+Potential:
+
+HumanVerified = true
+
+if the reviewer explicitly confirms it.
+
+Do not set:
+
+SourceConfidence = 1.0
+
+unless the domain explicitly defines that field as human certainty, which is not recommended.
+
+==================================================
+30. ADDED FACT
+==================================================
+
+Allow authorized reviewers to add a missing FactCode where permitted.
+
+Store:
+
+- FactCode
+- human value
+- normalized value/JSON
+- validation status
+- source = HUMAN
+- reviewer ID
+- reason/comment
+- evidence reference if supplied
+
+Do not fabricate B08 evidence.
+
+==================================================
+31. REJECTED FACT
+==================================================
+
+Allow reviewer to mark a B08/B09 fact as rejected/not applicable.
+
+Do not delete upstream fact rows.
+
+Persist human decision.
+
+Effective reviewed projection should omit rejected fact from active reviewed data while retaining provenance.
+
+==================================================
+32. EFFECTIVE REVIEWED FACT SET
+==================================================
+
+Implement deterministic projection:
+
+Original valid facts
++ approved human additions
++ latest active human corrections
+- human-rejected facts
+=
+EffectiveReviewedFacts
+
+Do not mutate source rows.
+
+==================================================
+33. REVIEWED PROJECTION SERVICE
+==================================================
+
+Create:
+
+IReviewedIntakeProjectionService
+
+Responsibilities:
+
+- apply classification override;
+- apply active corrections;
+- include human additions;
+- exclude human-rejected facts;
+- include entity decisions;
+- include duplicate decision;
+- expose policy finding resolutions;
+- return deterministic B13-ready reviewed projection.
+
+==================================================
+34. REVIEWED FACT DTO
+==================================================
+
+Each effective fact should provide:
+
+FactCode
+Value
+ValueJson
+OriginalExtractedFactId
+OriginalNormalizedFactId
+CorrectionId
+SourceType
+Evidence
+IsHumanCorrected
+IsHumanAdded
+IsRejected
+ValidationStatus
+
+==================================================
+35. MATCH REVIEW
+==================================================
+
+Display B10 candidates grouped by:
+
+PATIENT
+PROVIDER
+FACILITY
+ATTORNEY
+LAW_FIRM
+CASE
+
+Show:
+
+- CandidateEntityId
+- safe DisplayLabel
+- Score
+- Rank
+- MatchStatus
+- MatchedFieldCount
+- ConflictingFieldCount
+- safe field breakdown
+
+==================================================
+36. MATCH DECISION MODEL
+==================================================
+
+Create:
+
+IntakeReviewMatchDecision
+
+Conceptual fields:
+
+- Id
+- TenantId
+- IntakeReviewId
+- EntityType
+
+- ArtifactEntityMatchId
+- CandidateEntityId
+
+- Decision
+- IsManualSelection
+
+- ReasonCode
+- Comment
+
+- CreatedByUserId
+- CreatedAt
+
+- SupersedesDecisionId if immutable history is used
+
+==================================================
+37. MATCH DECISIONS
+==================================================
+
+Support:
+
+CONFIRMED
+REJECTED
+NO_MATCH
+MANUAL_SELECTION
+
+Use stable codes.
+
+==================================================
+38. CANDIDATE CONFIRMATION
+==================================================
+
+Normal confirmation must reference a candidate from the review-bound B10 match run.
+
+Do not accept arbitrary entity IDs through this action.
+
+Validate tenant and match-run lineage.
+
+==================================================
+39. MANUAL CANDIDATE SEARCH
+==================================================
+
+Optional but desirable if existing candidate-source infrastructure is reusable cleanly.
+
+Use the same tenant-scoped B10 candidate-provider boundary.
+
+Do not query business-domain master tables directly.
+
+If implementing manual search:
+- add bounded API;
+- tenant-scope every query;
+- return minimal projections;
+- record manual selection separately from B10 algorithmic candidate.
+
+==================================================
+40. MANUAL SELECTION
+==================================================
+
+Manual selection must persist:
+
+Decision = MANUAL_SELECTION
+CandidateEntityId
+EntityType
+ReviewerId
+ReasonCode
+IsManualSelection = true
+
+Do not inject manual candidate retroactively into B10 match history.
+
+==================================================
+41. NO-MATCH CONFIRMATION
+==================================================
+
+Reviewer may explicitly confirm:
+
+NO_MATCH
+
+for an entity type.
+
+This signals to B13/B14 that no existing entity was selected.
+
+B12 itself must not create the missing entity.
+
+==================================================
+42. DUPLICATE REVIEW
+==================================================
+
+Display B10 duplicate signals:
+
+EXACT_ARTIFACT_DUPLICATE
+CONTENT_DUPLICATE
+BUSINESS_KEY_DUPLICATE
+POSSIBLE_DUPLICATE
+
+Include safe related artifact/entity references where authorized.
+
+==================================================
+43. DUPLICATE DECISION MODEL
+==================================================
+
+Create:
+
+IntakeReviewDuplicateDecision
+
+Conceptual fields:
+
+- Id
+- TenantId
+- IntakeReviewId
+- ArtifactDuplicateSignalId
+
+- Decision
+- RelatedArtifactId
+
+- ReasonCode
+- Comment
+
+- CreatedByUserId
+- CreatedAt
+
+==================================================
+44. DUPLICATE DECISIONS
+==================================================
+
+Support:
+
+DUPLICATE_CONFIRMED
+NOT_DUPLICATE
+NEEDS_FURTHER_REVIEW
+
+Do not delete/merge/suppress source records.
+
+==================================================
+45. EXACT DUPLICATE HUMAN REVIEW
+==================================================
+
+Even if B11 disposition = DUPLICATE, allow human adjudication in B12 under current conservative design.
+
+Do not implement automatic duplicate suppression.
+
+==================================================
+46. POLICY FINDINGS
+==================================================
+
+Display B11 findings grouped by:
+
+BLOCKING
+REVIEW
+WARNING
+INFO
+
+Map stable RuleCode/ReasonCode to readable UI labels.
+
+Use B11 persisted results as source of truth.
+
+==================================================
+47. FINDING DECISION MODEL
+==================================================
+
+Create:
+
+IntakeReviewFindingDecision
+
+Conceptual fields:
+
+- Id
+- TenantId
+- IntakeReviewId
+- ArtifactPolicyFindingId
+
+- Decision
+- ReasonCode
+- Comment
+
+- CreatedByUserId
+- CreatedAt
+
+==================================================
+48. FINDING DECISIONS
+==================================================
+
+Support where appropriate:
+
+RESOLVED
+ACKNOWLEDGED
+NOT_APPLICABLE
+
+Do not allow a reviewer to casually override an actual engine integrity failure.
+
+==================================================
+49. REVIEW COMPLETION VALIDATOR
+==================================================
+
+Create:
+
+IReviewCompletionValidator
+
+Responsibilities:
+
+- review is current/not stale;
+- review status allows completion;
+- required match decisions resolved;
+- required duplicate adjudication resolved;
+- required corrections structurally valid;
+- blocking/review findings handled according to policy;
+- classification override/reprocessing state respected;
+- concurrency version current;
+- final outcome allowed.
+
+==================================================
+50. APPROVED
+==================================================
+
+APPROVED means:
+
+Human reviewer confirms the effective Intake data is suitable for B13 approved snapshot creation.
+
+No downstream record is created.
+
+==================================================
+51. APPROVED WITH CORRECTIONS
+==================================================
+
+APPROVED_WITH_CORRECTIONS means:
+
+Human reviewer corrected/added/rejected data and approves the effective reviewed projection.
+
+B13 must consume reviewed projection, not original B08/B09 directly.
+
+==================================================
+52. REJECTED
+==================================================
+
+REJECTED requires a reason code.
+
+Suggested:
+
+WRONG_DOCUMENT
+UNRELATED_SUBMISSION
+UNREADABLE
+INSUFFICIENT_INFORMATION
+INVALID_INTAKE
+OTHER
+
+Do not delete source Intake history.
+
+==================================================
+53. DUPLICATE CONFIRMED
+==================================================
+
+DUPLICATE_CONFIRMED finalizes the human review as duplicate.
+
+Do not merge/delete anything.
+
+B13 should normally not create an approved business snapshot from this outcome unless future requirements explicitly say otherwise.
+
+==================================================
+54. NOT DUPLICATE
+==================================================
+
+NOT_DUPLICATE may be a duplicate-decision state rather than the overall review outcome.
+
+If overall outcome needs to continue, reviewer can proceed to APPROVED/APPROVED_WITH_CORRECTIONS after resolving duplicate finding.
+
+Keep model semantics clean.
+
+==================================================
+55. NO MATCH CONFIRMED
+==================================================
+
+NO_MATCH_CONFIRMED indicates the reviewer agrees no existing match should be selected.
+
+Do not create a Case/Patient/Provider here.
+
+==================================================
+56. RETURN FOR REPROCESSING
+==================================================
+
+Use when human correction invalidates downstream intelligence context.
+
+Examples:
+- classification override;
+- materially changed fact interpretation requiring rerun;
+- later source replacement.
+
+Do not silently rerun AI inside completion unless an existing orchestration pattern clearly supports an explicit reprocess command.
+
+==================================================
+57. REVIEW COMPLETION
+==================================================
+
+Persist:
+
+ReviewOutcome
+CompletedByUserId
+CompletedAt
+CompletionReasonCode
+CompletionComment
+
+Once completed:
+- treat review as immutable;
+- further changes require new revision/superseding review.
+
+==================================================
+58. REVIEW ACTIVITY
+==================================================
+
+Create:
+
+IntakeReviewActivity
+
+Conceptual fields:
+
+- Id
+- TenantId
+- IntakeReviewId
+- ActivityType
+- ActorUserId
+- SafeMetadataJson
+- CreatedAt
+
+==================================================
+59. ACTIVITY TYPES
+==================================================
+
+Support:
+
+REVIEW_CREATED
+REVIEW_ASSIGNED
+REVIEW_UNASSIGNED
+REVIEW_CLAIMED
+FACT_CORRECTED
+FACT_ADDED
+FACT_REJECTED
+CLASSIFICATION_OVERRIDDEN
+MATCH_DECIDED
+DUPLICATE_DECIDED
+FINDING_DECIDED
+REVIEW_COMPLETED
+REVIEW_SUPERSEDED
+
+==================================================
+60. ACTIVITY PRIVACY
+==================================================
+
+Do not put PHI values into SafeMetadataJson.
+
+Use IDs/codes only.
+
+==================================================
+61. AUDIT EVENTS
+==================================================
+
+Emit through LegalSynq audit where applicable:
+
+INTAKE_REVIEW_CREATED
+INTAKE_REVIEW_ASSIGNED
+INTAKE_REVIEW_STARTED
+INTAKE_REVIEW_FACT_CORRECTED
+INTAKE_REVIEW_MATCH_DECIDED
+INTAKE_REVIEW_DUPLICATE_DECIDED
+INTAKE_REVIEW_COMPLETED
+INTAKE_REVIEW_SUPERSEDED
+
+==================================================
+62. AUDIT PRIVACY
+==================================================
+
+Safe metadata:
+
+TenantId
+ArtifactId
+ReviewId
+ActorUserId
+FactCode
+EntityType
+DecisionCode
+Outcome
+
+No corrected values, names, DOB, amounts, evidence snippets, or document text.
+
+==================================================
+63. PERMISSIONS
+==================================================
+
+Add/reuse permissions:
+
+intake.review.read
+intake.review.manage
+intake.review.assign
+intake.review.complete
+
+Optional:
+
+intake.review.admin
+
+only if required.
+
+Use current permission-registration conventions.
+
+==================================================
+64. READ PERMISSION
+==================================================
+
+intake.review.read permits:
+
+- queue view;
+- review workspace view;
+- fact/evidence/match/policy display.
+
+==================================================
+65. MANAGE PERMISSION
+==================================================
+
+intake.review.manage permits:
+
+- claim;
+- corrections;
+- fact additions/rejections;
+- match decisions;
+- duplicate decisions;
+- finding decisions.
+
+==================================================
+66. ASSIGN PERMISSION
+==================================================
+
+intake.review.assign permits:
+
+- assigning/reassigning other reviewers.
+
+Self-claim may be allowed under manage.
+
+==================================================
+67. COMPLETE PERMISSION
+==================================================
+
+intake.review.complete permits final review completion.
+
+Read-only/manage-only users must not be able to finalize review unless they possess complete permission.
+
+==================================================
+68. TENANT ISOLATION
+==================================================
+
+Mandatory:
+
+- Tenant A cannot see Tenant B queue.
+- Tenant A cannot open Tenant B review.
+- Tenant A cannot edit Tenant B review.
+- Tenant A cannot access Tenant B evidence/document.
+- Tenant A cannot select Tenant B candidate.
+- Tenant A cannot assign Tenant B users/review.
+- every B12 repository predicate includes tenant scope.
+
+==================================================
+69. PHI/PII HANDLING
+==================================================
+
+B12 intentionally handles PHI/PII for human review.
+
+Requirements:
+
+- authorized users only;
+- tenant-scoped read/write;
+- no raw PHI in general logs;
+- no cross-tenant frontend caches;
+- no PHI in operational metrics;
+- only data needed for active review returned.
+
+==================================================
+70. LOGGING
+==================================================
+
+Safe:
+
+- TenantId
+- ReviewId
+- ArtifactId
+- ActorUserId
+- ActionType
+- Status
+- ReasonCode
+- ConcurrencyResult
+
+Never log:
+- corrected values;
+- RawValue;
+- NormalizedValue;
+- patient names;
+- DOB;
+- phone/email;
+- addresses;
+- claim/case/account numbers;
+- evidence snippets.
+
+==================================================
+71. REVIEWED PROJECTION
+==================================================
+
+Create canonical response:
+
+ReviewedClassification
+ReviewedFacts[]
+ReviewedEntityDecisions[]
+DuplicateDecisions[]
+PolicyFindingDecisions[]
+ReviewOutcome
+ReviewId
+PolicyEvaluationId
+
+This is the semantic handoff for B13.
+
+==================================================
+72. REVIEWED ENTITY DECISION
+==================================================
+
+Each entity decision should expose:
+
+EntityType
+Decision
+SelectedEntityId
+SourceMatchId
+IsManualSelection
+ReasonCode
+
+==================================================
+73. EFFECTIVE CLASSIFICATION
+==================================================
+
+Expose:
+
+OriginalClassification
+EffectiveClassification
+WasOverridden
+ClassificationCorrectionId
+RequiresReprocessing
+
+==================================================
+74. REVIEW COMPLETE EVENT
+==================================================
+
+If existing event/outbox patterns support it, emit:
+
+IntakeReviewCompletedV1
+
+Fields:
+
+- TenantId
+- ArtifactId
+- ReviewId
+- PolicyEvaluationId
+- Outcome
+- CompletedByUserId
+- CompletedAt
+- CorrelationId
+
+Do not include reviewed fact values.
+
+B13 may fetch the projection by ReviewId.
+
+==================================================
+75. RETURN-FOR-REPROCESSING EVENT
+==================================================
+
+Optional:
+
+IntakeReviewReturnedForReprocessingV1
+
+Identifiers only.
+
+Do not implement actual reprocessing orchestration unless an existing reusable mechanism already exists and the action can be cleanly invoked as an explicit command.
+
+==================================================
+76. API — QUEUE
+==================================================
+
+Implement:
+
+GET /reviews
+GET /reviews/summary
+GET /reviews/{reviewId}
+
+Use pagination/filtering.
+
+==================================================
+77. API — ASSIGNMENT
+==================================================
+
+Implement:
+
+POST /reviews/{reviewId}/assign
+POST /reviews/{reviewId}/claim
+POST /reviews/{reviewId}/unassign
+
+Use concurrency/version.
+
+==================================================
+78. API — CORRECTIONS
+==================================================
+
+Preferred immutable/superseding APIs:
+
+POST /reviews/{reviewId}/corrections
+
+If correction replacement is needed:
+
+POST /reviews/{reviewId}/corrections/{correctionId}/supersede
+
+Avoid destructive update/delete of historical correction records.
+
+==================================================
+79. API — FACT DECISIONS
+==================================================
+
+If fact addition/rejection warrants explicit routes, use:
+
+POST /reviews/{reviewId}/facts
+
+or consolidate cleanly into correction endpoint.
+
+Keep contract stable and understandable.
+
+==================================================
+80. API — MATCH DECISIONS
+==================================================
+
+Implement:
+
+POST /reviews/{reviewId}/matches/{entityType}/decision
+
+Payload concept:
+
+- ArtifactEntityMatchId
+- CandidateEntityId only for validated manual selection path
+- Decision
+- ReasonCode
+- Comment
+- Version
+
+==================================================
+81. API — DUPLICATE DECISIONS
+==================================================
+
+Implement:
+
+POST /reviews/{reviewId}/duplicates/{signalId}/decision
+
+==================================================
+82. API — FINDING DECISIONS
+==================================================
+
+Implement:
+
+POST /reviews/{reviewId}/findings/{findingId}/decision
+
+==================================================
+83. API — COMPLETION
+==================================================
+
+Implement:
+
+POST /reviews/{reviewId}/complete
+
+Payload:
+
+- Outcome
+- ReasonCode
+- Comment
+- Version
+
+Backend completion validator is authoritative.
+
+==================================================
+84. API — EFFECTIVE PROJECTION
+==================================================
+
+Implement:
+
+GET /reviews/{reviewId}/effective
+
+Return B13-ready reviewed projection.
+
+Require appropriate permission.
+
+==================================================
+85. API ERRORS
+==================================================
+
+Use stable codes such as:
+
+REVIEW_NOT_FOUND
+REVIEW_NOT_ELIGIBLE
+REVIEW_STALE
+REVIEW_ALREADY_COMPLETED
+REVIEW_ASSIGNMENT_CONFLICT
+REVIEW_CONCURRENCY_CONFLICT
+REVIEW_CORRECTION_INVALID
+REVIEW_MATCH_DECISION_INVALID
+REVIEW_DUPLICATE_DECISION_REQUIRED
+REVIEW_FINDING_UNRESOLVED
+REVIEW_COMPLETION_INVALID
+REVIEW_TENANT_CONTEXT_INVALID
+REVIEW_REPROCESSING_REQUIRED
+
+Do not expose raw exception text.
+
+==================================================
+86. FRONTEND ROUTE
+==================================================
+
+Create tenant-facing Intake Center route using existing application routing.
+
+Preferred:
+
+/intake
+
+and item detail such as:
+
+/intake/{reviewId}
+
+or closest current convention.
+
+==================================================
+87. INTAKE CENTER QUEUE UI
+==================================================
+
+Display:
+
+- Status
+- Priority
+- B11 Disposition
+- Classification
+- Source Type
+- Received/Created date
+- Age
+- Assigned reviewer
+
+Patient identity should not be shown in broad queue by default unless operationally necessary and authorized.
+
+==================================================
+88. QUEUE FILTER UI
+==================================================
+
+Support:
+
+- Status
+- Priority
+- Disposition
+- Classification
+- Source type
+- Assignee
+- Unassigned
+- Date range
+
+Use URL/query state where consistent with current frontend conventions.
+
+==================================================
+89. REVIEW WORKSPACE LAYOUT
+==================================================
+
+Recommended sections:
+
+A. Source & Document
+B. Policy Summary
+C. Facts & Corrections
+D. Match Candidates
+E. Duplicate Review
+F. Policy Findings
+G. Review Decision
+H. Activity
+
+==================================================
+90. SOURCE / DOCUMENT PANEL
+==================================================
+
+Show:
+
+- source type;
+- source metadata;
+- artifact/document list;
+- document-view action.
+
+Use Documents Service link/view mechanism.
+
+==================================================
+91. POLICY SUMMARY PANEL
+==================================================
+
+Show B11:
+
+Disposition
+OverallConfidence
+ReviewPriority
+Finding counts
+
+Do not recalculate in frontend.
+
+==================================================
+92. FACTS PANEL
+==================================================
+
+For each fact show:
+
+FactCode / label
+Extracted RawValue
+NormalizedValue
+SourceConfidence
+Validation
+Warnings
+Human correction/decision
+Evidence action
+
+Visually distinguish human overrides.
+
+==================================================
+93. EVIDENCE UX
+==================================================
+
+Evidence action should:
+
+- show bounded snippet;
+- open/navigate source document if page/location is known.
+
+If page/location is unavailable, do not fabricate navigation.
+
+==================================================
+94. MATCH PANEL
+==================================================
+
+For each entity type show:
+
+Candidate label
+Score
+Rank
+MatchStatus
+Why it matched
+Conflicts
+Confirm
+Reject
+No Match
+
+Manual search only if implemented.
+
+==================================================
+95. DUPLICATE PANEL
+==================================================
+
+Show:
+
+DuplicateType
+RelatedArtifact reference
+Score/status
+ReasonCode mapped to UI label
+Reviewer decision
+
+Do not expose another tenant's information.
+
+==================================================
+96. POLICY FINDINGS PANEL
+==================================================
+
+Group:
+
+Blocking
+Requires Review
+Warnings
+Information
+
+Show readable message mapped from stable codes.
+
+Allow resolution/acknowledgment actions only where permitted.
+
+==================================================
+97. REVIEW COMPLETION UI
+==================================================
+
+Offer only outcomes valid for the current review state.
+
+Potential actions:
+
+Approve
+Approve with Corrections
+Reject
+Confirm Duplicate
+Return for Reprocessing
+
+NO_MATCH may be an entity decision plus approval/reprocessing outcome depending on final backend model.
+
+==================================================
+98. CONFIRMATION DIALOGS
+==================================================
+
+Require explicit confirmation for:
+
+- Reject;
+- Confirm Duplicate;
+- Complete Review;
+- Return for Reprocessing.
+
+Do not add excessive confirmations to routine fact edits.
+
+==================================================
+99. UNSAVED CHANGES
+==================================================
+
+Warn on navigation if browser-local edits remain unsaved.
+
+Critical decisions should persist promptly through backend APIs.
+
+==================================================
+100. STALE REVIEW UX
+==================================================
+
+If review becomes stale:
+
+- show prominent stale/superseded banner;
+- disable edits/completion where appropriate;
+- offer refresh/navigation to current review context.
+
+==================================================
+101. LOADING / ERROR STATES
+==================================================
+
+Each major panel should support:
+
+loading
+empty
+unavailable
+permission denied
+stale
+
+One panel failure should not unnecessarily destroy the entire review page if partial data can safely be shown.
+
+==================================================
+102. ACCESSIBILITY
+==================================================
+
+Ensure:
+
+- keyboard navigation;
+- semantic labels;
+- accessible forms;
+- accessible dialogs;
+- focus management;
+- severity not communicated by color alone;
+- buttons have meaningful accessible names.
+
+==================================================
+103. RESPONSIVE DESIGN
+==================================================
+
+Optimize primarily for desktop review workflow.
+
+Remain usable on tablet.
+
+Do not sacrifice information density to force a phone-first layout.
+
+==================================================
+104. FRONTEND AUTHORIZATION
+==================================================
+
+Hide/disable actions according to current permissions.
+
+Backend remains authoritative.
+
+Do not treat hidden controls as security.
+
+==================================================
+105. REVIEW METRICS
+==================================================
+
+Provide tenant-scoped operational metrics where practical:
+
+OpenReviews
+CompletedReviews
+AverageReviewTime
+OldestOpenReview
+ReviewsByPriority
+ReviewsByOutcome
+ReviewsByDisposition
+CorrectionRate
+MatchOverrideRate
+DuplicateOverrideRate
+
+No raw PHI.
+
+==================================================
+106. REVIEWER METRICS BOUNDARY
+==================================================
+
+Do not create intrusive employee productivity scoring.
+
+Focus on workflow/queue operations.
+
+==================================================
+107. DATABASE SCHEMA
+==================================================
+
+Expected B12-owned tables:
+
+IntakeReviews
+IntakeReviewCorrections
+IntakeReviewMatchDecisions
+IntakeReviewDuplicateDecisions
+IntakeReviewFindingDecisions
+IntakeReviewActivities
+
+Optional:
+
+IntakeReviewAssignments
+
+only if first-class assignment history is justified beyond activity records.
+
+==================================================
+108. DATABASE RELATIONSHIPS
+==================================================
+
+Use tenant-aware relationships where appropriate.
+
+IntakeReview:
+- FK Artifact
+- FK Classification
+- FK ArtifactExtraction
+- FK ArtifactNormalization
+- FK ArtifactMatchRun
+- FK ArtifactPolicyEvaluation
+
+Corrections:
+- FK IntakeReview
+- optional FK extracted/normalized fact
+
+MatchDecision:
+- FK IntakeReview
+- optional/required FK ArtifactEntityMatch for algorithmic selection
+
+DuplicateDecision:
+- FK IntakeReview
+- FK ArtifactDuplicateSignal
+
+FindingDecision:
+- FK IntakeReview
+- FK ArtifactPolicyFinding
+
+==================================================
+109. ACTIVE REVIEW UNIQUENESS
+==================================================
+
+Enforce at most one active review for the same:
+
+TenantId + ArtifactPolicyEvaluationId
+
+or equivalent current-context identity.
+
+Historical completed/superseded reviews remain allowed.
+
+==================================================
+110. INDEXES
+==================================================
+
+IntakeReviews:
+- TenantId + Status
+- TenantId + Priority
+- TenantId + AssignedToUserId + Status
+- TenantId + CreatedAt
+- ArtifactId
+- ArtifactPolicyEvaluationId
+- active-review lookup
+
+Corrections/decisions/activity:
+- IntakeReviewId
+- FactCode / EntityType / decision target where useful
+- CreatedAt
+
+==================================================
+111. CONCURRENCY STORAGE
+==================================================
+
+Add a concurrency token/version field to IntakeReview.
+
+Use optimistic concurrency in EF/update APIs.
+
+Where child decisions are mutable through superseding actions, preserve revision integrity.
+
+==================================================
+112. MIGRATION
+==================================================
+
+Create B12 migration.
+
+Suggested:
+
+AddIntakeHumanReviewV1
+
+or repository-standard equivalent.
+
+Do not create B13 snapshot tables.
+
+==================================================
+113. TESTS — REVIEW CREATION
+==================================================
+
+Test:
+
+- B11 reviewable disposition creates/allows review;
+- non-reviewable disposition behavior;
+- duplicate active review prevented;
+- new B11 evaluation supersedes stale open review;
+- exact upstream IDs bound.
+
+==================================================
+114. TESTS — ASSIGNMENT
+==================================================
+
+Test:
+
+- assign;
+- self-claim;
+- reassign;
+- unassign;
+- unauthorized assignment;
+- invalid tenant user;
+- concurrency conflict.
+
+==================================================
+115. TESTS — TENANT ISOLATION
+==================================================
+
+Verify:
+
+- Tenant A cannot list Tenant B review;
+- Tenant A cannot open Tenant B review;
+- Tenant A cannot edit Tenant B review;
+- Tenant A cannot access Tenant B evidence/document;
+- Tenant A cannot select Tenant B candidate;
+- Tenant A cannot assign Tenant B user.
+
+==================================================
+116. TESTS — FACT CORRECTIONS
+==================================================
+
+Test:
+
+- valid money correction;
+- valid date correction;
+- invalid corrected value;
+- B09 normalizer reuse;
+- B08/B09 source rows unchanged;
+- correction history retained.
+
+==================================================
+117. TESTS — ADDED FACTS
+==================================================
+
+Test:
+
+- allowed FactCode;
+- normalized value;
+- structural validation;
+- reviewer identity;
+- evidence optional/required behavior;
+- no B08 mutation.
+
+==================================================
+118. TESTS — REJECTED FACTS
+==================================================
+
+Test:
+
+- reject source fact;
+- B08/B09 remain unchanged;
+- effective reviewed projection excludes fact;
+- audit/activity emitted.
+
+==================================================
+119. TESTS — CLASSIFICATION OVERRIDE
+==================================================
+
+Verify:
+
+- B07 classification unchanged;
+- human override stored;
+- review marked for reprocessing;
+- approval blocked where required;
+- effective projection exposes override/reprocessing status.
+
+==================================================
+120. TESTS — MATCH DECISIONS
+==================================================
+
+Verify:
+
+- confirm B10 candidate;
+- reject B10 candidate;
+- no-match;
+- candidate from wrong match run rejected;
+- cross-tenant candidate rejected.
+
+==================================================
+121. TESTS — MANUAL MATCH
+==================================================
+
+If manual search implemented:
+
+- tenant-scoped search;
+- bounded result;
+- manual selection persisted distinctly;
+- B10 unchanged;
+- arbitrary cross-tenant ID rejected.
+
+==================================================
+122. TESTS — DUPLICATE DECISIONS
+==================================================
+
+Verify:
+
+- duplicate confirmed;
+- not duplicate;
+- needs further review;
+- duplicate signal remains unchanged;
+- completion validation requires adjudication when configured.
+
+==================================================
+123. TESTS — FINDING DECISIONS
+==================================================
+
+Verify:
+
+- acknowledge;
+- resolve where allowed;
+- not applicable where allowed;
+- wrong-review finding blocked;
+- engine integrity/blocking finding cannot be casually overridden.
+
+==================================================
+124. TESTS — COMPLETION VALIDATOR
+==================================================
+
+Completion must fail when:
+
+- stale;
+- wrong status;
+- unresolved required match decision;
+- unresolved duplicate decision;
+- invalid human correction;
+- unresolved blocking/review finding;
+- reprocessing required but approval attempted;
+- stale concurrency version.
+
+==================================================
+125. TESTS — APPROVED
+==================================================
+
+Verify:
+
+- valid review completes;
+- CompletedByUserId persisted;
+- CompletedAt persisted;
+- outcome immutable;
+- no downstream Case/Lien write.
+
+==================================================
+126. TESTS — APPROVED WITH CORRECTIONS
+==================================================
+
+Verify effective projection contains corrected values and human provenance.
+
+==================================================
+127. TESTS — REJECTED
+==================================================
+
+Verify:
+
+- reason required;
+- completed immutable;
+- no downstream execution;
+- activity/audit emitted.
+
+==================================================
+128. TESTS — DUPLICATE CONFIRMED
+==================================================
+
+Verify:
+
+- human outcome stored;
+- source/match/duplicate histories unchanged;
+- no delete/merge occurs.
+
+==================================================
+129. TESTS — RETURN FOR REPROCESSING
+==================================================
+
+Verify:
+
+- appropriate outcome/state;
+- review cannot produce approved B13-ready result;
+- source intelligence remains intact;
+- event emitted if implemented.
+
+==================================================
+130. TESTS — EFFECTIVE PROJECTION
+==================================================
+
+Critical deterministic tests:
+
+Original Fact
++ Corrected Fact
++ Added Fact
++ Rejected Fact
++ Confirmed Match
++ Manual Match
++ Duplicate Decision
++ Finding Decisions
++ Classification Override
+
+Verify reviewed projection exactly reflects latest active human decisions and preserves original provenance.
+
+==================================================
+131. TESTS — STALENESS
+==================================================
+
+Review bound to PolicyEvaluation A.
+
+New PolicyEvaluation B becomes current.
+
+Expected:
+- review A becomes stale/superseded;
+- review A completion fails;
+- new current review can be created.
+
+==================================================
+132. TESTS — IDEMPOTENCY
+==================================================
+
+Verify:
+
+- repeated claim safe;
+- duplicate completion prevented;
+- repeated mutation requests with idempotency support do not duplicate records;
+- immutable decision history preserved.
+
+==================================================
+133. TESTS — CONCURRENCY
+==================================================
+
+Simulate two reviewers:
+
+- simultaneous assign;
+- simultaneous correction;
+- simultaneous completion.
+
+Stale version must receive deterministic concurrency error.
+
+No silent overwrite.
+
+==================================================
+134. TESTS — ACTIVITY / AUDIT
+==================================================
+
+Verify activity generated for:
+
+- review creation;
+- assignment;
+- claim;
+- fact correction;
+- match decision;
+- duplicate decision;
+- finding decision;
+- completion.
+
+Verify no PHI in activity/audit metadata.
+
+==================================================
+135. HTTP INTEGRATION TESTS
+==================================================
+
+Where infrastructure exists, cover:
+
+GET /reviews
+GET /reviews/summary
+GET /reviews/{reviewId}
+POST /reviews/{reviewId}/assign
+POST /reviews/{reviewId}/claim
+POST /reviews/{reviewId}/unassign
+POST /reviews/{reviewId}/corrections
+POST /reviews/{reviewId}/matches/{entityType}/decision
+POST /reviews/{reviewId}/duplicates/{signalId}/decision
+POST /reviews/{reviewId}/findings/{findingId}/decision
+POST /reviews/{reviewId}/complete
+GET /reviews/{reviewId}/effective
+
+Test:
+
+- 401;
+- 403;
+- 404;
+- tenant isolation;
+- concurrency;
+- stale review;
+- completion validation;
+- invalid candidate;
+- invalid correction.
+
+If HTTP infrastructure is still absent, add the smallest maintainable foundation if practical and document the limitation.
+
+==================================================
+136. FRONTEND TESTS
+==================================================
+
+Use existing frontend testing conventions where available.
+
+Cover critical flows:
+
+- queue renders;
+- pagination;
+- filters;
+- review opens;
+- policy summary renders;
+- facts/evidence render;
+- correction saves;
+- candidate selected;
+- duplicate adjudicated;
+- finding resolved;
+- stale review blocks completion;
+- final outcome posts;
+- permission-restricted controls hidden/disabled.
+
+==================================================
+137. MYSQL VALIDATION
+==================================================
+
+Apply full Intake migration chain through B12 against clean disposable/local MySQL 8.
+
+This should also close prior B04-B11 migration-validation debt if environment permits.
+
+Verify:
+
+- prior B02-B11 schema;
+- B12 tables;
+- tenant-aware FKs;
+- active-review uniqueness;
+- concurrency/version column;
+- correction relationships;
+- match-decision relationships;
+- duplicate-decision relationships;
+- finding-decision relationships;
+- activity relationships;
+- full migration history.
+
+Use no cloud/shared DB.
+
+Clean up disposable DB/container afterward.
+
+==================================================
+138. PERFORMANCE
+==================================================
+
+B12 should:
+
+- paginate queue;
+- not load full Documents content into queue;
+- lazy-load/authorize document content separately;
+- avoid N+1 Identity/user resolution;
+- use bounded workspace projections;
+- avoid loading historical intelligence not needed for current review;
+- use projection queries;
+- batch activity reads appropriately.
+
+==================================================
+139. SECURITY VALIDATION
+==================================================
+
+Verify:
+
+- no cross-tenant review access;
+- no arbitrary entity selection;
+- no arbitrary user assignment;
+- no arbitrary document access;
+- no reviewer identity spoofing;
+- no PHI in logs/audit/activity metadata;
+- no frontend-only authorization;
+- no B13/downstream business writes;
+- no uploaded spec assets tracked;
+- no bin/obj artifacts tracked.
+
+==================================================
+140. EXISTING SERVICE IMPACT
+==================================================
+
+Keep B12 within:
+
+- Intake;
+- existing Identity/user read boundary;
+- Documents read boundary;
+- B10 candidate-source boundary for optional manual search;
+- existing auth/audit/events;
+- tenant frontend.
+
+Do not modify business logic in:
+
+- SynqLien;
+- SynqFund;
+- CareConnect;
+- Flow;
+- Notifications;
+- Identity internals.
+
+==================================================
+141. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- B13 approved snapshot persistence;
+- Case creation;
+- Lien creation;
+- downstream product writes;
+- SynqFund routing;
+- CareConnect routing;
+- Flow task creation;
+- email/SMS notifications;
+- straight-through execution;
+- external reviewer portal;
+- document annotation engine;
+- document editing;
+- AI re-prompting from review;
+- payment decisions;
+- legal adjudication;
+- AWS;
+- RDS;
+- ECS;
+- Route53;
+- deployment.
+
+==================================================
+142. BUILD / VALIDATION
+==================================================
+
+At minimum run and record:
+
+dotnet restore if required
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet build LegalSynq.sln --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet ef dbcontext info using repository-pinned tooling
+
+dotnet ef migrations list using repository-pinned tooling
+
+Apply full B02-B12 migration chain to disposable MySQL 8
+
+Run relevant frontend typecheck/build/test commands using existing tenant-app scripts.
+
+Validate B12 schema/indexes/FKs/uniqueness/concurrency.
+
+git diff --check
+
+git status --short
+
+git diff --stat
+
+git diff --name-status against B11 baseline
+
+Verify:
+- no Intake bin/obj tracked;
+- no frontend build outputs tracked;
+- no secrets;
+- no uploaded spec assets added;
+- no unrelated product-domain changes.
+
+Clearly distinguish pre-existing warnings from new B12 errors/warnings.
+
+==================================================
+143. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B12 is complete only when all are true:
+
+1. Tenant-facing Intake review queue exists.
+2. Queue is tenant-scoped.
+3. Queue is paginated.
+4. Queue supports status filtering.
+5. Queue supports priority filtering.
+6. Queue supports B11 disposition filtering.
+7. Queue supports assignment filtering.
+8. Queue summary exists.
+9. IntakeReview aggregate exists.
+10. Review binds to exact Artifact.
+11. Review binds to exact B07 classification.
+12. Review binds to exact B08 extraction.
+13. Review binds to exact B09 normalization.
+14. Review binds to exact B10 match run.
+15. Review binds to exact B11 policy evaluation.
+16. One active review per current policy context is enforced.
+17. Review staleness is detected.
+18. Stale review cannot complete.
+19. Review status model exists.
+20. Review outcome model exists.
+21. Assignment exists.
+22. Self-claim exists.
+23. Unassignment exists.
+24. Reassignment is concurrency-safe.
+25. Reviewer identity comes from authenticated user.
+26. Tenant user assignment is validated.
+27. Optimistic concurrency exists.
+28. Concurrent edits cannot silently overwrite.
+29. Review workspace read API exists.
+30. Source context is shown.
+31. Documents boundary is reused.
+32. B07 classification is visible.
+33. B08 extracted facts/evidence are visible.
+34. B09 normalized facts are visible.
+35. B10 matches are visible.
+36. B10 duplicate signals are visible.
+37. B11 policy findings are visible.
+38. Human fact correction exists.
+39. Corrections do not mutate B08/B09.
+40. Human corrections reuse deterministic B09 validation where practical.
+41. Human values are not assigned fake AI confidence.
+42. Human fact addition exists where permitted.
+43. Human fact rejection exists.
+44. Rejected facts remain historically visible.
+45. Effective reviewed fact projection is deterministic.
+46. Classification override exists.
+47. Classification override does not mutate B07.
+48. Classification override can require reprocessing.
+49. Match confirmation exists.
+50. Match rejection exists.
+51. NO_MATCH decision exists.
+52. Manual candidate selection, if implemented, is explicitly human/manual.
+53. Manual selection is tenant-scoped.
+54. B10 candidate history is not mutated.
+55. Duplicate confirmation exists.
+56. NOT_DUPLICATE decision exists.
+57. B10 duplicate signals are not mutated.
+58. Finding decisions exist.
+59. B11 findings are not mutated.
+60. Completion validator exists.
+61. APPROVED exists.
+62. APPROVED_WITH_CORRECTIONS exists.
+63. REJECTED exists.
+64. DUPLICATE_CONFIRMED exists.
+65. NO_MATCH_CONFIRMED exists if used by final model.
+66. RETURN_FOR_REPROCESSING exists.
+67. Completion is blocked when review is stale.
+68. Completion is blocked for unresolved required decisions.
+69. Completion actor is persisted.
+70. Completion timestamp is persisted.
+71. Completed reviews are immutable.
+72. Review revision/superseding behavior exists where needed.
+73. Activity timeline exists.
+74. Audit integration exists.
+75. Audit/activity metadata omits PHI.
+76. Reviewed projection API exists.
+77. Reviewed projection contains human provenance.
+78. Reviewed projection contains entity decisions.
+79. Reviewed projection contains duplicate/finding decisions.
+80. B13 can consume reviewed projection without recomputing B07-B11.
+81. Review permissions exist.
+82. Read/manage/assign/complete boundaries are enforced.
+83. Tenant A cannot list Tenant B reviews.
+84. Tenant A cannot read Tenant B review.
+85. Tenant A cannot mutate Tenant B review.
+86. Tenant A cannot access Tenant B evidence.
+87. Tenant A cannot select Tenant B candidate.
+88. Tenant A cannot assign unauthorized Tenant B user.
+89. PHI is excluded from general logs.
+90. Queue UI exists.
+91. Queue filters exist.
+92. Queue pagination works.
+93. Review workspace UI exists.
+94. Source/document panel exists.
+95. Policy summary panel exists.
+96. Facts/corrections panel exists.
+97. Evidence UX exists.
+98. Match panel exists.
+99. Duplicate panel exists.
+100. Findings panel exists.
+101. Completion UI exists.
+102. Stale review UX exists.
+103. Frontend permission-aware actions exist.
+104. Accessibility requirements are met.
+105. Review creation tests pass.
+106. Assignment/concurrency tests pass.
+107. Tenant-isolation tests pass.
+108. Correction tests pass.
+109. Added/rejected fact tests pass.
+110. Classification-override tests pass.
+111. Match-decision tests pass.
+112. Manual-match tests pass if implemented.
+113. Duplicate-decision tests pass.
+114. Finding-decision tests pass.
+115. Completion-validator tests pass.
+116. approval tests pass.
+117. approval-with-corrections tests pass.
+118. rejection tests pass.
+119. duplicate-confirmed tests pass.
+120. return-for-reprocessing tests pass.
+121. effective-projection tests pass.
+122. staleness tests pass.
+123. idempotency tests pass.
+124. optimistic-concurrency tests pass.
+125. audit/activity tests pass.
+126. HTTP integration tests cover critical paths where practical.
+127. frontend critical-path tests pass where infrastructure exists.
+128. B12 migration exists.
+129. full B02-B12 migration chain applies successfully to MySQL 8.
+130. B12 FKs/indexes/uniqueness/concurrency constraints are verified.
+131. prior Intake schema remains intact.
+132. Intake API builds with zero new B12 errors.
+133. Intake tests pass.
+134. frontend builds/typechecks with zero new B12 errors.
+135. full LegalSynq solution builds with zero new B12 errors.
+136. no B13 snapshot persistence is introduced.
+137. no Case/Lien creation is introduced.
+138. no Flow/notification integration is introduced.
+139. no downstream adapter execution is introduced.
+140. no cloud/deployment work is performed.
+141. no secrets/specification assets/build artifacts are introduced.
+142. /analysis/LSI-B12-report.md exists with complete evidence.
+
+==================================================
+144. REQUIRED IMPLEMENTATION REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B12-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree state
+8. B04-B11 architecture reviewed
+9. B11 policy integration
+10. Files added
+11. Files modified
+12. IntakeReview aggregate
+13. Review lifecycle/statuses
+14. Review outcomes
+15. upstream binding
+16. review staleness
+17. review history/revisions
+18. queue design
+19. queue pagination
+20. queue filters/sorting
+21. queue summary
+22. assignment model
+23. reviewer identity
+24. assignment validation
+25. optimistic concurrency
+26. claim/unassign/reassign behavior
+27. workspace read model
+28. source-context handling
+29. Documents Service integration
+30. classification display/override
+31. correction model
+32. value correction
+33. B09 normalizer reuse
+34. human fact addition
+35. human fact rejection
+36. human provenance
+37. effective reviewed facts
+38. reviewed projection service
+39. match decision model
+40. candidate confirmation/rejection
+41. manual candidate search/selection if implemented
+42. no-match decision
+43. duplicate decision model
+44. duplicate adjudication
+45. finding decision model
+46. finding resolution
+47. completion validator
+48. approved behavior
+49. approved-with-corrections behavior
+50. rejected behavior
+51. duplicate-confirmed behavior
+52. no-match-confirmed behavior if used
+53. return-for-reprocessing behavior
+54. review activity timeline
+55. audit integration
+56. permission model
+57. tenant isolation
+58. PHI/PII controls
+59. logging behavior
+60. reviewed projection contract
+61. review completion event
+62. API surface
+63. queue API
+64. assignment APIs
+65. correction/fact APIs
+66. match APIs
+67. duplicate APIs
+68. finding APIs
+69. completion API
+70. effective projection API
+71. frontend route
+72. queue UI
+73. queue filter/pagination UI
+74. review workspace layout
+75. source/document panel
+76. policy summary panel
+77. facts/corrections panel
+78. evidence UX
+79. match panel
+80. duplicate panel
+81. findings panel
+82. completion UX
+83. stale review UX
+84. frontend authorization
+85. accessibility
+86. migration name
+87. database schema
+88. indexes/constraints
+89. concurrency implementation
+90. full B02-B12 MySQL migration validation
+91. prior pending DB-validation closure
+92. review creation tests
+93. assignment tests
+94. tenant-isolation tests
+95. correction tests
+96. added/rejected fact tests
+97. classification-override tests
+98. match-decision tests
+99. manual-match tests if implemented
+100. duplicate-decision tests
+101. finding-decision tests
+102. completion-validator tests
+103. approval/rejection tests
+104. return-for-reprocessing tests
+105. effective-projection tests
+106. staleness tests
+107. idempotency/concurrency tests
+108. audit/activity tests
+109. HTTP integration tests
+110. frontend tests
+111. Intake API build result
+112. Intake test result
+113. frontend build/typecheck result
+114. full solution build result
+115. security assessment
+116. performance considerations
+117. known gaps
+118. out-of-scope confirmation
+119. git diff summary
+120. final repository validation status
+121. recommended next bundle: LSI-B13
+
+Sanitize all local credentials, tokens, PHI/PII test values, and disposable database connection details from the report.
+
+==================================================
+145. DEFINITION OF DONE
+==================================================
+
+The implementation is done when an authorized tenant reviewer can take a B11-routed Intake item and reliably:
+
+- discover it in a paginated tenant-scoped queue;
+- claim/assign it safely;
+- review source/documents;
+- inspect B07-B11 intelligence;
+- correct/add/reject facts without mutating upstream history;
+- confirm/reject/select entity matches;
+- adjudicate duplicate signals;
+- resolve applicable policy findings;
+- detect stale upstream context;
+- complete an immutable human review outcome;
+- generate a deterministic effective reviewed projection for B13;
+
+while clearly distinguishing:
+
+source evidence
+from
+AI extraction
+from
+deterministic normalization
+from
+algorithmic matching
+from
+policy recommendation
+from
+human adjudication
+from
+downstream execution.
+
+When complete:
+
+- execute all required implementation work now;
+- run all required local validation;
+- create /analysis/LSI-B12-report.md;
+- stop;
+- do not begin LSI-B13;
+- do not deploy;
+- do not push unless explicitly requested.

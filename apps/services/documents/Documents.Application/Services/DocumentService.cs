@@ -137,6 +137,23 @@ public sealed class DocumentService
         _log               = log;
     }
 
+    public async Task<InternalDocumentMetadataResponse?> GetInternalMetadataAsync(
+        Guid documentId,
+        Guid tenantId,
+        CancellationToken ct = default)
+    {
+        var document = await _docs.FindByIdAsync(documentId, tenantId, ct);
+        return document is null
+            ? null
+            : new InternalDocumentMetadataResponse(
+                document.Id,
+                document.TenantId,
+                document.Status.ToString(),
+                document.MimeType,
+                document.Checksum,
+                document.IsDeleted);
+    }
+
     // ── Create ───────────────────────────────────────────────────────────────
 
     public async Task<DocumentResponse> CreateAsync(

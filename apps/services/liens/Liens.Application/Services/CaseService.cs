@@ -210,6 +210,14 @@ public sealed class CaseService : ICaseService
         if (errors.Count > 0)
             throw new ValidationException("One or more required fields are missing.", errors);
 
+        if (!string.IsNullOrWhiteSpace(request.ExternalReference))
+        {
+            var idempotent = await _caseRepo.GetByExternalReferenceAsync(
+                tenantId, request.ExternalReference.Trim(), ct);
+            if (idempotent is not null)
+                return await MapToResponseAsync(tenantId, idempotent, ct);
+        }
+
         var caseNumber = string.IsNullOrWhiteSpace(request.CaseNumber)
             ? await GenerateCaseNumberAsync(tenantId, ct)
             : request.CaseNumber.Trim();

@@ -1,0 +1,1427 @@
+You are implementing LSI-B03 — Tenant Email Sources & Connector Framework for Synq Intake in the LegalSynq v3 repository.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Required implementation report: /analysis/LSI-B03-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B03 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, or production deployment work.
+3. Do not implement full email ingestion, mailbox polling, webhook processing, raw MIME storage, email analytics repository, Documents Service integration, Synq AI classification/extraction, matching, review UI, Case/Lien creation, Flow, notifications, or downstream adapters.
+4. Preserve all prior reports as read-only.
+5. Create/update only /analysis/LSI-B03-report.md for this ticket.
+6. Reuse current LegalSynq v3 conventions, package versions, auth, logging, EF, tenant context, and Minimal API patterns.
+7. Do not introduce an alternate backend, ORM, database, auth model, gateway, connector architecture, or deployment stack.
+8. Do not commit uploaded specification files, attached assets, generated binaries, local database files, secrets, or unrelated artifacts.
+9. Do not modify unrelated product-domain services except for genuinely required minimal platform integration.
+10. Before coding, inspect the current repository, current Intake implementation, B02 configuration/profile framework, git status, branch relationship, and existing conventions.
+11. Record repository baseline and working-tree state in /analysis/LSI-B03-report.md before implementation.
+12. If unrelated pre-existing changes exist, preserve them and do not absorb them into B03.
+13. Local/repository validation is required.
+14. Do not claim GitHub CI, deployed runtime, AWS, or production validation unless separately proven.
+
+LOCKED PLATFORM STACK
+Use LegalSynq v3 conventions:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT Bearer/service-token authentication
+- existing ICurrentRequestContext / tenant-context conventions
+- existing YARP gateway conventions
+- LegalSynq.AuditClient where applicable
+- existing structured logging, health, configuration, and test patterns
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+Synq Intake remains:
+- tenant-bound
+- product-neutral
+- independently deployable
+- source-preserving
+
+LOCKED TENANT EMAIL INVARIANT
+Every configured Synq Intake email address belongs to exactly one tenant.
+
+For all future inbound email processing, the required sequence is:
+
+Inbound recipient address
+-> registered TenantIntakeSource
+-> authoritative TenantId
+-> source Purpose
+-> source ProcessingProfileCode
+-> B02 configuration/profile resolution
+-> processing
+
+Tenant identity MUST NEVER be inferred from:
+- sender email
+- sender domain
+- subject
+- email body
+- patient
+- provider
+- law firm
+- facility
+- attachment content
+- document metadata
+- AI classification
+- AI extraction
+- downstream matching
+
+No downstream operation may override the TenantId resolved from source ownership.
+
+OBJECTIVE
+Implement the tenant-owned inbound email source framework that allows each tenant to designate one or more authorized Synq Intake email addresses and associate each source with:
+- tenant ownership
+- source type
+- email address
+- provider
+- purpose
+- processing profile
+- lifecycle status
+- default-source status
+- connector metadata/configuration
+- configuration version
+
+The completed framework must be able to answer:
+
+“This recipient email address is a registered active Synq Intake source owned by Tenant X, serving Purpose Y, and using Processing Profile Z.”
+
+without examining message content or sender identity.
+
+==================================================
+1. TENANT INTAKE SOURCE DOMAIN MODEL
+==================================================
+
+Create an Intake-owned aggregate/entity:
+
+TenantIntakeSource
+
+Conceptual fields:
+- Id
+- TenantId
+- OrgId, only if consistent with current LegalSynq conventions
+- SourceType
+- EmailAddress
+- NormalizedEmailAddress
+- Provider
+- Purpose
+- ProcessingProfileCode
+- IsActive
+- IsDefault
+- ConfigurationVersion
+- ConnectorConfigurationJson, if needed
+- CredentialReference / SecretReference, if needed and aligned with current platform conventions
+- ValidationStatus, if implemented
+- LastValidatedAt, if implemented
+- LastValidationMessage, if implemented
+- CreatedAt
+- CreatedBy
+- UpdatedAt
+- UpdatedBy
+
+Do not add unrelated message-processing fields.
+
+Do not create:
+- InboundEmail
+- EmailMessage
+- RawMime
+- EmailAttachment
+- EmailThread
+- EmailAnalytics
+- Document records
+- AI result entities
+
+Those belong to later bundles.
+
+==================================================
+2. SOURCE TYPE
+==================================================
+
+Introduce centralized stable source-type codes.
+
+Initial supported source type:
+
+EMAIL
+
+Example:
+
+IntakeSourceTypes.Email = "EMAIL"
+
+Architecture may permit future:
+- API
+- SFTP
+- HL7
+- BATCH
+
+Do not implement those future source types in B03.
+
+Reject unsupported source types deterministically.
+
+==================================================
+3. SOURCE PURPOSE
+==================================================
+
+Introduce centralized source-purpose codes.
+
+Initial supported purpose:
+
+LIEN_INTAKE
+
+Example:
+
+IntakeSourcePurposes.LienIntake = "LIEN_INTAKE"
+
+Do not infer purpose from:
+- mailbox name
+- email sender
+- email subject
+- attachment
+- tenant subscriptions
+- AI output
+
+Purpose is explicit source configuration.
+
+==================================================
+4. EMAIL ADDRESS NORMALIZATION
+==================================================
+
+Normalize email addresses deterministically before persistence and lookup.
+
+Required behavior:
+- trim surrounding whitespace
+- validate email syntax
+- normalize domain case
+- create a deterministic lookup value
+- persist a NormalizedEmailAddress field
+
+Recommended approach:
+- EmailAddress preserves user-facing input where practical
+- NormalizedEmailAddress is canonical for uniqueness and lookup
+
+Do NOT implement provider-specific alias collapsing such as:
+- Gmail plus-tag removal
+- dot collapsing
+- provider-specific mailbox alias equivalence
+
+B03 normalization must be conservative and deterministic.
+
+==================================================
+5. GLOBAL EMAIL ADDRESS OWNERSHIP
+==================================================
+
+Normalized email address ownership must be globally unique inside Synq Intake.
+
+Required invariant:
+
+NormalizedEmailAddress -> exactly one TenantId
+
+The same normalized email cannot belong to two tenants.
+
+Example forbidden state:
+
+Tenant A -> intake@example.com
+Tenant B -> intake@example.com
+
+Requirements:
+- enforce uniqueness at application layer
+- enforce uniqueness at database layer
+- duplicate registration returns HTTP 409
+- disabled sources retain ownership
+- another tenant cannot claim an address merely because the current source is inactive
+- do not silently reassign ownership
+
+==================================================
+6. PROCESSING PROFILE ASSOCIATION
+==================================================
+
+Every source must identify a ProcessingProfileCode.
+
+Initial supported pairing:
+
+LIEN_INTAKE -> LIEN_INTAKE_V1
+
+B03 must integrate with the existing B02 processing-profile framework.
+
+On creation or update, validate:
+1. processing-profile code format
+2. global processing-profile definition exists
+3. global definition is active
+4. tenant has that profile assigned
+5. tenant profile assignment is enabled
+6. purpose/profile combination is allowed
+
+Do not duplicate B02 profile configuration inside TenantIntakeSource.
+
+The source stores which profile to use.
+B02 remains responsible for effective configuration resolution.
+
+==================================================
+7. PURPOSE / PROFILE COMPATIBILITY REGISTRY
+==================================================
+
+Do not scatter purpose/profile compatibility string comparisons throughout the code.
+
+Create a centralized rule/registry abstraction or equivalent.
+
+Initial supported compatibility:
+
+LIEN_INTAKE -> LIEN_INTAKE_V1
+
+Unknown/incompatible combinations must fail deterministically.
+
+Suggested error:
+
+INTAKE_SOURCE_PROFILE_INCOMPATIBLE
+
+Do not implement SynqFund or CareConnect profiles.
+
+==================================================
+8. TENANT INTAKE ENABLEMENT
+==================================================
+
+Source creation and source resolution must honor B02 tenant-wide Intake configuration.
+
+If:
+
+TenantIntakeConfiguration.IsEnabled == false
+
+then new source-driven processing must fail.
+
+Suggested error:
+
+TENANT_INTAKE_DISABLED
+
+Source records may remain persisted, but they must not resolve for new ingestion.
+
+==================================================
+9. SOURCE ACTIVATION
+==================================================
+
+TenantIntakeSource must support:
+
+IsActive
+
+Active:
+- eligible for new source resolution
+
+Inactive:
+- not eligible for new inbound processing
+- historical association remains intact
+- email ownership remains reserved
+- configuration remains preserved
+
+Suggested resolution error:
+
+INTAKE_SOURCE_INACTIVE
+
+Do not hard-delete on normal disable.
+
+==================================================
+10. DEFAULT SOURCE
+==================================================
+
+Support at most one default source per:
+
+TenantId + Purpose
+
+Example:
+
+Tenant A
+Purpose = LIEN_INTAKE
+Default source = liens@tenant-a.com
+
+Rules:
+- zero or one default per tenant/purpose
+- default source must be active
+- inactive source cannot be made default
+- multiple sources per tenant/purpose are allowed
+- disabling current default must use deterministic behavior
+
+Preferred behavior:
+- reject disabling the current default until another source is selected or default is removed
+
+Suggested error:
+
+DEFAULT_SOURCE_MUST_BE_CHANGED_FIRST
+
+Use a database-level invariant similar to the B02 nullable unique default-key approach if appropriate.
+
+==================================================
+11. PROVIDER MODEL
+==================================================
+
+Introduce centralized provider codes.
+
+Potential initial codes:
+
+MICROSOFT_365
+GOOGLE_WORKSPACE
+GENERIC
+
+Implement only providers that can be honestly represented by the current code.
+
+Do not pretend a live provider connector works unless it actually does.
+
+Provider determines connector behavior/capabilities.
+Provider does NOT determine tenant ownership.
+
+Unknown providers must fail deterministically.
+
+==================================================
+12. CONNECTOR FRAMEWORK
+==================================================
+
+Create a provider-neutral connector abstraction, for example:
+
+IIntakeEmailConnector
+
+Conceptual responsibilities may include:
+
+- ProviderCode
+- GetCapabilities()
+- ValidateConfiguration(...)
+- TestConnectionAsync(...)
+- CreateSubscriptionAsync(...)
+- RemoveSubscriptionAsync(...)
+
+Only implement operational methods that are meaningful in B03.
+
+It is acceptable for B03 to establish:
+- connector interfaces
+- registry
+- capability metadata
+- config validation
+- connection-test contract
+
+without implementing polling/message ingestion.
+
+Do not retrieve or persist mailbox messages in B03.
+
+==================================================
+13. CONNECTOR REGISTRY
+==================================================
+
+Create:
+
+IEmailConnectorRegistry
+
+or equivalent.
+
+Responsibilities:
+- resolve connector by provider code
+- list supported provider definitions/capabilities
+- validate provider-specific configuration
+- reject unknown providers
+- keep provider-specific logic out of general source service code
+
+Do not scatter switch/case provider handling throughout the application.
+
+==================================================
+14. CONNECTOR CAPABILITIES
+==================================================
+
+Create a provider-neutral capability model.
+
+Potential capability flags:
+
+- SupportsPolling
+- SupportsWebhook
+- SupportsOAuth
+- SupportsAttachmentRetrieval
+- SupportsMessageIdLookup
+- SupportsMailboxFolders
+
+Capability metadata must reflect actual connector design honestly.
+
+Do not claim working webhook/polling behavior if not implemented.
+
+==================================================
+15. CONNECTOR CONFIGURATION
+==================================================
+
+If provider-specific configuration must be persisted, use a controlled structure such as:
+
+ConnectorConfigurationJson
+
+Requirements:
+- strongly typed per provider where practical
+- strict deserialization
+- reject unknown fields where feasible
+- validate before persistence
+- no arbitrary CLR type loading
+- no executable code
+- no arbitrary script/config execution
+
+Do not use unvalidated free-form JSON.
+
+==================================================
+16. SECRET HANDLING
+==================================================
+
+Synq Intake must not become a raw mailbox credential vault.
+
+Do NOT store plain:
+- mailbox passwords
+- OAuth refresh tokens
+- client secrets
+- API secrets
+- provider access tokens
+
+in ordinary database columns or connector JSON.
+
+Use existing approved platform patterns where available.
+
+Preferred persisted values are references, for example:
+
+CredentialReference
+SecretReference
+ConnectionReference
+
+If no approved credential store exists yet, implement the reference contract only and explicitly leave live credential retrieval out of B03.
+
+==================================================
+17. SOURCE RESOLVER
+==================================================
+
+Create an application service such as:
+
+IIntakeSourceResolver
+
+Required behavior:
+
+ResolveByEmailAddressAsync(emailAddress)
+
+Resolution result should include at least:
+
+- SourceId
+- TenantId
+- OrgId, where applicable
+- SourceType
+- EmailAddress
+- NormalizedEmailAddress
+- Purpose
+- Provider
+- ProcessingProfileCode
+- SourceConfigurationVersion
+- ResolvedAt
+
+Optionally include B02 version metadata if resolution naturally composes configuration lookup:
+- TenantConfigurationVersion
+- TenantProfileConfigurationVersion
+
+Prefer clean separation:
+1. resolve source
+2. resolve B02 processing profile/configuration
+
+unless existing architecture strongly favors a composed result.
+
+==================================================
+18. SOURCE RESOLUTION RULES
+==================================================
+
+Resolution must:
+
+1. normalize recipient email address
+2. locate exactly one registered source
+3. reject missing source
+4. reject inactive source
+5. load tenant Intake configuration
+6. reject tenant Intake if disabled
+7. validate configured profile is globally active
+8. validate tenant profile assignment exists and is enabled
+9. validate purpose/profile compatibility
+10. return authoritative tenant/source binding
+
+Suggested errors:
+
+INTAKE_SOURCE_NOT_FOUND
+INTAKE_SOURCE_INACTIVE
+TENANT_INTAKE_DISABLED
+INTAKE_SOURCE_PROFILE_UNAVAILABLE
+INTAKE_SOURCE_PROFILE_INCOMPATIBLE
+
+Do not silently fall back to tenant default profile when a source has an explicit ProcessingProfileCode.
+
+The source's configured processing profile is authoritative.
+
+==================================================
+19. TENANT BINDING IMMUTABILITY
+==================================================
+
+Once IIntakeSourceResolver resolves a source:
+
+TenantId must be treated as authoritative and immutable for that inbound event.
+
+No later AI, matching, sender analysis, attachment analysis, or business-domain lookup may replace it.
+
+This invariant must be represented in tests and documented in the report.
+
+==================================================
+20. UNKNOWN RECIPIENT BEHAVIOR
+==================================================
+
+For an unregistered inbound recipient:
+
+- return deterministic not-found behavior
+- do not inspect sender
+- do not inspect email body
+- do not inspect subject
+- do not infer tenant from provider/mailbox metadata
+- do not route to a global fallback mailbox
+- do not guess a processing profile
+
+==================================================
+21. VERSIONING
+==================================================
+
+TenantIntakeSource must include:
+
+ConfigurationVersion
+
+Rules:
+- start at 1
+- increment on successful mutation
+- disable/re-enable does not reset version
+- expose in API responses
+- use for optimistic concurrency
+- future Intake records will be able to persist source version for provenance
+
+==================================================
+22. OPTIMISTIC CONCURRENCY
+==================================================
+
+All source updates must use expected version.
+
+Examples:
+- update source
+- enable/disable source
+- set/remove default
+- modify connector configuration
+- change purpose/profile/provider if allowed
+
+If current source version is 6 and request expects 5:
+
+return HTTP 409
+
+Suggested error:
+
+STALE_SOURCE_CONFIGURATION_VERSION
+
+Do not silently overwrite newer source configuration.
+
+Use existing B02 concurrency conventions where possible.
+
+==================================================
+23. AUDIT
+==================================================
+
+Use LegalSynq audit conventions.
+
+Record successful lifecycle actions such as:
+
+CREATE_SOURCE
+UPDATE_SOURCE
+ENABLE_SOURCE
+DISABLE_SOURCE
+SET_DEFAULT_SOURCE
+REMOVE_DEFAULT_SOURCE
+VALIDATE_SOURCE
+TEST_CONNECTOR
+
+Include safe metadata:
+- TenantId
+- SourceId
+- normalized email where appropriate
+- Provider
+- Purpose
+- ProcessingProfileCode
+- previous version
+- new version
+- actor
+- correlation ID
+- timestamp
+- result
+
+Do not log/persist secrets in audit metadata.
+
+==================================================
+24. STRUCTURED LOGGING
+==================================================
+
+Source operations should log:
+
+- CorrelationId
+- TenantId
+- SourceId
+- Provider
+- Purpose
+- ProcessingProfileCode
+- Operation
+- ConfigurationVersion
+- Result
+
+Do not log:
+- passwords
+- OAuth tokens
+- refresh tokens
+- client secrets
+- Authorization headers
+- service tokens
+- raw connector secrets
+
+==================================================
+25. PERSISTENCE
+==================================================
+
+Extend IntakeDbContext.
+
+Expected new table:
+
+TenantIntakeSources
+
+Potential columns:
+- Id
+- TenantId
+- OrgId
+- SourceType
+- EmailAddress
+- NormalizedEmailAddress
+- Provider
+- Purpose
+- ProcessingProfileCode
+- IsActive
+- IsDefault
+- DefaultTenantPurposeKey
+- ConnectorConfigurationJson
+- CredentialReference
+- ValidationStatus
+- LastValidatedAt
+- LastValidationMessage
+- ConfigurationVersion
+- CreatedAt
+- CreatedBy
+- UpdatedAt
+- UpdatedBy
+
+Only include fields justified by implemented behavior.
+
+==================================================
+26. DATABASE CONSTRAINTS / INDEXES
+==================================================
+
+Required:
+
+A. Global email uniqueness
+
+UNIQUE NormalizedEmailAddress
+
+B. Tenant lookup
+
+INDEX TenantId
+
+C. Tenant + purpose
+
+INDEX (TenantId, Purpose)
+
+D. Tenant + profile
+
+INDEX (TenantId, ProcessingProfileCode)
+
+E. Active source lookup
+
+Index supporting normalized recipient resolution.
+
+F. Default source
+
+Enforce at most one default per:
+
+TenantId + Purpose
+
+Use a nullable unique invariant key if appropriate, for example:
+
+DefaultTenantPurposeKey
+
+Only populated when IsDefault = true.
+
+Disabled sources should not release global email ownership.
+
+==================================================
+27. MIGRATION
+==================================================
+
+Create a B03 EF migration.
+
+Suggested name:
+
+AddTenantIntakeSources
+
+or closest repository-convention equivalent.
+
+The migration must:
+- create only B03 source-management schema
+- add required constraints/indexes
+- contain no email-message tables
+- contain no downstream product tables
+- preserve existing B02 schema
+- be reversible where repository convention requires Down()
+
+==================================================
+28. SOURCE MANAGEMENT SERVICE
+==================================================
+
+Create an application-layer source management service, for example:
+
+IIntakeSourceService
+
+Responsibilities:
+- list tenant sources
+- create source
+- get tenant source
+- update source
+- change active status
+- set/remove default
+- validate source configuration
+- optionally test connector
+- enforce concurrency
+- enforce tenant isolation
+- enforce email uniqueness
+- validate B02 profile state
+- emit audit/log events
+
+Do not place domain/business rules directly in endpoint handlers.
+
+==================================================
+29. REQUIRED APIs
+==================================================
+
+Use ASP.NET Core Minimal APIs and current Intake routing conventions.
+
+Gateway remains:
+
+/api/intake/*
+
+Internal routes should use:
+
+/sources
+
+A. List current tenant sources
+
+GET /sources
+
+Must return only authenticated tenant sources.
+
+B. Create source
+
+POST /sources
+
+Conceptual body:
+
+{
+  "sourceType": "EMAIL",
+  "emailAddress": "liens@tenantdomain.com",
+  "provider": "MICROSOFT_365",
+  "purpose": "LIEN_INTAKE",
+  "processingProfileCode": "LIEN_INTAKE_V1",
+  "isDefault": true,
+  "connectorConfiguration": {}
+}
+
+Do NOT accept TenantId as authoritative input.
+
+C. Get source
+
+GET /sources/{sourceId}
+
+Tenant-scoped.
+
+D. Update source
+
+PUT /sources/{sourceId}
+
+Must include expected configurationVersion.
+
+E. Change source status
+
+PATCH /sources/{sourceId}/status
+
+Conceptual body:
+
+{
+  "isActive": false,
+  "configurationVersion": 3
+}
+
+F. Set/remove default source
+
+Use either:
+PATCH /sources/{sourceId}/default
+
+or include deterministic default mutation in PUT.
+
+Follow existing route conventions.
+
+G. Validate source
+
+POST /sources/{sourceId}/validate
+
+Validates:
+- source fields
+- connector config
+- profile/purpose compatibility
+- provider support
+- credential-reference structure
+
+Do not retrieve email messages.
+
+H. Test connector
+
+Optional only if meaningful:
+
+POST /sources/{sourceId}/test
+
+May validate provider connection/configuration only.
+
+Do not ingest or persist mailbox content.
+
+==================================================
+30. API RESPONSE REQUIREMENTS
+==================================================
+
+Responses should expose appropriate source metadata:
+
+- SourceId
+- SourceType
+- EmailAddress
+- Provider
+- Purpose
+- ProcessingProfileCode
+- IsActive
+- IsDefault
+- ConfigurationVersion
+- ValidationStatus, if implemented
+- LastValidatedAt, if implemented
+- CreatedAt
+- UpdatedAt
+
+Do not expose:
+- raw secrets
+- tokens
+- provider passwords
+- connection credentials
+- internal secret material
+
+==================================================
+31. AUTHENTICATION / AUTHORIZATION
+==================================================
+
+Reuse current LegalSynq auth patterns.
+
+At minimum distinguish:
+- source read permission
+- source manage permission
+
+Suggested semantic permissions:
+
+intake.sources.read
+intake.sources.manage
+
+Reuse existing roles/policies where possible.
+
+TenantId must come from authenticated request context.
+
+Normal tenant requests must not select arbitrary TenantId values.
+
+==================================================
+32. TENANT ISOLATION
+==================================================
+
+Mandatory behavior:
+- Tenant A cannot list Tenant B sources
+- Tenant A cannot get Tenant B source
+- Tenant A cannot update Tenant B source
+- Tenant A cannot disable Tenant B source
+- Tenant A cannot set Tenant B default
+- Tenant A cannot test Tenant B connector
+- Tenant A cannot infer Tenant B source configuration
+
+All repository queries must be server-side tenant-scoped.
+
+==================================================
+33. PROVIDER VALIDATION
+==================================================
+
+Provider code must:
+- use a centralized registry
+- be validated before persistence
+- reject unsupported providers
+
+If provider-specific configuration schema exists:
+- validate strictly
+- reject unknown fields
+- reject invalid credential references
+- keep secrets out of persistent config
+
+==================================================
+34. CONNECTOR VALIDATION STATUS
+==================================================
+
+If implemented, define stable statuses:
+
+NOT_VALIDATED
+VALID
+INVALID
+UNAVAILABLE
+
+Do not conflate:
+
+IsActive
+
+with:
+
+ValidationStatus
+
+Source activation is an administrative lifecycle state.
+ValidationStatus is connector/config health.
+
+==================================================
+35. SOURCE VALIDATION BEHAVIOR
+==================================================
+
+A source validation operation may verify:
+- email syntax
+- normalized uniqueness
+- source type
+- provider support
+- purpose support
+- processing-profile support
+- tenant profile assignment
+- tenant profile enabled
+- connector configuration structure
+- credential-reference format
+
+Do not claim live mailbox connectivity unless actually tested.
+
+==================================================
+36. PROFILE VALIDATION DURING CREATE/UPDATE
+==================================================
+
+For create/update:
+
+1. tenant context must be valid
+2. B02 tenant Intake config must exist and be enabled
+3. source type must be supported
+4. email must normalize successfully
+5. provider must be supported
+6. purpose must be supported
+7. profile code must be supported
+8. global profile must be active
+9. tenant profile assignment must exist
+10. tenant profile assignment must be enabled
+11. purpose/profile combination must be valid
+12. email ownership uniqueness must pass
+13. connector configuration must validate
+14. persist source
+
+No partially valid source should be created.
+
+==================================================
+37. EMAIL OWNERSHIP RELEASE
+==================================================
+
+Do not implement automatic release/reassignment of email ownership when source is disabled.
+
+For B03:
+
+inactive source still owns its normalized email address.
+
+Hard release/reassignment can be a future explicitly governed capability.
+
+==================================================
+38. SOURCE DELETION
+==================================================
+
+Hard-delete is not required.
+
+Preferred lifecycle is:
+- create
+- update
+- enable
+- disable
+
+Historical identity must remain available for future provenance.
+
+Omitting DELETE /sources is acceptable and preferred unless existing conventions require it.
+
+==================================================
+39. SOURCE RESOLUTION API EXPOSURE
+==================================================
+
+IIntakeSourceResolver is primarily an internal application service.
+
+Do not expose unrestricted public email-address-to-tenant lookup.
+
+If an HTTP endpoint is required for internal service use, protect it appropriately and place it under internal/service authorization.
+
+Do not create a public endpoint that leaks tenant ownership by recipient address.
+
+==================================================
+40. TESTS — DOMAIN / APPLICATION
+==================================================
+
+Add focused tests covering:
+
+SOURCE CREATION
+- valid EMAIL source can be created
+- valid LIEN_INTAKE source accepted
+- LIEN_INTAKE_V1 accepted
+- source version begins at 1
+- normalized email stored
+
+EMAIL UNIQUENESS
+- duplicate normalized email rejected
+- same email cannot belong to two tenants
+- disabled source retains ownership
+- case-equivalent normalized duplicate rejected
+
+TENANT ISOLATION
+- Tenant A cannot read Tenant B source
+- Tenant A cannot list Tenant B sources
+- Tenant A cannot update Tenant B source
+- Tenant A cannot disable Tenant B source
+- Tenant A cannot set Tenant B source as default
+
+SOURCE STATUS
+- active source resolves
+- inactive source does not resolve
+- disable increments version
+- re-enable increments version
+- default disable follows deterministic rule
+
+DEFAULT SOURCE
+- one default per tenant/purpose
+- second default handled deterministically
+- inactive source cannot be default
+- default invariant preserved under updates
+
+PROFILE VALIDATION
+- unknown profile rejected
+- inactive global profile rejected
+- tenant-disabled profile rejected
+- missing tenant assignment rejected
+- incompatible purpose/profile rejected
+- tenant Intake disabled rejected
+
+SOURCE RESOLUTION
+- normalized email resolves correct source
+- source resolves correct TenantId
+- unknown email fails
+- inactive email source fails
+- resolver uses recipient/source ownership only
+- no sender/body/content inference path exists
+
+CONCURRENCY
+- stale update returns conflict
+- stale status change returns conflict
+- stale default mutation returns conflict
+
+PROVIDER REGISTRY
+- supported provider resolves
+- unsupported provider rejected
+- provider capabilities returned correctly
+
+CONNECTOR CONFIGURATION
+- valid config accepted
+- invalid config rejected
+- unknown properties rejected where strict schema exists
+- secret values are not accepted where only references are allowed
+
+==================================================
+41. HTTP INTEGRATION TESTS
+==================================================
+
+Where practical, add targeted HTTP tests using the repository's current test-host conventions.
+
+Recommended coverage:
+- GET /sources authenticated
+- POST /sources authenticated
+- GET /sources/{id}
+- PUT /sources/{id}
+- PATCH status
+- 401 unauthenticated
+- 403 insufficient permission
+- 404 cross-tenant/not found
+- 409 stale version
+- 409 duplicate email ownership
+
+This is a good point to improve the HTTP integration-test gap carried from B02.
+
+Do not create excessive new test infrastructure if the repository does not support it cleanly.
+
+==================================================
+42. MYSQL VALIDATION
+==================================================
+
+Validate the B03 migration against disposable/local MySQL 8.
+
+Confirm:
+- TenantIntakeSources table exists
+- migration history includes B03 migration
+- normalized email unique constraint exists
+- tenant/purpose index exists
+- tenant/profile index exists
+- default-source uniqueness works
+- ConfigurationVersion exists
+- B02 tables remain intact
+
+Use no cloud/shared DB.
+
+Destroy disposable DB/container afterward.
+
+==================================================
+43. BUILD / VALIDATION
+==================================================
+
+At minimum run and record:
+
+- dotnet restore if required
+- Intake API build
+- Intake tests
+- relevant HTTP tests if added
+- full LegalSynq solution build with serialized build if necessary
+- dotnet ef dbcontext info
+- dotnet ef migrations list
+- B03 migration apply against disposable MySQL 8
+- schema/index validation
+- git diff --check
+- git status --short
+- git diff --stat
+- git diff --name-status from B02 baseline
+- check no Intake bin/obj tracked
+- check no uploaded prompt/spec assets committed
+
+Do not treat unrelated pre-existing repository warnings as B03 failures.
+
+Explicitly identify any new B03 warnings/errors.
+
+==================================================
+44. SECURITY VALIDATION
+==================================================
+
+Verify and document:
+- no raw mailbox password committed
+- no OAuth refresh token committed
+- no provider client secret committed
+- no API secret committed
+- no service token committed
+- no production/cloud connection string committed
+- no public tenant-resolution leak
+- no cross-tenant mapping
+- no content-based tenant inference
+- no arbitrary executable connector config
+- no unrelated product-domain coupling
+- no build artifacts committed
+
+==================================================
+45. EXISTING-SERVICE IMPACT
+==================================================
+
+B03 should modify only Intake-owned code except minimal shared/platform wiring where required.
+
+Do not change business logic in:
+- SynqLien
+- SynqFund
+- CareConnect
+- Identity
+- Documents
+- Notifications
+- Flow
+
+Use existing contracts/interfaces rather than direct domain/database coupling.
+
+==================================================
+46. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+- mailbox polling
+- Microsoft Graph message retrieval
+- Gmail message retrieval
+- webhook event ingestion
+- Graph subscriptions that actually feed messages
+- Gmail watch ingestion
+- IMAP ingestion
+- SMTP listener
+- raw MIME storage
+- complete email repository
+- email thread storage
+- message analytics
+- attachments
+- Documents Service integration
+- Synq AI classification
+- Synq AI extraction
+- OCR
+- patient matching
+- case matching
+- facility matching
+- duplicate detection execution
+- confidence engine
+- review queue
+- Case creation
+- Lien creation
+- downstream adapters
+- Flow tasks
+- notifications
+- external API Intake
+- HL7
+- SFTP
+- AWS
+- RDS
+- ECS
+- Route53
+- deployment
+
+==================================================
+47. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B03 is complete only when all are true:
+
+1. TenantIntakeSource exists.
+2. Source is Intake-owned and tenant-scoped.
+3. EMAIL is the initial supported source type.
+4. LIEN_INTAKE is the initial supported purpose.
+5. Email normalization is implemented.
+6. NormalizedEmailAddress is persisted.
+7. Normalized email ownership is globally unique.
+8. Cross-tenant duplicate email registration is prevented.
+9. Disabled sources retain email ownership.
+10. Source supports active/inactive lifecycle.
+11. Source supports ConfigurationVersion.
+12. Stale source updates return conflict.
+13. Source supports Provider.
+14. Source supports Purpose.
+15. Source supports ProcessingProfileCode.
+16. LIEN_INTAKE -> LIEN_INTAKE_V1 compatibility is enforced.
+17. B02 tenant Intake enablement is enforced.
+18. B02 global profile activation is enforced.
+19. B02 tenant profile assignment is enforced.
+20. B02 tenant profile enablement is enforced.
+21. Source supports one default per tenant/purpose.
+22. Inactive source cannot be default.
+23. Default disable rule is deterministic.
+24. Connector/provider registry exists.
+25. Unsupported provider is rejected.
+26. Connector capability model exists.
+27. Connector configuration is validated.
+28. Raw secrets are not persisted improperly.
+29. IIntakeSourceResolver exists.
+30. Recipient email resolves correct SourceId.
+31. Recipient email resolves correct TenantId.
+32. Unknown recipient fails deterministically.
+33. Inactive source fails deterministically.
+34. Tenant Intake disabled fails deterministically.
+35. Source profile unavailable fails deterministically.
+36. Tenant identity is never inferred from sender/content/AI.
+37. Source tenant binding cannot be overridden downstream.
+38. Tenant-scoped source management APIs exist.
+39. Tenant A cannot access Tenant B source.
+40. Tenant A cannot mutate Tenant B source.
+41. Source mutations produce audit evidence.
+42. Structured logs contain safe metadata.
+43. B03 EF migration exists.
+44. B03 migration applies successfully to MySQL 8.
+45. Required indexes/constraints exist.
+46. Intake API builds with 0 B03 errors.
+47. Intake tests pass.
+48. Full LegalSynq solution builds with 0 new B03 errors.
+49. No B04 email-message persistence is introduced.
+50. No B05 Documents integration is introduced.
+51. No Synq AI work is introduced.
+52. No cloud/deployment work is performed.
+53. No secrets or uploaded specification assets are committed.
+54. /analysis/LSI-B03-report.md exists with complete evidence.
+
+==================================================
+48. REQUIRED REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B03-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree status
+8. Existing B02 architecture reviewed
+9. Files added
+10. Files modified
+11. TenantIntakeSource domain model
+12. Source type model
+13. Purpose model
+14. Email normalization strategy
+15. Global uniqueness strategy
+16. Source lifecycle behavior
+17. Default-source behavior
+18. Provider registry
+19. Connector abstraction
+20. Connector capabilities
+21. Connector configuration strategy
+22. Credential/secret handling strategy
+23. Purpose/profile compatibility strategy
+24. B02 profile-validation integration
+25. Source resolver behavior
+26. Tenant binding invariant
+27. Tenant isolation evidence
+28. Versioning strategy
+29. Concurrency behavior
+30. APIs
+31. Authorization behavior
+32. Audit behavior
+33. Logging behavior
+34. Migration name
+35. Database schema
+36. Indexes/constraints
+37. MySQL validation
+38. Test commands/results
+39. HTTP tests, if added
+40. Build commands/results
+41. Full solution build result
+42. Security assessment
+43. Existing-service impact
+44. Git diff summary
+45. Known gaps
+46. Out-of-scope confirmation
+47. Final repository validation status
+48. Recommended next bundle: LSI-B04
+
+Sanitize any local disposable credentials.
+
+==================================================
+49. DEFINITION OF DONE
+==================================================
+
+The implementation is done when Synq Intake can reliably and securely answer:
+
+“This inbound recipient address is a registered active Intake source owned by Tenant X, for Purpose Y, using Processing Profile Z.”
+
+without examining sender identity, email body, subject, attachments, document metadata, AI output, or downstream business records to determine tenant ownership.
+
+When complete:
+- stop
+- produce /analysis/LSI-B03-report.md
+- do not begin LSI-B04 automatically
+- do not deploy
+- do not push unless explicitly requested
