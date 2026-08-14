@@ -1186,6 +1186,8 @@ Update an existing case.
 
 Return the legacy case-note history. Each changed non-empty `notes` value submitted through `PATCH /api/liens/cases/details-update` is appended as a new case-note entry rather than replacing prior entries. Feed notes and system update-history entries are intentionally excluded.
 
+Every explicit `notes` change through `details-update`, including clearing an existing value, also creates a case-update history entry with action `Case Details Update` and description `Note updated`. Repeating the same normalized Notes value does not create a duplicate update. When Notes changes together with other case-detail fields, `Note updated` is included in the existing combined change description returned by `POST /api/liens/cases/case-updates/v3`.
+
 **Permission:** `SYNQ_LIENS.case:read`
 
 The response uses the legacy envelope `{ isSuccess, message, data }`. `data` is ordered newest first and each item includes the historical `note` value and creator metadata. `created` is the U.S. Pacific display string, while `createdAtUtc` is the corresponding canonical UTC ISO timestamp.
@@ -2169,3 +2171,5 @@ The existing compatibility keys have these Tracking Notes definitions:
 | `last_case_note_date` | `Last Tracking Note Date` | Date of the newest included Tracking Note in `MM/dd/yyyy` format |
 
 Feed, internal, system/history, deleted, blank, and cross-tenant notes are excluded. `POST /report/diy` and its canonical `/api/liens/reports/diy/run` route return the same aggregated value. Both DIY export routes quote the multiline field in the Base64-encoded CSV, so every Tracking Note is retained.
+
+The distinct Case Update fields keep their established compatibility keys and data source. `last_case_tracking_note` is exposed as `Last Activity`, and `last_case_tracking_date` is exposed as `Last Activity Date`. The same labels are returned by column metadata and written as the corresponding CSV headers; row values, filtering, sorting, and saved report configurations are unchanged.

@@ -7,6 +7,7 @@ using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -1119,9 +1120,130 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         body.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
         body.RootElement.GetProperty("data").EnumerateArray().Should().Contain(item =>
             item.GetProperty("description").GetString()!.Contains("Case updated:", StringComparison.Ordinal) &&
-            item.GetProperty("description").GetString()!.Contains("medical status changed to Treating", StringComparison.Ordinal));
+            item.GetProperty("description").GetString()!.Contains("medical status changed to Treating", StringComparison.Ordinal) &&
+            item.GetProperty("description").GetString()!.Contains("Note updated", StringComparison.Ordinal) &&
+            item.GetProperty("action").GetString() == "Case Details Update");
         body.RootElement.GetProperty("data").EnumerateArray().Should().NotContain(item =>
             item.GetProperty("description").GetString() == "status change from details update");
+    }
+
+    [Fact]
+    public async Task DetailsUpdate_when_notes_change_records_case_update_without_duplicates()
+    {
+        Guid caseId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-NOTE-UPD-{Guid.NewGuid():N}"[..24],
+                "Note",
+                "Update",
+                SeedHelper.UserId,
+                notes: "Original note");
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+            caseId = caseEntity.Id;
+        }
+
+        async Task<HttpResponseMessage> UpdateNotesAsync(string notes) =>
+            await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+            {
+                caseId,
+                notes,
+            });
+
+        var changedResponse = await UpdateNotesAsync("Updated note");
+        changedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await changedResponse.Content.ReadAsStringAsync()}");
+
+        var unchangedResponse = await UpdateNotesAsync("Updated note");
+        unchangedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await unchangedResponse.Content.ReadAsStringAsync()}");
+
+        var clearedResponse = await UpdateNotesAsync("   ");
+        clearedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await clearedResponse.Content.ReadAsStringAsync()}");
+
+        var updatesResponse = await _client.PostAsJsonAsync("/api/liens/cases/case-updates/v3", new
+        {
+            CaseId = caseId,
+            page = 1,
+            limit = 10,
+        });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var payload = await updatesResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var updates = payload!.RootElement.GetProperty("data").EnumerateArray().ToList();
+        updates.Should().HaveCount(2);
+        updates.Should().OnlyContain(item =>
+            item.GetProperty("action").GetString() == "Case Details Update" &&
+            item.GetProperty("description").GetString() == "Note updated");
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var storedNotes = await verificationDb.LienCaseNotes
+            .Where(note => note.TenantId == SeedHelper.TenantId && note.CaseId == caseId)
+            .ToListAsync();
+        storedNotes.Count(note => note.Category == CaseNoteCategory.General).Should().Be(1);
+        storedNotes.Count(note => note.Category == CaseNoteCategory.Internal).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task DetailsUpdate_when_history_write_fails_rolls_back_case_and_tracking_note()
+    {
+        using var factory = new TransactionalLiensApiFactory();
+        Guid caseId;
+
+        using (var setupScope = factory.Services.CreateScope())
+        {
+            await SeedHelper.SeedAsync(setupScope.ServiceProvider);
+            var db = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-NOTE-ROLLBACK-{Guid.NewGuid():N}"[..28],
+                "Rollback",
+                "Case",
+                SeedHelper.UserId,
+                notes: "Original note");
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+            caseId = caseEntity.Id;
+        }
+
+        factory.Services.GetRequiredService<CapturingAuditPublisher>().Clear();
+
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                JwtTokenHelper.CreateFullAccessToken(SeedHelper.TenantId, SeedHelper.UserId));
+
+        var response = await client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId,
+            notes = "Updated note",
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verificationScope = factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var storedCase = await verificationDb.Cases
+            .AsNoTracking()
+            .SingleAsync(caseEntity => caseEntity.Id == caseId);
+        storedCase.Notes.Should().Be("Original note");
+        (await verificationDb.LienCaseNotes
+                .AsNoTracking()
+                .Where(note => note.CaseId == caseId)
+                .ToListAsync())
+            .Should().BeEmpty();
+        verificationScope.ServiceProvider
+            .GetRequiredService<CapturingAuditPublisher>()
+            .Events.Should().BeEmpty();
     }
 
     [Fact]

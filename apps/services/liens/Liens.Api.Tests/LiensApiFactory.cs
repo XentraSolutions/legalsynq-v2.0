@@ -16,7 +16,7 @@ namespace Liens.Api.Tests;
 /// Single WebApplicationFactory shared across all legacy API test classes.
 /// Replaces MySQL with an InMemory database and stubs out external HTTP calls.
 /// </summary>
-public sealed class LiensApiFactory : WebApplicationFactory<Program>
+public class LiensApiFactory : WebApplicationFactory<Program>
 {
     public string DbName { get; } = $"liens-tests-{Guid.CreateVersion7()}";
 
@@ -446,10 +446,20 @@ internal sealed class CapturingPublicBuyerAccountProvisioningService : IPublicBu
 internal sealed class CapturingAuditPublisher : IAuditPublisher
 {
     private readonly List<CapturedAuditEvent> _events = [];
+    private readonly AsyncLocal<List<CapturedAuditEvent>?> _bufferedEvents = new();
 
     public IReadOnlyList<CapturedAuditEvent> Events => _events;
 
     public void Clear() => _events.Clear();
+
+    public IAuditPublicationBuffer BeginBuffer()
+    {
+        if (_bufferedEvents.Value is not null)
+            throw new InvalidOperationException("An audit publication buffer is already active.");
+
+        _bufferedEvents.Value = [];
+        return new CapturingAuditPublicationBuffer(this);
+    }
 
     public void Publish(
         string eventType,
@@ -463,7 +473,7 @@ internal sealed class CapturingAuditPublisher : IAuditPublisher
         string? after = null,
         string? metadata = null)
     {
-        _events.Add(new CapturedAuditEvent(
+        var capturedEvent = new CapturedAuditEvent(
             eventType,
             action,
             description,
@@ -474,7 +484,44 @@ internal sealed class CapturingAuditPublisher : IAuditPublisher
             before,
             after,
             metadata,
-            DateTimeOffset.UtcNow));
+            DateTimeOffset.UtcNow);
+
+        if (_bufferedEvents.Value is { } bufferedEvents)
+            bufferedEvents.Add(capturedEvent);
+        else
+            _events.Add(capturedEvent);
+    }
+
+    private void CommitBuffer()
+    {
+        var bufferedEvents = _bufferedEvents.Value
+            ?? throw new InvalidOperationException("No audit publication buffer is active.");
+        _bufferedEvents.Value = null;
+        _events.AddRange(bufferedEvents);
+    }
+
+    private void DiscardBuffer() => _bufferedEvents.Value = null;
+
+    private sealed class CapturingAuditPublicationBuffer : IAuditPublicationBuffer
+    {
+        private CapturingAuditPublisher? _owner;
+
+        public CapturingAuditPublicationBuffer(CapturingAuditPublisher owner)
+        {
+            _owner = owner;
+        }
+
+        public void Commit()
+        {
+            var owner = Interlocked.Exchange(ref _owner, null)
+                ?? throw new InvalidOperationException("The audit publication buffer is already complete.");
+            owner.CommitBuffer();
+        }
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _owner, null)?.DiscardBuffer();
+        }
     }
 }
 

@@ -5113,7 +5113,9 @@ public static class CaseEndpoints
             {
                 id = n.Id.ToString(),
                 caseId = n.CaseId.ToString(),
-                action = string.IsNullOrWhiteSpace(n.Category) ? "CaseNote" : n.Category,
+                action = string.Equals(n.Category, CaseNoteCategory.Internal, StringComparison.OrdinalIgnoreCase)
+                    ? "Case Details Update"
+                    : string.IsNullOrWhiteSpace(n.Category) ? "CaseNote" : n.Category,
                 description = n.Content,
                 timestamp = FormatLegacyTimestamp(n.UpdatedAtUtc ?? n.CreatedAtUtc),
                 note = n.Content,
@@ -5779,6 +5781,8 @@ public static class CaseEndpoints
         CaseDetailsUpdateRequest req,
         ICaseService caseService,
         ILienCaseNoteService caseNoteService,
+        IUnitOfWork unitOfWork,
+        IAuditPublisher auditPublisher,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -5795,9 +5799,18 @@ public static class CaseEndpoints
             : existing.Status;
         var detailsNote = req.Notes?.Trim();
         var detailsNoteChanged =
-            !string.IsNullOrWhiteSpace(detailsNote) &&
-            !string.Equals(existing.Notes ?? string.Empty, detailsNote, StringComparison.Ordinal);
-        var updateSummary = BuildCaseUpdateSummary(existing, req, normalizedStatus, dateOfLoss, trackingFollowUp);
+            req.Notes is not null &&
+            !string.Equals(
+                existing.Notes?.Trim() ?? string.Empty,
+                detailsNote ?? string.Empty,
+                StringComparison.Ordinal);
+        var updateSummary = BuildCaseUpdateSummary(
+            existing,
+            req,
+            normalizedStatus,
+            dateOfLoss,
+            trackingFollowUp,
+            detailsNoteChanged);
 
         var request = new UpdateCaseRequest
         {
@@ -5831,37 +5844,51 @@ public static class CaseEndpoints
             IsUccFiled       = req.IsUccFiled,
             StatusLabel       = ResolveLegacyCaseStatusLabel(req.CurrentStatus),
         };
-        await caseService.UpdateAsync(tenantId, req.CaseId, userId, request, ct);
-
-        if (detailsNoteChanged)
+        using var auditBuffer = auditPublisher.BeginBuffer();
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+        try
         {
-            await caseNoteService.CreateNoteAsync(
-                tenantId,
-                req.CaseId,
-                userId,
-                new CreateCaseNoteRequest
-                {
-                    Content = detailsNote!,
-                    Category = CaseNoteCategory.General,
-                    CreatedByName = ctx.Name ?? ctx.Email ?? userId.ToString(),
-                },
-                ct);
+            await caseService.UpdateAsync(tenantId, req.CaseId, userId, request, ct);
+
+            if (detailsNoteChanged && !string.IsNullOrWhiteSpace(detailsNote))
+            {
+                await caseNoteService.CreateNoteAsync(
+                    tenantId,
+                    req.CaseId,
+                    userId,
+                    new CreateCaseNoteRequest
+                    {
+                        Content = detailsNote!,
+                        Category = CaseNoteCategory.General,
+                        CreatedByName = ctx.Name ?? ctx.Email ?? userId.ToString(),
+                    },
+                    ct);
+            }
+
+            if (!string.IsNullOrWhiteSpace(updateSummary))
+            {
+                await caseNoteService.CreateNoteAsync(
+                    tenantId,
+                    req.CaseId,
+                    userId,
+                    new CreateCaseNoteRequest
+                    {
+                        Content = updateSummary,
+                        Category = CaseNoteCategory.Internal,
+                        CreatedByName = ctx.Email ?? ctx.Name ?? userId.ToString(),
+                    },
+                    ct);
+            }
+
+            await transaction.CommitAsync(ct);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
         }
 
-        if (!string.IsNullOrWhiteSpace(updateSummary))
-        {
-            await caseNoteService.CreateNoteAsync(
-                tenantId,
-                req.CaseId,
-                userId,
-                new CreateCaseNoteRequest
-                {
-                    Content = updateSummary,
-                    Category = CaseNoteCategory.Internal,
-                    CreatedByName = ctx.Email ?? ctx.Name ?? userId.ToString(),
-                },
-                ct);
-        }
+        auditBuffer.Commit();
 
         return Results.Ok(new { isSuccess = true, message = "Successfully Updated." });
     }
@@ -5871,7 +5898,8 @@ public static class CaseEndpoints
         CaseDetailsUpdateRequest req,
         string normalizedStatus,
         DateOnly? dateOfLoss,
-        DateOnly? trackingFollowUp)
+        DateOnly? trackingFollowUp,
+        bool detailsNoteChanged)
     {
         var changes = new List<string>();
 
@@ -5914,8 +5942,14 @@ public static class CaseEndpoints
         if (!AreCaseFlagsEquivalent(existing.IsUccFiled, req.IsUccFiled))
             changes.Add($"ucc filed changed to {NormalizeCaseFlagForDisplay(req.IsUccFiled)}");
 
+        if (detailsNoteChanged)
+            changes.Add("Note updated");
+
         if (changes.Count == 0)
             return null;
+
+        if (changes.Count == 1 && detailsNoteChanged)
+            return "Note updated";
 
         return $"Case updated: {string.Join("; ", changes)}.";
     }

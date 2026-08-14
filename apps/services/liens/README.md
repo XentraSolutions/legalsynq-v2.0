@@ -94,6 +94,10 @@ DIY report billing and purchase columns aggregate `billingAmount` and `purchaseA
 
 The DIY column key `last_case_note` is labeled **Tracking Notes** and returns every active, nonblank General or Follow-up note for the case, newest first and separated by line breaks. `last_case_note_date` is labeled **Last Tracking Note Date** and contains the newest included note date. Feed, internal, system/history, deleted, blank, and cross-tenant notes are excluded. Preview and CSV export use the same aggregation, and the report UI preserves the line breaks as stacked entries.
 
+The separate Case Update compatibility keys retain their existing values and behavior: `last_case_tracking_note` is labeled **Last Activity**, and `last_case_tracking_date` is labeled **Last Activity Date**. DIY column metadata and CSV exports use these activity-based labels without changing the saved keys or the underlying Case Update source.
+
+`PATCH /api/liens/cases/details-update` records every explicit Notes change in case-update history. Notes-only changes appear in `POST /api/liens/cases/case-updates/v3` as action **Case Details Update** with description **Note updated**; unchanged normalized values do not create duplicates, and clearing an existing Notes value is logged. A changed nonblank value continues to be appended separately to Tracking Notes.
+
 `POST /api/liens/settlement/create` preserves its settlement-detail status.
 `POST /api/liens/settlement/payments` stores settlement type (for example, `By Attorney`),
 settlement status (for example, `Full Payment`), and lien status independently. An `Open`
