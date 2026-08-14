@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Copy } from "lucide-react";
+import { ArrowLeft, Clipboard, Copy } from "lucide-react";
 import { LienDetailsResult } from "@/types/lien-selling";
 import { LienInformationPanel } from "./lien-detail/lien-information-panel";
 import { FundingCompanyAndCaseInformationPanel } from "./lien-detail/funding-company-information-panel";
@@ -15,11 +15,13 @@ import UploadDocuments from "./forms/add-medical-lien/medical-upload-document";
 import { fileIconFor, UploadedFileRow } from "./uploaded-file-row";
 import { SALE_DOCUMENT_LABELS } from "@/lib/selling/selling-detail.mapper";
 import { useLienDocuments, useSaveLienDocuments } from "@/lib/selling/use-lien-documents";
+import { useLienActivity } from "@/lib/selling/use-lien-activity";
 import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
 import { useToast } from "@/lib/toast-context";
 import { Tabs } from "@/components/selling/tabs";
 import { LienRowActionsMenu } from "./lien-row-actions-menu";
 import { Button } from "@/components/selling/button";
+import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
 
 interface LienDetailPanelProps {
   lien: LienDetailsResult;
@@ -31,6 +33,7 @@ const BASE_PATH = "/selling/portfolio";
 const TABS = [
   { key: "details", label: "Details" },
   { key: "documents", label: "Documents" },
+  { key: "activity", label: "Activity" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -158,6 +161,7 @@ export function PortfolioDetailPanel({
         </>
       )}
       {activeTab === "documents" && <DocumentsTab lien={lien} />}
+      {activeTab === "activity" && <ActivityTab lienId={lien.lienId} />}
 
       {editModal === "lien-information" && (
         <EditLienInformationModal
@@ -194,6 +198,107 @@ export function PortfolioDetailPanel({
           }}
         />
       )}
+    </div>
+  );
+}
+
+const ACTIVITY_PAGE_SIZE = 5;
+
+function ActivityTab({ lienId }: { lienId: string }) {
+  const { data, isLoading, isError } = useLienActivity(lienId);
+  const items = data?.items ?? [];
+
+  // The API returns the full activity history in one response — pagination
+  // here is purely client-side, slicing further into the already-fetched
+  // array on each "Load More" click.
+  const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
+
+  useEffect(() => {
+    setVisibleCount(ACTIVITY_PAGE_SIZE);
+  }, [lienId]);
+
+  const visibleItems = items.slice(0, visibleCount);
+  const hasMore = visibleCount < items.length;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg">
+      <div className="px-6 py-5">
+        <h3 className="text-md font-semibold mb-4">Activity</h3>
+
+        {isLoading ? (
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex gap-3 animate-pulse">
+                <div className="w-5 h-5 rounded-full bg-gray-100 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 w-2/3 bg-gray-100 rounded" />
+                  <div className="h-3 w-24 bg-gray-100 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : isError ? (
+          <p className="text-sm text-red-600 py-6 text-center">
+            Failed to load activity.
+          </p>
+        ) : items.length === 0 ? (
+          <ContactsEmptyState
+            icon={Clipboard}
+            title="No Recent Activity"
+            description="There are no recent activities to display. New updates will appear here as they occur."
+          />
+        ) : (
+          <>
+            <ol className="relative space-y-5">
+              {visibleItems.length > 1 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute left-[7px] top-4 h-[calc(100%-32px)] w-px bg-gray-200"
+                />
+              )}
+              {visibleItems.map((item) => (
+                <li key={item.id} className="relative flex gap-3">
+                  <span className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary">
+                    <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800">
+                      {item.description}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(item.timestampUtc).toLocaleDateString()} ·{" "}
+                      {new Date(item.timestampUtc).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            {hasMore ? (
+              <div className="pt-5 flex flex-col items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleCount((count) => count + ACTIVITY_PAGE_SIZE)
+                  }
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Load More
+                </button>
+                <span className="text-xs text-gray-400">
+                  Showing {visibleItems.length} of {items.length}
+                </span>
+              </div>
+            ) : (
+              items.length > ACTIVITY_PAGE_SIZE && (
+                <p className="pt-5 text-xs text-gray-400 text-center">
+                  You&apos;re all caught up — showing all {items.length} activities.
+                </p>
+              )
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

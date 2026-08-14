@@ -69,6 +69,11 @@ export const liensService = {
     return data;
   },
 
+  async getLienActivity(id: string) {
+    const { data } = await liensApi.getActivity(id);
+    return data;
+  },
+
   async getSellingDashboard(query: DashboardQuery = {}): Promise<any> {
     const { data } = await liensApi.getDashboard(query);
     return data;
