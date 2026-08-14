@@ -11,13 +11,22 @@ export interface NumberInputProps
   onValueChange: (rawValue: string) => void; // Emits the unformatted numeric string back up
   prefix?: React.ReactNode;
   suffix?: React.ReactNode;
+  /** Opt-in currency mode: strips leading zeros and caps the decimal part to this many digits, e.g. 2 for cents. Omit to keep the default unrestricted masking. */
+  maxDecimals?: number;
 }
 
 // Strips everything but digits and a single decimal point, e.g. "1,234.5.6" -> "1234.56"
-function toRawValue(input: string): string {
+// When maxDecimals is set, also strips leading zeros ("0005" -> "5") and caps the decimal part.
+function toRawValue(input: string, maxDecimals?: number): string {
   const cleaned = input.replace(/[^\d.]/g, "");
-  const [whole, ...rest] = cleaned.split(".");
-  return rest.length > 0 ? `${whole}.${rest.join("")}` : whole;
+  const [wholeRaw, ...rest] = cleaned.split(".");
+  const whole = maxDecimals !== undefined ? wholeRaw.replace(/^0+(?=\d)/, "") : wholeRaw;
+  if (rest.length === 0) {
+    return whole;
+  }
+  const decimal =
+    maxDecimals !== undefined ? rest.join("").slice(0, maxDecimals) : rest.join("");
+  return `${whole}.${decimal}`;
 }
 
 // Groups the integer part with thousands separators as the user types, e.g. "1234.5" -> "1,234.5"
@@ -36,6 +45,7 @@ export function NumberInput({
   className = "",
   prefix,
   suffix,
+  maxDecimals,
   ...props
 }: NumberInputProps) {
   const generatedId = useId();
@@ -69,7 +79,7 @@ export function NumberInput({
           type="text"
           inputMode="decimal"
           value={displayValue}
-          onChange={(e) => onValueChange(toRawValue(e.target.value))}
+          onChange={(e) => onValueChange(toRawValue(e.target.value, maxDecimals))}
           aria-invalid={!!error}
           className={`w-full h-9 rounded-lg border border-gray-200 bg-white ${prefix ? "pl-9" : "px-3"} ${suffix ? "pr-9" : ""} py-1 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-red-300 ${className}`}
         />
