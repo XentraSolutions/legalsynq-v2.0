@@ -17,6 +17,7 @@ import {
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import { useLienStore } from "@/stores/lien-store";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NoteCell } from "./note-cell";
 
 type SummaryTotals = {
   summaryTotals: ReportTotals;
@@ -187,99 +188,55 @@ export default function ReportDisplay({
   const fetchColumns = useCallback(async () => {
     if (!report.config?.columns) {
       const cols = defaultColumns
-        .flatMap((config: any) => config.value)
-        .map((item) => {
-          const isCurrencyField = /amt|amount|price|cost|fee|total/i.test(
-            item.key,
-          );
+      .flatMap((config: any) => config.value)
+      .map((item: any) => {
+        const isCurrencyField =
+          /amt|amount|price|cost|fee|total/i.test(item.key);
 
-          const isDefaultMinWidth =
-            item.key.includes("facility") ||
-            item.key.includes("law") ||
-            item.key.includes("case_type")
-              ? { minWidth: "220px", width: "100%" }
+        const isNoteField = item.key.toLowerCase().includes("note");
+
+        const isDefaultMinWidth =
+          item.key.includes("facility") ||
+          item.key.includes("law") ||
+          item.key.includes("case_type")
+            ? { minWidth: "220px", width: "100%" }
+            : isNoteField
+              ? { minWidth: "300px" }
               : item.key.includes("id") || item.key.includes("status")
                 ? { minWidth: "135px", width: "100%" }
                 : { minWidth: "50px" };
 
-          return {
-            id: item.key,
-            header: item.label,
-            accessorFn: (row: any) => row[item.key],
-            meta: {
-              ...isDefaultMinWidth,
-            },
-            cell: ({ row }: any) => {
-              const value = row.original[item.key];
-              let formattedValue = value;
-
-              if (isCurrencyField && value !== null && value !== undefined) {
-                // Remove everything except numbers, periods, and minus signs
-                const cleanString = String(value).replace(/[^0-9.-]+/g, "");
-                const numericValue = parseFloat(cleanString);
-
-                // Format if it successfully parsed into a valid number
-                if (!isNaN(numericValue)) {
-                  formattedValue = formatCurrency(numericValue);
-                }
-              }
-
-              return (
-                <span
-                  className={`text-sm text-gray-700 ${item.key === "last_case_note" ? "whitespace-pre-line" : ""}`}
-                >
-                  {formattedValue}
-                </span>
-              );
-            },
-          };
-        });
-
-      setColumns(cols);
-    } else {
-      const tableColumns = defaultColumns.map((item) => {
-        // Define keywords that identify an amount or numeric column
-        const isCurrencyField = /amt|amount|price|cost|fee|total/i.test(
-          item.key,
-        );
-        const isDefaultMinWidth =
-          item.key.includes("facility") ||
-          item.key.includes("law") ||
-          item.key.includes("case_type") ||
-          item.key.includes("manager")
-            ? { minWidth: "220px", width: "100%" }
-            : item.key.includes("lien_id") ||
-                item.key.includes("case_id") ||
-                item.key.includes("status")
-              ? { minWidth: "135px", width: "100%" }
-              : { minWidth: "50px" };
         return {
           id: item.key,
           header: item.label,
           accessorFn: (row: any) => row[item.key],
+
           meta: {
             ...isDefaultMinWidth,
           },
+
           cell: ({ row }: any) => {
             const value = row.original[item.key];
 
+            // Handle note fields
+            if (isNoteField) {
+              return <NoteCell value={value} />;
+            }
+
             let formattedValue = value;
 
+            // Handle currency fields
             if (isCurrencyField && value !== null && value !== undefined) {
-              // 1. Remove everything except numbers, periods, and minus signs (e.g., "$1,200.50" -> "1200.50")
               const cleanString = String(value).replace(/[^0-9.-]+/g, "");
               const numericValue = parseFloat(cleanString);
 
-              // 2. Format if it successfully parsed into a valid number
               if (!isNaN(numericValue)) {
                 formattedValue = formatCurrency(numericValue);
               }
             }
 
             return (
-              <span
-                className={`text-sm text-gray-700 ${item.key === "last_case_note" ? "whitespace-pre-line" : ""}`}
-              >
+              <span className="text-sm text-gray-700">
                 {formattedValue}
               </span>
             );
@@ -287,6 +244,65 @@ export default function ReportDisplay({
         };
       });
 
+    setColumns(cols);
+  } else {
+    const tableColumns = defaultColumns.map((item: any) => {
+      const isCurrencyField =
+        /amt|amount|price|cost|fee|total/i.test(item.key);
+
+      const isNoteField = item.key.toLowerCase().includes("note");
+
+      const isDefaultMinWidth =
+        item.key.includes("facility") ||
+        item.key.includes("law") ||
+        item.key.includes("case_type") ||
+        item.key.includes("manager")
+          ? { minWidth: "220px", width: "100%" }
+          : item.key.includes("lien_id") ||
+              item.key.includes("case_id") ||
+              item.key.includes("status")
+            ? { minWidth: "135px", width: "100%" }
+            : isNoteField
+              ? { minWidth: "300px" }
+              : { minWidth: "50px" };
+
+      return {
+        id: item.key,
+        header: item.label,
+        accessorFn: (row: any) => row[item.key],
+
+        meta: {
+          ...isDefaultMinWidth,
+        },
+
+        cell: ({ row }: any) => {
+          const value = row.original[item.key];
+
+          // Handle note fields
+          if (isNoteField) {
+            return <NoteCell value={value} />;
+          }
+
+          let formattedValue = value;
+
+          // Handle currency fields
+          if (isCurrencyField && value !== null && value !== undefined) {
+            const cleanString = String(value).replace(/[^0-9.-]+/g, "");
+            const numericValue = parseFloat(cleanString);
+
+            if (!isNaN(numericValue)) {
+              formattedValue = formatCurrency(numericValue);
+            }
+          }
+
+          return (
+            <span className="text-sm text-gray-700">
+              {formattedValue}
+            </span>
+          );
+        },
+      };
+    });
       setColumns(tableColumns);
     }
 
