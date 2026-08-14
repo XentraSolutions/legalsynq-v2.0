@@ -1,5 +1,6 @@
 import { createMutationTest, expect } from '../../../support/mutation-test';
 import { getEnv } from '../../../config/environments';
+import type { PageOf } from '../../../support/test-types';
 
 /**
  * Covers the Liens list (/lien/liens) column-header sorting — follow-up to
@@ -23,6 +24,8 @@ import { getEnv } from '../../../config/environments';
 
 const test = createMutationTest('lien');
 const env = getEnv();
+
+type TestPage = PageOf<typeof test>;
 
 interface FieldSpec {
   /** Exact column header text as rendered in the table. */
@@ -92,11 +95,11 @@ type Direction = 'asc' | 'desc';
  * sidesteps needing to predict that heuristic.
  */
 async function collectDirectionResponses(
-  page: import('@playwright/test').Page,
-  header: ReturnType<import('@playwright/test').Page['getByRole']>,
+  page: TestPage,
+  header: ReturnType<TestPage['getByRole']>,
   maxClicks = 6,
 ) {
-  const seen: Partial<Record<Direction, import('@playwright/test').Response>> = {};
+  const seen: Partial<Record<Direction, Awaited<ReturnType<TestPage['waitForResponse']>>>> = {};
   for (let i = 0; i < maxClicks && (!seen.asc || !seen.desc); i++) {
     await expect(page.getByText(/^\d+ liens$/)).toBeVisible();
     const [response] = await Promise.all([
