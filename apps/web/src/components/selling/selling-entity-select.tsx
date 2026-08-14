@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BaseSelect, type BaseSelectOption } from "@/components/ui/base-select";
 import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
@@ -34,8 +34,14 @@ export type SellingEntityType =
   | "MedicalProvider";
 
 interface SellingEntitySelectProps {
-  /** The company type to select from. When `isContactPerson` is set, this is the type of the *parent* company whose contacts are listed. */
-  entityType: SellingEntityType;
+  /**
+   * The company type to select from. When `isContactPerson` is set, this is
+   * the type of the *parent* company whose contacts are listed. Omit to list
+   * companies across all types (e.g. a generic "pick any company" field) —
+   * only meaningful when `isContactPerson` is unset, since a contact list
+   * always needs a specific parent company.
+   */
+  entityType?: SellingEntityType;
   /** Required when `isContactPerson` is set — scopes the contacts list to this company. */
   companyId?: string;
   requireParent?: boolean;
@@ -86,10 +92,25 @@ export function SellingEntitySelect({
     (t) => t.code === entityType,
   );
 
+  // Server-side search, not just client-side filtering of one loaded page —
+  // an unscoped (no entityType) company list, or any type with more
+  // companies than a page holds, otherwise can't find a match past that
+  // page (see create-contact-person.spec.ts).
+  const [companySearch, setCompanySearch] = useState("");
+  const [debouncedCompanySearch, setDebouncedCompanySearch] = useState("");
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedCompanySearch(companySearch), 300);
+    return () => clearTimeout(timeout);
+  }, [companySearch]);
+
   const companiesQuery = useCompanies(
-    { companyTypeId: companyType?.id },
-    { enabled: !isContactPerson && Boolean(companyType?.id) },
+    { companyTypeId: companyType?.id, search: debouncedCompanySearch || undefined },
+    { enabled: !isContactPerson && (!entityType || Boolean(companyType?.id)) },
   );
+  // A debounced-search refetch in flight, distinct from the very first load —
+  // BaseSelect shows a different skeleton for each.
+  const isSearchingCompanies =
+    companiesQuery.isFetching && !companiesQuery.isLoading;
 
   const contactPersonsQuery = useContactPersons(companyId, true, {
     enabled: isContactPerson && !parentMissing,
@@ -162,12 +183,16 @@ export function SellingEntitySelect({
         onChange={onChange}
         options={options}
         isLoading={isLoading}
+        isSearching={!isContactPerson ? isSearchingCompanies : undefined}
         disabled={disabled || parentMissing}
         placeholder={parentMissing ? parentHint : placeholder}
         searchPlaceholder={searchPlaceholder}
         error={error}
         className={className}
         clearable
+        search={!isContactPerson ? companySearch : undefined}
+        onSearchChange={!isContactPerson ? setCompanySearch : undefined}
+        filterLocally={isContactPerson}
         createAction={
           allowCreate && !parentMissing
             ? { label: createLabel, onSelect: () => setShowCreate(true) }
