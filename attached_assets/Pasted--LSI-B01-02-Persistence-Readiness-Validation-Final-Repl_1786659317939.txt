@@ -1,0 +1,975 @@
+# LSI-B01-02 — Persistence & Readiness Validation
+## Final Replit / XenIA / Codex Validation Prompt
+
+Ticket: LSI-B01-02 — Persistence & Readiness Validation
+Bundle: LSI-B01 — Synq Intake Platform Foundation
+Task Type: Validation / Repository Hardening
+Active Phase: 🟦 Repository Phase
+Repository: XentraSolutions/legalsynq-v3.0
+Required Report: /analysis/LSI-B01-02-report.md
+
+==================================================
+1. OBJECTIVE
+==================================================
+
+Validate that the Synq Intake persistence foundation created in LSI-B01-01 is operationally sound under local/disposable conditions.
+
+This is NOT a feature-build ticket.
+
+The purpose of LSI-B01-02 is to close the remaining validation gaps from LSI-B01-01 before moving the LSI-B01 foundation to GitHub validation.
+
+This ticket must prove:
+
+- IntakeDbContext can connect to a valid MySQL 8 instance;
+- /health/ready becomes healthy when the configured database is available;
+- liveness remains appropriately independent from readiness;
+- EF design-time tooling can instantiate IntakeDbContext;
+- EF migration tooling is structurally valid;
+- no placeholder business entities or fake schema are introduced merely to satisfy EF;
+- existing LegalSynq service behavior remains unchanged.
+
+DO NOT expand Synq Intake business scope in this ticket.
+
+==================================================
+2. MANDATORY FIRST ACTION
+==================================================
+
+Before making validation or correction changes:
+
+1. Create:
+
+/analysis/LSI-B01-02-report.md
+
+2. Record the repository baseline:
+- current branch;
+- current HEAD SHA;
+- origin/xenia SHA if available;
+- working-tree status;
+- whether the LSI-B01-01 implementation is present in the current working tree;
+- whether there are any pre-existing uncommitted changes.
+
+3. Treat:
+
+/analysis/LSI-B01-01-report.md
+
+as a READ-ONLY baseline.
+
+4. Update only:
+
+/analysis/LSI-B01-02-report.md
+
+for this ticket.
+
+DO NOT append this ticket to the previous report.
+
+==================================================
+3. LSI-B01-01 BASELINE
+==================================================
+
+LSI-B01-01 established:
+
+- independent Synq Intake service;
+- .NET 10 / ASP.NET Core stack;
+- EF Core + Pomelo MySQL persistence foundation;
+- dedicated IntakeDbContext;
+- dedicated IntakeDatabase connection setting;
+- existing LegalSynq JWT/service-token patterns;
+- tenant request context;
+- correlation IDs;
+- structured logging;
+- /health;
+- /health/ready;
+- /info;
+- additive YARP /api/intake/* routes;
+- startup-script integration;
+- architecture/product-neutral tests;
+- tenant-owned inbound email architecture invariant.
+
+LSI-B01-01 repository validation was classified:
+
+REPOSITORY IMPLEMENTATION PARTIAL
+
+because:
+
+1. database-backed /health/ready was not proven healthy due to no local IntakeDatabase;
+2. dotnet-ef tooling was unavailable, so EF design-time validation did not run.
+
+Those are the ONLY intended gaps to close in this ticket unless new evidence reveals a genuine foundation defect.
+
+==================================================
+4. LOCKED ARCHITECTURE
+==================================================
+
+Do not redesign the LSI-B01-01 architecture.
+
+Synq Intake remains:
+
+- tenant-aware;
+- product-neutral;
+- independently persisted;
+- independently startable;
+- aligned to LegalSynq v3;
+- behind the existing YARP gateway;
+- separate from other services' databases and EF contexts.
+
+The locked tenant email architecture remains:
+
+Each tenant will designate its own inbound email address for Synq Intake.
+
+Future email tenant resolution must come from registered tenant-owned source configuration before business processing.
+
+Tenant identity must NOT be inferred from:
+
+- sender;
+- sender domain;
+- subject;
+- body;
+- attachments;
+- document metadata;
+- classification;
+- AI output.
+
+DO NOT implement TenantIntakeSource or email ingestion in this ticket.
+
+==================================================
+5. TECHNOLOGY STACK DISCIPLINE
+==================================================
+
+Use the existing LegalSynq v3 technology stack only.
+
+Required baseline:
+
+- .NET 10
+- ASP.NET Core
+- Entity Framework Core
+- Pomelo.EntityFrameworkCore.MySql
+- MySQL 8
+- existing LegalSynq JWT/service-token conventions
+- existing shared BuildingBlocks where applicable
+- existing logging/health/test conventions
+
+DO NOT:
+
+- change database technology;
+- introduce a second ORM;
+- upgrade unrelated package versions;
+- downgrade unrelated package versions;
+- modernize unrelated dependencies;
+- add alternate persistence frameworks;
+- add new production infrastructure.
+
+==================================================
+6. CURRENT VALIDATION GAPS
+==================================================
+
+Gap A — database-backed readiness
+
+Previous result:
+
+GET /health/ready
+→ HTTP 503
+
+Reason:
+No valid local IntakeDatabase was configured.
+
+Required proof:
+
+Configured disposable/local MySQL
+→ IntakeDbContext connects
+→ readiness check succeeds
+→ GET /health/ready returns HTTP 200
+
+Gap B — EF design-time tooling
+
+Previous result:
+
+dotnet ef migrations list
+→ unavailable because dotnet-ef was not installed/restored
+
+Required proof:
+
+Approved/repository-compatible dotnet-ef tooling
+→ design-time factory/context loads
+→ migrations listing command succeeds
+→ zero migrations is acceptable
+
+==================================================
+7. DISPOSABLE MYSQL REQUIREMENT
+==================================================
+
+Use a local or disposable MySQL 8 instance compatible with LegalSynq v3.
+
+Preferred order:
+
+1. existing repository-supported local MySQL setup;
+2. existing Docker/dev-container convention;
+3. disposable local MySQL created solely for this validation.
+
+Do not invent a permanent infrastructure pattern if the repository already provides one.
+
+The validation database must be isolated from:
+
+- Liens;
+- Identity;
+- Documents;
+- Fund;
+- CareConnect;
+- any shared non-local LegalSynq database.
+
+Use a dedicated local/disposable database, for example:
+
+legalsynq_intake_validation
+
+or an equivalent name consistent with repository conventions.
+
+DO NOT:
+
+- use production credentials;
+- use QA/staging credentials;
+- use AWS RDS;
+- use any shared cloud database;
+- expose DB secrets in the report.
+
+==================================================
+8. CONNECTION CONFIGURATION
+==================================================
+
+Use the LSI-B01-01 connection setting:
+
+ConnectionStrings__IntakeDatabase
+
+or its exact repository-configured equivalent.
+
+Validate that Synq Intake correctly resolves this connection setting.
+
+Do not rename the connection string unless LSI-B01-01 is proven incorrect.
+
+If credentials are required:
+
+- keep them local;
+- do not commit them;
+- do not print them in the report;
+- sanitize command output.
+
+==================================================
+9. INTAKEDBCONTEXT RUNTIME PROOF
+==================================================
+
+Prove that the existing IntakeDbContext:
+
+- resolves successfully from DI;
+- uses Pomelo MySQL;
+- targets the dedicated Intake database;
+- can establish a real connection;
+- can execute the existing database readiness/connectivity check.
+
+Acceptable evidence includes:
+
+Database.CanConnectAsync()
+
+or the existing readiness health check if it directly uses EF/database connectivity.
+
+The report must explicitly identify:
+
+- database provider;
+- database name, sanitized if necessary;
+- whether connection succeeded;
+- whether any other LegalSynq DB was touched.
+
+==================================================
+10. HEALTH / READINESS VALIDATION
+==================================================
+
+Validate both positive and negative behavior.
+
+A. Healthy database state
+
+Start Synq Intake with valid local/disposable MySQL configuration.
+
+Validate:
+
+GET /health
+
+Expected:
+HTTP 200 or repository-standard healthy response.
+
+Validate:
+
+GET /health/ready
+
+Expected:
+HTTP 200
+Healthy readiness state.
+
+Record actual status and relevant sanitized body.
+
+B. Database unavailable state
+
+Then intentionally make the Intake database unavailable in a safe local/disposable manner.
+
+Examples:
+
+- stop the disposable MySQL container/process;
+- temporarily use an invalid local port;
+- temporarily point to an unavailable local host.
+
+Validate:
+
+GET /health
+
+Expected:
+service process remains healthy according to LegalSynq liveness convention.
+
+Validate:
+
+GET /health/ready
+
+Expected:
+not-ready result, typically HTTP 503.
+
+C. Restore database
+
+Restore valid DB connectivity and prove readiness returns to healthy state.
+
+This should demonstrate:
+
+liveness
+!=
+readiness
+
+Do not weaken readiness checks merely to force HTTP 200.
+
+==================================================
+11. EF TOOLING STRATEGY
+==================================================
+
+Inspect the repository before adding tooling.
+
+Check for:
+
+.config/dotnet-tools.json
+dotnet tool manifests
+README developer setup
+CI scripts
+workflow files
+existing dotnet-ef installation patterns
+
+Use the existing repository strategy if one exists.
+
+If there is no repository-local strategy:
+
+- use the least invasive local method;
+- prefer a local tool manifest if that is consistent with repository standards;
+- document the decision.
+
+Do not add unnecessary runtime/production dependencies.
+
+DO NOT modify package versions merely to make dotnet-ef easier to run.
+
+==================================================
+12. DESIGN-TIME CONTEXT VALIDATION
+==================================================
+
+Validate the existing Intake design-time factory from LSI-B01-01 if present.
+
+EF must be able to instantiate:
+
+IntakeDbContext
+
+outside normal application startup.
+
+Explicitly validate:
+
+- project resolution;
+- startup project;
+- DbContext construction;
+- provider configuration;
+- connection-string handling;
+- migrations assembly expectations.
+
+Any defect directly within the Synq Intake design-time persistence foundation MAY be corrected in this ticket.
+
+Do not redesign unrelated services.
+
+==================================================
+13. MIGRATION TOOLING VALIDATION
+==================================================
+
+Run the repository-correct equivalent of:
+
+dotnet ef migrations list \
+  --project apps/services/intake/Intake.Infrastructure/Intake.Infrastructure.csproj \
+  --startup-project apps/services/intake/Intake.Api/Intake.Api.csproj
+
+Adjust paths/arguments only if current repository structure requires it.
+
+Because the Intake model is intentionally empty, acceptable output includes:
+
+No migrations were found.
+
+or equivalent successful zero-migration result.
+
+The objective is:
+
+- dotnet-ef executes;
+- the project loads;
+- the design-time context loads;
+- provider configuration is valid.
+
+The objective is NOT to force an initial migration.
+
+==================================================
+14. MIGRATION RULES
+==================================================
+
+DO NOT create fake or placeholder business entities merely to create a migration.
+
+Prohibited examples include:
+
+IntakeBootstrap
+HealthProbeEntity
+PlaceholderEntity
+MigrationMarker
+
+unless such a construct already exists for a legitimate LegalSynq architectural reason.
+
+DO NOT create:
+
+- Intake;
+- TenantIntakeSource;
+- email tables;
+- processing-profile tables;
+- document tables;
+- lien-specific schema;
+
+in this validation ticket.
+
+If zero migrations is the correct state, retain zero migrations.
+
+A migration may be added only if it is required to fix a genuine persistence-foundation defect and does not invent future business schema.
+
+==================================================
+15. ALLOWED SOURCE CHANGES
+==================================================
+
+This ticket is validation-focused.
+
+Prefer no source changes if validation passes as implemented.
+
+Allowed changes are limited to:
+
+apps/services/intake/**
+local development tooling/configuration required for reproducible validation
+repository-local dotnet tool manifest if justified
+analysis/LSI-B01-02-report.md
+
+If a source correction is necessary, it must directly address:
+
+- DB connectivity registration;
+- readiness health check;
+- IntakeDbContext registration;
+- design-time factory;
+- EF provider configuration;
+- narrowly related tests.
+
+Do not modify unrelated business code.
+
+==================================================
+16. PROHIBITED CHANGES
+==================================================
+
+DO NOT PUSH.
+DO NOT CREATE A PR.
+DO NOT MERGE.
+DO NOT DEPLOY.
+DO NOT MODIFY AWS.
+DO NOT MODIFY ECS.
+DO NOT MODIFY AWS SECRETS.
+DO NOT MODIFY RDS.
+DO NOT MODIFY ROUTE53.
+DO NOT USE SHARED CLOUD DATABASES.
+DO NOT APPLY CLOUD MIGRATIONS.
+
+DO NOT IMPLEMENT:
+
+- TenantIntakeConfiguration;
+- TenantIntakeSource;
+- mailbox setup;
+- Microsoft 365 integration;
+- Gmail integration;
+- IMAP;
+- email polling;
+- email persistence;
+- raw EML storage;
+- attachment ingestion;
+- Documents integration;
+- manual Intake;
+- Synq AI;
+- classification;
+- extraction;
+- normalization;
+- matching;
+- duplicate detection;
+- confidence;
+- review;
+- approved snapshot;
+- Case integration;
+- Facility integration;
+- Lien integration;
+- Flow integration;
+- external API Intake;
+- HL7;
+- SFTP;
+- straight-through automation.
+
+DO NOT start LSI-B02.
+
+==================================================
+17. TEST REQUIREMENTS
+==================================================
+
+Add tests only if they address a real validation gap or defect.
+
+Potential acceptable tests include:
+
+- IntakeDbContext DI resolution;
+- database health-check registration;
+- liveness/readiness separation;
+- design-time factory construction;
+- provider registration validation.
+
+Do not overbuild test infrastructure.
+
+Reuse existing LegalSynq test patterns.
+
+If no source changes are needed and existing tests sufficiently cover the foundation, additional tests are not mandatory.
+
+==================================================
+18. REQUIRED REPOSITORY BASELINE VALIDATION
+==================================================
+
+Run:
+
+git branch --show-current
+git rev-parse HEAD
+git status --short
+
+Where possible also record:
+
+git rev-parse origin/xenia
+
+Do not claim branch parity unless actually checked.
+
+If unrelated pre-existing working-tree changes exist:
+
+- document them;
+- do not overwrite them;
+- separate them from ticket changes.
+
+==================================================
+19. REQUIRED RESTORE / BUILD VALIDATION
+==================================================
+
+Use repository-standard commands.
+
+At minimum attempt:
+
+dotnet restore LegalSynq.sln --verbosity minimal
+
+Build Synq Intake:
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj \
+  --no-restore \
+  --configuration Debug \
+  --verbosity minimal
+
+Run Intake tests:
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj \
+  --no-restore \
+  --configuration Debug \
+  --verbosity minimal \
+  -m:1
+
+If source changes are made outside Intake, build the affected projects.
+
+Before completion, also validate the relevant solution/platform build if practical:
+
+dotnet build LegalSynq.sln \
+  --no-restore \
+  --configuration Debug \
+  --verbosity minimal \
+  -m:1
+
+Do not classify host resource exhaustion as a product defect if an appropriate serialized/reduced-concurrency retry passes. Document both attempts.
+
+==================================================
+20. REQUIRED EF VALIDATION
+==================================================
+
+Record the exact method used to make dotnet-ef available.
+
+Then run the migrations-list validation.
+
+Example:
+
+dotnet ef migrations list \
+  --project apps/services/intake/Intake.Infrastructure/Intake.Infrastructure.csproj \
+  --startup-project apps/services/intake/Intake.Api/Intake.Api.csproj
+
+Record:
+
+- tool version;
+- exit status;
+- whether context construction succeeded;
+- migration count;
+- relevant sanitized output.
+
+If the command fails:
+
+- diagnose the exact failure;
+- fix only Intake persistence-foundation defects;
+- rerun;
+- document both original failure and final result.
+
+==================================================
+21. REQUIRED LOCAL RUNTIME VALIDATION
+==================================================
+
+A. Start disposable/local MySQL 8.
+
+B. Configure IntakeDatabase locally.
+
+C. Start Synq Intake using the repository-standard method.
+
+D. Validate:
+
+GET /health
+GET /health/ready
+
+E. Confirm database connectivity through the readiness result and/or direct EF validation.
+
+F. Break local DB connectivity intentionally.
+
+G. Validate again:
+
+GET /health
+GET /health/ready
+
+H. Restore DB connectivity.
+
+I. Validate readiness returns to healthy.
+
+Do not use AWS or shared environments for any of this.
+
+==================================================
+22. GATEWAY VALIDATION
+==================================================
+
+LSI-B01-01 already proved local YARP routing.
+
+This ticket does not require gateway redesign.
+
+If no gateway code changed, a full new gateway runtime test is optional.
+
+At minimum verify that no changes made in LSI-B01-02 break:
+
+/api/intake/health
+/api/intake/health/ready
+/api/intake/info
+
+If gateway routing is exercised, clearly distinguish:
+
+direct Intake runtime
+vs
+gateway-proxied Intake runtime
+
+Do not claim GitHub or deployed runtime proof.
+
+==================================================
+23. SECURITY REQUIREMENTS
+==================================================
+
+Never expose in source, logs, report, or final summary:
+
+- database passwords;
+- full connection strings;
+- bearer tokens;
+- service tokens;
+- signing keys;
+- raw Authorization headers;
+- AWS credentials.
+
+Sanitize all DB-related evidence.
+
+Explicitly confirm in the report:
+
+- dedicated Intake validation DB used;
+- no other LegalSynq DB touched;
+- no shared cloud DB touched;
+- no secrets committed;
+- no credentials included in report;
+- tenant/auth architecture unchanged;
+- readiness response does not expose DB secrets.
+
+Any secret exposure is blocking until corrected.
+
+==================================================
+24. EXISTING SERVICE IMPACT
+==================================================
+
+The intended outcome is:
+
+Existing service business logic changed: NO
+
+List every file modified outside:
+
+apps/services/intake/**
+
+For each such file explain:
+
+- why it changed;
+- whether it is required for validation;
+- whether behavior changed.
+
+If a material existing-service change appears necessary:
+
+STOP that work.
+
+Document the issue.
+
+Do not implement it without a separate approved architecture decision.
+
+==================================================
+25. FINAL DIFF VALIDATION
+==================================================
+
+Run:
+
+git diff --check
+git status --short
+git diff --stat
+git diff
+
+Inspect the entire ticket diff.
+
+Confirm:
+
+- no secrets;
+- no generated binaries;
+- no unrelated modifications;
+- no fake migration/business entities;
+- no accidental package upgrades;
+- no business-feature scope expansion.
+
+==================================================
+26. REQUIRED REPORT FILE
+==================================================
+
+Maintain:
+
+/analysis/LSI-B01-02-report.md
+
+Required sections:
+
+1. Ticket
+2. Task Type
+3. LSI-B01-01 Baseline
+4. Repository Baseline
+5. Current Validation Gaps
+6. Persistence Configuration
+7. Disposable MySQL Environment
+8. IntakeDbContext Runtime Validation
+9. Healthy Readiness Validation
+10. Negative Readiness Validation
+11. Readiness Recovery Validation
+12. EF Tooling Strategy
+13. EF Tool Version
+14. Design-Time Context Validation
+15. Migration Validation
+16. Files Added
+17. Files Modified
+18. Tests Added / Changed
+19. Validation Commands
+20. Validation Results
+21. Security Assessment
+22. Existing-Service Impact
+23. Git Diff Summary
+24. Known Gaps
+25. Current Phase Status
+26. Recommended Next Phase
+
+==================================================
+27. VALIDATION RESULT RULES
+==================================================
+
+For every validation item use one of:
+
+Passed
+Partially Completed
+Blocked
+Not Started
+Failed
+Unavailable
+
+Do not convert:
+
+- compilation into DB connectivity proof;
+- DB connectivity into design-time EF proof;
+- local runtime proof into GitHub proof;
+- local runtime proof into deployed proof.
+
+Do not fabricate success.
+
+==================================================
+28. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B01-02 repository validation passes only if all applicable criteria are met:
+
+- [ ] /analysis/LSI-B01-02-report.md created first.
+- [ ] Repository baseline recorded.
+- [ ] LSI-B01-01 baseline treated as read-only.
+- [ ] Local/disposable MySQL 8 used.
+- [ ] Dedicated Synq Intake database used.
+- [ ] No other LegalSynq database used.
+- [ ] IntakeDbContext resolves successfully.
+- [ ] IntakeDbContext connects successfully.
+- [ ] Pomelo/MySQL provider confirmed.
+- [ ] /health returns healthy according to platform convention.
+- [ ] /health/ready returns HTTP 200 with working DB connectivity.
+- [ ] /health/ready becomes unhealthy when DB connectivity is intentionally unavailable.
+- [ ] /health remains appropriately independent from readiness.
+- [ ] Readiness returns to healthy after DB connectivity is restored.
+- [ ] dotnet-ef is available through an approved/repository-compatible strategy.
+- [ ] EF can instantiate IntakeDbContext at design time.
+- [ ] dotnet ef migrations list succeeds.
+- [ ] Zero migrations is accepted if that is the correct current state.
+- [ ] No fake placeholder business entities are created.
+- [ ] No fake business migration is introduced.
+- [ ] No cloud/shared migrations are applied.
+- [ ] Synq Intake builds successfully.
+- [ ] Intake tests pass.
+- [ ] Relevant platform build passes or exact non-product blocker is documented.
+- [ ] No unrelated existing-service business logic changed.
+- [ ] No secrets appear in source/report.
+- [ ] Final diff contains only intended validation/foundation corrections.
+
+==================================================
+29. STOP BOUNDARY
+==================================================
+
+STOP after:
+
+Local persistence validation
++
+Healthy readiness proof
++
+Negative readiness proof
++
+Readiness recovery proof
++
+EF design-time proof
++
+Migration tooling proof
++
+Completed LSI-B01-02 report
+
+DO NOT PUSH.
+DO NOT CREATE A PR.
+DO NOT MERGE.
+DO NOT DEPLOY.
+DO NOT MODIFY AWS.
+DO NOT START LSI-B02.
+DO NOT CLAIM GITHUB VALIDATION.
+DO NOT CLAIM DEPLOYED OR AWS RUNTIME VALIDATION.
+
+==================================================
+30. CURRENT PHASE STATUS RULE
+==================================================
+
+At the end of the report use exactly one of:
+
+REPOSITORY VALIDATION PASSED
+REPOSITORY VALIDATION PARTIAL
+REPOSITORY VALIDATION BLOCKED
+REPOSITORY VALIDATION FAILED
+
+Do not call the ticket Complete or Closed during this phase.
+
+==================================================
+31. NEXT PHASE RULE
+==================================================
+
+If every material acceptance criterion passes:
+
+Recommended Next Phase:
+GitHub validation for the completed LSI-B01 foundation.
+
+If any material persistence/readiness criterion remains unproven:
+
+Recommended Next Phase:
+Repository correction/validation required before GitHub validation.
+
+Do not start LSI-B02 until the LSI-B01 foundation has passed its required GitHub validation.
+
+==================================================
+32. FINAL EXECUTOR OUTPUT
+==================================================
+
+At the end of execution, return only a concise summary in this format:
+
+LSI-B01-02 — Persistence & Readiness Validation
+
+Repository Validation Status:
+<PASSED / PARTIAL / BLOCKED / FAILED>
+
+Report:
+/analysis/LSI-B01-02-report.md
+
+Intake Build:
+<status>
+
+Intake Tests:
+<status>
+
+MySQL Connectivity:
+<status>
+
+Liveness:
+<status>
+
+Healthy Readiness:
+<status>
+
+Negative Readiness:
+<status>
+
+Readiness Recovery:
+<status>
+
+EF Tooling:
+<status>
+
+Design-Time DbContext:
+<status>
+
+Migration Listing:
+<status>
+
+Migration Created:
+<YES / NO — with reason>
+
+Existing-Service Regression:
+<status>
+
+Secrets / Credential Exposure:
+<status>
+
+GitHub Validation:
+NOT EXECUTED — OUTSIDE CURRENT PHASE
+
+Recommended Next Action:
+<GitHub validation / repository correction>
+
+Do not report the ticket as Complete or Closed during this repository phase.

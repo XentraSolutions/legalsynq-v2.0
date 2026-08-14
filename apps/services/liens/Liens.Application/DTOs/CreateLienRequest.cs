@@ -1,6 +1,6 @@
 namespace Liens.Application.DTOs;
 
-public sealed class CreateLienRequest
+public sealed record class CreateLienRequest
 {
     public string LienNumber { get; init; } = string.Empty;
     public string? ExternalReference { get; init; }

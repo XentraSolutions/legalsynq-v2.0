@@ -85,6 +85,31 @@ export default function MedicalCodesDescription(
 
   const billingAmount = parseNumber(entry.billingAmount);
 
+  function handleBillingAmountChange(raw: string) {
+    const newBilling = parseNumber(raw);
+    setEntry((prev) => {
+      if (prev.targetPercent) {
+        return {
+          ...prev,
+          billingAmount: raw,
+          targetAmount: newBilling
+            ? roundToTwo((parseNumber(prev.targetPercent) / 100) * newBilling).toString()
+            : prev.targetAmount,
+        };
+      }
+      if (prev.targetAmount) {
+        return {
+          ...prev,
+          billingAmount: raw,
+          targetPercent: newBilling
+            ? roundToTwo((parseNumber(prev.targetAmount) / newBilling) * 100).toString()
+            : prev.targetPercent,
+        };
+      }
+      return { ...prev, billingAmount: raw };
+    });
+  }
+
   function handleTargetAmountChange(raw: string) {
     setEntry((prev) => ({
       ...prev,
@@ -168,8 +193,9 @@ export default function MedicalCodesDescription(
             label="Billing Amount (Face Value)"
             required
             prefix="$"
+            maxDecimals={2}
             value={entry.billingAmount}
-            onChange={(v) => setEntry({ ...entry, billingAmount: v })}
+            onChange={handleBillingAmountChange}
           />
         </div>
 
@@ -184,6 +210,7 @@ export default function MedicalCodesDescription(
                 type="number"
                 label=""
                 prefix="$"
+                maxDecimals={2}
                 value={entry.targetAmount}
                 onChange={handleTargetAmountChange}
               />
@@ -199,6 +226,7 @@ export default function MedicalCodesDescription(
             </div>
             <Button
               type="button"
+              variant="secondary"
               className="shrink-0"
               disabled={!isEntryValid}
               rightIcon="plus"
@@ -242,13 +270,12 @@ export default function MedicalCodesDescription(
                       {formatCurrency(row.targetSaleAmount)}
                     </td>
                     <td className="px-4 py-3 text-sm text-center">
-                      <button
+                      <Button
                         type="button"
+                        variant="icon-square"
+                        icon="trash2"
                         onClick={() => handleDeleteRow(row.id)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        Delete
-                      </button>
+                      />
                     </td>
                   </tr>
                 ))}

@@ -184,7 +184,7 @@ export function BulkUploadForm({
             </div>
           ) : (
             <>
-              <CloudUpload className="h-6 w-6 p-2 px-3 rounded-lg bg-[#F5F5F5] box-content" />
+              <CloudUpload className="h-6 w-6 p-2 px-3 rounded-lg bg-[#F5F5F5] box-content mx-auto" />
               <div>
                 <label className="block text-xl font-medium text-gray-700 mb-1 mt-4">
                   Lien Bulk Upload

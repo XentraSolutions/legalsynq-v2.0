@@ -480,7 +480,8 @@ public static class ReportEndpoints
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var csv = new StringBuilder();
-        csv.AppendLine(string.Join(',', columns.Select(EscapeCsvValue)));
+        csv.AppendLine(string.Join(',', columns.Select(column =>
+            EscapeCsvValue(GetLegacyCsvColumnHeader(column)))));
 
         foreach (var row in rows)
         {
@@ -501,6 +502,15 @@ public static class ReportEndpoints
             : rawValue;
         var escaped = safeValue.Replace("\"", "\"\"");
         return escaped.IndexOfAny([',', '\"', '\r', '\n']) >= 0 ? $"\"{escaped}\"" : escaped;
+    }
+
+    private static string GetLegacyCsvColumnHeader(string key)
+    {
+        if (string.Equals(key, "last_case_tracking_note", StringComparison.OrdinalIgnoreCase))
+            return "Last Activity";
+        if (string.Equals(key, "last_case_tracking_date", StringComparison.OrdinalIgnoreCase))
+            return "Last Activity Date";
+        return key;
     }
 
     private static Dictionary<string, object?> BuildLegacyRow(DIYReportRow r) =>
@@ -918,8 +928,8 @@ public static class ReportEndpoints
             new("lawfirm_email", "Lawfirm Email", "caseInfo"),
             new("case_status", "Case Status", "caseTrackingInfo"),
             new("medical_status", "Medical Status", "caseTrackingInfo"),
-            new("last_case_tracking_date", "Last Case Tracking Date", "caseTrackingInfo"),
-            new("last_case_tracking_note", "Last Case Tracking Note", "caseTrackingInfo"),
+            new("last_case_tracking_date", "Last Activity Date", "caseTrackingInfo"),
+            new("last_case_tracking_note", "Last Activity", "caseTrackingInfo"),
             new("case_tracking_follow_up_date", "Case Tracking Follow Up Date (For later from Servicing)", "caseTrackingInfo"),
             new("case_tracking_contact", "Case Tracking Contact (case manager)", "caseTrackingInfo"),
             new("case_tracking_contact_email", "Case Tracking Contact Email (case manager note)", "caseTrackingInfo"),

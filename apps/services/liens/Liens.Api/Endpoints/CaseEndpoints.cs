@@ -298,6 +298,7 @@ public static class CaseEndpoints
     private sealed class LegacyGenerateCaseCsvRequest
     {
         public string? caseId { get; init; }
+        public string? keyword { get; init; }
         public string? lawFirmId { get; init; }
         public string? accidentTypeId { get; init; }
         public string? statusId { get; init; }
@@ -3970,7 +3971,7 @@ public static class CaseEndpoints
             {
                 var result = await caseService.SearchAsync(
                     tenantId,
-                    search: null,
+                    search: string.IsNullOrWhiteSpace(request.keyword) ? null : request.keyword,
                     status: string.IsNullOrWhiteSpace(request.statusId) ? null : request.statusId,
                     page: page,
                     pageSize: pageSize,
@@ -4873,11 +4874,16 @@ public static class CaseEndpoints
         ICaseService caseService,
         ILienCaseNoteService caseNoteService,
         ICurrentRequestContext ctx,
+        HttpRequest httpRequest,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
         var orgId = RequireOrgId(ctx);
         var userId = RequireUserId(ctx);
+        var idempotencyKey = httpRequest.Headers["Idempotency-Key"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(request.ExternalReference) &&
+            !string.IsNullOrWhiteSpace(idempotencyKey))
+            request = request with { ExternalReference = idempotencyKey };
         var result = await caseService.CreateAsync(tenantId, orgId, userId, request, ct);
         await CreateCaseHistoryEntryAsync(result, caseNoteService, tenantId, userId, ctx, ct);
         return Results.Created($"/api/liens/cases/{result.Id}", result);
@@ -5113,7 +5119,9 @@ public static class CaseEndpoints
             {
                 id = n.Id.ToString(),
                 caseId = n.CaseId.ToString(),
-                action = string.IsNullOrWhiteSpace(n.Category) ? "CaseNote" : n.Category,
+                action = string.Equals(n.Category, CaseNoteCategory.Internal, StringComparison.OrdinalIgnoreCase)
+                    ? "Case Details Update"
+                    : string.IsNullOrWhiteSpace(n.Category) ? "CaseNote" : n.Category,
                 description = n.Content,
                 timestamp = FormatLegacyTimestamp(n.UpdatedAtUtc ?? n.CreatedAtUtc),
                 note = n.Content,
@@ -5779,6 +5787,8 @@ public static class CaseEndpoints
         CaseDetailsUpdateRequest req,
         ICaseService caseService,
         ILienCaseNoteService caseNoteService,
+        IUnitOfWork unitOfWork,
+        IAuditPublisher auditPublisher,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -5795,9 +5805,18 @@ public static class CaseEndpoints
             : existing.Status;
         var detailsNote = req.Notes?.Trim();
         var detailsNoteChanged =
-            !string.IsNullOrWhiteSpace(detailsNote) &&
-            !string.Equals(existing.Notes ?? string.Empty, detailsNote, StringComparison.Ordinal);
-        var updateSummary = BuildCaseUpdateSummary(existing, req, normalizedStatus, dateOfLoss, trackingFollowUp);
+            req.Notes is not null &&
+            !string.Equals(
+                existing.Notes?.Trim() ?? string.Empty,
+                detailsNote ?? string.Empty,
+                StringComparison.Ordinal);
+        var updateSummary = BuildCaseUpdateSummary(
+            existing,
+            req,
+            normalizedStatus,
+            dateOfLoss,
+            trackingFollowUp,
+            detailsNoteChanged);
 
         var request = new UpdateCaseRequest
         {
@@ -5831,37 +5850,51 @@ public static class CaseEndpoints
             IsUccFiled       = req.IsUccFiled,
             StatusLabel       = ResolveLegacyCaseStatusLabel(req.CurrentStatus),
         };
-        await caseService.UpdateAsync(tenantId, req.CaseId, userId, request, ct);
-
-        if (detailsNoteChanged)
+        using var auditBuffer = auditPublisher.BeginBuffer();
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+        try
         {
-            await caseNoteService.CreateNoteAsync(
-                tenantId,
-                req.CaseId,
-                userId,
-                new CreateCaseNoteRequest
-                {
-                    Content = detailsNote!,
-                    Category = CaseNoteCategory.General,
-                    CreatedByName = ctx.Name ?? ctx.Email ?? userId.ToString(),
-                },
-                ct);
+            await caseService.UpdateAsync(tenantId, req.CaseId, userId, request, ct);
+
+            if (detailsNoteChanged && !string.IsNullOrWhiteSpace(detailsNote))
+            {
+                await caseNoteService.CreateNoteAsync(
+                    tenantId,
+                    req.CaseId,
+                    userId,
+                    new CreateCaseNoteRequest
+                    {
+                        Content = detailsNote!,
+                        Category = CaseNoteCategory.General,
+                        CreatedByName = ctx.Name ?? ctx.Email ?? userId.ToString(),
+                    },
+                    ct);
+            }
+
+            if (!string.IsNullOrWhiteSpace(updateSummary))
+            {
+                await caseNoteService.CreateNoteAsync(
+                    tenantId,
+                    req.CaseId,
+                    userId,
+                    new CreateCaseNoteRequest
+                    {
+                        Content = updateSummary,
+                        Category = CaseNoteCategory.Internal,
+                        CreatedByName = ctx.Email ?? ctx.Name ?? userId.ToString(),
+                    },
+                    ct);
+            }
+
+            await transaction.CommitAsync(ct);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
         }
 
-        if (!string.IsNullOrWhiteSpace(updateSummary))
-        {
-            await caseNoteService.CreateNoteAsync(
-                tenantId,
-                req.CaseId,
-                userId,
-                new CreateCaseNoteRequest
-                {
-                    Content = updateSummary,
-                    Category = CaseNoteCategory.Internal,
-                    CreatedByName = ctx.Email ?? ctx.Name ?? userId.ToString(),
-                },
-                ct);
-        }
+        auditBuffer.Commit();
 
         return Results.Ok(new { isSuccess = true, message = "Successfully Updated." });
     }
@@ -5871,7 +5904,8 @@ public static class CaseEndpoints
         CaseDetailsUpdateRequest req,
         string normalizedStatus,
         DateOnly? dateOfLoss,
-        DateOnly? trackingFollowUp)
+        DateOnly? trackingFollowUp,
+        bool detailsNoteChanged)
     {
         var changes = new List<string>();
 
@@ -5914,8 +5948,14 @@ public static class CaseEndpoints
         if (!AreCaseFlagsEquivalent(existing.IsUccFiled, req.IsUccFiled))
             changes.Add($"ucc filed changed to {NormalizeCaseFlagForDisplay(req.IsUccFiled)}");
 
+        if (detailsNoteChanged)
+            changes.Add("Note updated");
+
         if (changes.Count == 0)
             return null;
+
+        if (changes.Count == 1 && detailsNoteChanged)
+            return "Note updated";
 
         return $"Case updated: {string.Join("; ", changes)}.";
     }
@@ -6716,6 +6756,38 @@ public static class CaseEndpoints
                 totalCount = aggregate?.TotalCount ?? 0,
             },
         });
+    }
+
+    private static bool TryGetLegacyTotalSettledAmount(string? notes, out decimal amount)
+    {
+        amount = 0m;
+        if (string.IsNullOrWhiteSpace(notes))
+            return false;
+
+        var rawMetadata = notes;
+        var markerIndex = notes.IndexOf(LegacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+            rawMetadata = notes[(markerIndex + LegacyMetadataMarker.Length)..].Trim();
+
+        var found = false;
+        foreach (var segment in rawMetadata.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0 ||
+                !string.Equals(segment[..separator].Trim(), "totalSettledAmount", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            found = true;
+            decimal.TryParse(
+                segment[(separator + 1)..].Trim(),
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out amount);
+        }
+
+        return found;
     }
 
     private static bool TryGetLegacyMedicalPurchaseAmount(string? notes, out decimal amount)
@@ -8173,6 +8245,7 @@ public static class CaseEndpoints
         return (page, limit);
     }
 
+    // ── Dashboard reports ─────────────────────────────────────────────────────
     private static DashboardReportResult<T> BuildDashboardReportResult<T>(
         List<T> rows,
         int page,

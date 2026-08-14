@@ -227,6 +227,23 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
           icon: "ri-inbox-line",
           adminOnly: true,
         },
+        {
+          href: "/lien/intake/manual",
+          label: "Manual Intake",
+          icon: "ri-file-upload-line",
+          adminOnly: true,
+        },
+        {
+          href: "/intake",
+          label: "Intake Center",
+          icon: "ri-inbox-archive-line",
+        },
+        {
+          href: "/lien/intake/sources",
+          label: "Intake Sources",
+          icon: "ri-git-repository-private-line",
+          adminOnly: true,
+        },
       ],
     },
   ],

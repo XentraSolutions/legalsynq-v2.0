@@ -1061,6 +1061,34 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
+    public async Task ExportReport_uses_activity_labels_for_case_update_columns()
+    {
+        var response = await _client.PostAsJsonAsync("/report/diy/export", new
+        {
+            reportType = "LIENS",
+            isBulk = "N",
+            columns = new[]
+            {
+                "case_id",
+                "last_case_tracking_note",
+                "last_case_tracking_date",
+            },
+            page = 1,
+            limit = 10,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var export = payload!.RootElement.GetProperty("data").EnumerateArray().Single();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
+
+        csv.Should().StartWith("case_id,Last Activity,Last Activity Date");
+        csv.Should().NotContain("Last Case Tracking Note");
+        csv.Should().NotContain("Last Case Tracking Date");
+    }
+
+    [Fact]
     public async Task ExportReport_honors_saved_object_column_configuration()
     {
         var response = await _client.PostAsJsonAsync("/report/diy/export", new
@@ -1340,6 +1368,21 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         data.EnumerateArray().Should().Contain(x =>
             x.GetProperty("key").GetString() == "last_case_note_date" &&
             x.GetProperty("label").GetString() == "Last Tracking Note Date");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "last_case_tracking_note" &&
+            x.GetProperty("label").GetString() == "Last Activity");
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "last_case_tracking_date" &&
+            x.GetProperty("label").GetString() == "Last Activity Date");
+        var caseTrackingColumns = doc.RootElement.GetProperty("caseTrackingInfo")
+            .EnumerateArray()
+            .ToList();
+        caseTrackingColumns.Should().Contain(x =>
+            x.GetProperty("key").GetString() == "last_case_tracking_note" &&
+            x.GetProperty("label").GetString() == "Last Activity");
+        caseTrackingColumns.Should().Contain(x =>
+            x.GetProperty("key").GetString() == "last_case_tracking_date" &&
+            x.GetProperty("label").GetString() == "Last Activity Date");
         data.EnumerateArray().Count(x => x.GetProperty("key").GetString() == "date_closed")
             .Should().Be(1);
         data.EnumerateArray().Should().Contain(x =>

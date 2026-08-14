@@ -15,6 +15,7 @@ import {
 } from "@/hooks/use-casenote-history";
 import { PaginationMeta } from "@/lib/contacts";
 import { Tabs } from "@/components/ui/tabs";
+import { NoteCell } from "../components/note-cell";
 const TABS = [
   { key: "TRACKING", label: "Case Tracking Notes" },
   { key: "FEED", label: "Feed Notes" },
@@ -90,7 +91,7 @@ export default function HistoryNotesPage() {
         accessorFn: (row) => row.noteContent,
         meta: { minWidth: "180px" },
         cell: ({ row }) => (
-          <span className="text-sm">{row.original.noteContent}</span>
+          <NoteCell value={row.original.noteContent} maxLength={150}/>
         ),
       },
     ],

@@ -102,6 +102,8 @@ PID_CC=$!
     || echo "[build] LegalSynq.sln build error (possibly OOM) — continuing with cached binaries"
   dotnet build "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" --configuration Debug --verbosity quiet \
     || echo "[build] Documents.Api build error — continuing with cached binary"
+  dotnet build "$ROOT/apps/services/intake/Intake.Api/Intake.Api.csproj" --configuration Debug --verbosity quiet \
+    || echo "[build] Intake.Api build error — continuing with cached binary"
   # Flow service has its own solution (separate boundary, separate DB).
   # Build only the API project — not the full Flow.sln — so test-project
   # NuGet packages (never restored by LegalSynq.sln) don't block the build.
@@ -286,6 +288,11 @@ PID_CC=$!
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
     dotnet run --no-build --project "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    ASPNETCORE_URLS=http://0.0.0.0:5013 \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/services/intake/Intake.Api/Intake.Api.csproj" &
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
