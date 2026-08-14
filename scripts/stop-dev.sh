@@ -15,6 +15,7 @@ DOTNET_PROJECTS=(
   "Liens.Api/Liens.Api.csproj"
   "PlatformAuditEventService.csproj"
   "Documents.Api/Documents.Api.csproj"
+  "Intake.Api/Intake.Api.csproj"
   "Notifications.Api/Notifications.Api.csproj"
   "Comms.Api/Comms.Api.csproj"
   "Flow.Api/Flow.Api.csproj"

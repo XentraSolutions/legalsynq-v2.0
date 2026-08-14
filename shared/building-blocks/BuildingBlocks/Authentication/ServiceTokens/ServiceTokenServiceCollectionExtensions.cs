@@ -78,6 +78,9 @@ public static class ServiceTokenServiceCollectionExtensions
     ///         <c>service:</c> subject or without a tenant claim
     ///         (<c>tenant_id</c>/<c>tid</c>) — these are required by
     ///         every Flow execution path.</item>
+    ///   <item>Optional <paramref name="audience"/> — lets a service validate
+    ///         its own inbound audience while retaining a different default
+    ///         audience for tokens it issues to downstream services.</item>
     ///   <item>Optional <paramref name="failFastIfMissingSecret"/> — when
     ///         true and no signing key is present, throws on startup so
     ///         non-Development hosts cannot silently boot with a no-op
@@ -88,6 +91,7 @@ public static class ServiceTokenServiceCollectionExtensions
     public static AuthenticationBuilder AddServiceTokenBearer(
         this AuthenticationBuilder builder,
         IConfiguration configuration,
+        string? audience = null,
         bool failFastIfMissingSecret = false)
     {
         var section = configuration.GetSection(ServiceTokenOptions.SectionName);
@@ -95,7 +99,9 @@ public static class ServiceTokenServiceCollectionExtensions
                          ?? section["SigningKey"]
                          ?? string.Empty;
         var issuer    = section["Issuer"]   ?? ServiceTokenAuthenticationDefaults.DefaultIssuer;
-        var audience  = section["Audience"] ?? ServiceTokenAuthenticationDefaults.DefaultAudience;
+        var validAudience = audience
+                            ?? section["Audience"]
+                            ?? ServiceTokenAuthenticationDefaults.DefaultAudience;
 
         if (failFastIfMissingSecret && string.IsNullOrWhiteSpace(signingKey))
         {
@@ -124,7 +130,7 @@ public static class ServiceTokenServiceCollectionExtensions
                 RequireSignedTokens      = true,
                 RequireExpirationTime    = true,
                 ValidIssuer              = issuer,
-                ValidAudience            = audience,
+                ValidAudience            = validAudience,
                 IssuerSigningKey         = string.IsNullOrWhiteSpace(signingKey)
                     ? null
                     : new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)) { KeyId = ServiceTokenAuthenticationDefaults.ServiceTokenKeyId },

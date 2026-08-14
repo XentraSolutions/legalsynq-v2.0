@@ -1,0 +1,2527 @@
+You are implementing LSI-B11 — Confidence & Policy Engine for Synq Intake in the LegalSynq v3 repository.
+
+EXECUTION DIRECTIVE
+
+Execute this ticket now.
+
+Do not stop after reviewing requirements.
+Do not return a plan for approval.
+Do not ask whether to proceed.
+Implement the full scoped LSI-B11 work in this execution, run the required local validation, and produce /analysis/LSI-B11-report.md when complete.
+
+If a minor implementation decision is needed and the requirements already establish the intended behavior, make the safest architecture-consistent decision and continue.
+
+Only stop for a genuine blocking condition that cannot be resolved from the repository or these requirements.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Required implementation report: /analysis/LSI-B11-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B11 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, production deployment, push, PR, or merge work.
+3. Do not implement B12 human review, reviewer assignment, reviewer comments, correction workflows, approved snapshots, Case creation, Lien creation, downstream adapter execution, Flow tasks, notifications, legal adjudication, payment decisions, or straight-through processing.
+4. Preserve all prior analysis reports as read-only.
+5. Create/update only /analysis/LSI-B11-report.md for this ticket.
+6. Reuse B07 classification, B08 extraction, B09 normalization, and B10 matching/duplicate outputs. Do not recompute those stages.
+7. Prefer deterministic in-process policy evaluation. Do not call AI to make policy decisions.
+8. Before coding, inspect:
+   - current git branch/status;
+   - HEAD vs origin/xenia;
+   - B02 LIEN_INTAKE_V1 configuration/profile framework;
+   - B07 classification result/status/confidence/history;
+   - B08 extraction result/facts/evidence/history;
+   - B09 normalization statuses/validation/warnings/source confidence/current result;
+   - B10 match runs, entity matches, field breakdown, duplicate signals, hard conflicts, ranking, and current-result semantics;
+   - existing Intake authorization, audit, logging, event/outbox, EF, migration, and test conventions;
+   - current HTTP test infrastructure.
+9. Record repository baseline and initial working-tree state in /analysis/LSI-B11-report.md before implementation.
+10. Preserve unrelated pre-existing changes.
+11. Do not commit uploaded specifications, generated binaries, local databases, secrets, or unrelated artifacts.
+12. Local/repository validation is required.
+13. Do not claim GitHub CI, deployed runtime, production DB validation, or release validation unless separately proven.
+14. Do not begin LSI-B12 automatically.
+15. Do not push unless explicitly requested.
+
+LOCKED PLATFORM STACK
+Use existing LegalSynq v3 conventions:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT Bearer/service-token authentication
+- existing ICurrentRequestContext tenant conventions
+- existing YARP gateway conventions
+- LegalSynq.AuditClient where applicable
+- existing Intake persistence/history/idempotency conventions
+- existing structured logging, configuration, health, event/outbox, and testing conventions
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+
+B11 is the deterministic confidence/policy-decision layer.
+
+The intended chain is:
+
+B07 Classification
+-> B08 Extraction
+-> B09 Normalization
+-> B10 Matching / Duplicate Signals
+-> B11 Policy Evaluation
+-> B12 Human Review / later downstream processing
+
+B11 answers:
+
+“Given everything currently known about this Intake artifact, what processing disposition should the platform recommend?”
+
+B11 MUST NOT:
+- create Case records;
+- create Lien records;
+- update master data;
+- approve legal validity;
+- merge duplicates;
+- send notifications;
+- create Flow tasks;
+- invoke downstream product adapters.
+
+==================================================
+1. POLICY PROFILE
+==================================================
+
+Create a versioned policy profile:
+
+LIEN_INTAKE_POLICY_V1
+
+The profile should define:
+
+- required upstream stages;
+- supported classifications;
+- classification thresholds;
+- required facts;
+- required entities;
+- critical fact confidence thresholds;
+- match thresholds;
+- top-vs-second candidate margins;
+- hard identifier rules;
+- hard conflict rules;
+- duplicate rules;
+- evidence requirements;
+- review rules;
+- block rules;
+- confidence components/weights;
+- review-priority rules;
+- default disposition;
+- auto-acceptable enablement.
+
+Use B07-B10 profile/versioning patterns where practical.
+
+==================================================
+2. B02 POLICY CONFIGURATION
+==================================================
+
+Extend LIEN_INTAKE_V1 as needed with controls such as:
+
+EnablePolicyEvaluation
+PolicyProfileCode
+
+EnableAutoAcceptableDisposition
+
+MinimumClassificationConfidence
+MinimumRequiredFactConfidence
+
+MinimumPatientMatchScore
+MinimumProviderMatchScore
+MinimumCaseMatchScore
+
+MinimumPatientCandidateMargin
+MinimumProviderCandidateMargin
+MinimumCaseCandidateMargin
+
+RequirePatientMatch
+RequireProviderOrFacilityMatch
+RequireCaseMatch
+
+BlockOnExactDuplicate
+ReviewOnPossibleDuplicate
+ReviewOnHardConflict
+ReviewOnAmbiguousFacts
+ReviewOnMissingEvidence
+
+Use exact naming consistent with current configuration style.
+
+==================================================
+3. CONSERVATIVE DEFAULTS
+==================================================
+
+Recommended V1 defaults:
+
+EnablePolicyEvaluation = true
+PolicyProfileCode = LIEN_INTAKE_POLICY_V1
+
+EnableAutoAcceptableDisposition = false
+
+BlockOnExactDuplicate = true
+ReviewOnPossibleDuplicate = true
+ReviewOnHardConflict = true
+ReviewOnAmbiguousFacts = true
+ReviewOnMissingEvidence = true
+
+RequirePatientMatch = true
+RequireProviderOrFacilityMatch = true
+RequireCaseMatch = false
+
+The exact numeric thresholds should be explicit, validated, versioned, and test-covered.
+
+Do not default to automatic straight-through acceptance.
+
+==================================================
+4. POLICY EVALUATION MODEL
+==================================================
+
+Create an Intake-owned aggregate:
+
+ArtifactPolicyEvaluation
+
+Conceptual fields:
+
+- Id
+- TenantId
+- ArtifactId
+
+- ClassificationId
+- ArtifactExtractionId
+- ArtifactNormalizationId
+- ArtifactMatchRunId
+
+- PolicyProfileCode
+- PolicyProfileVersion
+
+- Status
+- Disposition
+- OverallConfidence
+- ReviewPriority
+
+- ExecutionKey
+- IsCurrent
+- CurrentMarker if needed
+
+- RequestedAt
+- CompletedAt
+- CreatedAt
+- UpdatedAt
+
+- FailureCode
+- FailureMessage
+
+Only add fields justified by implementation.
+
+==================================================
+5. POLICY FINDING MODEL
+==================================================
+
+Create:
+
+ArtifactPolicyFinding
+
+Conceptual fields:
+
+- Id
+- TenantId
+- ArtifactPolicyEvaluationId
+
+- RuleCode
+- RuleCategory
+- Severity
+- Outcome
+- ReasonCode
+
+- EntityType
+- FactCode
+
+- RelatedEntityMatchId
+- RelatedDuplicateSignalId
+- RelatedNormalizedFactId
+
+- Score
+- Threshold
+
+- EvidenceReferenceJson
+
+- CreatedAt
+
+Avoid duplicating raw PHI/PII into findings.
+
+==================================================
+6. EVALUATION STATUS
+==================================================
+
+Use execution statuses separate from dispositions.
+
+Recommended:
+
+PROCESSING
+COMPLETED
+FAILED
+
+Example:
+
+Status = COMPLETED
+Disposition = REVIEW_REQUIRED
+
+Do not mix engine failure with policy recommendation.
+
+==================================================
+7. DISPOSITIONS
+==================================================
+
+Support at minimum:
+
+AUTO_ACCEPTABLE
+REVIEW_REQUIRED
+NO_MATCH
+CONFLICTED
+DUPLICATE
+BLOCKED
+
+Optional:
+
+INSUFFICIENT_DATA
+
+only if it materially improves semantics.
+
+==================================================
+8. DISPOSITION SEMANTICS
+==================================================
+
+AUTO_ACCEPTABLE:
+- all configured block/review conditions pass;
+- required evidence meets policy;
+- auto-acceptable is enabled.
+
+REVIEW_REQUIRED:
+- potentially processable but human review is required.
+
+NO_MATCH:
+- a required entity cannot be matched sufficiently.
+
+CONFLICTED:
+- hard contradictory evidence exists.
+
+DUPLICATE:
+- duplicate policy fires.
+
+BLOCKED:
+- processing cannot safely continue because of a hard technical/policy condition.
+
+These dispositions are recommendations only.
+
+==================================================
+9. AUTO-ACCEPTABLE SAFETY
+==================================================
+
+Critical V1 rule:
+
+EnableAutoAcceptableDisposition = false
+
+by default.
+
+If a result otherwise qualifies for straight-through processing while this flag is false:
+
+Disposition = REVIEW_REQUIRED
+
+and add a stable finding:
+
+POLICY_AUTO_ACCEPTABLE_DISABLED
+
+Do not execute any downstream action.
+
+==================================================
+10. UPSTREAM BINDING
+==================================================
+
+Every evaluation must bind to the exact current upstream results used:
+
+ClassificationId
+ArtifactExtractionId
+ArtifactNormalizationId
+ArtifactMatchRunId
+
+Persist those IDs.
+
+If any upstream current result changes:
+- prior evaluation remains historical;
+- it must not silently remain current;
+- new evaluation is required.
+
+==================================================
+11. UPSTREAM LINEAGE VALIDATION
+==================================================
+
+Before policy evaluation verify:
+
+Artifact TenantId
+=
+Classification TenantId
+=
+Extraction TenantId
+=
+Normalization TenantId
+=
+MatchRun TenantId
+
+Also verify each object is linked to the correct artifact/upstream predecessor.
+
+On mismatch:
+
+POLICY_UPSTREAM_MISMATCH
+
+and do not evaluate.
+
+==================================================
+12. POLICY EXECUTION KEY
+==================================================
+
+Create a deterministic execution identity including at least:
+
+ArtifactId
+ClassificationId
+ArtifactExtractionId
+ArtifactNormalizationId
+ArtifactMatchRunId
+PolicyProfileCode
+PolicyProfileVersion
+
+Use a stable hash if useful.
+
+==================================================
+13. IDEMPOTENCY
+==================================================
+
+Same upstream context + same policy profile/version must reuse the same evaluation.
+
+Protect with:
+- application lookup/claim;
+- database uniqueness.
+
+Do not duplicate findings.
+
+==================================================
+14. POLICY HISTORY
+==================================================
+
+Never overwrite prior policy evaluations.
+
+Create a new evaluation when:
+- classification changes;
+- extraction changes;
+- normalization changes;
+- match run changes;
+- policy profile/version changes.
+
+Historical decisions remain immutable/auditable.
+
+==================================================
+15. CURRENT POLICY RESULT
+==================================================
+
+Only one current policy result should correspond to the current upstream context.
+
+Use atomic current-marker finalization consistent with B07-B10.
+
+==================================================
+16. POLICY ENGINE
+==================================================
+
+Create:
+
+IIntakePolicyEngine
+
+or closest repository convention.
+
+Responsibilities:
+
+1. load current tenant-scoped Intake intelligence context;
+2. validate upstream lineage;
+3. resolve B02 policy settings;
+4. resolve active policy profile;
+5. create/reuse evaluation;
+6. execute deterministic rules in explicit precedence;
+7. calculate findings;
+8. calculate OverallConfidence;
+9. determine final disposition;
+10. determine ReviewPriority;
+11. persist evaluation/findings;
+12. finalize current result atomically;
+13. emit safe audit/logging;
+14. return canonical evaluation.
+
+==================================================
+17. POLICY RULE ABSTRACTION
+==================================================
+
+Create:
+
+IIntakePolicyRule
+
+or equivalent.
+
+Each rule should expose:
+- stable RuleCode;
+- RuleCategory;
+- evaluation order/priority;
+- applicability;
+- deterministic evaluation method.
+
+Avoid one giant policy method.
+
+==================================================
+18. POLICY RULE REGISTRY
+==================================================
+
+Create:
+
+IIntakePolicyRuleRegistry
+
+or equivalent.
+
+Register active rules for LIEN_INTAKE_POLICY_V1.
+
+Potential rules:
+
+ClassificationEligibilityRule
+ClassificationConfidenceRule
+RequiredFactRule
+CriticalFactConfidenceRule
+StructuralValidityRule
+EvidencePresenceRule
+PatientMatchRule
+ProviderFacilityMatchRule
+CaseMatchRule
+CandidateAmbiguityRule
+HardIdentifierRule
+HardConflictRule
+DuplicateRule
+OverallConfidenceRule
+AutoAcceptableRule
+
+==================================================
+19. EXPLICIT RULE PRECEDENCE
+==================================================
+
+Encode precedence explicitly.
+
+Recommended:
+
+1. Technical eligibility
+2. Hard blocks
+3. Exact duplicate rules
+4. Hard conflict rules
+5. Required-data rules
+6. Required-match rules
+7. Candidate ambiguity rules
+8. Review rules
+9. Confidence thresholds
+10. Auto-acceptable rule
+11. Default disposition
+
+Do not rely on incidental registration order.
+
+==================================================
+20. HARD RULE PRECEDENCE
+==================================================
+
+Hard rules must dominate aggregate confidence.
+
+Example:
+
+OverallConfidence = 0.96
+EXACT_ARTIFACT_DUPLICATE = true
+
+must still yield the configured duplicate/block disposition.
+
+Do not let score averaging suppress a hard rule.
+
+==================================================
+21. CLASSIFICATION INPUTS
+==================================================
+
+Consume B07:
+
+- ClassificationCode
+- Confidence
+- DecisionStatus
+- Status
+
+Do not rerun classification.
+
+==================================================
+22. CLASSIFICATION ELIGIBILITY RULE
+==================================================
+
+Potential behavior:
+
+unsupported/UNKNOWN classification
+-> BLOCKED or REVIEW_REQUIRED according to profile
+
+Classification failure
+-> BLOCKED
+
+Low classification confidence
+-> REVIEW_REQUIRED
+
+Do not hardcode these outcomes outside profile/rules.
+
+==================================================
+23. EXTRACTION INPUTS
+==================================================
+
+Consume B08:
+
+- extracted facts;
+- SourceConfidence;
+- evidence;
+- extraction status.
+
+Do not rerun extraction.
+
+==================================================
+24. NORMALIZATION INPUTS
+==================================================
+
+Consume B09:
+
+- NormalizationStatus
+- ValidationStatus
+- WarningCodes
+- SourceConfidence
+- normalized candidate references
+- evidence lineage
+
+Do not normalize again.
+
+==================================================
+25. MATCHING INPUTS
+==================================================
+
+Consume B10:
+
+- EntityType
+- candidate Score
+- Rank
+- MatchStatus
+- IsTopCandidate
+- MatchedFieldCount
+- ConflictingFieldCount
+- field-level reason codes/outcomes
+- hard identifier outcomes
+- duplicate signals
+
+Do not recompute match scores.
+
+==================================================
+26. REQUIRED FACT MATRIX
+==================================================
+
+Policy requirements must be classification-aware.
+
+Example V1 guidance:
+
+MEDICAL_BILL:
+- PATIENT_FULL_NAME required;
+- PROVIDER_NAME or FACILITY_NAME required;
+- DATE_OF_SERVICE or service date range preferred/required according to profile.
+
+MEDICAL_RECORD:
+- PATIENT_FULL_NAME required;
+- PROVIDER_NAME or FACILITY_NAME required.
+
+LIEN_DOCUMENT:
+- PATIENT_FULL_NAME required;
+- PROVIDER_NAME or FACILITY_NAME required;
+- case/lien context preferred.
+
+LETTER_OF_PROTECTION:
+- PATIENT_FULL_NAME required;
+- PROVIDER/FACILITY required;
+- ATTORNEY_NAME or LAW_FIRM_NAME preferred/required according to profile.
+
+SETTLEMENT_DOCUMENT:
+- PATIENT_FULL_NAME required;
+- settlement context required;
+- Case/Attorney preferred.
+
+Implement as centralized policy definition rather than endpoint logic.
+
+==================================================
+27. REQUIRED ENTITY MATRIX
+==================================================
+
+Profile should define entity requirements by classification.
+
+Illustrative:
+
+MEDICAL_BILL:
+Patient = Required
+ProviderOrFacility = Required
+Case = Optional
+AttorneyOrFirm = Optional
+
+MEDICAL_RECORD:
+Patient = Required
+ProviderOrFacility = Required
+Case = Optional
+
+LIEN_DOCUMENT:
+Patient = Required
+ProviderOrFacility = Required
+Case = Preferred/Optional
+
+LETTER_OF_PROTECTION:
+Patient = Required
+ProviderOrFacility = Required
+AttorneyOrFirm = Preferred/Required
+
+SETTLEMENT_DOCUMENT:
+Patient = Required
+Case = Preferred
+AttorneyOrFirm = Preferred
+
+Use actual profile data, not scattered if-statements.
+
+==================================================
+28. REQUIRED FACT VALIDITY
+==================================================
+
+A required fact should satisfy the configured structural validity requirement.
+
+Recommended default:
+
+ValidationStatus = VALID
+
+A fact with:
+
+INVALID_FORMAT
+
+must not satisfy a required-fact rule.
+
+PARTIAL/AMBIGUOUS behavior should be profile-driven.
+
+==================================================
+29. CRITICAL FACT SOURCE CONFIDENCE
+==================================================
+
+Critical facts may require a minimum SourceConfidence.
+
+Example:
+
+PATIENT_FULL_NAME >= configured threshold
+
+If below:
+- preserve fact;
+- add review finding;
+- do not delete or rewrite fact.
+
+==================================================
+30. EVIDENCE PRESENCE RULE
+==================================================
+
+Where configured, critical facts should have B08 evidence.
+
+Possible states:
+
+PRESENT
+MISSING
+PARTIAL
+
+Missing evidence may trigger:
+
+REVIEW_REQUIRED
+
+Do not fabricate evidence.
+
+==================================================
+31. PATIENT MATCH RULE
+==================================================
+
+If patient is required:
+
+top patient candidate must satisfy:
+- minimum score;
+- no disqualifying hard conflict;
+- candidate-margin rule if configured.
+
+If not satisfied:
+- NO_MATCH or REVIEW_REQUIRED according to profile.
+
+==================================================
+32. PROVIDER/FACILITY OR RULE
+==================================================
+
+Support:
+
+Provider match OR Facility match
+
+when profile allows either.
+
+Do not require both unless explicitly configured.
+
+Use best valid required-entity outcome.
+
+==================================================
+33. CASE MATCH RULE
+==================================================
+
+Case match should remain optional by default for V1.
+
+No Case match must not automatically yield NO_MATCH when:
+
+RequireCaseMatch = false
+
+A strong Case match may still increase confidence/support.
+
+==================================================
+34. ATTORNEY / LAW FIRM RULE
+==================================================
+
+Treat attorney/law firm as supporting or classification-specific required entities.
+
+Do not make them globally required.
+
+==================================================
+35. MATCH THRESHOLDS
+==================================================
+
+Use configuration/profile-driven thresholds.
+
+Examples:
+
+MinimumPatientMatchScore
+MinimumProviderMatchScore
+MinimumCaseMatchScore
+
+All values must validate within 0–1.
+
+Do not scatter numeric thresholds throughout rules.
+
+==================================================
+36. CANDIDATE MARGIN
+==================================================
+
+Evaluate top-vs-second candidate separation when configured.
+
+Example:
+
+Top = 0.93
+Second = 0.92
+Required margin = 0.05
+
+-> candidate ambiguous
+-> REVIEW_REQUIRED
+
+Top = 0.93
+Second = 0.40
+
+-> clear winner
+
+==================================================
+37. MULTIPLE STRONG CANDIDATES
+==================================================
+
+If multiple candidates satisfy strong threshold but margin is insufficient:
+
+REVIEW_REQUIRED
+
+Do not auto-accept the top-ranked candidate solely because it is rank 1.
+
+==================================================
+38. HARD IDENTIFIER RULE
+==================================================
+
+Allow profile-defined hard identifiers to strengthen confidence.
+
+Examples:
+- MRN exact;
+- patient account exact;
+- case number exact;
+- email exact for attorney.
+
+Hard identifier rules should inspect B10 field-level outcomes.
+
+==================================================
+39. HARD IDENTIFIER CAVEAT
+==================================================
+
+A hard identifier should not automatically override a genuine contradictory hard conflict unless profile explicitly permits it.
+
+Example:
+
+MRN exact
++
+DOB hard conflict
+
+should still trigger conflict/review according to policy.
+
+==================================================
+40. HARD CONFLICT RULE
+==================================================
+
+Consume B10 field outcomes/conflict counts/reason codes.
+
+Examples:
+- DOB_CONFLICT;
+- IDENTIFIER_CONFLICT;
+- CASE_NUMBER_CONFLICT.
+
+Configured hard conflicts should produce:
+
+CONFLICTED
+
+or:
+
+REVIEW_REQUIRED
+
+according to profile.
+
+==================================================
+41. DUPLICATE RULE
+==================================================
+
+Consume B10 duplicate signals.
+
+Recommended:
+
+EXACT_ARTIFACT_DUPLICATE
++ BlockOnExactDuplicate = true
+-> DUPLICATE
+
+CONTENT_DUPLICATE
+-> DUPLICATE or REVIEW_REQUIRED per profile
+
+BUSINESS_KEY_DUPLICATE
+-> REVIEW_REQUIRED by default
+
+POSSIBLE_DUPLICATE
+-> REVIEW_REQUIRED by default
+
+==================================================
+42. DUPLICATE PRECEDENCE
+==================================================
+
+Duplicate handling should precede ordinary confidence/match acceptance.
+
+Strong Patient/Provider/Case scores do not suppress duplicate disposition.
+
+==================================================
+43. DUPLICATE ACTION BOUNDARY
+==================================================
+
+B11 may output:
+
+DUPLICATE
+
+but must not:
+- delete Intake artifacts;
+- merge submissions;
+- merge business records;
+- suppress source provenance automatically.
+
+==================================================
+44. NORMALIZATION WARNING RULE
+==================================================
+
+Allow selected B09 warnings to trigger review.
+
+Potential:
+
+DATE_AMBIGUOUS
+NAME_COMPONENTS_PARTIAL
+ADDRESS_INCOMPLETE
+
+Categorize warnings as:
+- informational;
+- review-worthy;
+- blocking
+
+through policy config.
+
+==================================================
+45. OVERALL CONFIDENCE
+==================================================
+
+Calculate a deterministic policy confidence summary.
+
+This represents:
+
+“confidence that current evidence satisfies the configured Intake processing policy”
+
+It is not:
+- legal certainty;
+- clinical certainty;
+- identity truth probability.
+
+==================================================
+46. CONFIDENCE COMPONENTS
+==================================================
+
+Potential components:
+
+ClassificationComponent
+ExtractionComponent
+NormalizationComponent
+PatientMatchComponent
+ProviderFacilityMatchComponent
+CaseMatchComponent
+EvidenceComponent
+
+Potential penalties:
+
+ConflictPenalty
+DuplicatePenalty
+AmbiguityPenalty
+
+Use only components justified by current outputs.
+
+==================================================
+47. CONFIDENCE FORMULA
+==================================================
+
+Use a transparent, testable, profile-defined formula.
+
+Conceptually:
+
+sum(weighted component scores)
+-
+configured penalties
+
+normalize/clamp:
+
+0.00–1.00
+
+Persist with decimal precision.
+
+Document exact formula.
+
+==================================================
+48. NO BLIND AVERAGING
+==================================================
+
+Do not simply average:
+- classification confidence;
+- every fact confidence;
+- every candidate score.
+
+Use semantic components and configured weights.
+
+Missing optional components should generally be neutral or excluded from denominator according to policy.
+
+==================================================
+49. CONFIDENCE DOES NOT OVERRIDE HARD RULES
+==================================================
+
+Hard blocks, duplicates, and hard conflicts determine disposition before aggregate confidence can allow AUTO_ACCEPTABLE.
+
+==================================================
+50. REVIEW RULES
+==================================================
+
+Potential review triggers:
+
+- low classification confidence;
+- low-confidence critical fact;
+- required evidence missing;
+- candidate margin too small;
+- multiple strong candidates;
+- possible duplicate;
+- non-blocking hard/soft conflict;
+- ambiguous normalization;
+- optional expected context missing.
+
+==================================================
+51. NO-MATCH RULE
+==================================================
+
+Use NO_MATCH when:
+- an entity is required;
+- no candidate satisfies policy threshold;
+- no stronger disposition applies.
+
+Example:
+
+RequirePatientMatch = true
+Top patient = 0.40
+Threshold = 0.85
+
+-> NO_MATCH
+
+unless configured to route such cases to REVIEW_REQUIRED instead.
+
+==================================================
+52. CONFLICTED RULE
+==================================================
+
+Use CONFLICTED where strong contradictory evidence exists.
+
+Do not overuse CONFLICTED for ordinary uncertainty.
+
+==================================================
+53. BLOCKED RULE
+==================================================
+
+BLOCKED should be reserved for genuinely non-processable policy conditions.
+
+Examples:
+- invalid upstream lineage;
+- unsupported classification under policy;
+- missing required upstream stage;
+- unusable required input;
+- policy/configuration integrity failure.
+
+Normal ambiguity should generally become REVIEW_REQUIRED.
+
+==================================================
+54. DEFAULT DISPOSITION
+==================================================
+
+Recommended safe fallback:
+
+REVIEW_REQUIRED
+
+Do not default to AUTO_ACCEPTABLE.
+
+==================================================
+55. AUTO-ACCEPTABLE RULE
+==================================================
+
+AUTO_ACCEPTABLE may be selected only when:
+
+- feature enabled;
+- no BLOCKING finding;
+- no REVIEW finding;
+- no duplicate policy trigger;
+- no hard conflict;
+- required facts satisfied;
+- required entity matches satisfied;
+- candidate margins satisfied;
+- confidence threshold satisfied.
+
+No downstream write occurs.
+
+==================================================
+56. REVIEW PRIORITY
+==================================================
+
+Persist deterministic ReviewPriority.
+
+Recommended:
+
+LOW
+NORMAL
+HIGH
+URGENT
+
+or repository-equivalent numeric enum.
+
+==================================================
+57. REVIEW PRIORITY RULES
+==================================================
+
+Illustrative:
+
+URGENT:
+- severe integrity issue requiring human intervention;
+- duplicate + conflict combination if policy wants urgent handling.
+
+HIGH:
+- no patient match;
+- multiple strong patient candidates;
+- hard conflict;
+- possible duplicate.
+
+NORMAL:
+- low-confidence critical fact;
+- missing evidence;
+- optional Case unresolved.
+
+LOW:
+- clean case requiring review only because auto-acceptable is disabled.
+
+Keep rules deterministic/profile-driven.
+
+==================================================
+58. REVIEW PRIORITY BOUNDARY
+==================================================
+
+ReviewPriority is queue triage only.
+
+It is not:
+- legal urgency;
+- financial urgency;
+- medical urgency.
+
+==================================================
+59. POLICY FINDING CATEGORIES
+==================================================
+
+Use stable categories:
+
+ELIGIBILITY
+CLASSIFICATION
+EXTRACTION
+NORMALIZATION
+MATCHING
+DUPLICATE
+CONFLICT
+EVIDENCE
+CONFIDENCE
+
+==================================================
+60. POLICY FINDING SEVERITIES
+==================================================
+
+Use:
+
+INFO
+WARNING
+REVIEW
+BLOCKING
+
+These should map cleanly into B12 later.
+
+==================================================
+61. POLICY FINDING OUTCOMES
+==================================================
+
+Use stable outcomes such as:
+
+PASSED
+FAILED
+TRIGGERED
+NOT_APPLICABLE
+INSUFFICIENT_DATA
+
+Keep semantics deterministic.
+
+==================================================
+62. STABLE REASON CODES
+==================================================
+
+Add stable reason codes such as:
+
+POLICY_CLASSIFICATION_UNSUPPORTED
+POLICY_CLASSIFICATION_LOW_CONFIDENCE
+
+POLICY_REQUIRED_FACT_MISSING
+POLICY_REQUIRED_FACT_INVALID
+POLICY_REQUIRED_FACT_LOW_CONFIDENCE
+
+POLICY_PATIENT_MATCH_MISSING
+POLICY_PATIENT_MATCH_BELOW_THRESHOLD
+POLICY_PATIENT_MATCH_AMBIGUOUS
+
+POLICY_PROVIDER_FACILITY_MATCH_MISSING
+POLICY_PROVIDER_FACILITY_MATCH_AMBIGUOUS
+
+POLICY_CASE_MATCH_MISSING
+POLICY_CASE_MATCH_AMBIGUOUS
+
+POLICY_HARD_IDENTIFIER_MATCH
+POLICY_HARD_IDENTIFIER_CONFLICT
+POLICY_HARD_CONFLICT
+
+POLICY_EXACT_DUPLICATE
+POLICY_CONTENT_DUPLICATE
+POLICY_BUSINESS_DUPLICATE
+POLICY_POSSIBLE_DUPLICATE
+
+POLICY_EVIDENCE_MISSING
+POLICY_NORMALIZATION_AMBIGUOUS
+
+POLICY_OVERALL_CONFIDENCE_BELOW_THRESHOLD
+POLICY_AUTO_ACCEPTABLE_DISABLED
+
+Use exact naming consistent with project conventions.
+
+==================================================
+63. MESSAGE CODE BOUNDARY
+==================================================
+
+Stable code is authoritative.
+
+UI-readable English text may be mapped separately.
+
+Do not use free-form English text as the machine policy contract.
+
+==================================================
+64. POLICY RULE RESULT
+==================================================
+
+Conceptual rule evaluation output:
+
+- RuleCode
+- Category
+- Severity
+- Outcome
+- ReasonCode
+- EntityType
+- FactCode
+- Score
+- Threshold
+- RelatedMatchId
+- RelatedDuplicateSignalId
+- RelatedNormalizedFactId
+- EvidenceReference
+
+Do not include raw PHI unless essential.
+
+==================================================
+65. POLICY CONFIGURATION VALIDATION
+==================================================
+
+Validate profile/settings:
+
+- all score thresholds 0–1;
+- all confidence thresholds 0–1;
+- all margins 0–1;
+- unique RuleCodes;
+- known dispositions;
+- known FactCodes;
+- known EntityTypes;
+- valid classification codes;
+- valid precedence/order;
+- required entity enabled if it is required;
+- no impossible contradictory configuration.
+
+==================================================
+66. CONTRADICTORY CONFIGURATION
+==================================================
+
+Reject configurations such as:
+
+RequirePatientMatch = true
+but patient matching rule disabled
+
+or:
+
+AutoAcceptable enabled
+but no required policy threshold/definition exists
+
+Fail configuration deterministically.
+
+==================================================
+67. PARTIAL UPSTREAM RESULTS
+==================================================
+
+Support legitimate partial upstream states.
+
+Examples:
+
+Normalization = PARTIAL
+Matching = PARTIAL
+
+These should generally be policy inputs, not engine failures.
+
+Possible result:
+
+REVIEW_REQUIRED
+
+Do not confuse incomplete evidence with policy-engine execution failure.
+
+==================================================
+68. OPTIONAL PROVIDER FAILURE IN B10
+==================================================
+
+If B10 is PARTIAL because one optional entity provider failed:
+- policy should use configured required/optional matrix;
+- required provider failure may force review/no-match;
+- optional provider failure may only add warning/review.
+
+Do not fail engine automatically.
+
+==================================================
+69. POLICY FAILURE CODES
+==================================================
+
+Engine-level failures:
+
+POLICY_CONTEXT_INCOMPLETE
+POLICY_PROFILE_UNAVAILABLE
+POLICY_CONFIGURATION_INVALID
+POLICY_UPSTREAM_MISMATCH
+POLICY_TENANT_CONTEXT_INVALID
+POLICY_EVALUATION_FAILED
+
+These are not business findings.
+
+==================================================
+70. NO EXTERNAL NETWORK CALLS
+==================================================
+
+B11 should evaluate persisted B07-B10 results only.
+
+Do not:
+- re-query AI;
+- re-query master candidate services;
+- reload full Documents content.
+
+If candidate data needs refreshing, rerun B10 first.
+
+==================================================
+71. API
+==================================================
+
+Recommended:
+
+GET /policy/profiles
+
+GET /artifacts/{artifactId}/policy
+GET /artifacts/{artifactId}/policy/history
+
+POST /artifacts/{artifactId}/policy/evaluate
+
+Do not create separate policy engines for email/manual artifacts.
+
+==================================================
+72. POLICY READ RESPONSE
+==================================================
+
+Return:
+
+- PolicyEvaluationId
+- ArtifactId
+- ClassificationId
+- ArtifactExtractionId
+- ArtifactNormalizationId
+- ArtifactMatchRunId
+
+- PolicyProfileCode
+- PolicyProfileVersion
+
+- Disposition
+- OverallConfidence
+- ReviewPriority
+
+- Status
+- IsCurrent
+
+- RequestedAt
+- CompletedAt
+
+- Summary
+- Findings[]
+
+==================================================
+73. SUMMARY RESPONSE
+==================================================
+
+Include safe counts:
+
+BlockingFindings
+ReviewFindings
+WarningFindings
+InfoFindings
+PassedRules
+TriggeredRules
+
+Useful for B12.
+
+==================================================
+74. FINDING RESPONSE
+==================================================
+
+Expose:
+
+- RuleCode
+- Category
+- Severity
+- Outcome
+- ReasonCode
+- EntityType
+- FactCode
+- Score
+- Threshold
+- RelatedMatchId
+- RelatedDuplicateSignalId
+- RelatedNormalizedFactId
+
+Avoid raw fact/candidate values.
+
+==================================================
+75. AUTHORIZATION
+==================================================
+
+Reuse existing Intake intelligence policies if appropriate:
+
+intake.ai.read
+intake.ai.manage
+
+or introduce:
+
+intake.policy.read
+intake.policy.manage
+
+only if separate permissioning is materially useful.
+
+Changing tenant policy configuration should require tenant-admin/platform-admin authority.
+
+==================================================
+76. TENANT ISOLATION
+==================================================
+
+Mandatory:
+
+- Tenant A cannot evaluate Tenant B artifact.
+- Tenant A cannot read Tenant B policy evaluation.
+- Tenant A cannot read Tenant B findings.
+- Tenant A cannot use Tenant B policy configuration/profile.
+- all upstream records must belong to same tenant.
+
+==================================================
+77. PHI/PII MINIMIZATION
+==================================================
+
+Policy findings should reference IDs/statuses/scores rather than duplicate sensitive values.
+
+Prefer:
+
+FactCode = PATIENT_DATE_OF_BIRTH
+ReasonCode = POLICY_REQUIRED_FACT_INVALID
+
+instead of storing the actual DOB.
+
+==================================================
+78. AUDIT
+==================================================
+
+Suggested events:
+
+POLICY_EVALUATION_REQUESTED
+POLICY_EVALUATION_COMPLETED
+POLICY_EVALUATION_FAILED
+POLICY_REEVALUATED
+
+Safe metadata:
+
+- TenantId
+- ArtifactId
+- PolicyEvaluationId
+- PolicyProfileCode
+- Disposition
+- OverallConfidence
+- ReviewPriority
+- BlockingCount
+- ReviewCount
+- Status
+- CorrelationId
+
+No raw PHI/PII.
+
+==================================================
+79. LOGGING
+==================================================
+
+Safe structured logs:
+
+- CorrelationId
+- TenantId
+- ArtifactId
+- PolicyEvaluationId
+- PolicyProfileCode
+- PolicyProfileVersion
+- Disposition
+- OverallConfidence
+- ReviewPriority
+- FindingCounts
+- Status
+- FailureCode
+
+Do not log:
+- patient name;
+- DOB;
+- phone;
+- email;
+- address;
+- account number;
+- claim number;
+- case number;
+- evidence snippet;
+- raw normalized value.
+
+==================================================
+80. POLICY ANALYTICS
+==================================================
+
+Lightweight tenant-scoped metrics may include:
+
+Evaluations
+AutoAcceptableCount
+ReviewRequiredCount
+NoMatchCount
+ConflictedCount
+DuplicateCount
+BlockedCount
+AverageOverallConfidence
+
+No raw PHI.
+
+==================================================
+81. EXPLAINABILITY
+==================================================
+
+A reviewer must be able to answer:
+
+“Why did this receive this disposition?”
+
+from persisted findings.
+
+Examples:
+
+POLICY_PATIENT_MATCH_AMBIGUOUS
+Top score = 0.91
+Margin threshold = 0.05
+
+POLICY_POSSIBLE_DUPLICATE
+Duplicate rule triggered
+
+POLICY_CLASSIFICATION_LOW_CONFIDENCE
+Observed score below threshold
+
+No black-box final result.
+
+==================================================
+82. NO CHAIN-OF-THOUGHT
+==================================================
+
+Do not request/store AI reasoning.
+
+B11 is deterministic and does not need it.
+
+==================================================
+83. B12 READINESS
+==================================================
+
+B11 should give B12 everything required for review triage:
+
+- Disposition
+- OverallConfidence
+- ReviewPriority
+- Findings
+- Related match IDs
+- Related duplicate signals
+- Evidence references
+- exact upstream IDs
+
+B12 should not recompute policy.
+
+==================================================
+84. HUMAN OVERRIDE BOUNDARY
+==================================================
+
+Do not implement:
+- reviewer decisions;
+- reviewer comments;
+- candidate confirmation;
+- correction records;
+- manual overrides.
+
+B12 owns that.
+
+==================================================
+85. FUTURE STRAIGHT-THROUGH READINESS
+==================================================
+
+Design AUTO_ACCEPTABLE as a stable future signal.
+
+Future B20 may consume it.
+
+B11 must not itself invoke downstream orchestration.
+
+==================================================
+86. DATABASE SCHEMA
+==================================================
+
+Expected entities:
+
+PolicyProfileDefinitions
+ArtifactPolicyEvaluations
+ArtifactPolicyFindings
+
+Use existing profile/history conventions.
+
+Do not create review-action tables.
+
+==================================================
+87. DATABASE CONSTRAINTS
+==================================================
+
+At minimum:
+
+UNIQUE (PolicyProfileCode, Version)
+UNIQUE ArtifactPolicyEvaluation.ExecutionKey
+
+Use same-tenant FK/alternate-key patterns where appropriate.
+
+Finding uniqueness may include:
+
+ArtifactPolicyEvaluationId
++ RuleCode
++ contextual discriminator
+
+only if that fits actual multi-finding rules.
+
+==================================================
+88. INDEXES
+==================================================
+
+ArtifactPolicyEvaluations:
+- TenantId
+- ArtifactId
+- ArtifactMatchRunId
+- Disposition
+- Status
+- ExecutionKey UNIQUE
+- current-result lookup
+- CreatedAt
+
+ArtifactPolicyFindings:
+- ArtifactPolicyEvaluationId
+- RuleCode
+- Severity
+- Category
+- ReasonCode
+
+==================================================
+89. MIGRATION
+==================================================
+
+Create B11 migration.
+
+Suggested:
+
+AddConfidenceAndPolicyEngineV1
+
+or repository-standard equivalent.
+
+Do not create:
+- review queue tables;
+- reviewer-action tables;
+- approved snapshot tables;
+- downstream adapter state;
+- Case/Lien tables.
+
+==================================================
+90. TESTS — PROFILE VALIDATION
+==================================================
+
+Test:
+
+- valid profile resolves;
+- inactive profile rejected;
+- unknown FactCode rejected;
+- unknown EntityType rejected;
+- invalid threshold rejected;
+- invalid margin rejected;
+- contradictory configuration rejected;
+- policy version participates in execution identity.
+
+==================================================
+91. TESTS — EXACT DUPLICATE
+==================================================
+
+Input:
+
+EXACT_ARTIFACT_DUPLICATE
+
+when:
+
+BlockOnExactDuplicate = true
+
+Expected:
+
+Disposition = DUPLICATE
+
+Ensure strong match/high confidence cannot override it.
+
+==================================================
+92. TESTS — POSSIBLE DUPLICATE
+==================================================
+
+Input:
+
+POSSIBLE_DUPLICATE
+
+Conservative default:
+
+Disposition = REVIEW_REQUIRED
+
+with stable duplicate finding.
+
+==================================================
+93. TESTS — CLEAN STRONG MATCH
+==================================================
+
+Synthetic context:
+
+Supported classification
+High classification confidence
+Required facts valid
+Required evidence present
+Patient top candidate = 0.95
+Provider/facility top candidate = 0.91
+Clear candidate margins
+No conflicts
+No duplicate
+
+When:
+
+EnableAutoAcceptableDisposition = false
+
+Expected:
+
+REVIEW_REQUIRED
++
+POLICY_AUTO_ACCEPTABLE_DISABLED
+
+==================================================
+94. TESTS — AUTO ACCEPT ENABLED
+==================================================
+
+Same clean context with:
+
+EnableAutoAcceptableDisposition = true
+
+Expected:
+
+AUTO_ACCEPTABLE
+
+No downstream write occurs.
+
+==================================================
+95. TESTS — NO PATIENT MATCH
+==================================================
+
+If:
+
+RequirePatientMatch = true
+
+and no candidate satisfies threshold:
+
+Expected:
+
+NO_MATCH
+
+or profile-defined REVIEW_REQUIRED.
+
+Test exact configured behavior.
+
+==================================================
+96. TESTS — PROVIDER/FACILITY OR
+==================================================
+
+If policy requires:
+
+Provider OR Facility
+
+then a qualifying Facility candidate alone must satisfy the rule.
+
+Do not require both.
+
+==================================================
+97. TESTS — OPTIONAL CASE
+==================================================
+
+If:
+
+RequireCaseMatch = false
+
+no case candidate must not yield NO_MATCH/BLOCKED solely for that reason.
+
+==================================================
+98. TESTS — CANDIDATE AMBIGUITY
+==================================================
+
+Patient:
+
+Top = 0.93
+Second = 0.92
+Required margin = 0.05
+
+Expected:
+
+REVIEW_REQUIRED
+
+with stable ambiguity finding.
+
+==================================================
+99. TESTS — MULTIPLE STRONG CANDIDATES
+==================================================
+
+Verify multiple above-threshold candidates with insufficient margin trigger review.
+
+==================================================
+100. TESTS — HARD CONFLICT
+==================================================
+
+Example:
+
+Patient top candidate strong
+DOB conflict marked hard
+
+Expected:
+
+CONFLICTED
+
+or profile-defined review disposition.
+
+==================================================
+101. TESTS — HARD IDENTIFIER
+==================================================
+
+Example:
+
+MRN exact
+DOB exact
+Name fuzzy
+
+Verify strong identifier evidence contributes according to policy.
+
+==================================================
+102. TESTS — HARD IDENTIFIER + CONFLICT
+==================================================
+
+Example:
+
+MRN exact
+DOB conflict
+
+Verify conflict is not silently overridden.
+
+==================================================
+103. TESTS — LOW CLASSIFICATION CONFIDENCE
+==================================================
+
+Supported classification below configured threshold:
+
+Expected:
+REVIEW_REQUIRED
+
+or profile-defined block.
+
+==================================================
+104. TESTS — REQUIRED FACT MISSING
+==================================================
+
+Example:
+
+MEDICAL_BILL
+PATIENT_FULL_NAME absent
+
+Expected configured review/block outcome.
+
+==================================================
+105. TESTS — REQUIRED FACT INVALID
+==================================================
+
+Required fact has:
+
+ValidationStatus = INVALID_FORMAT
+
+It must not satisfy requirement.
+
+==================================================
+106. TESTS — LOW FACT CONFIDENCE
+==================================================
+
+Required fact structurally valid but SourceConfidence below threshold.
+
+Expected:
+- fact remains present;
+- finding added;
+- review outcome per policy.
+
+==================================================
+107. TESTS — MISSING EVIDENCE
+==================================================
+
+Critical fact present but evidence missing.
+
+Expected review finding where configured.
+
+==================================================
+108. TESTS — NORMALIZATION AMBIGUITY
+==================================================
+
+B09 warning/status indicates ambiguity.
+
+Expected configured review finding.
+
+==================================================
+109. TESTS — PARTIAL MATCH RUN
+==================================================
+
+B10 status = PARTIAL.
+
+If all required entity providers succeeded:
+- evaluation may continue.
+
+If a required entity provider failed:
+- review/no-match according to policy.
+
+Do not automatically fail engine.
+
+==================================================
+110. TESTS — RULE PRECEDENCE
+==================================================
+
+Test combinations:
+
+exact duplicate + clean strong match
+hard conflict + high overall confidence
+block condition + possible duplicate
+no-match + possible duplicate
+auto-acceptable conditions + auto-acceptable disabled
+
+Verify deterministic precedence.
+
+==================================================
+111. TESTS — OVERALL CONFIDENCE
+==================================================
+
+Verify exact formula.
+
+Stored OverallConfidence must mathematically reconcile with configured components/weights/penalties.
+
+==================================================
+112. TESTS — REVIEW PRIORITY
+==================================================
+
+Verify deterministic mapping for:
+
+- clean review because auto-acceptable disabled;
+- low classification confidence;
+- no patient match;
+- possible duplicate;
+- hard conflict;
+- blocking condition.
+
+==================================================
+113. TESTS — FINDINGS
+==================================================
+
+Verify:
+- stable RuleCode;
+- Category;
+- Severity;
+- Outcome;
+- ReasonCode;
+- related IDs;
+- no unnecessary raw PHI.
+
+==================================================
+114. TESTS — IDEMPOTENCY / HISTORY
+==================================================
+
+Verify:
+
+- same upstream context + same policy version reuses evaluation;
+- duplicate POST does not duplicate findings;
+- new match run creates new evaluation;
+- new policy version creates new evaluation;
+- historical evaluations remain immutable;
+- current result deterministic.
+
+==================================================
+115. TESTS — TENANT ISOLATION
+==================================================
+
+Verify:
+
+- Tenant A cannot evaluate Tenant B artifact;
+- Tenant A cannot read Tenant B evaluation;
+- Tenant A cannot read Tenant B findings;
+- Tenant A cannot use Tenant B policy config;
+- repository queries are tenant-scoped.
+
+==================================================
+116. TESTS — UPSTREAM CONSISTENCY
+==================================================
+
+Create mismatched lineage:
+
+classification tenant/artifact mismatch
+extraction mismatch
+normalization mismatch
+match-run mismatch
+
+Expected:
+
+POLICY_UPSTREAM_MISMATCH
+
+No findings/disposition should be produced as if evaluation succeeded.
+
+==================================================
+117. HTTP INTEGRATION TESTS
+==================================================
+
+Where infrastructure exists, cover:
+
+GET /policy/profiles
+GET /artifacts/{artifactId}/policy
+GET /artifacts/{artifactId}/policy/history
+POST /artifacts/{artifactId}/policy/evaluate
+
+Test:
+
+- 401;
+- 403;
+- 404;
+- upstream-not-ready;
+- tenant isolation;
+- idempotency;
+- exact duplicate;
+- clean review result;
+- clean AUTO_ACCEPTABLE when explicitly enabled.
+
+If HTTP test infrastructure is still absent, add the smallest maintainable foundation if practical and document the limitation.
+
+==================================================
+118. MYSQL VALIDATION
+==================================================
+
+Apply the complete Intake migration chain through B11 against clean disposable/local MySQL 8.
+
+This should also close prior B04-B10 DB-validation debt if the environment permits.
+
+Verify:
+
+- B02-B10 prior schema;
+- PolicyProfileDefinitions;
+- ArtifactPolicyEvaluations;
+- ArtifactPolicyFindings;
+- same-tenant FKs;
+- execution-key uniqueness;
+- current-result uniqueness;
+- profile/version uniqueness;
+- finding relationships;
+- full migration history.
+
+Use no cloud/shared DB.
+
+Clean up disposable DB/container afterward.
+
+==================================================
+119. PERFORMANCE
+==================================================
+
+B11 should:
+
+- use persisted B07-B10 summaries;
+- make no external network calls;
+- make no AI calls;
+- use projections rather than loading complete histories;
+- evaluate rules in memory;
+- batch-persist findings;
+- avoid loading artifact/document content;
+- avoid querying master-data candidate services.
+
+==================================================
+120. SECURITY VALIDATION
+==================================================
+
+Verify:
+
+- no cross-tenant policy evaluation;
+- no cross-tenant policy history;
+- no PHI/PII copied unnecessarily into findings;
+- no raw facts in logs;
+- no candidate raw values in logs;
+- no evidence snippets in logs;
+- no external AI/network dependency;
+- no downstream business writes;
+- no auto-execution semantics;
+- no uploaded specification assets tracked;
+- no bin/obj artifacts tracked.
+
+==================================================
+121. EXISTING SERVICE IMPACT
+==================================================
+
+Keep B11 within:
+
+- Intake;
+- B02 policy configuration;
+- persisted B07-B10 results;
+- existing auth/audit/events.
+
+Do not modify business logic in:
+
+- SynqLien;
+- SynqFund;
+- CareConnect;
+- Flow;
+- Notifications;
+- Identity internals.
+
+Do not write to business master records.
+
+==================================================
+122. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- human review UI;
+- review queue assignment;
+- reviewer comments;
+- correction workflows;
+- candidate confirmation;
+- manual override;
+- approved snapshots;
+- Case creation;
+- Lien creation;
+- product routing;
+- downstream adapter execution;
+- Flow tasks;
+- notifications;
+- straight-through orchestration;
+- payment decisions;
+- legal adjudication;
+- AI-based decisioning;
+- AWS;
+- RDS;
+- ECS;
+- Route53;
+- deployment.
+
+==================================================
+123. BUILD / VALIDATION
+==================================================
+
+At minimum run and record:
+
+dotnet restore if required
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet build LegalSynq.sln --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet ef dbcontext info using repository-pinned tooling
+
+dotnet ef migrations list using repository-pinned tooling
+
+Apply full B02-B11 migration chain to disposable MySQL 8
+
+Validate B11 schema/indexes/FKs/uniqueness
+
+git diff --check
+
+git status --short
+
+git diff --stat
+
+git diff --name-status against B10 baseline
+
+Verify:
+- no Intake bin/obj tracked;
+- no secrets;
+- no uploaded spec assets added;
+- no unrelated product-domain changes.
+
+Clearly distinguish pre-existing warnings from new B11 errors/warnings.
+
+==================================================
+124. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B11 is complete only when all are true:
+
+1. LIEN_INTAKE_POLICY_V1 exists.
+2. Policy profile is versioned.
+3. B02 policy controls exist.
+4. Auto-acceptable is disabled by default.
+5. ArtifactPolicyEvaluation persistence exists.
+6. ArtifactPolicyFinding persistence exists.
+7. Evaluation binds to exact B07 classification.
+8. Evaluation binds to exact B08 extraction.
+9. Evaluation binds to exact B09 normalization.
+10. Evaluation binds to exact B10 match run.
+11. Upstream lineage/tenant consistency is validated.
+12. Deterministic ExecutionKey exists.
+13. Policy evaluation is idempotent.
+14. Policy history is immutable.
+15. Current policy result is deterministic.
+16. IIntakePolicyEngine exists.
+17. Policy-rule abstraction exists.
+18. Policy-rule registry exists.
+19. Rule precedence is explicit.
+20. Hard rules override aggregate confidence.
+21. Classification eligibility rule exists.
+22. Classification confidence rule exists.
+23. Classification-aware required-fact rules exist.
+24. Critical fact confidence rule exists.
+25. Structural validity rule exists.
+26. Evidence-presence rule exists where configured.
+27. Patient-match rule exists.
+28. Provider-or-facility rule exists.
+29. Optional/required Case rule exists.
+30. Candidate-margin rule exists.
+31. Multiple-strong-candidate ambiguity is handled.
+32. Hard identifier rule exists.
+33. Hard identifier conflict behavior exists.
+34. Hard conflict rule exists.
+35. Exact duplicate rule exists.
+36. Content/business/possible duplicate handling exists.
+37. Duplicate rules precede ordinary confidence acceptance.
+38. OverallConfidence exists.
+39. OverallConfidence is deterministic.
+40. OverallConfidence uses semantic components rather than blind averaging.
+41. OverallConfidence does not override hard rules.
+42. AUTO_ACCEPTABLE disposition exists.
+43. REVIEW_REQUIRED disposition exists.
+44. NO_MATCH disposition exists.
+45. CONFLICTED disposition exists.
+46. DUPLICATE disposition exists.
+47. BLOCKED disposition exists.
+48. Default disposition is safe/non-auto.
+49. Auto-acceptable disabled yields review for otherwise clean input.
+50. Auto-acceptable enabled can yield AUTO_ACCEPTABLE.
+51. No downstream write occurs from AUTO_ACCEPTABLE.
+52. ReviewPriority exists.
+53. ReviewPriority is deterministic.
+54. Stable finding categories exist.
+55. Stable finding severities exist.
+56. Stable finding outcomes exist.
+57. Stable RuleCodes exist.
+58. Stable ReasonCodes exist.
+59. Required entity rules are classification-aware.
+60. Required fact rules are classification-aware.
+61. Provider/facility OR rule is supported.
+62. Missing optional Case does not automatically block.
+63. Low-confidence fact is preserved and evaluated.
+64. INVALID_FORMAT required fact does not satisfy requirement.
+65. Evidence absence can trigger review.
+66. B09 normalization is consumed, not recomputed.
+67. B10 match score is consumed, not recomputed.
+68. B08 extraction is consumed, not rerun.
+69. B07 classification is consumed, not rerun.
+70. Partial upstream results can produce valid review decisions.
+71. Exact duplicate can override strong match.
+72. Possible duplicate can require review.
+73. Tenant isolation is enforced.
+74. Tenant A cannot read Tenant B policy result.
+75. Tenant A cannot read Tenant B findings.
+76. PHI/PII is minimized in findings.
+77. Audit events exist without raw PHI.
+78. Operational logs omit raw PHI/candidate data/evidence.
+79. Policy APIs exist.
+80. Authorization is enforced.
+81. Profile validation tests pass.
+82. Exact duplicate tests pass.
+83. Possible duplicate tests pass.
+84. Clean strong-match tests pass.
+85. Auto-acceptable disabled tests pass.
+86. Auto-acceptable enabled tests pass.
+87. No-match tests pass.
+88. Provider/facility OR tests pass.
+89. Optional-case tests pass.
+90. Candidate-ambiguity tests pass.
+91. Hard-conflict tests pass.
+92. Hard-identifier tests pass.
+93. Low classification-confidence tests pass.
+94. Required-fact tests pass.
+95. Required-fact-invalid tests pass.
+96. Low fact-confidence tests pass.
+97. Evidence tests pass.
+98. Normalization-ambiguity tests pass.
+99. Partial-match-run tests pass.
+100. Rule-precedence tests pass.
+101. Overall-confidence tests pass.
+102. Review-priority tests pass.
+103. Finding-shape/privacy tests pass.
+104. Idempotency/history tests pass.
+105. Tenant-isolation tests pass.
+106. Upstream-consistency tests pass.
+107. HTTP integration tests cover critical paths where practical.
+108. B11 migration exists.
+109. full B02-B11 migration chain applies successfully to MySQL 8.
+110. B11 FK/index/uniqueness constraints are verified.
+111. prior Intake schema remains intact.
+112. Intake API builds with zero new B11 errors.
+113. Intake tests pass.
+114. full LegalSynq solution builds with zero new B11 errors.
+115. no B12 review workflow is introduced.
+116. no Case/Lien creation is introduced.
+117. no downstream execution is introduced.
+118. no cloud/deployment work is performed.
+119. no secrets/specification assets/build artifacts are introduced.
+120. /analysis/LSI-B11-report.md exists with complete evidence.
+
+==================================================
+125. REQUIRED IMPLEMENTATION REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B11-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree state
+8. B02-B10 architecture reviewed
+9. B07 classification integration
+10. B08 extraction integration
+11. B09 normalization integration
+12. B10 matching/duplicate integration
+13. Files added
+14. Files modified
+15. policy profile
+16. B02 policy configuration
+17. ArtifactPolicyEvaluation model
+18. ArtifactPolicyFinding model
+19. upstream binding model
+20. upstream consistency validation
+21. execution key
+22. idempotency
+23. history/current-result strategy
+24. policy engine
+25. policy-rule abstraction
+26. policy-rule registry
+27. rule precedence
+28. execution status model
+29. disposition model
+30. auto-acceptable safety/default
+31. review priority model
+32. classification eligibility rules
+33. classification confidence rules
+34. required fact matrix
+35. required entity matrix
+36. critical fact confidence
+37. structural validity rules
+38. evidence rules
+39. patient match rules
+40. provider/facility OR rules
+41. case rules
+42. candidate-margin rules
+43. multiple-candidate ambiguity
+44. hard identifier rules
+45. hard identifier conflict
+46. hard conflict rules
+47. duplicate rules
+48. exact duplicate precedence
+49. possible/business duplicate handling
+50. normalization warning rules
+51. overall confidence components
+52. overall confidence formula
+53. overall confidence hard-rule boundary
+54. default disposition
+55. partial upstream handling
+56. finding categories
+57. finding severities
+58. finding outcomes
+59. stable RuleCodes
+60. stable ReasonCodes
+61. policy configuration validation
+62. API surface
+63. authorization
+64. tenant isolation
+65. PHI/PII minimization
+66. audit behavior
+67. logging/privacy behavior
+68. analytics if implemented
+69. migration name
+70. database schema
+71. indexes/constraints
+72. full B02-B11 MySQL migration validation
+73. prior pending DB-validation closure
+74. profile-validation tests
+75. exact duplicate tests
+76. possible duplicate tests
+77. clean-match tests
+78. no-match tests
+79. provider/facility tests
+80. optional-case tests
+81. candidate-ambiguity tests
+82. conflict tests
+83. hard-identifier tests
+84. classification-confidence tests
+85. required-fact tests
+86. low-fact-confidence tests
+87. evidence tests
+88. normalization-ambiguity tests
+89. partial-upstream tests
+90. precedence tests
+91. overall-confidence tests
+92. auto-acceptable tests
+93. review-priority tests
+94. finding/privacy tests
+95. idempotency/history tests
+96. tenant-isolation tests
+97. upstream-consistency tests
+98. HTTP integration tests
+99. Intake API build result
+100. full solution build result
+101. security assessment
+102. performance considerations
+103. known gaps
+104. out-of-scope confirmation
+105. git diff summary
+106. final repository validation status
+107. recommended next bundle: LSI-B12
+
+Sanitize all local credentials, tokens, PHI/PII test values, and disposable database connection details from the report.
+
+==================================================
+126. DEFINITION OF DONE
+==================================================
+
+The implementation is done when Synq Intake can take the complete current B07-B10 intelligence chain and reliably produce:
+
+- a deterministic policy disposition;
+- a deterministic OverallConfidence summary;
+- deterministic ReviewPriority;
+- explicit pass/review/block findings;
+- stable RuleCodes and ReasonCodes;
+- duplicate/conflict precedence;
+- classification-aware required-fact/entity decisions;
+- candidate-ambiguity handling;
+- immutable policy history;
+- tenant-safe explainability;
+
+while clearly distinguishing:
+
+classification confidence
+from
+extraction confidence
+from
+normalization validity
+from
+match confidence
+from
+policy disposition
+from
+human adjudication
+from
+downstream execution.
+
+When complete:
+
+- execute all required implementation work now;
+- run all required local validation;
+- create /analysis/LSI-B11-report.md;
+- stop;
+- do not begin LSI-B12;
+- do not deploy;
+- do not push unless explicitly requested.

@@ -1,6 +1,6 @@
 namespace Liens.Application.DTOs;
 
-public sealed class CreateCaseRequest
+public sealed record class CreateCaseRequest
 {
     public string CaseNumber { get; init; } = string.Empty;
     public string ClientFirstName { get; init; } = string.Empty;

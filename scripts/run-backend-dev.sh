@@ -32,6 +32,8 @@ require_free_port 5020 "artifacts API"
     || echo "[build] LegalSynq.sln build error (possibly OOM) — continuing with cached binaries"
   dotnet build "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" --configuration Debug --verbosity quiet \
     || echo "[build] Documents.Api build error — continuing with cached binary"
+  dotnet build "$ROOT/apps/services/intake/Intake.Api/Intake.Api.csproj" --configuration Debug --verbosity quiet \
+    || echo "[build] Intake.Api build error — continuing with cached binary"
   dotnet restore "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --verbosity quiet
   dotnet build   "$ROOT/apps/services/flow/backend/src/Flow.Api/Flow.Api.csproj" --no-restore --configuration Debug --verbosity quiet \
     || echo "[build] Flow.Api build error — continuing with cached binary"
@@ -153,6 +155,11 @@ require_free_port 5020 "artifacts API"
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
     dotnet run --no-build --project "$ROOT/apps/services/documents/Documents.Api/Documents.Api.csproj" &
+  sleep 3
+  ASPNETCORE_ENVIRONMENT=Development \
+    ASPNETCORE_URLS=http://0.0.0.0:5013 \
+    DOTNET_GCConserveMemory=9 \
+    dotnet run --no-build --project "$ROOT/apps/services/intake/Intake.Api/Intake.Api.csproj" &
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \

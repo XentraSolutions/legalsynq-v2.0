@@ -1,0 +1,1714 @@
+You are implementing LSI-B05 — Email Artifact & Documents Integration for Synq Intake in the LegalSynq v3 repository.
+
+EXECUTION DIRECTIVE
+
+Execute this ticket now.
+
+Do not stop after reviewing requirements.
+Do not return a plan for approval.
+Do not ask whether to proceed.
+Implement the full scoped LSI-B05 work in this execution, run the required local validation, and produce /analysis/LSI-B05-report.md when complete.
+
+If a minor implementation decision is needed and the requirements already establish the intended behavior, make the safest architecture-consistent decision and continue.
+
+Only stop for a genuine blocking condition that cannot be resolved from the repository or these requirements.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Required implementation report: /analysis/LSI-B05-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B05 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, or production deployment work.
+3. Do not implement Synq AI classification/extraction, OCR, matching, confidence scoring, human review, Case/Lien creation, Flow, notifications, downstream product routing, mailbox polling, Graph/Gmail/IMAP ingestion, archive expansion, or custom malware scanning.
+4. Preserve all prior analysis reports as read-only.
+5. Create/update only /analysis/LSI-B05-report.md for this ticket.
+6. Reuse current LegalSynq v3 conventions, packages, authentication, authorization, tenant context, EF, MySQL, logging, audit, service clients, and Minimal API patterns.
+7. Before coding, inspect:
+   - current git branch/status;
+   - HEAD vs origin/xenia;
+   - B04 email repository implementation;
+   - B03 TenantIntakeSource implementation;
+   - B02 effective processing-profile configuration;
+   - existing Documents Service implementation;
+   - existing Documents client/contracts;
+   - tenant scoping and service-token conventions;
+   - upload APIs and response models;
+   - existing retry/outbox patterns;
+   - current IntakeDbContext and migrations;
+   - current Intake tests.
+8. Record the repository baseline in /analysis/LSI-B05-report.md before implementation.
+9. Preserve unrelated pre-existing changes.
+10. Do not commit uploaded prompt/specification assets, generated binaries, secrets, local DB files, or unrelated artifacts.
+11. Local/repository validation is required.
+12. Do not claim GitHub CI, cloud runtime, production, or deployed validation unless separately proven.
+13. Do not begin LSI-B06 automatically.
+14. Do not push unless explicitly requested.
+
+LOCKED PLATFORM STACK
+Use existing LegalSynq v3 conventions:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT Bearer/service-token authentication
+- existing ICurrentRequestContext tenant conventions
+- existing YARP gateway conventions
+- LegalSynq.AuditClient where applicable
+- existing Documents Service/client/contracts
+- existing structured logging, health, configuration, and testing conventions
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+
+Synq Intake remains:
+- tenant-bound
+- product-neutral
+- independently deployable
+- source-preserving
+
+LOCKED OWNERSHIP CHAIN
+
+TenantIntakeSource
+-> InboundEmail.TenantId
+-> IntakeArtifact.TenantId
+-> Documents Service tenant scope
+
+B05 MUST NOT re-determine tenant ownership.
+
+Tenant identity MUST NOT be inferred from:
+- attachment bytes
+- filenames
+- MIME contents
+- sender
+- document text
+- patient names
+- case numbers
+- AI
+- OCR
+- downstream business data
+
+The B04 tenant binding is authoritative and immutable.
+
+OBJECTIVE
+
+Implement the artifact-processing layer that takes an already captured B04 InboundEmail and turns eligible email parts into managed document artifacts through the existing LegalSynq Documents Service.
+
+The completed system must be able to answer:
+
+“What usable artifacts came from this captured email, which source email/attachment did each artifact come from, was the artifact successfully stored through Documents Service, and what durable Documents reference now represents it?”
+
+without yet interpreting the business meaning of the documents.
+
+==================================================
+1. SOURCE OF TRUTH
+==================================================
+
+B05 processes only previously captured B04 email records.
+
+Starting data must come from:
+
+InboundEmail
++
+InboundEmailAttachmentMetadata
++
+persisted raw email/body content where required
+
+Do not accept arbitrary standalone binaries as email artifacts.
+
+Manual/file intake belongs to later scope.
+
+==================================================
+2. DOCUMENTS SERVICE REVIEW FIRST
+==================================================
+
+Before implementation, inspect and document the current LegalSynq Documents Service.
+
+Identify:
+
+- client interface
+- upload/create API
+- request DTO
+- response DTO
+- document ID model
+- version ID model if any
+- storage reference semantics
+- tenant-scoping requirements
+- authorization/service-token requirements
+- metadata support
+- idempotency support
+- error behavior
+- retry semantics
+- malware/scan behavior if already supported
+- audit behavior
+- document lifecycle/versioning conventions
+
+Use the existing Documents boundary.
+
+Do NOT:
+- write directly to Documents database;
+- write directly to Documents storage;
+- introduce a second document repository;
+- invent a competing document ID model.
+
+If an exact capability is unavailable, identify the gap and implement the safest adapter around the existing contract without bypassing Documents.
+
+==================================================
+3. INTAKE ARTIFACT ENTITY
+==================================================
+
+Create an Intake-owned entity such as:
+
+IntakeArtifact
+
+Conceptual fields:
+
+- Id
+- TenantId
+- OrgId if applicable
+- InboundEmailId
+- TenantIntakeSourceId
+- SourceAttachmentMetadataId if applicable
+- ArtifactKey
+- ArtifactType
+- ArtifactRole
+- ArtifactOrdinal
+- SourceContentId if applicable
+- OriginalFileName
+- EffectiveFileName
+- DeclaredContentType
+- DetectedContentType if existing tooling provides it
+- SizeBytes
+- Sha256
+- IsInline
+- DocumentsServiceDocumentId
+- DocumentsServiceVersionId if supported
+- DocumentsServiceReference if supported
+- ProcessingStatus
+- FailureCode
+- FailureMessage
+- IsRetryable if useful
+- AttemptCount
+- CreatedAt
+- UpdatedAt
+- CompletedAt
+- UploadedAt
+
+Only include fields justified by actual behavior.
+
+==================================================
+4. ARTIFACT TYPES
+==================================================
+
+Create centralized stable artifact-type codes.
+
+Initial supported types should include:
+
+EMAIL_ATTACHMENT
+INLINE_ATTACHMENT
+EMAIL_BODY_TEXT
+EMAIL_BODY_HTML
+
+Optional:
+
+EMAIL_RAW_MESSAGE
+
+Default recommendation:
+- do NOT upload raw MIME to Documents in B05;
+- keep raw MIME as B04 Intake evidence.
+
+Do not introduce business-document classifications such as:
+- MEDICAL_BILL
+- MEDICAL_RECORD
+- LIEN
+- LETTER_OF_PROTECTION
+- SETTLEMENT_DOCUMENT
+
+Those belong to Synq AI classification in B07.
+
+==================================================
+5. ARTIFACT ROLES
+==================================================
+
+Use a role distinct from file/media type.
+
+Potential roles:
+
+PRIMARY_ATTACHMENT
+INLINE_ATTACHMENT
+EMAIL_BODY
+RAW_SOURCE
+SUPPORTING_ARTIFACT
+
+Roles must describe source/artifact function only, not business meaning.
+
+==================================================
+6. EMAIL-LEVEL ARTIFACT PROCESSING STATUS
+==================================================
+
+Track artifact processing separately from B04 capture state.
+
+Do not mutate CaptureStatus to represent Documents processing.
+
+Use a separate email-level state such as:
+
+NOT_STARTED
+IN_PROGRESS
+COMPLETED
+PARTIAL
+FAILED
+
+This distinction is mandatory:
+
+Email captured successfully != artifacts processed successfully
+
+Implement this either:
+- as B04 email fields if schema ownership is appropriate;
+- or via a separate Intake artifact-processing state entity.
+
+Choose the cleanest architecture-compatible approach.
+
+==================================================
+7. ARTIFACT PROCESSING STATUS
+==================================================
+
+Use a simple deterministic status model.
+
+Recommended:
+
+PENDING
+PROCESSING
+COMPLETED
+FAILED
+SKIPPED
+
+Avoid unnecessary intermediate states unless required by current architecture.
+
+COMPLETED means a durable Documents reference exists for artifacts that require upload.
+
+==================================================
+8. FAILURE MODEL
+==================================================
+
+Define stable failure codes.
+
+At minimum support where applicable:
+
+RAW_MESSAGE_UNAVAILABLE
+MIME_PARSE_FAILED
+ATTACHMENT_NOT_FOUND
+ATTACHMENT_METADATA_MISMATCH
+ARTIFACT_HASH_MISMATCH
+ARTIFACT_SIZE_LIMIT_EXCEEDED
+ARTIFACT_COUNT_LIMIT_EXCEEDED
+UNSUPPORTED_CONTENT_TYPE
+DOCUMENT_SERVICE_UNAVAILABLE
+DOCUMENT_UPLOAD_REJECTED
+DOCUMENT_UPLOAD_FAILED
+DOCUMENT_RESPONSE_INVALID
+
+Do not persist raw stack traces, secrets, or binary content in FailureMessage.
+
+==================================================
+9. MIME EXTRACTION
+==================================================
+
+Create an abstraction such as:
+
+IEmailArtifactExtractor
+
+Responsibilities:
+
+- parse persisted B04 raw message;
+- enumerate MIME parts deterministically;
+- identify regular attachments;
+- identify inline attachments;
+- identify body parts;
+- preserve original binary bytes;
+- preserve ContentId;
+- preserve filename;
+- preserve content type;
+- preserve source ordering;
+- return artifact descriptors.
+
+Use a mature existing MIME package already present/acceptable in the repository.
+
+Do not hand-write a fragile MIME parser.
+
+==================================================
+10. MIME PARSER SAFETY
+==================================================
+
+Treat MIME as hostile/untrusted input.
+
+Enforce:
+
+- bounded raw input size;
+- bounded artifact count;
+- bounded total extracted bytes;
+- bounded nested MIME depth if parser/config supports it;
+- graceful malformed input failures;
+- no external URI fetch;
+- no automatic remote-content loading;
+- no script execution;
+- no macro execution;
+- no recursive archive extraction.
+
+Do not execute attachment content.
+
+==================================================
+11. DURABLE SOURCE EXTRACTION
+==================================================
+
+B05 should extract artifacts from the durable B04 source record rather than requiring the external provider mailbox to remain available.
+
+Preferred flow:
+
+InboundEmail.RawMessage
+-> MIME parser
+-> extracted part
+-> correlate to B04 attachment metadata
+-> validate integrity
+-> create/reuse IntakeArtifact
+-> Documents upload
+
+Do not depend on re-fetching provider attachments if durable raw content is available.
+
+==================================================
+12. ATTACHMENT METADATA CORRELATION
+==================================================
+
+Correlate extracted MIME parts with B04 InboundEmailAttachmentMetadata.
+
+Use deterministic evidence such as:
+
+- ordinal
+- ContentId
+- filename
+- content disposition
+- declared content type
+- size
+- SHA-256 where already available
+
+Do not silently rewrite B04 metadata.
+
+B04 remains the historical capture record.
+
+If extracted bytes conflict with persisted metadata, fail the artifact deterministically.
+
+==================================================
+13. ARTIFACT IDENTITY
+==================================================
+
+Each artifact needs a deterministic ArtifactKey.
+
+Recommended identity material:
+
+InboundEmailId
++
+ArtifactType
++
+source ordinal
++
+ContentId where applicable
++
+hash
+
+The exact encoding may be a compact SHA-256-derived key.
+
+Requirements:
+- deterministic;
+- stable for retries;
+- database-indexable;
+- does not depend on mutable Documents IDs.
+
+==================================================
+14. ARTIFACT IDEMPOTENCY
+==================================================
+
+Processing the same email repeatedly must not create duplicate IntakeArtifact records.
+
+Use:
+
+application duplicate detection
++
+database unique constraint
+
+Recommended uniqueness:
+
+UNIQUE (InboundEmailId, ArtifactKey)
+
+A completed artifact must be reused on later processing attempts.
+
+==================================================
+15. DOCUMENT UPLOAD IDEMPOTENCY
+==================================================
+
+Use native Documents Service idempotency if available.
+
+Recommended idempotency value:
+
+intake:{InboundEmailId}:{ArtifactKey}
+
+If Documents Service has no native idempotency support:
+
+- persist IntakeArtifact identity before upload;
+- use deterministic retry behavior;
+- never intentionally upload an already COMPLETED artifact;
+- document the remaining crash-window behavior;
+- reuse any existing platform outbox/durable-command pattern if available.
+
+Do not invent a new distributed transaction framework unless required.
+
+==================================================
+16. HASHING / INTEGRITY
+==================================================
+
+Compute SHA-256 for every binary artifact before upload.
+
+If B04 attachment metadata contains an expected SHA-256:
+
+1. extract bytes;
+2. compute SHA-256;
+3. compare;
+4. fail on mismatch.
+
+Suggested failure:
+
+ARTIFACT_HASH_MISMATCH
+
+Do not mutate B04 historical hash to match newly extracted bytes.
+
+Also compare size when B04 metadata has a size value.
+
+==================================================
+17. SIZE LIMITS
+==================================================
+
+Introduce configurable limits.
+
+Recommended:
+
+MaxArtifactBytes
+MaxArtifactsPerEmail
+MaxTotalArtifactBytesPerEmail
+MaxMimeDepth where supported
+
+Use repository-appropriate defaults.
+
+Do not scatter numeric constants.
+
+On violation, fail or skip deterministically according to policy.
+
+==================================================
+18. FILENAME HANDLING
+==================================================
+
+Preserve:
+
+OriginalFileName
+
+Create:
+
+EffectiveFileName
+
+where needed.
+
+Requirements:
+- block path traversal;
+- strip directory components;
+- prevent `../` and absolute paths from becoming storage paths;
+- normalize invalid filename characters;
+- preserve extension where safe;
+- preserve original name separately.
+
+If no filename exists, generate deterministic names such as:
+
+attachment-001.pdf
+attachment-002.bin
+
+Do not infer business meaning from filename.
+
+==================================================
+19. CONTENT TYPE
+==================================================
+
+Preserve declared MIME content type.
+
+Use fields such as:
+
+DeclaredContentType
+
+If existing platform tooling supports safe detection:
+
+DetectedContentType
+
+Do not implement a bespoke file-sniffing engine.
+
+Do not blindly trust declared MIME type for execution/security decisions.
+
+==================================================
+20. REGULAR ATTACHMENTS
+==================================================
+
+Regular MIME attachments are in scope.
+
+For each eligible attachment:
+
+- create/reuse artifact;
+- preserve metadata;
+- compute hash;
+- validate size;
+- upload via Documents Service;
+- persist returned document reference;
+- mark artifact completed.
+
+==================================================
+21. INLINE ATTACHMENTS
+==================================================
+
+Inline binary MIME parts are also in scope.
+
+Use:
+
+ArtifactType = INLINE_ATTACHMENT
+
+Preserve:
+- ContentId
+- filename
+- declared content type
+- size
+- SHA-256
+- ordinal
+
+Do not treat `cid:` references as external network URLs.
+
+==================================================
+22. EMAIL BODY ARTIFACTS
+==================================================
+
+Use B02 effective configuration.
+
+If attachment/body processing flags allow email-body processing:
+
+- create a text body artifact when TextBody exists;
+- create an HTML body artifact when appropriate;
+- mark them as derived from email body, not sender attachments.
+
+Recommended generated names:
+
+email-body.txt
+email-body.html
+
+Body-derived artifacts must have:
+- InboundEmailId
+- ArtifactType
+- ArtifactRole = EMAIL_BODY
+- generated filename
+- content type
+- SHA-256
+- size
+
+If both text and HTML exist, follow the actual B02 processing intent and document the rule.
+
+Do not silently lose one representation without an explicit rule.
+
+==================================================
+23. RAW MESSAGE POLICY
+==================================================
+
+Default B05 policy:
+
+Do NOT upload raw MIME to Documents Service.
+
+Raw message remains B04 source evidence.
+
+If existing Documents architecture strongly requires raw-source registration, document the rationale before doing so.
+
+Do not duplicate large raw MIME without need.
+
+==================================================
+24. DUPLICATE SOURCE ATTACHMENTS
+==================================================
+
+If two source MIME parts have identical hashes but occur as separate positions:
+
+- create separate IntakeArtifact provenance records;
+- preserve each source position;
+- do not collapse them merely because bytes match.
+
+Documents Service may internally deduplicate storage if it supports that.
+
+==================================================
+25. UNSUPPORTED CONTENT
+==================================================
+
+Use B02 effective profile configuration, including the actual equivalent of:
+
+AllowUnsupportedDocuments
+
+Deterministic outcomes may include:
+
+SKIPPED
+FAILED
+
+Do not fail unrelated valid artifacts solely because one artifact is unsupported unless profile policy explicitly requires all-or-nothing behavior.
+
+Document the selected rule.
+
+==================================================
+26. ARCHIVE HANDLING
+==================================================
+
+Do NOT recursively unpack:
+
+ZIP
+RAR
+7Z
+TAR
+or similar archives
+
+Treat an archive as one artifact.
+
+Recursive archive extraction is out of B05 scope.
+
+==================================================
+27. EXECUTABLE / DANGEROUS FILE HANDLING
+==================================================
+
+Do not execute, render, or launch attachment content.
+
+If Documents Service enforces content restrictions, respect its response.
+
+Do not create a custom executable-analysis engine.
+
+==================================================
+28. MALWARE SCANNING
+==================================================
+
+Inspect whether Documents Service already performs malware scanning.
+
+If it does:
+- preserve scan status/reference if part of existing response contracts;
+- do not duplicate scanning in Intake.
+
+If it does not:
+- note malware scanning as a known platform gap;
+- do not build a bespoke antivirus engine in B05.
+
+==================================================
+29. DOCUMENTS SERVICE REQUEST METADATA
+==================================================
+
+When the existing Documents contract supports metadata, send safe source provenance such as:
+
+TenantId
+OrgId
+SourceSystem = SYNQ_INTAKE
+SourceType = EMAIL
+InboundEmailId
+IntakeArtifactId
+TenantIntakeSourceId
+OriginalFileName
+ContentType
+Sha256
+
+Do not send lien-specific business classification.
+
+==================================================
+30. DOCUMENT REFERENCE PERSISTENCE
+==================================================
+
+After successful Documents upload, persist only the identifiers/references needed to link back to Documents.
+
+Conceptually:
+
+DocumentsServiceDocumentId
+DocumentsServiceVersionId
+DocumentsServiceReference
+UploadedAt
+
+Use actual existing Documents response fields.
+
+Do not duplicate full Documents metadata that the Documents service already owns.
+
+==================================================
+31. DOCUMENT REFERENCE IMMUTABILITY
+==================================================
+
+Once an artifact is COMPLETED and linked to a Documents document:
+
+- retries must not silently replace the document;
+- retries should return/reuse existing completed state;
+- replacement or new version creation must follow actual Documents versioning semantics;
+- any intentional replacement must be explicit and auditable.
+
+==================================================
+32. PROCESSING SERVICE
+==================================================
+
+Create:
+
+IEmailArtifactProcessingService
+
+or closest repository convention.
+
+Responsibilities:
+
+1. load tenant-scoped B04 email;
+2. verify capture eligibility;
+3. resolve B02 effective processing configuration;
+4. determine enabled artifact types;
+5. parse raw MIME where necessary;
+6. create/reuse deterministic IntakeArtifact records;
+7. validate hash/size/metadata;
+8. upload eligible artifacts through Documents Service;
+9. persist Documents references;
+10. persist failures;
+11. update email-level artifact processing status;
+12. emit audit/log events;
+13. return canonical processing result.
+
+==================================================
+33. ELIGIBILITY
+==================================================
+
+Artifact processing may occur only when:
+
+- email exists;
+- tenant matches trusted context;
+- capture state is eligible;
+- source provenance exists;
+- B02 effective configuration resolves;
+- relevant processing flags are enabled.
+
+Use actual B02 fields for:
+
+ProcessAttachments
+ProcessEmailBody
+AllowUnsupportedDocuments
+
+Do not invent duplicate profile configuration.
+
+==================================================
+34. PARTIAL SUCCESS
+==================================================
+
+Support partial success.
+
+Example:
+
+Email has 5 eligible artifacts
+4 upload successfully
+1 fails
+
+Result:
+
+4 COMPLETED
+1 FAILED
+EmailArtifactStatus = PARTIAL
+
+Completed artifacts remain usable.
+
+Retry should target only failed/retryable artifacts.
+
+==================================================
+35. RETRY
+==================================================
+
+Support safe artifact retry.
+
+Requirements:
+- AttemptCount increments;
+- previous completed artifacts are not re-uploaded;
+- only failed/retryable artifacts are retried;
+- deterministic status transitions;
+- successful retry moves to COMPLETED;
+- non-retryable failures remain stable;
+- retry cannot cross tenant boundary.
+
+Do not build an elaborate scheduler unless a current platform retry/outbox facility exists.
+
+==================================================
+36. DOCUMENTS SERVICE FAILURE MAPPING
+==================================================
+
+Map upstream errors to stable Intake failure codes.
+
+Examples:
+
+DOCUMENT_SERVICE_UNAVAILABLE
+DOCUMENT_UPLOAD_REJECTED
+DOCUMENT_UPLOAD_FAILED
+DOCUMENT_RESPONSE_INVALID
+
+Do not expose raw upstream stack traces or secrets.
+
+==================================================
+37. NETWORK TRANSACTION BOUNDARY
+==================================================
+
+Do not hold a long MySQL transaction open across Documents Service network calls unless existing architecture explicitly requires it.
+
+Preferred flow:
+
+persist/reuse PENDING artifact
+-> commit
+-> Documents upload
+-> persist COMPLETED or FAILED result
+
+Use idempotency to make this retry-safe.
+
+==================================================
+38. OUTBOX / DURABLE COORDINATION
+==================================================
+
+Inspect whether LegalSynq already provides:
+- outbox;
+- durable domain events;
+- work queue;
+- reliable internal command handling.
+
+If available and appropriate, reuse it.
+
+If unavailable:
+- implement safe local coordination;
+- document any crash-window limitation;
+- do not invent a new cross-platform messaging architecture.
+
+==================================================
+39. PROCESSING TRIGGER
+==================================================
+
+Choose the trigger based on existing LegalSynq architecture.
+
+Preferred order:
+
+A. existing durable event/outbox after B04 capture
+
+B. internal application command invoked after B04 commit
+
+C. explicit process command for MVP/testability
+
+Do NOT call Documents Service inside B04 email persistence transaction.
+
+If event-driven, use a versioned event such as:
+
+InboundEmailCapturedV1
+
+with identifiers only:
+
+TenantId
+InboundEmailId
+TenantIntakeSourceId
+SourceConfigurationVersion
+ProcessingProfileCode
+OccurredAt
+CorrelationId
+
+Do not publish raw email content or attachment bytes on events.
+
+==================================================
+40. EVENT IDEMPOTENCY
+==================================================
+
+If event-based:
+
+- assume duplicate event delivery;
+- artifact handler must be idempotent;
+- completed artifacts must not duplicate;
+- use stable message/event identity if existing infrastructure supports it.
+
+==================================================
+41. ARTIFACT REPOSITORY
+==================================================
+
+Create:
+
+IIntakeArtifactRepository
+
+Responsibilities:
+
+- tenant-scoped list by email;
+- tenant-scoped get;
+- create/reuse artifact;
+- update processing state;
+- persist Documents references;
+- persist failures;
+- query failed artifacts;
+- support retries;
+- enforce deterministic ArtifactKey uniqueness;
+- support reconciliation queries.
+
+==================================================
+42. RECONCILIATION
+==================================================
+
+Provide repository/internal diagnostic capability to find:
+
+- captured emails expecting artifacts but with no artifact records;
+- emails with PENDING artifacts;
+- emails with FAILED artifacts;
+- COMPLETED artifacts missing Documents references;
+- attachment metadata with no corresponding IntakeArtifact where processing was expected.
+
+This does not need a public endpoint.
+
+==================================================
+43. TENANT-FACING API
+==================================================
+
+Recommended read routes:
+
+GET /emails/{emailId}/artifacts
+GET /emails/{emailId}/artifacts/{artifactId}
+
+Optional management routes:
+
+POST /emails/{emailId}/artifacts/process
+POST /emails/{emailId}/artifacts/{artifactId}/retry
+
+Expose process/retry routes only if appropriate for current product operations.
+
+If artifact processing is internal/event-driven, read routes alone are acceptable.
+
+==================================================
+44. ARTIFACT LIST RESPONSE
+==================================================
+
+Return safe metadata such as:
+
+- ArtifactId
+- InboundEmailId
+- ArtifactType
+- ArtifactRole
+- ArtifactOrdinal
+- OriginalFileName
+- EffectiveFileName
+- DeclaredContentType
+- DetectedContentType if used
+- SizeBytes
+- Sha256
+- IsInline
+- ContentId where applicable
+- ProcessingStatus
+- AttemptCount
+- Documents document/version/reference fields
+- FailureCode
+- timestamps
+
+Do not return binary attachment content.
+
+==================================================
+45. ARTIFACT DETAIL RESPONSE
+==================================================
+
+May include:
+
+- complete artifact provenance;
+- source attachment metadata;
+- Documents reference;
+- status/failure metadata;
+- safe retryability state.
+
+Do not proxy Documents binary content through Intake unless existing platform conventions already require it.
+
+Documents remains responsible for document retrieval.
+
+==================================================
+46. AUTHORIZATION
+==================================================
+
+Use existing LegalSynq policies.
+
+Recommended semantic permissions:
+
+intake.artifacts.read
+intake.artifacts.manage
+
+Reuse PlatformAdmin/TenantAdmin behavior where appropriate.
+
+Normal tenant requests must derive TenantId from authenticated context.
+
+Documents upload calls must preserve the same tenant scope.
+
+==================================================
+47. TENANT ISOLATION
+==================================================
+
+Mandatory:
+
+- Tenant A cannot list Tenant B artifacts.
+- Tenant A cannot get Tenant B artifact.
+- Tenant A cannot retry Tenant B artifact.
+- Tenant A cannot process Tenant B email.
+- artifact TenantId must equal B04 email TenantId.
+- Documents upload TenantId must equal artifact TenantId.
+- caller-supplied TenantId cannot override trusted context.
+
+==================================================
+48. AUDIT
+==================================================
+
+Use existing LegalSynq audit conventions.
+
+Suggested operations:
+
+EMAIL_ARTIFACT_PROCESSING_STARTED
+EMAIL_ARTIFACT_CREATED
+EMAIL_ARTIFACT_UPLOADED
+EMAIL_ARTIFACT_FAILED
+EMAIL_ARTIFACT_RETRIED
+EMAIL_ARTIFACT_SKIPPED
+EMAIL_ARTIFACT_PROCESSING_COMPLETED
+
+Safe metadata may include:
+
+- TenantId
+- InboundEmailId
+- ArtifactId
+- ArtifactType
+- filename
+- content type
+- size
+- SHA-256
+- Documents document ID
+- ProcessingStatus
+- AttemptCount
+- CorrelationId
+
+Never include artifact bytes or full email content in audit events.
+
+==================================================
+49. STRUCTURED LOGGING
+==================================================
+
+Log safe operational metadata:
+
+- CorrelationId
+- TenantId
+- InboundEmailId
+- ArtifactId
+- ArtifactType
+- ArtifactRole
+- ContentType
+- SizeBytes
+- Sha256
+- ProcessingStatus
+- DocumentsDocumentId
+- AttemptCount
+- Result
+
+Never log:
+
+- attachment bytes
+- raw MIME
+- full email body
+- document content
+- Documents credentials/tokens
+- authorization headers
+
+==================================================
+50. ANALYTICS / METRICS
+==================================================
+
+Add only useful B05 metrics.
+
+Potential metrics:
+
+ArtifactsCreated
+ArtifactsCompleted
+ArtifactsFailed
+ArtifactsSkipped
+EmailsArtifactComplete
+EmailsArtifactPartial
+AverageArtifactsPerEmail
+DocumentUploadFailures
+ArtifactRetries
+
+All metrics must be tenant-scoped where exposed through tenant APIs.
+
+Do not broaden this into a general BI feature.
+
+==================================================
+51. PERSISTENCE
+==================================================
+
+Add B05 Intake-owned persistence.
+
+Expected table:
+
+IntakeArtifacts
+
+Optional:
+
+IntakeArtifactAttempts
+
+only if explicit retry-attempt history is actually useful.
+
+Avoid unnecessary history tables.
+
+==================================================
+52. DATABASE CONSTRAINTS / INDEXES
+==================================================
+
+At minimum consider:
+
+- PK Id
+- FK InboundEmailId -> InboundEmails.Id
+- optional FK SourceAttachmentMetadataId -> InboundEmailAttachmentMetadata.Id
+- UNIQUE (InboundEmailId, ArtifactKey)
+- INDEX TenantId
+- INDEX InboundEmailId
+- INDEX (TenantId, ProcessingStatus)
+- INDEX (InboundEmailId, ArtifactOrdinal)
+- INDEX DocumentsServiceDocumentId where useful
+
+Use actual query patterns to determine final indexes.
+
+==================================================
+53. FOREIGN KEY / DELETE BEHAVIOR
+==================================================
+
+Historical artifact relationships must survive source deactivation.
+
+Do not cascade-delete Documents-owned documents because:
+- email status changes;
+- source is disabled;
+- artifact is retried.
+
+No normal tenant hard-delete artifact endpoint is required.
+
+==================================================
+54. MIGRATION
+==================================================
+
+Create a B05 migration.
+
+Suggested name:
+
+AddEmailArtifacts
+
+or closest repository convention.
+
+Migration must contain only Intake-owned B05 artifact schema.
+
+Do not create:
+- Documents storage tables
+- AI tables
+- OCR tables
+- matching tables
+- review tables
+- Case/Lien tables
+
+==================================================
+55. DOCUMENTS CONTRACT VALIDATION
+==================================================
+
+Before implementation concludes, document exactly what was validated against Documents Service:
+
+- interface/client discovered;
+- request shape;
+- response shape;
+- tenant scope;
+- auth model;
+- idempotency support;
+- versioning;
+- error mapping;
+- local/mock/live validation type.
+
+Clearly distinguish:
+
+contract validation
+mocked upload validation
+local Documents-service validation
+deployed validation
+
+Do not claim deployed validation unless actually performed.
+
+==================================================
+56. REQUIRED TESTS — MIME / EXTRACTION
+==================================================
+
+Test:
+
+- zero attachments
+- one regular attachment
+- multiple attachments
+- inline attachment
+- attachment without filename
+- Unicode filename
+- duplicate filenames
+- same hash in separate source positions
+- malformed MIME
+- missing raw message
+- metadata correlation failure
+- hash mismatch
+- size mismatch
+- oversized artifact
+- too many artifacts
+
+==================================================
+57. REQUIRED TESTS — ARTIFACT IDEMPOTENCY
+==================================================
+
+Test:
+
+- processing same email twice does not duplicate IntakeArtifacts
+- unique ArtifactKey enforced
+- completed artifact not recreated
+- duplicate processing command/event safe
+- separate identical source parts remain separate provenance records
+
+==================================================
+58. REQUIRED TESTS — DOCUMENT UPLOAD IDEMPOTENCY
+==================================================
+
+Test according to actual Documents capabilities:
+
+- same artifact retry does not create duplicate Documents records
+- completed artifact does not re-upload
+- retry after transient failure succeeds
+- persisted Documents reference reused
+- malformed Documents response handled safely
+
+==================================================
+59. REQUIRED TESTS — DOCUMENTS INTEGRATION
+==================================================
+
+Using existing mocks/fakes/local service conventions, test:
+
+- successful upload
+- document ID persisted
+- version ID persisted if applicable
+- tenant metadata sent correctly
+- source metadata sent correctly
+- 4xx rejection
+- 5xx failure
+- timeout/unavailable
+- malformed/empty response
+- retryable vs non-retryable mapping
+- partial multi-artifact success
+
+==================================================
+60. REQUIRED TESTS — TENANT ISOLATION
+==================================================
+
+Test:
+
+- cross-tenant email processing denied
+- cross-tenant artifact list denied
+- cross-tenant artifact get denied
+- cross-tenant retry denied
+- Documents client receives email/artifact tenant only
+- payload cannot override tenant scope
+
+==================================================
+61. REQUIRED TESTS — BODY ARTIFACTS
+==================================================
+
+If body artifact processing is implemented:
+
+- text-only body
+- HTML-only body
+- both text + HTML
+- processing disabled
+- empty body
+- Unicode content
+- body size limit
+- deterministic generated filename
+- body artifact marked derived
+
+==================================================
+62. REQUIRED TESTS — PROFILE CONFIGURATION
+==================================================
+
+Use actual B02 effective configuration.
+
+Test:
+
+- attachment processing enabled
+- attachment processing disabled
+- body processing enabled
+- body processing disabled
+- unsupported content allowed
+- unsupported content not allowed
+
+Do not hardcode alternate profile rules.
+
+==================================================
+63. REQUIRED TESTS — FAILURE / RETRY
+==================================================
+
+Test:
+
+- MIME parse failure
+- attachment lookup failure
+- hash mismatch
+- size-limit failure
+- upload failure
+- Documents unavailable
+- retry increments AttemptCount
+- successful retry -> COMPLETED
+- completed artifact not retried
+- partial email state
+- fully completed email state
+- fully failed email state where applicable
+
+==================================================
+64. HTTP TESTS
+==================================================
+
+If APIs are exposed, add HTTP tests where practical for:
+
+GET /emails/{emailId}/artifacts
+GET /emails/{emailId}/artifacts/{artifactId}
+POST /emails/{emailId}/artifacts/process
+POST /emails/{emailId}/artifacts/{artifactId}/retry
+
+Cover:
+- 401
+- 403
+- 404
+- tenant isolation
+- invalid processing state
+- retry state
+- idempotent process call
+
+Use existing WebApplicationFactory/current test conventions if available.
+
+==================================================
+65. MYSQL VALIDATION
+==================================================
+
+Apply B05 migration against disposable/local MySQL 8.
+
+Confirm:
+
+- IntakeArtifacts exists
+- FK to InboundEmails exists
+- optional FK to InboundEmailAttachmentMetadata exists
+- unique artifact key exists
+- tenant/status indexes exist
+- document reference columns exist
+- B02/B03/B04 schema remains present
+- duplicate ArtifactKey insertion fails at DB boundary
+
+Use no cloud/shared DB.
+
+Clean up disposable DB/container after validation.
+
+==================================================
+66. BUILD / VALIDATION
+==================================================
+
+At minimum run and record:
+
+dotnet restore if required
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj --no-restore -m:1
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj --no-restore -m:1
+
+dotnet build LegalSynq.sln --no-restore -m:1
+
+dotnet ef dbcontext info using repository-pinned tooling
+
+dotnet ef migrations list using repository-pinned tooling
+
+Apply B05 migration to disposable MySQL 8
+
+Run direct schema/FK/unique-index validation
+
+Validate Documents client contract using existing test infrastructure
+
+git diff --check
+
+git status --short
+
+git diff --stat
+
+git diff --name-status against B04 baseline
+
+Verify no Intake bin/obj tracked
+
+Verify no new secrets/specification assets committed
+
+Do not treat unrelated pre-existing warnings as B05 failures.
+
+Identify new B05 errors/warnings separately.
+
+==================================================
+67. SECURITY VALIDATION
+==================================================
+
+Verify:
+
+- no attachment bytes logged
+- no raw MIME logged
+- no email body logged
+- no Documents credentials persisted
+- no Documents tokens logged
+- no direct Documents DB/storage access
+- no arbitrary file execution
+- no path traversal
+- no unbounded MIME parsing
+- no archive recursion
+- no cross-tenant document creation
+- no tenant spoofing
+- no Synq AI/OCR coupling
+- no uploaded prompt/spec assets added
+- no build artifacts tracked
+
+==================================================
+68. PERFORMANCE REQUIREMENTS
+==================================================
+
+Artifact processing must:
+
+- stream binary data where practical;
+- avoid unnecessary duplicate byte arrays;
+- enforce artifact size/count limits;
+- avoid long-running DB transactions across Documents calls;
+- avoid loading unrelated email records;
+- process only one email/artifact scope required by the operation.
+
+Document any unavoidable memory tradeoffs caused by the current MIME/Documents APIs.
+
+==================================================
+69. EXISTING-SERVICE IMPACT
+==================================================
+
+Keep B05 within Intake plus the approved Documents service-client boundary.
+
+Do not modify business logic in:
+
+- SynqLien
+- SynqFund
+- CareConnect
+- Identity
+- Flow
+- Notifications
+- AI providers
+
+Do not couple Intake directly to downstream product databases.
+
+==================================================
+70. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- Synq AI classification
+- Synq AI extraction
+- OCR
+- medical document parsing
+- patient extraction
+- case extraction
+- facility extraction
+- business-record matching
+- duplicate business-record detection
+- confidence engine
+- human review queue
+- Case creation
+- Lien creation
+- lien sale
+- SynqFund routing
+- CareConnect routing
+- Flow tasks
+- notifications
+- mailbox polling
+- Microsoft Graph retrieval
+- Gmail retrieval
+- IMAP retrieval
+- webhook ingestion
+- external API Intake
+- HL7
+- SFTP
+- archive recursive extraction
+- custom malware engine
+- AWS
+- RDS
+- ECS
+- Route53
+- deployment
+
+==================================================
+71. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B05 is complete only when all are true:
+
+1. IntakeArtifact entity exists.
+2. Artifact remains bound to B04 tenant provenance.
+3. B04 TenantId cannot be overridden.
+4. Artifact references InboundEmail.
+5. Artifact can reference source attachment metadata where applicable.
+6. Regular email attachments are extractable.
+7. Inline attachments are extractable.
+8. MIME parsing is bounded and failure-safe.
+9. Artifact extraction is deterministic.
+10. Every artifact has a deterministic ArtifactKey.
+11. Database-level artifact idempotency exists.
+12. Reprocessing does not create duplicate IntakeArtifacts.
+13. SHA-256 is computed for binary artifacts.
+14. Existing B04 hashes are verified where present.
+15. Size metadata is verified where present.
+16. Hash mismatch fails deterministically.
+17. Size limits are enforced.
+18. Artifact-count limits are enforced.
+19. Original filenames are preserved.
+20. Safe effective filenames are created where needed.
+21. Path traversal is prevented.
+22. missing filenames receive deterministic safe names.
+23. declared content type is preserved.
+24. inline ContentId is preserved.
+25. duplicate-byte source parts remain separate provenance records.
+26. archives are not recursively extracted.
+27. attachment content is never executed.
+28. B02 attachment-processing flag is honored.
+29. B02 email-body-processing flag is honored.
+30. B02 unsupported-content policy is honored.
+31. email body artifacts are created when configured, or clearly documented as intentionally deferred.
+32. body artifacts are marked derived.
+33. raw MIME is not unnecessarily duplicated to Documents.
+34. Documents Service is used for managed document persistence.
+35. Intake does not write directly to Documents storage/database.
+36. Documents request carries correct tenant.
+37. safe provenance metadata is sent to Documents when supported.
+38. Documents ID/reference is persisted.
+39. completed artifact retries do not duplicate document uploads.
+40. document reference is not silently replaced.
+41. artifact status lifecycle exists.
+42. email-level artifact status is separate from B04 capture status.
+43. partial success is supported.
+44. failed artifacts are retryable.
+45. AttemptCount or equivalent exists.
+46. retry is tenant-safe.
+47. upstream Documents errors map to stable Intake errors.
+48. audit evidence exists.
+49. logs exclude binary/raw/body content.
+50. artifact read APIs exist if appropriate.
+51. process/retry APIs exist if appropriate to selected trigger architecture.
+52. Tenant A cannot access Tenant B artifacts.
+53. Tenant A cannot cause Tenant B Documents upload.
+54. reconciliation can identify pending/failed/missing artifact states.
+55. B05 migration exists.
+56. migration applies successfully to MySQL 8.
+57. required FK/index/uniqueness constraints exist.
+58. B02/B03/B04 schema remains intact.
+59. MIME extraction tests pass.
+60. artifact idempotency tests pass.
+61. Documents integration tests pass.
+62. retry/failure tests pass.
+63. tenant-isolation tests pass.
+64. profile configuration tests pass.
+65. Intake API builds with zero new B05 errors.
+66. Intake tests pass.
+67. full LegalSynq solution builds with zero new B05 errors.
+68. no Synq AI/OCR/matching/review/downstream routing is introduced.
+69. no cloud/deployment work is performed.
+70. no secrets/specification assets/build artifacts are introduced.
+71. /analysis/LSI-B05-report.md exists with complete evidence.
+
+==================================================
+72. REQUIRED REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B05-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree state
+8. B04 architecture reviewed
+9. B03/B02 dependencies reviewed
+10. Documents Service architecture reviewed
+11. Documents client/contract discovered
+12. Files added
+13. Files modified
+14. IntakeArtifact model
+15. artifact type model
+16. artifact role model
+17. email-level artifact-status model
+18. artifact status/failure model
+19. MIME extraction strategy
+20. MIME safety limits
+21. attachment-correlation strategy
+22. body-artifact strategy
+23. raw MIME policy
+24. filename-safety strategy
+25. content-type strategy
+26. SHA-256/integrity strategy
+27. size/count-limit strategy
+28. artifact identity/idempotency
+29. Documents upload idempotency
+30. Documents request metadata
+31. Documents response/reference persistence
+32. Documents error mapping
+33. transaction boundaries
+34. outbox/event/trigger strategy
+35. processing lifecycle
+36. partial-success behavior
+37. retry behavior
+38. B02 configuration usage
+39. tenant-binding enforcement
+40. tenant isolation
+41. API surface
+42. authorization
+43. audit behavior
+44. logging behavior
+45. reconciliation/analytics
+46. migration name
+47. database schema
+48. indexes/constraints
+49. MySQL validation
+50. Documents integration validation
+51. MIME/artifact tests
+52. idempotency tests
+53. Documents client tests
+54. retry/failure tests
+55. HTTP tests if applicable
+56. Intake API build result
+57. full solution build result
+58. security assessment
+59. performance considerations
+60. known gaps
+61. out-of-scope confirmation
+62. git diff summary
+63. final repository validation status
+64. recommended next bundle: LSI-B06
+
+Sanitize local credentials and secret values from the report.
+
+==================================================
+73. DEFINITION OF DONE
+==================================================
+
+The implementation is done when Synq Intake can reliably answer:
+
+“What usable artifacts came from this captured email, which source email and source MIME part did each artifact come from, was it successfully stored through Documents Service, and what durable Documents reference represents it?”
+
+while preserving B03/B04 tenant provenance and without classifying or interpreting the business meaning of those artifacts.
+
+When complete:
+
+- run all required local validation;
+- create /analysis/LSI-B05-report.md;
+- stop;
+- do not begin LSI-B06;
+- do not deploy;
+- do not push unless explicitly requested.

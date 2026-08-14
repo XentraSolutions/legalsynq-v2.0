@@ -298,6 +298,7 @@ public static class CaseEndpoints
     private sealed class LegacyGenerateCaseCsvRequest
     {
         public string? caseId { get; init; }
+        public string? keyword { get; init; }
         public string? lawFirmId { get; init; }
         public string? accidentTypeId { get; init; }
         public string? statusId { get; init; }
@@ -3970,7 +3971,7 @@ public static class CaseEndpoints
             {
                 var result = await caseService.SearchAsync(
                     tenantId,
-                    search: null,
+                    search: string.IsNullOrWhiteSpace(request.keyword) ? null : request.keyword,
                     status: string.IsNullOrWhiteSpace(request.statusId) ? null : request.statusId,
                     page: page,
                     pageSize: pageSize,
@@ -4873,11 +4874,16 @@ public static class CaseEndpoints
         ICaseService caseService,
         ILienCaseNoteService caseNoteService,
         ICurrentRequestContext ctx,
+        HttpRequest httpRequest,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
         var orgId = RequireOrgId(ctx);
         var userId = RequireUserId(ctx);
+        var idempotencyKey = httpRequest.Headers["Idempotency-Key"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(request.ExternalReference) &&
+            !string.IsNullOrWhiteSpace(idempotencyKey))
+            request = request with { ExternalReference = idempotencyKey };
         var result = await caseService.CreateAsync(tenantId, orgId, userId, request, ct);
         await CreateCaseHistoryEntryAsync(result, caseNoteService, tenantId, userId, ctx, ct);
         return Results.Created($"/api/liens/cases/{result.Id}", result);
@@ -6718,6 +6724,38 @@ public static class CaseEndpoints
         });
     }
 
+    private static bool TryGetLegacyTotalSettledAmount(string? notes, out decimal amount)
+    {
+        amount = 0m;
+        if (string.IsNullOrWhiteSpace(notes))
+            return false;
+
+        var rawMetadata = notes;
+        var markerIndex = notes.IndexOf(LegacyMetadataMarker, StringComparison.Ordinal);
+        if (markerIndex >= 0)
+            rawMetadata = notes[(markerIndex + LegacyMetadataMarker.Length)..].Trim();
+
+        var found = false;
+        foreach (var segment in rawMetadata.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0 ||
+                !string.Equals(segment[..separator].Trim(), "totalSettledAmount", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            found = true;
+            decimal.TryParse(
+                segment[(separator + 1)..].Trim(),
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out amount);
+        }
+
+        return found;
+    }
+
     private static bool TryGetLegacyMedicalPurchaseAmount(string? notes, out decimal amount)
     {
         amount = 0m;
@@ -8173,6 +8211,7 @@ public static class CaseEndpoints
         return (page, limit);
     }
 
+    // ── Dashboard reports ─────────────────────────────────────────────────────
     private static DashboardReportResult<T> BuildDashboardReportResult<T>(
         List<T> rows,
         int page,

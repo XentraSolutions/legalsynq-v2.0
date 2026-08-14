@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refactor Feature"
+  short_description: "Safely restructure a targeted repository feature"
+  default_prompt: "Use $refactor-feature to restructure a specified feature while preserving behavior and running targeted validation."

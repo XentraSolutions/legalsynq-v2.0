@@ -1,0 +1,2009 @@
+You are implementing LSI-B15 — Document Association / Workflow for Synq Intake in the LegalSynq v3 repository.
+
+EXECUTION DIRECTIVE
+
+Execute this ticket now.
+
+Do not stop after reviewing requirements.
+Do not return a plan for approval.
+Do not ask whether to proceed.
+Implement the full scoped LSI-B15 work in this execution, run the required local validation, and produce /analysis/LSI-B15-report.md when complete.
+
+If a minor implementation decision is needed and the requirements already establish the intended behavior, make the safest architecture-consistent decision and continue.
+
+Only stop for a genuine blocking condition that cannot be resolved from the repository or these requirements.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Primary upstream dependency: LSI-B14
+- Integration boundaries: Synq Intake, Documents Service, Liens/SynqLien API
+- Required implementation report: /analysis/LSI-B15-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B15 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, production deployment, push, PR, or merge work.
+3. Do not implement B16 operational dashboards/reconciliation platform, Flow tasks, notifications, SynqFund, CareConnect, straight-through automatic processing, OCR, document editing/redaction, lien selling, or unrelated product features.
+4. Preserve all prior analysis reports as read-only.
+5. Create/update only /analysis/LSI-B15-report.md for this ticket.
+6. Consume the approved B13 document references.
+7. Consume the durable B14 CASE/LIEN external references.
+8. Do not accept arbitrary caller-supplied Case/Lien IDs as association targets.
+9. Documents Service remains the binary owner.
+10. Do not duplicate binary document content into Intake DB or Liens DB.
+11. Do not directly access Documents storage internals.
+12. Do not directly write Liens database tables.
+13. Before coding, inspect:
+   - current git branch/status;
+   - HEAD vs origin/xenia;
+   - B13 ApprovedIntakeSnapshotV1 document-reference contract;
+   - B14 external-reference and adapter execution model;
+   - B14 SYNQLIEN_V1 completion semantics;
+   - existing Documents Service API/client/contracts;
+   - current document metadata lookup/read APIs;
+   - current SHA/integrity metadata support;
+   - existing document ownership/tenant checks;
+   - current Liens Case/Lien document association entities/endpoints/services;
+   - existing Case/Lien read/tenant enforcement;
+   - existing service-token/internal auth conventions;
+   - existing correlation/org propagation conventions;
+   - existing idempotency patterns;
+   - existing audit/log/event patterns;
+   - Intake persistence/migration conventions;
+   - existing HTTP test infrastructure;
+   - current frontend surfaces for adapter/snapshot status.
+14. Record repository baseline and initial working-tree state in /analysis/LSI-B15-report.md before implementation.
+15. Preserve unrelated pre-existing changes.
+16. Do not commit uploaded specifications, local DBs, secrets, generated binaries, or unrelated artifacts.
+17. Local/repository validation is required.
+18. Do not claim deployment/runtime/production/GitHub evidence unless separately proven.
+19. Do not begin LSI-B16 automatically.
+20. Do not push unless explicitly requested.
+
+LOCKED PLATFORM STACK
+
+Backend:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT/service-token authentication
+- existing tenant/current-request context
+- existing B13/B14 contracts and execution patterns
+- existing LegalSynq audit/log/event conventions
+- existing HttpClient/resilience conventions
+
+Frontend:
+- Next.js 15
+- React
+- TypeScript
+- Tailwind
+- only minimal B15 status/retry surfaces if justified
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+
+The intended flow is:
+
+Inbound Email / Manual Intake
+-> Documents Service
+-> Intake Artifact + Document References
+-> Classification / Extraction / Review
+-> B13 Approved Snapshot
+-> B14 SYNQLIEN_V1
+-> CASE + LIEN external references
+-> B15 Document Association
+-> Case <-> Document
+-> Lien <-> Document
+
+CRITICAL RULE:
+
+Documents Service owns binary document content.
+Intake and SynqLien own references and associations only.
+
+==================================================
+1. ENTRY CONDITIONS
+==================================================
+
+Document association may execute only when:
+
+- B13 snapshot exists;
+- snapshot Status = READY;
+- snapshot is current by default;
+- B14 SYNQLIEN_V1 execution has succeeded or produced valid durable target references;
+- a valid CASE reference exists;
+- a valid LIEN reference exists where required by profile;
+- approved snapshot contains relevant document references;
+- tenant/org context is valid.
+
+Do not derive target IDs from request payload or document text.
+
+==================================================
+2. B13 DOCUMENT INPUT
+==================================================
+
+Consume only B13 approved document references.
+
+Expected fields include:
+
+- DocumentId
+- ArtifactId
+- DocumentRole
+- Filename
+- MimeType
+- Sha256
+- SourceType
+- provenance/evidence references where present
+
+Use actual B13 contract names.
+
+Do not independently reconstruct B05/B12 state unless required solely for safe validation.
+
+==================================================
+3. B14 TARGET INPUT
+==================================================
+
+Consume durable B14 external references:
+
+CASE
+LIEN
+
+Use B13/B14 external-reference storage.
+
+Caller must not provide arbitrary destination IDs.
+
+==================================================
+4. DOCUMENTS SERVICE AUTHORITY
+==================================================
+
+Documents Service remains authoritative for:
+
+- document identity;
+- binary content;
+- MIME/content type;
+- storage lifecycle;
+- document retrieval;
+- document SHA/integrity metadata;
+- document-level tenant ownership.
+
+B15 must not create a competing document repository.
+
+==================================================
+5. SYNQLIEN AUTHORITY
+==================================================
+
+SynqLien/Liens remains authoritative for:
+
+- Case;
+- Lien;
+- document-to-Case association;
+- document-to-Lien association;
+- destination-side access rules.
+
+==================================================
+6. ASSOCIATION POLICY
+==================================================
+
+Create a versioned association policy/profile:
+
+LIEN_INTAKE_DOCUMENT_ASSOCIATION_V1
+
+or repository-standard equivalent.
+
+Expose through a centralized abstraction such as:
+
+IDocumentAssociationPolicy
+LienIntakeDocumentAssociationProfileV1
+
+Do not scatter classification-to-target rules throughout handlers/services.
+
+==================================================
+7. ASSOCIATION DECISIONS
+==================================================
+
+Each approved document must resolve deterministically to one of:
+
+CASE
+LIEN
+BOTH
+SKIP
+
+Optionally include:
+
+Required = true/false
+
+for workflow success semantics.
+
+==================================================
+8. INITIAL CLASSIFICATION MAPPING
+==================================================
+
+Use conservative initial mappings based on actual existing classification codes and destination document semantics.
+
+Expected direction:
+
+Case-oriented candidates:
+- ATTORNEY_DOCUMENT
+- SETTLEMENT_DOCUMENT
+- CORRESPONDENCE
+- selected general/case-level source documents
+
+Lien-oriented candidates:
+- MEDICAL_BILL
+- MEDICAL_RECORD
+- LIEN_DOCUMENT
+- LETTER_OF_PROTECTION
+- EOB
+- INSURANCE_DOCUMENT
+- provider/facility billing/supporting documents
+
+BOTH only where there is a real operational need.
+
+OTHER / UNKNOWN should default to SKIP or review-safe behavior, not blind association.
+
+Document exact mapping in the report.
+
+==================================================
+9. EFFECTIVE CLASSIFICATION
+==================================================
+
+Use B13 effective/approved classification.
+
+If B12 overrode the AI classification:
+- honor the approved value.
+
+Do not rerun B07 classification.
+
+==================================================
+10. DOCUMENT ROLE MAPPING
+==================================================
+
+Create stable role/document-type mapping using existing platform codes where available.
+
+Potential internal roles:
+
+CASE_SUPPORTING_DOCUMENT
+LIEN_SUPPORTING_DOCUMENT
+MEDICAL_BILL
+MEDICAL_RECORD
+LIEN_DOCUMENT
+LETTER_OF_PROTECTION
+EOB
+SETTLEMENT_DOCUMENT
+ATTORNEY_DOCUMENT
+CORRESPONDENCE
+INSURANCE_DOCUMENT
+SOURCE_EMAIL
+
+Do not invent duplicates if Liens/Documents already define canonical codes.
+
+==================================================
+11. DESTINATION API DISCOVERY
+==================================================
+
+Inspect current Liens/Documents APIs for:
+
+- Case-document association create/read;
+- Lien-document association create/read;
+- association DTOs;
+- existing document-link entities;
+- idempotency support;
+- tenant checks;
+- relationship validation;
+- delete/unlink behavior;
+- visibility/access rules;
+- metadata fields.
+
+Use existing supported APIs when possible.
+
+==================================================
+12. ASSOCIATION CLIENT
+==================================================
+
+Create:
+
+ISynqLienDocumentAssociationClient
+
+or extend the existing B14 client only if the resulting responsibility remains cohesive.
+
+Responsibilities:
+
+- verify Case;
+- verify Lien;
+- verify Case/Lien relationship;
+- create Case-document association;
+- create Lien-document association;
+- query/reconcile existing association;
+- propagate tenant/org/correlation;
+- use service-token auth;
+- bounded timeout;
+- safe failure mapping.
+
+==================================================
+13. DOCUMENTS CLIENT / VERIFICATION
+==================================================
+
+Reuse existing Documents integration/client where possible.
+
+Before association validate, when supported:
+
+- DocumentId exists;
+- belongs to current tenant;
+- not deleted/unavailable;
+- SHA matches B13 reference;
+- MIME/type metadata consistent if relevant.
+
+Do not download the full binary only to verify existence.
+
+==================================================
+14. DOCUMENT IDENTITY
+==================================================
+
+DocumentId is authoritative identity.
+
+Filename is not identity.
+
+Never use filename as the primary idempotency key.
+
+==================================================
+15. SHA / INTEGRITY
+==================================================
+
+If Documents Service exposes SHA and B13 has Sha256:
+
+compare them.
+
+Mismatch must not be silently ignored.
+
+Use:
+
+DOCUMENT_INTEGRITY_MISMATCH
+
+or repository-standard equivalent.
+
+==================================================
+16. CASE VALIDATION
+==================================================
+
+Resolve CASE external reference.
+
+Verify through Liens API:
+
+- Case exists;
+- Case belongs to current tenant;
+- Case is eligible for document association.
+
+==================================================
+17. LIEN VALIDATION
+==================================================
+
+Resolve LIEN external reference.
+
+Verify:
+
+- Lien exists;
+- belongs to current tenant;
+- is associated with expected Case.
+
+==================================================
+18. CASE/LIEN RELATIONSHIP
+==================================================
+
+If both Case and Lien are used:
+
+verify Lien belongs to the referenced Case.
+
+On mismatch:
+
+CASE_LIEN_RELATIONSHIP_INVALID
+
+Do not associate any dependent document until resolved.
+
+==================================================
+19. NO BINARY COPY
+==================================================
+
+Association requests should pass:
+
+DocumentId
+and supported metadata/reference fields.
+
+Do not:
+- fetch binary and repost;
+- persist Base64;
+- store blob in Intake;
+- duplicate object storage.
+
+==================================================
+20. ASSOCIATION EXECUTION SERVICE
+==================================================
+
+Create:
+
+IIntakeDocumentAssociationService
+
+or exact repository-equivalent.
+
+Responsibilities:
+
+1. load tenant-scoped current READY snapshot;
+2. resolve B14 CASE/LIEN external references;
+3. load approved document references;
+4. resolve association profile;
+5. validate destination targets;
+6. validate unique documents;
+7. create deterministic association plan/items;
+8. reuse/skip already successful items;
+9. execute eligible associations;
+10. persist results;
+11. reconcile conflicts/ambiguous outcomes;
+12. classify failures;
+13. emit safe audit/events;
+14. return workflow summary.
+
+==================================================
+21. ASSOCIATION PERSISTENCE
+==================================================
+
+If existing B13/B14 persistence is insufficient, add generic Intake-side workflow state.
+
+Expected:
+
+DocumentAssociationExecution
+DocumentAssociationItem
+
+or repository-equivalent.
+
+Do not create document binary tables.
+
+==================================================
+22. EXECUTION MODEL
+==================================================
+
+Conceptual execution fields:
+
+- Id
+- TenantId
+- SnapshotId
+- AdapterExecutionId
+- Status
+- ExecutionKey
+- AttemptNumber
+- StartedAt
+- CompletedAt
+- FailureCode
+- CreatedAt
+- UpdatedAt if required
+
+==================================================
+23. ITEM MODEL
+==================================================
+
+Conceptual item fields:
+
+- Id
+- TenantId
+- ExecutionId
+- ArtifactId
+- DocumentId
+- TargetType
+- TargetId
+- AssociationRole
+- Required
+- Status
+- ExecutionKey
+- AttemptNumber
+- FailureCode
+- CreatedAt
+- CompletedAt
+
+Use only fields actually needed.
+
+==================================================
+24. TARGET TYPES
+==================================================
+
+Support:
+
+CASE
+LIEN
+
+==================================================
+25. ITEM STATUS
+==================================================
+
+Support:
+
+PENDING
+PROCESSING
+SUCCEEDED
+FAILED
+RETRYABLE
+CANCELLED
+SKIPPED
+
+Optional:
+
+ALREADY_ASSOCIATED
+
+only if it improves reconciliation semantics.
+
+==================================================
+26. WORKFLOW STATUS
+==================================================
+
+Support:
+
+PENDING
+PROCESSING
+SUCCEEDED
+PARTIAL
+FAILED
+RETRYABLE
+CANCELLED
+
+==================================================
+27. REQUIRED VS OPTIONAL
+==================================================
+
+Association policy should support:
+
+Required = true/false
+
+Initial behavior should remain conservative.
+
+Primary/core lien-supporting document may be required.
+Supplementary documents may be optional.
+
+Do not invent broad required-document mandates unsupported by current business rules.
+
+==================================================
+28. IDEMPOTENCY
+==================================================
+
+Every association item requires deterministic identity.
+
+Logical key:
+
+TenantId
++ SnapshotId
++ DocumentId
++ TargetType
++ TargetId
++ AssociationRole
+
+Repeated execution must reuse the same logical association.
+
+==================================================
+29. DATABASE-LEVEL UNIQUENESS
+==================================================
+
+Where persistence is under LegalSynq control, enforce storage-level uniqueness equivalent to:
+
+TenantId
++ DocumentId
++ TargetType
++ TargetId
++ AssociationRole
+
+or destination-standard equivalent.
+
+This is required to close concurrent duplicate-association races where practical.
+
+==================================================
+30. DESTINATION IDEMPOTENCY
+==================================================
+
+If Liens association API supports idempotency:
+- use it.
+
+If not:
+- add the smallest backward-compatible idempotent association mechanism needed.
+
+Do not rely only on pre-write GET checks.
+
+==================================================
+31. RESPONSE-LOSS SAFETY
+==================================================
+
+Scenario:
+
+association POST succeeds
+-> response lost
+-> retry
+
+Expected:
+
+one association
+
+Use idempotency + reconciliation.
+
+==================================================
+32. CONFLICT RECONCILIATION
+==================================================
+
+On 409/existing-association response:
+
+query destination association.
+
+If same:
+
+DocumentId
+TargetType
+TargetId
+AssociationRole
+
+then reconcile as success.
+
+==================================================
+33. PARTIAL SUCCESS
+==================================================
+
+Example:
+
+Doc A -> Case success
+Doc B -> Lien success
+Doc C -> transient failure
+
+Do not rollback A/B.
+
+Persist item results independently.
+
+==================================================
+34. RETRY
+==================================================
+
+Retry only:
+
+FAILED/RETRYABLE items eligible for retry.
+
+Do not recreate SUCCEEDED items.
+
+==================================================
+35. RETRYABLE FAILURES
+==================================================
+
+Examples:
+
+- Documents Service temporarily unavailable;
+- Liens temporarily unavailable;
+- timeout;
+- 429;
+- 5xx;
+- network failure.
+
+==================================================
+36. PERMANENT FAILURES
+==================================================
+
+Examples:
+
+- Document not found;
+- document tenant mismatch;
+- Case not found;
+- Case tenant mismatch;
+- Lien not found;
+- Lien tenant mismatch;
+- Case/Lien relationship invalid;
+- unsupported role;
+- malformed association request.
+
+==================================================
+37. CANCELLATION
+==================================================
+
+Cancellation must not strand:
+
+execution = PROCESSING
+or
+item = PROCESSING
+
+Finalize to safe CANCELLED/RETRYABLE/FAILED state.
+
+==================================================
+38. CONCURRENCY
+==================================================
+
+Two concurrent callers must not create duplicate:
+
+- workflow executions;
+- association items;
+- destination links.
+
+Use:
+- deterministic execution keys;
+- unique constraints;
+- atomic claiming/status transitions.
+
+==================================================
+39. CRASH RECOVERY
+==================================================
+
+Handle safely:
+
+- crash after Case association;
+- crash after Lien association;
+- crash after destination write but before Intake persistence;
+- crash midway through multi-document workflow.
+
+Reconcile on retry.
+
+==================================================
+40. MULTI-DOCUMENT SUPPORT
+==================================================
+
+A snapshot may contain multiple documents.
+
+Process each independently.
+
+Do not assume:
+1 snapshot = 1 document.
+
+==================================================
+41. REPEATED DOCUMENT TYPES
+==================================================
+
+Support multiple MEDICAL_BILL, MEDICAL_RECORD, etc.
+
+DocumentId remains independent association identity.
+
+==================================================
+42. EMAIL AND MANUAL SOURCES
+==================================================
+
+B15 must work for:
+
+- email-derived documents;
+- manual-upload documents.
+
+Source channel does not change association safety rules.
+
+==================================================
+43. EMAIL BODY
+==================================================
+
+If B05 stores email body as a Documents Service record:
+
+policy must explicitly classify it.
+
+Default:
+- CASE or SKIP
+
+Do not automatically associate email body to LIEN.
+
+==================================================
+44. INLINE ATTACHMENTS
+==================================================
+
+Inline images/signatures should default to SKIP unless the effective classification/role explicitly establishes relevance.
+
+==================================================
+45. UNSUPPORTED CLASSIFICATION
+==================================================
+
+OTHER / UNKNOWN should not be blindly routed.
+
+Use SKIP or stable unsupported behavior.
+
+==================================================
+46. BOTH TARGET
+==================================================
+
+If policy returns BOTH:
+
+create exactly:
+- one Case association;
+- one Lien association.
+
+Each has independent item identity.
+
+==================================================
+47. EXISTING ASSOCIATION
+==================================================
+
+If document is already associated to the same target/role:
+
+treat as idempotent success.
+
+Do not create a duplicate.
+
+==================================================
+48. DOCUMENT ASSOCIATED ELSEWHERE
+==================================================
+
+Do not move/unlink automatically.
+
+Follow current destination semantics.
+
+A shared Documents Service object may be referenced by multiple business records only if current platform design permits it safely.
+
+==================================================
+49. UNLINKING
+==================================================
+
+Unlink/delete is out of initial B15 scope unless required strictly for safe retry/reconciliation.
+
+Do not automatically remove old associations when snapshot is superseded.
+
+==================================================
+50. HISTORICAL SNAPSHOT
+==================================================
+
+Default:
+
+only current READY snapshot may start document association.
+
+Reject superseded/historical snapshot unless current architecture has an explicit administrative override.
+
+==================================================
+51. B14 EXECUTION VALIDATION
+==================================================
+
+Require valid SYNQLIEN_V1 execution/reference context.
+
+Do not associate using unrelated adapter references.
+
+==================================================
+52. SOURCE PROVENANCE
+==================================================
+
+Preserve safe metadata where supported:
+
+SourceSystem = SYNQ_INTAKE
+SnapshotId
+ReviewId
+ArtifactId
+DocumentId
+AssociationRole
+
+Do not include raw extracted facts.
+
+==================================================
+53. DESTINATION DOCUMENT TYPE MAPPER
+==================================================
+
+Create:
+
+ISynqLienDocumentTypeMapper
+
+or equivalent.
+
+Map:
+
+B13 Effective Classification
+-> destination document type
+-> target CASE/LIEN/BOTH
+
+Document exact matrix in report.
+
+==================================================
+54. DOCUMENT DISPLAY NAME
+==================================================
+
+Use safe approved filename from Documents/Intake.
+
+Do not construct filenames from patient/medical fact values.
+
+==================================================
+55. VISIBILITY
+==================================================
+
+Respect existing destination document visibility/access model.
+
+Do not expose medical documents outside tenant/user authorization boundaries.
+
+==================================================
+56. SERVICE AUTH
+==================================================
+
+Use existing LegalSynq service-token mechanism for cross-service calls.
+
+Do not introduce anonymous/internal bypass APIs.
+
+==================================================
+57. TENANT PROPAGATION
+==================================================
+
+All Documents/Liens calls must explicitly propagate current TenantId.
+
+Do not infer tenant from IDs.
+
+==================================================
+58. ORG PROPAGATION
+==================================================
+
+Where destination requires OrgId:
+
+use trusted tenant/config/runtime context.
+
+Do not derive OrgId from document metadata, sender, or facts.
+
+==================================================
+59. CORRELATION
+==================================================
+
+Propagate:
+
+CorrelationId
+SnapshotId
+AdapterExecutionId
+DocumentAssociationExecutionId / ItemId where useful
+
+No PHI in headers.
+
+==================================================
+60. TIMEOUTS
+==================================================
+
+All downstream HTTP calls must have bounded timeouts.
+
+==================================================
+61. RETRY OWNERSHIP
+==================================================
+
+B15 workflow owns business retries.
+
+Avoid uncontrolled nested retry policies.
+
+Use existing safe low-level transport resilience only where already standard.
+
+==================================================
+62. 429
+==================================================
+
+429:
+- retryable;
+- honor Retry-After where supported.
+
+==================================================
+63. 5XX
+==================================================
+
+5xx:
+- retryable.
+
+==================================================
+64. TIMEOUT
+==================================================
+
+Timeout:
+- retryable.
+
+==================================================
+65. 400
+==================================================
+
+Structurally invalid association request:
+- permanent;
+- sanitized error.
+
+==================================================
+66. AUTH FAILURES
+==================================================
+
+401/403:
+- configuration/auth failure;
+- normally permanent until configuration changes;
+- do not endlessly retry.
+
+==================================================
+67. FAILURE CODES
+==================================================
+
+Support stable codes such as:
+
+DOCUMENT_ASSOCIATION_NOT_CONFIGURED
+DOCUMENT_ASSOCIATION_DISABLED
+DOCUMENT_ASSOCIATION_INVALID_SNAPSHOT
+DOCUMENT_ASSOCIATION_TARGET_MISSING
+DOCUMENT_ASSOCIATION_ROLE_UNSUPPORTED
+
+DOCUMENT_NOT_FOUND
+DOCUMENT_TENANT_MISMATCH
+DOCUMENT_INTEGRITY_MISMATCH
+
+CASE_NOT_FOUND
+CASE_TENANT_MISMATCH
+LIEN_NOT_FOUND
+LIEN_TENANT_MISMATCH
+CASE_LIEN_RELATIONSHIP_INVALID
+
+CASE_DOCUMENT_ASSOCIATION_FAILED
+LIEN_DOCUMENT_ASSOCIATION_FAILED
+
+DOCUMENT_ASSOCIATION_TIMEOUT
+DOCUMENT_ASSOCIATION_UNAVAILABLE
+DOCUMENT_ASSOCIATION_CONFLICT
+DOCUMENT_ASSOCIATION_CANCELLED
+
+Use repository conventions.
+
+==================================================
+68. WORKFLOW SUMMARY
+==================================================
+
+Return a typed summary containing:
+
+- SnapshotId
+- CaseId
+- LienId
+- TotalDocuments
+- EligibleDocuments
+- AssociatedToCase
+- AssociatedToLien
+- Skipped
+- Failed
+- Retryable
+- Status
+
+No binary or document content.
+
+==================================================
+69. SUCCESS SEMANTICS
+==================================================
+
+SUCCEEDED when all required eligible associations are:
+
+SUCCEEDED
+or reconciled existing associations.
+
+==================================================
+70. PARTIAL SEMANTICS
+==================================================
+
+PARTIAL when:
+
+- required minimum is satisfied;
+- one or more optional items failed/skipped.
+
+==================================================
+71. RETRYABLE SEMANTICS
+==================================================
+
+RETRYABLE when required items remain transiently incomplete.
+
+==================================================
+72. FAILED SEMANTICS
+==================================================
+
+FAILED when required items have permanent failure and workflow cannot complete.
+
+==================================================
+73. API
+==================================================
+
+Implement routes consistent with current Intake conventions:
+
+POST /snapshots/{snapshotId}/document-associations
+
+GET /snapshots/{snapshotId}/document-associations
+
+GET /snapshots/{snapshotId}/document-associations/{executionId}
+
+POST /snapshots/{snapshotId}/document-associations/{executionId}/retry
+
+If dry-run fits current conventions:
+
+POST /snapshots/{snapshotId}/document-associations?dryRun=true
+
+or request-contract equivalent.
+
+==================================================
+74. EXPLICIT EXECUTION
+==================================================
+
+B15 initial behavior must be explicit.
+
+Do not automatically execute immediately after B14 success.
+
+==================================================
+75. FUTURE CHAINING
+==================================================
+
+Design so future B16/B20 can trigger:
+
+B14 success
+-> B15 document association
+
+without redesign.
+
+Do not enable that automation now.
+
+==================================================
+76. AUTHORIZATION
+==================================================
+
+Prefer:
+
+intake.documents.read
+intake.documents.associate
+
+or justify reuse of existing snapshot/adapter permissions.
+
+Association execution authority should be distinct from ordinary read access.
+
+==================================================
+77. DESTINATION AUTHORIZATION
+==================================================
+
+Documents and Liens services must independently authorize service-token calls.
+
+Do not rely solely on Intake permissions.
+
+==================================================
+78. AUDIT
+==================================================
+
+Emit safe actions:
+
+DOCUMENT_ASSOCIATION_STARTED
+CASE_DOCUMENT_ASSOCIATED
+LIEN_DOCUMENT_ASSOCIATED
+DOCUMENT_ASSOCIATION_SKIPPED
+DOCUMENT_ASSOCIATION_FAILED
+DOCUMENT_ASSOCIATION_COMPLETED
+
+==================================================
+79. AUDIT PRIVACY
+==================================================
+
+Safe fields:
+
+TenantId
+SnapshotId
+ExecutionId
+DocumentId
+ArtifactId
+CaseId
+LienId
+AssociationRole
+Status
+FailureCode
+
+No document content.
+
+==================================================
+80. LOGGING
+==================================================
+
+Safe:
+
+TenantId
+SnapshotId
+ExecutionId
+ItemId
+DocumentId
+TargetType
+TargetId
+Role
+Attempt
+Status
+FailureCode
+
+Avoid filenames when they may contain PHI.
+
+Never log document content.
+
+==================================================
+81. METRICS
+==================================================
+
+Where current metrics infrastructure exists:
+
+DocumentAssociationExecutions
+DocumentAssociationItems
+CaseDocumentAssociationSuccess
+LienDocumentAssociationSuccess
+DocumentAssociationFailures
+DocumentAssociationRetries
+DocumentAssociationDuration
+
+No PHI labels.
+
+==================================================
+82. EVENTS
+==================================================
+
+Where existing event/outbox patterns support it:
+
+IntakeDocumentAssociationCompletedV1
+IntakeDocumentAssociationFailedV1
+
+Identifiers/status only.
+
+No document payload.
+
+==================================================
+83. FRONTEND
+==================================================
+
+Minimal optional Intake UI:
+
+- association workflow status;
+- Case ID;
+- Lien ID;
+- associated document count;
+- failed/retryable count;
+- per-item target/role/status;
+- retry action.
+
+Do not create a duplicate document-management product.
+
+==================================================
+84. DOCUMENT LINKS
+==================================================
+
+Where secure UI navigation exists:
+
+allow:
+- secure document view;
+- Case/Lien navigation.
+
+Do not expose raw blob/storage URLs.
+
+==================================================
+85. PERSISTENCE
+==================================================
+
+If new Intake persistence is needed, create:
+
+DocumentAssociationExecutions
+DocumentAssociationItems
+
+Use generic tenant-aware schema.
+
+==================================================
+86. EXECUTION UNIQUENESS
+==================================================
+
+Use deterministic workflow ExecutionKey.
+
+At most one active/logical execution per:
+
+TenantId
++ SnapshotId
++ association profile/version
+
+unless current retry architecture intentionally reuses the same execution row.
+
+==================================================
+87. ITEM UNIQUENESS
+==================================================
+
+Enforce deterministic item identity:
+
+TenantId
++ DocumentId
++ TargetType
++ TargetId
++ AssociationRole
+
+or equivalent hashed ExecutionKey.
+
+==================================================
+88. TENANT-AWARE FKS
+==================================================
+
+Use composite tenant-aware relationships consistent with Intake schema conventions.
+
+==================================================
+89. MIGRATION
+==================================================
+
+If new persistence required, create:
+
+AddDocumentAssociationWorkflowV1
+
+or repository-standard equivalent.
+
+Do not add binary/document-content columns.
+
+==================================================
+90. MYSQL VALIDATION
+==================================================
+
+Apply migration chain through B15 against disposable/local MySQL 8 if environment permits.
+
+Verify:
+- execution table;
+- item table;
+- tenant-aware FKs;
+- unique keys;
+- status indexes;
+- no duplicate association race at DB boundary.
+
+This is also an opportunity to close prior pending B13/B14 migration validation where possible.
+
+==================================================
+91. PERFORMANCE
+==================================================
+
+B15 must:
+
+- load snapshot once;
+- resolve B14 refs once;
+- verify Case/Lien once per execution;
+- verify each unique DocumentId once;
+- avoid downloading binary;
+- avoid N+1 calls where batch APIs exist;
+- bound concurrency;
+- use HttpClientFactory.
+
+==================================================
+92. B16 BOUNDARY
+==================================================
+
+B16 will own broader:
+
+- stuck-work recovery;
+- reconciliation dashboards;
+- alerting;
+- operational observability;
+- dead-letter handling;
+- advanced security/audit hardening;
+- SLA metrics.
+
+B15 should persist enough execution/item state to support B16.
+
+Do not implement full B16.
+
+==================================================
+93. TEST — POLICY MAPPING
+==================================================
+
+Verify supported classification mapping to:
+
+CASE
+LIEN
+BOTH
+SKIP
+
+==================================================
+94. TEST — HUMAN OVERRIDE
+==================================================
+
+Original AI classification differs from B12/B13 effective classification.
+
+Use B13 effective value.
+
+==================================================
+95. TEST — EMAIL DOCUMENT
+==================================================
+
+Verify email-derived document can associate.
+
+==================================================
+96. TEST — MANUAL DOCUMENT
+==================================================
+
+Verify manual-upload document can associate identically.
+
+==================================================
+97. TEST — MULTI DOCUMENT
+==================================================
+
+Verify multiple documents process independently.
+
+==================================================
+98. TEST — REPEATED TYPE
+==================================================
+
+Multiple MEDICAL_BILL or other same-type documents retain independent identity.
+
+==================================================
+99. TEST — B14 REFERENCES
+==================================================
+
+Verify CASE/LIEN IDs come from B14 external references.
+
+Caller-supplied substitute IDs are not accepted.
+
+==================================================
+100. TEST — MISSING CASE REF
+==================================================
+
+Missing required CASE reference fails before destination association.
+
+==================================================
+101. TEST — MISSING LIEN REF
+==================================================
+
+Missing LIEN reference fails/partials according to association profile.
+
+==================================================
+102. TEST — CASE/LIEN RELATIONSHIP
+==================================================
+
+Reject Lien that does not belong to expected Case.
+
+==================================================
+103. TEST — DOCUMENT NOT FOUND
+==================================================
+
+Permanent failure.
+
+No filename fallback.
+
+==================================================
+104. TEST — CROSS TENANT DOCUMENT
+==================================================
+
+Reject.
+
+==================================================
+105. TEST — CROSS TENANT CASE
+==================================================
+
+Reject.
+
+==================================================
+106. TEST — CROSS TENANT LIEN
+==================================================
+
+Reject.
+
+==================================================
+107. TEST — SHA MISMATCH
+==================================================
+
+Controlled integrity failure.
+
+==================================================
+108. TEST — CASE ASSOCIATION
+==================================================
+
+Create exactly one Case-document association.
+
+==================================================
+109. TEST — LIEN ASSOCIATION
+==================================================
+
+Create exactly one Lien-document association.
+
+==================================================
+110. TEST — BOTH
+==================================================
+
+If policy = BOTH:
+
+one Case link
++
+one Lien link
+
+exactly.
+
+==================================================
+111. TEST — EXISTING LINK
+==================================================
+
+Existing identical association:
+- reconcile to success;
+- no duplicate.
+
+==================================================
+112. TEST — RESPONSE LOSS
+==================================================
+
+Destination creates association
+-> response lost
+-> retry
+
+Expected:
+one association.
+
+==================================================
+113. TEST — PARTIAL FAILURE
+==================================================
+
+One item success, another transient fail.
+
+Retry only failed item.
+
+==================================================
+114. TEST — 409
+==================================================
+
+Existing/conflict association reconciles correctly.
+
+==================================================
+115. TEST — TIMEOUT
+==================================================
+
+Retryable.
+
+==================================================
+116. TEST — 429
+==================================================
+
+Retryable.
+
+==================================================
+117. TEST — 5XX
+==================================================
+
+Retryable.
+
+==================================================
+118. TEST — 400
+==================================================
+
+Permanent sanitized failure.
+
+==================================================
+119. TEST — 401/403
+==================================================
+
+Permanent/configuration failure.
+
+==================================================
+120. TEST — CANCELLATION
+==================================================
+
+No stranded PROCESSING item/execution.
+
+==================================================
+121. TEST — CONCURRENCY
+==================================================
+
+Concurrent calls produce one logical execution/items and no duplicate destination links.
+
+==================================================
+122. TEST — HISTORICAL SNAPSHOT
+==================================================
+
+Superseded snapshot rejected by default.
+
+==================================================
+123. TEST — UNSUPPORTED ROLE
+==================================================
+
+SKIP/permanent policy behavior, never arbitrary link.
+
+==================================================
+124. TEST — INLINE ARTIFACT
+==================================================
+
+Inline/signature artifact excluded unless explicitly supported.
+
+==================================================
+125. TEST — DRY RUN
+==================================================
+
+If implemented:
+- returns planned associations;
+- performs no write;
+- creates no destination association.
+
+==================================================
+126. HTTP INTEGRATION TESTS
+==================================================
+
+Where infrastructure exists, cover:
+
+POST /snapshots/{snapshotId}/document-associations
+GET /snapshots/{snapshotId}/document-associations
+GET /snapshots/{snapshotId}/document-associations/{executionId}
+POST /snapshots/{snapshotId}/document-associations/{executionId}/retry
+
+Test:
+
+- 401;
+- 403;
+- wrong tenant;
+- invalid snapshot;
+- missing B14 refs;
+- success;
+- partial;
+- retry;
+- idempotent repeat;
+- historical snapshot rejection.
+
+==================================================
+127. DOCUMENTS CONTRACT TESTS
+==================================================
+
+If Documents service/client changes, verify:
+
+- tenant-safe metadata lookup;
+- auth;
+- SHA retrieval;
+- deleted/unavailable behavior;
+- no binary retrieval required for association validation.
+
+==================================================
+128. LIENS CONTRACT TESTS
+==================================================
+
+If Liens service changes/adds association APIs, verify:
+
+- Case association create/read;
+- Lien association create/read;
+- service auth;
+- tenant enforcement;
+- Case/Lien relationship;
+- idempotency;
+- duplicate-link prevention;
+- 409 reconciliation;
+- backward compatibility.
+
+==================================================
+129. SECURITY VALIDATION
+==================================================
+
+Verify:
+
+- no document binary in Intake DB;
+- no document binary in logs;
+- no raw storage URL exposure;
+- no arbitrary target IDs;
+- no cross-tenant DocumentId use;
+- no cross-tenant Case/Lien association;
+- service credentials are secret-managed;
+- no direct Documents storage access;
+- no direct Liens DB access;
+- only approved B13 documents can route.
+
+==================================================
+130. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- OCR;
+- extraction;
+- classification;
+- document editing;
+- document redaction;
+- arbitrary uploads;
+- binary storage;
+- automatic unlink/reassociation after snapshot supersession;
+- lien selling;
+- Flow tasks;
+- notifications;
+- SynqFund;
+- CareConnect;
+- straight-through processing;
+- broad operations dashboard;
+- AWS/RDS/ECS/Route53;
+- deployment;
+- production migration.
+
+==================================================
+131. BUILD / VALIDATION
+==================================================
+
+At minimum run and record:
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+If Liens service changed:
+- build Liens API;
+- run focused and relevant Liens tests.
+
+If Documents service changed:
+- build Documents service;
+- run relevant Documents tests.
+
+Run:
+
+dotnet build LegalSynq.sln --no-restore -m:1 /p:BuildInParallel=false
+
+If migration added:
+
+dotnet ef dbcontext info
+dotnet ef migrations list
+
+Apply full Intake migration chain through B15 to disposable/local MySQL 8 if environment permits.
+
+Run:
+
+git diff --check
+git status --short
+git diff --stat
+git diff --name-status against B14 baseline
+
+Verify:
+- no bin/obj tracked;
+- no secrets;
+- no uploaded spec assets added;
+- no document binaries tracked;
+- no direct Liens persistence shortcuts;
+- no B16 files;
+- no unrelated changes.
+
+Clearly classify validation results as:
+
+Passed
+Partially Completed
+Blocked
+Unavailable
+Failed
+
+==================================================
+132. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B15 is complete only when all are true:
+
+1. B13 approved document refs are consumed.
+2. B14 CASE/LIEN refs are consumed.
+3. caller cannot provide arbitrary target IDs.
+4. Documents Service remains binary owner.
+5. no binary duplicated into Intake DB.
+6. no binary duplicated into Liens DB.
+7. versioned association policy exists.
+8. effective B13 classification drives association.
+9. B12 human classification override is honored.
+10. CASE/LIEN/BOTH/SKIP decisions are deterministic.
+11. unsupported classifications are safe.
+12. inline/signature artifacts handled safely.
+13. email documents supported.
+14. manual documents supported.
+15. multi-document snapshots supported.
+16. repeated same-type documents supported.
+17. DocumentId is authoritative identity.
+18. filename is not identity.
+19. document existence validated.
+20. document tenant validated.
+21. SHA checked where available.
+22. Case target validated.
+23. Case tenant validated.
+24. Lien target validated.
+25. Lien tenant validated.
+26. Case/Lien relationship validated.
+27. Case association supported.
+28. Lien association supported.
+29. BOTH supported.
+30. association uses references, not binaries.
+31. stable association roles exist.
+32. destination document type mapper exists.
+33. exact mapping documented.
+34. item-level idempotency exists.
+35. database/destination uniqueness closes duplicate-link race where possible.
+36. response-loss retry does not duplicate.
+37. 409/existing-link reconciliation works.
+38. partial success supported.
+39. successful items are not rerun.
+40. retry processes eligible failed items only.
+41. transient failures retryable.
+42. permanent failures non-retryable.
+43. timeout bounded.
+44. 429 retryable.
+45. 5xx retryable.
+46. invalid 400 permanent.
+47. auth failure handled safely.
+48. cancellation does not strand PROCESSING.
+49. concurrent execution does not duplicate work.
+50. crash recovery works.
+51. historical snapshot rejected by default.
+52. required/optional item semantics exist.
+53. missing required association prevents SUCCEEDED.
+54. optional failures can result in PARTIAL.
+55. workflow summary exists.
+56. explicit execution API exists.
+57. status/read API exists.
+58. retry API exists.
+59. authorization exists.
+60. Documents service independently authorizes.
+61. Liens service independently authorizes.
+62. tenant propagated explicitly.
+63. org propagated where required.
+64. correlation propagated safely.
+65. service-token mechanism reused.
+66. audit exists.
+67. audit has no document content.
+68. logs have no document content.
+69. events have no document content.
+70. metrics have no PHI.
+71. no raw storage URL exposed.
+72. source provenance retained safely.
+73. B13/B14 lineage remains traceable.
+74. no direct Liens DB access.
+75. no direct Documents storage access.
+76. no B16 operational feature implemented.
+77. no Flow/notification integration.
+78. no cloud/deployment work performed.
+79. policy mapping tests pass.
+80. classification override tests pass.
+81. email/manual tests pass.
+82. multi-document tests pass.
+83. tenant isolation tests pass.
+84. integrity tests pass.
+85. Case association tests pass.
+86. Lien association tests pass.
+87. BOTH tests pass.
+88. idempotency tests pass.
+89. partial-success tests pass.
+90. retry tests pass.
+91. conflict tests pass.
+92. timeout/429/5xx tests pass.
+93. permanent failure tests pass.
+94. concurrency tests pass.
+95. cancellation tests pass.
+96. historical snapshot tests pass.
+97. HTTP integration tests cover critical path where practical.
+98. Documents contract tests pass if modified.
+99. Liens contract tests pass if modified.
+100. Intake API builds with zero new B15 errors.
+101. Intake tests pass.
+102. Documents service builds/tests pass if modified.
+103. Liens service builds/tests pass if modified.
+104. full solution build has zero new B15 errors.
+105. migration validated where environment permits.
+106. no secrets/spec assets/build artifacts introduced.
+107. /analysis/LSI-B15-report.md exists.
+
+==================================================
+133. REQUIRED IMPLEMENTATION REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B15-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree state
+8. B13 document contract reviewed
+9. B14 external-reference model reviewed
+10. B14 SYNQLIEN_V1 completion semantics reviewed
+11. Documents Service architecture reviewed
+12. Liens association architecture reviewed
+13. actual Documents endpoints/contracts
+14. actual Liens association endpoints/contracts
+15. auth mechanisms
+16. tenant propagation
+17. org propagation
+18. files added
+19. files modified
+20. association profile code/version
+21. classification-to-target mapping
+22. classification-to-document-type mapping
+23. CASE behavior
+24. LIEN behavior
+25. BOTH behavior
+26. SKIP behavior
+27. required/optional behavior
+28. email-body handling
+29. inline artifact handling
+30. unsupported classification handling
+31. Documents verification
+32. SHA/integrity validation
+33. Case validation
+34. Lien validation
+35. Case/Lien relationship validation
+36. association execution service
+37. execution persistence/state
+38. item persistence/state
+39. execution idempotency
+40. item idempotency
+41. database uniqueness
+42. destination idempotency
+43. conflict reconciliation
+44. response-loss recovery
+45. crash recovery
+46. partial-success handling
+47. retry handling
+48. cancellation handling
+49. concurrency handling
+50. timeouts
+51. 429 handling
+52. 5xx handling
+53. permanent error handling
+54. stable failure codes
+55. API routes
+56. authorization
+57. audit
+58. logging
+59. metrics
+60. events
+61. privacy/security assessment
+62. frontend additions if any
+63. persistence changes
+64. migration name
+65. MySQL validation
+66. policy mapping tests
+67. classification override tests
+68. email/manual tests
+69. multi-document tests
+70. repeated-type tests
+71. B14 reference tests
+72. tenant-isolation tests
+73. integrity tests
+74. Case-association tests
+75. Lien-association tests
+76. BOTH tests
+77. existing-link tests
+78. idempotency tests
+79. response-loss tests
+80. partial-success tests
+81. retry tests
+82. conflict tests
+83. timeout/429/5xx tests
+84. permanent-failure tests
+85. concurrency tests
+86. cancellation tests
+87. historical-snapshot tests
+88. HTTP integration tests
+89. Documents contract tests if modified
+90. Liens contract tests if modified
+91. Intake API build result
+92. Intake tests result
+93. Documents service build/test result if modified
+94. Liens service build/test result if modified
+95. full solution build result
+96. known gaps
+97. out-of-scope confirmation
+98. git diff summary
+99. final repository validation status
+100. recommended next bundle: LSI-B16
+
+Sanitize:
+
+- credentials;
+- service tokens;
+- PHI/PII;
+- filenames if sensitive;
+- document contents;
+- raw destination error bodies;
+- storage locations;
+- local connection strings.
+
+==================================================
+134. DEFINITION OF DONE
+==================================================
+
+LSI-B15 is complete when an approved B13 snapshot that has successfully produced/reused a SynqLien Case and produced a Lien through B14 can deterministically and safely associate the correct approved Documents Service records to the correct SynqLien business records.
+
+The completed workflow must:
+
+- use B13 approved document references;
+- use B14 durable CASE/LIEN references;
+- preserve tenant and org context;
+- validate document integrity/ownership;
+- validate Case/Lien ownership and relationship;
+- apply a versioned classification-to-target policy;
+- create Case/Lien document associations without copying binaries;
+- remain idempotent under retries, response loss, concurrency, and crashes;
+- retain item-level partial-success state;
+- expose safe retry/status APIs;
+- keep logs/audit/events free of document content and PHI;
+- avoid all direct Documents storage and Liens DB coupling.
+
+The completed pipeline should be:
+
+Source
+-> Documents Service
+-> Classification
+-> Extraction
+-> Normalization
+-> Matching
+-> Policy
+-> Human Review
+-> Approved Snapshot
+-> SYNQLIEN_V1
+-> Case / Lien
+-> Document Association
+
+When complete:
+
+- execute all work now;
+- run all required local validation;
+- create /analysis/LSI-B15-report.md;
+- stop;
+- do not begin LSI-B16;
+- do not deploy;
+- do not push unless explicitly requested.

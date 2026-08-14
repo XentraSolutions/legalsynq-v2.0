@@ -1,0 +1,27 @@
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useAtomValue } from 'jotai';
+
+import { CasesApi, LegacyCasesAdapter, LegacyCasesApi } from '@/shared/api/endpoints/Cases';
+import type { ReportFilterRequest } from '@/shared/api/endpoints/Cases';
+import { apiModeAtom } from '@/shared/state/atoms/apiModeAtom';
+
+export const dashboardTotalCaseReportKeys = {
+  all: ['dashboard', 'total-case-report'] as const,
+  filtered: (filter: ReportFilterRequest) => [...dashboardTotalCaseReportKeys.all, filter] as const,
+};
+
+export function useDashboardTotalCaseReport(filter: ReportFilterRequest, enabled = true) {
+  const mode = useAtomValue(apiModeAtom);
+
+  return useQuery({
+    queryKey: dashboardTotalCaseReportKeys.filtered(filter),
+    queryFn: () =>
+      mode === 'legacy'
+        ? LegacyCasesApi.getDashboardTotalCaseReportV3(filter).then(
+            LegacyCasesAdapter.toTotalCaseReportPage
+          )
+        : CasesApi.getDashboardTotalCaseReportV3(filter),
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+}

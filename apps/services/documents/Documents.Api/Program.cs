@@ -9,6 +9,7 @@ using Documents.Domain.Interfaces;
 using Documents.Infrastructure;
 using Documents.Infrastructure.Database;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
@@ -199,7 +200,15 @@ builder.Services
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("DocumentsServiceInternal", policy =>
+    {
+        policy.AddAuthenticationSchemes(ServiceTokenAuthenticationDefaults.Scheme);
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole(ServiceTokenAuthenticationDefaults.ServiceRole);
+    });
+});
 
 // ── Rate limiting (ASP.NET Core built-in) ─────────────────────────────────────
 builder.Services.AddRateLimiter(opts =>
