@@ -115,6 +115,18 @@ public class SellingAnalyticsEndpointTests : IClassFixture<LiensApiFactory>, IAs
     {
         var fundingCompanyId = Guid.CreateVersion7();
         var otherSellerOrgId = Guid.CreateVersion7();
+        var canonicalSeller = CreateAnalyticsLien(
+            fundingCompanyId,
+            SellingLienStatus.SubmittedForSale,
+            originalAmount: 2_000m,
+            askAmount: 1_800m);
+        SetLienOwnership(canonicalSeller, Guid.CreateVersion7(), SeedHelper.OrgId);
+        var conflictingLegacyOrg = CreateAnalyticsLien(
+            fundingCompanyId,
+            SellingLienStatus.SubmittedForSale,
+            originalAmount: 7_000m,
+            askAmount: 6_000m);
+        SetLienOwnership(conflictingLegacyOrg, SeedHelper.OrgId, otherSellerOrgId);
         await SeedAnalyticsLiensAsync(db =>
         {
             db.Liens.Add(CreateAnalyticsLien(
@@ -130,6 +142,7 @@ public class SellingAnalyticsEndpointTests : IClassFixture<LiensApiFactory>, IAs
                 sellerOrgId: otherSellerOrgId,
                 originalAmount: 9_000m,
                 askAmount: 8_000m));
+            db.Liens.AddRange(canonicalSeller, conflictingLegacyOrg);
         });
 
         var response = await _client.GetAsync($"/api/liens/selling/analytics/overview?fundingCompanyId={fundingCompanyId}");
@@ -137,8 +150,8 @@ public class SellingAnalyticsEndpointTests : IClassFixture<LiensApiFactory>, IAs
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await response.Content.ReadFromJsonAsync<SellingAnalyticsOverviewResponse>();
         body.Should().NotBeNull();
-        body!.Summary.TotalCount.Should().Be(1);
-        body.Summary.PortfolioValue.Should().Be(1_000m);
+        body!.Summary.TotalCount.Should().Be(2);
+        body.Summary.PortfolioValue.Should().Be(3_000m);
     }
 
     [Fact]
@@ -261,6 +274,43 @@ public class SellingAnalyticsEndpointTests : IClassFixture<LiensApiFactory>, IAs
         persisted.ArchivedReason.Should().Be("duplicate import");
     }
 
+    [Fact]
+    public async Task Filter_options_include_canonical_v2_funding_company()
+    {
+        var fundingCompany = Company.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            CompanyDirectoryReferenceData.FundingCompanyId,
+            "Directory Analytics Capital",
+            SeedHelper.UserId);
+        var lien = Lien.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"LIEN-CANONICAL-{Guid.NewGuid():N}"[..32],
+            LienType.MedicalLien,
+            2_000m,
+            SeedHelper.UserId,
+            initialServiceDate: new DateOnly(2026, 1, 15));
+        lien.LinkCanonicalSellingParties(fundingCompany.Id, null, null, null);
+        lien.UpdateSellingAnalyticsFields(
+            SeedHelper.UserId,
+            sellerStatus: SellingLienStatus.Pending,
+            listingVisibility: SellingListingVisibility.Private);
+
+        await SeedAnalyticsLiensAsync(db => db.AddRange(fundingCompany, lien));
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/analytics/filter-options?fundingCompanyId={fundingCompany.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingAnalyticsFilterOptionsResponse>();
+        body.Should().NotBeNull();
+        body!.FundingCompanies.Should().ContainSingle();
+        body.FundingCompanies[0].Value.Should().Be(fundingCompany.Id.ToString());
+        body.FundingCompanies[0].Label.Should().Be("Directory Analytics Capital");
+        body.FundingCompanies[0].Count.Should().Be(1);
+    }
+
     private async Task SeedAnalyticsLiensAsync(Action<LiensDbContext> arrange)
     {
         using var scope = _factory.Services.CreateScope();
@@ -313,5 +363,11 @@ public class SellingAnalyticsEndpointTests : IClassFixture<LiensApiFactory>, IAs
             soldAtUtc: soldAtUtc);
 
         return lien;
+    }
+
+    private static void SetLienOwnership(Lien lien, Guid orgId, Guid? sellingOrgId)
+    {
+        typeof(Lien).GetProperty(nameof(Lien.OrgId))!.SetValue(lien, orgId);
+        typeof(Lien).GetProperty(nameof(Lien.SellingOrgId))!.SetValue(lien, sellingOrgId);
     }
 }

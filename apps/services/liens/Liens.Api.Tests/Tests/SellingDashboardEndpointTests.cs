@@ -175,11 +175,104 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Dashboard_prefers_canonical_selling_org_over_conflicting_legacy_org()
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var included = CreateDashboardLien(
+            fundingCompanyId,
+            SellingLienStatus.Pending,
+            1_000m,
+            900m,
+            0m);
+        SetLienOwnership(included, Guid.CreateVersion7(), SeedHelper.OrgId);
+        var excluded = CreateDashboardLien(
+            fundingCompanyId,
+            SellingLienStatus.Pending,
+            8_000m,
+            7_000m,
+            0m);
+        SetLienOwnership(excluded, SeedHelper.OrgId, Guid.CreateVersion7());
+        await SeedDashboardLiensAsync(db => db.Liens.AddRange(included, excluded));
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/dashboard?tab=pending&fundingCompanyId={fundingCompanyId}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingDashboardResponse>();
+        body.Should().NotBeNull();
+        body!.Items.Should().ContainSingle(item => item.LienId == included.Id);
+        body.Summary.TotalPending.Should().Be(1_000m);
+    }
+
+    [Fact]
     public async Task Dashboard_rejects_unknown_tabs()
     {
         var response = await _client.GetAsync("/api/liens/selling/dashboard?tab=ready-to-sell");
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Dashboard_filters_and_labels_canonical_v2_selling_parties()
+    {
+        var fundingCompany = Company.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            CompanyDirectoryReferenceData.FundingCompanyId,
+            "Canonical Funding LLC",
+            SeedHelper.UserId);
+        var lawFirm = Company.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            CompanyDirectoryReferenceData.LawFirmId,
+            "Canonical Law LLP",
+            SeedHelper.UserId);
+        var caseManager = CompanyContactPerson.Create(
+            SeedHelper.TenantId,
+            lawFirm.Id,
+            Guid.CreateVersion7(),
+            "Cameron",
+            "Manager",
+            SeedHelper.UserId);
+        var caseEntity = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-CANONICAL-{Guid.NewGuid():N}"[..32],
+            "Jamie",
+            "Client",
+            SeedHelper.UserId);
+        caseEntity.LinkCanonicalCaseParties(lawFirm.Id, caseManager.Id);
+        var lien = Lien.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"LIEN-CANONICAL-{Guid.NewGuid():N}"[..32],
+            LienType.MedicalLien,
+            1_500m,
+            SeedHelper.UserId,
+            caseId: caseEntity.Id,
+            initialServiceDate: new DateOnly(2026, 1, 15));
+        lien.LinkCanonicalSellingParties(fundingCompany.Id, null, null, null);
+
+        await SeedDashboardLiensAsync(db => db.AddRange(
+            fundingCompany,
+            lawFirm,
+            caseManager,
+            caseEntity,
+            lien));
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/dashboard?tab=pending&fundingCompanyId={fundingCompany.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingDashboardResponse>();
+        body.Should().NotBeNull();
+        body!.Items.Should().ContainSingle();
+        body.Items[0].FundingCompanyId.Should().Be(fundingCompany.Id);
+        body.Items[0].FundingCompany.Should().Be("Canonical Funding LLC");
+        body.Items[0].LawFirmId.Should().Be(lawFirm.Id);
+        body.Items[0].LawFirm.Should().Be("Canonical Law LLP");
+        body.Items[0].CaseManagerId.Should().Be(caseManager.Id);
+        body.Items[0].CaseManager.Should().Be("Cameron Manager");
     }
 
     [Fact]
@@ -282,5 +375,11 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
             highestBidAmount: 2_500m);
 
         return lien;
+    }
+
+    private static void SetLienOwnership(Lien lien, Guid orgId, Guid? sellingOrgId)
+    {
+        typeof(Lien).GetProperty(nameof(Lien.OrgId))!.SetValue(lien, orgId);
+        typeof(Lien).GetProperty(nameof(Lien.SellingOrgId))!.SetValue(lien, sellingOrgId);
     }
 }

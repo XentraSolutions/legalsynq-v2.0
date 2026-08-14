@@ -132,6 +132,27 @@ new mutation (reuse it only to retry that exact request).
 | ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET`  | `/api/liens/selling/dashboard?tab=pending\|internal\|sold\|all` | Returns seller-scoped portfolio totals, tab counts, and a paginated lien table. Summary amounts aggregate the displayed billing amounts for the filtered Pending, Internal, and Sold lists; Total Portfolio Value is their sum and excludes statuses outside those lists. Supports search, funding company, law firm, case manager, facility, initial-service-date, and sort filters. Accepted liens are categorized and displayed as Sold. |
 | `GET`  | `/api/liens/selling/liens?tab=pending\|internal\|sold\|all`     | Returns the same seller-scoped, filtered, paginated lien rows without dashboard totals. Accepted liens remain searchable in the Sold tab.                                                                                                                                                                                                                                                                                                   |
+| `GET`  | `/api/liens/selling/analytics/dashboard`                        | Returns the composite operations-dashboard read model for the authenticated seller organization. Optional inclusive `dateFrom`/`dateTo` values must be supplied together and cannot exceed 366 days; the default is the current UTC calendar month. `compare=previousPeriod` (default) returns an adjacent equal-length comparison period when it is representable, while `compare=none` omits it. Requires `SYNQ_LIENS`, sell mode, and `SYNQ_LIENS.lien_sale:view_analytics`. |
+
+The operations dashboard uses `InitialServiceDate` as the lien cohort date and reports USD because lien records do not
+persist a currency code. Total Lien Revenue is the sum of `OriginalAmount`; Total Outstanding is the sum of
+`CurrentBalance`, falling back to `OriginalAmount` only when the balance is null. Payments sum non-deleted settlement
+payment details by their persisted `PaymentDate` and seller-owned lien. `lienStatuses` is the operational distribution of
+persisted `Lien.Status` values. `sellerStatuses` is the separate seller lifecycle distribution: a completed Sold status
+requires seller/lien lifecycle evidence plus both `SoldAtUtc` and `PurchasePrice`; Accepted remains separate, and
+inconsistent legacy Sold rows appear as `SaleIncomplete`. Status and monthly time-series queries aggregate database
+projections rather than loading full lien/offer sets.
+
+Past Amount Due, A/R aging, and buyer aging intentionally return `isAvailable: false`, null/empty values, and an
+`unavailableReason`; unavailable A/R returns a null total. The Liens schema has no authoritative receivable due date, so
+deriving those values from service, submission, sale, or update dates would misstate A/R. Top buyers are grouped by the
+persisted `BuyingOrgId` for non-terminal liens with a positive balance. Completed purchase amount is calculated separately
+for the displayed buyers, so completed settled purchases remain included. Buyer Company Directory identity uses the most
+recent accepted, period-relevant offer, ordered by response time, offer time, then offer ID; when no such scoped company
+exists, the buyer organization ID is returned as the display fallback.
+
+Seller ownership is canonical-first across the composite and existing dashboard/analytics reads: `SellingOrgId` must
+match the authenticated organization when populated; legacy `OrgId` is consulted only when `SellingOrgId` is null.
 
 Seller dashboard highest bids are aggregated in the database and, unless sorting by highest bid, are loaded only
 for the requested page. Buyer dashboard lien, facility, and seller-contact lookups are batched; seller display

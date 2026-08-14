@@ -52,6 +52,10 @@
       "value": "2026-12-31"
     },
     {
+      "key": "compare",
+      "value": "previousPeriod"
+    },
+    {
       "key": "sellerStatus",
       "value": "SubmittedForSale"
     },
@@ -92,6 +96,169 @@
     {
       "name": "01 - Dashboard Metrics",
       "item": [
+        {
+          "name": "Operations Dashboard - Composite",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/dashboard?dateFrom={{dateFrom}}&dateTo={{dateTo}}&compare={{compare}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "analytics",
+                "dashboard"
+              ],
+              "query": [
+                {
+                  "key": "dateFrom",
+                  "value": "{{dateFrom}}"
+                },
+                {
+                  "key": "dateTo",
+                  "value": "{{dateTo}}"
+                },
+                {
+                  "key": "compare",
+                  "value": "{{compare}}"
+                }
+              ]
+            },
+            "description": "Returns the composite seller operations dashboard. Lien cohorts use inclusive InitialServiceDate boundaries; payment totals use PaymentDate. Past-due and aging sections remain explicitly unavailable until the schema has an authoritative due date."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('has composite dashboard sections', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('metrics');",
+                  "  pm.expect(body).to.have.property('arAging');",
+                  "  pm.expect(body).to.have.property('lienStatuses').that.is.an('array');",
+                  "  pm.expect(body).to.have.property('sellerStatuses').that.is.an('array');",
+                  "  pm.expect(body).to.have.property('timeSeries').that.is.an('array');",
+                  "  pm.expect(body).to.have.property('topBuyers').that.is.an('array');",
+                  "  pm.expect(body).to.have.property('buyerAging');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": [
+            {
+              "name": "200 - Composite dashboard",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/liens/selling/analytics/dashboard?dateFrom=2026-01-01&dateTo=2026-01-31&compare=previousPeriod",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "liens",
+                    "selling",
+                    "analytics",
+                    "dashboard"
+                  ],
+                  "query": [
+                    {
+                      "key": "dateFrom",
+                      "value": "2026-01-01"
+                    },
+                    {
+                      "key": "dateTo",
+                      "value": "2026-01-31"
+                    },
+                    {
+                      "key": "compare",
+                      "value": "previousPeriod"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"period\": { \"dateFrom\": \"2026-01-01\", \"dateTo\": \"2026-01-31\", \"dateBasis\": \"initialServiceDate\" },\n  \"comparisonPeriod\": { \"dateFrom\": \"2025-12-01\", \"dateTo\": \"2025-12-31\", \"dateBasis\": \"initialServiceDate\" },\n  \"currency\": \"USD\",\n  \"metrics\": {\n    \"totalLienRevenue\": { \"isAvailable\": true, \"value\": 3000, \"comparisonValue\": 2500, \"changeAmount\": 500, \"changePercent\": 20, \"formula\": \"Sum of OriginalAmount for the period lien cohort.\", \"unavailableReason\": null },\n    \"totalOutstanding\": { \"isAvailable\": true, \"value\": 2100, \"comparisonValue\": 1900, \"changeAmount\": 200, \"changePercent\": 10.53, \"formula\": \"Sum of CurrentBalance with OriginalAmount fallback.\", \"unavailableReason\": null },\n    \"pastAmountDue\": { \"isAvailable\": false, \"value\": null, \"comparisonValue\": null, \"changeAmount\": null, \"changePercent\": null, \"formula\": \"Unavailable until an authoritative receivable due date is persisted.\", \"unavailableReason\": \"Lien receivables do not currently persist a due date.\" },\n    \"payments\": { \"isAvailable\": true, \"value\": 250, \"comparisonValue\": 100, \"changeAmount\": 150, \"changePercent\": 150, \"formula\": \"Sum of non-deleted payment details by PaymentDate.\", \"unavailableReason\": null }\n  },\n  \"arAging\": { \"isAvailable\": false, \"unavailableReason\": \"Lien receivables do not currently persist a due date.\", \"total\": null, \"buckets\": [] },\n  \"lienStatuses\": [{ \"status\": \"Active\", \"lienCount\": 1, \"originalAmount\": 1000, \"outstandingAmount\": 600, \"percentOfLiens\": 50 }],\n  \"sellerStatuses\": [{ \"status\": \"Sold\", \"lienCount\": 1, \"originalAmount\": 1000, \"outstandingAmount\": 600, \"percentOfLiens\": 50 }],\n  \"timeSeries\": [{ \"bucketStart\": \"2026-01-01\", \"grain\": \"month\", \"lienCount\": 2, \"lienRevenue\": 3000, \"outstandingAmount\": 2100 }],\n  \"topBuyers\": [],\n  \"buyerAging\": { \"isAvailable\": false, \"unavailableReason\": \"Lien receivables do not currently persist a due date.\", \"items\": [] },\n  \"generatedAtUtc\": \"2026-01-31T12:00:00Z\"\n}"
+            },
+            {
+              "name": "400 - Period exceeds 366 days",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/liens/selling/analytics/dashboard?dateFrom=2025-01-01&dateTo=2026-01-02&compare=none",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "liens",
+                    "selling",
+                    "analytics",
+                    "dashboard"
+                  ],
+                  "query": [
+                    {
+                      "key": "dateFrom",
+                      "value": "2025-01-01"
+                    },
+                    {
+                      "key": "dateTo",
+                      "value": "2026-01-02"
+                    },
+                    {
+                      "key": "compare",
+                      "value": "none"
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"error\": {\n    \"code\": \"validation_error\",\n    \"message\": \"Selling operations dashboard query is invalid.\",\n    \"details\": {\n      \"dateRange\": [\"Dashboard date ranges cannot exceed 366 inclusive days.\"]\n    }\n  }\n}"
+            }
+          ]
+        },
         {
           "name": "Overview - All Selling Liens",
           "request": {

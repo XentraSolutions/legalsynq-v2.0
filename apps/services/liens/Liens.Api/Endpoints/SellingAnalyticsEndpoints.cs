@@ -12,6 +12,8 @@ namespace Liens.Api.Endpoints;
 
 public static class SellingAnalyticsEndpoints
 {
+    private const int MaxDashboardPeriodDays = 366;
+
     private static readonly HashSet<string> AllowedDateDimensions = new(StringComparer.Ordinal)
     {
         "submitted",
@@ -25,6 +27,12 @@ public static class SellingAnalyticsEndpoints
         "day",
         "week",
         "month",
+    };
+
+    private static readonly HashSet<string> AllowedDashboardComparisons = new(StringComparer.Ordinal)
+    {
+        "none",
+        "previousPeriod",
     };
 
     private static readonly HashSet<string> AllowedConcentrationDimensions = new(StringComparer.Ordinal)
@@ -57,6 +65,7 @@ public static class SellingAnalyticsEndpoints
         var analytics = group.MapGroup("/analytics")
             .RequirePermission(LiensPermissions.LienSaleViewAnalytics);
 
+        analytics.MapGet("/dashboard", GetDashboard);
         analytics.MapGet("/overview", GetOverview);
         analytics.MapGet("/status-breakdown", GetStatusBreakdown);
         analytics.MapGet("/funnel", GetFunnel);
@@ -92,6 +101,17 @@ public static class SellingAnalyticsEndpoints
     {
         var filter = ParseFilter(request);
         var result = await service.GetOverviewAsync(RequireTenantId(ctx), RequireOrgId(ctx), filter, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetDashboard(
+        HttpRequest request,
+        ISellingOperationsDashboardService service,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var query = ParseDashboardQuery(request);
+        var result = await service.GetAsync(RequireTenantId(ctx), RequireOrgId(ctx), query, ct);
         return Results.Ok(result);
     }
 
@@ -254,6 +274,51 @@ public static class SellingAnalyticsEndpoints
             DateDimension = dateDimension,
             Grain = grain,
             ConcentrationDimension = FirstQueryValue(request, "concentrationDimension"),
+        };
+    }
+
+    private static SellingOperationsDashboardQuery ParseDashboardQuery(HttpRequest request)
+    {
+        var errors = new Dictionary<string, string[]>();
+        var dateFrom = ParseDate(request, "dateFrom", errors);
+        var dateTo = ParseDate(request, "dateTo", errors);
+        if (dateFrom.HasValue != dateTo.HasValue)
+            AddError(errors, "dateRange", "dateFrom and dateTo must be provided together.");
+        if (dateFrom.HasValue && dateTo.HasValue && dateFrom.Value > dateTo.Value)
+            AddError(errors, "dateRange", "dateFrom must be less than or equal to dateTo.");
+
+        var compare = FirstQueryValue(request, "compare");
+        compare = string.IsNullOrWhiteSpace(compare) ? "previousPeriod" : compare;
+        ValidateAllowedValue("compare", compare, AllowedDashboardComparisons, errors);
+
+        if (dateFrom.HasValue && dateTo.HasValue && dateFrom.Value <= dateTo.Value)
+        {
+            var inclusiveDays = dateTo.Value.DayNumber - dateFrom.Value.DayNumber + 1;
+            if (inclusiveDays > MaxDashboardPeriodDays)
+            {
+                AddError(
+                    errors,
+                    "dateRange",
+                    $"Dashboard date ranges cannot exceed {MaxDashboardPeriodDays} inclusive days.");
+            }
+            else if (string.Equals(compare, "previousPeriod", StringComparison.Ordinal)
+                && dateFrom.Value.DayNumber < inclusiveDays)
+            {
+                AddError(
+                    errors,
+                    "compare",
+                    "The previous comparison period would be before the minimum supported date.");
+            }
+        }
+
+        if (errors.Count > 0)
+            throw new ValidationException("Selling operations dashboard query is invalid.", errors);
+
+        return new SellingOperationsDashboardQuery
+        {
+            DateFrom = dateFrom,
+            DateTo = dateTo,
+            Compare = compare,
         };
     }
 
