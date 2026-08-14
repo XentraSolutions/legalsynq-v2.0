@@ -606,7 +606,7 @@ export function AddPaymentForm({
       title="Add Payment"
       submitLabel={saving ? "Saving..." : "Save Payment"}
       submitDisabled={saving || isFormInvalid || receivedExceedsCheck}
-      size="lg"
+      size="xl"
     >
       <div className="space-y-5">
         <div>
