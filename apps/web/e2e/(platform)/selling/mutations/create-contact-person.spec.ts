@@ -1,7 +1,60 @@
 import { createMutationTest, expect } from '../../../support/mutation-test';
-import { selectComboboxOption } from '../../../support/combobox';
+import { baseSelectTrigger, selectBaseSelectOption } from '../../../support/base-select';
 import { clickMenuItem } from '../../../support/dropdown-menu';
 import { getEnv } from '../../../config/environments';
+import {
+  KNOWN_ROLE_SEARCH,
+  searchContactPersons,
+  waitForContactPersonTypesResponse,
+} from '../../../support/selling-companies';
+
+/**
+ * Picks `companySearch` from the Company Name field, then waits for the
+ * resulting Role options to actually be present before picking `roleSearch`
+ * from Role — retrying the whole sequence if the roles request is missed or
+ * slow, rather than hanging on a single page.waitForResponse() for the rest
+ * of the test's budget. Flaky in practice with just the single-shot wait:
+ * the Role field's `useContactPersonTypes` re-fires per company type (see
+ * contact-person-form-modal.tsx's effectiveCompanyTypeId), and a slow or
+ * dropped response left the whole test hanging until timeout with no
+ * recovery.
+ *
+ * Both Company Name and Role are `BaseSelect`-backed (Company Name via
+ * `SellingEntitySelect`, wired to server-side search — see
+ * contact-person-form-modal.tsx and selling-entity-select.tsx), not the
+ * plain `<Combobox>` — so this drives them via base-select.ts's helpers,
+ * whose options render `role="option"` rather than the implicit "button"
+ * role `combobox.ts`'s helpers look for.
+ */
+async function selectCompanyThenRole(
+  page: Parameters<typeof selectBaseSelectOption>[0],
+  companySearch: string,
+  roleSearch: string,
+  attempts = 3,
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const rolesLoaded = waitForContactPersonTypesResponse(page).catch(() => undefined);
+      await selectBaseSelectOption(page, 'Company Name', companySearch);
+      await Promise.race([rolesLoaded, page.waitForTimeout(6_000)]);
+
+      await baseSelectTrigger(page, 'Role').click();
+      const firstOption = page.locator('[data-radix-popper-content-wrapper]').getByRole('option').first();
+      const hasOptions = await firstOption.isVisible({ timeout: 4_000 }).catch(() => false);
+      if (!hasOptions) {
+        await page.keyboard.press('Escape');
+        throw new Error(`Role combobox had no options after selecting company "${companySearch}"`);
+      }
+      await page.keyboard.type(roleSearch);
+      await page.locator('[data-radix-popper-content-wrapper]').getByRole('option').first().click();
+      return;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
 
 /**
  * Covers the "Add Contact Person" flow on the standalone Contacts directory
@@ -47,14 +100,9 @@ test.describe(`Selling contacts directory — add contact person [${env.name}]`,
     // contact-person-form-modal.tsx's effectiveCompanyTypeId). Opening the
     // Role combobox before that request resolves finds an empty option list
     // and falls through to its "Add New Role" action instead, opening a
-    // second, unrelated modal on top — so wait for it explicitly rather than
-    // racing the two comboboxes.
-    const rolesLoaded = page.waitForResponse(
-      (res) => res.url().includes('/lookups/contact-person-types') && res.ok(),
-    );
-    await selectComboboxOption(page, 'Company Name', 'fundcomp');
-    await rolesLoaded;
-    await selectComboboxOption(page, 'Role', 'underwriter');
+    // second, unrelated modal on top — selectCompanyThenRole waits for and
+    // retries around that instead of racing the two comboboxes once.
+    await selectCompanyThenRole(page, 'fundcomp', KNOWN_ROLE_SEARCH);
 
     await page.getByPlaceholder('Enter first name').fill(firstName);
     await page.getByPlaceholder('Enter last name').fill(lastName);
@@ -62,6 +110,10 @@ test.describe(`Selling contacts directory — add contact person [${env.name}]`,
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText('Contact person created')).toBeVisible();
 
+    // The tenant's contact list has plenty of unrelated rows (other tests'
+    // leftovers included) — search down to this run's unique lastName rather
+    // than assuming the new row lands on the default, unfiltered first page.
+    await searchContactPersons(page, lastName);
     const row = page.locator('table tbody tr', { hasText: fullName });
     await expect(row).toBeVisible();
     await expect(row.getByText('FundComp')).toBeVisible();

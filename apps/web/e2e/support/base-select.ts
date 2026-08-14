@@ -14,3 +14,28 @@ export function baseSelectTrigger(page: Page, labelText: string): Locator {
     .filter({ hasText: labelText })
     .locator('xpath=following-sibling::button[1]');
 }
+
+/**
+ * Selects an option from the BaseSelect labeled `labelText` — a Radix
+ * Popover, so `page.selectOption()` doesn't apply. Opens the trigger, then
+ * types into the popover's auto-focused search box to filter down to the
+ * option and clicks it.
+ *
+ * Rows render as `role="option"` (not the implicit "button" role
+ * `selectComboboxOption` in combobox.ts looks for), since BaseSelect exposes
+ * proper listbox/option semantics — that's the one behavioral difference
+ * from the plain `<Combobox>` helper.
+ */
+export async function selectBaseSelectOption(
+  page: Page,
+  labelText: string,
+  searchTerm: string,
+): Promise<void> {
+  await baseSelectTrigger(page, labelText).click();
+  await page.keyboard.type(searchTerm);
+  await page
+    .locator('[data-radix-popper-content-wrapper]')
+    .getByRole('option')
+    .first()
+    .click();
+}

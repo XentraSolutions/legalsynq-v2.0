@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FormModal } from "@/components/selling/modal";
-import { Combobox } from "@/components/ui/combobox";
+import { BaseSelect } from "@/components/ui/base-select";
 import { useSessionContext } from "@/providers/session-provider";
 import { formatPhoneInput, isValidPhone } from "@/lib/phone";
 import { formatZipInput, isValidUsZipCode } from "@/lib/address";
@@ -176,7 +176,7 @@ export function CompanyFormModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Company Type<span className="text-red-500 ml-0.5">*</span>
             </label>
-            <Combobox
+            <BaseSelect
               value={form.companyTypeId}
               onChange={(v) => setField("companyTypeId", v)}
               options={companyTypesQuery.options}
@@ -250,7 +250,7 @@ export function CompanyFormModal({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-            <Combobox
+            <BaseSelect
               value={form.state}
               onChange={(v) => setField("state", v)}
               options={states}
