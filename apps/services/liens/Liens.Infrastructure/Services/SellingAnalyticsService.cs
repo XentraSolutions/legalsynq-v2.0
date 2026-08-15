@@ -402,8 +402,8 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
     {
         var filter = new SellingAnalyticsFilter
         {
-            DateFrom = request.DateFrom,
-            DateTo = request.DateTo,
+            StartDate = request.StartDate,
+            EndDate = request.EndDate,
             SellerStatuses = request.SellerStatus,
             ListingVisibilities = request.ListingVisibility,
             FundingCompanyIds = request.FundingCompanyId,
@@ -464,7 +464,7 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
         if (filter.SellerStatuses.Count > 0)
             liens = liens.Where(l => filter.SellerStatuses.Contains(StatusFor(l))).ToList();
 
-        if (applyLienDateFilter && (filter.DateFrom.HasValue || filter.DateTo.HasValue))
+        if (applyLienDateFilter && (filter.StartDate.HasValue || filter.EndDate.HasValue))
             liens = liens.Where(l => DateWithin(DateAnchorFor(l, filter.DateDimension), filter)).ToList();
 
         var lienIds = liens.Select(l => l.Id).ToList();
@@ -605,9 +605,9 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
     private static bool DateWithin(DateTime value, SellingAnalyticsFilter filter)
     {
         var date = value.Date;
-        if (filter.DateFrom.HasValue && date < filter.DateFrom.Value.ToDateTime(TimeOnly.MinValue))
+        if (filter.StartDate.HasValue && date < filter.StartDate.Value.ToDateTime(TimeOnly.MinValue))
             return false;
-        if (filter.DateTo.HasValue && date >= filter.DateTo.Value.AddDays(1).ToDateTime(TimeOnly.MinValue))
+        if (filter.EndDate.HasValue && date >= filter.EndDate.Value.AddDays(1).ToDateTime(TimeOnly.MinValue))
             return false;
         return true;
     }

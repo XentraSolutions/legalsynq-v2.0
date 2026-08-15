@@ -28,6 +28,7 @@ public static class ServiceLegacyEndpoints
         public string? statusId { get; init; }
         public string? caseManagerId { get; init; }
         public string? keyword { get; init; }
+        public string? search { get; init; }
         public string? sortBy { get; init; }
         public string? sortDirection { get; init; }
     }
@@ -187,9 +188,12 @@ public static class ServiceLegacyEndpoints
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
+        var keyword = !string.IsNullOrWhiteSpace(filter.keyword)
+            ? filter.keyword
+            : filter.search;
         var result = await caseService.SearchV3Async(
             tenantId: tenantId,
-            keyword: filter.keyword,
+            keyword: keyword,
             statusId: filter.statusId,
             page: Math.Max(filter.page, 1),
             limit: Math.Max(filter.limit, 1),

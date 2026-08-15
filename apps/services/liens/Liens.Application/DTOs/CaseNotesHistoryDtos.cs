@@ -37,10 +37,12 @@ public sealed class CaseNotesHistoryPage
     public int Page { get; init; }
     public int Limit { get; init; }
     public int TotalCount { get; init; }
+    public int ExcludedUnreconciledLegacyNoteCount { get; init; }
 }
 
 public sealed class CaseNotesHistoryExport
 {
     public byte[] Content { get; init; } = [];
     public bool SizeLimitExceeded { get; init; }
+    public int ExcludedUnreconciledLegacyNoteCount { get; init; }
 }

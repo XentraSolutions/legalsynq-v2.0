@@ -158,9 +158,31 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
             notes: $"title={title}; status={status}");
 
     [Fact]
-    public async Task CreateCase_defaults_case_number_from_current_year_and_next_sequence()
+    public async Task CreateCase_defaults_case_number_and_records_authenticated_email_as_creator()
     {
         var yearPrefix = DateTime.UtcNow.ToString("yy");
+        const string creatorEmail = "case.creator@example.com";
+
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer",
+                JwtTokenHelper.CreateFullAccessToken(
+                    SeedHelper.TenantId,
+                    SeedHelper.UserId,
+                    email: creatorEmail,
+                    name: "Price & Beckstrom"));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{yearPrefix}-000042",
+                "Existing",
+                "Sequence",
+                SeedHelper.UserId));
+            await db.SaveChangesAsync();
+        }
 
         var first = await _client.PostAsJsonAsync("/api/liens/cases", new
         {
@@ -172,7 +194,7 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         first.StatusCode.Should().Be(HttpStatusCode.Created,
             $"Body: {await first.Content.ReadAsStringAsync()}");
         var firstBody = await first.Content.ReadFromJsonAsync<CaseResponseBody>();
-        firstBody!.CaseNumber.Should().Be($"{yearPrefix}-000001");
+        firstBody!.CaseNumber.Should().Be($"{yearPrefix}-00043");
 
         var updates = await _client.PostAsJsonAsync("/api/liens/cases/case-updates/v3", new
         {
@@ -189,8 +211,10 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
             .Single(item => item.GetProperty("action").GetString() == "Case Created");
         creationEntry.GetProperty("description").GetString()
             .Should().Contain($"Code: {firstBody.CaseNumber}; Client: Case One;");
-        creationEntry.GetProperty("createdBy").GetString().Should().Be(SeedHelper.UserId.ToString());
-        creationEntry.GetProperty("updatedBy").GetString().Should().Be(SeedHelper.UserId.ToString());
+        creationEntry.GetProperty("description").GetString()
+            .Should().Contain($"Created By: {creatorEmail}.");
+        creationEntry.GetProperty("createdBy").GetString().Should().Be(creatorEmail);
+        creationEntry.GetProperty("updatedBy").GetString().Should().Be(creatorEmail);
 
         var second = await _client.PostAsJsonAsync("/api/liens/cases", new
         {
@@ -202,7 +226,7 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         second.StatusCode.Should().Be(HttpStatusCode.Created,
             $"Body: {await second.Content.ReadAsStringAsync()}");
         var secondBody = await second.Content.ReadFromJsonAsync<CaseResponseBody>();
-        secondBody!.CaseNumber.Should().Be($"{yearPrefix}-000002");
+        secondBody!.CaseNumber.Should().Be($"{yearPrefix}-00044");
     }
 
     [Theory]

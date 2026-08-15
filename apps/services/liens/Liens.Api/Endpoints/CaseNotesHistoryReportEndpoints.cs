@@ -72,9 +72,6 @@ public static class CaseNotesHistoryReportEndpoints
             return ValidationError(validationMessage);
 
         var tenantId = context.TenantId ?? throw new UnauthorizedAccessException("Tenant context is required.");
-        if (!await service.IsLegacyHistoryReadyAsync(tenantId, ct))
-            return LegacyHistoryNotReady();
-
         var page = await service.GetAsync(tenantId, query, ct);
         object data = includeCreatedAtUtc
             ? page.Items.Select(ToCanonicalRow).ToList()
@@ -88,6 +85,9 @@ public static class CaseNotesHistoryReportEndpoints
             page = page.Page,
             limit = page.Limit,
             totalCount = page.TotalCount,
+            isComplete = page.ExcludedUnreconciledLegacyNoteCount == 0,
+            excludedUnreconciledLegacyNoteCount = page.ExcludedUnreconciledLegacyNoteCount,
+            warning = BuildCompletenessWarning(page.ExcludedUnreconciledLegacyNoteCount),
         });
     }
 
@@ -103,9 +103,6 @@ public static class CaseNotesHistoryReportEndpoints
             return ValidationError(validationMessage);
 
         var tenantId = context.TenantId ?? throw new UnauthorizedAccessException("Tenant context is required.");
-        if (!await service.IsLegacyHistoryReadyAsync(tenantId, ct))
-            return LegacyHistoryNotReady();
-
         var export = await service.ExportCsvAsync(tenantId, query, ct);
         if (export.SizeLimitExceeded)
         {
@@ -123,6 +120,9 @@ public static class CaseNotesHistoryReportEndpoints
         {
             isSuccess = true,
             message = "CSV generated successfully.",
+            isComplete = export.ExcludedUnreconciledLegacyNoteCount == 0,
+            excludedUnreconciledLegacyNoteCount = export.ExcludedUnreconciledLegacyNoteCount,
+            warning = BuildCompletenessWarning(export.ExcludedUnreconciledLegacyNoteCount),
             data = new object[]
             {
                 new
@@ -232,11 +232,13 @@ public static class CaseNotesHistoryReportEndpoints
             error = new { code = "validation_error" },
         });
 
-    private static IResult LegacyHistoryNotReady()
-        => Results.Conflict(new
+    private static object? BuildCompletenessWarning(int excludedCount)
+        => excludedCount == 0
+            ? null
+            : new
         {
-            isSuccess = false,
-            message = "Legacy case-note history has not been reconciled for this tenant.",
-            error = new { code = "legacy_history_not_reconciled" },
-        });
+            code = "legacy_history_incomplete",
+            message = "Some unreconciled legacy case notes were excluded. Native and reconciled notes are included.",
+            excludedCount,
+        };
 }

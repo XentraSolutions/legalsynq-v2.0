@@ -17,21 +17,17 @@ public sealed class CaseNotesHistoryReportService : ICaseNotesHistoryReportServi
 
     public CaseNotesHistoryReportService(LiensDbContext db) => _db = db;
 
-    public async Task<bool> IsLegacyHistoryReadyAsync(Guid tenantId, CancellationToken ct = default)
-        => !await _db.LegacyIdCrosswalks
-            .AsNoTracking()
-            .Where(item => item.TenantId == tenantId &&
-                           item.SourceSystem == "SL-CORE" &&
-                           item.SourceTable == "SL_CASE_NOTES" &&
-                           item.TargetEntity == "CaseNote")
-            .AnyAsync(item => !item.SourceHash.StartsWith(ReconciledSourceHashPrefix), ct);
-
     public async Task<CaseNotesHistoryPage> GetAsync(
         Guid tenantId,
         CaseNotesHistoryQuery query,
         CancellationToken ct = default)
     {
-        var filtered = BuildFilteredQuery(tenantId, query.NoteType);
+        var eligible = BuildEligibleQuery(tenantId, query.NoteType);
+        var unreconciledLegacyNoteIds = BuildUnreconciledLegacyNoteIds(tenantId);
+        var excludedCount = await eligible.CountAsync(
+            row => unreconciledLegacyNoteIds.Contains(row.NoteId),
+            ct);
+        var filtered = eligible.Where(row => !unreconciledLegacyNoteIds.Contains(row.NoteId));
         var totalCount = await filtered.CountAsync(ct);
         var offset = ((long)query.Page - 1L) * query.Limit;
 
@@ -42,6 +38,7 @@ public sealed class CaseNotesHistoryReportService : ICaseNotesHistoryReportServi
                 Page = query.Page,
                 Limit = query.Limit,
                 TotalCount = totalCount,
+                ExcludedUnreconciledLegacyNoteCount = excludedCount,
             };
         }
 
@@ -56,6 +53,7 @@ public sealed class CaseNotesHistoryReportService : ICaseNotesHistoryReportServi
             Page = query.Page,
             Limit = query.Limit,
             TotalCount = totalCount,
+            ExcludedUnreconciledLegacyNoteCount = excludedCount,
         };
     }
 
@@ -64,11 +62,22 @@ public sealed class CaseNotesHistoryReportService : ICaseNotesHistoryReportServi
         CaseNotesHistoryQuery query,
         CancellationToken ct = default)
     {
+        var eligible = BuildEligibleQuery(tenantId, query.NoteType);
+        var unreconciledLegacyNoteIds = BuildUnreconciledLegacyNoteIds(tenantId);
+        var excludedCount = await eligible.CountAsync(
+            row => unreconciledLegacyNoteIds.Contains(row.NoteId),
+            ct);
+        var filtered = eligible.Where(row => !unreconciledLegacyNoteIds.Contains(row.NoteId));
+
         await using var stream = new MemoryStream();
         if (!TryAppendCsvLine(stream, ["Case ID", "Case Name", "Note Type", "Note Date", "Note Author", "Note Content"]))
-            return new CaseNotesHistoryExport { SizeLimitExceeded = true };
+            return new CaseNotesHistoryExport
+            {
+                SizeLimitExceeded = true,
+                ExcludedUnreconciledLegacyNoteCount = excludedCount,
+            };
 
-        await foreach (var row in ApplyOrdering(BuildFilteredQuery(tenantId, query.NoteType), query)
+        await foreach (var row in ApplyOrdering(filtered, query)
                            .AsAsyncEnumerable()
                            .WithCancellation(ct))
         {
@@ -82,14 +91,32 @@ public sealed class CaseNotesHistoryReportService : ICaseNotesHistoryReportServi
                     row.NoteContent,
                 ]))
             {
-                return new CaseNotesHistoryExport { SizeLimitExceeded = true };
+                return new CaseNotesHistoryExport
+                {
+                    SizeLimitExceeded = true,
+                    ExcludedUnreconciledLegacyNoteCount = excludedCount,
+                };
             }
         }
 
-        return new CaseNotesHistoryExport { Content = stream.ToArray() };
+        return new CaseNotesHistoryExport
+        {
+            Content = stream.ToArray(),
+            ExcludedUnreconciledLegacyNoteCount = excludedCount,
+        };
     }
 
-    private IQueryable<CaseNotesHistoryRow> BuildFilteredQuery(Guid tenantId, string noteType)
+    private IQueryable<Guid> BuildUnreconciledLegacyNoteIds(Guid tenantId)
+        => _db.LegacyIdCrosswalks
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId &&
+                           item.SourceSystem == "SL-CORE" &&
+                           item.SourceTable == "SL_CASE_NOTES" &&
+                           item.TargetEntity == "CaseNote" &&
+                           !item.SourceHash.StartsWith(ReconciledSourceHashPrefix))
+            .Select(item => item.TargetId);
+
+    private IQueryable<CaseNotesHistoryRow> BuildEligibleQuery(Guid tenantId, string noteType)
     {
         var notes = _db.LienCaseNotes.AsNoTracking();
         var cases = _db.Cases.AsNoTracking();

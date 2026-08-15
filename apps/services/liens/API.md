@@ -1186,7 +1186,7 @@ Update an existing case.
 
 Return the legacy case-note history. Each changed non-empty `notes` value submitted through `PATCH /api/liens/cases/details-update` is appended as a new case-note entry rather than replacing prior entries. Feed notes and system update-history entries are intentionally excluded.
 
-Every explicit `notes` change through `details-update`, including clearing an existing value, also creates a case-update history entry with action `Case Details Update` and description `Note updated`. Repeating the same normalized Notes value does not create a duplicate update. When Notes changes together with other case-detail fields, `Note updated` is included in the existing combined change description returned by `POST /api/liens/cases/case-updates/v3`.
+Every explicit `notes` change through `details-update`, including clearing an existing value, also creates a case-update history entry with action `Case Details Update` and description `Case Tracking Note Update`. Repeating the same normalized Notes value does not create a duplicate update. When Notes changes together with other case-detail fields, `Case Tracking Note Update` is included in the existing combined change description returned by `POST /api/liens/cases/case-updates/v3`. Case creation history prefers the authenticated user's email over the token's organization-oriented display name for its `updatedBy` value.
 
 **Permission:** `SYNQ_LIENS.case:read`
 
@@ -2065,11 +2065,18 @@ Request:
   ],
   "page": 1,
   "limit": 10,
-  "totalCount": 37
+  "totalCount": 37,
+  "isComplete": false,
+  "excludedUnreconciledLegacyNoteCount": 2,
+  "warning": {
+    "code": "legacy_history_incomplete",
+    "message": "Some unreconciled legacy case notes were excluded. Native and reconciled notes are included.",
+    "excludedCount": 2
+  }
 }
 ```
 
-The legacy alias omits only the additive `createdAtUtc` property. An empty or out-of-range page is `200` with an empty `data` array. Invalid selectors, paging, or sort values return `400` with `error.code = validation_error`.
+The legacy alias omits only the additive `createdAtUtc` row property. An empty or out-of-range page is `200` with an empty `data` array. Invalid selectors, paging, or sort values return `400` with `error.code = validation_error`. Native notes and reconciled legacy notes remain visible when stale legacy crosswalks exist. Only eligible report notes whose target IDs belong to unreconciled, tenant-matching `SL-CORE` `SL_CASE_NOTES` crosswalks are excluded. Both routes return `isComplete`, `excludedUnreconciledLegacyNoteCount`, and a nullable `warning`; complete responses set the count to `0`, `isComplete=true`, and `warning=null`.
 
 ### POST `/api/liens/reports/case-notes-history/export`
 
@@ -2079,6 +2086,13 @@ Exports all rows matching `noteType` and the requested ordering; `page` and `lim
 {
   "isSuccess": true,
   "message": "CSV generated successfully.",
+  "isComplete": false,
+  "excludedUnreconciledLegacyNoteCount": 2,
+  "warning": {
+    "code": "legacy_history_incomplete",
+    "message": "Some unreconciled legacy case notes were excluded. Native and reconciled notes are included.",
+    "excludedCount": 2
+  },
   "data": [
     {
       "base64": "Q2FzZSBJRCxDYXNlIE5hbWUuLi4=",
@@ -2089,7 +2103,7 @@ Exports all rows matching `noteType` and the requested ordering; `page` and `lim
 }
 ```
 
-CSV generation stops at 10 MiB and returns `400 validation_error` rather than materializing an unbounded export. Tenants with pre-v2 `SL_CASE_NOTES` crosswalk hashes receive `409 legacy_history_not_reconciled` until the documented source-backed category reconciliation is applied.
+CSV generation stops at 10 MiB and returns `400 validation_error` rather than materializing an unbounded export. Export uses the same tenant-scoped unreconciled-target exclusion and additive completeness fields as preview, so eligible native and reconciled rows are exported without silently including stale legacy classifications.
 
 ### POST `/api/liens/reports/auto-generated/{reportId}/execute`
 
@@ -2162,6 +2176,8 @@ The 10 MiB limit is enforced before Base64 encoding. An oversized export returns
 ### GET `/report/diy/columns`
 
 Returns the legacy DIY-report column metadata and the ordered default selection for the requested report type. For `LIENS`, the default selection includes `days_since_reduction_approval` in position 9 (zero-based), followed by `case_status` and `date_of_loss` in positions 14 and 15 respectively. `initial_service_date` and `number_of_liens` remain available as optional columns but are not selected by default.
+
+The optional `notes` column returns the latest active, nonblank Feed note for the row's case. `notes_date` returns that exact note's creation date in `MM/dd/yyyy` format. Both columns are grouped under `procedureInfo`, are not selected by default, and use one tenant-scoped batch lookup for CASES, LIENS, and COMBINED reports. Deleted, blank, non-Feed, and cross-tenant notes are excluded. When no eligible Feed note exists, `notes` is empty and `notes_date` is null in preview responses and blank in CSV exports. Equal creation timestamps are resolved by descending note ID. Saved report preview and export use the same mapping.
 
 The existing compatibility keys have these Tracking Notes definitions:
 

@@ -25,7 +25,8 @@ public static class JwtTokenHelper
         Guid? orgId = null,
         string? email = null,
         string? providerMode = null,
-        bool includeProductAccess = true)
+        bool includeProductAccess = true,
+        string? name = null)
     {
         var allPermissions = new[]
         {
@@ -59,7 +60,7 @@ public static class JwtTokenHelper
             LiensPermissions.CaseNoteManage,
             LiensPermissions.TaskNoteManage,
         };
-        return CreateToken(tenantId, userId, allPermissions, orgId, email, providerMode, includeProductAccess);
+        return CreateToken(tenantId, userId, allPermissions, orgId, email, providerMode, includeProductAccess, name);
     }
 
     /// <summary>Creates a signed JWT with explicit permission set.</summary>
@@ -70,7 +71,8 @@ public static class JwtTokenHelper
         Guid? orgId = null,
         string? email = null,
         string? providerMode = null,
-        bool includeProductAccess = true)
+        bool includeProductAccess = true,
+        string? name = null)
     {
         var claims = new List<Claim>
         {
@@ -84,6 +86,8 @@ public static class JwtTokenHelper
 
         if (!string.IsNullOrWhiteSpace(email))
             claims.Add(new Claim("email", email.Trim()));
+        if (!string.IsNullOrWhiteSpace(name))
+            claims.Add(new Claim("name", name.Trim()));
         if (!string.IsNullOrWhiteSpace(providerMode))
             claims.Add(new Claim("provider_mode", providerMode.Trim()));
 

@@ -2,8 +2,8 @@ namespace Liens.Application.DTOs;
 
 public sealed class SellingAnalyticsFilter
 {
-    public DateOnly? DateFrom { get; init; }
-    public DateOnly? DateTo { get; init; }
+    public DateOnly? StartDate { get; init; }
+    public DateOnly? EndDate { get; init; }
     public List<string> SellerStatuses { get; init; } = [];
     public List<string> ListingVisibilities { get; init; } = [];
     public List<Guid> FundingCompanyIds { get; init; } = [];
@@ -176,8 +176,8 @@ public sealed class SellingLienAnalyticsResponse
 public sealed class SellingAnalyticsExportRequest
 {
     public string Report { get; init; } = "overview";
-    public DateOnly? DateFrom { get; init; }
-    public DateOnly? DateTo { get; init; }
+    public DateOnly? StartDate { get; init; }
+    public DateOnly? EndDate { get; init; }
     public List<string> SellerStatus { get; init; } = [];
     public List<string> ListingVisibility { get; init; } = [];
     public List<Guid> FundingCompanyId { get; init; } = [];

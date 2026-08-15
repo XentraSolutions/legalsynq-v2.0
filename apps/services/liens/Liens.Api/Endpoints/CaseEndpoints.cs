@@ -21,6 +21,7 @@ namespace Liens.Api.Endpoints;
 public static class CaseEndpoints
 {
     private const string LegacyMetadataMarker = "[legacy-meta]";
+    private const string CaseTrackingNoteUpdateDescription = "Case Tracking Note Update";
     private const string MedicareProcedureLookupClientName = "MedicareProcedureLookup";
     private const string MedicareProcedureLookupApiKey = "1iuNYl3IYBHTSjmn34m0XOLLqfm1nrmz";
     private const string MedicareProcedureLookupAmaLicense = "b733fd32-ee85-4174-9ab1-e09ec14048bb";
@@ -4897,7 +4898,7 @@ public static class CaseEndpoints
         ICurrentRequestContext ctx,
         CancellationToken ct)
     {
-        var createdBy = FirstNonEmpty(ctx.Name, ctx.Email, userId.ToString())!;
+        var createdBy = FirstNonEmpty(ctx.Email, ctx.Name, userId.ToString())!;
         var status = FirstNonEmpty(caseDetails.StatusLabel, caseDetails.Status, "N/A")!;
         var lawFirm = FirstNonEmpty(caseDetails.LawFirm, "N/A")!;
         var caseManager = FirstNonEmpty(caseDetails.CaseManager, "N/A")!;
@@ -5122,9 +5123,9 @@ public static class CaseEndpoints
                 action = string.Equals(n.Category, CaseNoteCategory.Internal, StringComparison.OrdinalIgnoreCase)
                     ? "Case Details Update"
                     : string.IsNullOrWhiteSpace(n.Category) ? "CaseNote" : n.Category,
-                description = n.Content,
+                description = NormalizeLegacyCaseUpdateDescription(n.Content, n.Category),
                 timestamp = FormatLegacyTimestamp(n.UpdatedAtUtc ?? n.CreatedAtUtc),
-                note = n.Content,
+                note = NormalizeLegacyCaseUpdateDescription(n.Content, n.Category),
                 category = n.Category,
                 isPinned = n.IsPinned,
                 isEdited = n.IsEdited,
@@ -5144,6 +5145,21 @@ public static class CaseEndpoints
             page,
             limit,
         });
+    }
+
+    private static string NormalizeLegacyCaseUpdateDescription(string content, string category)
+    {
+        if (!string.Equals(category, CaseNoteCategory.Internal, StringComparison.OrdinalIgnoreCase))
+            return content;
+
+        if (string.Equals(content, "Note updated", StringComparison.Ordinal))
+            return CaseTrackingNoteUpdateDescription;
+
+        const string legacySuffix = "; Note updated.";
+        return content.StartsWith("Case updated:", StringComparison.Ordinal) &&
+               content.EndsWith(legacySuffix, StringComparison.Ordinal)
+            ? $"{content[..^legacySuffix.Length]}; {CaseTrackingNoteUpdateDescription}."
+            : content;
     }
 
     private static async Task<IResult> GetLiensUpdatesV3Legacy(
@@ -5949,13 +5965,13 @@ public static class CaseEndpoints
             changes.Add($"ucc filed changed to {NormalizeCaseFlagForDisplay(req.IsUccFiled)}");
 
         if (detailsNoteChanged)
-            changes.Add("Note updated");
+            changes.Add(CaseTrackingNoteUpdateDescription);
 
         if (changes.Count == 0)
             return null;
 
         if (changes.Count == 1 && detailsNoteChanged)
-            return "Note updated";
+            return CaseTrackingNoteUpdateDescription;
 
         return $"Case updated: {string.Join("; ", changes)}.";
     }
@@ -7195,15 +7211,6 @@ public static class CaseEndpoints
                 l.CaseId == c.Id &&
                 l.PurchaseDate.HasValue &&
                 l.PurchaseDate.Value >= purchaseStart &&
-                l.PurchaseDate.Value <= purchaseEnd));
-        }
-        else
-        {
-            var purchaseEnd = GetDefaultDashboardPeriodEnd();
-            caseQuery = caseQuery.Where(c => db.Liens.Any(l =>
-                l.TenantId == tenantId &&
-                l.CaseId == c.Id &&
-                l.PurchaseDate.HasValue &&
                 l.PurchaseDate.Value <= purchaseEnd));
         }
 

@@ -161,7 +161,7 @@ public class SellingAnalyticsEndpointTests : IClassFixture<LiensApiFactory>, IAs
         missingDimension.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         var invalidFilters = await _client.GetAsync(
-            "/api/liens/selling/analytics/overview?sellerStatus=AlmostSold&dateFrom=2026-02-01&dateTo=2026-01-01");
+            "/api/liens/selling/analytics/overview?sellerStatus=AlmostSold&startDate=2026-02-01&endDate=2026-01-01");
         invalidFilters.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         using var errorJson = await JsonDocument.ParseAsync(await invalidFilters.Content.ReadAsStreamAsync());

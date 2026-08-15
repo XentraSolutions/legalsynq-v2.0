@@ -53,6 +53,72 @@ public class CaseRepository : ICaseRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<Case>> SearchUnlinkedReportCasesAsync(
+        Guid tenantId,
+        string? search,
+        IReadOnlyCollection<string> statuses,
+        IReadOnlyCollection<Guid> caseIds,
+        IReadOnlyCollection<Guid> lawFirmIds,
+        IReadOnlyCollection<Guid> attorneyIds,
+        IReadOnlyCollection<Guid> caseManagerIds,
+        CancellationToken ct = default)
+    {
+        var query = _db.Cases.AsNoTracking().Where(caseEntity =>
+            caseEntity.TenantId == tenantId &&
+            !_db.Liens.Any(lien =>
+                lien.TenantId == tenantId &&
+                lien.CaseId == caseEntity.Id));
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(caseEntity =>
+                caseEntity.CaseNumber.Contains(term) ||
+                caseEntity.ClientFirstName.Contains(term) ||
+                caseEntity.ClientLastName.Contains(term) ||
+                (caseEntity.Title != null && caseEntity.Title.Contains(term)) ||
+                (caseEntity.ExternalReference != null && caseEntity.ExternalReference.Contains(term)));
+        }
+
+        if (statuses.Count > 0)
+            query = ApplyCaseStatusFilter(query, string.Join(',', statuses));
+
+        if (caseIds.Count > 0)
+        {
+            var requestedCaseIds = caseIds.ToList();
+            query = query.Where(caseEntity => requestedCaseIds.Contains(caseEntity.Id));
+        }
+
+        if (lawFirmIds.Count > 0)
+        {
+            var requestedLawFirmIds = lawFirmIds.ToList();
+            var directMatches = query.Where(caseEntity =>
+                requestedLawFirmIds.Contains(caseEntity.OrgId) ||
+                (caseEntity.HandlingLawFirmCompanyId.HasValue &&
+                 requestedLawFirmIds.Contains(caseEntity.HandlingLawFirmCompanyId.Value)));
+            var legacyMatches = ApplyMetadataFilter(query, "lawFirmId", string.Join(',', requestedLawFirmIds));
+            query = directMatches.Concat(legacyMatches).Distinct();
+        }
+
+        if (attorneyIds.Count > 0)
+            query = ApplyMetadataFilter(query, "attorneyId", string.Join(',', attorneyIds));
+
+        if (caseManagerIds.Count > 0)
+        {
+            var requestedCaseManagerIds = caseManagerIds.ToList();
+            var directMatches = query.Where(caseEntity =>
+                caseEntity.CaseManagerContactPersonId.HasValue &&
+                requestedCaseManagerIds.Contains(caseEntity.CaseManagerContactPersonId.Value));
+            var legacyMatches = ApplyMetadataFilter(query, "caseManagerId", string.Join(',', requestedCaseManagerIds));
+            query = directMatches.Concat(legacyMatches).Distinct();
+        }
+
+        return await query
+            .OrderByDescending(caseEntity => caseEntity.CreatedAtUtc)
+            .ThenByDescending(caseEntity => caseEntity.Id)
+            .ToListAsync(ct);
+    }
+
     public async Task<(List<Case> Items, int TotalCount)> SearchAsync(
         Guid tenantId, string? search, string? status,
         int page, int pageSize,

@@ -2,8 +2,8 @@ namespace Liens.Application.DTOs;
 
 public sealed class SellingOperationsDashboardQuery
 {
-    public DateOnly? DateFrom { get; init; }
-    public DateOnly? DateTo { get; init; }
+    public DateOnly? StartDate { get; init; }
+    public DateOnly? EndDate { get; init; }
     public string Compare { get; init; } = "previousPeriod";
 }
 
@@ -24,8 +24,8 @@ public sealed class SellingOperationsDashboardResponse
 
 public sealed class SellingOperationsDashboardPeriod
 {
-    public DateOnly DateFrom { get; init; }
-    public DateOnly DateTo { get; init; }
+    public DateOnly StartDate { get; init; }
+    public DateOnly EndDate { get; init; }
     public string DateBasis { get; init; } = "initialServiceDate";
 }
 

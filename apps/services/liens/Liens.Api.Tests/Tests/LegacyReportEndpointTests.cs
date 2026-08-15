@@ -401,6 +401,86 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
+    public async Task RunAndExportReport_return_ucc_filed_as_yes_or_no()
+    {
+        var prefix = $"DIY-UCC-{Guid.CreateVersion7():N}"[..30];
+        var yesLienNumber = $"{prefix}-YES";
+        var noLienNumber = $"{prefix}-NO";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var yesCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-CASE-YES",
+                "Ucc",
+                "Filed",
+                SeedHelper.UserId,
+                notes: "[legacy-meta]\nisUCCFiled=true");
+            var noCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-CASE-NO",
+                "Ucc",
+                "Not Filed",
+                SeedHelper.UserId);
+            var yesLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                yesLienNumber,
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: yesCase.Id,
+                isBulk: "N");
+            var noLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                noLienNumber,
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: noCase.Id,
+                isBulk: "N");
+
+            db.Cases.AddRange(yesCase, noCase);
+            db.Liens.AddRange(yesLien, noLien);
+            await db.SaveChangesAsync();
+        }
+
+        var request = new
+        {
+            reportType = "LIENS",
+            statusView = "ALL",
+            search = prefix,
+            isBulk = "N",
+            columns = new[] { "lien_id", "ucc_filed" },
+            page = 1,
+            limit = 50,
+        };
+
+        var runResponse = await _client.PostAsJsonAsync("/report/diy", request);
+        runResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await runResponse.Content.ReadAsStringAsync()}");
+        using var runPayload = JsonDocument.Parse(await runResponse.Content.ReadAsStringAsync());
+        var rows = runPayload.RootElement.GetProperty("data").EnumerateArray()
+            .ToDictionary(row => row.GetProperty("lien_id").GetString()!);
+        rows[yesLienNumber].GetProperty("ucc_filed").GetString().Should().Be("Yes");
+        rows[noLienNumber].GetProperty("ucc_filed").GetString().Should().Be("No");
+
+        var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", request);
+        exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await exportResponse.Content.ReadAsStringAsync()}");
+        var exportPayload = await exportResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var export = exportPayload!.RootElement.GetProperty("data").EnumerateArray().Single();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
+        csv.Should().Contain("lien_id,ucc_filed");
+        csv.Should().Contain($"{yesLienNumber},Yes");
+        csv.Should().Contain($"{noLienNumber},No");
+    }
+
+    [Fact]
     public async Task RunAndExportReport_include_all_tracking_notes_and_latest_date()
     {
         string lienNumber;
@@ -501,6 +581,204 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         csv.Should().NotContain("Feed note must be excluded");
         csv.Should().NotContain("Deleted note must be excluded");
         csv.Should().NotContain("Other tenant note must be excluded");
+    }
+
+    [Fact]
+    public async Task RunAndExportReport_return_latest_eligible_feed_note_for_lien_and_combined_rows()
+    {
+        var prefix = $"DIY-FEED-{Guid.CreateVersion7():N}"[..30];
+        var expectedDate = new DateTime(2026, 8, 14, 9, 30, 0, DateTimeKind.Utc);
+        string lienNumber;
+        string noNoteLienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-CASE",
+                "Feed",
+                "Selected",
+                SeedHelper.UserId);
+            var noNoteCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-EMPTY-CASE",
+                "Feed",
+                "Empty",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-LIEN",
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N");
+            var noNoteLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-EMPTY-LIEN",
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: noNoteCase.Id,
+                isBulk: "N");
+
+            var tiedLoser = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Same-time lower-id Feed note",
+                CaseNoteCategory.Feed,
+                expectedDate);
+            SetCaseNoteProperty(tiedLoser, nameof(LienCaseNote.Id), Guid.Parse("11111111-1111-1111-1111-111111111111"));
+            var tiedWinner = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "=1+1 selected Feed note",
+                "Feed",
+                expectedDate);
+            SetCaseNoteProperty(tiedWinner, nameof(LienCaseNote.Id), Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff"));
+            var deletedFeed = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Deleted Feed note",
+                CaseNoteCategory.Feed,
+                expectedDate.AddDays(1));
+            deletedFeed.SoftDelete();
+            var blankFeed = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "placeholder",
+                CaseNoteCategory.Feed,
+                expectedDate.AddDays(2));
+            SetCaseNoteProperty(blankFeed, nameof(LienCaseNote.Content), "   ");
+            var generalNote = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "General note",
+                CaseNoteCategory.General,
+                expectedDate.AddDays(3));
+            var otherTenantFeed = CreateCaseNote(
+                caseEntity.Id,
+                Guid.CreateVersion7(),
+                "Other tenant Feed note",
+                CaseNoteCategory.Feed,
+                expectedDate.AddDays(4));
+
+            lienNumber = lien.LienNumber;
+            noNoteLienNumber = noNoteLien.LienNumber;
+            db.Cases.AddRange(caseEntity, noNoteCase);
+            db.Liens.AddRange(lien, noNoteLien);
+            db.LienCaseNotes.AddRange(
+                tiedLoser,
+                tiedWinner,
+                deletedFeed,
+                blankFeed,
+                generalNote,
+                otherTenantFeed);
+            await db.SaveChangesAsync();
+        }
+
+        object Request(string reportType) => new
+        {
+            reportType,
+            statusView = "ALL",
+            search = prefix,
+            isBulk = "N",
+            columns = new[] { "lien_id", "notes", "notes_date" },
+            page = 1,
+            limit = 50,
+        };
+
+        foreach (var reportType in new[] { "LIENS", "COMBINED" })
+        {
+            var runResponse = await _client.PostAsJsonAsync("/report/diy", Request(reportType));
+            runResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Body: {await runResponse.Content.ReadAsStringAsync()}");
+            using var runPayload = JsonDocument.Parse(await runResponse.Content.ReadAsStringAsync());
+            var rows = runPayload.RootElement.GetProperty("data").EnumerateArray()
+                .ToDictionary(row => row.GetProperty("lien_id").GetString()!);
+            rows[lienNumber].GetProperty("notes").GetString().Should().Be("=1+1 selected Feed note");
+            rows[lienNumber].GetProperty("notes_date").GetString().Should().Be("08/14/2026");
+            rows[noNoteLienNumber].GetProperty("notes").GetString().Should().BeEmpty();
+            rows[noNoteLienNumber].GetProperty("notes_date").ValueKind.Should().Be(JsonValueKind.Null);
+        }
+
+        var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", Request("LIENS"));
+        exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await exportResponse.Content.ReadAsStringAsync()}");
+        var exportPayload = await exportResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var export = exportPayload!.RootElement.GetProperty("data").EnumerateArray().Single();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
+        csv.Should().StartWith("lien_id,notes,notes_date");
+        csv.Should().Contain($"{lienNumber},'=1+1 selected Feed note,08/14/2026");
+        csv.Should().NotContain("Same-time lower-id Feed note");
+        csv.Should().NotContain("Deleted Feed note");
+        csv.Should().NotContain("General note");
+        csv.Should().NotContain("Other tenant Feed note");
+    }
+
+    [Fact]
+    public async Task SavedCaseReport_returns_feed_note_for_unlinked_case_in_preview_and_export()
+    {
+        var caseNumber = $"DIY-FEED-CASE-{Guid.CreateVersion7():N}"[..32];
+        Guid reportId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                caseNumber,
+                "Unlinked",
+                "Feed",
+                SeedHelper.UserId);
+            var feedNote = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Unlinked case Feed note",
+                CaseNoteCategory.Feed,
+                new DateTime(2026, 8, 15, 11, 0, 0, DateTimeKind.Utc));
+            var savedReport = DIYReportConfig.Create(
+                SeedHelper.TenantId,
+                SeedHelper.UserId,
+                "Saved unlinked Feed report",
+                $$"""{"reportType":"CASES","search":"{{caseNumber}}","isBulk":"N","columns":["case_id","notes","notes_date"]}""",
+                SeedHelper.UserId);
+
+            reportId = savedReport.Id;
+            db.Cases.Add(caseEntity);
+            db.LienCaseNotes.Add(feedNote);
+            db.DIYReportConfigs.Add(savedReport);
+            await db.SaveChangesAsync();
+        }
+
+        var runResponse = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportId,
+            page = 1,
+            limit = 10,
+        });
+        runResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await runResponse.Content.ReadAsStringAsync()}");
+        using var runPayload = JsonDocument.Parse(await runResponse.Content.ReadAsStringAsync());
+        var row = runPayload.RootElement.GetProperty("data").EnumerateArray().Single();
+        row.GetProperty("case_id").GetString().Should().Be(caseNumber);
+        row.GetProperty("notes").GetString().Should().Be("Unlinked case Feed note");
+        row.GetProperty("notes_date").GetString().Should().Be("08/15/2026");
+
+        var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", new { reportId });
+        exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await exportResponse.Content.ReadAsStringAsync()}");
+        var exportPayload = await exportResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var export = exportPayload!.RootElement.GetProperty("data").EnumerateArray().Single();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
+        csv.Should().StartWith("case_id,notes,notes_date");
+        csv.Should().Contain($"{caseNumber},Unlinked case Feed note,08/15/2026");
     }
 
     [Fact]
@@ -842,6 +1120,52 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             .ToList();
         lienNumbers.Should().ContainSingle().Which.Should().Be(activeLienNumber);
         lienNumbers.Should().NotContain(draftLienNumber);
+    }
+
+    [Fact]
+    public async Task Newly_created_case_without_liens_appears_in_case_report_preview_and_export()
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/cases", new
+        {
+            caseNumber = "",
+            clientFirstName = "Report",
+            clientLastName = "Visible",
+        });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        using var createdCase = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var caseNumber = createdCase.RootElement.GetProperty("caseNumber").GetString();
+        caseNumber.Should().MatchRegex(@"^\d{2}-\d{5}$");
+
+        var request = new
+        {
+            reportType = "CASES",
+            search = caseNumber,
+            isBulk = "N",
+            columns = new[] { "case_id", "plaintiff_first_name", "plaintiff_last_name" },
+            page = 1,
+            limit = 50,
+        };
+
+        var previewResponse = await _client.PostAsJsonAsync("/report/diy", request);
+        previewResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await previewResponse.Content.ReadAsStringAsync()}");
+        using var preview = JsonDocument.Parse(await previewResponse.Content.ReadAsStringAsync());
+        preview.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
+        var row = preview.RootElement.GetProperty("data").EnumerateArray().Single();
+        row.GetProperty("case_id").GetString().Should().Be(caseNumber);
+        row.GetProperty("plaintiff_first_name").GetString().Should().Be("Report");
+        row.GetProperty("plaintiff_last_name").GetString().Should().Be("Visible");
+
+        var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", request);
+        exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await exportResponse.Content.ReadAsStringAsync()}");
+        var exportPayload = await exportResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var export = exportPayload!.RootElement.GetProperty("data").EnumerateArray().Single();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
+        csv.Should().Contain("case_id,plaintiff_first_name,plaintiff_last_name");
+        csv.Should().Contain($"{caseNumber},Report,Visible");
     }
 
     [Fact]
@@ -1357,6 +1681,20 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             x.GetProperty("key").GetString() == "expected_settlement_amount" &&
             x.GetProperty("label").GetString() == "Expected Settlement Amount");
         data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "notes" &&
+            x.GetProperty("label").GetString() == "Notes" &&
+            !x.GetProperty("isDefault").GetBoolean());
+        data.EnumerateArray().Should().Contain(x =>
+            x.GetProperty("key").GetString() == "notes_date" &&
+            x.GetProperty("label").GetString() == "Notes Date" &&
+            !x.GetProperty("isDefault").GetBoolean());
+        var procedureColumns = doc.RootElement.GetProperty("procedureInfo")
+            .EnumerateArray()
+            .ToList();
+        procedureColumns.Should().Contain(x => x.GetProperty("key").GetString() == "notes");
+        procedureColumns.Should().Contain(x => x.GetProperty("key").GetString() == "notes_date");
+        defaults.EnumerateArray().Select(x => x.GetString()).Should().NotContain("notes").And.NotContain("notes_date");
+        data.EnumerateArray().Should().Contain(x =>
             x.GetProperty("key").GetString() == "days_since_reduction_approval" &&
             x.GetProperty("label").GetString() == "Days Since Reduction Approval");
         data.EnumerateArray().Should().Contain(x =>
@@ -1583,4 +1921,7 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             .SetValue(note, createdAtUtc);
         return note;
     }
+
+    private static void SetCaseNoteProperty<T>(LienCaseNote note, string propertyName, T value) =>
+        typeof(LienCaseNote).GetProperty(propertyName)!.SetValue(note, value);
 }

@@ -447,8 +447,8 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
         SellingOperationsDashboardQuery query,
         DateTime generatedAtUtc)
     {
-        if (query.DateFrom.HasValue && query.DateTo.HasValue)
-            return new DashboardPeriod(query.DateFrom.Value, query.DateTo.Value);
+        if (query.StartDate.HasValue && query.EndDate.HasValue)
+            return new DashboardPeriod(query.StartDate.Value, query.EndDate.Value);
 
         var today = DateOnly.FromDateTime(generatedAtUtc);
         return new DashboardPeriod(new DateOnly(today.Year, today.Month, 1), today);
@@ -475,8 +475,8 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
 
     private static SellingOperationsDashboardPeriod ToResponse(DashboardPeriod period) => new()
     {
-        DateFrom = period.DateFrom,
-        DateTo = period.DateTo,
+        StartDate = period.DateFrom,
+        EndDate = period.DateTo,
         DateBasis = "initialServiceDate",
     };
 

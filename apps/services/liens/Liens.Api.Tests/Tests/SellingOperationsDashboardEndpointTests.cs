@@ -70,7 +70,7 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
     public async Task Dashboard_returns_zeroes_and_explicit_unavailable_aging_for_empty_period()
     {
         var response = await _client.GetAsync(
-            "/api/liens/selling/analytics/dashboard?dateFrom=2030-01-01&dateTo=2030-01-31&compare=none");
+            "/api/liens/selling/analytics/dashboard?startDate=2030-01-01&endDate=2030-01-31&compare=none");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         var body = await response.Content.ReadFromJsonAsync<SellingOperationsDashboardResponse>();
@@ -126,16 +126,16 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         });
 
         var response = await _client.GetAsync(
-            "/api/liens/selling/analytics/dashboard?dateFrom=2026-01-01&dateTo=2026-01-31");
+            "/api/liens/selling/analytics/dashboard?startDate=2026-01-01&endDate=2026-01-31");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         var body = await response.Content.ReadFromJsonAsync<SellingOperationsDashboardResponse>();
         body.Should().NotBeNull();
-        body!.Period.DateFrom.Should().Be(new DateOnly(2026, 1, 1));
-        body.Period.DateTo.Should().Be(new DateOnly(2026, 1, 31));
+        body!.Period.StartDate.Should().Be(new DateOnly(2026, 1, 1));
+        body.Period.EndDate.Should().Be(new DateOnly(2026, 1, 31));
         body.Period.DateBasis.Should().Be("initialServiceDate");
-        body.ComparisonPeriod!.DateFrom.Should().Be(new DateOnly(2025, 12, 1));
-        body.ComparisonPeriod.DateTo.Should().Be(new DateOnly(2025, 12, 31));
+        body.ComparisonPeriod!.StartDate.Should().Be(new DateOnly(2025, 12, 1));
+        body.ComparisonPeriod.EndDate.Should().Be(new DateOnly(2025, 12, 31));
         body.Metrics.TotalLienRevenue.Value.Should().Be(3_000m);
         body.Metrics.TotalLienRevenue.ComparisonValue.Should().Be(500m);
         body.Metrics.TotalLienRevenue.ChangeAmount.Should().Be(2_500m);
@@ -172,7 +172,7 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         await SeedAsync(db => db.Liens.AddRange(included, conflictingLegacyOrg, otherTenant));
 
         var response = await _client.GetAsync(
-            "/api/liens/selling/analytics/dashboard?dateFrom=2026-02-01&dateTo=2026-02-28&compare=none");
+            "/api/liens/selling/analytics/dashboard?startDate=2026-02-01&endDate=2026-02-28&compare=none");
 
         var body = await response.Content.ReadFromJsonAsync<SellingOperationsDashboardResponse>();
         body.Should().NotBeNull();
@@ -200,7 +200,7 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         await SeedAsync(db => db.Liens.AddRange(accepted, sold, incomplete));
 
         var response = await _client.GetAsync(
-            "/api/liens/selling/analytics/dashboard?dateFrom=2026-03-01&dateTo=2026-03-31&compare=none");
+            "/api/liens/selling/analytics/dashboard?startDate=2026-03-01&endDate=2026-03-31&compare=none");
         var body = await response.Content.ReadFromJsonAsync<SellingOperationsDashboardResponse>();
 
         body.Should().NotBeNull();
@@ -285,7 +285,7 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
             rejectedOffer));
 
         var response = await _client.GetAsync(
-            "/api/liens/selling/analytics/dashboard?dateFrom=2026-04-01&dateTo=2026-04-30&compare=none");
+            "/api/liens/selling/analytics/dashboard?startDate=2026-04-01&endDate=2026-04-30&compare=none");
         var body = await response.Content.ReadFromJsonAsync<SellingOperationsDashboardResponse>();
 
         body.Should().NotBeNull();
@@ -300,10 +300,10 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
     }
 
     [Theory]
-    [InlineData("?dateFrom=2026-01-01")]
-    [InlineData("?dateFrom=2026-02-01&dateTo=2026-01-01")]
-    [InlineData("?dateFrom=2025-01-01&dateTo=2026-01-02")]
-    [InlineData("?dateFrom=0001-01-01&dateTo=0001-01-01&compare=previousPeriod")]
+    [InlineData("?startDate=2026-01-01")]
+    [InlineData("?startDate=2026-02-01&endDate=2026-01-01")]
+    [InlineData("?startDate=2025-01-01&endDate=2026-01-02")]
+    [InlineData("?startDate=0001-01-01&endDate=0001-01-01&compare=previousPeriod")]
     [InlineData("?compare=yearOverYear")]
     public async Task Dashboard_rejects_invalid_period_queries(string query)
     {
@@ -315,7 +315,7 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
     public async Task Dashboard_accepts_maximum_366_day_period()
     {
         var response = await _client.GetAsync(
-            "/api/liens/selling/analytics/dashboard?dateFrom=2025-01-01&dateTo=2026-01-01&compare=none");
+            "/api/liens/selling/analytics/dashboard?startDate=2025-01-01&endDate=2026-01-01&compare=none");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
     }

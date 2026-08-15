@@ -231,10 +231,10 @@ public static class SellingAnalyticsEndpoints
     private static SellingAnalyticsFilter ParseFilter(HttpRequest request, bool requireDateDimension = false)
     {
         var errors = new Dictionary<string, string[]>();
-        var dateFrom = ParseDate(request, "dateFrom", errors);
-        var dateTo = ParseDate(request, "dateTo", errors);
-        if (dateFrom.HasValue && dateTo.HasValue && dateFrom.Value > dateTo.Value)
-            AddError(errors, "dateRange", "dateFrom must be less than or equal to dateTo.");
+        var startDate = ParseDate(request, "startDate", errors);
+        var endDate = ParseDate(request, "endDate", errors);
+        if (startDate.HasValue && endDate.HasValue && startDate.Value > endDate.Value)
+            AddError(errors, "dateRange", "startDate must be less than or equal to endDate.");
 
         var sellerStatuses = ReadStringValues(request, "sellerStatus");
         foreach (var status in sellerStatuses)
@@ -264,8 +264,8 @@ public static class SellingAnalyticsEndpoints
 
         return new SellingAnalyticsFilter
         {
-            DateFrom = dateFrom,
-            DateTo = dateTo,
+            StartDate = startDate,
+            EndDate = endDate,
             SellerStatuses = sellerStatuses,
             ListingVisibilities = listingVisibilities,
             FundingCompanyIds = fundingCompanyIds,
@@ -280,20 +280,20 @@ public static class SellingAnalyticsEndpoints
     private static SellingOperationsDashboardQuery ParseDashboardQuery(HttpRequest request)
     {
         var errors = new Dictionary<string, string[]>();
-        var dateFrom = ParseDate(request, "dateFrom", errors);
-        var dateTo = ParseDate(request, "dateTo", errors);
-        if (dateFrom.HasValue != dateTo.HasValue)
-            AddError(errors, "dateRange", "dateFrom and dateTo must be provided together.");
-        if (dateFrom.HasValue && dateTo.HasValue && dateFrom.Value > dateTo.Value)
-            AddError(errors, "dateRange", "dateFrom must be less than or equal to dateTo.");
+        var startDate = ParseDate(request, "startDate", errors);
+        var endDate = ParseDate(request, "endDate", errors);
+        if (startDate.HasValue != endDate.HasValue)
+            AddError(errors, "dateRange", "startDate and endDate must be provided together.");
+        if (startDate.HasValue && endDate.HasValue && startDate.Value > endDate.Value)
+            AddError(errors, "dateRange", "startDate must be less than or equal to endDate.");
 
         var compare = FirstQueryValue(request, "compare");
         compare = string.IsNullOrWhiteSpace(compare) ? "previousPeriod" : compare;
         ValidateAllowedValue("compare", compare, AllowedDashboardComparisons, errors);
 
-        if (dateFrom.HasValue && dateTo.HasValue && dateFrom.Value <= dateTo.Value)
+        if (startDate.HasValue && endDate.HasValue && startDate.Value <= endDate.Value)
         {
-            var inclusiveDays = dateTo.Value.DayNumber - dateFrom.Value.DayNumber + 1;
+            var inclusiveDays = endDate.Value.DayNumber - startDate.Value.DayNumber + 1;
             if (inclusiveDays > MaxDashboardPeriodDays)
             {
                 AddError(
@@ -302,7 +302,7 @@ public static class SellingAnalyticsEndpoints
                     $"Dashboard date ranges cannot exceed {MaxDashboardPeriodDays} inclusive days.");
             }
             else if (string.Equals(compare, "previousPeriod", StringComparison.Ordinal)
-                && dateFrom.Value.DayNumber < inclusiveDays)
+                && startDate.Value.DayNumber < inclusiveDays)
             {
                 AddError(
                     errors,
@@ -316,8 +316,8 @@ public static class SellingAnalyticsEndpoints
 
         return new SellingOperationsDashboardQuery
         {
-            DateFrom = dateFrom,
-            DateTo = dateTo,
+            StartDate = startDate,
+            EndDate = endDate,
             Compare = compare,
         };
     }
@@ -328,8 +328,8 @@ public static class SellingAnalyticsEndpoints
         if (!AllowedExportReports.Contains(request.Report))
             AddError(errors, "report", $"Invalid report '{request.Report}'.");
 
-        if (request.DateFrom.HasValue && request.DateTo.HasValue && request.DateFrom.Value > request.DateTo.Value)
-            AddError(errors, "dateRange", "dateFrom must be less than or equal to dateTo.");
+        if (request.StartDate.HasValue && request.EndDate.HasValue && request.StartDate.Value > request.EndDate.Value)
+            AddError(errors, "dateRange", "startDate must be less than or equal to endDate.");
 
         foreach (var status in request.SellerStatus)
             if (!SellingLienStatus.All.Contains(status))

@@ -44,11 +44,11 @@
       "value": "00000000-0000-0000-0000-000000000000"
     },
     {
-      "key": "dateFrom",
+      "key": "startDate",
       "value": "2026-01-01"
     },
     {
-      "key": "dateTo",
+      "key": "endDate",
       "value": "2026-12-31"
     },
     {
@@ -107,7 +107,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/liens/selling/analytics/dashboard?dateFrom={{dateFrom}}&dateTo={{dateTo}}&compare={{compare}}",
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/dashboard?startDate={{startDate}}&endDate={{endDate}}&compare={{compare}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -120,12 +120,12 @@
               ],
               "query": [
                 {
-                  "key": "dateFrom",
-                  "value": "{{dateFrom}}"
+                  "key": "startDate",
+                  "value": "{{startDate}}"
                 },
                 {
-                  "key": "dateTo",
-                  "value": "{{dateTo}}"
+                  "key": "endDate",
+                  "value": "{{endDate}}"
                 },
                 {
                   "key": "compare",
@@ -168,7 +168,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/liens/selling/analytics/dashboard?dateFrom=2026-01-01&dateTo=2026-01-31&compare=previousPeriod",
+                  "raw": "{{baseUrl}}/api/liens/selling/analytics/dashboard?startDate=2026-01-01&endDate=2026-01-31&compare=previousPeriod",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -181,11 +181,11 @@
                   ],
                   "query": [
                     {
-                      "key": "dateFrom",
+                      "key": "startDate",
                       "value": "2026-01-01"
                     },
                     {
-                      "key": "dateTo",
+                      "key": "endDate",
                       "value": "2026-01-31"
                     },
                     {
@@ -205,7 +205,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"period\": { \"dateFrom\": \"2026-01-01\", \"dateTo\": \"2026-01-31\", \"dateBasis\": \"initialServiceDate\" },\n  \"comparisonPeriod\": { \"dateFrom\": \"2025-12-01\", \"dateTo\": \"2025-12-31\", \"dateBasis\": \"initialServiceDate\" },\n  \"currency\": \"USD\",\n  \"metrics\": {\n    \"totalLienRevenue\": { \"isAvailable\": true, \"value\": 3000, \"comparisonValue\": 2500, \"changeAmount\": 500, \"changePercent\": 20, \"formula\": \"Sum of OriginalAmount for the period lien cohort.\", \"unavailableReason\": null },\n    \"totalOutstanding\": { \"isAvailable\": true, \"value\": 2100, \"comparisonValue\": 1900, \"changeAmount\": 200, \"changePercent\": 10.53, \"formula\": \"Sum of CurrentBalance with OriginalAmount fallback.\", \"unavailableReason\": null },\n    \"pastAmountDue\": { \"isAvailable\": false, \"value\": null, \"comparisonValue\": null, \"changeAmount\": null, \"changePercent\": null, \"formula\": \"Unavailable until an authoritative receivable due date is persisted.\", \"unavailableReason\": \"Lien receivables do not currently persist a due date.\" },\n    \"payments\": { \"isAvailable\": true, \"value\": 250, \"comparisonValue\": 100, \"changeAmount\": 150, \"changePercent\": 150, \"formula\": \"Sum of non-deleted payment details by PaymentDate.\", \"unavailableReason\": null }\n  },\n  \"arAging\": { \"isAvailable\": false, \"unavailableReason\": \"Lien receivables do not currently persist a due date.\", \"total\": null, \"buckets\": [] },\n  \"lienStatuses\": [{ \"status\": \"Active\", \"lienCount\": 1, \"originalAmount\": 1000, \"outstandingAmount\": 600, \"percentOfLiens\": 50 }],\n  \"sellerStatuses\": [{ \"status\": \"Sold\", \"lienCount\": 1, \"originalAmount\": 1000, \"outstandingAmount\": 600, \"percentOfLiens\": 50 }],\n  \"timeSeries\": [{ \"bucketStart\": \"2026-01-01\", \"grain\": \"month\", \"lienCount\": 2, \"lienRevenue\": 3000, \"outstandingAmount\": 2100 }],\n  \"topBuyers\": [],\n  \"buyerAging\": { \"isAvailable\": false, \"unavailableReason\": \"Lien receivables do not currently persist a due date.\", \"items\": [] },\n  \"generatedAtUtc\": \"2026-01-31T12:00:00Z\"\n}"
+              "body": "{\n  \"period\": { \"startDate\": \"2026-01-01\", \"endDate\": \"2026-01-31\", \"dateBasis\": \"initialServiceDate\" },\n  \"comparisonPeriod\": { \"startDate\": \"2025-12-01\", \"endDate\": \"2025-12-31\", \"dateBasis\": \"initialServiceDate\" },\n  \"currency\": \"USD\",\n  \"metrics\": {\n    \"totalLienRevenue\": { \"isAvailable\": true, \"value\": 3000, \"comparisonValue\": 2500, \"changeAmount\": 500, \"changePercent\": 20, \"formula\": \"Sum of OriginalAmount for the period lien cohort.\", \"unavailableReason\": null },\n    \"totalOutstanding\": { \"isAvailable\": true, \"value\": 2100, \"comparisonValue\": 1900, \"changeAmount\": 200, \"changePercent\": 10.53, \"formula\": \"Sum of CurrentBalance with OriginalAmount fallback.\", \"unavailableReason\": null },\n    \"pastAmountDue\": { \"isAvailable\": false, \"value\": null, \"comparisonValue\": null, \"changeAmount\": null, \"changePercent\": null, \"formula\": \"Unavailable until an authoritative receivable due date is persisted.\", \"unavailableReason\": \"Lien receivables do not currently persist a due date.\" },\n    \"payments\": { \"isAvailable\": true, \"value\": 250, \"comparisonValue\": 100, \"changeAmount\": 150, \"changePercent\": 150, \"formula\": \"Sum of non-deleted payment details by PaymentDate.\", \"unavailableReason\": null }\n  },\n  \"arAging\": { \"isAvailable\": false, \"unavailableReason\": \"Lien receivables do not currently persist a due date.\", \"total\": null, \"buckets\": [] },\n  \"lienStatuses\": [{ \"status\": \"Active\", \"lienCount\": 1, \"originalAmount\": 1000, \"outstandingAmount\": 600, \"percentOfLiens\": 50 }],\n  \"sellerStatuses\": [{ \"status\": \"Sold\", \"lienCount\": 1, \"originalAmount\": 1000, \"outstandingAmount\": 600, \"percentOfLiens\": 50 }],\n  \"timeSeries\": [{ \"bucketStart\": \"2026-01-01\", \"grain\": \"month\", \"lienCount\": 2, \"lienRevenue\": 3000, \"outstandingAmount\": 2100 }],\n  \"topBuyers\": [],\n  \"buyerAging\": { \"isAvailable\": false, \"unavailableReason\": \"Lien receivables do not currently persist a due date.\", \"items\": [] },\n  \"generatedAtUtc\": \"2026-01-31T12:00:00Z\"\n}"
             },
             {
               "name": "400 - Period exceeds 366 days",
@@ -218,7 +218,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/liens/selling/analytics/dashboard?dateFrom=2025-01-01&dateTo=2026-01-02&compare=none",
+                  "raw": "{{baseUrl}}/api/liens/selling/analytics/dashboard?startDate=2025-01-01&endDate=2026-01-02&compare=none",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -231,11 +231,11 @@
                   ],
                   "query": [
                     {
-                      "key": "dateFrom",
+                      "key": "startDate",
                       "value": "2025-01-01"
                     },
                     {
-                      "key": "dateTo",
+                      "key": "endDate",
                       "value": "2026-01-02"
                     },
                     {
@@ -308,7 +308,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/liens/selling/analytics/overview?sellerStatus={{sellerStatus}}&listingVisibility={{listingVisibility}}&dateFrom={{dateFrom}}&dateTo={{dateTo}}&includeArchived={{includeArchived}}",
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/overview?sellerStatus={{sellerStatus}}&listingVisibility={{listingVisibility}}&startDate={{startDate}}&endDate={{endDate}}&includeArchived={{includeArchived}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -329,12 +329,12 @@
                   "value": "{{listingVisibility}}"
                 },
                 {
-                  "key": "dateFrom",
-                  "value": "{{dateFrom}}"
+                  "key": "startDate",
+                  "value": "{{startDate}}"
                 },
                 {
-                  "key": "dateTo",
-                  "value": "{{dateTo}}"
+                  "key": "endDate",
+                  "value": "{{endDate}}"
                 },
                 {
                   "key": "includeArchived",
@@ -377,7 +377,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/liens/selling/analytics/status-breakdown?dateFrom={{dateFrom}}&dateTo={{dateTo}}",
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/status-breakdown?startDate={{startDate}}&endDate={{endDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -390,12 +390,12 @@
               ],
               "query": [
                 {
-                  "key": "dateFrom",
-                  "value": "{{dateFrom}}"
+                  "key": "startDate",
+                  "value": "{{startDate}}"
                 },
                 {
-                  "key": "dateTo",
-                  "value": "{{dateTo}}"
+                  "key": "endDate",
+                  "value": "{{endDate}}"
                 }
               ]
             },
@@ -468,7 +468,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/liens/selling/analytics/timeseries?dateDimension={{dateDimension}}&grain={{grain}}&dateFrom={{dateFrom}}&dateTo={{dateTo}}",
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/timeseries?dateDimension={{dateDimension}}&grain={{grain}}&startDate={{startDate}}&endDate={{endDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -489,12 +489,12 @@
                   "value": "{{grain}}"
                 },
                 {
-                  "key": "dateFrom",
-                  "value": "{{dateFrom}}"
+                  "key": "startDate",
+                  "value": "{{startDate}}"
                 },
                 {
-                  "key": "dateTo",
-                  "value": "{{dateTo}}"
+                  "key": "endDate",
+                  "value": "{{endDate}}"
                 }
               ]
             },
@@ -524,7 +524,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/liens/selling/analytics/offers?dateFrom={{dateFrom}}&dateTo={{dateTo}}",
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/offers?startDate={{startDate}}&endDate={{endDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -537,12 +537,12 @@
               ],
               "query": [
                 {
-                  "key": "dateFrom",
-                  "value": "{{dateFrom}}"
+                  "key": "startDate",
+                  "value": "{{startDate}}"
                 },
                 {
-                  "key": "dateTo",
-                  "value": "{{dateTo}}"
+                  "key": "endDate",
+                  "value": "{{endDate}}"
                 }
               ]
             },
@@ -571,7 +571,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/liens/selling/analytics/buyer-performance?dateFrom={{dateFrom}}&dateTo={{dateTo}}",
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/buyer-performance?startDate={{startDate}}&endDate={{endDate}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -584,12 +584,12 @@
               ],
               "query": [
                 {
-                  "key": "dateFrom",
-                  "value": "{{dateFrom}}"
+                  "key": "startDate",
+                  "value": "{{startDate}}"
                 },
                 {
-                  "key": "dateTo",
-                  "value": "{{dateTo}}"
+                  "key": "endDate",
+                  "value": "{{endDate}}"
                 }
               ]
             },
@@ -792,7 +792,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"report\": \"{{exportReport}}\",\n  \"dateFrom\": \"{{dateFrom}}\",\n  \"dateTo\": \"{{dateTo}}\",\n  \"sellerStatus\": [\"{{sellerStatus}}\"],\n  \"listingVisibility\": [\"{{listingVisibility}}\"],\n  \"fundingCompanyId\": [],\n  \"facilityId\": [],\n  \"includeArchived\": false,\n  \"dateDimension\": \"{{dateDimension}}\",\n  \"grain\": \"{{grain}}\",\n  \"concentrationDimension\": \"{{concentrationDimension}}\"\n}",
+              "raw": "{\n  \"report\": \"{{exportReport}}\",\n  \"startDate\": \"{{startDate}}\",\n  \"endDate\": \"{{endDate}}\",\n  \"sellerStatus\": [\"{{sellerStatus}}\"],\n  \"listingVisibility\": [\"{{listingVisibility}}\"],\n  \"fundingCompanyId\": [],\n  \"facilityId\": [],\n  \"includeArchived\": false,\n  \"dateDimension\": \"{{dateDimension}}\",\n  \"grain\": \"{{grain}}\",\n  \"concentrationDimension\": \"{{concentrationDimension}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -886,7 +886,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/liens/selling/analytics/overview?sellerStatus=AlmostSold&listingVisibility=Secret&dateFrom=2026-12-31&dateTo=2026-01-01",
+              "raw": "{{baseUrl}}/api/liens/selling/analytics/overview?sellerStatus=AlmostSold&listingVisibility=Secret&startDate=2026-12-31&endDate=2026-01-01",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -907,16 +907,16 @@
                   "value": "Secret"
                 },
                 {
-                  "key": "dateFrom",
+                  "key": "startDate",
                   "value": "2026-12-31"
                 },
                 {
-                  "key": "dateTo",
+                  "key": "endDate",
                   "value": "2026-01-01"
                 }
               ]
             },
-            "description": "Negative contract test: invalid enums and dateFrom > dateTo return 400."
+            "description": "Negative contract test: invalid enums and startDate > endDate return 400."
           },
           "event": [
             {

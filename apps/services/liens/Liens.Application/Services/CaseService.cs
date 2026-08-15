@@ -309,7 +309,7 @@ public sealed class CaseService : ICaseService
             .DefaultIfEmpty(0)
             .Max();
 
-        return $"{prefix}{maxSequence + 1:000000}";
+        return $"{prefix}{maxSequence + 1:00000}";
     }
 
     private static int? TryGetCaseSequence(string caseNumber, string prefix)
