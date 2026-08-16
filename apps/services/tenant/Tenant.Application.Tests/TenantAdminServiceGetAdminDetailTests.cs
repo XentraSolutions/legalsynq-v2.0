@@ -95,6 +95,50 @@ public class TenantAdminServiceGetAdminDetailTests
     }
 
     [Fact]
+    public async Task GetAdminDetailAsync_ReturnsIdentityProvisioningFields_WhenAvailable()
+    {
+        var tenant = Domain.Tenant.Create(
+            code: "acme",
+            displayName: "Acme Corp",
+            subdomain: "acme");
+        tenant.SetProvisioningStatus(TenantProvisioningStatus.Failed, "Tenant-side fallback");
+
+        var lastProvisioning = new DateTime(2026, 8, 16, 1, 2, 3, DateTimeKind.Utc);
+        var lastVerification = new DateTime(2026, 8, 16, 1, 3, 3, DateTimeKind.Utc);
+        var nextRetry = new DateTime(2026, 8, 16, 1, 4, 3, DateTimeKind.Utc);
+
+        var svc = BuildService(
+            tenantRepo: new StubTenantRepository(tenant),
+            identityCompat: new StubIdentityCompatAdapter(
+                snapshot: new TenantIdentityCompatSnapshot(
+                    Type: "LAW_FIRM",
+                    SessionTimeoutMinutes: null,
+                    Hostname: "acme.demo.legalsynq.com",
+                    PrimaryContactName: "Avery Admin",
+                    ProvisioningStatus: "Verifying",
+                    LastProvisioningAttemptUtc: lastProvisioning,
+                    ProvisioningFailureReason: "DNS resolution timed out.",
+                    ProvisioningFailureStage: "DnsVerification",
+                    VerificationAttemptCount: 2,
+                    LastVerificationAttemptUtc: lastVerification,
+                    NextVerificationRetryAtUtc: nextRetry,
+                    IsVerificationRetryExhausted: false)));
+
+        var result = await svc.GetAdminDetailAsync(tenant.Id);
+
+        Assert.NotNull(result);
+        Assert.Equal("Verifying", result.ProvisioningStatus);
+        Assert.Equal(lastProvisioning, result.LastProvisioningAttemptUtc);
+        Assert.Equal("DNS resolution timed out.", result.ProvisioningFailureReason);
+        Assert.Equal("DnsVerification", result.ProvisioningFailureStage);
+        Assert.Equal("acme.demo.legalsynq.com", result.Hostname);
+        Assert.Equal(2, result.VerificationAttemptCount);
+        Assert.Equal(lastVerification, result.LastVerificationAttemptUtc);
+        Assert.Equal(nextRetry, result.NextVerificationRetryAtUtc);
+        Assert.False(result.IsVerificationRetryExhausted);
+    }
+
+    [Fact]
     public async Task ListAdminAsync_UsesIdentityTypeAndHostname_WhenAvailable()
     {
         var tenant = Domain.Tenant.Create(

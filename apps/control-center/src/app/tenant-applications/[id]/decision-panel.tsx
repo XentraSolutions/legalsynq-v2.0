@@ -3,7 +3,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { TenantRegistration } from "@/lib/control-center-api";
 import { NotificationBanner } from "@/components/ui/notification-banner";
-import { approveRegistration, declineRegistration } from "../actions";
+import { ProvisioningProgress } from "@/components/tenants/provisioning-progress";
+import { approveRegistration, declineRegistration, retryRegistration } from "../actions";
 import { TenantApplicationDialog } from "../tenant-application-dialog";
 
 export function DecisionPanel({
@@ -17,17 +18,38 @@ export function DecisionPanel({
   const [notification, setNotification] = useState<
     "approve" | "decline" | null
   >(null);
+  const [provisioning, setProvisioning] = useState<{
+    tenantId: string;
+    status?: string;
+    hostname?: string;
+    error?: string;
+  } | null>(application.tenantId ? {
+    tenantId: application.tenantId,
+    status: application.provisioningStatus,
+    hostname: application.provisioningHostname,
+    error: application.provisioningError,
+  } : null);
   const [pending, start] = useTransition();
   const submit = () => {
     if (!mode) return;
     start(async () => {
       try {
-        if (mode === "approve") await approveRegistration(application.id);
-        else
+        if (mode === "approve") {
+          const result = await approveRegistration(application.id);
+          if (result.tenantId) {
+            setProvisioning({
+              tenantId: result.tenantId,
+              status: result.provisioningStatus,
+              hostname: result.hostname,
+              error: result.provisioningErrors[0],
+            });
+          }
+        } else {
           await declineRegistration(
             application.id,
             "Declined by platform administrator.",
           );
+        }
         const completed = mode;
         setMode(null);
         setNotification(completed);
@@ -53,6 +75,44 @@ export function DecisionPanel({
           >
             Decline
           </button>
+        </div>
+      )}
+      {application.registrationStatus === "Approved" && application.provisioningStatus === "Failed" && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            start(async () => {
+              try {
+                const result = await retryRegistration(application.id);
+                if (result.tenantId) {
+                  setProvisioning({
+                    tenantId: result.tenantId,
+                    status: result.provisioningStatus,
+                    hostname: result.hostname,
+                    error: result.provisioningErrors[0],
+                  });
+                }
+                router.refresh();
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "The retry failed.");
+              }
+            });
+          }}
+          className="rounded-lg bg-[#4f46e5] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {pending ? "Retrying..." : "Retry Provisioning"}
+        </button>
+      )}
+      {provisioning && provisioning.status !== "Active" && (
+        <div className="mt-3 w-full max-w-xl">
+          <ProvisioningProgress
+            tenantId={provisioning.tenantId}
+            initialStatus={provisioning.status}
+            initialHostname={provisioning.hostname}
+            initialError={provisioning.error}
+            onSettled={() => router.refresh()}
+          />
         </div>
       )}
       {mode && (

@@ -71,7 +71,15 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
                 Type: GetString(root, "type"),
                 SessionTimeoutMinutes: sessionTimeoutMinutes,
                 Hostname: GetString(root, "hostname"),
-                PrimaryContactName: GetString(root, "primaryContactName", "primary_contact_name"));
+                PrimaryContactName: GetString(root, "primaryContactName", "primary_contact_name"),
+                ProvisioningStatus: GetString(root, "provisioningStatus", "provisioning_status"),
+                LastProvisioningAttemptUtc: GetDateTime(root, "lastProvisioningAttemptUtc", "last_provisioning_attempt_utc"),
+                ProvisioningFailureReason: GetString(root, "provisioningFailureReason", "provisioning_failure_reason"),
+                ProvisioningFailureStage: GetString(root, "provisioningFailureStage", "provisioning_failure_stage"),
+                VerificationAttemptCount: GetInt(root, "verificationAttemptCount", "verification_attempt_count"),
+                LastVerificationAttemptUtc: GetDateTime(root, "lastVerificationAttemptUtc", "last_verification_attempt_utc"),
+                NextVerificationRetryAtUtc: GetDateTime(root, "nextVerificationRetryAtUtc", "next_verification_retry_at_utc"),
+                IsVerificationRetryExhausted: GetBool(root, "isVerificationRetryExhausted", "is_verification_retry_exhausted"));
         }
         catch (OperationCanceledException)
         {
@@ -212,6 +220,48 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
                 prop.ValueKind == JsonValueKind.String)
             {
                 return prop.GetString();
+            }
+        }
+
+        return null;
+    }
+
+    private static int? GetInt(JsonElement root, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (root.TryGetProperty(propertyName, out var prop) &&
+                prop.ValueKind == JsonValueKind.Number &&
+                prop.TryGetInt32(out var value))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool? GetBool(JsonElement root, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!root.TryGetProperty(propertyName, out var prop)) continue;
+            if (prop.ValueKind == JsonValueKind.True) return true;
+            if (prop.ValueKind == JsonValueKind.False) return false;
+        }
+
+        return null;
+    }
+
+    private static DateTime? GetDateTime(JsonElement root, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (root.TryGetProperty(propertyName, out var prop) &&
+                prop.ValueKind == JsonValueKind.String &&
+                prop.TryGetDateTime(out var value))
+            {
+                return value;
             }
         }
 

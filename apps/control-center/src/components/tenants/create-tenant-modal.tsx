@@ -4,6 +4,8 @@ import { useState, useRef, useId, useEffect, useCallback } from 'react';
 import { useRouter }                                        from 'next/navigation';
 import { createTenantAction }                               from '@/app/tenants/actions';
 import type { CreateTenantResult }                          from '@/app/tenants/actions';
+import { ProvisioningProgress }                             from './provisioning-progress';
+import type { ProvisioningProgressState }                    from './provisioning-progress';
 
 interface AddressSuggestion {
   displayName:  string;
@@ -31,6 +33,8 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
   const [error, setError]        = useState<string | null>(null);
   const [result, setResult]      = useState<NonNullable<CreateTenantResult['adminUser']> & NonNullable<CreateTenantResult['tenant']> | null>(null);
   const [copied, setCopied]      = useState(false);
+  const [provisioningSettled, setProvisioningSettled] = useState(false);
+  const [provisioningFinal, setProvisioningFinal] = useState<ProvisioningProgressState | null>(null);
 
   const firstInputRef = useRef<HTMLInputElement>(null);
 
@@ -203,6 +207,8 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
         return;
       }
       setResult({ ...res.tenant, ...res.adminUser });
+      setProvisioningSettled(false);
+      setProvisioningFinal(null);
       setStep('success');
       router.refresh();
     } catch (err) {
@@ -569,6 +575,17 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
               </div>
             )}
 
+            <ProvisioningProgress
+              tenantId={result.tenantId}
+              initialStatus={result.provisioningStatus}
+              initialHostname={result.hostname}
+              onSettled={finalState => {
+                setProvisioningSettled(true);
+                setProvisioningFinal(finalState);
+                router.refresh();
+              }}
+            />
+
             {/* Secure administrator setup */}
             {result.temporaryPassword ? <div className="space-y-2">
               <p className="text-xs font-medium text-gray-700">
@@ -604,9 +621,12 @@ export function CreateTenantModal({ onClose, portalBaseDomain }: CreateTenantMod
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors"
+                disabled={!provisioningSettled}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Done
+                {provisioningSettled
+                  ? provisioningFinal?.status === 'Active' ? 'Done' : 'Close'
+                  : 'Waiting for DNS…'}
               </button>
             </div>
           </div>

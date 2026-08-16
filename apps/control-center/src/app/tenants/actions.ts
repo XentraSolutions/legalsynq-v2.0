@@ -2,6 +2,7 @@
 
 import { requirePlatformAdmin } from '@/lib/auth';
 import { controlCenterServerApi } from '@/lib/control-center-api';
+import type { TenantDetail } from '@/types/control-center';
 
 export interface CreateTenantResult {
   success: boolean;
@@ -68,7 +69,12 @@ export interface RetryProvisioningResult {
   success:            boolean;
   provisioningStatus: string;
   hostname?:          string;
+  failureStage?:      string;
   error?:             string;
+  attemptNumber?:     number;
+  stillRetrying?:     boolean;
+  exhausted?:         boolean;
+  nextRetryAtUtc?:    string;
 }
 
 export async function retryProvisioningAction(tenantId: string): Promise<RetryProvisioningResult> {
@@ -92,6 +98,10 @@ export interface RetryVerificationResult {
   hostname?:          string;
   error?:             string;
   failureStage?:      string;
+  attemptNumber?:     number;
+  stillRetrying?:     boolean;
+  exhausted?:         boolean;
+  nextRetryAtUtc?:    string;
 }
 
 export async function retryVerificationAction(tenantId: string): Promise<RetryVerificationResult> {
@@ -107,4 +117,9 @@ export async function retryVerificationAction(tenantId: string): Promise<RetryVe
       error: err instanceof Error ? err.message : 'Failed to retry verification.',
     };
   }
+}
+
+export async function getTenantProvisioningAction(tenantId: string): Promise<TenantDetail | null> {
+  await requirePlatformAdmin();
+  return controlCenterServerApi.tenants.getById(tenantId);
 }

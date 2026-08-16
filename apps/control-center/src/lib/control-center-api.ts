@@ -587,13 +587,23 @@ export const controlCenterServerApi = {
       success:            boolean;
       provisioningStatus: string;
       hostname?:          string;
+      failureStage?:      string;
       error?:             string;
+      attemptNumber?:     number;
+      stillRetrying?:     boolean;
+      exhausted?:         boolean;
+      nextRetryAtUtc?:    string;
     }> => {
       const raw = await apiClient.post<{
         success:            boolean;
         provisioningStatus: string;
         hostname?:          string;
+        failureStage?:      string;
         error?:             string;
+        attemptNumber?:     number;
+        stillRetrying?:     boolean;
+        exhausted?:         boolean;
+        nextRetryAtUtc?:    string;
       }>(`/tenant/api/v1/admin/tenants/${tenantId}/provisioning/retry`, {});
       safeRevalidateTag(CACHE_TAGS.tenants);
       return raw;
@@ -609,6 +619,10 @@ export const controlCenterServerApi = {
       hostname?:          string;
       error?:             string;
       failureStage?:      string;
+      attemptNumber?:     number;
+      stillRetrying?:     boolean;
+      exhausted?:         boolean;
+      nextRetryAtUtc?:    string;
     }> => {
       const raw = await apiClient.post<{
         success:            boolean;
@@ -616,6 +630,10 @@ export const controlCenterServerApi = {
         hostname?:          string;
         error?:             string;
         failureStage?:      string;
+        attemptNumber?:     number;
+        stillRetrying?:     boolean;
+        exhausted?:         boolean;
+        nextRetryAtUtc?:    string;
       }>(`/tenant/api/v1/admin/tenants/${tenantId}/verification/retry`, {});
       safeRevalidateTag(CACHE_TAGS.tenants);
       return raw;
