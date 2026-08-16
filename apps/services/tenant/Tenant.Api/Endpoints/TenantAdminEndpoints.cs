@@ -171,7 +171,12 @@ public static class TenantAdminEndpoints
                 success            = result.Success,
                 provisioningStatus = result.ProvisioningStatus,
                 hostname           = result.Hostname,
+                failureStage       = result.FailureStage,
                 error              = result.Error,
+                attemptNumber      = result.AttemptNumber,
+                stillRetrying      = result.StillRetrying,
+                exhausted          = result.Exhausted,
+                nextRetryAtUtc     = result.NextRetryAtUtc,
             });
         });
 
@@ -205,6 +210,10 @@ public static class TenantAdminEndpoints
                 hostname           = result.Hostname,
                 failureStage       = result.FailureStage,
                 error              = result.Error,
+                attemptNumber      = result.AttemptNumber,
+                stillRetrying      = result.StillRetrying,
+                exhausted          = result.Exhausted,
+                nextRetryAtUtc     = result.NextRetryAtUtc,
             });
         });
     }

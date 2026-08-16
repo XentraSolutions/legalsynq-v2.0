@@ -96,4 +96,8 @@ public record ProvisioningRetryResult(
     string  ProvisioningStatus,
     string? Hostname,
     string? FailureStage,
-    string? Error);
+    string? Error,
+    int? AttemptNumber = null,
+    bool? StillRetrying = null,
+    bool? Exhausted = null,
+    DateTime? NextRetryAtUtc = null);

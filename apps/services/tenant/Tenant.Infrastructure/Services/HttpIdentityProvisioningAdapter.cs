@@ -262,7 +262,11 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
                 ProvisioningStatus: TryGetString(root, "provisioningStatus") ?? "Unknown",
                 Hostname:           TryGetString(root, "hostname"),
                 FailureStage:       TryGetString(root, "failureStage"),
-                Error:              TryGetString(root, "error"));
+                Error:              TryGetString(root, "error"),
+                AttemptNumber:      TryGetInt(root, "attemptNumber"),
+                StillRetrying:      TryGetNullableBool(root, "stillRetrying"),
+                Exhausted:          TryGetNullableBool(root, "exhausted"),
+                NextRetryAtUtc:     TryGetDateTime(root, "nextRetryAtUtc"));
         }
         catch (OperationCanceledException)
         {
@@ -309,5 +313,31 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
             if (el.ValueKind == JsonValueKind.False) return false;
         }
         return false;
+    }
+
+    private static bool? TryGetNullableBool(JsonElement root, string prop)
+    {
+        if (!root.TryGetProperty(prop, out var el)) return null;
+        if (el.ValueKind == JsonValueKind.True) return true;
+        if (el.ValueKind == JsonValueKind.False) return false;
+        return null;
+    }
+
+    private static int? TryGetInt(JsonElement root, string prop)
+    {
+        if (root.TryGetProperty(prop, out var el) &&
+            el.ValueKind == JsonValueKind.Number &&
+            el.TryGetInt32(out var value))
+            return value;
+        return null;
+    }
+
+    private static DateTime? TryGetDateTime(JsonElement root, string prop)
+    {
+        if (root.TryGetProperty(prop, out var el) &&
+            el.ValueKind == JsonValueKind.String &&
+            el.TryGetDateTime(out var value))
+            return value;
+        return null;
     }
 }

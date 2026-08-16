@@ -57,7 +57,7 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 
 ## External Integrations
 
-- **Identity service** — `HttpIdentityProvisioningAdapter` checks `GET /api/internal/users/account-exists` before accepting a registration and calls `POST /api/internal/tenant-provisioning/provision` for canonical tenant create
+- **Identity service** — `HttpIdentityProvisioningAdapter` checks `GET /api/internal/users/account-exists` before accepting a registration, calls `POST /api/internal/tenant-provisioning/provision` for canonical tenant create, and reads/proxies DNS provisioning status and retry metadata for Control Center
 - **Documents service** — logo registration
 - **Commerce** — `ICommerceLifecycleNotifier` wired for `TenantCreated`, `TenantActivated`, `TenantSuspended` events (`Enabled: false` by default)
 - **Notifications service** — branded registration-submitted and registration-declined emails through the canonical producer endpoint
@@ -65,18 +65,9 @@ Tenant.Infrastructure/ DbContext (TenantDb), repositories, EF migrations,
 Self-registration is disabled by default (`TenantRegistration__Enabled=false`). A
 submission creates only a `PendingReview/NotStarted` application. Approval and
 provisioning remain separate; DNS failure leaves the application `Approved/Failed`.
-Submissions are rejected when the proposed administrator email already belongs
-to an Identity account or to another pending registration.
-Successful submissions send a pending-review confirmation email. Declines send
-the applicant a decision email containing the recorded reason. Notification
-delivery is best-effort and does not roll back the registration state. These
-emails embed the LegalSynq logo as an inline attachment, so rendering does not
-depend on tenant DNS or an externally hosted image.
-The checked-in Development environment override enables self-registration locally.
-
-Self-registration is disabled by default (`TenantRegistration__Enabled=false`). A
-submission creates only a `PendingReview/NotStarted` application. Approval and
-provisioning remain separate; DNS failure leaves the application `Approved/Failed`.
+Approved registrations can retry incomplete DNS provisioning through the admin
+retry endpoint, and tenant admin detail includes the current hostname, failure
+stage, verification attempt count, next retry time, and retry exhaustion state.
 Submissions are rejected when the proposed administrator email already belongs
 to an Identity account or to another pending registration.
 Successful submissions send a pending-review confirmation email. Declines send
