@@ -6,4 +6,5 @@ public interface IDnsService
     string BuildHostname(string tenantSlug);
     Task<bool> CreateSubdomainAsync(string subdomain, CancellationToken ct = default);
     Task<bool> DeleteSubdomainAsync(string subdomain, CancellationToken ct = default);
+    Task<bool> RecordExistsAsync(string hostname, CancellationToken ct = default);
 }

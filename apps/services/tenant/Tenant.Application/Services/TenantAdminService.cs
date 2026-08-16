@@ -581,18 +581,18 @@ public class TenantAdminService : ITenantAdminService
             : null;
     }
 
-    private static string NormalizeProvisioningStatus(string? identityStatus, TenantProvisioningStatus tenantStatus)
+    private static string? NormalizeProvisioningStatus(string? identityStatus, TenantProvisioningStatus tenantStatus)
     {
         if (!string.IsNullOrWhiteSpace(identityStatus))
             return identityStatus.Trim();
 
         return tenantStatus switch
         {
-            TenantProvisioningStatus.Unknown => "Pending",
+            TenantProvisioningStatus.Unknown => null,
             TenantProvisioningStatus.InProgress => "InProgress",
             TenantProvisioningStatus.Provisioned => "Provisioned",
             TenantProvisioningStatus.Failed => "Failed",
-            _ => "Pending",
+            _ => null,
         };
     }
 

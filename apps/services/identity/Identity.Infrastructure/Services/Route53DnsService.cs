@@ -52,19 +52,33 @@ public sealed class Route53DnsService : IDnsService, IDisposable
         await DeleteConflictingRecordsAsync(fqdn, ct);
 
         var aChangeId = await UpsertRecordAsync(fqdn, ChangeAction.UPSERT, ct);
-        var aSuccess = !string.IsNullOrWhiteSpace(aChangeId) &&
-            await WaitForChangeAsync(aChangeId, fqdn, ct);
+        if (string.IsNullOrWhiteSpace(aChangeId))
+            return false;
 
-        if (aSuccess && !string.IsNullOrWhiteSpace(_opts.TxtVerificationValue))
+        var aInsync = await WaitForChangeAsync(aChangeId, fqdn, ct);
+        if (!aInsync)
         {
-            var txtChangeId = await UpsertTxtRecordAsync(fqdn, ChangeAction.UPSERT, ct);
-            var txtSuccess = !string.IsNullOrWhiteSpace(txtChangeId) &&
-                await WaitForChangeAsync(txtChangeId, fqdn, ct);
-            if (!txtSuccess)
-                _log.LogWarning("A record created but TXT verification record failed for {Fqdn}", fqdn);
+            _log.LogWarning(
+                "Route53 accepted DNS change {ChangeId} for {Fqdn}, but it was not confirmed INSYNC before verification",
+                aChangeId, fqdn);
         }
 
-        return aSuccess;
+        if (!string.IsNullOrWhiteSpace(_opts.TxtVerificationValue))
+        {
+            var txtChangeId = await UpsertTxtRecordAsync(fqdn, ChangeAction.UPSERT, ct);
+            if (string.IsNullOrWhiteSpace(txtChangeId))
+            {
+                _log.LogWarning("A record created but TXT verification record failed for {Fqdn}", fqdn);
+            }
+            else if (!await WaitForChangeAsync(txtChangeId, fqdn, ct))
+            {
+                _log.LogWarning(
+                    "Route53 accepted TXT verification change {ChangeId} for {Fqdn}, but it was not confirmed INSYNC before verification",
+                    txtChangeId, fqdn);
+            }
+        }
+
+        return true;
     }
 
     public async Task<bool> DeleteSubdomainAsync(string subdomain, CancellationToken ct = default)
@@ -82,6 +96,46 @@ public sealed class Route53DnsService : IDnsService, IDisposable
         }
 
         return deleted;
+    }
+
+    public async Task<bool> RecordExistsAsync(string hostname, CancellationToken ct = default)
+    {
+        var fqdn = hostname.Trim().TrimEnd('.').ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(fqdn))
+            return false;
+
+        try
+        {
+            var targetType = RRType.FindValue(_opts.RecordType);
+            var response = await _route53.ListResourceRecordSetsAsync(new ListResourceRecordSetsRequest
+            {
+                HostedZoneId = _opts.HostedZoneId,
+                StartRecordName = fqdn,
+                StartRecordType = targetType,
+                MaxItems = "1"
+            }, ct);
+
+            var record = response.ResourceRecordSets.FirstOrDefault();
+            var exists = record is not null &&
+                record.Type == targetType &&
+                string.Equals(record.Name.TrimEnd('.'), fqdn, StringComparison.OrdinalIgnoreCase);
+
+            if (exists)
+            {
+                _log.LogInformation("Route53 authoritative record check passed for {Fqdn}", fqdn);
+            }
+            else
+            {
+                _log.LogWarning("Route53 authoritative record check did not find {Type} for {Fqdn}", targetType.Value, fqdn);
+            }
+
+            return exists;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Route53 authoritative record check failed for {Fqdn}", fqdn);
+            return false;
+        }
     }
 
     public string BuildHostname(string tenantSlug)

@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Tenant.Application.Interfaces;
@@ -15,23 +16,26 @@ namespace Tenant.Infrastructure.Services;
 ///   - Retry provisioning:   POST /api/admin/tenants/{id}/provisioning/retry
 ///   - Retry verification:   POST /api/admin/tenants/{id}/verification/retry
 ///
-/// Auth:    X-Provisioning-Token header sent to Identity for internal provisioning.
-///          Retry endpoints use the "IdentityInternal" HttpClient (mTLS/trusted network).
+    /// Auth:    X-Provisioning-Token header sent to Identity for internal provisioning.
+    ///          Retry endpoints forward the platform admin Authorization header.
 /// Timeout: 30 s for initial provisioning; 15 s for retries.
 /// Failure: never throws — returns result with Success=false.
 /// </summary>
 public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
 {
     private readonly IHttpClientFactory                          _httpClientFactory;
+    private readonly IHttpContextAccessor                        _httpContextAccessor;
     private readonly IConfiguration                             _configuration;
     private readonly ILogger<HttpIdentityProvisioningAdapter>   _logger;
 
     public HttpIdentityProvisioningAdapter(
         IHttpClientFactory                          httpClientFactory,
+        IHttpContextAccessor                        httpContextAccessor,
         IConfiguration                             configuration,
         ILogger<HttpIdentityProvisioningAdapter>   logger)
     {
         _httpClientFactory = httpClientFactory;
+        _httpContextAccessor = httpContextAccessor;
         _configuration     = configuration;
         _logger            = logger;
     }
@@ -232,6 +236,7 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
         try
         {
             using var client = _httpClientFactory.CreateClient("IdentityInternal");
+            AddAuthorizationHeader(client);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(15));
@@ -297,6 +302,16 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
     }
 
     // ── JSON helpers ──────────────────────────────────────────────────────────
+
+    private void AddAuthorizationHeader(HttpClient client)
+    {
+        var authHeader = _httpContextAccessor.HttpContext?.Request.Headers.Authorization.ToString();
+        if (!string.IsNullOrWhiteSpace(authHeader))
+        {
+            client.DefaultRequestHeaders.Remove("Authorization");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeader);
+        }
+    }
 
     private static string? TryGetString(JsonElement root, string prop)
     {

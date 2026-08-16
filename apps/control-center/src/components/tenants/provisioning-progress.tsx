@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   getTenantProvisioningAction,
   retryProvisioningAction,
@@ -26,6 +26,7 @@ export interface ProvisioningProgressState {
   error?: string;
   failureStage?: string;
   retryCount: number;
+  verificationAttemptCount?: number;
   timedOut: boolean;
 }
 
@@ -48,21 +49,17 @@ export function ProvisioningProgress({
     hostname: initialHostname,
     error: initialError,
     retryCount: 0,
+    verificationAttemptCount: undefined,
     timedOut: false,
   });
   const [pollCount, setPollCount] = useState(0);
+  const [settled, setSettled] = useState(false);
   const settledRef = useRef(false);
   const onSettledRef = useRef(onSettled);
 
   useEffect(() => {
     onSettledRef.current = onSettled;
   }, [onSettled]);
-
-  const progress = useMemo(() => {
-    if (ACTIVE_STATUSES.has(state.status)) return 100;
-    if (state.status === 'Failed' || state.timedOut) return 100;
-    return Math.min(92, 8 + Math.round((pollCount / maxPolls) * 84));
-  }, [maxPolls, pollCount, state.status, state.timedOut]);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,6 +69,7 @@ export function ProvisioningProgress({
       hostname: initialHostname,
       error: initialError,
       retryCount: 0,
+      verificationAttemptCount: undefined,
       timedOut: false,
     };
     let pollCounter = 0;
@@ -109,6 +107,7 @@ export function ProvisioningProgress({
           error: detail.provisioningFailureReason,
           failureStage: detail.provisioningFailureStage,
           retryCount: currentState.retryCount,
+          verificationAttemptCount: detail.verificationAttemptCount,
           timedOut: false,
         };
 
@@ -127,6 +126,7 @@ export function ProvisioningProgress({
               error: retryResult.error,
               failureStage: retryResult.failureStage ?? next.failureStage,
               retryCount,
+              verificationAttemptCount: retryResult.attemptNumber ?? next.verificationAttemptCount,
               timedOut: false,
             };
             setState(currentState);
@@ -166,19 +166,21 @@ export function ProvisioningProgress({
     function settle(next: ProvisioningProgressState) {
       if (cancelled) return;
       settledRef.current = true;
+      setSettled(true);
       currentState = next;
       setState(next);
       onSettledRef.current?.(next);
     }
 
     settledRef.current = false;
+    setSettled(false);
     setState(currentState);
     setPollCount(0);
 
     if (ACTIVE_STATUSES.has(currentState.status)) {
       settle(currentState);
     } else {
-      timer = setTimeout(tick, pollIntervalMs);
+      void tick();
     }
 
     return () => {
@@ -187,15 +189,17 @@ export function ProvisioningProgress({
     };
   }, [autoRetry, initialError, initialHostname, initialStatus, maxPolls, maxRetries, pollIntervalMs, tenantId]);
 
+  const isRetryingFailure = autoRetry && state.status === 'Failed' && !settled && state.retryCount < maxRetries;
   const isActive = ACTIVE_STATUSES.has(state.status);
-  const isWaiting = PENDING_STATUSES.has(state.status) && !state.timedOut;
-  const tone = isActive ? 'green' : state.status === 'Failed' || state.timedOut ? 'red' : 'amber';
+  const isWaiting = (PENDING_STATUSES.has(state.status) || isRetryingFailure) && !state.timedOut;
+  const tone = isActive ? 'green' : state.status === 'Failed' && !isRetryingFailure || state.timedOut ? 'red' : 'amber';
+  const progress = progressFor(state.status, pollCount, maxPolls, state.timedOut, isRetryingFailure);
 
   return (
     <div className={`rounded-md border px-4 py-3 ${toneClass(tone)}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold">{titleFor(state.status, state.timedOut)}</p>
+          <p className="text-xs font-semibold">{titleFor(state.status, state.timedOut, isRetryingFailure)}</p>
           {state.hostname && (
             <p className="mt-1 font-mono text-[11px]">
               {state.hostname}
@@ -217,17 +221,43 @@ export function ProvisioningProgress({
         />
       </div>
 
-      <div className="mt-2 flex items-center justify-between text-[11px]">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px]">
+        <span>Status: {formatStatus(state.status)}</span>
         <span>{isWaiting ? `Check ${Math.min(pollCount + 1, maxPolls)} of ${maxPolls}` : 'Final status'}</span>
-        <span>{state.retryCount > 0 ? `${state.retryCount}/${maxRetries} retries used` : 'No retries used'}</span>
+        <span>{formatAttempts(state.verificationAttemptCount, state.retryCount, maxRetries)}</span>
       </div>
     </div>
   );
 }
 
-function titleFor(status: string, timedOut: boolean): string {
+function formatStatus(status: string): string {
+  return status === 'InProgress' ? 'In Progress' : status || 'Pending';
+}
+
+function formatAttempts(verificationAttemptCount: number | undefined, retryCount: number, maxRetries: number): string {
+  if (verificationAttemptCount != null) {
+    return `${verificationAttemptCount} verification attempt${verificationAttemptCount === 1 ? '' : 's'}`;
+  }
+
+  return retryCount > 0 ? `${retryCount}/${maxRetries} retries used` : 'No retries used';
+}
+
+function progressFor(
+  status: string,
+  pollCount: number,
+  maxPolls: number,
+  timedOut: boolean,
+  retryingFailure: boolean,
+): number {
+  if (status === 'Active') return 100;
+  if ((status === 'Failed' && !retryingFailure) || timedOut) return 100;
+  return Math.min(92, 8 + Math.round((pollCount / maxPolls) * 84));
+}
+
+function titleFor(status: string, timedOut: boolean, retryingFailure: boolean): string {
   if (timedOut) return 'DNS provisioning wait limit reached';
   if (status === 'Active') return 'DNS provisioning complete';
+  if (retryingFailure) return 'Retrying DNS provisioning';
   if (status === 'Failed') return 'DNS provisioning needs attention';
   if (status === 'Verifying') return 'Verifying DNS and tenant portal';
   if (status === 'Provisioned') return 'DNS record created';
