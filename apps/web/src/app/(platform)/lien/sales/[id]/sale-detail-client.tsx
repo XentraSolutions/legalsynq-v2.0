@@ -45,8 +45,8 @@ export function LienSaleDetailClient({ id }: { id: string }) {
 
   async function addLiens(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const values = String(form.get('liens') ?? '')
+    const formEl = event.currentTarget;
+    const values = String(new FormData(formEl).get('liens') ?? '')
       .split(/[\n,]+/)
       .map(value => value.trim())
       .filter(Boolean);
@@ -56,7 +56,7 @@ export function LienSaleDetailClient({ id }: { id: string }) {
     setError(null);
     try {
       await lienSalesService.addLiens(id, { liens: values });
-      event.currentTarget.reset();
+      formEl.reset();
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add liens.');
