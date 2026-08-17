@@ -29,7 +29,7 @@ const columns = data?.columns
     const isCurrencyField =
       /amt|amount|price|cost|fee|total|reduction|roi|profit/i.test(item.key);
 
-    const isNoteField = item.key.toLowerCase().includes("note");
+    const isNoteField = item.key.toLowerCase().includes("note") || item.key.toLowerCase().includes("activity");
 
     const isDefaultMinWidth =
       item.key.includes("facility") ||
@@ -56,7 +56,7 @@ const columns = data?.columns
 
         // Handle note fields
         if (isNoteField) {
-          return <NoteCell value={value} />;
+          return <NoteCell maxLength={60} value={value} />;
         }
 
         let formattedValue = value;
@@ -72,7 +72,7 @@ const columns = data?.columns
         }
 
         return (
-          <span className="text-sm text-gray-700">
+          <span className="text-sm text-gray-700 whitespace-nowrap">
             {formattedValue}
           </span>
         );
@@ -89,17 +89,16 @@ const columns = data?.columns
         columns={columns}
         loadingData={isLoading}
         report={{ ...data, ...pagination }}
-        onBack={() => router.push("/lien/reports/auto-generated")}
+        onBack={() => router.back()}
         onPaginate={(e) => handlePageChange}
         onExport={() => {
-          console.log("hehehe");
           exportHistory({
             id: id,
           });
         }}
       />
       <button
-        onClick={() => router.push("/lien/reports/auto-generated")}
+        onClick={() => router.back()}
         className="text-primary text-sm"
       >
         Back to Reports

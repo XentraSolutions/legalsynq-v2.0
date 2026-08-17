@@ -15,7 +15,7 @@ import {
 } from "@/hooks/use-casenote-history";
 import { PaginationMeta } from "@/lib/contacts";
 import { Tabs } from "@/components/ui/tabs";
-import { NoteCell } from "../components/note-cell";
+import { NoteCell } from "../../components/note-cell";
 const TABS = [
   { key: "TRACKING", label: "Case Tracking Notes" },
   { key: "FEED", label: "Feed Notes" },
@@ -66,7 +66,7 @@ export default function HistoryNotesPage() {
         accessorFn: (row) => row.caseName,
         meta: { minWidth: "150px" },
         cell: ({ row }) => (
-          <span className="text-sm">{row.original.caseName}</span>
+          <span className="text-sm whitespace-nowrap">{row.original.caseName}</span>
         ),
       },
       {
@@ -74,7 +74,7 @@ export default function HistoryNotesPage() {
         header: "Note Type",
         accessorFn: (row) => row.noteType,
         cell: ({ row }) => (
-          <span className="text-sm">{row.original.noteType}</span>
+          <span className="text-sm whitespace-nowrap">{row.original.noteType}</span>
         ),
       },
       {
@@ -82,7 +82,7 @@ export default function HistoryNotesPage() {
         header: "Note Author",
         accessorFn: (row) => row.noteAuthor,
         cell: ({ row }) => (
-          <span className="text-sm">{row.original.noteAuthor}</span>
+          <span className="text-sm whitespace-nowrap">{row.original.noteAuthor}</span>
         ),
       },
       {
@@ -101,6 +101,15 @@ export default function HistoryNotesPage() {
   return (
     <div className="space-y-4">
       <>
+       <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200">
+        <div>
+          <h2 className="text-lg font-semibold">Case Notes History</h2>
+          <p className="text-sm text-gray-500">
+            Auto generated report
+          </p>
+        </div>
+      </div>
+
         <Tabs
           bordered={false}
           defaultTab={selectedType}
@@ -151,9 +160,9 @@ export default function HistoryNotesPage() {
             {/* LEFT */}
             <button
               onClick={() => router.back()}
-              className="px-3 py-2 border border-gray-200 rounded-lg text-sm self-start hover:shadow-sm"
+              className="px-3 py-2 border border-gray-200 text-[#0A0A0A] font-semibold rounded-lg text-sm self-start hover:shadow-sm"
             >
-              Go Back
+              Back
             </button>
             {/* RIGHT */}
             <div className="flex flex-wrap gap-2 sm:gap-2 sm:flex-row sm:items-center sm:justify-end">
@@ -171,7 +180,7 @@ export default function HistoryNotesPage() {
                     },
                   })
                 }
-                className="px-3 py-2 border border-gray-200 text-blue-500 rounded-lg text-sm hover:shadow-sm"
+                className="px-3 py-2 border border-gray-200 bg-[#F5F5F5] text-[#0A0A0A] font-semibold rounded-lg text-sm hover:shadow-sm"
               >
                 {exporting ? "Exporting..." : "Export CSV"}
               </button>

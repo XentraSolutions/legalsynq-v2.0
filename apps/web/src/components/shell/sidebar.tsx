@@ -29,7 +29,7 @@ function getNavItemKey(item: NavItem, index: number): string {
 
 // Helper: Check if a nav item is currently active
 function isItemActive(item: NavItem, activeNavItem: NavItem | null): boolean {
-  return item.href ? item.href === activeNavItem?.href : false;
+  return item.href ? item.href === activeNavItem?.href && activeNavItem?.href?.startsWith(item.href) : false;
 }
 
 export function Sidebar() {
@@ -102,8 +102,10 @@ export function Sidebar() {
   ];
 
   const activeNavItem =
-    allNavItems.find((item) => currentPathname === item.href) ?? null;
-
+    allNavItems.find((item) => {
+  if (!item.href) return false;
+  return currentPathname === item.href || (item.href !== '/' && currentPathname.startsWith(item.href));
+}) ?? null;
   const bottomNavItems = GLOBAL_BOTTOM_NAV.items
     .filter(
       (item) => !(selectedProductId === "lien" && item.href === "/my-work"),
@@ -417,9 +419,16 @@ function SidebarDropdownItem({
   isActive: boolean;
 }) {
   const children = item.children ?? [];
-  const isChildActive = children.some(
-    (child) => child.href === activeNavItem?.href,
-  );
+  const activeHref = activeNavItem?.href;
+
+  const isChildActive = children.some((child) => {
+  if (!child.href || !activeHref) return false;
+  
+    return (
+        child.href === activeHref || 
+        (child.href !== '/' && activeHref.startsWith(child.href))
+      );
+  });
   const shouldBeOpen = isSelfActive || isChildActive;
   const [open, setOpen] = useState(shouldBeOpen);
 
@@ -447,7 +456,7 @@ function SidebarDropdownItem({
             activeColor={activeColor}
             activeBg={activeBg}
             badgeCount={child.badgeKey ? badges[child.badgeKey] : undefined}
-            isActive={child.href === activeNavItem?.href}
+            isActive={isChildActive}
           />
         ))}
       </>

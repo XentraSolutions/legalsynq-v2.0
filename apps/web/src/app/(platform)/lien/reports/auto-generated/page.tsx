@@ -24,9 +24,19 @@ export default function HistoryNotesPage() {
           </div>
         </div>
       ) : (
+        <div>
+             <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200 mb-6">
+              <div>
+                <h2 className="text-lg font-semibold">Auto generated report</h2>
+
+               <p className="text-sm text-gray-500">
+                {reports?.items?.length ? reports?.items?.length + 1: 1} generated templates
+               </p>
+              </div>
+            </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div
-            onClick={() => router.push(`/lien/reports/notes-history`)}
+            onClick={() => router.push(`/lien/reports/auto-generated/notes-history`)}
             className="border border-gray-200 rounded-xl p-3 py-4 bg-white hover:bg-gray-50 cursor-pointer transition-colors"
           >
             <div className="text-sm font-medium text-gray-900">
@@ -49,6 +59,7 @@ export default function HistoryNotesPage() {
                 <div className="text-xs text-gray-500 mt-1">System Report</div>
               </div>
             ))}
+        </div>
         </div>
       )}
     </div>

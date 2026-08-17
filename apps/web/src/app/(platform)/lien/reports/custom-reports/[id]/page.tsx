@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import ReportDisplay from "../components/report-display";
 import { ReportTemplate } from "@/lib/liens/lien-report.types";
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import { PaginationMeta } from "@/lib/contacts";
 import { useLienReport } from "@/hooks/use-report";
+import ReportDisplay from "../../components/report-display";
 
 const SAMPLE_REPORTS: any[] = [
   {
@@ -50,13 +50,7 @@ export default function ReportDetailsPage() {
   if (!report) {
     return (
       <div className="p-6 space-y-2">
-        <p className="text-sm text-gray-500">Report not found</p>
-        <button
-          onClick={() => router.push("/lien/reports")}
-          className="text-primary text-sm"
-        >
-          Back to Reports
-        </button>
+        <p className="text-sm text-gray-500">Report not found</p>       
       </div>
     );
   }
@@ -66,7 +60,7 @@ export default function ReportDetailsPage() {
       {template && (
         <ReportDisplay
           report={{ ...report, ...template, reportId: id?.toString() ?? "" }}
-          onBack={() => router.push("/lien/reports")}
+          onBack={() => router.back()}
           onPaginate={(e) => setPage(e.page)}
           loadingData={isLoadingData}
         />
