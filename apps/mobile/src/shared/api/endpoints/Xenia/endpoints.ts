@@ -11,7 +11,8 @@ import {
   xeniaBootstrapSchema,
   xeniaConversationListSchema,
   xeniaConversationSchema,
-  xeniaMessageSchema,
+  normalizeXeniaMessage,
+  xeniaMessageResponseSchema,
   xeniaPreferencesSchema,
   xeniaStreamEventSchema,
 } from './schemas';
@@ -110,7 +111,12 @@ export const XeniaApi = {
     const response = await apiClient.post(`${BASE_PATH}/conversations/${id}/messages`, body, {
       timeout: XENIA_MESSAGE_TIMEOUT_MS,
     });
-    return xeniaMessageSchema.parse(response.data);
+    const message = xeniaMessageResponseSchema.parse(response.data);
+    return normalizeXeniaMessage(
+      message,
+      id,
+      message.id ?? body.clientMessageId ?? `${id}-${message.role}-${message.createdAtUtc}`
+    );
   },
 
   async getPreferences(): Promise<XeniaPreferences> {
@@ -162,7 +168,15 @@ export const XeniaApi = {
         const parsed = parseEvent(event);
         if (!parsed?.message) throw new Error('The stream completed without a message.');
         source.close();
-        callbacks.onCompleted(parsed.message);
+        callbacks.onCompleted(
+          normalizeXeniaMessage(
+            parsed.message,
+            id,
+            parsed.message.id ??
+              body.clientMessageId ??
+              `${id}-${parsed.message.role}-${parsed.message.createdAtUtc}`
+          )
+        );
       } catch (error) {
         source.close();
         callbacks.onError(error instanceof Error ? error : new Error('Invalid stream response.'));

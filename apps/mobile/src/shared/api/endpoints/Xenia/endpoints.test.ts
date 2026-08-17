@@ -34,4 +34,29 @@ describe('XeniaApi.createMessage', () => {
     );
     expect(XENIA_MESSAGE_TIMEOUT_MS).toBe(120000);
   });
+
+  it('normalizes the compact message response documented by Xenia', async () => {
+    const response = {
+      data: {
+        role: 'assistant',
+        content: 'iteration one acknowledged.',
+        provider: 'openai',
+        finishReason: 'stop',
+        createdAtUtc: '2026-08-17T12:55:58.9873222Z',
+      },
+    };
+    apiClient.post = jest.fn(() => Promise.resolve(response));
+
+    await expect(
+      XeniaApi.createMessage('conversation-1', {
+        clientMessageId: 'lsv3-960-three-iteration-1',
+        content: 'Iteration 1',
+      })
+    ).resolves.toEqual({
+      ...response.data,
+      id: 'lsv3-960-three-iteration-1',
+      conversationId: 'conversation-1',
+      citations: [],
+    });
+  });
 });
