@@ -44,7 +44,7 @@ export interface UpdateLienSettlementRequest {
 export interface CreateLienSettlementResponse extends SettlementGenericResponse {}
 
 export interface UpdateSettlementRequest {
-  id:string;
+  id?:string;
   caseId: string;
   payments: string[];}
 
