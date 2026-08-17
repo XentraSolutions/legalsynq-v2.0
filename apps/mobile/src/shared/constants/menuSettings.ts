@@ -2,7 +2,7 @@ export const MENU_VISIBILITY_OPTIONS = [
   { key: 'dashboard', label: 'Dashboard', defaultVisible: true },
   { key: 'xeniaAi', label: 'Xenia AI', defaultVisible: true },
   { key: 'buying', label: 'Buying', defaultVisible: true },
-  { key: 'selling', label: 'Selling', defaultVisible: false },
+  { key: 'selling', label: 'Selling', defaultVisible: true },
   { key: 'taskManager', label: 'Task Manager', defaultVisible: false },
   { key: 'cases', label: 'Cases', defaultVisible: true },
   { key: 'liens', label: 'Liens', defaultVisible: true },
