@@ -13,6 +13,7 @@ public sealed class SaveSellingLienInformationRequest
     public DateOnly? EndServiceDate { get; init; }
     public string? ListingVisibility { get; init; }
     public string? Notes { get; init; }
+    public System.Text.Json.JsonElement ReceivableDueDate { get; init; }
 }
 
 public sealed class SaveSellingCaseInformationRequest

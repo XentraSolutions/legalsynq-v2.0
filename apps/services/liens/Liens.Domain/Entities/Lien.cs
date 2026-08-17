@@ -36,6 +36,7 @@ public class Lien : AuditableEntity
 
     public DateOnly? IncidentDate { get; private set; }
     public DateOnly? PurchaseDate { get; private set; }
+    public DateOnly? ReceivableDueDate { get; private set; }
     public DateOnly? InitialServiceDate { get; private set; }
     public DateOnly? EndServiceDate { get; private set; }
     public string? IsBulk { get; private set; }
@@ -169,6 +170,15 @@ public class Lien : AuditableEntity
     {
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetReceivableDueDate(DateOnly? receivableDueDate, Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        ReceivableDueDate = receivableDueDate;
+        Touch(updatedByUserId);
     }
 
     public static Lien Create(

@@ -75,6 +75,7 @@ public static class SellingAnalyticsEndpoints
         analytics.MapGet("/aging", GetAging);
         analytics.MapGet("/concentration", GetConcentration);
         analytics.MapGet("/filter-options", GetFilterOptions);
+        analytics.MapGet("/receivables-dashboard", GetReceivablesDashboard);
         analytics.MapPost("/export", Export);
 
         group.MapGet("/liens/{lienId:guid}/analytics", GetLienAnalytics)
@@ -204,6 +205,24 @@ public static class SellingAnalyticsEndpoints
     {
         var filter = ParseFilter(request);
         var result = await service.GetFilterOptionsAsync(RequireTenantId(ctx), RequireOrgId(ctx), filter, ct);
+        return Results.Ok(result);
+    }
+
+    private static async Task<IResult> GetReceivablesDashboard(
+        HttpRequest request,
+        HttpResponse response,
+        ISellingReceivablesDashboardService service,
+        ICurrentRequestContext ctx,
+        TimeProvider timeProvider,
+        CancellationToken ct = default)
+    {
+        var dashboardRequest = ParseReceivablesDashboardRequest(request, timeProvider);
+        var result = await service.GetAsync(
+            RequireTenantId(ctx),
+            RequireOrgId(ctx),
+            dashboardRequest,
+            ct);
+        response.Headers.CacheControl = "no-store";
         return Results.Ok(result);
     }
 
@@ -368,6 +387,56 @@ public static class SellingAnalyticsEndpoints
 
         AddError(errors, key, $"{key} must be ISO yyyy-MM-dd.");
         return null;
+    }
+
+    private static SellingReceivablesDashboardRequest ParseReceivablesDashboardRequest(
+        HttpRequest request,
+        TimeProvider timeProvider)
+    {
+        var errors = new Dictionary<string, string[]>();
+        var utcToday = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+        var asOfDate = ParseDate(request, "asOfDate", errors) ?? utcToday;
+        if (asOfDate != utcToday)
+            AddError(errors, "asOfDate", "asOfDate must be the current UTC date until historical snapshots are available.");
+        var months = ParseBoundedInt(request, "months", 6, 1, 12, errors);
+        var topBuyerLimit = ParseBoundedInt(request, "topBuyerLimit", 5, 1, 20, errors);
+
+        if (errors.Count > 0)
+            throw new ValidationException("Receivables dashboard request is invalid.", errors);
+
+        return new SellingReceivablesDashboardRequest
+        {
+            AsOfDate = asOfDate,
+            Months = months,
+            TopBuyerLimit = topBuyerLimit,
+        };
+    }
+
+    private static int ParseBoundedInt(
+        HttpRequest request,
+        string key,
+        int defaultValue,
+        int minimum,
+        int maximum,
+        Dictionary<string, string[]> errors)
+    {
+        var value = FirstQueryValue(request, key);
+        if (string.IsNullOrWhiteSpace(value))
+            return defaultValue;
+
+        if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed))
+        {
+            AddError(errors, key, $"{key} must be an integer from {minimum} to {maximum}.");
+            return defaultValue;
+        }
+
+        if (parsed < minimum || parsed > maximum)
+        {
+            AddError(errors, key, $"{key} must be from {minimum} to {maximum}.");
+            return defaultValue;
+        }
+
+        return parsed;
     }
 
     private static bool? ParseBool(HttpRequest request, string key, Dictionary<string, string[]> errors)

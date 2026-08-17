@@ -239,6 +239,7 @@ public static class SellingV2Endpoints
                 lien.Status,
                 lien.InitialServiceDate,
                 lien.EndServiceDate,
+                lien.ReceivableDueDate,
                 lien.ListingVisibility,
                 lien.Notes,
                 lien.BuyerMessage,
@@ -320,6 +321,8 @@ public static class SellingV2Endpoints
         if (sellerStatus is null) return ValidationError("sellerStatus", "sellerStatus must be Pending or Internal during intake.");
         var visibility = NormalizeVisibility(request.ListingVisibility);
         if (visibility is null) return ValidationError("listingVisibility", "listingVisibility must be Public or Private.");
+        if (!TryParseOptionalDate(request.ReceivableDueDate, "receivableDueDate", out var receivableDueDate, out var dueDateError))
+            return dueDateError!;
 
         lien.Update(
             lien.LienType, lien.OriginalAmount, userId, lien.ExternalReference,
@@ -327,9 +330,19 @@ public static class SellingV2Endpoints
             lien.IncidentDate, request.InitialServiceDate, request.EndServiceDate,
             lien.IsBulk, lien.IsServicing, lien.Description, request.Notes);
         lien.UpdateSellingAnalyticsFields(userId, sellerStatus: sellerStatus, listingVisibility: visibility);
+        if (request.ReceivableDueDate.ValueKind != JsonValueKind.Undefined)
+            lien.SetReceivableDueDate(receivableDueDate, userId);
         AddActivity(db, lien, userId, "Selling lien information updated.");
         await db.SaveChangesAsync(ct);
-        return Results.Ok(new { lienId = lien.Id, lien.SellerStatus, lien.InitialServiceDate, lien.EndServiceDate, lien.ListingVisibility });
+        return Results.Ok(new
+        {
+            lienId = lien.Id,
+            lien.SellerStatus,
+            lien.InitialServiceDate,
+            lien.EndServiceDate,
+            lien.ReceivableDueDate,
+            lien.ListingVisibility,
+        });
     }
 
     private static async Task<IResult> SaveCaseInformation(
@@ -1553,6 +1566,28 @@ public static class SellingV2Endpoints
         ? null
         : Results.Conflict(new { error = new { code = "intake_locked", message = "Lien intake can be changed only while sellerStatus is Pending or Internal." } });
     private static string? NormalizeVisibility(string? visibility) => SellingListingVisibility.All.FirstOrDefault(candidate => string.Equals(candidate, visibility?.Trim(), StringComparison.OrdinalIgnoreCase));
+    private static bool TryParseOptionalDate(
+        JsonElement value,
+        string key,
+        out DateOnly? date,
+        out IResult? error)
+    {
+        date = null;
+        error = null;
+        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            return true;
+
+        if (value.ValueKind == JsonValueKind.String &&
+            DateOnly.TryParseExact(value.GetString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+        {
+            date = parsed;
+            return true;
+        }
+
+        error = ValidationError(key, $"{key} must be ISO yyyy-MM-dd or null.");
+        return false;
+    }
+
     private static IResult ValidationError(string key, string message) => Results.BadRequest(new { error = new { code = "validation_error", message, errors = new Dictionary<string, string[]> { [key] = [message] } } });
     private static IResult NotFoundLien(Guid lienId) => Results.NotFound(new { error = new { code = "not_found", message = $"Lien '{lienId}' was not found." } });
     private static bool HasIdempotencyKey(HttpRequest request, out IResult? error, out string? key)

@@ -56,4 +56,30 @@ public sealed class SellingMigrationGuardTests
         SellingSchemaRepair.CreateRecoveryMigrations()
             .Should().ContainSingle(migration => migration is AddScopedContactPersonTypes);
     }
+
+    [Fact]
+    public void Receivable_due_date_migration_uses_restart_safe_mysql_guards()
+    {
+        var migration = new AddReceivableDueDate();
+
+        migration.UpOperations.Should().HaveCount(5);
+        migration.UpOperations.Should().OnlyContain(operation => operation is SqlOperation);
+        var sqlOperations = migration.UpOperations.Cast<SqlOperation>().ToList();
+        sqlOperations.Should().OnlyContain(operation => operation.SuppressTransaction);
+        var sql = string.Join(Environment.NewLine, sqlOperations.Select(operation => operation.Sql));
+
+        sql.Should().Contain("COLUMN_NAME = 'ReceivableDueDate'");
+        sql.Should().Contain("ALTER TABLE `liens_Liens` ADD COLUMN `ReceivableDueDate` date NULL");
+        sql.Should().Contain("INDEX_NAME = 'IX_SettlementPayments_Tenant_Date_Deleted'");
+        sql.Should().Contain("INDEX_NAME = 'IX_SettlementPayments_Tenant_Lien_Deleted'");
+        sql.Should().Contain("INDEX_NAME = 'IX_Liens_Tenant_Seller_FundingCompanyCompanyId'");
+        sql.Should().Contain("INDEX_NAME = 'IX_Liens_Tenant_Seller_ReceivableDueDate'");
+    }
+
+    [Fact]
+    public void Selling_schema_recovery_replays_receivable_due_date_migration()
+    {
+        SellingSchemaRepair.CreateRecoveryMigrations()
+            .Should().ContainSingle(migration => migration is AddReceivableDueDate);
+    }
 }
