@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
-import { useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom } from 'jotai';
 import { useColorScheme as useNativeWindColorScheme } from 'nativewind';
 
 import { RootNavigator } from '@/navigation/RootNavigator';
@@ -17,9 +17,11 @@ import {
   biometricSessionClient,
 } from '@/shared/services/Authentication';
 import { apiModeAtom, apiModeHydratedAtom } from '@/shared/state/atoms/apiModeAtom';
+import { authAtom } from '@/shared/state/atoms/authAtom';
 
 import { AppProvider } from './AppProvider';
 import { APP_FONTS } from './bootstrap/loadFonts';
+import { DeepLinkAuthIntegration } from './DeepLinkAuthIntegration';
 
 // Register before the first render. Child biometric hooks may run before App's
 // effects, so effect-time registration can leave them using the unavailable fallback.
@@ -37,6 +39,8 @@ export default function App() {
   useEffect(() => {
     void ApiModeService.getMode()
       .then(setApiMode)
+      .catch(() => undefined)
+      .then(AuthenticationService.hydrateSession)
       .finally(() => setApiModeHydrated(true));
   }, [setApiMode, setApiModeHydrated]);
 
@@ -55,11 +59,13 @@ export default function App() {
 
 function AppContent() {
   const { colorScheme } = useNativeWindColorScheme();
+  const auth = useAtomValue(authAtom);
 
   return (
     <>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-      <RootNavigator />
+      <DeepLinkAuthIntegration />
+      {auth.status === 'hydrating' ? <View className="flex-1 bg-[#f97332]" /> : <RootNavigator />}
       <BiometricEnrollmentModal />
       <PrivacyOverlay />
     </>

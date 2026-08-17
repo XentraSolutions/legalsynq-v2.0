@@ -142,7 +142,42 @@ Routing behavior is intentionally strict:
 
 Cold-start consumers call `processInitialUrl(callback)`. Runtime consumers call `subscribe(callback)` and must invoke the returned cleanup function. A future application integration should use one intake instance for both paths so the shared duplicate guard can suppress an initial URL repeated by a runtime event.
 
-DL-APP-003 owns authentication and pending-route continuation. DL-APP-004 owns mapping a resolved `routeKey` and parameters to React Navigation screens. Neither behavior is implemented by this routing layer.
+DL-APP-003 owns authentication and pending-route continuation outside this routing layer. DL-APP-004
+owns mapping a resolved `routeKey` and parameters to React Navigation screens.
+
+## Deep-Link Authentication Continuation
+
+DL-APP-003 connects the typed DL-APP-002 output to the existing Mobile auth lifecycle without
+performing navigation:
+
+```text
+DeepLinkResolution → auth gate → ready ResolvedDeepLink event
+```
+
+The app owns one configured `DeepLinkIntakeService` instance for both the initial URL and runtime
+subscription, preserving APP-002's shared duplicate guard. Only `status: "resolved"` outcomes enter
+the auth coordinator; malformed, unsupported, invalid, and duplicate outcomes are ignored by this
+layer.
+
+Authentication now has three explicit states. During `hydrating`, a resolved intent is held without
+showing login or emitting it. If hydration resolves authenticated, the intent is cleared and emitted
+once. If hydration resolves unauthenticated, it remains pending while the existing auth stack handles
+login naturally. An intent received while already authenticated is emitted immediately and is never
+stored.
+
+Pending state is in memory only and holds a single intent. When another resolved intent arrives
+before login, the latest intent replaces the earlier one. Successful password or biometric login
+updates the existing `authAtom`; that transition clears the pending value before emitting it, so
+repeated authenticated updates cannot replay it. Logout, unauthorized session clearing, tenant/API
+mode changes, and authenticated identity changes clear pending state to prevent cross-session or
+cross-user continuation.
+
+`ReadyDeepLinkService.subscribe(callback)` is the navigation-independent APP-004 handoff. Its
+callback receives only an authenticated `ResolvedDeepLink`, and the returned function removes the
+listener. It does not buffer or persist events. APP-004 remains responsible for subscribing while its
+consumer is mounted and navigation-ready, mapping route keys to screens, and performing actual
+navigation. No React Navigation action, resource lookup, authorization, Backend call, or persistent
+pending route is part of DL-APP-003.
 
 Focused validation:
 

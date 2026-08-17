@@ -44,16 +44,50 @@ export interface LoginOutcome {
   user: UserSession;
 }
 
+function parseStoredUserSession(serializedSession: string): UserSession | null {
+  try {
+    const candidate = JSON.parse(serializedSession) as Partial<UserSession> | null;
+    const organization = candidate?.organization;
+    if (
+      !candidate ||
+      typeof candidate.id !== 'string' ||
+      !candidate.id ||
+      typeof candidate.email !== 'string' ||
+      typeof candidate.firstName !== 'string' ||
+      typeof candidate.lastName !== 'string' ||
+      !Array.isArray(candidate.roles) ||
+      !candidate.roles.every((role) => typeof role === 'string') ||
+      !Array.isArray(candidate.permissions) ||
+      !candidate.permissions.every((permission) => typeof permission === 'string') ||
+      typeof candidate.tenantId !== 'string' ||
+      !candidate.tenantId ||
+      !organization ||
+      typeof organization.id !== 'string' ||
+      typeof organization.name !== 'string' ||
+      organization.tenantId !== candidate.tenantId
+    ) {
+      return null;
+    }
+
+    return candidate as UserSession;
+  } catch {
+    return null;
+  }
+}
+
 async function clearAccessSession(): Promise<void> {
-  await Promise.all([
+  await Promise.allSettled([
     SecureStorageService.deleteItem(STORAGE_KEYS.ACCESS_TOKEN),
     SecureStorageService.deleteItem(STORAGE_KEYS.LEGACY_ACCESS_TOKEN),
     StorageService.removeItem(STORAGE_KEYS.USER_SESSION),
   ]);
+  const currentAuth = store.get(authAtom);
   store.set(authAtom, {
     user: null,
     token: null,
     isAuthenticated: false,
+    status: 'unauthenticated',
+    sessionVersion: currentAuth.sessionVersion + 1,
   });
   store.set(biometricEnrollmentOfferAtom, {
     label: 'Biometrics',
@@ -68,6 +102,7 @@ async function persistSession(
   tokenStorageKey?: StorageKey
 ): Promise<UserSession> {
   const authState = AuthenticationAdapter.toAuthState(accessToken, user);
+  authState.sessionVersion = store.get(authAtom).sessionVersion;
 
   await Promise.all(
     [
@@ -178,6 +213,45 @@ async function loginLegacy({ email, password }: LoginInput): Promise<LoginOutcom
 }
 
 export const AuthenticationService = {
+  async hydrateSession(): Promise<void> {
+    const mode = store.get(apiModeAtom);
+    const tokenStorageKey =
+      mode === 'legacy' ? STORAGE_KEYS.LEGACY_ACCESS_TOKEN : STORAGE_KEYS.ACCESS_TOKEN;
+
+    let accessToken: string | null = null;
+    let serializedSession: string | null = null;
+    try {
+      [accessToken, serializedSession] = await Promise.all([
+        SecureStorageService.getItem(tokenStorageKey),
+        StorageService.getItem(STORAGE_KEYS.USER_SESSION),
+      ]);
+    } catch {
+      // Storage read failures fail closed below and leave the app usable for login.
+    }
+
+    const user = serializedSession ? parseStoredUserSession(serializedSession) : null;
+    if (accessToken && user) {
+      const authState = AuthenticationAdapter.toAuthState(accessToken, user);
+      authState.sessionVersion = store.get(authAtom).sessionVersion;
+      store.set(authAtom, authState);
+      return;
+    }
+
+    await Promise.allSettled([
+      SecureStorageService.deleteItem(tokenStorageKey),
+      StorageService.removeItem(STORAGE_KEYS.USER_SESSION),
+    ]);
+
+    const currentAuth = store.get(authAtom);
+    store.set(authAtom, {
+      user: null,
+      token: null,
+      isAuthenticated: false,
+      status: 'unauthenticated',
+      sessionVersion: currentAuth.sessionVersion,
+    });
+  },
+
   async login(input: LoginInput): Promise<LoginOutcome> {
     const mode = store.get(apiModeAtom);
     return mode === 'legacy' ? loginLegacy(input) : loginCurrent(input);

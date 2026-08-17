@@ -1,8 +1,12 @@
 import * as SecureStore from 'expo-secure-store';
+import { getDefaultStore } from 'jotai';
 
 import { AuthenticationApi } from '@/shared/api/endpoints/Authentication';
 import { STORAGE_KEYS } from '@/shared/constants/storageKeys';
 import { TenantSelectionService } from '@/shared/services/TenantSelection';
+import { StorageService } from '@/shared/services/Storage';
+import { apiModeAtom } from '@/shared/state/atoms/apiModeAtom';
+import { authAtom } from '@/shared/state/atoms/authAtom';
 
 import { AuthenticationService } from './AuthenticationService';
 import { BiometricCredentialService } from './BiometricCredentialService';
@@ -35,6 +39,7 @@ const authenticationApi = AuthenticationApi as unknown as {
   login: any;
   logout: any;
 };
+const jotaiStore = getDefaultStore();
 
 const loginResponse = {
   accessToken: 'token',
@@ -59,6 +64,72 @@ describe('AuthenticationService', () => {
     secureStore.__store.clear();
     jest.clearAllMocks();
     await TenantSelectionService.clearRememberedTenants();
+    jotaiStore.set(apiModeAtom, 'current');
+    jotaiStore.set(authAtom, {
+      user: null,
+      token: null,
+      isAuthenticated: false,
+      status: 'hydrating',
+      sessionVersion: 0,
+    });
+  });
+
+  it('resolves hydration unauthenticated when no complete stored session exists', async () => {
+    await AuthenticationService.hydrateSession();
+
+    expect(jotaiStore.get(authAtom)).toEqual({
+      user: null,
+      token: null,
+      isAuthenticated: false,
+      status: 'unauthenticated',
+      sessionVersion: 0,
+    });
+  });
+
+  it('hydrates a complete legacy stored session into the existing auth atom', async () => {
+    jotaiStore.set(apiModeAtom, 'legacy');
+    await secureStore.setItemAsync(STORAGE_KEYS.LEGACY_ACCESS_TOKEN, 'legacy-token');
+    await StorageService.setItem(
+      STORAGE_KEYS.USER_SESSION,
+      JSON.stringify({
+        id: 'usr-1',
+        email: 'avery.mendoza@smithlaw.example',
+        firstName: 'Avery',
+        lastName: 'Mendoza',
+        roles: [],
+        permissions: [],
+        organization: { id: 'org-1', name: 'Smith Law', tenantId: 'tenant-1' },
+        tenantId: 'tenant-1',
+      })
+    );
+
+    await AuthenticationService.hydrateSession();
+
+    expect(jotaiStore.get(authAtom)).toMatchObject({
+      isAuthenticated: true,
+      status: 'authenticated',
+      token: 'legacy-token',
+      user: { id: 'usr-1', tenantId: 'tenant-1' },
+    });
+  });
+
+  it('fails closed and removes a malformed stored user session', async () => {
+    jotaiStore.set(apiModeAtom, 'legacy');
+    await secureStore.setItemAsync(STORAGE_KEYS.LEGACY_ACCESS_TOKEN, 'legacy-token');
+    await StorageService.setItem(STORAGE_KEYS.USER_SESSION, '{malformed');
+
+    await AuthenticationService.hydrateSession();
+
+    expect(jotaiStore.get(authAtom).status).toBe('unauthenticated');
+    await expect(secureStore.getItemAsync(STORAGE_KEYS.LEGACY_ACCESS_TOKEN)).resolves.toBeNull();
+    await expect(StorageService.getItem(STORAGE_KEYS.USER_SESSION)).resolves.toBeNull();
+  });
+
+  it('increments the session version whenever access session state is cleared', async () => {
+    await AuthenticationService.clearAccessSession();
+    await AuthenticationService.clearAccessSession();
+
+    expect(jotaiStore.get(authAtom).sessionVersion).toBe(2);
   });
 
   it('uses the active local tenant for returning login and confirms it after success', async () => {
