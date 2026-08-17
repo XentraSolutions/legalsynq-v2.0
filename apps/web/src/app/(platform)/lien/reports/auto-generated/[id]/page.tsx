@@ -97,12 +97,6 @@ const columns = data?.columns
           });
         }}
       />
-      <button
-        onClick={() => router.back()}
-        className="text-primary text-sm"
-      >
-        Back to Reports
-      </button>
     </>
   );
 }

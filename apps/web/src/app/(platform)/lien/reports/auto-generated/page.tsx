@@ -27,7 +27,7 @@ export default function HistoryNotesPage() {
         <div>
              <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200 mb-6">
               <div>
-                <h2 className="text-lg font-semibold">Auto generated report</h2>
+                <h2 className="text-lg font-semibold">Auto Generated Reports</h2>
 
                <p className="text-sm text-gray-500">
                 {reports?.items?.length ? reports?.items?.length + 1: 1} generated templates
@@ -40,7 +40,7 @@ export default function HistoryNotesPage() {
             className="border border-gray-200 rounded-xl p-3 py-4 bg-white hover:bg-gray-50 cursor-pointer transition-colors"
           >
             <div className="text-sm font-medium text-gray-900">
-              Case Note History
+              Case Notes History
             </div>
             <div className="text-xs text-gray-500 mt-1">System Report</div>
           </div>
