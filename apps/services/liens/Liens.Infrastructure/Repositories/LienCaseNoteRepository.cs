@@ -44,6 +44,29 @@ public sealed class LienCaseNoteRepository : ILienCaseNoteRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<LienCaseNote>> GetLatestFeedByCaseIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> caseIds,
+        CancellationToken ct = default)
+    {
+        if (caseIds.Count == 0)
+            return [];
+
+        return await _db.LienCaseNotes
+            .AsNoTracking()
+            .Where(note => note.TenantId == tenantId &&
+                           caseIds.Contains(note.CaseId) &&
+                           !note.IsDeleted &&
+                           note.Category.ToLower() == CaseNoteCategory.Feed &&
+                           note.Content.Trim() != string.Empty)
+            .GroupBy(note => note.CaseId)
+            .Select(group => group
+                .OrderByDescending(note => note.CreatedAtUtc)
+                .ThenByDescending(note => note.Id)
+                .First())
+            .ToListAsync(ct);
+    }
+
     public async Task<List<LienCaseNote>> GetByCaseIdIncludingDeletedAsync(Guid tenantId, Guid caseId, CancellationToken ct = default)
     {
         return await _db.LienCaseNotes

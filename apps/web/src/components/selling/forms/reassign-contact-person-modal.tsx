@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FormModal } from "@/components/selling/modal";
-import { Combobox } from "@/components/ui/combobox";
+import { BaseSelect } from "@/components/ui/base-select";
 import { useContactPersons, useReassignContactPerson } from "@/hooks/use-selling-companies";
 import type { ContactPerson } from "@/lib/selling/companies.types";
 
@@ -69,10 +69,11 @@ export function ReassignContactPersonModal({
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Target Contact Person<span className="text-red-500 ml-0.5">*</span>
         </label>
-        <Combobox
+        <BaseSelect
           value={targetContactPersonId}
           onChange={setTargetContactPersonId}
           options={options}
+          isLoading={contactPersonsQuery.isLoading}
           placeholder="Select a contact person"
           searchPlaceholder="Search contact persons..."
           emptyText={contactPersonsQuery.isLoading ? "Loading..." : "No contact persons found."}

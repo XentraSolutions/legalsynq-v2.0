@@ -114,6 +114,35 @@ created), since they run against real QA tenant data repeatedly.
 - Do not import `test`/`expect`/`page` from `@playwright/test` directly in a spec file. Always
   go through `createReadOnlyTest()` or `createMutationTest()` — a spec built on raw Playwright
   gets none of the guardrails and won't be excluded from a production run.
+- Do not import `Page`/`Locator`/`Response` (or any other raw Playwright type) from
+  `@playwright/test` in a spec file — neither as a top-level `import type`, nor inline as
+  `import('@playwright/test').Page`. Both put the raw type in scope, which quietly reopens the
+  `readonly/` guardrail: `tsc` accepts a plain `page as Page` cast on a `ReadOnlyPage`-typed value
+  with **no error** (verified — the two types overlap enough that `as unknown as Page` isn't
+  required). The guardrail's whole design depends on a bypass needing that loud, double
+  `as unknown as Page` cast, which is easy to catch in review (see the doc comment atop
+  `read-only-page.ts`); a bare `Page` sitting in scope defeats that with an inconspicuous
+  single-word cast. Keep specs and their helpers built only on what `createMutationTest()` /
+  `createReadOnlyTest()` hand you.
+- When a local helper needs to accept `page` (or a `Locator`/`Response` derived from it), infer
+  the type from the test itself via `PageOf<>` (`support/test-types.ts`) instead of naming it:
+  ```ts
+  import type { PageOf } from '../../../support/test-types';
+
+  const test = createMutationTest('<product>'); // or createReadOnlyTest('<product>')
+
+  type TestPage = PageOf<typeof test>;
+
+  function helper(page: TestPage) {
+    return page.getByRole('button', { name: 'Save' }); // Locator, inferred
+  }
+  ```
+  This resolves to the real `Page` in a `mutations/` spec and to `ReadOnlyPage` in a `readonly/`
+  spec automatically — the same helper signature is correct in both, and there's no
+  `@playwright/test` import anywhere in the spec file to go stale or get copy-pasted into the
+  wrong context. A `Locator`/`Response` needed on its own typically doesn't need naming at all —
+  derive it with `ReturnType<TestPage['getByRole']>` or
+  `Awaited<ReturnType<TestPage['waitForResponse']>>` rather than importing `Locator`/`Response`.
 - Do not write `.fill()`/`.click()`-on-a-form/`.evaluate()` in a `readonly/` spec. If you need
   to, the spec belongs under `mutations/` instead.
 - Do not cast around a `ReadOnlyPage`/`ReadOnlyLocator` type error (`as unknown as Page`) to make

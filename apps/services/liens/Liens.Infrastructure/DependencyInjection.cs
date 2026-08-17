@@ -74,6 +74,7 @@ public static class DependencyInjection
         services.AddScoped<ISellingBuyerAccessLinkService, SellingBuyerAccessLinkService>();
         services.AddScoped<ISellingAnalyticsService, SellingAnalyticsService>();
         services.AddScoped<ISellingReceivablesDashboardService, SellingReceivablesDashboardService>();
+        services.AddScoped<ISellingOperationsDashboardService, SellingOperationsDashboardService>();
         services.AddScoped<IBillOfSaleService, BillOfSaleService>();
         services.AddScoped<IBillOfSaleDocumentQueryService, BillOfSaleDocumentQueryService>();
         services.AddScoped<ICaseService, CaseService>();

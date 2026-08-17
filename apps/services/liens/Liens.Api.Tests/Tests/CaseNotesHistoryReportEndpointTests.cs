@@ -39,8 +39,6 @@ public sealed class CaseNotesHistoryReportEndpointTests : IClassFixture<LiensApi
         {
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
             (await db.LegacyIdCrosswalks.CountAsync()).Should().Be(0);
-            (await scope.ServiceProvider.GetRequiredService<ICaseNotesHistoryReportService>()
-                .IsLegacyHistoryReadyAsync(SeedHelper.TenantId)).Should().BeTrue();
         }
 
         var trackingResponse = await _client.PostAsJsonAsync(
@@ -65,6 +63,8 @@ public sealed class CaseNotesHistoryReportEndpointTests : IClassFixture<LiensApi
             .Should().BeEquivalentTo("General note", "Follow-up note");
         tracking.RootElement.GetProperty("data").EnumerateArray()
             .Should().OnlyContain(row => row.GetProperty("noteType").GetString() == "TRACKING");
+        tracking.RootElement.GetProperty("isComplete").GetBoolean().Should().BeTrue();
+        tracking.RootElement.GetProperty("excludedUnreconciledLegacyNoteCount").GetInt32().Should().Be(0);
 
         feed.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
         feed.RootElement.GetProperty("data")[0].GetProperty("noteContent").GetString().Should().Be("Feed note");
@@ -205,7 +205,7 @@ public sealed class CaseNotesHistoryReportEndpointTests : IClassFixture<LiensApi
     }
 
     [Fact]
-    public async Task Both_routes_require_auth_product_permission_and_reconciled_legacy_history()
+    public async Task Both_routes_require_auth_product_and_permission()
     {
         var anonymous = _factory.CreateClient();
         (await anonymous.PostAsJsonAsync("/api/liens/reports/case-notes-history", Request("TRACKING")))
@@ -219,13 +219,64 @@ public sealed class CaseNotesHistoryReportEndpointTests : IClassFixture<LiensApi
             JwtTokenHelper.CreateToken(SeedHelper.TenantId, SeedHelper.UserId, []));
         (await withoutPermission.PostAsJsonAsync("/api/liens/reports/case-notes-history", Request("TRACKING")))
             .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
 
-        await AddLegacyCrosswalkAsync("unversioned-hash");
-        var blocked = await _client.PostAsJsonAsync("/report/case-notes-history", Request("TRACKING"));
-        blocked.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        using var body = JsonDocument.Parse(await blocked.Content.ReadAsStringAsync());
-        body.RootElement.GetProperty("error").GetProperty("code").GetString()
-            .Should().Be("legacy_history_not_reconciled");
+    [Fact]
+    public async Task Preview_and_export_include_native_and_reconciled_notes_and_warn_when_legacy_rows_are_excluded()
+    {
+        var native = Note("Native tracking note", CaseNoteCategory.General, new DateTime(2026, 8, 14, 8, 0, 0, DateTimeKind.Utc));
+        var reconciled = Note("Reconciled legacy note", CaseNoteCategory.General, new DateTime(2026, 8, 14, 9, 0, 0, DateTimeKind.Utc));
+        var unreconciled = Note("Unreconciled legacy note", CaseNoteCategory.General, new DateTime(2026, 8, 14, 10, 0, 0, DateTimeKind.Utc));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.LienCaseNotes.AddRange(native, reconciled, unreconciled);
+            await db.SaveChangesAsync();
+        }
+
+        await AddLegacyCrosswalkAsync(reconciled.Id, "case-note-v2:reconciled");
+        await AddLegacyCrosswalkAsync(unreconciled.Id, "unversioned-hash");
+        await AddLegacyCrosswalkAsync(
+            native.Id,
+            "other-tenant-unversioned-hash",
+            Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+
+        var previewResponse = await _client.PostAsJsonAsync(
+            "/api/liens/reports/case-notes-history",
+            Request("TRACKING", limit: 100));
+
+        previewResponse.StatusCode.Should().Be(
+            HttpStatusCode.OK,
+            await previewResponse.Content.ReadAsStringAsync());
+        using var preview = JsonDocument.Parse(await previewResponse.Content.ReadAsStringAsync());
+        preview.RootElement.GetProperty("totalCount").GetInt32().Should().Be(2);
+        preview.RootElement.GetProperty("isComplete").GetBoolean().Should().BeFalse();
+        preview.RootElement.GetProperty("excludedUnreconciledLegacyNoteCount").GetInt32().Should().Be(1);
+        preview.RootElement.GetProperty("warning").GetProperty("code").GetString()
+            .Should().Be("legacy_history_incomplete");
+        preview.RootElement.GetProperty("warning").GetProperty("excludedCount").GetInt32().Should().Be(1);
+        preview.RootElement.GetProperty("data").EnumerateArray()
+            .Select(row => row.GetProperty("noteContent").GetString())
+            .Should().BeEquivalentTo("Native tracking note", "Reconciled legacy note");
+
+        var exportResponse = await _client.PostAsJsonAsync(
+            "/report/case-notes-history/export",
+            Request("TRACKING"));
+
+        exportResponse.StatusCode.Should().Be(
+            HttpStatusCode.OK,
+            await exportResponse.Content.ReadAsStringAsync());
+        using var export = JsonDocument.Parse(await exportResponse.Content.ReadAsStringAsync());
+        export.RootElement.GetProperty("isComplete").GetBoolean().Should().BeFalse();
+        export.RootElement.GetProperty("excludedUnreconciledLegacyNoteCount").GetInt32().Should().Be(1);
+        export.RootElement.GetProperty("warning").GetProperty("code").GetString()
+            .Should().Be("legacy_history_incomplete");
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(
+            export.RootElement.GetProperty("data")[0].GetProperty("base64").GetString()!));
+        csv.Should().Contain("Native tracking note");
+        csv.Should().Contain("Reconciled legacy note");
+        csv.Should().NotContain("Unreconciled legacy note");
     }
 
     private HttpClient CreateAuthorizedClient()
@@ -291,18 +342,18 @@ public sealed class CaseNotesHistoryReportEndpointTests : IClassFixture<LiensApi
         return note;
     }
 
-    private async Task AddLegacyCrosswalkAsync(string sourceHash)
+    private async Task AddLegacyCrosswalkAsync(Guid targetId, string sourceHash, Guid? tenantId = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         var crosswalk = (LegacyIdCrosswalk)Activator.CreateInstance(typeof(LegacyIdCrosswalk), nonPublic: true)!;
         Set(crosswalk, nameof(LegacyIdCrosswalk.Id), Guid.CreateVersion7());
-        Set(crosswalk, nameof(LegacyIdCrosswalk.TenantId), SeedHelper.TenantId);
+        Set(crosswalk, nameof(LegacyIdCrosswalk.TenantId), tenantId ?? SeedHelper.TenantId);
         Set(crosswalk, nameof(LegacyIdCrosswalk.SourceSystem), "SL-CORE");
         Set(crosswalk, nameof(LegacyIdCrosswalk.SourceTable), "SL_CASE_NOTES");
-        Set(crosswalk, nameof(LegacyIdCrosswalk.LegacyId), "1");
+        Set(crosswalk, nameof(LegacyIdCrosswalk.LegacyId), Guid.CreateVersion7().ToString("N"));
         Set(crosswalk, nameof(LegacyIdCrosswalk.TargetEntity), "CaseNote");
-        Set(crosswalk, nameof(LegacyIdCrosswalk.TargetId), Guid.CreateVersion7());
+        Set(crosswalk, nameof(LegacyIdCrosswalk.TargetId), targetId);
         Set(crosswalk, nameof(LegacyIdCrosswalk.SourceHash), sourceHash);
         Set(crosswalk, nameof(LegacyIdCrosswalk.ImportRunId), Guid.CreateVersion7());
         Set(crosswalk, nameof(LegacyIdCrosswalk.CreatedAtUtc), DateTime.UtcNow);

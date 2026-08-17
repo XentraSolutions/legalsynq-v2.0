@@ -81,7 +81,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"id\": \"0198b9f4-f7e5-7c01-9f40-c2bb32ebfd89\",\n  \"caseNumber\": \"26-000123\",\n  \"clientFirstName\": \"Jordan\",\n  \"clientLastName\": \"Reyes\",\n  \"clientDisplayName\": \"Jordan Reyes\",\n  \"sourceType\": \"Email\",\n  \"status\": \"Pending\",\n  \"intakeStatus\": \"Pending\",\n  \"operationalStatus\": \"PreDemand\",\n  \"operationalStatusLabel\": \"New\",\n  \"openedAtUtc\": null,\n  \"createdAtUtc\": \"2026-08-14T01:30:00Z\"\n}"
+              "body": "{\n  \"id\": \"0198b9f4-f7e5-7c01-9f40-c2bb32ebfd89\",\n  \"caseNumber\": \"26-00123\",\n  \"clientFirstName\": \"Jordan\",\n  \"clientLastName\": \"Reyes\",\n  \"clientDisplayName\": \"Jordan Reyes\",\n  \"sourceType\": \"Email\",\n  \"status\": \"Pending\",\n  \"intakeStatus\": \"Pending\",\n  \"operationalStatus\": \"PreDemand\",\n  \"operationalStatusLabel\": \"New\",\n  \"openedAtUtc\": null,\n  \"createdAtUtc\": \"2026-08-14T01:30:00Z\"\n}"
             },
             {
               "name": "Conflict - Idempotency Key Payload Changed",
@@ -231,7 +231,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"items\": [\n    {\n      \"id\": \"0198b9f4-f7e5-7c01-9f40-c2bb32ebfd89\",\n      \"caseNumber\": \"26-000123\",\n      \"clientFirstName\": \"Jordan\",\n      \"clientLastName\": \"Reyes\",\n      \"sourceType\": \"Email\",\n      \"status\": \"Pending\",\n      \"intakeStatus\": \"Pending\",\n      \"operationalStatus\": \"PreDemand\",\n      \"operationalStatusLabel\": \"New\",\n      \"openedAtUtc\": null,\n      \"createdAtUtc\": \"2026-08-14T01:30:00Z\"\n    }\n  ],\n  \"page\": 1,\n  \"pageSize\": 20,\n  \"totalCount\": 1,\n  \"totalPages\": 1\n}"
+              "body": "{\n  \"items\": [\n    {\n      \"id\": \"0198b9f4-f7e5-7c01-9f40-c2bb32ebfd89\",\n      \"caseNumber\": \"26-00123\",\n      \"clientFirstName\": \"Jordan\",\n      \"clientLastName\": \"Reyes\",\n      \"sourceType\": \"Email\",\n      \"status\": \"Pending\",\n      \"intakeStatus\": \"Pending\",\n      \"operationalStatus\": \"PreDemand\",\n      \"operationalStatusLabel\": \"New\",\n      \"openedAtUtc\": null,\n      \"createdAtUtc\": \"2026-08-14T01:30:00Z\"\n    }\n  ],\n  \"page\": 1,\n  \"pageSize\": 20,\n  \"totalCount\": 1,\n  \"totalPages\": 1\n}"
             }
           ]
         },
@@ -326,7 +326,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"id\": \"0198b9f4-f7e5-7c01-9f40-c2bb32ebfd89\",\n  \"caseNumber\": \"26-000123\",\n  \"sourceType\": \"Email\",\n  \"status\": \"New\",\n  \"statusLabel\": \"New\",\n  \"intakeStatus\": \"Approved\",\n  \"operationalStatus\": \"PreDemand\",\n  \"openedAtUtc\": \"2026-08-14T02:00:00Z\",\n  \"reviewedAtUtc\": \"2026-08-14T02:00:00Z\",\n  \"reviewedByUserId\": \"00000000-0000-0000-0000-000000000002\"\n}"
+              "body": "{\n  \"id\": \"0198b9f4-f7e5-7c01-9f40-c2bb32ebfd89\",\n  \"caseNumber\": \"26-00123\",\n  \"sourceType\": \"Email\",\n  \"status\": \"New\",\n  \"statusLabel\": \"New\",\n  \"intakeStatus\": \"Approved\",\n  \"operationalStatus\": \"PreDemand\",\n  \"openedAtUtc\": \"2026-08-14T02:00:00Z\",\n  \"reviewedAtUtc\": \"2026-08-14T02:00:00Z\",\n  \"reviewedByUserId\": \"00000000-0000-0000-0000-000000000002\"\n}"
             },
             {
               "name": "Conflict - Already Reviewed",

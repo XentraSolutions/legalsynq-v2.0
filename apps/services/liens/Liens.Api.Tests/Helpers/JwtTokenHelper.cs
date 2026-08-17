@@ -23,7 +23,10 @@ public static class JwtTokenHelper
         Guid tenantId,
         Guid userId,
         Guid? orgId = null,
-        string? email = null)
+        string? email = null,
+        string? providerMode = null,
+        bool includeProductAccess = true,
+        string? name = null)
     {
         var allPermissions = new[]
         {
@@ -57,7 +60,7 @@ public static class JwtTokenHelper
             LiensPermissions.CaseNoteManage,
             LiensPermissions.TaskNoteManage,
         };
-        return CreateToken(tenantId, userId, allPermissions, orgId, email);
+        return CreateToken(tenantId, userId, allPermissions, orgId, email, providerMode, includeProductAccess, name);
     }
 
     /// <summary>Creates a signed JWT with explicit permission set.</summary>
@@ -66,19 +69,27 @@ public static class JwtTokenHelper
         Guid userId,
         string[] permissions,
         Guid? orgId = null,
-        string? email = null)
+        string? email = null,
+        string? providerMode = null,
+        bool includeProductAccess = true,
+        string? name = null)
     {
         var claims = new List<Claim>
         {
             new("sub",        userId.ToString()),
             new("tenant_id",  tenantId.ToString()),
             new("org_id",     (orgId ?? SeedHelper.OrgId).ToString()),
-            // product_roles claim grants access to SYNQ_LIENS product
-            new("product_roles", "SYNQ_LIENS:SYNQLIENS_USER"),
         };
+
+        if (includeProductAccess)
+            claims.Add(new Claim("product_roles", "SYNQ_LIENS:SYNQLIENS_USER"));
 
         if (!string.IsNullOrWhiteSpace(email))
             claims.Add(new Claim("email", email.Trim()));
+        if (!string.IsNullOrWhiteSpace(name))
+            claims.Add(new Claim("name", name.Trim()));
+        if (!string.IsNullOrWhiteSpace(providerMode))
+            claims.Add(new Claim("provider_mode", providerMode.Trim()));
 
         foreach (var perm in permissions)
             claims.Add(new Claim("permissions", perm));

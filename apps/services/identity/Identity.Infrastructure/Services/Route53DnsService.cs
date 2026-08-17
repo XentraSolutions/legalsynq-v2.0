@@ -19,6 +19,8 @@ public sealed class Route53DnsOptions
     public string Region { get; set; } = "us-east-2";
     public string? AccessKeyId { get; set; }
     public string? SecretAccessKey { get; set; }
+    public int ChangeWaitTimeoutSeconds { get; set; } = 120;
+    public int ChangeWaitPollSeconds { get; set; } = 5;
 }
 
 public sealed class Route53DnsService : IDnsService, IDisposable
@@ -49,27 +51,91 @@ public sealed class Route53DnsService : IDnsService, IDisposable
         var fqdn = BuildHostname(subdomain);
         await DeleteConflictingRecordsAsync(fqdn, ct);
 
-        var aSuccess = await UpsertRecordAsync(fqdn, ChangeAction.UPSERT, ct);
+        var aChangeId = await UpsertRecordAsync(fqdn, ChangeAction.UPSERT, ct);
+        if (string.IsNullOrWhiteSpace(aChangeId))
+            return false;
 
-        if (aSuccess && !string.IsNullOrWhiteSpace(_opts.TxtVerificationValue))
+        var aInsync = await WaitForChangeAsync(aChangeId, fqdn, ct);
+        if (!aInsync)
         {
-            var txtSuccess = await UpsertTxtRecordAsync(fqdn, ChangeAction.UPSERT, ct);
-            if (!txtSuccess)
-                _log.LogWarning("A record created but TXT verification record failed for {Fqdn}", fqdn);
+            _log.LogWarning(
+                "Route53 accepted DNS change {ChangeId} for {Fqdn}, but it was not confirmed INSYNC before verification",
+                aChangeId, fqdn);
         }
 
-        return aSuccess;
+        if (!string.IsNullOrWhiteSpace(_opts.TxtVerificationValue))
+        {
+            var txtChangeId = await UpsertTxtRecordAsync(fqdn, ChangeAction.UPSERT, ct);
+            if (string.IsNullOrWhiteSpace(txtChangeId))
+            {
+                _log.LogWarning("A record created but TXT verification record failed for {Fqdn}", fqdn);
+            }
+            else if (!await WaitForChangeAsync(txtChangeId, fqdn, ct))
+            {
+                _log.LogWarning(
+                    "Route53 accepted TXT verification change {ChangeId} for {Fqdn}, but it was not confirmed INSYNC before verification",
+                    txtChangeId, fqdn);
+            }
+        }
+
+        return true;
     }
 
     public async Task<bool> DeleteSubdomainAsync(string subdomain, CancellationToken ct = default)
     {
         var fqdn = BuildHostname(subdomain);
-        var deleted = await UpsertRecordAsync(fqdn, ChangeAction.DELETE, ct);
+        var changeId = await UpsertRecordAsync(fqdn, ChangeAction.DELETE, ct);
+        var deleted = !string.IsNullOrWhiteSpace(changeId) &&
+            await WaitForChangeAsync(changeId, fqdn, ct);
 
         if (!string.IsNullOrWhiteSpace(_opts.TxtVerificationValue))
-            await UpsertTxtRecordAsync(fqdn, ChangeAction.DELETE, ct);
+        {
+            var txtChangeId = await UpsertTxtRecordAsync(fqdn, ChangeAction.DELETE, ct);
+            if (!string.IsNullOrWhiteSpace(txtChangeId))
+                await WaitForChangeAsync(txtChangeId, fqdn, ct);
+        }
 
         return deleted;
+    }
+
+    public async Task<bool> RecordExistsAsync(string hostname, CancellationToken ct = default)
+    {
+        var fqdn = hostname.Trim().TrimEnd('.').ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(fqdn))
+            return false;
+
+        try
+        {
+            var targetType = RRType.FindValue(_opts.RecordType);
+            var response = await _route53.ListResourceRecordSetsAsync(new ListResourceRecordSetsRequest
+            {
+                HostedZoneId = _opts.HostedZoneId,
+                StartRecordName = fqdn,
+                StartRecordType = targetType,
+                MaxItems = "1"
+            }, ct);
+
+            var record = response.ResourceRecordSets.FirstOrDefault();
+            var exists = record is not null &&
+                record.Type == targetType &&
+                string.Equals(record.Name.TrimEnd('.'), fqdn, StringComparison.OrdinalIgnoreCase);
+
+            if (exists)
+            {
+                _log.LogInformation("Route53 authoritative record check passed for {Fqdn}", fqdn);
+            }
+            else
+            {
+                _log.LogWarning("Route53 authoritative record check did not find {Type} for {Fqdn}", targetType.Value, fqdn);
+            }
+
+            return exists;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Route53 authoritative record check failed for {Fqdn}", fqdn);
+            return false;
+        }
     }
 
     public string BuildHostname(string tenantSlug)
@@ -152,7 +218,7 @@ public sealed class Route53DnsService : IDnsService, IDisposable
         }
     }
 
-    private async Task<bool> UpsertRecordAsync(string fqdn, ChangeAction action, CancellationToken ct)
+    private async Task<string?> UpsertRecordAsync(string fqdn, ChangeAction action, CancellationToken ct)
     {
         try
         {
@@ -186,16 +252,16 @@ public sealed class Route53DnsService : IDnsService, IDisposable
                 "Route53 {Action} {Type} for {Fqdn}: status={Status}, changeId={ChangeId}",
                 action.Value, _opts.RecordType, fqdn, response.ChangeInfo.Status.Value, response.ChangeInfo.Id);
 
-            return true;
+            return response.ChangeInfo.Id;
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Route53 {Action} failed for {Fqdn}", action.Value, fqdn);
-            return false;
+            return null;
         }
     }
 
-    private async Task<bool> UpsertTxtRecordAsync(string fqdn, ChangeAction action, CancellationToken ct)
+    private async Task<string?> UpsertTxtRecordAsync(string fqdn, ChangeAction action, CancellationToken ct)
     {
         try
         {
@@ -230,13 +296,62 @@ public sealed class Route53DnsService : IDnsService, IDisposable
                 "Route53 {Action} TXT for {Fqdn}: status={Status}, changeId={ChangeId}",
                 action.Value, fqdn, response.ChangeInfo.Status.Value, response.ChangeInfo.Id);
 
-            return true;
+            return response.ChangeInfo.Id;
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Route53 TXT {Action} failed for {Fqdn}", action.Value, fqdn);
-            return false;
+            return null;
         }
+    }
+
+    private async Task<bool> WaitForChangeAsync(string changeId, string fqdn, CancellationToken ct)
+    {
+        var timeout = TimeSpan.FromSeconds(Math.Max(1, _opts.ChangeWaitTimeoutSeconds));
+        var poll = TimeSpan.FromSeconds(Math.Max(1, _opts.ChangeWaitPollSeconds));
+        var started = DateTimeOffset.UtcNow;
+
+        while (DateTimeOffset.UtcNow - started < timeout)
+        {
+            try
+            {
+                var response = await _route53.GetChangeAsync(new GetChangeRequest
+                {
+                    Id = changeId
+                }, ct);
+
+                var status = response.ChangeInfo.Status;
+                if (status == ChangeStatus.INSYNC)
+                {
+                    _log.LogInformation(
+                        "Route53 change {ChangeId} for {Fqdn} is INSYNC",
+                        changeId, fqdn);
+                    return true;
+                }
+
+                _log.LogDebug(
+                    "Route53 change {ChangeId} for {Fqdn} is {Status}; waiting",
+                    changeId, fqdn, status.Value);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "Route53 change wait failed while checking {ChangeId} for {Fqdn}",
+                    changeId, fqdn);
+                return false;
+            }
+
+            await Task.Delay(poll, ct);
+        }
+
+        _log.LogWarning(
+            "Route53 change {ChangeId} for {Fqdn} did not become INSYNC within {TimeoutSeconds}s",
+            changeId, fqdn, _opts.ChangeWaitTimeoutSeconds);
+        return false;
     }
 
     public void Dispose()

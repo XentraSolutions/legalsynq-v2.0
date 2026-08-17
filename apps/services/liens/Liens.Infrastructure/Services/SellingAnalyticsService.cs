@@ -298,11 +298,19 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
         CancellationToken ct = default)
     {
         var data = await LoadDataAsync(tenantId, sellerOrgId, filter, applyLienDateFilter: true, ct);
-        var fundingIds = data.Liens.Where(l => l.FundingCompanyId.HasValue).Select(l => l.FundingCompanyId!.Value).Distinct().ToList();
+        var fundingIds = data.Liens
+            .Select(EffectiveFundingCompanyId)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
         var facilityIds = data.Liens.Where(l => l.FacilityId.HasValue).Select(l => l.FacilityId!.Value).Distinct().ToList();
         var contactNames = await _db.Contacts.AsNoTracking()
             .Where(c => c.TenantId == tenantId && fundingIds.Contains(c.Id))
             .ToDictionaryAsync(c => c.Id, c => c.DisplayName, ct);
+        var companyNames = await _db.Companies.AsNoTracking()
+            .Where(c => c.TenantId == tenantId && c.OrgId == sellerOrgId && fundingIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Name, ct);
         var facilityNames = await _db.Facilities.AsNoTracking()
             .Where(f => f.TenantId == tenantId && facilityIds.Contains(f.Id))
             .ToDictionaryAsync(f => f.Id, f => f.Name, ct);
@@ -320,13 +328,18 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
                 .Select(g => new SellingAnalyticsFilterOption { Value = g.Key, Label = g.Key, Count = g.Count() })
                 .ToList(),
             FundingCompanies = data.Liens
-                .Where(l => l.FundingCompanyId.HasValue)
-                .GroupBy(l => l.FundingCompanyId!.Value)
-                .OrderBy(g => contactNames.TryGetValue(g.Key, out var name) ? name : g.Key.ToString())
+                .Select(l => new { Lien = l, FundingCompanyId = EffectiveFundingCompanyId(l) })
+                .Where(item => item.FundingCompanyId.HasValue)
+                .GroupBy(item => item.FundingCompanyId!.Value)
+                .OrderBy(g => companyNames.TryGetValue(g.Key, out var companyName)
+                    ? companyName
+                    : contactNames.TryGetValue(g.Key, out var contactName) ? contactName : g.Key.ToString())
                 .Select(g => new SellingAnalyticsFilterOption
                 {
                     Value = g.Key.ToString(),
-                    Label = contactNames.TryGetValue(g.Key, out var name) ? name : g.Key.ToString(),
+                    Label = companyNames.TryGetValue(g.Key, out var companyName)
+                        ? companyName
+                        : contactNames.TryGetValue(g.Key, out var contactName) ? contactName : g.Key.ToString(),
                     Count = g.Count(),
                 })
                 .ToList(),
@@ -353,7 +366,8 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
         var lien = await _db.Liens.AsNoTracking()
             .Where(l => l.TenantId == tenantId
                 && l.Id == lienId
-                && (l.SellingOrgId == sellerOrgId || l.OrgId == sellerOrgId))
+                && (l.SellingOrgId == sellerOrgId
+                    || (!l.SellingOrgId.HasValue && l.OrgId == sellerOrgId)))
             .FirstOrDefaultAsync(ct)
             ?? throw new NotFoundException($"Selling lien '{lienId}' was not found for the current seller organization.");
 
@@ -388,8 +402,8 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
     {
         var filter = new SellingAnalyticsFilter
         {
-            DateFrom = request.DateFrom,
-            DateTo = request.DateTo,
+            StartDate = request.StartDate,
+            EndDate = request.EndDate,
             SellerStatuses = request.SellerStatus,
             ListingVisibilities = request.ListingVisibility,
             FundingCompanyIds = request.FundingCompanyId,
@@ -424,7 +438,9 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
         CancellationToken ct)
     {
         var query = _db.Liens.AsNoTracking()
-            .Where(l => l.TenantId == tenantId && (l.SellingOrgId == sellerOrgId || l.OrgId == sellerOrgId));
+            .Where(l => l.TenantId == tenantId
+                && (l.SellingOrgId == sellerOrgId
+                    || (!l.SellingOrgId.HasValue && l.OrgId == sellerOrgId)));
 
         if (!filter.IncludeArchived)
             query = query.Where(l => (l.SellerStatus == null || l.SellerStatus != SellingLienStatus.Archived) && l.ArchivedAtUtc == null);
@@ -433,7 +449,12 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
             query = query.Where(l => l.ListingVisibility != null && filter.ListingVisibilities.Contains(l.ListingVisibility));
 
         if (filter.FundingCompanyIds.Count > 0)
-            query = query.Where(l => l.FundingCompanyId.HasValue && filter.FundingCompanyIds.Contains(l.FundingCompanyId.Value));
+            query = query.Where(l =>
+                (l.FundingCompanyCompanyId.HasValue
+                    && filter.FundingCompanyIds.Contains(l.FundingCompanyCompanyId.Value))
+                || (!l.FundingCompanyCompanyId.HasValue
+                    && l.FundingCompanyId.HasValue
+                    && filter.FundingCompanyIds.Contains(l.FundingCompanyId.Value)));
 
         if (filter.FacilityIds.Count > 0)
             query = query.Where(l => l.FacilityId.HasValue && filter.FacilityIds.Contains(l.FacilityId.Value));
@@ -443,7 +464,7 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
         if (filter.SellerStatuses.Count > 0)
             liens = liens.Where(l => filter.SellerStatuses.Contains(StatusFor(l))).ToList();
 
-        if (applyLienDateFilter && (filter.DateFrom.HasValue || filter.DateTo.HasValue))
+        if (applyLienDateFilter && (filter.StartDate.HasValue || filter.EndDate.HasValue))
             liens = liens.Where(l => DateWithin(DateAnchorFor(l, filter.DateDimension), filter)).ToList();
 
         var lienIds = liens.Select(l => l.Id).ToList();
@@ -584,9 +605,9 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
     private static bool DateWithin(DateTime value, SellingAnalyticsFilter filter)
     {
         var date = value.Date;
-        if (filter.DateFrom.HasValue && date < filter.DateFrom.Value.ToDateTime(TimeOnly.MinValue))
+        if (filter.StartDate.HasValue && date < filter.StartDate.Value.ToDateTime(TimeOnly.MinValue))
             return false;
-        if (filter.DateTo.HasValue && date >= filter.DateTo.Value.AddDays(1).ToDateTime(TimeOnly.MinValue))
+        if (filter.EndDate.HasValue && date >= filter.EndDate.Value.AddDays(1).ToDateTime(TimeOnly.MinValue))
             return false;
         return true;
     }
@@ -616,7 +637,7 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
         return dimension switch
         {
             "facility" => Key(lien.FacilityId),
-            "fundingCompany" => Key(lien.FundingCompanyId),
+            "fundingCompany" => Key(EffectiveFundingCompanyId(lien)),
             "listingVisibility" => new ConcentrationKey(
                 lien.ListingVisibility ?? SellingListingVisibility.Private,
                 lien.ListingVisibility ?? SellingListingVisibility.Private),
@@ -645,7 +666,7 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
                 StatusFor(lien),
                 lien.Status,
                 lien.ListingVisibility ?? string.Empty,
-                lien.FundingCompanyId?.ToString() ?? string.Empty,
+                EffectiveFundingCompanyId(lien)?.ToString() ?? string.Empty,
                 lien.FacilityId?.ToString() ?? string.Empty,
                 lien.OriginalAmount.ToString("0.00", CultureInfo.InvariantCulture),
                 (lien.AskAmount ?? 0m).ToString("0.00", CultureInfo.InvariantCulture),
@@ -669,6 +690,9 @@ public sealed class SellingAnalyticsService : ISellingAnalyticsService
 
         return $"\"{value.Replace("\"", "\"\"")}\"";
     }
+
+    private static Guid? EffectiveFundingCompanyId(Lien lien)
+        => lien.FundingCompanyCompanyId ?? lien.FundingCompanyId;
 
     private sealed record AnalyticsData(List<Lien> Liens, List<LienOffer> Offers);
 

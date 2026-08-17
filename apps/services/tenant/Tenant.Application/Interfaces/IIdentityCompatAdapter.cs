@@ -55,4 +55,12 @@ public sealed record TenantIdentityCompatSnapshot(
     string? Type,
     int? SessionTimeoutMinutes,
     string? Hostname,
-    string? PrimaryContactName = null);
+    string? PrimaryContactName = null,
+    string? ProvisioningStatus = null,
+    DateTime? LastProvisioningAttemptUtc = null,
+    string? ProvisioningFailureReason = null,
+    string? ProvisioningFailureStage = null,
+    int? VerificationAttemptCount = null,
+    DateTime? LastVerificationAttemptUtc = null,
+    DateTime? NextVerificationRetryAtUtc = null,
+    bool? IsVerificationRetryExhausted = null);

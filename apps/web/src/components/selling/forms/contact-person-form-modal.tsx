@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FormModal } from "@/components/selling/modal";
-import { Combobox } from "@/components/ui/combobox";
+import { BaseSelect } from "@/components/ui/base-select";
+import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
 import { formatPhoneInput, isValidPhone } from "@/lib/phone";
 import {
-  useCompanies,
+  useCompany,
   useContactPersonTypes,
   useCreateContactPerson,
   useUpdateContactPerson,
@@ -87,19 +88,18 @@ export function ContactPersonFormModal({
   const updateContactPerson = useUpdateContactPerson();
   const submitting = createContactPerson.isPending || updateContactPerson.isPending;
 
-  const companiesQuery = useCompanies(
-    { isActive: true },
-    { enabled: open && Boolean(allowCompanySelect) },
-  );
-  const companyOptions = allowCompanySelect
-    ? companiesQuery.options
-    : [{ value: companyId, label: companyName }];
-  const selectedCompany = companiesQuery.data?.items.find((c) => c.id === form.companyId);
+  // Looked up by id rather than found in a fetched list — the picker (see
+  // the Company Name field below) can select a company from well beyond
+  // whatever page a list query would hold, so a list-based lookup would go
+  // stale/miss as soon as the user searches for something else.
+  const selectedCompanyQuery = useCompany(form.companyId, {
+    enabled: open && Boolean(allowCompanySelect) && Boolean(form.companyId),
+  });
   const effectiveCompanyTypeId = allowCompanySelect
-    ? (selectedCompany?.companyTypeId ?? companyTypeId)
+    ? (selectedCompanyQuery.data?.companyTypeId ?? companyTypeId)
     : companyTypeId;
   const selectedCompanyLabel = allowCompanySelect
-    ? (selectedCompany?.name ?? companyName)
+    ? (selectedCompanyQuery.data?.name ?? companyName)
     : companyName;
 
   const contactPersonTypesQuery = useContactPersonTypes(effectiveCompanyTypeId, { enabled: open });
@@ -230,25 +230,38 @@ export function ContactPersonFormModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Company Name<span className="text-red-500 ml-0.5">*</span>
             </label>
-            <Combobox
-              value={form.companyId}
-              onChange={(v) => setField("companyId", v)}
-              options={companyOptions}
-              placeholder="Select company"
-              disabled={!allowCompanySelect || isEdit}
-            />
+            {allowCompanySelect ? (
+              <SellingEntitySelect
+                value={form.companyId}
+                onChange={(v) => setField("companyId", v)}
+                placeholder="Select company"
+                searchPlaceholder="Search companies..."
+                error={Boolean(errors.companyId)}
+                disabled={isEdit}
+              />
+            ) : (
+              <BaseSelect
+                value={companyId}
+                onChange={() => {}}
+                options={[{ value: companyId, label: companyName }]}
+                placeholder="Select company"
+                disabled
+              />
+            )}
             {errors.companyId && <p className="text-xs text-red-500 mt-1">{errors.companyId}</p>}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Role<span className="text-red-500 ml-0.5">*</span>
             </label>
-            <Combobox
+            <BaseSelect
               value={form.contactPersonTypeId}
               onChange={(v) => setField("contactPersonTypeId", v)}
               options={roleOptions}
+              isLoading={contactPersonTypesQuery.isLoading}
               error={Boolean(errors.contactPersonTypeId)}
               placeholder="Select role"
+              searchPlaceholder="Search roles..."
               disabled={Boolean(lockedType)}
               createAction={
                 lockedType || !effectiveCompanyTypeId

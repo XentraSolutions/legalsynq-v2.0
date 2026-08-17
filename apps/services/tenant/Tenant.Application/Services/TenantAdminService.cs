@@ -174,7 +174,16 @@ public class TenantAdminService : ITenantAdminService
             DomainCount:         domains.Count,
             CapabilityCount:     capabilities.Count,
             SettingsSummary:     settingsSummary,
-            BrandingSummary:     brandingSummary);
+            BrandingSummary:     brandingSummary,
+            ProvisioningStatus:  NormalizeProvisioningStatus(compatSnapshot?.ProvisioningStatus, tenant.ProvisioningStatus),
+            LastProvisioningAttemptUtc: compatSnapshot?.LastProvisioningAttemptUtc,
+            ProvisioningFailureReason: compatSnapshot?.ProvisioningFailureReason ?? tenant.LastProvisioningError,
+            ProvisioningFailureStage: compatSnapshot?.ProvisioningFailureStage,
+            Hostname:            BuildTenantHost(compatSnapshot?.Hostname, domains, tenant.Subdomain),
+            VerificationAttemptCount: compatSnapshot?.VerificationAttemptCount,
+            LastVerificationAttemptUtc: compatSnapshot?.LastVerificationAttemptUtc,
+            NextVerificationRetryAtUtc: compatSnapshot?.NextVerificationRetryAtUtc,
+            IsVerificationRetryExhausted: compatSnapshot?.IsVerificationRetryExhausted);
     }
 
     // ── B11: Status update ────────────────────────────────────────────────────
@@ -523,7 +532,8 @@ public class TenantAdminService : ITenantAdminService
             OrgCount:           0,
             Subdomain:          t.Subdomain,
             Url:                BuildTenantUrl(compat?.Hostname, null, t.Subdomain),
-            CreatedAtUtc:       t.CreatedAtUtc);
+            CreatedAtUtc:       t.CreatedAtUtc,
+            ProvisioningStatus: NormalizeProvisioningStatus(compat?.ProvisioningStatus, t.ProvisioningStatus));
 
     private static string NormalizeTenantType(string? tenantType)
     {
@@ -558,6 +568,32 @@ public class TenantAdminService : ITenantAdminService
         }
 
         return string.IsNullOrWhiteSpace(host) ? string.Empty : $"https://{host}";
+    }
+
+    private static string? BuildTenantHost(
+        string? hostname,
+        IEnumerable<TenantDomain>? domains,
+        string? subdomain)
+    {
+        var url = BuildTenantUrl(hostname, domains, subdomain);
+        return url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            ? url["https://".Length..]
+            : null;
+    }
+
+    private static string? NormalizeProvisioningStatus(string? identityStatus, TenantProvisioningStatus tenantStatus)
+    {
+        if (!string.IsNullOrWhiteSpace(identityStatus))
+            return identityStatus.Trim();
+
+        return tenantStatus switch
+        {
+            TenantProvisioningStatus.Unknown => null,
+            TenantProvisioningStatus.InProgress => "InProgress",
+            TenantProvisioningStatus.Provisioned => "Provisioned",
+            TenantProvisioningStatus.Failed => "Failed",
+            _ => null,
+        };
     }
 
     private static string? NormalizeHost(string? host)

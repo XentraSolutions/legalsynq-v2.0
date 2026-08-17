@@ -1,5 +1,6 @@
 import { createMutationTest, expect } from '../../../support/mutation-test';
 import { getEnv } from '../../../config/environments';
+import type { PageOf } from '../../../support/test-types';
 
 /**
  * Covers the Liens list (/lien/liens) Filter Liens modal — TODO item 8
@@ -22,11 +23,13 @@ import { getEnv } from '../../../config/environments';
 const test = createMutationTest('lien');
 const env = getEnv();
 
+type TestPage = PageOf<typeof test>;
+
 // The toolbar's "Filter" button's accessible name has a leading space (icon
 // + text, rendered as separate JSX children), and once a filter is active
 // the toolbar also grows a "Clear Filter" button — which also
 // substring-matches "Filter". Excluding "Clear" text disambiguates both.
-function openFilterButton(page: import('@playwright/test').Page) {
+function openFilterButton(page: TestPage) {
   return page.getByRole('button', { name: /Filter/i }).filter({ hasNotText: 'Clear' });
 }
 

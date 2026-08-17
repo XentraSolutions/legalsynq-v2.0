@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { TenantRegistration } from "@/lib/control-center-api";
 import { NotificationBanner } from "@/components/ui/notification-banner";
+import { ProvisioningProgress } from "@/components/tenants/provisioning-progress";
 import { approveRegistration, declineRegistration } from "../actions";
 import { TenantApplicationDialog } from "../tenant-application-dialog";
 
@@ -17,21 +18,42 @@ export function DecisionPanel({
   const [notification, setNotification] = useState<
     "approve" | "decline" | null
   >(null);
+  const [registrationStatus, setRegistrationStatus] = useState(application.registrationStatus);
+  const [provisioning, setProvisioning] = useState<{
+    tenantId: string;
+    status?: string;
+    hostname?: string;
+    error?: string;
+  } | null>(null);
   const [pending, start] = useTransition();
   const submit = () => {
     if (!mode) return;
     start(async () => {
       try {
-        if (mode === "approve") await approveRegistration(application.id);
-        else
+        if (mode === "approve") {
+          const result = await approveRegistration(application.id);
+          setRegistrationStatus(result.registrationStatus);
+          if (result.tenantId) {
+            setProvisioning({
+              tenantId: result.tenantId,
+              status: result.provisioningStatus,
+              hostname: result.hostname,
+              error: result.provisioningErrors[0],
+            });
+          }
+        } else {
           await declineRegistration(
             application.id,
             "Declined by platform administrator.",
           );
+          setRegistrationStatus("Declined");
+        }
         const completed = mode;
         setMode(null);
         setNotification(completed);
-        router.refresh();
+        if (completed === "decline") {
+          router.refresh();
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "The request failed.");
       }
@@ -39,7 +61,7 @@ export function DecisionPanel({
   };
   return (
     <>
-      {application.registrationStatus === "PendingReview" && (
+      {registrationStatus === "PendingReview" && (
         <div className="flex gap-2">
           <button
             onClick={() => setMode("approve")}
@@ -53,6 +75,17 @@ export function DecisionPanel({
           >
             Decline
           </button>
+        </div>
+      )}
+      {provisioning && provisioning.status !== "Active" && (
+        <div className="mt-3 w-full max-w-xl">
+          <ProvisioningProgress
+            tenantId={provisioning.tenantId}
+            initialStatus={provisioning.status}
+            initialHostname={provisioning.hostname}
+            initialError={provisioning.error}
+            onSettled={() => router.refresh()}
+          />
         </div>
       )}
       {mode && (
