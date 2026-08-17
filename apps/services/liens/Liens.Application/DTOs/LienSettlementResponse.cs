@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Liens.Application.DTOs;
 
 public sealed class LienSettlementResponse
@@ -80,4 +82,17 @@ public sealed class CreateSettlementPaymentDetailRequest
     public string?  Type            { get; init; }
     public string?  Status          { get; init; }
     public decimal? NetProfit       { get; init; }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class UpdateSettlementPaymentDetailRequest
+{
+    public required decimal  Amount           { get; init; }
+    public required DateOnly PaymentDate      { get; init; }
+    public string? PaymentMethod    { get; init; }
+    public string? ReferenceNumber  { get; init; }
+    public string? Notes            { get; init; }
+    public string? SettlementType   { get; init; }
+    public string? SettlementStatus { get; init; }
+    public string? LienStatus       { get; init; }
 }

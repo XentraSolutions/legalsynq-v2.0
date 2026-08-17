@@ -12,6 +12,7 @@
 - [Bills of Sale](#bills-of-sale-endpoints)
 - [Lien Offers](#lien-offers-endpoints)
 - [Contacts](#contacts-endpoints)
+- [Settlement Payments](#settlement-payment-endpoints)
 - [Servicing](#servicing-endpoints)
 - [Reports](#reports-endpoints)
 
@@ -1862,6 +1863,65 @@ Reactivate a previously deactivated contact.
 | `isActive` | `boolean` | No | Whether the contact is active |
 | `createdAtUtc` | `datetime` | No | Record creation timestamp |
 | `updatedAtUtc` | `datetime` | No | Record last-updated timestamp |
+
+---
+
+## Settlement Payment Endpoints
+
+Base path: `/api/liens/settlement/payments`
+
+### PUT `/api/liens/settlement/payments/{paymentId}`
+
+Update one existing settlement payment. The payment is resolved from the authenticated tenant and the route `paymentId`; `caseId` and `lienId` are immutable and are not accepted in the body. The legacy `POST /service/liens/update/settlement` remains a create-settlement endpoint and must not be used to edit a payment.
+
+**Permission:** `SYNQ_LIENS.lien:update`
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `paymentId` | `guid` | Settlement payment identifier returned by payment-details APIs |
+
+**Request Body: `UpdateSettlementPaymentDetailRequest`**
+
+All fields are required. Unknown JSON fields are rejected with `400 Bad Request`.
+
+| Field | Type | Description |
+|---|---|---|
+| `amount` | `decimal` | Updated payment amount; must be zero or greater |
+| `paymentDate` | `date` | Payment date in `YYYY-MM-DD` format |
+| `paymentMethod` | `string` | Nonblank payment method, such as `Check` |
+| `referenceNumber` | `string` | Nonblank check or external payment reference number; maximum 100 characters |
+| `notes` | `string` | User-visible payment note; must be present and non-null but may be empty |
+| `settlementType` | `string` | Nonblank settlement source, such as `by_funding_company` |
+| `settlementStatus` | `string` | Nonblank payment outcome, such as `full_payment` |
+| `lienStatus` | `string` | Linked lien lifecycle value. `Open` and `Closed` normalize to `Active` and `Settled` |
+
+```json
+{
+  "amount": 530,
+  "paymentDate": "2026-08-16",
+  "paymentMethod": "Check",
+  "referenceNumber": "123456",
+  "notes": "Payment Testing",
+  "settlementType": "by_funding_company",
+  "settlementStatus": "full_payment",
+  "lienStatus": "Closed"
+}
+```
+
+**Response:** `200 OK` — `SettlementPaymentDetailResponse`
+
+The response returns the immutable payment identity and linkage, the updated amount/date/reference/note, `paymentMethod`, `settlementTypeId`, `settlementStatusId`, and audit fields. Settlement classification remains stored in the existing payment metadata representation; unrelated metadata is preserved. The payment update and linked-lien status change commit atomically.
+
+Because payment method and settlement classifications use the legacy metadata representation, `paymentMethod`, `settlementType`, and `settlementStatus` reject `;`, `=`, CR/LF, and the `[legacy-meta]` marker. `notes` rejects the exact `[legacy-meta]` marker but otherwise permits normal punctuation, including semicolons and equals signs.
+
+**Errors:**
+
+| Status | Condition |
+|---|---|
+| `400 Bad Request` | Missing, malformed, unknown, or invalid request field |
+| `404 Not Found` | Payment is missing, deleted, or belongs to another tenant |
 
 ---
 
