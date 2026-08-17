@@ -27,5 +27,9 @@ public class SettlementPaymentDetailConfiguration : IEntityTypeConfiguration<Set
         builder.Property(p => p.UpdatedAtUtc).IsRequired();
         builder.HasIndex(p => new { p.TenantId, p.CaseId });
         builder.HasIndex(p => new { p.TenantId, p.LienId });
+        builder.HasIndex(p => new { p.TenantId, p.PaymentDate, p.IsDeleted })
+            .HasDatabaseName("IX_SettlementPayments_Tenant_Date_Deleted");
+        builder.HasIndex(p => new { p.TenantId, p.LienId, p.IsDeleted })
+            .HasDatabaseName("IX_SettlementPayments_Tenant_Lien_Deleted");
     }
 }

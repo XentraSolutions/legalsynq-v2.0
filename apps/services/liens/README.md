@@ -140,6 +140,33 @@ new mutation (reuse it only to retry that exact request).
 Seller dashboard highest bids are aggregated in the database and, unless sorting by highest bid, are loaded only
 for the requested page. Buyer dashboard lien, facility, and seller-contact lookups are batched; seller display
 resolution uses bounded parallelism so multiple seller organizations do not serialize identity lookups.
+
+### Selling receivables dashboard
+
+`GET /api/liens/selling/analytics/receivables-dashboard` returns the composite mobile-dashboard dataset for the
+authenticated tenant and seller organization. It requires SynqLien product access, sell mode, and
+`SYNQ_LIENS.lien_sale:view_analytics`; callers cannot supply a tenant or seller organization identifier. Responses include
+`Cache-Control: no-store`.
+
+Optional query parameters:
+
+- `asOfDate`: ISO `yyyy-MM-dd`; defaults to the current UTC date.
+- `months`: number of monthly chart positions, defaults to `6`, allowed range `1` through `12`.
+- `topBuyerLimit`: maximum buyers returned in both buyer lists, defaults to `5`, allowed range `1` through `20`.
+
+The response contains summary amounts, five due-date aging buckets, mutually exclusive operational statuses, monthly
+chart positions, top buyers, per-buyer aging, and data-quality counts. Outstanding balances are clamped at zero.
+Payments received use only non-deleted `SettlementPaymentDetail` rows dated from the first day of the selected month
+through `asOfDate`; settlement headers are not added to that metric. Buyer resolution prefers
+`FundingCompanyCompanyId` and uses legacy `FundingCompanyId` only when no canonical reference exists. Missing or
+out-of-scope buyer references are counted in `dataQuality.unassignedBuyerCount`.
+
+`ReceivableDueDate` is nullable and is never inferred from purchase, service, settlement, or update dates. Positive
+balances without a due date are excluded from the five aged buckets and reported through `unagedLienCount`,
+`unagedBalance`, and `dataQuality.missingDueDateCount`. This release does not create historical balance snapshots, so
+all summary metrics return `trendAvailable: false` with `trendPercent: null`; historical chart positions return
+`dataAvailable: false`. Only the current month position is populated, and only when `asOfDate` is the current UTC date.
+
 | `POST` | `/api/liens/selling/liens` | Creates a lien directly in `Pending` or `Internal`; it does not create a seller draft. |
 | `GET` | `/api/liens/selling/liens/{lienId}` | Returns seller-scoped lien detail for the intake wizard, including funding-company contact person/email and case-manager/law-firm details when available. |
 | `PUT` | `/api/liens/selling/liens/{lienId}/lien-information`, `/case-information`, `/medical-pricing`, `/documents` | Saves the seller wizard sections. `/case-information` accepts either legacy Contact IDs or Company Directory references: `fundingCompanyId` and `handlingLawFirmId` may identify active companies of the required type, `medicalProviderId` may identify an active Medical Provider company, `fundingCompanyContactId` must belong to the selected funding company, and `caseManagerId` must belong to the selected law firm with the Case Manager contact-person type. Company Directory references must belong to the authenticated tenant and seller organization. Canonical references are persisted in the dedicated company/contact-person columns and are returned by lien detail/readiness flows; legacy payloads remain supported. Medical-pricing rows and document references use collision-resistant task identifiers, including when required and supporting documents are saved together. Existing document IDs are verified against the Documents service and must reference the seller-owned lien or case. |

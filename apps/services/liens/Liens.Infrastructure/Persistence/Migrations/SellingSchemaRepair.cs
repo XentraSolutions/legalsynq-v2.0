@@ -10,8 +10,8 @@ public static class SellingSchemaRepair
 {
     private const string RepairLockName = "legalsynq-liens-selling-schema-repair";
     private const int ExpectedTableCount = 7;
-    private const int ExpectedColumnCount = 12;
-    private const int ExpectedIndexCount = 27;
+    private const int ExpectedColumnCount = 13;
+    private const int ExpectedIndexCount = 31;
     private const int ExpectedForeignKeyCount = 16;
     private const int ExpectedCheckConstraintCount = 1;
     private const int ExpectedCompanyTypeSeedCount = 4;
@@ -116,6 +116,7 @@ public static class SellingSchemaRepair
         new AddSellingCompanyDirectory(),
         new AddSellingPartyCompatibility(),
         new AddScopedContactPersonTypes(),
+        new AddReceivableDueDate(),
     ];
 
     private static async Task<bool> AcquireRepairLockAsync(
@@ -172,7 +173,7 @@ public static class SellingSchemaRepair
                  WHERE TABLE_SCHEMA = DATABASE()
                    AND ((TABLE_NAME = 'liens_SellingPortfolioBuyers' AND COLUMN_NAME = 'BuyerCompanyId')
                      OR (TABLE_NAME = 'liens_SellingBuyerAccessLinks' AND COLUMN_NAME IN ('BuyerCompanyContactPersonId', 'BuyerCompanyId'))
-                     OR (TABLE_NAME = 'liens_Liens' AND COLUMN_NAME IN ('FundingCompanyCompanyId', 'FundingCompanyContactPersonId', 'MedicalFacilityCompanyId', 'MedicalProviderCompanyId'))
+                     OR (TABLE_NAME = 'liens_Liens' AND COLUMN_NAME IN ('FundingCompanyCompanyId', 'FundingCompanyContactPersonId', 'MedicalFacilityCompanyId', 'MedicalProviderCompanyId', 'ReceivableDueDate'))
                      OR (TABLE_NAME = 'liens_LienOffers' AND COLUMN_NAME = 'BuyerCompanyId')
                      OR (TABLE_NAME = 'liens_Cases' AND COLUMN_NAME IN ('CaseManagerContactPersonId', 'HandlingLawFirmCompanyId'))
                      OR (TABLE_NAME = 'liens_ContactPersonTypes' AND COLUMN_NAME IN ('TenantId', 'OrgId')))) AS ColumnCount,
@@ -206,7 +207,11 @@ public static class SellingSchemaRepair
                        'UX_SellingPartyAliases_PreferredCompany',
                        'UX_SellingPartyAliases_PreferredContact',
                        'UX_SellingPartyBackfillCheckpoints_Tenant_Workflow',
-                       'UX_SellingPartyBackfillQuarantines_SourceReason')) AS IndexCount,
+                       'UX_SellingPartyBackfillQuarantines_SourceReason',
+                       'IX_SettlementPayments_Tenant_Date_Deleted',
+                       'IX_SettlementPayments_Tenant_Lien_Deleted',
+                       'IX_Liens_Tenant_Seller_FundingCompanyCompanyId',
+                       'IX_Liens_Tenant_Seller_ReceivableDueDate')) AS IndexCount,
                 (SELECT COUNT(*)
                  FROM information_schema.TABLE_CONSTRAINTS
                  WHERE CONSTRAINT_SCHEMA = DATABASE()

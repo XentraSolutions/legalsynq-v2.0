@@ -78,6 +78,9 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
         builder.Property(l => l.PurchaseDate)
             .HasColumnType("date");
 
+        builder.Property(l => l.ReceivableDueDate)
+            .HasColumnType("date");
+
         builder.Property(l => l.InitialServiceDate)
             .HasColumnType("date");
 
@@ -180,6 +183,12 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
 
         builder.HasIndex(l => new { l.TenantId, l.PurchaseDate })
             .HasDatabaseName("IX_Liens_TenantId_PurchaseDate");
+
+        builder.HasIndex(l => new { l.TenantId, l.SellingOrgId, l.ReceivableDueDate })
+            .HasDatabaseName("IX_Liens_Tenant_Seller_ReceivableDueDate");
+
+        builder.HasIndex(l => new { l.TenantId, l.SellingOrgId, l.FundingCompanyCompanyId })
+            .HasDatabaseName("IX_Liens_Tenant_Seller_FundingCompanyCompanyId");
 
         builder.HasOne<Case>()
             .WithMany()
