@@ -59,6 +59,60 @@ Current EAS build values:
 
 `EXPO_PUBLIC_*` values are bundled into the app binary and must not contain secrets.
 
+## Verified HTTPS Deep Links
+
+DL-APP-001 configures the application side of iOS Universal Links and Android App Links. Set the public, non-secret host for the active EAS environment:
+
+```text
+EXPO_PUBLIC_DEEP_LINK_HOST=links.approved-domain.example
+```
+
+The value must be a DNS hostname only: do not include `https://`, a port, path, query, or fragment. Do not infer this value from `EXPO_PUBLIC_API_URL`.
+
+| EAS profile   | Logical app environment | App identity       | Host behavior                                                                        |
+| ------------- | ----------------------- | ------------------ | ------------------------------------------------------------------------------------ |
+| `development` | `development`           | `com.legalsynq.qa` | Uses its explicitly configured host; omits verified-link claims when unavailable.    |
+| `preview`     | `qa`                    | `com.legalsynq.qa` | Uses its explicitly configured QA host; omits verified-link claims when unavailable. |
+| `production`  | `production`            | `com.legalsynq`    | Requires a valid host and fails Expo config resolution when missing or invalid.      |
+
+No UAT Mobile profile exists. A host never falls back to another environment.
+
+When configured, Expo emits:
+
+- iOS `com.apple.developer.associated-domains` with exactly `applinks:<host>`.
+- Android HTTPS `VIEW` handling with `BROWSABLE`, `DEFAULT`, and `autoVerify=true`.
+
+Android claims are derived directly from `shared/contracts/deep-links/routes.json`. `/dashboard` is exact; parameterized routes use the narrow prefixes `/deals/`, `/contacts/`, `/applications/`, and `/reports/`. Slash-terminated prefixes avoid claiming similarly named paths such as `/deals-marketing`, but they intentionally include descendants within each supported route family. iOS path restrictions belong in the AASA file.
+
+The existing bundle/package identity logic and generated custom URL scheme remain unchanged. `DeepLinkingService` is not an incoming-link router; this configuration does not parse URLs or navigate.
+
+### Inspect and validate configuration
+
+Run focused checks from the repository root:
+
+```bash
+pnpm --dir apps/mobile exec jest --runInBand app.config.test.js src/shared/deepLinks/index.test.ts
+pnpm --dir apps/mobile typecheck
+pnpm --dir apps/mobile lint
+```
+
+Inspect a configured profile without writing native files:
+
+```bash
+EXPO_PUBLIC_APP_ENV=qa \
+EXPO_PUBLIC_DEEP_LINK_HOST=<approved-qa-host> \
+pnpm --dir apps/mobile exec expo config --type prebuild --json
+```
+
+Because `ios/` and `android/` are checked in, changing only `app.config.js` does not update committed native files. After approved hosts are available, generate and review native changes deliberately with the repository's Expo prebuild workflow before building. Never run a clean prebuild over uncommitted native work.
+
+For troubleshooting:
+
+- A Production `expo config` failure mentioning `EXPO_PUBLIC_DEEP_LINK_HOST` means the required environment value is absent or malformed.
+- Empty Development/QA associated domains and intent filters mean no approved host was supplied for that build.
+- Domain verification and device launch cannot succeed from app configuration alone. DL-BE-001 must serve a valid `apple-app-site-association` file and `assetlinks.json`, including the real Apple application/team data and Android signing fingerprints.
+- This ticket does not configure DNS/TLS, association hosting, URL listeners, navigation, authentication continuation, resource lookup, or analytics.
+
 Dashboard demo data is controlled at runtime from `Settings > Reports > Use Dummy Dashboard Data`. The setting is stored locally on the device and does not require rebuilding the app.
 
 Example local run against the gateway:
