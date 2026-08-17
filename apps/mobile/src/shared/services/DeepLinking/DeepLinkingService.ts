@@ -8,4 +8,10 @@ export const DeepLinkingService = {
   async getInitialUrl(): Promise<string | null> {
     return Linking.getInitialURL();
   },
+
+  subscribeToUrls(listener: (url: string) => void): () => void {
+    const subscription = Linking.addEventListener('url', ({ url }) => listener(url));
+
+    return () => subscription.remove();
+  },
 };

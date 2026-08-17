@@ -113,6 +113,45 @@ For troubleshooting:
 - Domain verification and device launch cannot succeed from app configuration alone. DL-BE-001 must serve a valid `apple-app-site-association` file and `assetlinks.json`, including the real Apple application/team data and Android signing fingerprints.
 - This ticket does not configure DNS/TLS, association hosting, URL listeners, navigation, authentication continuation, resource lookup, or analytics.
 
+## Deep-Link Routing Engine
+
+DL-APP-002 adds a Mobile-only routing layer under `src/shared/services/DeepLinking`. Its boundary is deliberately limited:
+
+```text
+raw URL → validate/normalize → shared-route match → typed resolution
+```
+
+It does not navigate, inspect authentication, call an API, or persist a pending link.
+
+The routing modules have separate responsibilities:
+
+- `DeepLinkResolver` is pure. It validates HTTPS scheme/host, parses the path/query, matches enabled definitions from the authoritative `shared/contracts/deep-links/routes.json`, and returns a discriminated result.
+- `DeepLinkDuplicateGuard` keeps normalized resolved URLs in memory for a two-second window. A repeat inside the window returns `duplicate`; different URLs and the same URL after expiry can proceed.
+- `DeepLinkingService` remains the thin Expo adapter for initial URLs, custom URL creation, and runtime URL subscription/removal.
+- `DeepLinkIntakeService` coordinates cold-start/runtime intake. It delivers resolved and failure results to a callback, but deliberately withholds duplicate results from that downstream callback.
+
+Successful results use `status: "resolved"` and include `routeKey`, decoded `pathParameters`, approved `queryParameters`, `originalUrl`, and `normalizedUrl`. Expected failures use stable statuses: `malformed`, `unsupported_scheme`, `unsupported_host`, `unsupported_route`, `invalid_parameters`, or `duplicate`.
+
+Routing behavior is intentionally strict:
+
+- Only HTTPS is accepted by the resolver. Existing `DeepLinkingService.createUrl()` custom-scheme behavior remains unchanged, but custom schemes are not routed because no existing consumer requires them.
+- The hostname must match the active `EXPO_PUBLIC_DEEP_LINK_HOST`, case-insensitively. If that environment has no configured host, HTTPS links return `unsupported_host`.
+- Static and parameterized paths match by exact segment count. Trailing/duplicate slashes, dot segments, missing IDs, and extra segments are rejected.
+- Path parameters are safely percent-decoded and canonically re-encoded in the normalized URL. The resolver performs no resource lookup or business validation.
+- Fragments are rejected. Query parameters are decoded and checked against each shared route's `optionalQueryParameters`; because the current registry approves none, any query parameter is rejected.
+
+Cold-start consumers call `processInitialUrl(callback)`. Runtime consumers call `subscribe(callback)` and must invoke the returned cleanup function. A future application integration should use one intake instance for both paths so the shared duplicate guard can suppress an initial URL repeated by a runtime event.
+
+DL-APP-003 owns authentication and pending-route continuation. DL-APP-004 owns mapping a resolved `routeKey` and parameters to React Navigation screens. Neither behavior is implemented by this routing layer.
+
+Focused validation:
+
+```bash
+pnpm --dir apps/mobile exec jest --runInBand src/shared/services/DeepLinking
+pnpm --dir apps/mobile typecheck
+pnpm --dir apps/mobile lint
+```
+
 Dashboard demo data is controlled at runtime from `Settings > Reports > Use Dummy Dashboard Data`. The setting is stored locally on the device and does not require rebuilding the app.
 
 Example local run against the gateway:
