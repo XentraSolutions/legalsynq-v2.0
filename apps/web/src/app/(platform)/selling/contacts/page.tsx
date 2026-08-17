@@ -35,6 +35,12 @@ import { BaseTable } from "@/components/ui/base-table";
 import { Button } from "@/components/selling/button";
 import type { Company } from "@/lib/selling/companies.types";
 import { downloadBlob } from "@/lib/utils";
+import {
+  TABLE_CELL_CLASSNAME,
+  TABLE_LINK_CLASSNAME,
+  TABLE_HEADER_CLASSNAME,
+  TABLE_HEADER_CELL_CLASSNAME,
+} from "@/components/selling/table-cell-styles";
 
 const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -222,7 +228,7 @@ function CompaniesListView() {
             <Link
               href={`/selling/contacts/${c.id}`}
               onClick={(e) => e.stopPropagation()}
-              className="text-sm font-medium text-gray-700 hover:text-primary"
+              className={TABLE_LINK_CLASSNAME}
             >
               {c.name}
             </Link>
@@ -233,7 +239,7 @@ function CompaniesListView() {
         id: "email",
         header: "Email",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">
+          <span className={TABLE_CELL_CLASSNAME}>
             {row.original.email || "—"}
           </span>
         ),
@@ -242,7 +248,7 @@ function CompaniesListView() {
         id: "type",
         header: "Type",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">
+          <span className={TABLE_CELL_CLASSNAME}>
             {row.original.companyTypeName || "—"}
           </span>
         ),
@@ -251,7 +257,11 @@ function CompaniesListView() {
         id: "activeCases",
         header: "Active Cases",
         // No case-linkage API exists for companies yet — placeholder until it does.
-        cell: () => <span className="text-sm text-gray-400">—</span>,
+        cell: () => (
+          <span className={TABLE_CELL_CLASSNAME}>
+            —
+          </span>
+        ),
       },
       {
         id: "actions",
@@ -388,6 +398,8 @@ function CompaniesListView() {
               pageSizeOptions={[10, 25, 50, 100]}
               className="border-0 rounded-none"
               primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
+              headerClassName={TABLE_HEADER_CLASSNAME}
+              headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
             />
           </div>
         )}

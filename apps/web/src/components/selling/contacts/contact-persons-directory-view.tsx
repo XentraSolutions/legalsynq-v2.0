@@ -24,6 +24,12 @@ import {
   useExportContacts,
 } from "@/hooks/use-selling-companies";
 import type { ContactPersonDirectoryItem } from "@/lib/selling/companies.types";
+import {
+  TABLE_CELL_CLASSNAME,
+  TABLE_LINK_CLASSNAME,
+  TABLE_HEADER_CLASSNAME,
+  TABLE_HEADER_CELL_CLASSNAME,
+} from "@/components/selling/table-cell-styles";
 
 const DEFAULT_PAGE_SIZE = 10;
 // Still needed as a passthrough for BaseTable (src/components/ui/base-table),
@@ -142,32 +148,48 @@ export function ContactPersonsDirectoryView() {
 
   const columns = useMemo<ColumnDef<ContactPersonDirectoryItem, any>[]>(
     () => [
-      { id: "name", header: "Name", accessorKey: "displayName" },
+      {
+        id: "name",
+        header: "Name",
+        cell: ({ row }) => (
+          <span className={TABLE_CELL_CLASSNAME}>
+            {row.original.displayName}
+          </span>
+        ),
+      },
       {
         id: "company",
         header: "Company",
         cell: ({ row }) => (
           <Link
             href={`/selling/contacts/${row.original.companyId}`}
-            className="text-sm font-medium text-gray-700 hover:text-primary"
+            className={TABLE_LINK_CLASSNAME}
           >
             {row.original.companyName}
           </Link>
         ),
       },
-      { id: "role", header: "Role", accessorKey: "contactPersonTypeName" },
+      {
+        id: "role",
+        header: "Role",
+        cell: ({ row }) => (
+          <span className={TABLE_CELL_CLASSNAME}>
+            {row.original.contactPersonTypeName || "—"}
+          </span>
+        ),
+      },
       {
         id: "email",
         header: "Email",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.email || "—"}</span>
+          <span className={TABLE_CELL_CLASSNAME}>{row.original.email || "—"}</span>
         ),
       },
       {
         id: "phone",
         header: "Phone",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">{row.original.phone || "—"}</span>
+          <span className={TABLE_CELL_CLASSNAME}>{row.original.phone || "—"}</span>
         ),
       },
       {
@@ -281,6 +303,8 @@ export function ContactPersonsDirectoryView() {
               pageSizeOptions={[10, 25, 50, 100]}
               className="border-0 rounded-none"
               primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
+              headerClassName={TABLE_HEADER_CLASSNAME}
+              headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
             />
           </div>
         )}
