@@ -23,6 +23,7 @@ import { useXeniaChat } from '@/features/xenia/hooks/useXeniaChat';
 import type { MainStackParamList } from '@/navigation/types/navigation';
 import type { XeniaConversationSummary, XeniaMessage } from '@/shared/api/endpoints/Xenia';
 import { cx } from '@/shared/styles';
+import { formatDisplayDate } from '@/shared/utils';
 
 const ACCENT = '#ee7132';
 const SHADOW = '#000000';
@@ -36,6 +37,17 @@ const MARKDOWN_SURFACE = '#efeff0';
 const MARKDOWN_DARK_SURFACE = '#27272a';
 const SUGGESTIONS = ['Search liens by client, case, or status', 'Summarize my lien queue'];
 const MARKDOWN_TABLE_SCROLL_STYLE: ViewStyle = { marginBottom: 8 };
+const CONVERSATION_TIMESTAMP_PATTERN = 'MMM d, yyyy, h:mm a';
+
+export function formatConversationCreatedAt(createdAtUtc: string): string {
+  const hasExplicitOffset = /Z$|[+-]\d{2}:?\d{2}$/.test(createdAtUtc);
+  const normalizedUtc = hasExplicitOffset ? createdAtUtc : `${createdAtUtc}Z`;
+  try {
+    return formatDisplayDate(normalizedUtc, CONVERSATION_TIMESTAMP_PATTERN);
+  } catch {
+    return 'Date unavailable';
+  }
+}
 
 const XENIA_MARKDOWN_RULES: RenderRules = {
   table: (node, children, _parent, styles) => (
@@ -268,7 +280,7 @@ export function WelcomeState({ onSuggestion }: { onSuggestion: (value: string) =
   );
 }
 
-function MessageRow({ message }: { message: XeniaMessage & { pending?: boolean } }) {
+export function MessageRow({ message }: { message: XeniaMessage & { pending?: boolean } }) {
   const isUser = message.role.toLowerCase() === 'user';
   if (!isUser && message.role.toLowerCase() !== 'assistant') return null;
 
@@ -278,6 +290,9 @@ function MessageRow({ message }: { message: XeniaMessage & { pending?: boolean }
         <View className="max-w-[200px] rounded-[20px] bg-[#efeff0] px-4 py-3">
           <Text className="font-jakarta text-sm leading-5 text-[#18181b]">{message.content}</Text>
         </View>
+        <Text className="mt-1.5 font-jakarta text-xs text-[#a1a1aa]">
+          {formatConversationCreatedAt(message.createdAtUtc)}
+        </Text>
       </View>
     );
   }
@@ -306,6 +321,9 @@ function MessageRow({ message }: { message: XeniaMessage & { pending?: boolean }
           ))}
         </View>
       ) : null}
+      <Text className="mt-1.5 font-jakarta text-xs text-[#a1a1aa]">
+        {formatConversationCreatedAt(message.createdAtUtc)}
+      </Text>
     </View>
   );
 }
@@ -655,6 +673,9 @@ function ConversationDrawer({
                       numberOfLines={1}
                     >
                       {conversation.title || 'Untitled conversation'}
+                    </Text>
+                    <Text className="mt-0.5 font-jakarta text-xs text-[#a1a1aa]">
+                      {formatConversationCreatedAt(conversation.createdAtUtc)}
                     </Text>
                   </Pressable>
                 ))
