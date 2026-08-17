@@ -6,7 +6,6 @@ import { LIEN_TYPE_LABELS } from "@/types/lien";
 import { LienStatusBadge } from "../lien/lien-status-badge";
 import { useMemo, useState } from "react";
 import { ColumnDef, SortingState } from "@tanstack/react-table";
-import { StatusBadge } from "../lien/status-badge";
 import { BaseTable } from "../ui/base-table";
 import { PaginationMeta } from "@/lib/contacts";
 import { LiensQuery } from "@/lib/liens";
@@ -191,7 +190,7 @@ export function PortfolioTable({
         id: "status",
         accessorKey: "status",
         header: "Lien Status",
-        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+        cell: ({ row }) => <LienStatusBadge status={row.original.status} />,
       },
       {
         id: "actions",

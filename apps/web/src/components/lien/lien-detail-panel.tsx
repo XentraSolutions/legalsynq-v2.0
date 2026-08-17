@@ -105,7 +105,7 @@ export function LienDetailPanel({ lien }: LienDetailPanelProps) {
               Confidential
             </span>
           )}
-          <LienStatusBadge status={lien.status} size="md" />
+          <LienStatusBadge status={lien.status} />
         </div>
       </div>
 
