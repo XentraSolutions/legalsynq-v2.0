@@ -2,12 +2,32 @@ import { useMemo } from 'react';
 import { Text, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Polyline, Stop } from 'react-native-svg';
 import { FIGMA_TEXT as TYPE } from '@/shared/styles';
-import { BLUE, LINE_POINTS, buildLineChart } from './index';
-import { CardShell } from './CardShell';
-import { SectionTitle } from './SectionTitle';
+import { BLUE } from '../dashboardShared';
+import { LINE_POINTS, buildLineChart } from './sellingDashboardData';
+import { CardShell } from '../CardShell';
+import { SectionTitle } from '../SectionTitle';
 
-export function LineChartCard({ isDark }: { isDark: boolean }) {
-  const chart = useMemo(() => buildLineChart(220, 132, LINE_POINTS), []);
+export function LineChartCard({
+  currency = 'USD',
+  isDark,
+  labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+  points = LINE_POINTS,
+}: {
+  currency?: string;
+  isDark: boolean;
+  labels?: string[];
+  points?: number[];
+}) {
+  const chart = useMemo(() => buildLineChart(220, 132, points.length > 1 ? points : [0, 0]), [points]);
+  const axisMaximum = Math.max(...points, 0);
+  const axisLabels = Array.from({ length: 5 }, (_, index) =>
+    new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format((axisMaximum * (4 - index)) / 4)
+  );
   const gridColor = isDark ? '#2a2b30' : '#e7e8ec';
   const labelColor = isDark ? '#8f929b' : '#8a8e98';
 
@@ -20,7 +40,7 @@ export function LineChartCard({ isDark }: { isDark: boolean }) {
       />
       <View className="mt-7 flex-row">
         <View className="w-9 justify-between pb-6">
-          {['$4M', '$3M', '$2M', '$1M', '$0'].map((label) => (
+          {axisLabels.map((label) => (
             <Text className={TYPE.microMeta} key={label} style={{ color: labelColor }}>
               {label}
             </Text>
@@ -55,8 +75,8 @@ export function LineChartCard({ isDark }: { isDark: boolean }) {
             ))}
           </Svg>
           <View className="mt-1 flex-row justify-between px-1">
-            {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((label) => (
-              <Text className={TYPE.microMeta} key={label} style={{ color: labelColor }}>
+            {labels.map((label, index) => (
+              <Text className={TYPE.microMeta} key={`${label}-${index}`} style={{ color: labelColor }}>
                 {label}
               </Text>
             ))}

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { cx, FIGMA_TEXT as TYPE } from '@/shared/styles';
-import { DonutSlice, LEGEND_PAGE_SIZE } from './index';
+import { LEGEND_PAGE_SIZE, type DonutSlice } from './dashboardShared';
 import { CardShell } from './CardShell';
 import { SectionTitle } from './SectionTitle';
 import { DonutChart } from './DonutChart';

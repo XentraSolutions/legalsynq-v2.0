@@ -1,7 +1,7 @@
 import { View } from 'react-native';
-import { SELLING_SELLERS } from './index';
-import { CardShell } from './CardShell';
-import { SectionTitle } from './SectionTitle';
+import { SELLING_SELLERS } from './sellingDashboardData';
+import { CardShell } from '../CardShell';
+import { SectionTitle } from '../SectionTitle';
 import { SellerRiskRow } from './SellerRiskRow';
 
 export function AgingSellerCard({ isDark }: { isDark: boolean }) {

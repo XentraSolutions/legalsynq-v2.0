@@ -1,5 +1,5 @@
 import { View } from 'react-native';
-import { StatCardData } from './index';
+import type { StatCardData } from './dashboardShared';
 import { StatCard } from './StatCard';
 
 export function StatGrid({ isDark, stats }: { isDark: boolean; stats: StatCardData[] }) {
