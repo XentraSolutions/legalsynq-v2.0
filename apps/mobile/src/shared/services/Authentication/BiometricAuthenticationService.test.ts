@@ -62,6 +62,7 @@ describe('BiometricAuthenticationService', () => {
     jest.spyOn(DeviceSecurityService, 'getBiometricCapability').mockResolvedValue(capability);
     jest.spyOn(DeviceSecurityService, 'authenticate').mockResolvedValue({ status: 'success' });
     jest.spyOn(BiometricCredentialService, 'save').mockResolvedValue();
+    jest.spyOn(BiometricCredentialService, 'rotate').mockResolvedValue();
     jest.spyOn(BiometricCredentialService, 'get').mockResolvedValue('refresh-token');
     jest.spyOn(BiometricCredentialService, 'remove').mockResolvedValue();
     jest.spyOn(BiometricPreferenceService, 'get').mockResolvedValue(null);
@@ -125,6 +126,26 @@ describe('BiometricAuthenticationService', () => {
 
     expect(BiometricCredentialService.remove).not.toHaveBeenCalled();
     expect(BiometricPreferenceService.clear).not.toHaveBeenCalled();
+  });
+
+  it('reads biometric credentials once and rotates the token without updating them in place', async () => {
+    const client = createClient();
+    BiometricAuthenticationService.configureSessionClient(client);
+    jest.spyOn(BiometricPreferenceService, 'get').mockResolvedValue({
+      enabled: true,
+      accountLabel: 'u***@example.com',
+      deviceSessionId: 'device-session-1',
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+      user,
+    });
+
+    await BiometricAuthenticationService.login();
+
+    expect(BiometricCredentialService.get).toHaveBeenCalledTimes(1);
+    expect(BiometricCredentialService.rotate).toHaveBeenCalledTimes(1);
+    expect(BiometricCredentialService.rotate).toHaveBeenCalledWith('new-refresh-token');
+    expect(BiometricCredentialService.save).not.toHaveBeenCalled();
   });
 
   it('treats a cancelled secure-storage prompt as a non-destructive cancellation', async () => {
@@ -191,7 +212,7 @@ describe('BiometricAuthenticationService', () => {
       user,
     });
     jest
-      .spyOn(BiometricCredentialService, 'save')
+      .spyOn(BiometricCredentialService, 'rotate')
       .mockRejectedValue(new Error('Secure storage failed'));
 
     await expect(BiometricAuthenticationService.login()).rejects.toThrow(
