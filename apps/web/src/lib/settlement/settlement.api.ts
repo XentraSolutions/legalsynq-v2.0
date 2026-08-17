@@ -93,7 +93,6 @@ export const settlementApi = {
     );
   },
   updateSettlementPayment(id: string, form: UpdateLienSettlementRequest) {
-    console.log(form)
     return apiClient.put<UpdateLienSettlementRequest>(
       `/lien/api/liens/settlement/payments/${id}`,
       form,

@@ -411,7 +411,6 @@ export function CreateCaseForm({
             required
             value={form.clientDob}
             onChange={(v) => {
-              console.log(v);
               updateField("clientDob", v.toString());
             }}
             error={touched.clientDob ? errors.clientDob : ""}

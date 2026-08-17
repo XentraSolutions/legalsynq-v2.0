@@ -116,8 +116,7 @@ export function CreateEditTaskForm({
   const [status, setStatus] = useState<TaskStatus>(
     editTask?.statusId ?? "UPCOMING",
   );
-  console.log(editTask, status);
-
+  
   const [dueDate, setDueDate] = useState(
     editTask?.dueDate
       ? dateConvertertoIso(editTask?.dueDate?.split("T")[0])

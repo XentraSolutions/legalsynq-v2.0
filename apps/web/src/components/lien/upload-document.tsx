@@ -78,8 +78,6 @@ const UploadDocumentComponent = forwardRef<
 
       const cleanedFiles = await Promise.all(updatedFiles.map(cleanFile));
 
-      console.log(cleanedFiles);
-
       setFiles(cleanedFiles);
       onUploaded(cleanedFiles);
       setErrorMessage("");
