@@ -38,6 +38,11 @@ import { ReassignContactPersonModal } from "@/components/selling/forms/reassign-
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
 import type { ContactPerson } from "@/lib/selling/companies.types";
 import { useCompanyDetailContext } from "./context";
+import {
+  TABLE_CELL_CLASSNAME,
+  TABLE_HEADER_CLASSNAME,
+  TABLE_HEADER_CELL_CLASSNAME,
+} from "@/components/selling/table-cell-styles";
 import { Button } from "@/components/selling/button";
 import { downloadBlob } from "@/lib/utils";
 
@@ -172,15 +177,39 @@ export function CompanyContactPersonsTab() {
   ];
 
   const columns: ColumnDef<ContactPerson, any>[] = [
-    { accessorKey: "displayName", header: "Name" },
-    { accessorKey: "email", header: "Email", cell: ({ getValue }) => getValue<string>() || "—" },
-    { accessorKey: "phone", header: "Phone", cell: ({ getValue }) => getValue<string>() || "—" },
-    { accessorKey: "contactPersonTypeName", header: "Role" },
+    {
+      accessorKey: "displayName",
+      header: "Name",
+      cell: ({ getValue }) => (
+        <span className={TABLE_CELL_CLASSNAME}>{getValue<string>()}</span>
+      ),
+    },
+    {
+      accessorKey: "email",
+      header: "Email",
+      cell: ({ getValue }) => (
+        <span className={TABLE_CELL_CLASSNAME}>{getValue<string>() || "—"}</span>
+      ),
+    },
+    {
+      accessorKey: "phone",
+      header: "Phone",
+      cell: ({ getValue }) => (
+        <span className={TABLE_CELL_CLASSNAME}>{getValue<string>() || "—"}</span>
+      ),
+    },
+    {
+      accessorKey: "contactPersonTypeName",
+      header: "Role",
+      cell: ({ getValue }) => (
+        <span className={TABLE_CELL_CLASSNAME}>{getValue<string>() || "—"}</span>
+      ),
+    },
     {
       // No per-contact case-count endpoint yet — placeholder until it exists.
       id: "activeCases",
       header: "Active Cases",
-      cell: () => "—",
+      cell: () => <span className={TABLE_CELL_CLASSNAME}>—</span>,
     },
     {
       id: "actions",
@@ -286,6 +315,8 @@ export function CompanyContactPersonsTab() {
             footerCells={footerCells.length ? footerCells : undefined}
             className="border-0 rounded-none"
             primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
+            headerClassName={TABLE_HEADER_CLASSNAME}
+            headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
           />
         )}
 
