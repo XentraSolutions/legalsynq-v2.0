@@ -75,7 +75,7 @@ export function DetailsTab({
 
   const accidentType =
     lookup?.AccidentType?.map((c) => {
-      return { key: c.id, value: c.code, label: c.name };
+      return { key: c.id, value: c.name, label: c.name };
     }) ?? [];
   const state =
     lookup?.State?.map((c) => {
@@ -86,7 +86,6 @@ export function DetailsTab({
       return { key: c.id, value: c.code, label: c.name };
     }) ?? [];
 
-  const [caseStatusList, setCaseStatusList] = useState(() => {
     const initialList =
       lookup?.CaseStatus.map((s) => ({
         key: s.id,
@@ -94,6 +93,8 @@ export function DetailsTab({
         label: s.name,
       })) ?? [];
 
+  const [caseStatusList, setCaseStatusList] = useState(() => {
+    
     // Update the label directly upon component load
     if (d.status.includes("Litigation")) {
       return initialList.map((item) =>
@@ -267,7 +268,6 @@ export function DetailsTab({
 
   const updateCaseFlag = useCallback(
     async (key: keyof CaseDetail, value: string) => {
-      console.log({ [key]: value });
       await casesService.updateCase({
         caseId: d.id,
         [key]: value,
