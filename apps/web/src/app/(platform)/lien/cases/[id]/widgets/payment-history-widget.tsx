@@ -56,11 +56,10 @@ export function PaymentHistoryWidget({
       id: "lienId",
       header: "Lien ID",
       cell: ({ row }) => (
-        <span className="text-xs font-mono text-primary whitespace-nowrap">
-          {row.original.lienCode ||
-            lienById.get(row.original.lienId)?.lienNumber ||
-            row.original.lienId ||
-            "—"}
+        <span className="text-sm text-gray-600 whitespace-nowrap"> 
+        {row.original.lienCode ||
+        lienById.get(row.original.lienId)?.lienNumber ||
+          row.original.lienId || "—"}
         </span>
       ),
     },

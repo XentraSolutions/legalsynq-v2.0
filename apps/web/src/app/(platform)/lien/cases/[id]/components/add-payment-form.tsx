@@ -63,6 +63,7 @@ interface AddPaymentFormProps {
 }
 
 const INITIAL_FORM = {
+  id:"",
   lienStatus: "",
   checkAmount: "",
   checkDate: "",
@@ -99,6 +100,8 @@ export function AddPaymentForm({
   const [lookupsLoading, setLookupsLoading] = useState(true);
   const [typeError, setTypeError] = useState(false);
   const [statusError, setStatusError] = useState(false);
+  const [hasDistributedPayment, setDistributedPayment] = useState(false);
+
   const PAYMENT_METHOD_CHECK = "Check";
 
   // TEMP: hardcoded until API endpoint is ready
@@ -189,16 +192,22 @@ export function AddPaymentForm({
     },
   ];
 
+
+  function isEditingLien(l: CaseLienItem & CaseLienItemMetadata):boolean {
+    const filtered = [...checkedIds].filter(item => item == l.id)
+    return filtered.length > 0 ? true : false
+  }
+
   function isLienPayable(l: CaseLienItem & CaseLienItemMetadata): boolean {
     return (
       l.status !== "Closed" &&
       l.status !== "Withdrawn" &&
       l.status !== "Sold" &&
-      l.balance > 0
+      l.balance > 0 && 
+      isEditing ? isEditingLien(l) : true
     );
   }
 
-  const activeLiens = liens.filter(isLienPayable);
 
   useEffect(() => {
     if (!open) return;
@@ -242,6 +251,11 @@ export function AddPaymentForm({
           ? selectedPayment.lienStatus
           : (active ?? lienStatusOptions[0]?.code ?? ""),
       }));
+      if(isEditing) {
+       const filtered = new Set(openLiens.filter((l)=>l.id == selectedPayment.lienId).map((l) => l.id))
+        setCheckedIds(filtered) 
+      }
+
       setLookupsLoading(false);
     });
   }, [open]);
@@ -253,6 +267,12 @@ export function AddPaymentForm({
       l.status !== "Sold" &&
       l.balance > 0,
   );
+
+
+  function filterLiensForEditing(l:any){
+        const filtered = new Set(openLiens.filter((l)=>l.id == selectedPayment.lienId).map((l) => l.id))
+        setCheckedIds(filtered) 
+  }
 
   const allChecked =
     openLiens.length > 0 && checkedIds.size === openLiens.length;
@@ -301,7 +321,7 @@ export function AddPaymentForm({
     // Create a Set for fast lookups
     const checkedSet = new Set(checkedIds);
 
-    for (const l of activeLiens) {
+    for (const l of liens) {
       // Check if current lien ID is in the checked list
       if (checkedSet.has(l.id)) {
         if (l.balance != null) {
@@ -315,32 +335,184 @@ export function AddPaymentForm({
     return balances;
   };
 
+
+  /**
+ * Allocates a check amount proportionally across a list of selected liens based on their balances.
+ * 
+ * ## Computation Logic & Documentation
+ * 
+ * 1. **Validation & Summation:**
+ *    - Parses the check amount (`form.checkAmount`) and ensures it is a valid positive number.
+ *    - Validates that at least one lien is selected (`checkedIds.size > 0`).
+ *    - Sums up the remaining balances of all selected liens (`totalBalance`). Halts if the total balance is 0.
+ * 
+ * 2. **Integer Cents Conversion (Precision Control):**
+ *    - Multiplies monetary amounts by 100 and rounds to integers (`totalCents`, `balanceCents`) 
+ *      to completely avoid JavaScript binary floating-point drift (e.g., $0.1 + 0.2 \neq 0.3$).
+ *    - Determines the maximum allocatable pool (`targetAllocationCents`), capped by either 
+ *      the total check amount or the total combined lien balances, whichever is lower.
+ * 
+ * 3. **Proportional Floor Allocation:**
+ *    - For each lien, computes its exact proportional share using the formula:
+ *      $$\text{Ideal Share} = \left(\frac{\text{Lien Balance}}{\text{Total Balance}}\right) \times \text{Target Allocation}$$
+ *    - Applies `Math.floor()` to prevent over-allocation of fractional cents.
+ *    - Enforces individual balance caps (`Math.min`) so no lien receives more than it owes.
+ *    - Calculates and stores the fractional `remainder` (lost precision) for each item.
+ * 
+ * 4. **Penny Remainder Correction:**
+ *    - Identifies any missing pennies (`pennyDiff`) resulting from floor rounding.
+ *    - Sorts the liens by their fractional remainders in descending order to ensure the fairest distribution.
+ *    - Iteratively distributes single cents (+$0.01) to the items with the largest remainders 
+ *      until the total sum matches the check amount precisely down to the exact cent.
+ * 
+ * 5. **Output Formatting:**
+ *    - Converts the final integer cent values back to standard decimal strings with two decimal places (`.toFixed(2)`).
+ *    - Updates the payment tracking state (`lienPayments`) and flags the distribution status.
+ */
   const handleAllocateProportionally = () => {
-    const val = parseFloat(form.checkAmount);
+    const checkAmountStr = form.checkAmount;
+    const val = parseFloat(checkAmountStr);
     if (isNaN(val) || val <= 0 || checkedIds.size === 0) return;
+
     const totalBalance = selectedLiens.reduce(
       (s, l) => s + (l.balance ?? 0),
       0,
     );
     if (totalBalance === 0) return;
-    const ratio = Math.min(val, totalBalance) / totalBalance;
+
+    // Convert check amount and balances to cents (integers) to avoid float drift
+    const totalCents = Math.round(val * 100);
+    const targetAllocationCents = Math.min(totalCents, Math.round(totalBalance * 100));
+
     const updates: Record<string, string> = { ...lienPayments };
-    for (const l of selectedLiens) {
-      updates[l.id] = ((l.balance ?? 0) * ratio).toFixed(2);
+    
+    // Track allocations in cents
+    let allocatedSoFar = 0;
+    const itemAllocations = selectedLiens.map((l) => {
+      const balanceCents = Math.round((l.balance ?? 0) * 100);
+      // Ideal proportional share in cents (floor to prevent over-allocation per line)
+      const idealShare = Math.floor((balanceCents / Math.round(totalBalance * 100)) * targetAllocationCents);
+      const finalCents = Math.min(balanceCents, idealShare);
+      
+      allocatedSoFar += finalCents;
+      return {
+        id: l.id,
+        balanceCents,
+        cents: finalCents,
+        remainder: (balanceCents / Math.round(totalBalance * 100)) * targetAllocationCents - finalCents
+      };
+    });
+
+    // Distribute any remaining penny differences due to flooring, 
+    // prioritizing items with the largest fractional remainders and available balance room
+    let pennyDiff = targetAllocationCents - allocatedSoFar;
+    
+    if (pennyDiff > 0) {
+      // Sort by largest fractional remainder to keep distribution as proportional as possible
+      itemAllocations.sort((a, b) => b.remainder - a.remainder);
+      
+      for (let i = 0; i < pennyDiff; i++) {
+        // Find the next item that can still absorb 1 cent without exceeding its balance
+        const targetItem = itemAllocations.find(item => item.cents < item.balanceCents);
+        if (targetItem) {
+          targetItem.cents += 1;
+        } else {
+          break;
+        }
+      }
     }
+
+    // Convert back to decimal strings ($0.00)
+    for (const item of itemAllocations) {
+      updates[item.id] = (item.cents / 100).toFixed(2);
+    }
+
     setLienPayments(updates);
+    setDistributedPayment(true);
   };
 
+/**
+ * Distributes a check amount equally across a list of selected liens without overpaying.
+ * If an equal share exceeds a specific lien's balance, that lien takes only what it owes, 
+ * and the remaining funds are recursively/iteratively re-pooled and split equally among the remaining liens.
+ * 
+ * ## Computation Logic & Documentation
+ * 
+ * 1. **Validation & Initialization:**
+ *    - Parses the check amount (`form.checkAmount`) and ensures it is a valid positive number.
+ *    - Validates that at least one lien is selected (`checkedIds.size > 0`).
+ *    - Maps and sorts active liens by balance in ascending order (`a.balance - b.balance`) 
+ *      so that smaller balances are processed and capped first.
+ * 
+ * 2. **Iterative Waterfall Distribution (Equal Split with Caps):**
+ *    - Tracks a `remainingPool` starting at the full check amount.
+ *    - Loops through the active liens to calculate an equal slice (`equalShare = remainingPool / unresolvedCount`).
+ *    - **Capping Logic:** If the calculated equal share is greater than or equal to what the lien needs (`needed`), 
+ *      the lien takes only what it needs, and the excess is kept in the pool for the remaining accounts.
+ *    - If the equal share is less than what it needs, the lien takes the equal share safely without overpaying.
+ * 
+ * 3. **Remainder Adjustment:**
+ *    - If any minor floating-point remainder is left over, it safely tops up the last uncapped lien 
+ *      up to its maximum balance limit.
+ * 
+ * 4. **Output Formatting:**
+ *    - Formats the final allocated values into standard two-decimal currency strings (`.toFixed(2)`).
+ *    - Updates the payment tracking state (`lienPayments`) and flags the distribution status.
+ */
   const handleDistributePayment = () => {
     const val = parseFloat(form.checkAmount);
     if (isNaN(val) || val <= 0 || checkedIds.size === 0) return;
-    // const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
-    const perLien = val / selectedLiens.length;
     const updates: Record<string, string> = { ...lienPayments };
-    for (const l of selectedLiens) {
-      updates[l.id] = Math.min(perLien, l.balance ?? 0).toFixed(2);
+
+    // Convert total check amount to total cents to avoid floating-point math issues
+    let remainingCents = Math.round(val * 100);
+
+    // Map and sort active liens by balance ascending (converted to cents)
+    const activeLiens = selectedLiens
+      .map(l => ({
+        id: l.id,
+        balanceCents: Math.round((l.balance ?? 0) * 100),
+        allocatedCents: 0,
+      }))
+      .sort((a, b) => a.balanceCents - b.balanceCents);
+
+    // Iteratively distribute equally among remaining uncapped liens using integer cents
+    for (let i = 0; i < activeLiens.length; i++) {
+      const unresolvedCount = activeLiens.length - i;
+      const equalShareCents = Math.floor(remainingCents / unresolvedCount);
+      const current = activeLiens[i];
+      const neededCents = current.balanceCents - current.allocatedCents;
+
+      if (equalShareCents >= neededCents) {
+        current.allocatedCents += neededCents;
+        remainingCents -= neededCents;
+      } else {
+        current.allocatedCents += equalShareCents;
+        remainingCents -= equalShareCents;
+      }
     }
+
+    // If any leftover pennies remain due to division flooring, 
+    // distribute them 1 cent at a time to the liens that still have an unpaid balance.
+    if (remainingCents > 0) {
+      // Sort descending to give leftover cents to larger balances first (or keep ascending if preferred)
+      for (const lien of activeLiens) {
+        if (remainingCents <= 0) break;
+        const unfulfilled = lien.balanceCents - lien.allocatedCents;
+        if (unfulfilled > 0) {
+          lien.allocatedCents += 1;
+          remainingCents -= 1;
+        }
+      }
+    }
+
+    // Format back to standard two-decimal currency strings
+    for (const lien of activeLiens) {
+      updates[lien.id] = (lien.allocatedCents / 100).toFixed(2);
+    }
+
     setLienPayments(updates);
+    setDistributedPayment(true);
   };
 
   const handleResetClose = () => {
@@ -363,10 +535,8 @@ export function AddPaymentForm({
       const paymentDate = form.checkDate ? formatDate(form.checkDate) : "";
 
       if (isEditing) {
-        settlementService.updateSettlement({
-          lienId: form.lienId,
+        settlementService.updateSettlementPayment(form.id, {
           lienStatus: form.lienStatus,
-          caseId,
           amount: parseFloat(form.checkAmount || "0"),
           paymentDate,
           paymentMethod: PAYMENT_METHOD_CHECK,
@@ -421,15 +591,14 @@ export function AddPaymentForm({
   };
 
   const isFormInvalid =
-    !form.lienStatus ||
-    !form.checkAmount ||
-    !form.checkDate ||
-    !form.checkNumber ||
-    !form.type ||
-    !form.status ||
-    isEditing
-      ? false
-      : checkedIds.size === 0;
+    form.lienStatus.trim() === "" ||
+    form.checkAmount.trim() === "" ||
+    form.checkDate.trim() ==="" ||
+    form.checkNumber.trim() ==="" || 
+    form.type.trim() ==="" || 
+    form.status.trim() ==="" ||
+    (!isEditing  && !hasDistributedPayment) ||
+    (!isEditing && checkedIds.size === 0);
 
   const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
 
@@ -445,18 +614,26 @@ export function AddPaymentForm({
     (s, l) => s + (l.purchaseAmount ?? 0),
     0,
   );
+// 1. Computes the overall total for all open liens
   const totalReceivedPayment = openLiens.reduce((s, l) => {
-    const val = checkedIds.has(l.id)
-      ? parseFloat(lienPayments[l.id] || "0") || 0
-      : (l.paymentAmount ?? 0);
+    const val = parseFloat(lienPayments[l.id] ?? l.paymentAmount ?? "0") || 0;
+    return s + val;
+  }, 0);
+
+  // 2. Computes the total ONLY for items included in checkedIds
+  const checkedReceivedPayment = openLiens.reduce((s, l) => {
+    if (!checkedIds.has(l.id)) return s;
+    const val = parseFloat(lienPayments[l.id] ?? l.paymentAmount ?? "0") || 0;
     return s + val;
   }, 0);
 
   const checkAmountNum = parseFloat(form.checkAmount) || 0;
+  
+  // 3. Validation uses only the checked items
   const receivedExceedsCheck =
-    totalReceivedPayment > checkAmountNum &&
+    checkedReceivedPayment > checkAmountNum &&
     checkAmountNum > 0 &&
-    totalReceivedPayment > 0 &&
+    checkedReceivedPayment > 0 &&
     !isEditing;
 
   const paymentColumns: LienColumnDef[] = [
@@ -464,7 +641,7 @@ export function AddPaymentForm({
       id: "lienId",
       header: "Lien ID",
       cell: (l) => (
-        <span className="text-xs font-mono text-primary">{l.lienNumber}</span>
+        <span className="text-sm text-primary whitespace-nowrap">{l.lienNumber}</span>
       ),
     },
     {
@@ -598,6 +775,14 @@ export function AddPaymentForm({
     },
   ];
 
+
+  const updateForm = (updates: any) => {
+    setForm((prev:any) => ({
+      ...prev,
+      ...updates,
+    }));
+  };
+
   return (
     <FormModal
       open={open}
@@ -626,7 +811,7 @@ export function AddPaymentForm({
               </label>
               <Select
                 value={form.lienStatus}
-                onValueChange={(v) => setForm({ ...form, lienStatus: v })}
+                onValueChange={(v) => updateForm({ ...form, lienStatus: v })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select status" />
@@ -660,11 +845,14 @@ export function AddPaymentForm({
               </label>
               <NumberInput
                 value={form.checkAmount}
-                onValueChange={(v) => setForm({ ...form, checkAmount: v })}
+                onValueChange={(v) => {
+                    updateForm({ ...form, checkAmount: v })
+                    setDistributedPayment(false)
+                }}
                 onBlur={() => {
                   const n = parseFloat(form.checkAmount);
                   if (!isNaN(n) && n > 0)
-                    setForm({ ...form, checkAmount: n.toFixed(2) });
+                    updateForm({ ...form, checkAmount: n.toFixed(2) })
                 }}
                 placeholder="0.00"
                 prefix="$"
@@ -676,7 +864,7 @@ export function AddPaymentForm({
               required
               type="date"
               value={form.checkDate}
-              onChange={(v) => setForm({ ...form, checkDate: v })}
+              onChange={(v) => updateForm({ ...form, checkDate: v })}
             />
 
             <Field
@@ -684,7 +872,7 @@ export function AddPaymentForm({
               required
               placeholder="Enter check number"
               value={form.checkNumber}
-              onChange={(v) => setForm({ ...form, checkNumber: v })}
+              onChange={(v) => updateForm({ ...form, checkNumber: v })}
             />
 
             <div>
@@ -693,7 +881,7 @@ export function AddPaymentForm({
               </label>
               <Select
                 value={form.type}
-                onValueChange={(v) => setForm({ ...form, type: v })}
+                onValueChange={(v) => updateForm({ ...form, type: v })}
                 disabled={lookupsLoading}
               >
                 <SelectTrigger
@@ -732,7 +920,7 @@ export function AddPaymentForm({
               </label>
               <Select
                 value={form.status}
-                onValueChange={(v) => setForm({ ...form, status: v })}
+                onValueChange={(v) => updateForm({ ...form, status: v })}
                 disabled={lookupsLoading}
               >
                 <SelectTrigger
@@ -771,7 +959,7 @@ export function AddPaymentForm({
               </label>
               <Textarea
                 value={form.note}
-                onChange={(e) => setForm({ ...form, note: e.target.value })}
+                onChange={(e) => updateForm({ ...form, note: e.target.value })}
                 placeholder="Leave some notes here..."
                 rows={3}
               />

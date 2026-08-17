@@ -18,6 +18,7 @@ import {
   LegacySaveReductionRequest,
   SettlementGenericResponse,
   SettlementHistoryV3Query,
+  UpdateLienSettlementRequest,
   UpdateLiensStatusRequest,
   UpdateLiensStatusResponse,
   UpdateSettlementRequest,
@@ -91,6 +92,14 @@ export const settlementApi = {
       form,
     );
   },
+  updateSettlementPayment(id: string, form: UpdateLienSettlementRequest) {
+    console.log(form)
+    return apiClient.put<UpdateLienSettlementRequest>(
+      `/lien/api/liens/settlement/payments/${id}`,
+      form,
+    );
+  },
+
   getLienPaymentsByCase(caseId: string) {
     return apiClient.get<CasePayment[]>(
       `/lien/api/liens/settlement/payments/case/${caseId}`,

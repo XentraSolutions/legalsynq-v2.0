@@ -29,12 +29,26 @@ export interface CreateLienSettlementRequest {
   type: string;
 }
 
+export interface UpdateLienSettlementRequest {
+  id?: string;
+  amount: number;
+  paymentDate: string;
+  paymentMethod: string
+  referenceNumber: string
+  notes: string
+  settlementType: string
+  settlementStatus: string
+  lienStatus: string
+}
+
 export interface CreateLienSettlementResponse extends SettlementGenericResponse {}
 
 export interface UpdateSettlementRequest {
+  id:string;
   caseId: string;
-  payments: string[];
-}
+  payments: string[];}
+
+
 
 export interface UpdateSettlementResponse extends SettlementGenericResponse {}
 
@@ -102,6 +116,7 @@ export interface CreateSettlementPaymentRequest {
   settlementType: string;
   settlementStatus: string;
   lienStatus: string;
+  id?:string
 }
 
 export interface CreateSettlementPaymentResponse extends SettlementGenericResponse {}
