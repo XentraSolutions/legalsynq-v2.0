@@ -1,11 +1,17 @@
 import { Text, View } from 'react-native';
 import { cx, FIGMA_TEXT as TYPE } from '@/shared/styles';
-import { SELLING_TOP_BALANCES } from './index';
-import { CardShell } from './CardShell';
-import { SectionTitle } from './SectionTitle';
+import { SELLING_TOP_BALANCES } from './sellingDashboardData';
+import { CardShell } from '../CardShell';
+import { SectionTitle } from '../SectionTitle';
 import { BrandMark } from './BrandMark';
 
-export function TopBalanceCard({ isDark }: { isDark: boolean }) {
+export function TopBalanceCard({
+  isDark,
+  items = SELLING_TOP_BALANCES,
+}: {
+  isDark: boolean;
+  items?: typeof SELLING_TOP_BALANCES;
+}) {
   return (
     <CardShell isDark={isDark}>
       <SectionTitle
@@ -14,7 +20,7 @@ export function TopBalanceCard({ isDark }: { isDark: boolean }) {
         title="Top 5 Liens By Balance"
       />
       <View className="mt-5 gap-4">
-        {SELLING_TOP_BALANCES.map((item) => (
+        {items.map((item) => (
           <View className="flex-row items-center" key={item.name}>
             <BrandMark variant={item.mark} />
             <View className="ml-3 flex-1">

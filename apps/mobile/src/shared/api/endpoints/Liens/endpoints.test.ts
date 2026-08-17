@@ -24,6 +24,42 @@ describe('LiensApi management endpoints', () => {
     );
   });
 
+  it('loads selling dashboard analytics with its comparison filter', async () => {
+    const params = {
+      startDate: '2026-01-01',
+      endDate: '2026-01-31',
+      compare: 'previousPeriod' as const,
+    };
+
+    await LiensApi.getSellingDashboardAnalytics(params);
+
+    expect(apiClient.get).toHaveBeenCalledWith(
+      '/liens/api/liens/selling/analytics/dashboard',
+      { params }
+    );
+  });
+
+  it('retries the exact dashboard path when the gateway-prefixed route is missing', async () => {
+    const params = { compare: 'previousPeriod' as const };
+    apiClient.get = jest
+      .fn()
+      .mockRejectedValueOnce({ statusCode: 404 })
+      .mockResolvedValueOnce({ data: { currency: 'USD' } });
+
+    await LiensApi.getSellingDashboardAnalytics(params);
+
+    expect(apiClient.get).toHaveBeenNthCalledWith(
+      1,
+      '/liens/api/liens/selling/analytics/dashboard',
+      { params }
+    );
+    expect(apiClient.get).toHaveBeenNthCalledWith(
+      2,
+      '/api/liens/selling/analytics/dashboard',
+      { params }
+    );
+  });
+
   it('requests every lien page from the selected case endpoint', async () => {
     apiClient.post = jest.fn(() =>
       Promise.resolve({ data: { items: [], totalCount: 0 } })

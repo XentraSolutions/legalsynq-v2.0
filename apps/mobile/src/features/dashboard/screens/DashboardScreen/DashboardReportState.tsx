@@ -5,6 +5,7 @@ import { DashboardReportErrorCard } from './DashboardReportErrorCard';
 export function DashboardReportState({
   children,
   hasSummaryRows,
+  errorMessage,
   isDark,
   isError,
   isLoading,
@@ -14,6 +15,7 @@ export function DashboardReportState({
   title,
 }: {
   children: ReactNode;
+  errorMessage?: string;
   hasSummaryRows?: boolean;
   isDark: boolean;
   isError: boolean;
@@ -35,7 +37,14 @@ export function DashboardReportState({
   }
 
   if (isError) {
-    return <DashboardReportErrorCard isDark={isDark} title={title} onRetry={onRetry} />;
+    return (
+      <DashboardReportErrorCard
+        isDark={isDark}
+        message={errorMessage}
+        title={title}
+        onRetry={onRetry}
+      />
+    );
   }
 
   return children;

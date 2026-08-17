@@ -1,7 +1,8 @@
 import { Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { cx, FIGMA_TEXT as TYPE } from '@/shared/styles';
-import { SellerRisk, MUTED } from './index';
+import { MUTED } from '../dashboardShared';
+import type { SellerRisk } from './sellingDashboardData';
 
 export function SellerRiskRow({
   expanded,

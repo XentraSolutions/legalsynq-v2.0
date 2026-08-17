@@ -1,15 +1,17 @@
 import { Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { cx, FIGMA_TEXT as TYPE } from '@/shared/styles';
-import { ORANGE } from './index';
+import { ORANGE } from './dashboardShared';
 import { CardShell } from './CardShell';
 
 export function DashboardReportErrorCard({
   isDark,
+  message,
   onRetry,
   title,
 }: {
   isDark: boolean;
+  message?: string;
   onRetry: () => void;
   title: string;
 }) {
@@ -28,7 +30,7 @@ export function DashboardReportErrorCard({
             'mt-2 text-center text-[#8d9098] dark:text-[#8f929b]'
           )}
         >
-          Pull down to refresh the dashboard or try this report again.
+          {message ?? 'Pull down to refresh the dashboard or try this report again.'}
         </Text>
         <Pressable
           accessibilityLabel={`Retry ${title}`}

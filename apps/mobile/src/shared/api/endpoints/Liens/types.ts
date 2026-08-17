@@ -210,3 +210,75 @@ export interface LienDocumentType {
   description?: string | null;
   isActive: boolean;
 }
+
+export interface SellingDashboardAnalyticsRequest {
+  startDate?: string;
+  endDate?: string;
+  compare: 'previousPeriod';
+}
+
+export interface SellingDashboardMetric {
+  isAvailable: boolean;
+  value: number | null;
+  comparisonValue?: number | null;
+  changeAmount?: number | null;
+  changePercent?: number | null;
+  unavailableReason?: string;
+  formula?: string;
+}
+
+export interface SellingDashboardPeriod {
+  dateFrom: string;
+  dateTo: string;
+  dateBasis: string;
+}
+
+export interface SellingDashboardStatus {
+  status: string;
+  lienCount: number;
+  originalAmount: number;
+  outstandingAmount: number;
+  percentOfLiens: number;
+}
+
+export interface SellingDashboardAnalyticsResponse {
+  period: SellingDashboardPeriod;
+  comparisonPeriod: SellingDashboardPeriod | null;
+  currency: string;
+  metrics: {
+    totalLienRevenue: SellingDashboardMetric;
+    totalOutstanding: SellingDashboardMetric;
+    pastAmountDue: SellingDashboardMetric;
+    payments: SellingDashboardMetric;
+  };
+  arAging: {
+    isAvailable: boolean;
+    unavailableReason?: string;
+    total: number | null;
+    buckets: Array<{ label: string; amount: number; percent?: number }>;
+  };
+  lienStatuses: SellingDashboardStatus[];
+  sellerStatuses: SellingDashboardStatus[];
+  timeSeries: Array<{
+    bucketStart: string;
+    grain: string;
+    lienCount: number;
+    lienRevenue: number;
+    outstandingAmount: number;
+  }>;
+  topBuyers: Array<{
+    buyerOrgId: string;
+    buyerCompanyId: string;
+    buyerName: string;
+    activeLienCount: number;
+    totalBalance: number;
+    completedPurchaseAmount: number;
+    percentOfTotalBalance: number;
+  }>;
+  buyerAging: {
+    isAvailable: boolean;
+    unavailableReason?: string;
+    items: unknown[];
+  };
+  generatedAtUtc: string;
+}

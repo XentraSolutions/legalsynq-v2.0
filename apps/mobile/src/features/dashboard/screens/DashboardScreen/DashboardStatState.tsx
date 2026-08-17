@@ -1,7 +1,7 @@
 import { Pressable, Text, View } from 'react-native';
 import { DashboardStatCardSkeleton } from '@/features/dashboard/components';
 import { cx, FIGMA_COLORS, FIGMA_TEXT as TYPE } from '@/shared/styles';
-import { StatCardData } from './index';
+import type { StatCardData } from './dashboardShared';
 import { StatCard } from './StatCard';
 
 export function DashboardStatState({

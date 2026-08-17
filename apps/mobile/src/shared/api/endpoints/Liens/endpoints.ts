@@ -23,11 +23,15 @@ import type {
   UpdateLienRequest,
   UpdateManagementLienRequest,
   UpdateOfferRequest,
+  SellingDashboardAnalyticsRequest,
+  SellingDashboardAnalyticsResponse,
 } from './types';
 
 const LIENS_BASE_PATH = '/liens/api/liens/liens';
 const CASE_LIENS_BASE_PATH = '/liens/api/liens/cases/liens';
 const FACILITIES_BASE_PATH = '/liens/api/liens/facilities';
+const SELLING_ANALYTICS_DASHBOARD_PATH = '/liens/api/liens/selling/analytics/dashboard';
+const DIRECT_SELLING_ANALYTICS_DASHBOARD_PATH = '/api/liens/selling/analytics/dashboard';
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -52,6 +56,25 @@ export const lienKeys = {
 };
 
 export const LiensApi = {
+  async getSellingDashboardAnalytics(
+    params: SellingDashboardAnalyticsRequest
+  ): Promise<SellingDashboardAnalyticsResponse> {
+    try {
+      const response = await apiClient.get<SellingDashboardAnalyticsResponse>(
+        SELLING_ANALYTICS_DASHBOARD_PATH,
+        { params }
+      );
+      return unwrapData(response.data) as SellingDashboardAnalyticsResponse;
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode !== 404) throw error;
+      const response = await apiClient.get<SellingDashboardAnalyticsResponse>(
+        DIRECT_SELLING_ANALYTICS_DASHBOARD_PATH,
+        { params }
+      );
+      return unwrapData(response.data) as SellingDashboardAnalyticsResponse;
+    }
+  },
+
   async listLiens(params: LienQueryParams): Promise<PagedResult<Lien>> {
     const response = await apiClient.get<PagedResult<Lien>>(LIENS_BASE_PATH, { params });
     return response.data;

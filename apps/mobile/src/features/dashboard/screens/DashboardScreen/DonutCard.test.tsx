@@ -1,4 +1,4 @@
-import type { DonutSlice } from './index';
+import type { DonutSlice } from './dashboardShared';
 import { sortDonutSlicesDescending } from './DonutCard';
 
 describe('sortDonutSlicesDescending', () => {

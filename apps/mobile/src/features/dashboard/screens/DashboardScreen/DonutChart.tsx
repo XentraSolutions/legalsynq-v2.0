@@ -1,7 +1,7 @@
 import { Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { cx, FIGMA_TEXT as TYPE } from '@/shared/styles';
-import { DonutSlice } from './index';
+import type { DonutSlice } from './dashboardShared';
 
 export function DonutChart({
   centerCaption,
