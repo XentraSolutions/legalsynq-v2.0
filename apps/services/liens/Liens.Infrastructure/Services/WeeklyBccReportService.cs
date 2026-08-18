@@ -115,7 +115,7 @@ public sealed class WeeklyBccReportService : IWeeklyBccReportService
             totalCount = liens.Count;
         }
 
-        return await BuildResultAsync(
+        var result = await BuildResultAsync(
             tenantId,
             asOfDate,
             liens,
@@ -123,6 +123,19 @@ public sealed class WeeklyBccReportService : IWeeklyBccReportService
             pageSize ?? liens.Count,
             totalCount,
             ct);
+
+        if (!page.HasValue || !pageSize.HasValue)
+            return result;
+
+        return new WeeklyBccReportResult
+        {
+            AsOfDate = result.AsOfDate,
+            Items = result.Items,
+            SummaryTotals = await BuildFullSummaryTotalsAsync(tenantId, asOfDate, ct),
+            Page = result.Page,
+            PageSize = result.PageSize,
+            TotalCount = result.TotalCount,
+        };
     }
 
     private IQueryable<Lien> EligibleLiens(Guid tenantId, DateOnly asOfDate) =>
@@ -136,6 +149,49 @@ public sealed class WeeklyBccReportService : IWeeklyBccReportService
         query.OrderBy(lien => lien.PurchaseDate)
             .ThenBy(lien => lien.LienNumber)
             .ThenBy(lien => lien.Id);
+
+    private async Task<WeeklyBccReportSummaryTotals> BuildFullSummaryTotalsAsync(
+        Guid tenantId,
+        DateOnly asOfDate,
+        CancellationToken ct)
+    {
+        var liens = await EligibleLiens(tenantId, asOfDate).ToListAsync(ct);
+        if (liens.Count == 0)
+            return new WeeklyBccReportSummaryTotals();
+
+        var lienIds = liens.Select(lien => lien.Id).ToHashSet();
+        var caseIds = liens
+            .Where(lien => lien.CaseId.HasValue)
+            .Select(lien => lien.CaseId!.Value)
+            .ToHashSet();
+        var casesById = (await _db.Cases
+                .AsNoTracking()
+                .Where(caseEntity => caseEntity.TenantId == tenantId && caseIds.Contains(caseEntity.Id))
+                .ToListAsync(ct))
+            .ToDictionary(caseEntity => caseEntity.Id);
+        var servicingByLienId = (await _db.ServicingItems
+                .AsNoTracking()
+                .Where(item => item.TenantId == tenantId &&
+                               item.LienId.HasValue && lienIds.Contains(item.LienId.Value) &&
+                               item.TaskType == "LegacyMedicalCode")
+                .ToListAsync(ct))
+            .GroupBy(item => item.LienId!.Value)
+            .ToDictionary(group => group.Key, group => group.ToList());
+        var settlementsByLienId = (await _db.LienSettlements
+                .AsNoTracking()
+                .Where(item => item.TenantId == tenantId && !item.IsDeleted && lienIds.Contains(item.LienId))
+                .ToListAsync(ct))
+            .GroupBy(item => item.LienId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+        var paymentsByLienId = (await _db.SettlementPaymentDetails
+                .AsNoTracking()
+                .Where(item => item.TenantId == tenantId && !item.IsDeleted && lienIds.Contains(item.LienId))
+                .ToListAsync(ct))
+            .GroupBy(item => item.LienId)
+            .ToDictionary(group => group.Key, group => group.ToList());
+
+        return BuildSummaryTotals(liens, casesById, servicingByLienId, settlementsByLienId, paymentsByLienId);
+    }
 
     private async Task<WeeklyBccReportResult> BuildResultAsync(
         Guid tenantId,

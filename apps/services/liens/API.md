@@ -2197,6 +2197,16 @@ Eligible Weekly BCC liens are ordered by purchase date, lien number, and record 
   "pageSize": 50,
   "totalPages": 4,
   "totalCount": 187,
+  "summaryTotals": {
+    "totalCases": 120,
+    "totalOpenCases": 80,
+    "totalClosedCases": 40,
+    "totalLiens": 187,
+    "totalOpenLiens": 130,
+    "totalPurchaseAmt": 22462370.62,
+    "totalReturnedAmt": 19089906.53,
+    "totalBillingAmt": 79778606.30
+  },
   "columns": [
     { "key": "plaintiffFirstName", "label": "Plaintiff First Name", "index": 0 },
     { "key": "caseId", "label": "Case ID", "index": 9 }
@@ -2210,7 +2220,7 @@ Eligible Weekly BCC liens are ordered by purchase date, lien number, and record 
 }
 ```
 
-`columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). The `noted` field is labeled `Notes` in report previews and CSV exports. Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. The direct `/weekly-bcc` endpoints remain complete and unpaged, and add `summaryTotals` with `totalCases`, `totalOpenCases`, `totalClosedCases`, `totalLiens`, `totalOpenLiens`, `totalPurchaseAmt`, `totalReturnedAmt`, and `totalBillingAmt` calculated from the complete eligible result set.
+`columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). The `noted` field is labeled `Notes` in report previews and CSV exports. Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. Both direct and saved-report execution responses add `summaryTotals` with `totalCases`, `totalOpenCases`, `totalClosedCases`, `totalLiens`, `totalOpenLiens`, `totalPurchaseAmt`, `totalReturnedAmt`, and `totalBillingAmt` calculated from the complete eligible result set.
 
 ### POST `/api/liens/reports/auto-generated/{reportId}/export`
 
