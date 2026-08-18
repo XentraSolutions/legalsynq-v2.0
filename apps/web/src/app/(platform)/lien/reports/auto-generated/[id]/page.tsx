@@ -89,6 +89,7 @@ const columns = data?.columns
         columns={columns}
         loadingData={isLoading}
         report={{ ...data, ...pagination }}
+        exporting={exporting}
         onBack={() => router.back()}
         onPaginate={(e) => setPage(e.page)}
         onExport={() => {
