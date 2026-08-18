@@ -10,6 +10,8 @@ const STATUS_COLOR: Record<string, NonNullable<ChipProps["color"]>> = {
   Sold: "success",
   Withdrawn: "danger",
   Pending: "warning",
+  SubmittedForSale: "purple",
+  PreparedForSale: "teal",
 };
 
 export function LienStatusBadge({ status }: LienStatusBadgeProps) {
