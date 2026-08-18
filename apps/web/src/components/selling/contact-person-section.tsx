@@ -10,7 +10,7 @@ import {
   Phone,
   Trash2,
 } from "lucide-react";
-import { useLienStore } from "@/stores/lien-store";
+import { toast } from "sonner";
 import { contactsApi } from "@/lib/contacts/contacts.api";
 import { lookupApi } from "@/lib/lookup/lookup.api";
 import { type ContactResponseDto } from "@/lib/contacts/contacts.types";
@@ -48,7 +48,6 @@ const PAGE_SIZE = 12;
  * LawFirmContactSection/MedicalFacilityStaffSection, unchanged.
  */
 export function ContactPersonSection({ contactType, parentId }: Props) {
-  const addToast = useLienStore((s) => s.addToast);
   const [contacts, setContacts] = useState<ContactResponseDto[]>([]);
   const [roles, setRoles] = useState<LookupData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,17 +98,13 @@ export function ContactPersonSection({ contactType, parentId }: Props) {
     if (!deleteTarget) return;
     try {
       await contactsApi.delete(deleteTarget.id);
-      addToast({
-        type: "success",
-        title: "Contact Removed",
+      toast.success("Contact Removed", {
         description: `${deleteTarget.firstName} ${deleteTarget.lastName} has been removed.`,
       });
       setDeleteTarget(null);
       fetchContacts();
     } catch (err) {
-      addToast({
-        type: "error",
-        title: "Delete Failed",
+      toast.error("Delete Failed", {
         description:
           err instanceof ApiError
             ? err.message

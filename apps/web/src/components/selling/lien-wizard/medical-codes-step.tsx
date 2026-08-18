@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import { liensService } from "@/lib/selling";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import MedicalCodesDescription from "../forms/add-medical-lien/medical-codes-description";
 import { LienWizardShell } from "./shell";
 import { buildFormsFromLien, goToStep } from "./shared";
@@ -44,7 +44,6 @@ export default function MedicalCodesStep({
   caseId,
 }: MedicalCodesStepProps) {
   const router = useRouter();
-  const { show: showToast } = useToast();
   const [hydrating, setHydrating] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState<any>(null);
@@ -58,10 +57,7 @@ export default function MedicalCodesStep({
         if (cancelled) return;
         setFormData(buildFormsFromLien(lien).medicalCodes);
       } catch (err) {
-        showToast(
-          err instanceof Error ? err.message : "Failed to load lien",
-          "error",
-        );
+        toast.error(err instanceof Error ? err.message : "Failed to load lien");
       } finally {
         if (!cancelled) setHydrating(false);
       }
@@ -105,9 +101,9 @@ export default function MedicalCodesStep({
       goToStep(router, lienId, 4);
     } catch (err) {
       if (err instanceof ApiError) {
-        showToast(err.message, "error");
+        toast.error(err.message);
       } else {
-        showToast("An unexpected error occurred", "error");
+        toast.error("An unexpected error occurred");
       }
     } finally {
       setSubmitting(false);

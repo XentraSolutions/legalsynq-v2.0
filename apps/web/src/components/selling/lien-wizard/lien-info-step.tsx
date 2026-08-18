@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import { liensService } from "@/lib/selling";
 import { LienInfoParams } from "@/lib/liens/liens.types";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import LienInfo from "../forms/add-medical-lien/lien-info";
 import { LienWizardShell } from "./shell";
 import { buildFormsFromLien } from "./shared";
@@ -34,7 +34,6 @@ export interface LienInfoStepProps {
 // edit an existing one's info (/edit/step-1, lienId from the route).
 export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
   const router = useRouter();
-  const { show: showToast } = useToast();
   const [hydrating, setHydrating] = useState(!!lienId);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState<any>(null);
@@ -49,10 +48,7 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
         if (cancelled) return;
         setFormData(buildFormsFromLien(lien).lienInfo);
       } catch (err) {
-        showToast(
-          err instanceof Error ? err.message : "Failed to load lien",
-          "error",
-        );
+        toast.error(err instanceof Error ? err.message : "Failed to load lien");
       } finally {
         if (!cancelled) setHydrating(false);
       }
@@ -99,7 +95,7 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
         source: "Single",
       });
       await liensService.createLienInfo(created.lienId, request);
-      showToast("Liens Created", "success");
+      toast.success("Liens Created");
       // Move the URL onto the resumable draft route so a refresh (or the
       // back button) continues editing this lien instead of creating another
       // bare one. The backend has no draft-listing endpoint yet, so this URL
@@ -107,9 +103,9 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
       router.push(`/selling/portfolio/lien/${created.lienId}/edit/step-2`);
     } catch (err) {
       if (err instanceof ApiError) {
-        showToast(err.message, "error");
+        toast.error(err.message);
       } else {
-        showToast("An unexpected error occurred", "error");
+        toast.error("An unexpected error occurred");
       }
     } finally {
       setSubmitting(false);

@@ -17,7 +17,7 @@ import { SALE_DOCUMENT_LABELS } from "@/lib/selling/selling-detail.mapper";
 import { useLienDocuments, useSaveLienDocuments } from "@/lib/selling/use-lien-documents";
 import { useLienActivity } from "@/lib/selling/use-lien-activity";
 import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import { Tabs } from "@/components/selling/tabs";
 import { LienRowActionsMenu } from "./lien-row-actions-menu";
 import { Button } from "@/components/selling/button";
@@ -305,7 +305,6 @@ function ActivityTab({ lienId }: { lienId: string }) {
 }
 
 function DocumentsTab({ lien }: { lien: LienDetailsResult }) {
-  const { show: showToast } = useToast();
   const { data: docs = [], isLoading } = useLienDocuments(lien.lienId);
   const saveLienDocuments = useSaveLienDocuments(lien.lienId);
   const [showUpload, setShowUpload] = useState(false);
@@ -319,12 +318,11 @@ function DocumentsTab({ lien }: { lien: LienDetailsResult }) {
       await saveLienDocuments((current) =>
         current.filter((d) => d.documentId !== deleteTarget),
       );
-      showToast("Document removed.", "success");
+      toast.success("Document removed.");
       setDeleteTarget(null);
     } catch (err) {
-      showToast(
+      toast.error(
         err instanceof Error ? err.message : "Failed to remove document",
-        "error",
       );
     } finally {
       setDeleting(false);

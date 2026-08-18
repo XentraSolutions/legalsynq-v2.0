@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { CircleCheckBig } from 'lucide-react';
+import { toast } from 'sonner';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { formatDate, formatDateTime } from '@/lib/lien-utils';
@@ -14,7 +15,6 @@ export function UserDetailClient({ id }: { id: string }) {
   const users = useLienStore((s) => s.users);
   const userDetails = useLienStore((s) => s.userDetails);
   const updateUser = useLienStore((s) => s.updateUser);
-  const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
   const [confirmAction, setConfirmAction] = useState<{ status: string; label: string } | null>(null);
 
@@ -37,10 +37,10 @@ export function UserDetailClient({ id }: { id: string }) {
         ]}
         actions={isAdmin ? (
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => addToast({ type: 'info', title: 'Edit', description: 'Edit mode simulated' })}>Edit</Button>
-            {d.status === 'Locked' && <Button variant="primary" onClick={() => { updateUser(id, { status: 'Active' }); addToast({ type: 'success', title: 'User Unlocked' }); }}>Unlock</Button>}
+            <Button variant="secondary" onClick={() => toast.info('Edit', { description: 'Edit mode simulated' })}>Edit</Button>
+            {d.status === 'Locked' && <Button variant="primary" onClick={() => { updateUser(id, { status: 'Active' }); toast.success('User Unlocked'); }}>Unlock</Button>}
             {d.status === 'Active' && <Button variant="destructive" onClick={() => setConfirmAction({ status: 'Inactive', label: 'Deactivate' })}>Deactivate</Button>}
-            {d.status === 'Inactive' && <Button variant="primary" onClick={() => { updateUser(id, { status: 'Active' }); addToast({ type: 'success', title: 'User Activated' }); }}>Activate</Button>}
+            {d.status === 'Inactive' && <Button variant="primary" onClick={() => { updateUser(id, { status: 'Active' }); toast.success('User Activated'); }}>Activate</Button>}
           </div>
         ) : undefined}
       />
@@ -89,7 +89,7 @@ export function UserDetailClient({ id }: { id: string }) {
 
       {confirmAction && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}
-          onConfirm={() => { updateUser(id, { status: confirmAction.status }); addToast({ type: 'warning', title: `User ${confirmAction.label}d` }); setConfirmAction(null); }}
+          onConfirm={() => { updateUser(id, { status: confirmAction.status }); toast.warning(`User ${confirmAction.label}d`); setConfirmAction(null); }}
           title={`${confirmAction.label} User`} description={`Are you sure you want to ${confirmAction.label.toLowerCase()} ${d.name}?`}
           confirmLabel={confirmAction.label} confirmVariant="danger"
         />

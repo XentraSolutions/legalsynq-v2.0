@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { FormModal } from "@/components/selling/modal";
 import { liensService } from "@/lib/selling";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import { parsePricingRow } from "@/lib/selling/selling-detail.mapper";
 import type { MedicalPricingRowDetail } from "@/types/lien-selling";
 import MedicalCodesDescription from "@/components/selling/forms/add-medical-lien/medical-codes-description";
@@ -26,7 +26,6 @@ export function EditMedicalPricingModal({
   onClose,
   onSaved,
 }: EditMedicalPricingModalProps) {
-  const { show: showToast } = useToast();
   const initialCodeRows = useMemo(
     () =>
       initialRows.map((row) => {
@@ -75,13 +74,10 @@ export function EditMedicalPricingModal({
           targetSaleAmount: row.targetSaleAmount,
         })),
       });
-      showToast("Medical code & marketplace pricing updated.", "success");
+      toast.success("Medical code & marketplace pricing updated.");
       onSaved();
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to save pricing",
-        "error",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to save pricing");
     } finally {
       setSaving(false);
     }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { FormModal } from "@/components/selling/modal";
 import { liensService } from "@/lib/selling";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import type { LienDetail } from "@/types/lien-selling";
 import {
   LienScheduleFields,
@@ -23,7 +23,6 @@ export function EditLienInformationModal({
   onClose,
   onSaved,
 }: EditLienInformationModalProps) {
-  const { show: showToast } = useToast();
   const [form, setForm] = useState<LienScheduleFieldsValue>({
     initialServiceDate: lien.initialServiceDate ?? "",
     endServiceDate: lien.endServiceDate ?? "",
@@ -42,13 +41,10 @@ export function EditLienInformationModal({
         listingVisibility: form.listingVisibility,
         notes: form.notes || undefined,
       });
-      showToast("Lien information updated.", "success");
+      toast.success("Lien information updated.");
       onSaved();
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to save lien information",
-        "error",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to save lien information");
     } finally {
       setSaving(false);
     }

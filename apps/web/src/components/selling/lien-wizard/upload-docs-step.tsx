@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import UploadDocuments from "../forms/add-medical-lien/medical-upload-document";
 import { LienWizardShell } from "./shell";
 import { goToStep } from "./shared";
@@ -17,10 +17,9 @@ export interface UploadDocsStepProps {
 // it just confirms and returns to the portfolio.
 export default function UploadDocsStep({ lienId, caseId }: UploadDocsStepProps) {
   const router = useRouter();
-  const { show: showToast } = useToast();
 
   const handleContinue = () => {
-    showToast("Lien added successfully.", "success");
+    toast.success("Lien added successfully.");
     router.push("/selling/portfolio");
   };
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Search } from "lucide-react";
 import { liensService } from "@/lib/selling";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import { Button } from "@/components/selling/button";
 import { useCompanyTypes, useCompanies, useContactPersons } from "@/hooks/use-selling-companies";
 import Field from "@/components/lien/field";
@@ -48,7 +48,6 @@ export interface BuyerSelectionStepProps {
 // selection survives a refresh or a return visit.
 export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) {
   const router = useRouter();
-  const { show: showToast } = useToast();
 
   const [hydrating, setHydrating] = useState(true);
   const [caseId, setCaseId] = useState<string | undefined>(undefined);
@@ -73,10 +72,7 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
           }
         }
       } catch (err) {
-        showToast(
-          err instanceof Error ? err.message : "Failed to load lien",
-          "error",
-        );
+        toast.error(err instanceof Error ? err.message : "Failed to load lien");
       } finally {
         if (!cancelled) setHydrating(false);
       }
@@ -148,12 +144,9 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
       });
       goToStep(router, lienId, 2);
     } catch (err) {
-      showToast(
-        err instanceof Error
+      toast.error(err instanceof Error
           ? err.message
-          : "Failed to save funding company selection",
-        "error",
-      );
+          : "Failed to save funding company selection");
     } finally {
       setSavingBuyerSelection(false);
     }
