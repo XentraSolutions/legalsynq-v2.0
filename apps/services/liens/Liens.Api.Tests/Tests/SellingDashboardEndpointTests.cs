@@ -73,18 +73,20 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
             $"Body: {await response.Content.ReadAsStringAsync()}");
         var body = await response.Content.ReadFromJsonAsync<SellingDashboardResponse>();
         body.Should().NotBeNull();
-        body!.Summary.TotalPortfolioValue.Should().Be(6_000m);
-        body.Summary.TotalPending.Should().Be(1_000m);
+        body!.Summary.TotalPortfolioValue.Should().Be(16_000m);
+        body.Summary.TotalPending.Should().Be(11_000m);
         body.Summary.TotalInternal.Should().Be(2_000m);
         body.Summary.TotalSold.Should().Be(3_000m);
-        body.Summary.PendingCount.Should().Be(1);
+        body.Summary.PendingCount.Should().Be(2);
         body.Summary.InternalCount.Should().Be(1);
         body.Summary.SoldCount.Should().Be(1);
-        body.TotalCount.Should().Be(1);
-        body.Items.Should().ContainSingle();
-        body.Items[0].LienId.Should().Be(pending.Id);
-        body.Items[0].HighestBidAmount.Should().Be(700m);
-        body.Items[0].Status.Should().Be(SellingLienStatus.Pending);
+        body.TotalCount.Should().Be(2);
+        body.Items.Should().HaveCount(2);
+        body.Items.Should().Contain(item =>
+            item.LienId == pending.Id &&
+            item.HighestBidAmount == 700m &&
+            item.Status == SellingLienStatus.Pending);
+        body.Items.Should().Contain(item => item.Status == SellingLienStatus.SubmittedForSale);
     }
 
     [Fact]
@@ -107,6 +109,61 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
         body.Items.Should().ContainSingle();
         body.Items[0].LienId.Should().Be(accepted.Id);
         body.Items[0].Status.Should().Be(SellingLienStatus.Sold);
+    }
+
+    [Fact]
+    public async Task Pending_tab_keeps_approval_stage_liens_visible_with_current_status()
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var approval = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Approval, 1_000m, 800m, 0m);
+        var submitted = CreateDashboardLien(fundingCompanyId, SellingLienStatus.SubmittedForSale, 2_000m, 1_600m, 0m);
+        var prepared = CreateDashboardLien(fundingCompanyId, SellingLienStatus.PreparedForSale, 3_000m, 2_400m, 0m);
+
+        await SeedDashboardLiensAsync(db => db.Liens.AddRange(approval, submitted, prepared));
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/liens?tab=pending&fundingCompanyId={fundingCompanyId}&sortBy=askAmount&sortDirection=asc");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<SellingLienListResponse>();
+        body.Should().NotBeNull();
+        body!.TotalCount.Should().Be(3);
+        body.Items.Select(item => item.Status).Should().Equal(
+            SellingLienStatus.Approval,
+            SellingLienStatus.SubmittedForSale,
+            SellingLienStatus.PreparedForSale);
+    }
+
+    [Fact]
+    public async Task Archived_tab_returns_archived_liens_while_active_tabs_exclude_them()
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var active = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Pending, 1_000m, 800m, 0m);
+        var archived = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Archived, 2_000m, 1_600m, 0m);
+        archived.UpdateSellingAnalyticsFields(
+            SeedHelper.UserId,
+            sellerStatus: SellingLienStatus.Archived,
+            archivedAtUtc: DateTime.UtcNow.AddDays(-1),
+            archivedReason: "duplicate");
+
+        await SeedDashboardLiensAsync(db => db.Liens.AddRange(active, archived));
+
+        var activeResponse = await _client.GetAsync(
+            $"/api/liens/selling/liens?tab=pending&fundingCompanyId={fundingCompanyId}");
+        activeResponse.StatusCode.Should().Be(HttpStatusCode.OK, await activeResponse.Content.ReadAsStringAsync());
+        var activeBody = await activeResponse.Content.ReadFromJsonAsync<SellingLienListResponse>();
+        activeBody.Should().NotBeNull();
+        activeBody!.Items.Should().ContainSingle(item => item.LienId == active.Id);
+
+        var archivedResponse = await _client.GetAsync(
+            $"/api/liens/selling/liens?tab=archived&fundingCompanyId={fundingCompanyId}");
+        archivedResponse.StatusCode.Should().Be(HttpStatusCode.OK, await archivedResponse.Content.ReadAsStringAsync());
+        var archivedBody = await archivedResponse.Content.ReadFromJsonAsync<SellingLienListResponse>();
+        archivedBody.Should().NotBeNull();
+        archivedBody!.Items.Should().ContainSingle(item =>
+            item.LienId == archived.Id &&
+            item.Status == SellingLienStatus.Archived);
     }
 
     [Fact]

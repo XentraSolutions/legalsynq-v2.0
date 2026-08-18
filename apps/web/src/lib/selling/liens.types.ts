@@ -319,6 +319,15 @@ export interface ArchiveSellingLienRequest {
   reason?: string;
 }
 
+export interface LienArchivedStatusResult {
+  lienId: string;
+  lienNumber: string;
+  isArchived: boolean;
+  sellerStatus: string;
+  archivedAtUtc: string | null;
+  archivedReason: string | null;
+}
+
 export interface SubmitSellingLienRequest {
   sellerStatus: string;
   listingVisibility: string;

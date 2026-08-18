@@ -75,9 +75,18 @@ export const documentsApi = {
       let message = `HTTP ${res.status}`;
       try {
         const errBody = await res.json();
-        message = errBody.message ?? errBody.title ?? message;
+        const stringValue = (value: unknown): string | null =>
+          typeof value === 'string' && value.trim() ? value : null;
+        message =
+          stringValue(errBody?.message) ??
+          stringValue(errBody?.detail) ??
+          stringValue(errBody?.error?.message) ??
+          stringValue(errBody?.error) ??
+          stringValue(errBody?.title) ??
+          message;
       } catch { /* non-JSON error body */ }
-      throw new Error(message);
+      const reference = correlationId !== 'unknown' ? ` Reference: ${correlationId}.` : '';
+      throw new Error(`${message}${reference}`);
     }
 
     const body: { data: DocumentResponseDto } = normalizeDocumentTimestamps(await res.json());

@@ -43,51 +43,6 @@ public static class SellingEndpoints
         ".xlsx",
     };
     private const string SellingBulkImportTemplateType = "SellingLienImport";
-    private static readonly string[] SellingBulkImportTemplateColumns =
-    [
-        "Case Code*",
-        "Lien Status*",
-        "Purchase Date*",
-        "Initial Service Date*",
-        "End Service Date",
-        "Notes",
-        "Funding Company",
-        "Facility Name*",
-        "Contact Person",
-        "Facility Email Address",
-        "Medical Provider Name",
-        "Medical Code & Description*",
-        "Medicare Cost",
-        "Billing Amount*",
-        "Purchase Amount*",
-        "Payee",
-        "Outbound Check Number",
-        "Document Type*",
-        "Attachment",
-    ];
-    private static readonly string[] SellingBulkImportTemplateExample =
-    [
-        "CASE-10001",
-        "Open",
-        "01/15/2026",
-        "01/10/2026",
-        "01/12/2026",
-        "Example selling lien import",
-        "Example Funding Co.",
-        "Example Medical Center",
-        "Jamie Smith",
-        "billing@example-medical-center.test",
-        "Example Medical Center",
-        "99213 - Office visit",
-        "82.00",
-        "250.00",
-        "175.00",
-        "Example Medical Center",
-        "CHK-10001",
-        "Medical bill",
-        "",
-    ];
-
     private static readonly string[] SellingDocumentTaskTypes =
     [
         "LegacyCaseDocument",
@@ -2113,8 +2068,8 @@ public static class SellingEndpoints
         var csv = string.Join(
             Environment.NewLine,
             [
-                string.Join(',', SellingBulkImportTemplateColumns.Select(EscapeCsvField)),
-                string.Join(',', SellingBulkImportTemplateExample.Select(EscapeCsvField)),
+                string.Join(',', SellingBulkImportSchema.Columns.Select(EscapeCsvField)),
+                string.Join(',', SellingBulkImportSchema.Example.Select(EscapeCsvField)),
             ]);
 
         return Results.File(
@@ -2202,8 +2157,22 @@ public static class SellingEndpoints
         var parsed = ParseSellingBulkImportFile(stream, file.FileName);
         foreach (var row in parsed.Rows)
         {
-            row.TryAdd("Listing Visibility", defaultListingVisibility);
-            row.TryAdd("Seller Status", defaultSellerStatus);
+            if (SellingBulkImportSchema.GetValue(
+                    row,
+                    SellingBulkImportSchema.ListingVisibility,
+                    "Lien Visibility") is null)
+            {
+                row[SellingBulkImportSchema.ListingVisibility] = defaultListingVisibility;
+            }
+
+            if (SellingBulkImportSchema.GetValue(
+                    row,
+                    SellingBulkImportSchema.LienStatus,
+                    "Lien Status*",
+                    "Seller Status") is null)
+            {
+                row[SellingBulkImportSchema.LienStatus] = defaultSellerStatus;
+            }
         }
 
         var fileName = Truncate(Path.GetFileName(file.FileName), 255);

@@ -4,6 +4,7 @@ public static class SellingLienStatus
 {
     public const string Pending = "Pending";
     public const string Internal = "Internal";
+    public const string Approval = "Approval";
     public const string PreparedForSale = "PreparedForSale";
     public const string SubmittedForSale = "SubmittedForSale";
     public const string Accepted = "Accepted";
@@ -16,6 +17,7 @@ public static class SellingLienStatus
     {
         Pending,
         Internal,
+        Approval,
         PreparedForSale,
         SubmittedForSale,
         Accepted,

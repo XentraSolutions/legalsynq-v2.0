@@ -3,6 +3,7 @@ using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
+using Liens.Api.Serialization;
 using Liens.Domain.Enums;
 using Liens.Domain;
 using Microsoft.AspNetCore.Builder;
@@ -577,8 +578,10 @@ public static class ReportEndpoints
             ["number_of_liens"] = r.NumberOfLiens,
             ["case_status"] = FormatLegacyStatus(r.CaseStatus),
             ["medical_status"] = string.Empty,
-            ["last_case_tracking_date"] = string.Empty,
-            ["last_case_tracking_note"] = string.Empty,
+            ["last_case_tracking_date"] = r.LastActivityAtUtc.HasValue
+                ? PacificTimeHelper.FormatTimestamp(r.LastActivityAtUtc.Value)
+                : string.Empty,
+            ["last_case_tracking_note"] = r.LastActivity,
             ["case_tracking_follow_up_date"] = string.Empty,
             ["case_tracking_contact"] = string.Empty,
             ["case_tracking_contact_email"] = string.Empty,

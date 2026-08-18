@@ -25,6 +25,7 @@ import type {
   ConfirmSellingLienSaleRequest,
   WithdrawSellingLienRequest,
   ArchiveSellingLienRequest,
+  LienArchivedStatusResult,
   SubmitSellingLienRequest,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
@@ -66,6 +67,11 @@ export const liensService = {
 
   async getLienById(id: string): Promise<LienDetailsResult> {
     const { data } = await liensApi.getById(id);
+    return data;
+  },
+
+  async getArchivedStatus(id: string): Promise<LienArchivedStatusResult> {
+    const { data } = await liensApi.getArchivedStatus(id);
     return data;
   },
 
@@ -172,6 +178,11 @@ export const liensService = {
     request: ArchiveSellingLienRequest = {},
   ): Promise<any> {
     const { data } = await liensApi.archiveLien(lienId, request);
+    return data;
+  },
+
+  async restoreLien(lienId: string): Promise<any> {
+    const { data } = await liensApi.restoreLien(lienId);
     return data;
   },
 

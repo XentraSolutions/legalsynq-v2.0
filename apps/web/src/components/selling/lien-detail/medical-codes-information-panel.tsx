@@ -23,6 +23,9 @@ export function MedicalCodesInformationPanel({
                   Code / Description
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 tracking-wider">
+                  Medicare Cost
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 tracking-wider">
                   Billing Amount
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 tracking-wider">
@@ -44,6 +47,9 @@ export function MedicalCodesInformationPanel({
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700 text-right">
+                      {formatCurrency(data.medicareCost)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700 text-right">
                       {formatCurrency(data.billingAmount)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700 text-right">
@@ -55,7 +61,7 @@ export function MedicalCodesInformationPanel({
               {lien.length === 0 && (
                 <tr>
                   <td
-                    colSpan={3}
+                    colSpan={4}
                     className="px-4 py-6 text-center text-sm text-gray-500"
                   >
                     No record

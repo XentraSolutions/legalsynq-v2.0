@@ -4,6 +4,7 @@ using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
+using Liens.Application.Services;
 using Liens.Domain;
 using Liens.Domain.Enums;
 using Liens.Api.Serialization;
@@ -21,7 +22,6 @@ namespace Liens.Api.Endpoints;
 public static class CaseEndpoints
 {
     private const string LegacyMetadataMarker = "[legacy-meta]";
-    private const string CaseTrackingNoteUpdateDescription = "Case Tracking Note Update";
     private const string MedicareProcedureLookupClientName = "MedicareProcedureLookup";
     private const string MedicareProcedureLookupApiKey = "1iuNYl3IYBHTSjmn34m0XOLLqfm1nrmz";
     private const string MedicareProcedureLookupAmaLicense = "b733fd32-ee85-4174-9ab1-e09ec14048bb";
@@ -5108,6 +5108,7 @@ public static class CaseEndpoints
                 string.Equals(n.Category, CaseNoteCategory.Internal, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(n.Category, CaseNoteCategory.CaseCreated, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(n => n.UpdatedAtUtc ?? n.CreatedAtUtc)
+            .ThenByDescending(n => n.Id)
             .ToList();
 
         var page = req.Page < 1 ? 1 : req.Page;
@@ -5123,9 +5124,9 @@ public static class CaseEndpoints
                 action = string.Equals(n.Category, CaseNoteCategory.Internal, StringComparison.OrdinalIgnoreCase)
                     ? "Case Details Update"
                     : string.IsNullOrWhiteSpace(n.Category) ? "CaseNote" : n.Category,
-                description = NormalizeLegacyCaseUpdateDescription(n.Content, n.Category),
+                description = LegacyCaseUpdateCompatibility.NormalizeDescription(n.Content, n.Category),
                 timestamp = FormatLegacyTimestamp(n.UpdatedAtUtc ?? n.CreatedAtUtc),
-                note = NormalizeLegacyCaseUpdateDescription(n.Content, n.Category),
+                note = LegacyCaseUpdateCompatibility.NormalizeDescription(n.Content, n.Category),
                 category = n.Category,
                 isPinned = n.IsPinned,
                 isEdited = n.IsEdited,
@@ -5145,21 +5146,6 @@ public static class CaseEndpoints
             page,
             limit,
         });
-    }
-
-    private static string NormalizeLegacyCaseUpdateDescription(string content, string category)
-    {
-        if (!string.Equals(category, CaseNoteCategory.Internal, StringComparison.OrdinalIgnoreCase))
-            return content;
-
-        if (string.Equals(content, "Note updated", StringComparison.Ordinal))
-            return CaseTrackingNoteUpdateDescription;
-
-        const string legacySuffix = "; Note updated.";
-        return content.StartsWith("Case updated:", StringComparison.Ordinal) &&
-               content.EndsWith(legacySuffix, StringComparison.Ordinal)
-            ? $"{content[..^legacySuffix.Length]}; {CaseTrackingNoteUpdateDescription}."
-            : content;
     }
 
     private static async Task<IResult> GetLiensUpdatesV3Legacy(
@@ -5965,13 +5951,13 @@ public static class CaseEndpoints
             changes.Add($"ucc filed changed to {NormalizeCaseFlagForDisplay(req.IsUccFiled)}");
 
         if (detailsNoteChanged)
-            changes.Add(CaseTrackingNoteUpdateDescription);
+            changes.Add(LegacyCaseUpdateCompatibility.CaseTrackingNoteUpdateDescription);
 
         if (changes.Count == 0)
             return null;
 
         if (changes.Count == 1 && detailsNoteChanged)
-            return CaseTrackingNoteUpdateDescription;
+            return LegacyCaseUpdateCompatibility.CaseTrackingNoteUpdateDescription;
 
         return $"Case updated: {string.Join("; ", changes)}.";
     }

@@ -879,6 +879,50 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Archive_status_and_restore_keep_lien_record_with_history()
+    {
+        var lienId = await CreateSellingLienAsync();
+
+        using (var archive = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/archive")
+        {
+            Content = JsonContent.Create(new { reason = "No longer active" }),
+        })
+        {
+            archive.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+            var archiveResponse = await _client.SendAsync(archive);
+            archiveResponse.StatusCode.Should().Be(HttpStatusCode.OK, await archiveResponse.Content.ReadAsStringAsync());
+        }
+
+        var statusResponse = await _client.GetAsync($"/api/liens/selling/liens/{lienId}/archived-status");
+        statusResponse.StatusCode.Should().Be(HttpStatusCode.OK, await statusResponse.Content.ReadAsStringAsync());
+        using (var statusJson = JsonDocument.Parse(await statusResponse.Content.ReadAsStringAsync()))
+        {
+            statusJson.RootElement.GetProperty("isArchived").GetBoolean().Should().BeTrue();
+            statusJson.RootElement.GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Archived);
+            statusJson.RootElement.GetProperty("archivedReason").GetString().Should().Be("No longer active");
+        }
+
+        using (var restore = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/restore")
+        {
+            Content = JsonContent.Create(new { }),
+        })
+        {
+            restore.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+            var restoreResponse = await _client.SendAsync(restore);
+            restoreResponse.StatusCode.Should().Be(HttpStatusCode.OK, await restoreResponse.Content.ReadAsStringAsync());
+        }
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persisted = await db.Liens.FindAsync(lienId);
+        persisted.Should().NotBeNull();
+        persisted!.SellerStatus.Should().Be(SellingLienStatus.Pending);
+        persisted.ArchivedAtUtc.Should().BeNull();
+        persisted.ArchivedReason.Should().BeNull();
+        db.LienStatusHistories.Count(item => item.LienId == lienId).Should().BeGreaterThanOrEqualTo(2);
+    }
+
+    [Fact]
     public async Task Invalid_confirmation_does_not_reserve_the_transition_or_idempotency_key()
     {
         var (buyerCompanyId, buyerContactId) = await SeedConfirmSaleContactsAsync(

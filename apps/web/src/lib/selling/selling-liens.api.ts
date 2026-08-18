@@ -20,6 +20,7 @@ import type {
   ConfirmSellingLienSaleRequest,
   WithdrawSellingLienRequest,
   ArchiveSellingLienRequest,
+  LienArchivedStatusResult,
   SubmitSellingLienRequest,
   LienListItem,
   LienActivityFeedResult,
@@ -68,6 +69,12 @@ export const liensApi = {
 
   getById(id: string) {
     return apiClient.get<LienDetailsResult>(`${BASE}/liens/${id}`);
+  },
+
+  getArchivedStatus(id: string) {
+    return apiClient.get<LienArchivedStatusResult>(
+      `${BASE}/liens/${id}/archived-status`,
+    );
   },
 
   getActivity(id: string) {
@@ -182,6 +189,14 @@ export const liensApi = {
     return apiClient.post<any>(
       `${BASE}/liens/${lienId}/archive`,
       request,
+      idempotencyHeaders(),
+    );
+  },
+
+  restoreLien(lienId: string) {
+    return apiClient.post<any>(
+      `${BASE}/liens/${lienId}/restore`,
+      {},
       idempotencyHeaders(),
     );
   },

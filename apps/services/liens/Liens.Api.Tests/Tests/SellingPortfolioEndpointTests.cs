@@ -983,7 +983,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         email.Metadata["lienId"].Should().Be(lienId.ToString());
         email.Metadata["buyerContactId"].Should().Be(buyerContactId.ToString());
         email.Options.Should().NotBeNull();
-        email.Options!.IdempotencyKey.Should().Be(
+        email.Options!.IdempotencyKey.Should().StartWith(
             $"liens.confirm-sale.email:{SeedHelper.TenantId:N}:{lienId:N}:{buyerContactId:N}");
         email.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
         email.Options.TemplateData!["contactPerson"].Should().Be("Handling Counsel");
@@ -1103,7 +1103,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerEmail.Metadata["sellerContactId"].Should().NotBeNullOrWhiteSpace();
         sellerEmail.Metadata["buyerContactId"].Should().Be(buyerContactId.ToString());
         sellerEmail.Options.Should().NotBeNull();
-        sellerEmail.Options!.IdempotencyKey.Should().Be(
+        sellerEmail.Options!.IdempotencyKey.Should().StartWith(
             $"liens.confirm-sale.seller-email:{SeedHelper.TenantId:N}:{lienId:N}:{Guid.Parse(sellerEmail.Metadata["sellerContactId"]):N}:{buyerContactId:N}");
         sellerEmail.Options.TemplateKey.Should().Be(NotificationTaxonomy.Liens.Templates.SellingLienSubmittedEmail);
         sellerEmail.Options.TemplateData!["contactPerson"].Should().Be("Handling Counsel");
@@ -2316,7 +2316,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task BuyerOfferedLien_decline_records_shared_public_response_for_authenticated_buyer()
+    public async Task BuyerOfferedLien_decline_records_shared_public_response_and_returns_lien_to_pending()
     {
         var buyerOrgId = Guid.CreateVersion7();
         var (lienId, token) = await CreatePublicLienOfferAsync(
@@ -2351,7 +2351,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         json.GetProperty("accessLink").GetProperty("responseStatus").GetString()
             .Should().Be(SellingBuyerResponseStatus.Declined);
-        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Declined);
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Draft);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Pending);
 
         using var anonClient = _factory.CreateClient();
         var publicView = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
@@ -2368,7 +2369,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Id == accessLinkId);
         persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Declined);
         persistedLink.ResponseIdempotencyKey.Should().BeNull();
-        db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Declined);
+        var persistedLien = db.Liens.Single(l => l.Id == lienId);
+        persistedLien.Status.Should().Be(LienStatus.Draft);
+        persistedLien.SellerStatus.Should().Be(SellingLienStatus.Pending);
 
         var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
         publisher.Emails.Should().HaveCount(2);
@@ -3032,7 +3035,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task PublicBuyerPortal_decline_records_buyer_response()
+    public async Task PublicBuyerPortal_decline_records_buyer_response_and_returns_lien_to_pending()
     {
         var (lienId, token) = await CreatePublicLienOfferAsync("decline");
         ClearCapturedEmails();
@@ -3051,8 +3054,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         accessLink.GetProperty("responseAmount").ValueKind.Should().Be(JsonValueKind.Null);
         accessLink.GetProperty("responseNotes").GetString().Should().Be("Not in buying criteria");
         accessLink.GetProperty("respondedAtUtc").GetString().Should().NotBeNullOrWhiteSpace();
-        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Declined);
-        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Declined);
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Draft);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Pending);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -3062,9 +3065,11 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         persistedLink.ResponseNotes.Should().Be("Not in buying criteria");
 
         var lien = db.Liens.Single(l => l.Id == lienId);
-        lien.Status.Should().Be(LienStatus.Declined);
-        lien.SellerStatus.Should().Be(SellingLienStatus.Declined);
-        lien.ClosedAtUtc.Should().NotBeNull();
+        lien.Status.Should().Be(LienStatus.Draft);
+        lien.SellerStatus.Should().Be(SellingLienStatus.Pending);
+        lien.ClosedAtUtc.Should().BeNull();
+        lien.SubmittedForSaleAtUtc.Should().BeNull();
+        lien.OfferPrice.Should().BeNull();
         lien.WithdrawnAtUtc.Should().BeNull();
         lien.SoldAtUtc.Should().BeNull();
         lien.BuyingOrgId.Should().BeNull();
@@ -3121,6 +3126,41 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerEmail.Options.HtmlBody.Should().Contain("Buyer Reviewer");
         sellerEmail.Options.HtmlBody.Should().Contain("RL Liens1");
         AssertPublicResponseEmailBranding(sellerEmail);
+
+        var documentId = Guid.CreateVersion7();
+        db.ServicingItems.Add(ServicingItem.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"SPR-{Guid.CreateVersion7():N}"[..36],
+            "SellingMedicalPricing",
+            "99213",
+            "Selling",
+            SeedHelper.UserId,
+            lienId: lienId,
+            notes: JsonSerializer.Serialize(new { medicalCode = "99213", description = "Office visit", billingAmount = 3875m, targetSaleAmount = 2500m })));
+        db.ServicingItems.Add(ServicingItem.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"SDR-{Guid.CreateVersion7():N}"[..36],
+            "SellingDocumentReference",
+            "Supporting Document",
+            "Selling",
+            SeedHelper.UserId,
+            lienId: lienId,
+            notes: JsonSerializer.Serialize(new { documentId, documentType = "Supporting", displayName = "signed-lien-real.pdf" })));
+        await db.SaveChangesAsync();
+
+        var resubmitResponse = await PostConfirmSaleAsync(
+            lienId,
+            $"confirm-sale-after-decline-{Guid.NewGuid():N}");
+        resubmitResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resubmitResponse.Content.ReadAsStringAsync()}");
+        var resubmitBody = await resubmitResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        resubmitBody!.Status.Should().Be(LienStatus.Offered);
+        resubmitBody.SellerStatus.Should().Be(SellingLienStatus.SubmittedForSale);
+        resubmitBody.Notification.Should().NotBeNull();
+        resubmitBody.Notification!.BuyerPortalUrl.Should().NotBeNullOrWhiteSpace();
+        ExtractBuyerAccessToken(resubmitBody.Notification.BuyerPortalUrl!).Should().NotBe(token);
     }
 
     [Fact]
@@ -3153,8 +3193,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var accessLink = json.GetProperty("accessLink");
         accessLink.GetProperty("responseStatus").GetString().Should().Be(SellingBuyerResponseStatus.Declined);
         accessLink.GetProperty("responseNotes").GetString().Should().Be("Not this one");
-        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Declined);
-        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Declined);
+        json.GetProperty("lien").GetProperty("status").GetString().Should().Be(LienStatus.Draft);
+        json.GetProperty("lien").GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Pending);
 
         using var verifyScope = _factory.Services.CreateScope();
         verifyScope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>()

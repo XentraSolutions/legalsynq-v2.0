@@ -57,6 +57,7 @@ const SELLER_STATUS_LABELS: Record<string, string> = {
   Draft: "Draft",
   Pending: "Pending",
   Internal: "Internal",
+  Approval: "Approval",
   PreparedForSale: "Prepared for Sale",
   SubmittedForSale: "Under Review",
   Accepted: "Accepted",

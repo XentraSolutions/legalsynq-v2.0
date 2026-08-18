@@ -375,6 +375,23 @@ public class Lien : AuditableEntity
         UpdatedAtUtc    = DateTime.UtcNow;
     }
 
+    public void ReturnToSellingPending(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        if (Status != LienStatus.Offered && Status != LienStatus.UnderReview)
+            throw new InvalidOperationException($"Only offered or under-review liens can return to selling pending. Current status: '{Status}'.");
+
+        Status = LienStatus.Draft;
+        SellerStatus = SellingLienStatus.Pending;
+        OfferPrice = null;
+        SubmittedForSaleAtUtc = null;
+        ClosedAtUtc = null;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public void MarkSold(decimal purchasePrice, Guid buyingOrgId, Guid updatedByUserId)
     {
         if (Status != LienStatus.Offered && Status != LienStatus.Accepted && Status != LienStatus.UnderReview)
@@ -462,6 +479,18 @@ public class Lien : AuditableEntity
         WithdrawnAtUtc = withdrawnAtUtc ?? WithdrawnAtUtc;
         ArchivedAtUtc = archivedAtUtc ?? ArchivedAtUtc;
         ArchivedReason = archivedReason?.Trim() ?? ArchivedReason;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void RestoreFromArchive(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        SellerStatus = SellingLienStatus.Pending;
+        ArchivedAtUtc = null;
+        ArchivedReason = null;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }

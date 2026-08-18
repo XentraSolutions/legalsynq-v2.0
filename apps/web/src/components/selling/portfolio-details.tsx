@@ -148,6 +148,7 @@ export function PortfolioDetailPanel({
           />
           <FundingCompanyAndCaseInformationPanel
             fundingCompany={lien.fundingCompany}
+            facility={lien.facility}
             medicalProvider={lien.medicalProvider}
             caseInformation={lien.caseInformation}
             onEdit={

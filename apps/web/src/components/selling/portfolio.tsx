@@ -33,6 +33,7 @@ const PORTFOLIO_STATUSES = [
   { key: "Pending", label: "Pending" },
   { key: "Internal", label: "Internal" },
   { key: "Sold", label: "Sold" },
+  { key: "Archived", label: "Archived" },
   // { key: "all", label: "all" },
 ];
 

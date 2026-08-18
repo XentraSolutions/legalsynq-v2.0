@@ -2,6 +2,7 @@ export interface LienDetail {
   lienNumber: string;
   sellerStatus: string;
   status: string;
+  purchaseDate: string | null;
   initialServiceDate: string | null;
   endServiceDate: string | null;
   listingVisibility: string;
@@ -23,8 +24,14 @@ export interface LienFundingCompanyDetail {
 }
 
 export interface LienMedicalProviderDetail {
-  id: string;
+  id: string | null;
   name: string;
+}
+
+export interface LienFacilityDetail {
+  id: string | null;
+  name: string;
+  emailAddress: string | null;
 }
 
 export interface LienCaseDetail {
@@ -87,6 +94,7 @@ export interface LienDetailsResult {
   lienInformation: LienDetail;
   caseInformation: LienCaseDetail | null;
   fundingCompany: LienFundingCompanyDetail | null;
+  facility: LienFacilityDetail | null;
   medicalProvider: LienMedicalProviderDetail | null;
   medicalPricing: {
     askAmount: number | null;

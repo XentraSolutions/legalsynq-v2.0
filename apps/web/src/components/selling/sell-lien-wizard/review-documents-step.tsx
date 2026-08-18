@@ -484,6 +484,7 @@ export default function ReviewDocumentsStep({
                     }
                   : null
               }
+              facility={lien.facility}
               caseInformation={lien.caseInformation}
               medicalProvider={lien.medicalProvider}
               onEdit={() => setEditModal("case-information")}

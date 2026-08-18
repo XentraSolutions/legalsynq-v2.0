@@ -7,7 +7,8 @@ import {
   Send,
   Inbox,
   Undo2,
-  Trash2,
+  Archive,
+  RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 import { Modal, ConfirmDialog } from "@/components/selling/modal";
@@ -36,7 +37,8 @@ const ACTION_LABELS: Record<
   "confirm-sale": { label: "Continue Sale", icon: Send },
   keep: { label: "Keep", icon: Inbox },
   "withdraw-sale": { label: "Withdraw from Sale", icon: Undo2 },
-  archive: { label: "Delete Lien", icon: Trash2, danger: true },
+  archive: { label: "Archive Lien", icon: Archive, danger: true },
+  restore: { label: "Restore Lien", icon: RotateCcw },
 };
 
 // The liens list endpoint doesn't populate `availableActions` (only the
@@ -57,7 +59,7 @@ export function LienRowActionsMenu({
   const { show: showToast } = useToast();
   const [showDecisionModal, setShowDecisionModal] = useState(autoOpenDecision);
   const [confirmAction, setConfirmAction] = useState<
-    "withdraw-sale" | "archive" | "keep" | null
+    "withdraw-sale" | "archive" | "restore" | "keep" | null
   >(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [keepLoading, setKeepLoading] = useState(false);
@@ -76,7 +78,7 @@ export function LienRowActionsMenu({
       router.push(`/selling/portfolio/lien/${lienId}/sell`);
       return;
     }
-    if (action === "keep" || action === "withdraw-sale" || action === "archive") {
+    if (action === "keep" || action === "withdraw-sale" || action === "archive" || action === "restore") {
       setConfirmAction(action);
       return;
     }
@@ -122,6 +124,9 @@ export function LienRowActionsMenu({
       } else if (confirmAction === "archive") {
         await liensService.archiveLien(lienId);
         showToast("Lien archived.", "success");
+      } else if (confirmAction === "restore") {
+        await liensService.restoreLien(lienId);
+        showToast("Lien restored.", "success");
       } else {
         await liensService.submitLien(lienId, {
           ...lien,
@@ -190,24 +195,30 @@ export function LienRowActionsMenu({
           confirmAction === "withdraw-sale"
             ? "Withdraw From Sale?"
             : confirmAction === "archive"
-              ? "Delete This Lien?"
+              ? "Archive This Lien?"
+              : confirmAction === "restore"
+                ? "Restore This Lien?"
               : "Keep as Internal Asset?"
         }
         description={
           confirmAction === "withdraw-sale"
             ? "This lien will no longer be visible to the buyer and will need to be re-submitted for sale."
             : confirmAction === "archive"
-              ? "Deleted liens are hidden from the active portfolio. This can't be undone through this workflow."
+              ? "This lien will be hidden from active portfolio lists, but its record and history will be retained."
+              : confirmAction === "restore"
+                ? "This lien will be restored to the Pending list for active portfolio tracking."
               : "This lien will be kept as a private internal asset instead of being listed for sale."
         }
         confirmLabel={
           confirmAction === "withdraw-sale"
             ? "Withdraw"
             : confirmAction === "archive"
-              ? "Delete"
+              ? "Archive"
+              : confirmAction === "restore"
+                ? "Restore"
               : "Keep"
         }
-        confirmVariant={confirmAction === "keep" ? "primary" : "danger"}
+        confirmVariant={confirmAction === "keep" || confirmAction === "restore" ? "primary" : "danger"}
       />
     </div>
   );

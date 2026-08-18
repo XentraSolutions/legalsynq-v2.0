@@ -855,22 +855,26 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             lien,
             ct);
 
-        var buyerNotificationIdempotencyKey = BuildConfirmSaleNotificationIdempotencyKey(
-            tenantId,
-            lien.Id,
-            notificationContext.BuyerContact.Id);
-        var sellerNotificationIdempotencyKey = BuildConfirmSaleSellerNotificationIdempotencyKey(
-            tenantId,
-            lien.Id,
-            notificationContext.SellerContact.Id,
-            notificationContext.BuyerContact.Id);
-
         SellingBuyerAccessLinkResult? buyerAccessLink = null;
         SellingBuyerAccessLinkResult? sellerAccessLink = null;
+        string? buyerNotificationIdempotencyKey = null;
+        string? sellerNotificationIdempotencyKey = null;
         await InTransactionAsync(async () =>
         {
             if (lien.Status == LienStatus.Draft)
                 lien.ListForSale(lien.AskAmount.Value, actingUserId);
+
+            buyerNotificationIdempotencyKey = BuildConfirmSaleNotificationIdempotencyKey(
+                tenantId,
+                lien.Id,
+                notificationContext.BuyerContact.Id,
+                lien.SubmittedForSaleAtUtc);
+            sellerNotificationIdempotencyKey = BuildConfirmSaleSellerNotificationIdempotencyKey(
+                tenantId,
+                lien.Id,
+                notificationContext.SellerContact.Id,
+                notificationContext.BuyerContact.Id,
+                lien.SubmittedForSaleAtUtc);
 
             await _lienRepo.UpdateAsync(lien, ct);
 
@@ -911,7 +915,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 lien,
                 notificationContext,
                 buyerAccessLink,
-                buyerNotificationIdempotencyKey,
+                buyerNotificationIdempotencyKey!,
                 ct);
 
             sellerNotification = await SendConfirmSaleSellerNotificationAsync(
@@ -921,7 +925,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 notificationContext,
                 sellerAccessLink,
                 buyerAccessLink,
-                sellerNotificationIdempotencyKey,
+                sellerNotificationIdempotencyKey!,
                 ct);
         }
 
@@ -1930,7 +1934,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private static string BuildConfirmSaleNotificationIdempotencyKey(
         Guid tenantId,
         Guid lienId,
-        Guid buyerContactId)
+        Guid buyerContactId,
+        DateTime? submittedForSaleAtUtc)
     {
         var key = string.Join(":", new[]
         {
@@ -1938,6 +1943,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             tenantId.ToString("N"),
             lienId.ToString("N"),
             buyerContactId.ToString("N"),
+            submittedForSaleAtUtc?.Ticks.ToString(CultureInfo.InvariantCulture) ?? "unsubmitted",
         });
 
         return key.Length > 280 ? key[..280] : key;
@@ -1947,7 +1953,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         Guid tenantId,
         Guid lienId,
         Guid sellerContactId,
-        Guid buyerContactId)
+        Guid buyerContactId,
+        DateTime? submittedForSaleAtUtc)
     {
         var key = string.Join(":", new[]
         {
@@ -1956,6 +1963,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             lienId.ToString("N"),
             sellerContactId.ToString("N"),
             buyerContactId.ToString("N"),
+            submittedForSaleAtUtc?.Ticks.ToString(CultureInfo.InvariantCulture) ?? "unsubmitted",
         });
 
         return key.Length > 280 ? key[..280] : key;

@@ -23,6 +23,7 @@ const SELLER_STATUS_STYLES: Record<string, string> = {
   Draft: "bg-gray-50 text-gray-600 border-gray-200",
   Pending: "bg-amber-50 text-amber-700 border-amber-200",
   Internal: "bg-blue-50 text-blue-700 border-blue-200",
+  Approval: "bg-amber-50 text-amber-700 border-amber-200",
   PreparedForSale: "bg-blue-50 text-blue-700 border-blue-200",
   SubmittedForSale: "bg-amber-50 text-amber-700 border-amber-200",
   Accepted: "bg-green-50 text-green-700 border-green-200",
@@ -57,6 +58,7 @@ export function LienInformationPanel({ lien, onEdit }: LienDetailPanelProps) {
           </dd>
         </div>
         <Field label="Listing Visibility" value={lien.listingVisibility} />
+        <Field label="Purchase Date" value={lien.purchaseDate} />
         <Field label="Initial Service Date" value={lien.initialServiceDate} />
         <Field label="End Service Date" value={lien.endServiceDate} />
         <Field label="Lien Notes" value={lien.notes} />

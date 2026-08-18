@@ -17,6 +17,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         "pending",
         "internal",
         "sold",
+        "archived",
         "all",
     };
 
@@ -46,12 +47,16 @@ public sealed class SellingDashboardService : ISellingDashboardService
     {
         var normalizedQuery = Normalize(query);
 
+        var includeArchived = string.Equals(normalizedQuery.Tab, "archived", StringComparison.Ordinal);
         var lienQuery = _db.Liens
             .AsNoTracking()
             .Where(l => l.TenantId == tenantId
                 && (l.SellingOrgId == sellerOrgId
-                    || (!l.SellingOrgId.HasValue && l.OrgId == sellerOrgId)))
-            .Where(l => l.ArchivedAtUtc == null && l.SellerStatus != SellingLienStatus.Archived);
+                    || (!l.SellingOrgId.HasValue && l.OrgId == sellerOrgId)));
+
+        lienQuery = includeArchived
+            ? lienQuery.Where(l => l.ArchivedAtUtc != null || l.SellerStatus == SellingLienStatus.Archived)
+            : lienQuery.Where(l => l.ArchivedAtUtc == null && l.SellerStatus != SellingLienStatus.Archived);
 
         if (normalizedQuery.FundingCompanyId.HasValue)
             lienQuery = lienQuery.Where(l =>
@@ -353,7 +358,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         {
             switch (row.Status)
             {
-                case SellingLienStatus.Pending:
+                case var status when IsPendingTabStatus(status):
                     totalPending += row.Lien.OriginalAmount;
                     pendingCount++;
                     break;
@@ -443,11 +448,18 @@ public sealed class SellingDashboardService : ISellingDashboardService
 
     private static bool MatchesTab(string status, string tab) => tab switch
     {
-        "pending" => status == SellingLienStatus.Pending,
+        "pending" => IsPendingTabStatus(status),
         "internal" => status == SellingLienStatus.Internal,
         "sold" => status == SellingLienStatus.Sold,
+        "archived" => status == SellingLienStatus.Archived,
         _ => true,
     };
+
+    private static bool IsPendingTabStatus(string status) =>
+        status is SellingLienStatus.Pending
+            or SellingLienStatus.Approval
+            or SellingLienStatus.PreparedForSale
+            or SellingLienStatus.SubmittedForSale;
 
     private static SellingDashboardQuery Normalize(SellingDashboardQuery query)
     {
@@ -461,7 +473,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
 
         var errors = new Dictionary<string, string[]>();
         if (!Tabs.Contains(tab))
-            errors["tab"] = ["Tab must be pending, internal, sold, or all."];
+            errors["tab"] = ["Tab must be pending, internal, sold, archived, or all."];
         if (!SortFields.Contains(sortBy))
             errors["sortBy"] = ["SortBy must be lienId, fundingCompany, initialServiceDate, billingAmount, askAmount, highestBid, or status."];
         if (sortDirection is not "asc" and not "desc")

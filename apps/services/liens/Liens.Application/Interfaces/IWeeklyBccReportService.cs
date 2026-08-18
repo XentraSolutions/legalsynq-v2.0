@@ -16,4 +16,20 @@ public interface IWeeklyBccReportService
         int pageSize,
         bool includeTotalCount = true,
         CancellationToken ct = default);
+
+    Task<WeeklyBccExportBatch> GetExportBatchAsync(
+        Guid tenantId,
+        DateOnly asOfDate,
+        WeeklyBccExportCursor? cursor,
+        int batchSize,
+        CancellationToken ct = default);
 }
+
+public sealed record WeeklyBccExportCursor(
+    DateOnly PurchaseDate,
+    string LienNumber,
+    Guid LienId);
+
+public sealed record WeeklyBccExportBatch(
+    IReadOnlyList<WeeklyBccReportRow> Items,
+    WeeklyBccExportCursor? NextCursor);

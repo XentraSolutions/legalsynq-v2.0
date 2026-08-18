@@ -1385,31 +1385,194 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
-    public async Task ExportReport_uses_activity_labels_for_case_update_columns()
+    public async Task RunAndExportReport_use_latest_case_update_for_last_activity()
     {
-        var response = await _client.PostAsJsonAsync("/report/diy/export", new
+        Guid caseId;
+        Guid latestActivityId;
+        string caseNumber;
+        string lienNumber;
+        string unlinkedCaseNumber;
+
+        using (var scope = _factory.Services.CreateScope())
         {
-            reportType = "LIENS",
-            isBulk = "N",
-            columns = new[]
-            {
-                "case_id",
-                "last_case_tracking_note",
-                "last_case_tracking_date",
-            },
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-ACTIVITY-{Guid.CreateVersion7():N}"[..30],
+                "Case",
+                "Activity",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-ACTIVITY-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N");
+
+            var caseCreated = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Case created",
+                CaseNoteCategory.CaseCreated,
+                new DateTime(2026, 8, 17, 16, 30, 0, DateTimeKind.Utc));
+            var latestActivity = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Note updated",
+                CaseNoteCategory.Internal,
+                new DateTime(2026, 8, 17, 15, 0, 0, DateTimeKind.Utc));
+            SetCaseNoteProperty(
+                latestActivity,
+                nameof(LienCaseNote.Id),
+                Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff"));
+            SetCaseNoteProperty(
+                latestActivity,
+                nameof(LienCaseNote.UpdatedAtUtc),
+                new DateTime?(new DateTime(2026, 8, 17, 16, 43, 0, DateTimeKind.Utc)));
+            var tiedActivity = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Timestamp tie loser",
+                CaseNoteCategory.Internal,
+                new DateTime(2026, 8, 17, 14, 0, 0, DateTimeKind.Utc));
+            SetCaseNoteProperty(
+                tiedActivity,
+                nameof(LienCaseNote.Id),
+                Guid.Parse("11111111-1111-1111-1111-111111111111"));
+            SetCaseNoteProperty(
+                tiedActivity,
+                nameof(LienCaseNote.UpdatedAtUtc),
+                new DateTime?(new DateTime(2026, 8, 17, 16, 43, 0, DateTimeKind.Utc)));
+            var laterTrackingNote = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Tracking note is not a case activity",
+                CaseNoteCategory.General,
+                new DateTime(2026, 8, 17, 17, 0, 0, DateTimeKind.Utc));
+            var deletedActivity = CreateCaseNote(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Deleted activity",
+                CaseNoteCategory.Internal,
+                new DateTime(2026, 8, 17, 18, 0, 0, DateTimeKind.Utc));
+            deletedActivity.SoftDelete();
+            var otherTenantActivity = CreateCaseNote(
+                caseEntity.Id,
+                Guid.CreateVersion7(),
+                "Other tenant activity",
+                CaseNoteCategory.Internal,
+                new DateTime(2026, 8, 17, 19, 0, 0, DateTimeKind.Utc));
+            var unlinkedCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-UNLINKED-{Guid.CreateVersion7():N}"[..30],
+                "Unlinked",
+                "Activity",
+                SeedHelper.UserId);
+            var unlinkedActivity = CreateCaseNote(
+                unlinkedCase.Id,
+                SeedHelper.TenantId,
+                "Unlinked Case Activity",
+                CaseNoteCategory.CaseCreated,
+                new DateTime(2026, 8, 18, 17, 0, 0, DateTimeKind.Utc));
+
+            caseId = caseEntity.Id;
+            latestActivityId = latestActivity.Id;
+            caseNumber = caseEntity.CaseNumber;
+            lienNumber = lien.LienNumber;
+            unlinkedCaseNumber = unlinkedCase.CaseNumber;
+            db.Cases.AddRange(caseEntity, unlinkedCase);
+            db.Liens.Add(lien);
+            db.LienCaseNotes.AddRange(
+                caseCreated,
+                latestActivity,
+                tiedActivity,
+                laterTrackingNote,
+                deletedActivity,
+                otherTenantActivity,
+                unlinkedActivity);
+            await db.SaveChangesAsync();
+        }
+
+        var caseUpdatesResponse = await _client.PostAsJsonAsync("/api/liens/cases/case-updates/v3", new
+        {
+            CaseId = caseId,
             page = 1,
             limit = 10,
         });
-        response.StatusCode.Should().Be(HttpStatusCode.OK,
-            $"Body: {await response.Content.ReadAsStringAsync()}");
+        caseUpdatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await caseUpdatesResponse.Content.ReadAsStringAsync()}");
+        using var caseUpdatesPayload = JsonDocument.Parse(await caseUpdatesResponse.Content.ReadAsStringAsync());
+        var newestCaseUpdate = caseUpdatesPayload.RootElement.GetProperty("data").EnumerateArray().First();
+        newestCaseUpdate.GetProperty("id").GetString().Should().Be(latestActivityId.ToString());
+        newestCaseUpdate.GetProperty("description").GetString().Should().Be("Case Tracking Note Update");
+        newestCaseUpdate.GetProperty("timestamp").GetString().Should().Be("08/17/2026 09:43 AM");
 
-        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
-        var export = payload!.RootElement.GetProperty("data").EnumerateArray().Single();
-        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
+        foreach (var reportType in new[] { "LIENS", "COMBINED", "CASES" })
+        {
+            await AssertLastActivityAsync(
+                reportType,
+                lienNumber,
+                caseNumber,
+                "Case Tracking Note Update",
+                "08/17/2026 09:43 AM");
+        }
 
-        csv.Should().StartWith("case_id,Last Activity,Last Activity Date");
-        csv.Should().NotContain("Last Case Tracking Note");
-        csv.Should().NotContain("Last Case Tracking Date");
+        await AssertLastActivityAsync(
+            "CASES",
+            unlinkedCaseNumber,
+            unlinkedCaseNumber,
+            "Unlinked Case Activity",
+            "08/18/2026 10:00 AM");
+
+        async Task AssertLastActivityAsync(
+            string reportType,
+            string search,
+            string expectedCaseNumber,
+            string expectedActivity,
+            string expectedTimestamp)
+        {
+            var request = new
+            {
+                reportType,
+                search,
+                isBulk = "N",
+                columns = new[]
+                {
+                    "case_id",
+                    "last_case_tracking_note",
+                    "last_case_tracking_date",
+                },
+                page = 1,
+                limit = 10,
+            };
+
+            var runResponse = await _client.PostAsJsonAsync("/report/diy", request);
+            runResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Body: {await runResponse.Content.ReadAsStringAsync()}");
+            using var runPayload = JsonDocument.Parse(await runResponse.Content.ReadAsStringAsync());
+            var row = runPayload.RootElement.GetProperty("data").EnumerateArray().Single();
+            row.GetProperty("case_id").GetString().Should().Be(expectedCaseNumber);
+            row.GetProperty("last_case_tracking_note").GetString().Should().Be(expectedActivity);
+            row.GetProperty("last_case_tracking_date").GetString().Should().Be(expectedTimestamp);
+
+            var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", request);
+            exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Body: {await exportResponse.Content.ReadAsStringAsync()}");
+            var payload = await exportResponse.Content.ReadFromJsonAsync<JsonDocument>();
+            var export = payload!.RootElement.GetProperty("data").EnumerateArray().Single();
+            var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
+
+            csv.Should().StartWith("case_id,Last Activity,Last Activity Date");
+            csv.Should().Contain($"{expectedCaseNumber},{expectedActivity},{expectedTimestamp}");
+            csv.Should().NotContain("Timestamp tie loser");
+            csv.Should().NotContain("Deleted activity");
+            csv.Should().NotContain("Other tenant activity");
+        }
     }
 
     [Fact]

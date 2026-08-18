@@ -9,6 +9,10 @@ public interface ILienCaseNoteRepository
         Guid tenantId,
         IReadOnlyCollection<Guid> caseIds,
         CancellationToken ct = default);
+    Task<List<LienCaseNote>> GetLatestCaseUpdatesByCaseIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> caseIds,
+        CancellationToken ct = default);
     Task<List<LienCaseNote>> GetLatestFeedByCaseIdsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> caseIds,

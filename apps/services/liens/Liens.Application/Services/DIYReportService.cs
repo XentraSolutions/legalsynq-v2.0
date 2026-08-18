@@ -244,6 +244,7 @@ public class DIYReportService : IDIYReportService
             rowCasesById,
             servicingItems,
             ShouldIncludeTrackingNotes(request),
+            ShouldIncludeCaseActivity(request),
             ShouldIncludeFeedNotes(request),
             ct);
 
@@ -528,6 +529,12 @@ public class DIYReportService : IDIYReportService
             LastTrackingNoteDate = enrichment.TrackingNotesByCaseId
                 .GetValueOrDefault(l.CaseId ?? Guid.Empty, TrackingNoteReportDetails.Empty)
                 .LastDate,
+            LastActivity = enrichment.CaseActivityByCaseId
+                .GetValueOrDefault(l.CaseId ?? Guid.Empty, CaseActivityReportDetails.Empty)
+                .Description,
+            LastActivityAtUtc = enrichment.CaseActivityByCaseId
+                .GetValueOrDefault(l.CaseId ?? Guid.Empty, CaseActivityReportDetails.Empty)
+                .TimestampUtc,
             Extra = new Dictionary<string, object?>(),
         };
     }
@@ -637,6 +644,12 @@ public class DIYReportService : IDIYReportService
                     LastTrackingNoteDate = enrichment.TrackingNotesByCaseId
                         .GetValueOrDefault(caseEntity.Id, TrackingNoteReportDetails.Empty)
                         .LastDate,
+                    LastActivity = enrichment.CaseActivityByCaseId
+                        .GetValueOrDefault(caseEntity.Id, CaseActivityReportDetails.Empty)
+                        .Description,
+                    LastActivityAtUtc = enrichment.CaseActivityByCaseId
+                        .GetValueOrDefault(caseEntity.Id, CaseActivityReportDetails.Empty)
+                        .TimestampUtc,
                     Extra = new Dictionary<string, object?>(),
                 };
             })
@@ -649,6 +662,7 @@ public class DIYReportService : IDIYReportService
         IReadOnlyDictionary<Guid, Case> casesById,
         IReadOnlyCollection<ServicingItem> servicingItems,
         bool includeTrackingNotes,
+        bool includeCaseActivity,
         bool includeFeedNotes,
         CancellationToken ct)
     {
@@ -797,6 +811,20 @@ public class DIYReportService : IDIYReportService
                     DateOnly.FromDateTime(note.CreatedAtUtc)));
         }
 
+        var caseActivityByCaseId = new Dictionary<Guid, CaseActivityReportDetails>();
+        if (includeCaseActivity)
+        {
+            var caseUpdates = await _caseNoteRepo.GetLatestCaseUpdatesByCaseIdsAsync(
+                tenantId,
+                casesById.Keys.ToList(),
+                ct);
+            caseActivityByCaseId = caseUpdates.ToDictionary(
+                note => note.CaseId,
+                note => new CaseActivityReportDetails(
+                    LegacyCaseUpdateCompatibility.NormalizeDescription(note.Content, note.Category),
+                    note.UpdatedAtUtc ?? note.CreatedAtUtc));
+        }
+
         return new ReportRowEnrichment(
             medicalFacilityByLienId,
             caseDetailsById,
@@ -804,6 +832,7 @@ public class DIYReportService : IDIYReportService
             settlementAmountsByLienId,
             returnedAmountsByLienId,
             trackingNotesByCaseId,
+            caseActivityByCaseId,
             feedNotesByCaseId);
     }
 
@@ -854,6 +883,31 @@ public class DIYReportService : IDIYReportService
             };
             return string.Equals(key, "notes", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(key, "notes_date", StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    private static bool ShouldIncludeCaseActivity(DIYReportRunRequest request)
+    {
+        if (!HasReportProperty(request, "columns", out var columns) ||
+            columns.ValueKind != JsonValueKind.Array ||
+            columns.GetArrayLength() == 0)
+        {
+            return true;
+        }
+
+        return columns.EnumerateArray().Any(column =>
+        {
+            var key = column.ValueKind switch
+            {
+                JsonValueKind.String => column.GetString(),
+                JsonValueKind.Object when column.TryGetProperty("key", out var value) &&
+                                          value.ValueKind == JsonValueKind.String => value.GetString(),
+                JsonValueKind.Object when column.TryGetProperty("name", out var value) &&
+                                          value.ValueKind == JsonValueKind.String => value.GetString(),
+                _ => null,
+            };
+            return string.Equals(key, "last_case_tracking_note", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(key, "last_case_tracking_date", StringComparison.OrdinalIgnoreCase);
         });
     }
 
@@ -1053,6 +1107,11 @@ public class DIYReportService : IDIYReportService
         public static readonly FeedNoteReportDetails Empty = new(string.Empty, null);
     }
 
+    private sealed record CaseActivityReportDetails(string Description, DateTime? TimestampUtc)
+    {
+        public static readonly CaseActivityReportDetails Empty = new(string.Empty, null);
+    }
+
     private sealed record ReportRowEnrichment(
         IReadOnlyDictionary<Guid, string> MedicalFacilityByLienId,
         IReadOnlyDictionary<Guid, CaseReportDetails> CaseDetailsById,
@@ -1060,6 +1119,7 @@ public class DIYReportService : IDIYReportService
         IReadOnlyDictionary<Guid, SettlementReportAmounts> SettlementAmountsByLienId,
         IReadOnlyDictionary<Guid, decimal> ReturnedAmountsByLienId,
         IReadOnlyDictionary<Guid, TrackingNoteReportDetails> TrackingNotesByCaseId,
+        IReadOnlyDictionary<Guid, CaseActivityReportDetails> CaseActivityByCaseId,
         IReadOnlyDictionary<Guid, FeedNoteReportDetails> FeedNotesByCaseId);
 
     private readonly record struct ReductionReportAmounts(decimal Amount, DateOnly ReductionDate);

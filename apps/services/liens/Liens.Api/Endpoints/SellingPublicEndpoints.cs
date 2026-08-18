@@ -1854,14 +1854,10 @@ public static class SellingPublicEndpoints
         }
         else if (string.Equals(responseStatus, SellingBuyerResponseStatus.Declined, StringComparison.Ordinal))
         {
-            if (IsActionableLienStatus(lien.Status))
-                lien.TransitionStatus(LienStatus.Declined, updatedByUserId);
-            else if (string.Equals(lien.Status, LienStatus.Withdrawn, StringComparison.Ordinal))
-                lien.SetLegacyMedicalStatus(LienStatus.Declined, updatedByUserId);
-
             if (IsActionableBuyerOffer(view.Lien.Status, view.Lien.SellerStatus) &&
-                !string.Equals(lien.SellerStatus, SellingLienStatus.Declined, StringComparison.Ordinal))
-                lien.UpdateSellingAnalyticsFields(updatedByUserId, sellerStatus: SellingLienStatus.Declined);
+                (string.Equals(lien.Status, LienStatus.Offered, StringComparison.Ordinal) ||
+                 string.Equals(lien.Status, LienStatus.UnderReview, StringComparison.Ordinal)))
+                lien.ReturnToSellingPending(updatedByUserId);
         }
     }
 

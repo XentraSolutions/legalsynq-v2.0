@@ -996,9 +996,10 @@ requires service JWT auth for producer submissions.
 ### POST `/api/liens/selling/public/{token}/decline`
 
 Records a declined buyer response for the token-scoped lien. This is anonymous and uses the same token validation and
-conflict behavior as public accept. Declining can record an optional reason and marks the offered lien with
-`Status=Declined` and `SellerStatus=Declined`; it does not mark the lien sold, withdraw the seller listing, or create a
-Bill of Sale. Seller-view tokens are read-only and return `403 read-only-link`. The first declined response submits
+conflict behavior as public accept. Declining can record an optional reason, records the buyer access-link response as
+`Declined`, and returns the seller lien to `Pending` so it appears in the seller Pending list and can be submitted for sale
+again. It does not mark the lien sold, withdraw the seller listing, or create a Bill of Sale. Seller-view tokens are
+read-only and return `403 read-only-link`. The first declined response submits
 `lien.offer.rejected` emails to both the buyer and seller through Notifications with recipient-specific idempotency
 keys. Repeated same-response posts return the recorded response and retry those idempotent notification submissions, so
 transient failures can recover without duplicate emails. Notification submission failures are logged and do not roll back
@@ -1030,8 +1031,8 @@ requires service JWT auth for producer submissions.
     "respondedAtUtc": "2026-07-23T14:10:00Z"
   },
   "lien": {
-    "status": "Declined",
-    "sellerStatus": "Declined"
+    "status": "Draft",
+    "sellerStatus": "Pending"
   }
 }
 ```
@@ -2209,7 +2210,7 @@ Eligible Weekly BCC liens are ordered by purchase date, lien number, and record 
 }
 ```
 
-`columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. The direct `/weekly-bcc` endpoints remain complete and unpaged.
+`columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). The `noted` field is labeled `Notes` in report previews and CSV exports. Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. The direct `/weekly-bcc` endpoints remain complete and unpaged.
 
 ### POST `/api/liens/reports/auto-generated/{reportId}/export`
 
@@ -2248,4 +2249,4 @@ The existing compatibility keys have these Tracking Notes definitions:
 
 Feed, internal, system/history, deleted, blank, and cross-tenant notes are excluded. `POST /report/diy` and its canonical `/api/liens/reports/diy/run` route return the same aggregated value. Both DIY export routes quote the multiline field in the Base64-encoded CSV, so every Tracking Note is retained.
 
-The distinct Case Update fields keep their established compatibility keys and data source. `last_case_tracking_note` is exposed as `Last Activity`, and `last_case_tracking_date` is exposed as `Last Activity Date`. The same labels are returned by column metadata and written as the corresponding CSV headers; row values, filtering, sorting, and saved report configurations are unchanged.
+The distinct Case Update fields use the newest active Case Activity row for the tenant. `last_case_tracking_note` is exposed as `Last Activity` and contains its normalized Description; `last_case_tracking_date` is exposed as `Last Activity Date` and contains its Pacific-time Timestamp in `MM/dd/yyyy hh:mm tt` format. Eligible rows match the Case Activity table (`Case Created` and internal Case Details Update entries), equal timestamps use descending activity ID, and preview and CSV export use the same mapping.

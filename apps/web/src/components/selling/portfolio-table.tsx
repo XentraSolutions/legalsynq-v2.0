@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Eye, SquarePen, Trash2 } from "lucide-react";
+import { Archive, Eye, RotateCcw, SquarePen } from "lucide-react";
 import { DateDisplay } from "@/components/ui/date-display";
 import { LIEN_TYPE_LABELS } from "@/types/lien";
 import { LienStatusBadge } from "../lien/lien-status-badge";
@@ -30,12 +30,18 @@ function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProp
   const { show: showToast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const isArchived = lien.status === "Archived" || lien.sellerStatus === "Archived";
 
-  const handleDelete = async () => {
+  const handleArchiveToggle = async () => {
     setLoading(true);
     try {
-      await liensService.archiveLien(lien.lienId);
-      showToast("Lien deleted.", "success");
+      if (isArchived) {
+        await liensService.restoreLien(lien.lienId);
+        showToast("Lien restored.", "success");
+      } else {
+        await liensService.archiveLien(lien.lienId);
+        showToast("Lien archived.", "success");
+      }
       setConfirmOpen(false);
       onActionComplete?.();
     } catch (err) {
@@ -66,23 +72,33 @@ function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProp
                 },
               ]
             : []),
-          {
-            label: "Delete",
-            icon: Trash2,
-            variant: "danger",
-            onClick: () => setConfirmOpen(true),
-          },
+          isArchived
+            ? {
+                label: "Restore",
+                icon: RotateCcw,
+                onClick: () => setConfirmOpen(true),
+              }
+            : {
+                label: "Archive",
+                icon: Archive,
+                variant: "danger",
+                onClick: () => setConfirmOpen(true),
+              },
         ]}
       />
       <ConfirmDialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        onConfirm={handleDelete}
+        onConfirm={handleArchiveToggle}
         loading={loading}
-        title="Delete This Lien?"
-        description="This lien will be archived and hidden from the active portfolio. This can't be undone through this workflow."
-        confirmLabel="Delete"
-        confirmVariant="danger"
+        title={isArchived ? "Restore This Lien?" : "Archive This Lien?"}
+        description={
+          isArchived
+            ? "This lien will be restored to the Pending list for active portfolio tracking."
+            : "This lien will be hidden from active portfolio lists, but its record and history will be retained."
+        }
+        confirmLabel={isArchived ? "Restore" : "Archive"}
+        confirmVariant={isArchived ? "primary" : "danger"}
       />
     </>
   );

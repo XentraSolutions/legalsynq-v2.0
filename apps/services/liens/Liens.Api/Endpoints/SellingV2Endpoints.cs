@@ -40,6 +40,8 @@ public static class SellingV2Endpoints
             .RequirePermission(LiensPermissions.LienSaleCreate);
         seller.MapGet("/liens/{lienId:guid}", GetLienDetail)
             .RequirePermission(LiensPermissions.LienSaleRead);
+        seller.MapGet("/liens/{lienId:guid}/archived-status", GetArchivedStatus)
+            .RequirePermission(LiensPermissions.LienSaleRead);
         seller.MapGet("/liens/{lienId:guid}/activity", GetLienActivity)
             .RequirePermission(LiensPermissions.LienSaleRead);
         seller.MapPut("/liens/{lienId:guid}/lien-information", SaveLienInformation)
@@ -57,6 +59,8 @@ public static class SellingV2Endpoints
         seller.MapPost("/liens/{lienId:guid}/withdraw-sale", WithdrawSale)
             .RequirePermission(LiensPermissions.LienSaleWithdraw);
         seller.MapPost("/liens/{lienId:guid}/archive", ArchiveLien)
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
+        seller.MapPost("/liens/{lienId:guid}/restore", RestoreLien)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
         seller.MapPost("/liens/{lienId:guid}/buyer-access-links", CreateBuyerAccessLink)
             .RequirePermission(LiensPermissions.LienSalePublish);
@@ -171,6 +175,20 @@ public static class SellingV2Endpoints
                 c.Id == lien.MedicalProviderCompanyId.Value &&
                 c.CompanyTypeId == CompanyDirectoryReferenceData.MedicalProviderId, ct)
             : null;
+        var facility = lien.FacilityId.HasValue
+            ? await db.Facilities.AsNoTracking().FirstOrDefaultAsync(f =>
+                f.TenantId == tenantId && f.OrgId == sellerOrgId && f.Id == lien.FacilityId.Value, ct)
+            : null;
+        var legacyFacilityInfo = await db.ServicingItems.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == "LegacyMedicalFacilityInfo")
+            .OrderByDescending(item => item.CreatedAtUtc)
+            .Select(item => item.Notes)
+            .FirstOrDefaultAsync(ct);
+        var legacyFacilityMetadata = ParseCaseMetadata(legacyFacilityInfo);
+        var effectiveFacilityName = facility?.Name ??
+            (legacyFacilityMetadata.TryGetValue("facilityName", out var importedFacilityName) ? importedFacilityName : null);
+        var effectiveMedicalProviderName = canonicalMedicalProvider?.Name ??
+            (legacyFacilityMetadata.TryGetValue("medicalProvider", out var importedProviderName) ? importedProviderName : null);
         var legacyFundingCompany = lien.FundingCompanyId.HasValue
             ? await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == lien.FundingCompanyId.Value, ct)
             : null;
@@ -237,6 +255,7 @@ public static class SellingV2Endpoints
                 lien.LienNumber,
                 lien.SellerStatus,
                 lien.Status,
+                lien.PurchaseDate,
                 lien.InitialServiceDate,
                 lien.EndServiceDate,
                 lien.ReceivableDueDate,
@@ -262,10 +281,16 @@ public static class SellingV2Endpoints
                 emailAddress = effectiveFundingContactEmail,
                 contact = !effectiveFundingContactId.HasValue ? null : new { Id = effectiveFundingContactId.Value, name = effectiveFundingContactName },
             },
-            medicalProvider = canonicalMedicalProvider is null ? null : new
+            facility = string.IsNullOrWhiteSpace(effectiveFacilityName) ? null : new
             {
-                id = canonicalMedicalProvider.Id,
-                name = canonicalMedicalProvider.Name,
+                id = facility?.Id,
+                name = effectiveFacilityName,
+                emailAddress = facility?.Email,
+            },
+            medicalProvider = string.IsNullOrWhiteSpace(effectiveMedicalProviderName) ? null : new
+            {
+                id = canonicalMedicalProvider?.Id,
+                name = effectiveMedicalProviderName,
             },
             medicalPricing = new { lien.AskAmount, billingAmount = lien.OriginalAmount, rows = pricing },
             documents,
@@ -277,6 +302,28 @@ public static class SellingV2Endpoints
             },
             activity,
             availableActions = AvailableActions(lien),
+        });
+    }
+
+    private static async Task<IResult> GetArchivedStatus(
+        Guid lienId,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, _) = RequireSellerContext(context);
+        var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
+        if (lien is null) return NotFoundLien(lienId);
+
+        var isArchived = lien.ArchivedAtUtc.HasValue || lien.SellerStatus == SellingLienStatus.Archived;
+        return Results.Ok(new
+        {
+            lienId = lien.Id,
+            lien.LienNumber,
+            isArchived,
+            lien.SellerStatus,
+            lien.ArchivedAtUtc,
+            lien.ArchivedReason,
         });
     }
 
@@ -752,7 +799,7 @@ public static class SellingV2Endpoints
         // work transaction.
         var transitionGate = await SellingIdempotency.TryBeginAsync(
             db, tenantId, "LienTransition", lienId, "/api/liens/selling/liens/{lienId}/confirm-sale", "Lien", lienId.ToString(),
-            "submit-for-sale-transition-v1", request: null, ct: ct);
+            BuildSubmitForSaleTransitionKey(lien), request: null, ct: ct);
         if (transitionGate.Result is not null)
         {
             return Results.Conflict(new { error = new { code = "sale_submission_in_progress", message = "This lien is already being submitted for sale. Retry with the original idempotency key." } });
@@ -892,6 +939,33 @@ public static class SellingV2Endpoints
         var completed = await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status200OK, response, ct);
         await SellingIdempotency.CompleteAsync(db, lienTransition.Record!, userId, StatusCodes.Status200OK, response, ct);
         return completed;
+    }
+
+    private static async Task<IResult> RestoreLien(
+        Guid lienId,
+        HttpRequest httpRequest,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
+        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError)) return idempotencyError!;
+        var request = new { };
+        var replay = await SellingIdempotency.GetReplayAsync(
+            db, tenantId, "User", userId, "/api/liens/selling/liens/{lienId}/restore", "Lien", lienId.ToString(), idempotencyKey!, request, ct);
+        if (replay is not null) return replay;
+        var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
+        if (lien is null) return NotFoundLien(lienId);
+        if (lien.ArchivedAtUtc is null && lien.SellerStatus != SellingLienStatus.Archived)
+            return ValidationError("sellerStatus", "Only archived liens can be restored.");
+        var started = await SellingIdempotency.TryBeginAsync(
+            db, tenantId, "User", userId, "/api/liens/selling/liens/{lienId}/restore", "Lien", lienId.ToString(), idempotencyKey!, request, ct);
+        if (started.Result is not null) return started.Result;
+        lien.RestoreFromArchive(userId);
+        AddActivity(db, lien, userId, "Lien restored from archive.");
+        await db.SaveChangesAsync(ct);
+        var response = new { lienId = lien.Id, lien.SellerStatus, lien.ArchivedAtUtc, lien.ArchivedReason };
+        return await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status200OK, response, ct);
     }
 
     private static async Task<IResult> CreateBuyerAccessLink(
@@ -1221,7 +1295,9 @@ public static class SellingV2Endpoints
         }
 
         var caseNumbers = rows.Where(row => row.Status == "VALID")
-            .Select(row => GetImportValue(JsonSerializer.Deserialize<Dictionary<string, string>>(row.DataJson) ?? [], "Case Code*"))
+            .Select(row => SellingBulkImportSchema.GetValue(
+                JsonSerializer.Deserialize<Dictionary<string, string>>(row.DataJson) ?? [],
+                SellingBulkImportSchema.CaseCode))
             .Where(caseNumber => !string.IsNullOrWhiteSpace(caseNumber))
             .Select(caseNumber => caseNumber!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -1254,7 +1330,7 @@ public static class SellingV2Endpoints
                 try
                 {
                     var values = JsonSerializer.Deserialize<Dictionary<string, string>>(row.DataJson) ?? [];
-                    caseNumber = GetImportValue(values, "Case Code*")!;
+                    caseNumber = SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.CaseCode)!;
                     if (!casesByNumber.TryGetValue(caseNumber, out var caseEntity))
                     {
                         createdCase = Case.Create(tenantId, sellerOrgId, caseNumber, "Pending", "Lien", userId,
@@ -1264,26 +1340,36 @@ public static class SellingV2Endpoints
                         caseEntity = createdCase;
                         casesByNumber[caseNumber] = caseEntity;
                     }
-                    var fundingCompanyName = GetImportValue(values, "Funding Company");
+                    var fundingCompanyName = SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.FundingCompany);
                     var fundingCompany = ResolveImportContactByName(fundingCompanies, fundingCompanyName);
-                    var facilityName = GetImportValue(values, "Facility Name*");
+                    var facilityName = SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.FacilityName);
                     var facility = ResolveImportFacilityByName(facilities, facilityName);
-                    var medicalProviderName = GetImportValue(values, "Medical Provider Name");
+                    var medicalProviderName = SellingBulkImportSchema.GetValue(
+                        values,
+                        SellingBulkImportSchema.MedicalProvider,
+                        "Medical Provider Name");
                     var medicalProvider = ResolveImportContactByName(medicalProviders, medicalProviderName);
 
-                    var (medicalCode, medicalDescription) = ParseImportMedicalCode(GetImportValue(values, "Medical Code & Description*"));
+                    var (medicalCode, medicalDescription) = ParseImportMedicalCode(
+                        SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.MedicalCodeAndDescription));
+                    var targetAskAmount = ParseImportDecimal(
+                        values,
+                        SellingBulkImportSchema.TargetAskAmount,
+                        "Purchase Amount*");
                     lien = Lien.Create(tenantId, sellerOrgId, ResolveImportLienNumber(values), LienType.MedicalLien,
-                        ParseImportDecimal(values, "Billing Amount*"), userId,
+                        ParseImportDecimal(values, SellingBulkImportSchema.BillingAmount), userId,
                         externalReference: fundingCompany?.Id.ToString() ?? fundingCompanyName,
                         facilityId: facility?.Id,
-                        initialServiceDate: ParseImportDate(values, "Initial Service Date*"),
-                        endServiceDate: ParseImportDate(values, "End Service Date"),
-                        notes: GetImportValue(values, "Notes"));
+                        initialServiceDate: ParseImportDate(values, SellingBulkImportSchema.InitialServiceDate),
+                        endServiceDate: ParseImportDate(values, SellingBulkImportSchema.EndServiceDate),
+                        notes: SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.LienNotes, "Notes"),
+                        purchaseDate: ParseImportDate(values, SellingBulkImportSchema.PurchaseDate, "Purchase Date*"));
                     lien.AttachCase(caseEntity.Id, userId);
                     lien.UpdateSellingAnalyticsFields(userId,
-                        sellerStatus: NormalizeIntakeStatus(GetImportValue(values, "Seller Status")) ?? SellingLienStatus.Pending,
-                        listingVisibility: NormalizeVisibility(GetImportValue(values, "Listing Visibility")) ?? SellingListingVisibility.Private,
-                        fundingCompanyId: fundingCompany?.Id);
+                        sellerStatus: NormalizeImportStatus(values),
+                        listingVisibility: NormalizeImportVisibility(values),
+                        fundingCompanyId: fundingCompany?.Id,
+                        askAmount: targetAskAmount > 0m ? targetAskAmount : null);
                     db.Liens.Add(lien);
                     rowEntities.Add(lien);
                     var pricing = ServicingItem.Create(
@@ -1294,9 +1380,9 @@ public static class SellingV2Endpoints
                         {
                             medicalCode,
                             description = medicalDescription,
-                            billingAmount = ParseImportDecimal(values, "Billing Amount*"),
-                            medicareCost = ParseImportDecimal(values, "Medicare Cost"),
-                            targetSaleAmount = ParseImportDecimal(values, "Purchase Amount*"),
+                            billingAmount = ParseImportDecimal(values, SellingBulkImportSchema.BillingAmount),
+                            medicareCost = ParseImportDecimal(values, SellingBulkImportSchema.MedicareCost),
+                            targetSaleAmount = targetAskAmount,
                         }));
                     db.ServicingItems.Add(pricing);
                     rowEntities.Add(pricing);
@@ -1304,7 +1390,7 @@ public static class SellingV2Endpoints
                         tenantId, sellerOrgId, $"LMC-{Guid.CreateVersion7():N}".ToUpperInvariant(),
                         "LegacyMedicalCode", $"Medical code {medicalCode}", "system", userId,
                         caseId: caseEntity.Id, lienId: lien.Id,
-                        notes: $"code={medicalCode}; description={medicalDescription}; medicareCost={GetImportValue(values, "Medicare Cost") ?? string.Empty}; billingAmount={GetImportValue(values, "Billing Amount*") ?? string.Empty}; purchaseAmount={GetImportValue(values, "Purchase Amount*") ?? string.Empty}; payee={GetImportValue(values, "Payee") ?? string.Empty}; outboundCheckNumber={GetImportValue(values, "Outbound Check Number") ?? string.Empty}");
+                        notes: $"code={medicalCode}; description={medicalDescription}; medicareCost={SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.MedicareCost) ?? string.Empty}; billingAmount={SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.BillingAmount) ?? string.Empty}; purchaseAmount={SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.TargetAskAmount, "Purchase Amount*") ?? string.Empty}; payee={GetImportValue(values, "Payee") ?? string.Empty}; outboundCheckNumber={GetImportValue(values, "Outbound Check Number") ?? string.Empty}");
                     db.ServicingItems.Add(legacyMedicalCode);
                     rowEntities.Add(legacyMedicalCode);
                     var facilityInfo = ServicingItem.Create(
@@ -1521,6 +1607,7 @@ public static class SellingV2Endpoints
     }
 
     private static bool IsSubmittedLien(Lien lien) => lien.Status == LienStatus.Offered && lien.SellerStatus == SellingLienStatus.SubmittedForSale && lien.ArchivedAtUtc is null && lien.SoldAtUtc is null && lien.WithdrawnAtUtc is null;
+    private static string BuildSubmitForSaleTransitionKey(Lien lien) => $"submit-for-sale-transition-v1:{lien.UpdatedAtUtc.Ticks.ToString(CultureInfo.InvariantCulture)}";
     private static bool IsActiveOffer(LienOffer offer) => offer.Status is not OfferStatus.Rejected and not OfferStatus.Withdrawn and not OfferStatus.Expired && !offer.IsExpired;
     private static async Task<Contact?> GetFundingCompanyAsync(LiensDbContext db, Guid tenantId, Guid id, CancellationToken ct) => await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == id && c.IsActive && (c.ContactType == ContactType.FundingCompany || c.ContactType == ContactType.LienHolder), ct);
     private static async Task<bool> IsActiveContactAsync(LiensDbContext db, Guid tenantId, Guid id, string type, CancellationToken ct) => await db.Contacts.AsNoTracking().AnyAsync(c => c.TenantId == tenantId && c.Id == id && c.IsActive && c.ContactType == type, ct);
@@ -1621,6 +1708,7 @@ public static class SellingV2Endpoints
         SellingLienStatus.Pending or SellingLienStatus.Internal => ["prepare-sale", "archive"],
         SellingLienStatus.PreparedForSale => ["confirm-sale", "archive"],
         SellingLienStatus.SubmittedForSale => ["withdraw-sale", "archive", "buyer-access-links"],
+        SellingLienStatus.Archived => ["restore"],
         _ => [],
     };
     private static Dictionary<string, string> ParseCaseMetadata(string? notes)
@@ -1660,11 +1748,35 @@ public static class SellingV2Endpoints
     }
     private static string? ValidateImportRow(IReadOnlyDictionary<string, string> values)
     {
-        if (string.IsNullOrWhiteSpace(GetImportValue(values, "Case Code*"))) return "Case Code* is required.";
-        if (ParseImportDate(values, "Initial Service Date*") is null) return "Initial Service Date* must be a valid date.";
-        if (string.IsNullOrWhiteSpace(GetImportValue(values, "Facility Name*"))) return "Facility Name* is required.";
-        if (string.IsNullOrWhiteSpace(GetImportValue(values, "Medical Code & Description*"))) return "Medical Code & Description* is required.";
-        if (!TryParseImportDecimal(values, "Billing Amount*", out var billing) || billing < 0m) return "Billing Amount* must be a non-negative decimal.";
+        if (string.IsNullOrWhiteSpace(SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.CaseCode)))
+            return $"{SellingBulkImportSchema.CaseCode} is required.";
+        if (ParseImportDate(values, SellingBulkImportSchema.InitialServiceDate) is null)
+            return $"{SellingBulkImportSchema.InitialServiceDate} must be a valid date.";
+        if (string.IsNullOrWhiteSpace(SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.FacilityName)))
+            return $"{SellingBulkImportSchema.FacilityName} is required.";
+        if (string.IsNullOrWhiteSpace(SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.MedicalCodeAndDescription)))
+            return $"{SellingBulkImportSchema.MedicalCodeAndDescription} is required.";
+        if (!TryParseImportDecimal(values, SellingBulkImportSchema.BillingAmount, out var billing) || billing < 0m)
+            return $"{SellingBulkImportSchema.BillingAmount} must be a non-negative decimal.";
+
+        var status = SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.LienStatus, "Lien Status*", "Seller Status");
+        if (!string.IsNullOrWhiteSpace(status) && NormalizeImportStatusValue(status) is null)
+            return $"{SellingBulkImportSchema.LienStatus} must be Pending or Internal.";
+
+        var visibility = SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.ListingVisibility, "Lien Visibility");
+        if (!string.IsNullOrWhiteSpace(visibility) && NormalizeVisibility(visibility) is null)
+            return $"{SellingBulkImportSchema.ListingVisibility} must be Public or Private.";
+
+        var purchaseDate = SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.PurchaseDate, "Purchase Date*");
+        if (!string.IsNullOrWhiteSpace(purchaseDate) &&
+            ParseImportDate(values, SellingBulkImportSchema.PurchaseDate, "Purchase Date*") is null)
+            return $"{SellingBulkImportSchema.PurchaseDate} must be a valid date.";
+
+        var targetAskAmount = SellingBulkImportSchema.GetValue(values, SellingBulkImportSchema.TargetAskAmount, "Purchase Amount*");
+        if (!string.IsNullOrWhiteSpace(targetAskAmount) &&
+            (!TryParseImportDecimal(values, SellingBulkImportSchema.TargetAskAmount, out var askAmount, "Purchase Amount*") || askAmount < 0m))
+            return $"{SellingBulkImportSchema.TargetAskAmount} must be a non-negative decimal.";
+
         return null;
     }
     private static string ResolveImportLienNumber(IReadOnlyDictionary<string, string> values) => $"SL-{Guid.CreateVersion7():N}".ToUpperInvariant();
@@ -1696,9 +1808,47 @@ public static class SellingV2Endpoints
             : (normalized, string.Empty);
     }
     private static string? GetImportValue(IReadOnlyDictionary<string, string> values, string key) => values.FirstOrDefault(pair => string.Equals(pair.Key.Trim(), key, StringComparison.OrdinalIgnoreCase)).Value?.Trim();
-    private static bool TryParseImportDecimal(IReadOnlyDictionary<string, string> values, string key, out decimal value) => decimal.TryParse(GetImportValue(values, key), NumberStyles.Number, CultureInfo.InvariantCulture, out value);
-    private static decimal ParseImportDecimal(IReadOnlyDictionary<string, string> values, string key) => TryParseImportDecimal(values, key, out var value) ? value : 0m;
-    private static DateOnly? ParseImportDate(IReadOnlyDictionary<string, string> values, string key) => DateOnly.TryParse(GetImportValue(values, key), CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? date : null;
+    private static bool TryParseImportDecimal(
+        IReadOnlyDictionary<string, string> values,
+        string key,
+        out decimal value,
+        params string[] legacyAliases) =>
+        decimal.TryParse(
+            SellingBulkImportSchema.GetValue(values, key, legacyAliases),
+            NumberStyles.Number,
+            CultureInfo.InvariantCulture,
+            out value);
+    private static decimal ParseImportDecimal(
+        IReadOnlyDictionary<string, string> values,
+        string key,
+        params string[] legacyAliases) =>
+        TryParseImportDecimal(values, key, out var value, legacyAliases) ? value : 0m;
+    private static DateOnly? ParseImportDate(
+        IReadOnlyDictionary<string, string> values,
+        string key,
+        params string[] legacyAliases) =>
+        DateOnly.TryParse(
+            SellingBulkImportSchema.GetValue(values, key, legacyAliases),
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var date)
+            ? date
+            : null;
+    private static string NormalizeImportStatus(IReadOnlyDictionary<string, string> values) =>
+        NormalizeImportStatusValue(SellingBulkImportSchema.GetValue(
+            values,
+            SellingBulkImportSchema.LienStatus,
+            "Lien Status*",
+            "Seller Status")) ?? SellingLienStatus.Pending;
+    private static string? NormalizeImportStatusValue(string? status) =>
+        string.Equals(status?.Trim(), "Open", StringComparison.OrdinalIgnoreCase)
+            ? SellingLienStatus.Pending
+            : NormalizeIntakeStatus(status);
+    private static string NormalizeImportVisibility(IReadOnlyDictionary<string, string> values) =>
+        NormalizeVisibility(SellingBulkImportSchema.GetValue(
+            values,
+            SellingBulkImportSchema.ListingVisibility,
+            "Lien Visibility")) ?? SellingListingVisibility.Private;
 
     private sealed class BuyerViewPermissionFilter : IEndpointFilter
     {
