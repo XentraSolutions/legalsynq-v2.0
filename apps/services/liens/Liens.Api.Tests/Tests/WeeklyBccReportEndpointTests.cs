@@ -71,6 +71,24 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
                 SeedHelper.UserId,
                 caseId: caseEntity.Id,
                 purchaseDate: new DateOnly(2026, 8, 14));
+            var closedCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "CASE-BCC-002",
+                "Grace",
+                "Hopper",
+                SeedHelper.UserId);
+            closedCase.TransitionStatus(CaseStatus.Closed, SeedHelper.UserId);
+            var closedCaseLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-BCC-002",
+                LienType.MedicalLien,
+                500m,
+                SeedHelper.UserId,
+                caseId: closedCase.Id,
+                purchaseDate: new DateOnly(2026, 8, 2));
+            closedCaseLien.SetFinancials(500m, SeedHelper.UserId, purchasePrice: 150m);
             var medicalCode = ServicingItem.Create(
                 SeedHelper.TenantId,
                 SeedHelper.OrgId,
@@ -166,8 +184,8 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
                 caseId: otherTenantCase.Id,
                 purchaseDate: new DateOnly(2026, 8, 1));
 
-            db.Cases.AddRange(caseEntity, otherTenantCase);
-            db.Liens.AddRange(lien, futureLien, otherTenantLien);
+            db.Cases.AddRange(caseEntity, closedCase, otherTenantCase);
+            db.Liens.AddRange(lien, futureLien, closedCaseLien, otherTenantLien);
             db.ServicingItems.AddRange(medicalCode, facilityInfo, activity);
             db.LienReductions.AddRange(reduction, futureReduction);
             db.LienSettlements.Add(settlement);
@@ -187,8 +205,16 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
         var root = document!.RootElement;
         root.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
         root.GetProperty("asOfDate").GetString().Should().Be("2026-08-13");
-        root.GetProperty("totalCount").GetInt32().Should().Be(1);
+        root.GetProperty("totalCount").GetInt32().Should().Be(2);
         response.Headers.CacheControl?.NoStore.Should().BeTrue();
+
+        var summary = root.GetProperty("summaryTotals");
+        summary.GetProperty("totalCases").GetInt32().Should().Be(2);
+        summary.GetProperty("totalOpenCases").GetInt32().Should().Be(1);
+        summary.GetProperty("totalClosedCases").GetInt32().Should().Be(1);
+        summary.GetProperty("totalPurchaseAmt").GetDecimal().Should().Be(850m);
+        summary.GetProperty("totalReturnedAmt").GetDecimal().Should().Be(1000m);
+        summary.GetProperty("totalBillingAmt").GetDecimal().Should().Be(1700m);
 
         var row = root.GetProperty("data")[0];
         row.GetProperty("plaintiffFirstName").GetString().Should().Be("Ada");

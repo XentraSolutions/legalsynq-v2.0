@@ -307,9 +307,60 @@ public sealed class WeeklyBccReportService : IWeeklyBccReportService
         {
             AsOfDate = asOfDate,
             Items = rows,
+            SummaryTotals = BuildSummaryTotals(liens, casesById, servicingByLienId, settlementsByLienId, paymentsByLienId),
             Page = page,
             PageSize = pageSize,
             TotalCount = totalCount,
+        };
+    }
+
+    private static WeeklyBccReportSummaryTotals BuildSummaryTotals(
+        IReadOnlyCollection<Lien> liens,
+        IReadOnlyDictionary<Guid, Case> casesById,
+        IReadOnlyDictionary<Guid, List<ServicingItem>> servicingByLienId,
+        IReadOnlyDictionary<Guid, List<LienSettlement>> settlementsByLienId,
+        IReadOnlyDictionary<Guid, List<SettlementPaymentDetail>> paymentsByLienId)
+    {
+        var totalPurchase = 0m;
+        var totalBilling = 0m;
+        var totalReturned = 0m;
+
+        foreach (var lien in liens)
+        {
+            var medicalCodeFields = servicingByLienId.GetValueOrDefault(lien.Id, [])
+                .Where(item => string.Equals(item.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
+                .Select(item => ParseMetadata(item.Notes))
+                .ToList();
+            totalPurchase += medicalCodeFields.Any(fields => fields.ContainsKey("purchaseAmount"))
+                ? medicalCodeFields.Sum(fields => ParseDecimal(fields.GetValueOrDefault("purchaseAmount")))
+                : lien.PurchasePrice ?? 0m;
+            totalBilling += medicalCodeFields.Any(fields => fields.ContainsKey("billingAmount"))
+                ? medicalCodeFields.Sum(fields => ParseDecimal(fields.GetValueOrDefault("billingAmount")))
+                : lien.OriginalAmount;
+
+            var settlements = settlementsByLienId.GetValueOrDefault(lien.Id, []);
+            var settlementFields = settlements.Select(item => ParseMetadata(item.Note)).ToList();
+            totalReturned += settlementFields.Any(fields => fields.ContainsKey("totalSettledAmount"))
+                ? settlementFields.Sum(fields => ParseDecimal(fields.GetValueOrDefault("totalSettledAmount")))
+                : lien.PayoffAmount ?? paymentsByLienId.GetValueOrDefault(lien.Id, []).Sum(item => item.Amount);
+        }
+
+        var eligibleCaseIds = liens
+            .Where(lien => lien.CaseId.HasValue && casesById.ContainsKey(lien.CaseId.Value))
+            .Select(lien => lien.CaseId!.Value)
+            .ToHashSet();
+        var totalClosedCases = eligibleCaseIds.Count(caseId =>
+            string.Equals(casesById[caseId].Status, CaseStatus.Closed, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(casesById[caseId].Status, CaseStatus.CaseSettled, StringComparison.OrdinalIgnoreCase));
+
+        return new WeeklyBccReportSummaryTotals
+        {
+            TotalCases = eligibleCaseIds.Count,
+            TotalOpenCases = eligibleCaseIds.Count - totalClosedCases,
+            TotalClosedCases = totalClosedCases,
+            TotalPurchaseAmt = totalPurchase,
+            TotalReturnedAmt = totalReturned,
+            TotalBillingAmt = totalBilling,
         };
     }
 

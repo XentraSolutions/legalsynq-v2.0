@@ -141,6 +141,7 @@ public static class ReportEndpoints
             message = "Weekly BCC report generated.",
             asOfDate = result.AsOfDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             totalCount = result.Items.Count,
+            summaryTotals = result.SummaryTotals,
             data = result.Items,
         });
     }

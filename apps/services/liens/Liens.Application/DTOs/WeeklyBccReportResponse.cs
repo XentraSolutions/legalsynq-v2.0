@@ -4,9 +4,20 @@ public sealed class WeeklyBccReportResult
 {
     public DateOnly AsOfDate { get; init; }
     public List<WeeklyBccReportRow> Items { get; init; } = [];
+    public WeeklyBccReportSummaryTotals SummaryTotals { get; init; } = new();
     public int Page { get; init; } = 1;
     public int PageSize { get; init; }
     public int TotalCount { get; init; }
+}
+
+public sealed class WeeklyBccReportSummaryTotals
+{
+    public int TotalCases { get; init; }
+    public int TotalOpenCases { get; init; }
+    public int TotalClosedCases { get; init; }
+    public decimal TotalPurchaseAmt { get; init; }
+    public decimal TotalReturnedAmt { get; init; }
+    public decimal TotalBillingAmt { get; init; }
 }
 
 public sealed class WeeklyBccReportRow

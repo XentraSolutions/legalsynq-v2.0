@@ -2210,7 +2210,7 @@ Eligible Weekly BCC liens are ordered by purchase date, lien number, and record 
 }
 ```
 
-`columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). The `noted` field is labeled `Notes` in report previews and CSV exports. Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. The direct `/weekly-bcc` endpoints remain complete and unpaged.
+`columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). The `noted` field is labeled `Notes` in report previews and CSV exports. Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. The direct `/weekly-bcc` endpoints remain complete and unpaged, and add `summaryTotals` with `totalCases`, `totalOpenCases`, `totalClosedCases`, `totalPurchaseAmt`, `totalReturnedAmt`, and `totalBillingAmt` calculated from the complete eligible result set.
 
 ### POST `/api/liens/reports/auto-generated/{reportId}/export`
 
