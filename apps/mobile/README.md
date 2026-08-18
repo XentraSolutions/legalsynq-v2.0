@@ -187,13 +187,13 @@ authenticated intents through the existing root navigation ref. It uses only `ro
 
 Current repository-backed mappings are:
 
-| Shared route key     | Mobile destination        | Parameters                                                                                 |
-| -------------------- | ------------------------- | ------------------------------------------------------------------------------------------ |
-| `dashboard`          | `Main > Tabs > Dashboard` | none                                                                                       |
-| `contactDetails`     | `Main > ContactDetail`    | `contactId`                                                                                |
-| `dealDetails`        | unavailable               | no Deal Details screen exists                                                              |
-| `applicationDetails` | unavailable               | no Application Details screen exists                                                       |
-| `reportDetails`      | unavailable               | the existing dashboard report screen requires `reportType` and `dateRange`, not `reportId` |
+| Shared route key     | Mobile destination         | Parameters                                                                                 |
+| -------------------- | -------------------------- | ------------------------------------------------------------------------------------------ |
+| `dashboard`          | `Main > Tabs > Dashboard`  | none                                                                                       |
+| `contactDetails`     | `Main > ContactDetail`     | `contactId`                                                                                |
+| `dealDetails`        | unavailable                | no Deal Details screen exists                                                              |
+| `applicationDetails` | `Main > ApplicationDetail` | canonical GUID `applicationId` forwarded unchanged                                         |
+| `reportDetails`      | unavailable                | the existing dashboard report screen requires `reportType` and `dateRange`, not `reportId` |
 
 If the navigation container is not ready, one mapped intent remains in memory. A later mapped intent
 replaces it, and the latest value is cleared before dispatch when `NavigationContainer.onReady`
@@ -205,6 +205,25 @@ To add a future mapping, first add the real business screen and its typed naviga
 an explicit `routeKey` case in `DeepLinkNavigationMapper`, translate only the shared path parameters
 to that existing screen's parameter contract, and add mapping/readiness tests. Do not add URL parsing,
 resource fetching, existence checks, or authorization to the mapper.
+
+### SynqFund Application Details
+
+`applicationDetails` refers to the SynqFund funding Application owned by the Fund service; it is
+not a Case, Lien, Deal, or workflow instance. The domain/API identifier is a .NET `Guid`, represented
+as a string in Mobile navigation. APP-004 checks that representation before navigating and forwards
+the original value to `Main > ApplicationDetail`.
+
+The destination is a normal read-only Mobile feature. Its React Query hook calls the feature-owned
+`ApplicationsApi`, which uses the shared authenticated `apiClient` and the existing gateway route
+`GET /fund/api/applications/{applicationId}`. The screen shows the standard spinner while loading,
+repository-backed application fields after success, and the standard unavailable state. A 404
+offers normal back navigation; other service failures offer retry. It does not make entitlement
+decisions: gateway/Fund authentication, product access, tenant scope, resource authorization, and
+error semantics remain Backend-owned.
+
+Future Application fields or actions should be added only after their Fund contract exists. Keep
+data fetching in the Application feature and keep URL parsing, auth continuation, and resource
+authorization out of the navigation mapper.
 
 Focused validation:
 

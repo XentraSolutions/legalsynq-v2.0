@@ -37,15 +37,40 @@ describe('mapDeepLinkToNavigation', () => {
   it('returns controlled destination gaps for valid unsupported detail routes', () => {
     const results = [
       mapDeepLinkToNavigation(intent('dealDetails', { dealId: 'deal-1' })),
-      mapDeepLinkToNavigation(intent('applicationDetails', { applicationId: 'application-1' })),
       mapDeepLinkToNavigation(intent('reportDetails', { reportId: 'report-1' })),
     ];
 
     expect(results.map((result) => result.status)).toEqual([
       'destination_unavailable',
       'destination_unavailable',
-      'destination_unavailable',
     ]);
+  });
+
+  it('maps a valid application GUID to ApplicationDetail unchanged', () => {
+    const applicationId = '01989abc-1234-7000-8000-123456789abc';
+
+    expect(mapDeepLinkToNavigation(intent('applicationDetails', { applicationId }))).toEqual({
+      status: 'mapped',
+      target: {
+        name: 'Main',
+        params: { screen: 'ApplicationDetail', params: { applicationId } },
+      },
+    });
+  });
+
+  it('rejects a non-GUID applicationId without navigating', () => {
+    expect(
+      mapDeepLinkToNavigation(intent('applicationDetails', { applicationId: 'application-1' }))
+    ).toMatchObject({ status: 'invalid_parameters', routeKey: 'applicationDetails' });
+  });
+
+  it('accepts the complete canonical .NET Guid shape without imposing a UUID version', () => {
+    const applicationId = '00000000-0000-0000-0000-000000000000';
+
+    expect(mapDeepLinkToNavigation(intent('applicationDetails', { applicationId }))).toMatchObject({
+      status: 'mapped',
+      target: { params: { screen: 'ApplicationDetail', params: { applicationId } } },
+    });
   });
 
   it('rejects missing or blank required IDs without navigating', () => {

@@ -38,6 +38,7 @@ export type MainStackParamList = {
   Servicing: undefined;
   Contacts: undefined;
   ContactDetail: { contactId: string };
+  ApplicationDetail: { applicationId: string };
   ContactForm: { contactId?: string; contactType?: string };
   ReassignContactCases: { contactId: string };
   FacilityDetail: { facilityId: string };
