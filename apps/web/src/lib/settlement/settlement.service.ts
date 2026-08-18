@@ -17,6 +17,7 @@ import type {
   SettlementGenericResponse,
   SettlementHistoryItemV3,
   SettlementHistoryV3Query,
+  UpdateLienSettlementRequest,
   UpdateLiensStatusRequest,
   UpdateLiensStatusResponse,
   UpdateSettlementRequest,
@@ -102,6 +103,15 @@ export const settlementService = {
     const { data } = await settlementApi.createSettlementPayment(form);
     return data;
   },
+
+  async updateSettlementPayment(
+    id: string,
+    form: UpdateLienSettlementRequest,
+  ): Promise<UpdateLienSettlementRequest> {
+    const { data } = await settlementApi.updateSettlementPayment(id, form);
+    return data;
+  },
+
 
   async legacySaveReduction(
     form: LegacySaveReductionRequest,

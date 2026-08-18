@@ -177,6 +177,10 @@ export default function PortfolioClient() {
     setPagination((prev) => ({ ...prev, page: newPage }));
   };
 
+  const handlePageSizeChange = (newPageSize: number) => {
+    setPagination((prev) => ({ ...prev, page: 1, pageSize: newPageSize }));
+  };
+
   useEffect(() => {
     refetchLiens();
   }, [currentQuery, refetchLiens]);
@@ -309,9 +313,9 @@ export default function PortfolioClient() {
             sorting={sorting}
             onSortingChange={setSorting}
             handlePageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
             liens={liens?.items ?? []}
             isLoading={isLiensPending}
-            onRowSelect={(id) => router.push(`/selling/portfolio/lien/${id}`)}
             onActionComplete={() => {
               refetchLiens();
               refetch();

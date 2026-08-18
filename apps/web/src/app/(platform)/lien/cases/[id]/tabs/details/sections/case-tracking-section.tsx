@@ -98,7 +98,7 @@ export function CaseTrackingSection({
                   updateField("status", v.toString());
                   checkStatus(v.toString());
                 }}
-                placeholder="Medical Status"
+                placeholder="Case  Status"
                 type="select"
               />
             </div>

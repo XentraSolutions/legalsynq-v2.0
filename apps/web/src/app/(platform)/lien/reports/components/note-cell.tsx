@@ -19,7 +19,7 @@ export const NoteCell = ({ value, maxLength= 70 }: { value: any, maxLength?:numb
         <button
           type="button"
           onClick={() => setExpanded((prev) => !prev)}
-          className="ml-2 text-blue-600 hover:text-blue-800 hover:underline"
+          className="ml-2 text-[#EE7132] hover:text-[#EE7132] hover:underline cursor-pointer whitespace-nowrap"
         >
           {expanded ? "See Less" : "See More"}
         </button>

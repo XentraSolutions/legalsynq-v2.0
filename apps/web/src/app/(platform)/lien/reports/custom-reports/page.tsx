@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/lien/page-header";
-import ReportDisplay from "./components/report-display";
+import ReportDisplay from "../components/report-display";
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import { ReportListItem } from "@/lib/liens/lien-reports.mapper";
 
@@ -84,7 +84,7 @@ export default function ReportsPage() {
                 reports.map((r: ReportListItem) => (
                   <div
                     key={r.id}
-                    onClick={() => router.push(`/lien/reports/${r.id}`)}
+                    onClick={() => router.push(`/lien/reports/custom-reports/${r.id}`)}
                     className="border border-gray-200 rounded-xl p-3 bg-white hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <div className="text-sm font-medium text-gray-900">

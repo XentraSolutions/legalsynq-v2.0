@@ -319,7 +319,7 @@ export function SetupReductionForm({
       id: "lienId",
       header: "Lien ID",
       cell: (l) => (
-        <span className="text-xs font-mono text-primary">{l.lienNumber}</span>
+        <span className="text-sm text-primary">{l.lienNumber}</span>
       ),
     },
     {

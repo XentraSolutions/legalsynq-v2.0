@@ -24,6 +24,9 @@ import type {
   SubmitSellingLienRequest,
   LienListItem,
   LienActivityFeedResult,
+  BulkImportSummary,
+  BulkImportRowsResult,
+  BulkImportRowStatus,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
@@ -104,6 +107,19 @@ export const liensApi = {
 
   validateUpload(id: string) {
     return apiClient.post<any>(`${BASE}/bulk-imports/${id}/validate`, {});
+  },
+
+  getBulkImport(id: string) {
+    return apiClient.get<BulkImportSummary>(`${BASE}/bulk-imports/${id}`);
+  },
+
+  getBulkImportRows(
+    id: string,
+    params: { status?: BulkImportRowStatus | "all"; page?: number; pageSize?: number } = {},
+  ) {
+    return apiClient.get<BulkImportRowsResult>(
+      `${BASE}/bulk-imports/${id}/rows${toQs({ status: "all", page: 1, pageSize: 100, ...params })}`,
+    );
   },
 
   createLienInfo(lienId: string, request: LienInfoParams) {

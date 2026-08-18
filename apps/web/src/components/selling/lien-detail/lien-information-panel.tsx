@@ -1,5 +1,5 @@
 import { LienDetail } from "@/types/lien-selling";
-import { LienStatusBadge } from "../../lien/lien-status-badge";
+import { Chip, type ChipProps } from "@/components/ui/chip";
 import { PanelShell } from "./panel-shell";
 import { sellerStatusLabel } from "@/lib/selling/selling-detail.mapper";
 
@@ -34,14 +34,11 @@ const SELLER_STATUS_STYLES: Record<string, string> = {
 };
 
 function SellerStatusBadge({ status }: { status: string }) {
-  const style =
-    SELLER_STATUS_STYLES[status] ?? "bg-gray-50 text-gray-600 border-gray-200";
+  const color = SELLER_STATUS_COLOR[status] ?? "default";
   return (
-    <span
-      className={`inline-flex items-center rounded-full border font-medium px-2 py-1 text-xs ${style}`}
-    >
+    <Chip variant="soft" size="lg" color={color}>
       {sellerStatusLabel(status)}
-    </span>
+    </Chip>
   );
 }
 

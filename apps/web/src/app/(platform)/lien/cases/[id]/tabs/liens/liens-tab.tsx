@@ -178,7 +178,7 @@ export function LiensTab({
       id: "lienId",
       header: "Lien ID",
       cell: ({ row }) => (
-        <span className="text-sm text-gray-600 truncate max-w-40 block">
+        <span className="text-sm text-gray-600 max-w-40 block">
           {row.original.lienNumber}
         </span>
       ),

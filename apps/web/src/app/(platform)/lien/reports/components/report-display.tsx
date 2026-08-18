@@ -236,7 +236,7 @@ export default function ReportDisplay({
             }
 
             return (
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-gray-700 whitespace-nowrap">
                 {formattedValue}
               </span>
             );
@@ -296,7 +296,7 @@ export default function ReportDisplay({
           }
 
           return (
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-gray-700 whitespace-nowrap">
               {formattedValue}
             </span>
           );
@@ -318,7 +318,7 @@ export default function ReportDisplay({
   }, [report, report.data]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 space-y-6">
+    <div className="min-h-screen space-y-6">
       {/* HEADER */}
       <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200">
         <div>
@@ -388,16 +388,16 @@ export default function ReportDisplay({
           {/* LEFT */}
           <button
             onClick={onBack}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm self-start hover:shadow-sm"
+            className="px-3 py-2 border border-gray-200 text-[#0A0A0A] font-semibold rounded-lg text-sm self-start hover:shadow-sm"
           >
-            Go Back
+            Back
           </button>
           {/* RIGHT */}
           <div className="flex flex-wrap gap-2 sm:gap-2 sm:flex-row sm:items-center sm:justify-end">
             <button
               disabled={exporting}
               onClick={onExport}
-              className="px-3 py-2 border border-gray-200 text-blue-500 rounded-lg text-sm hover:shadow-sm"
+              className="px-3 py-2 border border-gray-200 bg-[#F5F5F5] text-[#0A0A0A] font-semibold rounded-lg text-sm hover:shadow-sm"
             >
               {exporting ? "Exporting..." : "Export CSV"}
             </button>

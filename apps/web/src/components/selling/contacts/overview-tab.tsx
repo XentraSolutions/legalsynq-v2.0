@@ -3,7 +3,7 @@
 import { Briefcase } from "lucide-react";
 import { useCompanyDetailContext } from "./context";
 import { ContactsEmptyState } from "./contacts-empty-state";
-import { StatusBadge } from "@/components/lien/status-badge";
+import { CaseStatusChip } from "@/components/lien/case-status-chip";
 import { Pagination } from "@/components/ui/pagination";
 import type { CompanyRecentCase } from "@/lib/selling/companies.types";
 
@@ -32,7 +32,7 @@ function RecentCaseRow({ item }: { item: CompanyRecentCase }) {
       <div>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-gray-900">{item.clientName}</span>
-          <StatusBadge status={item.status} label={item.statusLabel} />
+          <CaseStatusChip status={item.status} label={item.statusLabel} />
         </div>
         <p className="text-xs text-gray-400 mt-1">Case ID: {item.caseNumber}</p>
       </div>

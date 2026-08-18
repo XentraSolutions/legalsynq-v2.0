@@ -168,7 +168,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
               icon: "ri-file-list-3-line",
             },
             {
-              href: "/lien/reports",
+              href: "/lien/reports/custom-reports",
               label: "Reports",
               icon: "ri-file-list-2-line",
             },

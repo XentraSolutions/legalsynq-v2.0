@@ -35,6 +35,11 @@ import {
   LienInfoParams,
 } from "../liens/liens.types";
 import { LienDetailsResult } from "@/types/lien-selling";
+import type {
+  BulkImportSummary,
+  BulkImportRowsResult,
+  BulkImportRowStatus,
+} from "./liens.types";
 
 export interface LienListResult {
   items: LienListItem[];
@@ -101,6 +106,19 @@ export const liensService = {
 
   async confirmUpload(id: string): Promise<any> {
     const { data } = await liensApi.confirmUpload(id);
+    return data;
+  },
+
+  async getBulkImport(id: string): Promise<BulkImportSummary> {
+    const { data } = await liensApi.getBulkImport(id);
+    return data;
+  },
+
+  async getBulkImportRows(
+    id: string,
+    params: { status?: BulkImportRowStatus | "all"; page?: number; pageSize?: number } = {},
+  ): Promise<BulkImportRowsResult> {
+    const { data } = await liensApi.getBulkImportRows(id, params);
     return data;
   },
 
