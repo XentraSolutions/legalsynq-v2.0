@@ -179,6 +179,33 @@ consumer is mounted and navigation-ready, mapping route keys to screens, and per
 navigation. No React Navigation action, resource lookup, authorization, Backend call, or persistent
 pending route is part of DL-APP-003.
 
+## Authenticated Deep-Link Navigation
+
+DL-APP-004 subscribes to `ReadyDeepLinkService` before the auth intake lifecycle starts and maps
+authenticated intents through the existing root navigation ref. It uses only `routeKey` and
+`pathParameters`; it does not inspect URLs, repeat authentication checks, or validate resources.
+
+Current repository-backed mappings are:
+
+| Shared route key     | Mobile destination        | Parameters                                                                                 |
+| -------------------- | ------------------------- | ------------------------------------------------------------------------------------------ |
+| `dashboard`          | `Main > Tabs > Dashboard` | none                                                                                       |
+| `contactDetails`     | `Main > ContactDetail`    | `contactId`                                                                                |
+| `dealDetails`        | unavailable               | no Deal Details screen exists                                                              |
+| `applicationDetails` | unavailable               | no Application Details screen exists                                                       |
+| `reportDetails`      | unavailable               | the existing dashboard report screen requires `reportType` and `dateRange`, not `reportId` |
+
+If the navigation container is not ready, one mapped intent remains in memory. A later mapped intent
+replaces it, and the latest value is cleared before dispatch when `NavigationContainer.onReady`
+fires. Repeated readiness notifications and lifecycle starts do not replay it. Unknown keys, missing
+required IDs, missing destinations, and dispatch exceptions produce controlled outcomes and no
+fallback navigation. Pending navigation is not persisted.
+
+To add a future mapping, first add the real business screen and its typed navigator entry. Then add
+an explicit `routeKey` case in `DeepLinkNavigationMapper`, translate only the shared path parameters
+to that existing screen's parameter contract, and add mapping/readiness tests. Do not add URL parsing,
+resource fetching, existence checks, or authorization to the mapper.
+
 Focused validation:
 
 ```bash

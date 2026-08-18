@@ -6,9 +6,9 @@ import { DashboardScreen } from '@/features/dashboard';
 import { LienMarketplaceScreen } from '@/features/liens';
 import { OffersListScreen } from '@/features/offers';
 import { ProfileScreen } from '@/features/profile';
-import type { MainStackParamList } from '@/navigation/types/navigation';
+import type { MainTabParamList } from '@/navigation/types/navigation';
 
-const Tab = createBottomTabNavigator<MainStackParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
 
 const ICONS = {
   Dashboard: 'home-outline',
@@ -38,7 +38,11 @@ export function BottomTabNavigator() {
       })}
     >
       <Tab.Screen component={DashboardScreen} name="Dashboard" options={{ title: 'Home' }} />
-      <Tab.Screen component={LienMarketplaceScreen} name="Marketplace" options={{ title: 'Market' }} />
+      <Tab.Screen
+        component={LienMarketplaceScreen}
+        name="Marketplace"
+        options={{ title: 'Market' }}
+      />
       <Tab.Screen component={OffersListScreen} name="Offers" />
       <Tab.Screen component={CasesListScreen} name="Cases" />
       <Tab.Screen component={ProfileScreen} name="Profile" />

@@ -14,8 +14,16 @@ export type AuthStackParamList = {
   TenantSelection: undefined;
 };
 
+export type MainTabParamList = {
+  Dashboard: undefined;
+  Marketplace: undefined;
+  Offers: undefined;
+  Cases: undefined;
+  Profile: undefined;
+};
+
 export type MainStackParamList = {
-  Tabs: undefined;
+  Tabs: NavigatorScreenParams<MainTabParamList>;
   Dashboard: undefined;
   Marketplace: undefined;
   Offers: undefined;

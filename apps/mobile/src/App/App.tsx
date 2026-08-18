@@ -22,6 +22,7 @@ import { authAtom } from '@/shared/state/atoms/authAtom';
 import { AppProvider } from './AppProvider';
 import { APP_FONTS } from './bootstrap/loadFonts';
 import { DeepLinkAuthIntegration } from './DeepLinkAuthIntegration';
+import { DeepLinkNavigationIntegration } from './DeepLinkNavigationIntegration';
 
 // Register before the first render. Child biometric hooks may run before App's
 // effects, so effect-time registration can leave them using the unavailable fallback.
@@ -64,6 +65,7 @@ function AppContent() {
   return (
     <>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+      <DeepLinkNavigationIntegration />
       <DeepLinkAuthIntegration />
       {auth.status === 'hydrating' ? <View className="flex-1 bg-[#f97332]" /> : <RootNavigator />}
       <BiometricEnrollmentModal />
