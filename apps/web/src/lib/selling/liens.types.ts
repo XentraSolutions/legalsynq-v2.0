@@ -339,3 +339,35 @@ export interface LienActivityFeedResult {
   lienId: string;
   items: LienActivityFeedItem[];
 }
+
+// Shape returned by GET /bulk-imports/{id} (SellingV2Endpoints.GetBulkImport / MapBulkImport).
+export interface BulkImportSummary {
+  importId: string;
+  status: string;
+  fileName?: string | null;
+  createdAtUtc: string;
+  createdByUserId?: string | null;
+  updatedAtUtc?: string | null;
+}
+
+// Row status returned by GET /bulk-imports/{id}/rows (row-level validation state).
+export type BulkImportRowStatus = "PENDING" | "VALID" | "INVALID";
+
+// dataJson is a JSON-serialized Dictionary<string,string> of the CSV columns
+// for that row (e.g. "Case Code*", "Funding Company", "Billing Amount*", ...) —
+// see SellingBulkImportTemplateColumns in SellingEndpoints.cs.
+export interface BulkImportRowItem {
+  id: string;
+  rowNumber: number;
+  status: BulkImportRowStatus;
+  reason?: string | null;
+  dataJson: string;
+}
+
+export interface BulkImportRowsResult {
+  importId: string;
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  items: BulkImportRowItem[];
+}
