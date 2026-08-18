@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * @deprecated Use `toast` from "sonner" instead (global <Toaster /> is
+ * mounted in src/app/layout.tsx). Do not add new usages of this context —
+ * it only remains for pages not yet migrated off it.
+ */
+
 import { createContext, useCallback, useContext, useId, useRef, useState } from 'react';
 
 export type ToastVariant = 'success' | 'error' | 'info';
@@ -18,6 +24,7 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+/** @deprecated Use sonner's global <Toaster /> instead. */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -42,12 +49,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** @deprecated Use `import { toast } from "sonner"` instead. */
 export function useToast(): Pick<ToastContextValue, 'show'> {
   const ctx = useContext(ToastContext);
   if (!ctx) throw new Error('useToast must be used inside <ToastProvider>');
   return { show: ctx.show };
 }
 
+/** @deprecated Only used by the deprecated <ToastContainer /> in src/components/toast-container.tsx. */
 export function useToastState(): Omit<ToastContextValue, 'show'> {
   const ctx = useContext(ToastContext);
   if (!ctx) throw new Error('useToastState must be used inside <ToastProvider>');

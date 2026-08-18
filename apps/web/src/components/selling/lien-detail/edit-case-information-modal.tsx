@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { FormModal } from "@/components/selling/modal";
 import { liensService } from "@/lib/selling";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import type {
   LienCaseDetail,
   LienFundingCompanyDetail,
@@ -31,7 +31,6 @@ export function EditCaseInformationModal({
   onClose,
   onSaved,
 }: EditCaseInformationModalProps) {
-  const { show: showToast } = useToast();
   const [form, setForm] = useState<CaseInformationFieldsValue>({
     medicalProviderId: medicalProvider?.id ?? "",
     fundingCompanyId: fundingCompany?.id ?? "",
@@ -53,16 +52,10 @@ export function EditCaseInformationModal({
         caseId: caseInformation?.id,
         createCaseIfMissing: !caseInformation?.id,
       });
-      showToast(
-        "Funding company, medical provider & case information updated.",
-        "success",
-      );
+      toast.success("Funding company, medical provider & case information updated.");
       onSaved();
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to save case information",
-        "error",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to save case information");
     } finally {
       setSaving(false);
     }

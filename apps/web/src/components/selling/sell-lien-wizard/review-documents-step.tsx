@@ -7,7 +7,7 @@ import { liensService } from "@/lib/selling";
 import { documentsService } from "@/lib/documents";
 import { useSession } from "@/hooks/use-session";
 import { useSessionContext } from "@/providers/session-provider";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import { ConfirmDialog, Modal } from "@/components/selling/modal";
 import { Button } from "@/components/selling/button";
 import {
@@ -181,7 +181,6 @@ export default function ReviewDocumentsStep({
   const router = useRouter();
   const { session } = useSession();
   const { lookup } = useSessionContext();
-  const { show: showToast } = useToast();
   const documentCategories = lookup?.DocumentCategory ?? [];
 
   const [loading, setLoading] = useState(true);
@@ -218,10 +217,7 @@ export default function ReviewDocumentsStep({
         if (cancelled) return;
         setDocSlots(slots);
       } catch (err) {
-        showToast(
-          err instanceof Error ? err.message : "Failed to load lien",
-          "error",
-        );
+        toast.error(err instanceof Error ? err.message : "Failed to load lien");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -237,10 +233,7 @@ export default function ReviewDocumentsStep({
       const detail = await liensService.getLienById(lienId);
       setLien(detail);
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to load lien",
-        "error",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to load lien");
     }
   };
 
@@ -312,10 +305,7 @@ export default function ReviewDocumentsStep({
             : null,
         },
       }));
-      showToast(
-        err instanceof Error ? err.message : "Document upload failed",
-        "error",
-      );
+      toast.error(err instanceof Error ? err.message : "Document upload failed");
     }
   };
 
@@ -354,12 +344,9 @@ export default function ReviewDocumentsStep({
       });
       setDocSlots(nextSlots);
       setDeleteTarget(null);
-      showToast("Document removed.", "success");
+      toast.success("Document removed.");
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to remove document",
-        "error",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to remove document");
     } finally {
       setDeleting(false);
     }
@@ -368,13 +355,10 @@ export default function ReviewDocumentsStep({
   const saveForLater = async () => {
     setSubmitting(true);
     try {
-      showToast("Progress saved.", "success");
+      toast.success("Progress saved.");
       router.push(`/selling/portfolio/lien/${lienId}`);
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to save progress",
-        "error",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to save progress");
     } finally {
       setSubmitting(false);
     }
@@ -398,10 +382,7 @@ export default function ReviewDocumentsStep({
       setShowConfirm(false);
       setShowSuccess(true);
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to submit lien for sale",
-        "error",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to submit lien for sale");
     } finally {
       setSubmitting(false);
     }

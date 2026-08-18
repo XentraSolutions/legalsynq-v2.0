@@ -15,7 +15,7 @@ import { Modal, ConfirmDialog } from "@/components/selling/modal";
 import { ActionMenu, type ActionMenuItem } from "@/components/selling/action-menu";
 import { Button } from "@/components/selling/button";
 import { LienDetail, LienListItem, liensService } from "@/lib/selling";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 
 interface LienRowActionsMenuProps {
   lienId: string;
@@ -56,7 +56,6 @@ export function LienRowActionsMenu({
   autoOpenDecision = false,
 }: LienRowActionsMenuProps) {
   const router = useRouter();
-  const { show: showToast } = useToast();
   const [showDecisionModal, setShowDecisionModal] = useState(autoOpenDecision);
   const [confirmAction, setConfirmAction] = useState<
     "withdraw-sale" | "archive" | "restore" | "keep" | null
@@ -104,11 +103,11 @@ export function LienRowActionsMenu({
         sellerStatus: "Internal",
         listingVisibility: "Private",
       });
-      showToast("Lien kept as internal asset.", "success");
+      toast.success("Lien kept as internal asset.");
       setShowDecisionModal(false);
       onActionComplete();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Action failed", "error");
+      toast.error(err instanceof Error ? err.message : "Action failed");
     } finally {
       setKeepLoading(false);
     }
@@ -120,26 +119,26 @@ export function LienRowActionsMenu({
     try {
       if (confirmAction === "withdraw-sale") {
         await liensService.withdrawSale(lienId);
-        showToast("Lien withdrawn from sale.", "success");
+        toast.success("Lien withdrawn from sale.");
       } else if (confirmAction === "archive") {
         await liensService.archiveLien(lienId);
-        showToast("Lien archived.", "success");
+        toast.success("Lien archived.");
       } else if (confirmAction === "restore") {
         await liensService.restoreLien(lienId);
-        showToast("Lien restored.", "success");
+        toast.success("Lien restored.");
       } else {
         await liensService.submitLien(lienId, {
           ...lien,
           sellerStatus: "Internal",
           listingVisibility: "Private",
         });
-        showToast("Lien kept as internal asset.", "success");
+        toast.success("Lien kept as internal asset.");
       }
       setConfirmAction(null);
       setShowDecisionModal(false);
       onActionComplete();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Action failed", "error");
+      toast.error(err instanceof Error ? err.message : "Action failed");
     } finally {
       setActionLoading(false);
     }

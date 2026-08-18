@@ -17,7 +17,7 @@ import { LienListItem, liensService } from "@/lib/selling";
 import { useRouter } from "next/navigation";
 import { ActionMenu } from "@/components/selling/action-menu";
 import { ConfirmDialog } from "@/components/selling/modal";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import {
   TABLE_CELL_CLASSNAME,
   TABLE_LINK_CLASSNAME,
@@ -32,7 +32,6 @@ interface PortfolioRowActionsProps {
 
 function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProps) {
   const router = useRouter();
-  const { show: showToast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const isArchived = lien.status === "Archived" || lien.sellerStatus === "Archived";
@@ -42,15 +41,15 @@ function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProp
     try {
       if (isArchived) {
         await liensService.restoreLien(lien.lienId);
-        showToast("Lien restored.", "success");
+        toast.success("Lien restored.");
       } else {
         await liensService.archiveLien(lien.lienId);
-        showToast("Lien archived.", "success");
+        toast.success("Lien archived.");
       }
       setConfirmOpen(false);
       onActionComplete?.();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Action failed", "error");
+      toast.error(err instanceof Error ? err.message : "Action failed");
     } finally {
       setLoading(false);
     }
