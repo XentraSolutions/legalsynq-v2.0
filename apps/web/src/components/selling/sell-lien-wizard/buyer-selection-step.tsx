@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Search } from "lucide-react";
+import { ArrowLeft, Plus, Search, UserPlus } from "lucide-react";
 import { liensService } from "@/lib/selling";
 import { toast } from "sonner";
 import { Button } from "@/components/selling/button";
 import { useCompanyTypes, useCompanies, useContactPersons } from "@/hooks/use-selling-companies";
+import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
+import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
 import Field from "@/components/lien/field";
 import { SkeletonListRows } from "@/components/lien/skeleton-loader";
 import { TOTAL_STEPS, goToStep } from "./shared";
@@ -56,6 +58,9 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
   const [contactSearch, setContactSearch] = useState("");
   const [contactId, setContactId] = useState<string>("");
   const [savingBuyerSelection, setSavingBuyerSelection] = useState(false);
+  const [showContactRequiredError, setShowContactRequiredError] = useState(false);
+  const [showAddCompany, setShowAddCompany] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
   const selectedCompanyRef = useRef<HTMLLabelElement | null>(null);
 
   useEffect(() => {
@@ -99,6 +104,7 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
   });
   const contacts = contactPersonsQuery.options;
   const loadingContacts = contactPersonsQuery.isLoading;
+  const selectedCompany = companies.find((c) => c.value === companyId);
 
   // Auto-select the only contact when a company has exactly one.
   useEffect(() => {
@@ -134,6 +140,10 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
 
   const handleContinue = async () => {
     if (!companyId) return;
+    if (!contactId) {
+      setShowContactRequiredError(true);
+      return;
+    }
     setSavingBuyerSelection(true);
     try {
       await liensService.saveCaseInformation(lienId, {
@@ -185,16 +195,28 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
           and potential purchase.
         </p>
 
-        <Field
-          type="text"
-          label=""
-          placeholder="Search..."
-          value={companySearch}
-          onChange={setCompanySearch}
-          prefix={<Search className="h-4 w-4" />}
-        />
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <Field
+              type="text"
+              label=""
+              placeholder="Search..."
+              value={companySearch}
+              onChange={setCompanySearch}
+              prefix={<Search className="h-4 w-4" />}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAddCompany(true)}
+            className="shrink-0 flex items-center gap-1.5 text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 whitespace-nowrap"
+          >
+            <Plus className="h-4 w-4" />
+            Add Company
+          </button>
+        </div>
 
-        <div className="border border-gray-200 rounded-lg max-h-96 overflow-y-auto">
+        <div className="border border-gray-200 rounded-lg max-h-[250px] overflow-y-auto">
           {filteredCompanies.length === 0 && (
             <p className="px-4 py-6 text-sm text-gray-400 text-center">
               No funding companies found.
@@ -216,6 +238,7 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
                   setCompanyId(company.value);
                   setContactId("");
                   setContactSearch("");
+                  setShowContactRequiredError(false);
                 }}
                 className="accent-[#EE7132]"
               />
@@ -227,27 +250,60 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
         {companyId && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Contact Person
+              Contact Person<span className="text-red-500 ml-0.5">*</span>
             </label>
             {loadingContacts ? (
               <p className="text-xs text-gray-400">Loading contacts...</p>
             ) : contacts.length === 0 ? (
-              <p className="text-xs text-gray-400">
-                This funding company has no active contacts on file.
-              </p>
+              <div
+                className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 ${
+                  showContactRequiredError
+                    ? "border-red-300 bg-red-50"
+                    : "border-amber-200 bg-amber-50"
+                }`}
+              >
+                <p
+                  className={`text-xs ${showContactRequiredError ? "text-red-600" : "text-amber-700"}`}
+                >
+                  This funding company has no contact on file. Add one to
+                  continue.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowAddContact(true)}
+                  className="shrink-0 flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 border border-gray-200 rounded-lg bg-white hover:bg-gray-50 text-gray-700 whitespace-nowrap"
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Add Contact
+                </button>
+              </div>
             ) : (
               <>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <input
-                    type="text"
-                    placeholder="Search contacts..."
-                    value={contactSearch}
-                    onChange={(e) => setContactSearch(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  />
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <input
+                      type="text"
+                      placeholder="Search contacts..."
+                      value={contactSearch}
+                      onChange={(e) => setContactSearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddContact(true)}
+                    className="shrink-0 flex items-center gap-1.5 text-sm px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600 whitespace-nowrap"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    Add Contact
+                  </button>
                 </div>
-                <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto mt-2">
+                <div
+                  className={`border rounded-lg max-h-48 overflow-y-auto mt-2 ${
+                    showContactRequiredError ? "border-red-300" : "border-gray-200"
+                  }`}
+                >
                   {filteredContacts.length === 0 && (
                     <p className="px-4 py-3 text-sm text-gray-400 text-center">
                       No contacts match your search.
@@ -262,7 +318,10 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
                         type="radio"
                         name="fundingContact"
                         checked={contactId === c.value}
-                        onChange={() => setContactId(c.value)}
+                        onChange={() => {
+                          setContactId(c.value);
+                          setShowContactRequiredError(false);
+                        }}
                         className="accent-[#EE7132]"
                       />
                       <span className="text-sm text-gray-700">{c.label}</span>
@@ -270,6 +329,11 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
                   ))}
                 </div>
               </>
+            )}
+            {showContactRequiredError && (
+              <p className="text-xs text-red-500 mt-1">
+                Select a contact person to continue.
+              </p>
             )}
           </div>
         )}
@@ -283,7 +347,7 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
           </Link>
           <Button
             variant="primary"
-            disabled={!companyId || savingBuyerSelection}
+            disabled={!companyId || !contactId || savingBuyerSelection}
             loading={savingBuyerSelection}
             onClick={handleContinue}
           >
@@ -291,6 +355,39 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
           </Button>
         </div>
       </div>
+
+      {showAddCompany && fundingCompanyType?.id && (
+        <CompanyFormModal
+          open={showAddCompany}
+          title="Add Funding Company"
+          companyTypeId={fundingCompanyType.id}
+          lockCompanyType
+          onClose={() => setShowAddCompany(false)}
+          onSaved={(company) => {
+            setCompanyId(company.id);
+            setContactId("");
+            setContactSearch("");
+            setShowContactRequiredError(false);
+            setShowAddCompany(false);
+          }}
+        />
+      )}
+
+      {showAddContact && companyId && fundingCompanyType?.id && (
+        <ContactPersonFormModal
+          open={showAddContact}
+          title="Add Contact Person"
+          companyId={companyId}
+          companyName={selectedCompany?.label ?? ""}
+          companyTypeId={fundingCompanyType.id}
+          onClose={() => setShowAddContact(false)}
+          onSaved={(contact) => {
+            setContactId(contact.id);
+            setShowContactRequiredError(false);
+            setShowAddContact(false);
+          }}
+        />
+      )}
     </div>
   );
 }
