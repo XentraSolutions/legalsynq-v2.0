@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Contact, Eye, Loader, Trash2 } from "lucide-react";
+import { Contact, Eye, Loader, SquarePen, Trash2 } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ActionMenu } from "@/components/selling/action-menu";
@@ -49,6 +49,7 @@ export function ContactPersonsDirectoryView() {
   const [contactPersonTypeFilter, setContactPersonTypeFilter] = useState("");
   const [showFilter, setShowFilter] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [editTarget, setEditTarget] = useState<ContactPersonDirectoryItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ContactPersonDirectoryItem | null>(null);
   const activeFilterCount =
     (companyTypeFilter ? 1 : 0) + (contactPersonTypeFilter ? 1 : 0);
@@ -208,6 +209,12 @@ export function ContactPersonsDirectoryView() {
                     onClick: () => router.push(`/selling/contacts/${c.companyId}`),
                   },
                   {
+                    label: "Edit",
+                    icon: SquarePen,
+                    disabled: !ra.can("contact:edit"),
+                    onClick: () => setEditTarget(c),
+                  },
+                  {
                     label: "Delete",
                     icon: Trash2,
                     variant: "danger",
@@ -352,6 +359,19 @@ export function ContactPersonsDirectoryView() {
           allowCompanySelect
           onClose={() => setShowCreate(false)}
           onSaved={() => setShowCreate(false)}
+        />
+      )}
+
+      {editTarget && (
+        <ContactPersonFormModal
+          open
+          title="Edit Contact Person"
+          companyId={editTarget.companyId}
+          companyName={editTarget.companyName}
+          companyTypeId={editTarget.companyTypeId}
+          editTarget={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => setEditTarget(null)}
         />
       )}
 
