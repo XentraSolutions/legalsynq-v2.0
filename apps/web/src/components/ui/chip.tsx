@@ -14,6 +14,8 @@ const chipVariants = cva(
         warning: "",
         danger: "",
         info: "",
+        purple: "",
+        teal: "",
       },
       variant: {
         solid: "",
@@ -46,6 +48,12 @@ const chipVariants = cva(
       },
       { variant: "solid", color: "danger", class: "bg-red-500 text-white" },
       { variant: "solid", color: "info", class: "bg-blue-500 text-white" },
+      {
+        variant: "solid",
+        color: "purple",
+        class: "bg-purple-500 text-white",
+      },
+      { variant: "solid", color: "teal", class: "bg-teal-500 text-white" },
 
       // light (flat neutral background, colored icon/text)
       {
@@ -69,6 +77,16 @@ const chipVariants = cva(
         class: "bg-zinc-100 text-red-700",
       },
       { variant: "light", color: "info", class: "bg-zinc-100 text-blue-700" },
+      {
+        variant: "light",
+        color: "purple",
+        class: "bg-zinc-100 text-purple-700",
+      },
+      {
+        variant: "light",
+        color: "teal",
+        class: "bg-zinc-100 text-teal-700",
+      },
 
       // soft (tinted background matching the color)
       {
@@ -95,6 +113,16 @@ const chipVariants = cva(
         variant: "soft",
         color: "info",
         class: "bg-blue-500/15 text-blue-700",
+      },
+      {
+        variant: "soft",
+        color: "purple",
+        class: "bg-purple-500/15 text-purple-700",
+      },
+      {
+        variant: "soft",
+        color: "teal",
+        class: "bg-teal-500/15 text-teal-700",
       },
     ],
     defaultVariants: {
