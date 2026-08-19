@@ -22,13 +22,10 @@ export default async function IntroductionPage({ searchParams }: any) {
 
   try {
     const resp = await fetchPublicCareConnect(
-      `/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
+      `/api/public/referrals/introduction?token=${encodeURIComponent(token)}`,
     );
-    console.log(resp, "hereee");
-
     if (resp.ok) {
       threadData = await resp.json();
-      console.log(threadData, "hereee");
     } else {
       failureReason = await readPublicReferralFailureReason(resp);
     }
@@ -146,7 +143,7 @@ export default async function IntroductionPage({ searchParams }: any) {
           Already have an activated portal account?
           <Link
             className="text-primary font-semibold ml-1 hover:underline"
-            href={threadData?.loginUrl ?? ""}
+            href={threadData?.loginUrl}
           >
             Log in
           </Link>
