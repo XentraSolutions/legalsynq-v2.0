@@ -47,8 +47,10 @@ export function DocumentsTab({
     async (payload: any) => {
       if (!payload || payload.length == 0) return;
       setIsSubmitting(true);
-      try {
-        payload.forEach(async (element: File) => {
+        try {
+        setIsSubmitting(true);
+
+        for (const element of payload) {
           const formData = new FormData();
           formData.append("File", element ?? "");
           formData.append("caseId", caseDetail.id ?? "");
@@ -62,11 +64,12 @@ export function DocumentsTab({
             title: "Document Uploaded",
             description: `Document has been updated.`,
           });
-          setIsSubmitting(false);
-          setSelectedDocType("");
-          dropzoneRef?.current?.reset();
-        });
+        }
+
+        setSelectedDocType("");
+        dropzoneRef?.current?.reset();
       } catch (err) {
+        console.log(err instanceof ApiError, { err });
         if (err instanceof ApiError) {
           addToast({
             type: "error",
@@ -80,7 +83,8 @@ export function DocumentsTab({
             description: "An unexpected error occurred",
           });
         }
-        console.log(err);
+      } finally {
+        setIsSubmitting(false);
       }
     },
     [selectedFiles, submitting, selectedDocType],
