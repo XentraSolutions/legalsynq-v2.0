@@ -82,6 +82,7 @@ const PUBLIC_PATHS = [
   "/referrals/view",
   "/referrals/accept",
   "/referrals/thread",
+  "/referrals/introduction",
   // LSCC-008: Provider activation funnel — no session required
   "/referrals/activate",
   // Law firm referral status email link — public, token-gated
@@ -147,9 +148,7 @@ export function proxy(request: NextRequest) {
     }
 
     if (incomingHost === SYNQLIEN_COMMON_PORTAL_HOSTNAME && pathname === "/") {
-      return NextResponse.redirect(
-        new URL("/funding/dashboard", request.url),
-      );
+      return NextResponse.redirect(new URL("/funding/dashboard", request.url));
     }
 
     if (incomingHost === TENANT_COMMON_PORTAL_HOSTNAME && pathname === "/") {

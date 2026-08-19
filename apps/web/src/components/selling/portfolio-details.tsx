@@ -13,7 +13,10 @@ import { EditMedicalPricingModal } from "./lien-detail/edit-medical-pricing-moda
 import { ConfirmDialog, Modal } from "@/components/selling/modal";
 import UploadDocuments from "./forms/add-medical-lien/medical-upload-document";
 import { fileIconFor, UploadedFileRow } from "./uploaded-file-row";
-import { SALE_DOCUMENT_LABELS } from "@/lib/selling/selling-detail.mapper";
+import {
+  SALE_DOCUMENT_LABELS,
+  camelCaseToLabel,
+} from "@/lib/selling/selling-detail.mapper";
 import { useLienDocuments, useSaveLienDocuments } from "@/lib/selling/use-lien-documents";
 import { useLienActivity } from "@/lib/selling/use-lien-activity";
 import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
@@ -180,6 +183,7 @@ export function PortfolioDetailPanel({
           lienId={lien.lienId}
           fundingCompany={lien.fundingCompany}
           medicalProvider={lien.medicalProvider}
+          facility={lien.facility}
           caseInformation={lien.caseInformation}
           onClose={() => setEditModal(null)}
           onSaved={() => {
@@ -364,7 +368,7 @@ function DocumentsTab({ lien }: { lien: LienDetailsResult }) {
                 title={doc.displayName}
                 subtitle={
                   SALE_DOCUMENT_LABELS[doc.documentType]?.title ??
-                  doc.documentType
+                  camelCaseToLabel(doc.documentType)
                 }
                 timestamp={doc.createdAt}
                 actions={

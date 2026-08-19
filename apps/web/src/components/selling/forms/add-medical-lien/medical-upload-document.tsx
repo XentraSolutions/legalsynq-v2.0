@@ -21,6 +21,11 @@ import {
   useSaveLienDocuments,
 } from "@/lib/selling/use-lien-documents";
 import { Button } from "@/components/selling/button";
+import { sellingLookupsApi } from "@/lib/selling/lookup.api";
+import {
+  camelCaseToLabel,
+  resolveDocumentCategory,
+} from "@/lib/selling/selling-detail.mapper";
 
 export interface UploadDocumentsProps {
   caseId?: string;
@@ -41,14 +46,37 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
   const { session } = useSession();
   const dropzoneRef = useRef<FileDropzoneRef>(null);
 
-  const documentTypes = lookup?.DocumentCategory ?? [];
-  const documentTypeOptions = documentTypes.map((d) => ({
-    key: d.id,
-    value: d.id,
-    label: d.name,
+  // The document-type dropdown is restricted to the selling domain's own
+  // fixed enum (GET /selling/lookups/document-types) rather than the full
+  // DocumentCategory catalog, since only those values are valid on a sale's
+  // saveDocuments payload. Each selection is then matched to the closest
+  // DocumentCategory row to get a real documentTypeId for the upload.
+  const documentCategories = lookup?.DocumentCategory ?? [];
+  const [sellingDocumentTypes, setSellingDocumentTypes] = useState<string[]>(
+    [],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    sellingLookupsApi
+      .documentTypes()
+      .then((res) => {
+        if (!cancelled) setSellingDocumentTypes(res.data.items);
+      })
+      .catch(() => {
+        // Non-fatal — the dropdown just stays empty and upload stays disabled.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const documentTypeOptions = sellingDocumentTypes.map((type) => ({
+    key: type,
+    value: type,
+    label: camelCaseToLabel(type),
   }));
 
-  const [documentTypeId, setDocumentTypeId] = useState("");
+  const [documentType, setDocumentType] = useState("");
   const { data: docs = [], isLoading: loading } = useLienDocuments(lienId);
   const saveLienDocuments = useSaveLienDocuments(lienId);
   // Uploaded during this component's lifetime — when hideExistingDocuments is
@@ -68,8 +96,18 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     const file = files[0];
     if (!file) return;
 
-    if (!documentTypeId) {
+    if (!documentType) {
       toast.error("Select a document type first");
+      dropzoneRef.current?.reset();
+      return;
+    }
+
+    const documentTypeId = resolveDocumentCategory(
+      documentType,
+      documentCategories,
+    )?.id;
+    if (!documentTypeId) {
+      toast.error("Document type list is still loading. Please try again.");
       dropzoneRef.current?.reset();
       return;
     }
@@ -85,9 +123,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         documentTypeId,
         title: file.name,
       });
-      const documentType =
-        documentTypes.find((t) => t.id === documentTypeId)?.name ??
-        documentTypeId;
+      const documentTypeLabel = camelCaseToLabel(documentType);
       // Persist immediately so the attachment survives navigating away — the
       // wizard's final step doesn't re-save documents, it just confirms.
       // Appends onto the latest server-side list (fetched inside
@@ -97,7 +133,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           ...current,
           {
             documentId: uploaded.id,
-            documentType,
+            documentType: documentTypeLabel,
             displayName: file.name,
             createdAt: uploaded.createdAt,
             fileSize: uploaded.fileSize,
@@ -105,7 +141,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         ]),
       );
       setNewDocumentIds((prev) => new Set(prev).add(uploaded.id));
-      setDocumentTypeId("");
+      setDocumentType("");
       toast.success("Document uploaded.");
     } catch (err) {
       toast.error(
@@ -157,9 +193,9 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         <Field
           label="Document Type"
           required
-          value={documentTypeId}
+          value={documentType}
           options={documentTypeOptions}
-          onChange={(v: string) => setDocumentTypeId(v)}
+          onChange={(v: string) => setDocumentType(v)}
           placeholder="Select document type"
           type="select"
           clearable
@@ -168,7 +204,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           <UploadDocumentComponent
             ref={dropzoneRef}
             isMultiple={false}
-            disabled={!documentTypeId}
+            disabled={!documentType}
             onUploaded={handleFilesSelected}
           />
         </div>

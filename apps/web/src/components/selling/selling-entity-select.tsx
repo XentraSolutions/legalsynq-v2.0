@@ -29,7 +29,7 @@ function mergeSelected(
 /** A company type (`GET /lookups/company-types`), matched by its `code`. */
 export type SellingEntityType =
   | "FundingCompany"
-  | "Facility"
+  | "MedicalFacility"
   | "LawFirm"
   | "MedicalProvider";
 

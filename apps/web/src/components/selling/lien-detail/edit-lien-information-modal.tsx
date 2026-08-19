@@ -6,6 +6,7 @@ import { liensService } from "@/lib/selling";
 import { toast } from "sonner";
 import type { LienDetail } from "@/types/lien-selling";
 import {
+  DEFAULT_LISTING_VISIBILITY,
   LienScheduleFields,
   type LienScheduleFieldsValue,
 } from "@/components/selling/forms/add-medical-lien/lien-schedule-fields";
@@ -26,7 +27,7 @@ export function EditLienInformationModal({
   const [form, setForm] = useState<LienScheduleFieldsValue>({
     initialServiceDate: lien.initialServiceDate ?? "",
     endServiceDate: lien.endServiceDate ?? "",
-    listingVisibility: lien.listingVisibility || "Private",
+    listingVisibility: lien.listingVisibility || DEFAULT_LISTING_VISIBILITY,
     notes: lien.notes ?? "",
   });
   const [saving, setSaving] = useState(false);
