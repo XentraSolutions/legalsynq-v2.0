@@ -87,7 +87,7 @@ export default function MedicalFacilityProviderInfo(
               Facility Name<span className="text-red-500 ml-0.5">*</span>
             </label>
             <SellingEntitySelect
-              entityType="Facility"
+              entityType="MedicalFacility"
               value={form.facilityId}
               onChange={(v, option) =>
                 updateForm({

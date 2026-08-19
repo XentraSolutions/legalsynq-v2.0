@@ -7,20 +7,22 @@ export interface CaseInformationFieldsValue {
   fundingCompany?: string;
   fundingCompanyContactId: string;
   fundingCompanyContact?: string;
+  facilityId: string;
+  facility?: string;
   lawfirmId: string;
   caseManagerId: string;
 }
 
 // Shared by FundingCompanyInfo (add/edit step-1's "Case Information"
 // section) and EditCaseInformationModal (lien detail page) — both capture
-// the same medical provider / funding company / contact / law firm / case
-// manager selections for a lien's case.
+// the same medical provider / facility / funding company / contact / law
+// firm / case manager selections for a lien's case.
 export function CaseInformationFields({
   value,
   onChange,
-  // Funding company + law firm are required when this is driving the
-  // add/edit wizard's step validity; the lien detail page's edit modal
-  // doesn't gate on them since the lien already exists.
+  // Law firm is required everywhere this drives step/form validity (both
+  // the add/edit wizard and the lien detail page's edit modal). Funding
+  // company is optional since it defaults to us when left unspecified.
   required = false,
 }: {
   value: CaseInformationFieldsValue;
@@ -48,12 +50,28 @@ export function CaseInformationFields({
           createLabel="Add Medical Provider"
         />
       </div>
+      <div className="col-span-2">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Medical Facility
+        </label>
+        <SellingEntitySelect
+          entityType="MedicalFacility"
+          value={value.facilityId}
+          onChange={(v, option) =>
+            onChange({
+              facilityId: v,
+              facility: option?.label ?? "",
+            })
+          }
+          placeholder="Select medical facility..."
+          searchPlaceholder="Search medical facilities..."
+          allowCreate
+          createLabel="Add New Medical Facility"
+        />
+      </div>
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Funding Company
-          {required && (
-            <span className="text-red-500 ml-0.5">*</span>
-          )}
         </label>
         <SellingEntitySelect
           entityType="FundingCompany"

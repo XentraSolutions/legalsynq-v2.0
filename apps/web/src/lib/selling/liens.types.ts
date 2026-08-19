@@ -267,6 +267,7 @@ export interface SaveSellingCaseInformationRequest {
   medicalProviderId?: string;
   fundingCompanyId?: string;
   fundingCompanyContactId?: string;
+  facilityId?: string;
   handlingLawFirmId?: string;
   caseManagerId?: string;
   caseId?: string;

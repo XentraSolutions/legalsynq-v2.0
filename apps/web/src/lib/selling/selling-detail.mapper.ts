@@ -53,76 +53,52 @@ export function parseDocumentReference(
   }
 }
 
-const SELLER_STATUS_LABELS: Record<string, string> = {
-  Draft: "Draft",
-  Pending: "Pending",
-  Internal: "Internal",
-  Approval: "Approval",
-  PreparedForSale: "Prepared for Sale",
+const SELLER_STATUS_LABEL_OVERRIDES: Record<string, string> = {
   SubmittedForSale: "Under Review",
-  Accepted: "Accepted",
-  Declined: "Declined",
-  Sold: "Sold",
-  Withdrawn: "Withdrawn",
-  Archived: "Archived",
 };
 
 export function sellerStatusLabel(sellerStatus: string | null | undefined): string {
   if (!sellerStatus) return "—";
-  return SELLER_STATUS_LABELS[sellerStatus] ?? sellerStatus;
+  return SELLER_STATUS_LABEL_OVERRIDES[sellerStatus] ?? camelCaseToLabel(sellerStatus);
 }
 
-export const REQUIRED_SALE_DOCUMENT_TYPES = ["LienAgreement", "MedicalBill"] as const;
-export const OPTIONAL_SALE_DOCUMENT_TYPES = ["MedicalRecord", "PoliceReport"] as const;
+const WHO = "WHO";
+const HOWMUCH = "HOWMUCH";
 
-export const SALE_DOCUMENT_LABELS: Record<string, { title: string; description: string }> = {
-  LienAgreement: {
-    title: "Signed Lien / LOP (Letter of Protection)",
-    description: "Proves you have the legal right to collect on the case",
-  },
-  MedicalBill: {
-    title: "Itemized Bill / HCFA-1500 Form",
-    description: "Proves the exact amount of medical debt being sold",
-  },
-  MedicalRecord: {
-    title: "Clinical Chart Notes / Medical Records",
-    description: "Proves the medical necessity and active treatment of the injuries",
-  },
-  PoliceReport: {
-    title: "Case Underwriting / Police Report",
-    description: "Proves accident liability and available insurance policy limits",
-  },
-  // Saved documentType for the PoliceReport slot — the selling domain's
-  // valid-values enum has no PoliceReport entry (see
-  // SALE_DOCUMENT_TYPE_TO_SELLING_TYPE below), so uploads from that slot
-  // are persisted as "Other". Kept in sync with the PoliceReport label so
-  // the documents list still shows a friendly title.
-  Other: {
-    title: "Case Underwriting / Police Report",
-    description: "Proves accident liability and available insurance policy limits",
-  },
+export const REQUIRED_SALE_DOCUMENT_TYPES = [WHO, HOWMUCH] as const;
+
+export function optionalSaleDocumentTypes(sellingDocumentTypes: string[]) {
+  return sellingDocumentTypes.filter(
+    (type) => !(REQUIRED_SALE_DOCUMENT_TYPES as readonly string[]).includes(type),
+  );
+}
+
+export const SALE_DOCUMENT_LABELS: Record<string, { title: string }> = {
+  [WHO]: { title: "Signed Lien / LOP (Letter of Protection)" },
+  [HOWMUCH]: { title: "Itemized Bill / HCFA-1500 Form" },
 };
 
-// The wizard's sale document slots use their own keys (above), but the
-// document service's DocumentCategory lookup (GET /liens/api/liens/document/type,
-// exposed via useSessionContext().lookup.DocumentCategory) has its own,
-// differently-named codes. This aliases each slot to the closest existing
-// lookup code so the file upload uses a real documentTypeId instead of a
-// made-up one.
-export const SALE_DOCUMENT_TYPE_TO_CATEGORY_CODE: Record<string, string> = {
-  LienAgreement: "LienAgreement",
-  MedicalBill: "HicfaOrBill",
-  MedicalRecord: "MedicalRecord",
-  PoliceReport: "PoliceReport",
+/** "PoliceReport" -> "Police Report" */
+export function camelCaseToLabel(type: string): string {
+  return type.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+}
+
+const REQUIRED_SALE_DOCUMENT_CATEGORY_CODES: Record<string, string[]> = {
+  [WHO]: ["SignedLien", "LOP", "LetterOfProtection"],
+  [HOWMUCH]: ["ItemizedBill", "HCFA-1500", "CMS-1500", "HCFA"],
 };
 
-// GET /selling/lookups/document-types returns the selling domain's own
-// smaller enum of valid `documentType` values for the saveDocuments payload
-// (MedicalBill, MedicalRecord, LienAgreement, SettlementStatement, Other) —
-// it has no PoliceReport value, so that slot is saved as "Other".
-export const SALE_DOCUMENT_TYPE_TO_SELLING_TYPE: Record<string, string> = {
-  LienAgreement: "LienAgreement",
-  MedicalBill: "MedicalBill",
-  MedicalRecord: "MedicalRecord",
-  PoliceReport: "Other",
-};
+/** Resolves the DocumentCategory row an upload for `saleDocumentType` should use. */
+export function resolveDocumentCategory<
+  T extends { id: string; code: string },
+>(saleDocumentType: string, documentCategories: T[]): T | undefined {
+  const candidateCodes = REQUIRED_SALE_DOCUMENT_CATEGORY_CODES[saleDocumentType];
+  const match = candidateCodes
+    ? documentCategories.find((c) =>
+        candidateCodes.some(
+          (code) => code.toLowerCase() === c.code.toLowerCase(),
+        ),
+      )
+    : undefined;
+  return match ?? documentCategories.find((c) => c.code.toLowerCase() === "other");
+}

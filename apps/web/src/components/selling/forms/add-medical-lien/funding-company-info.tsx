@@ -20,6 +20,8 @@ const INITIAL_FORM: CaseInformationFieldsValue = {
   fundingCompany: "",
   fundingCompanyContactId: "",
   fundingCompanyContact: "",
+  facilityId: "",
+  facility: "",
   lawfirmId: "",
   caseManagerId: "",
 };
@@ -48,7 +50,7 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
   }, [statusList, data]);
 
   function validateForm() {
-    const valid = !!form.lawfirmId && !!form.fundingCompanyId;
+    const valid = !!form.lawfirmId;
     onFormValid?.(valid, form);
   }
 
