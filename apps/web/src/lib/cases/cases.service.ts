@@ -240,7 +240,7 @@ export const casesService = {
   async payoffQoute(caseId: string): Promise<{ url: string; message: string }> {
     const { data } = await casesApi.payoffQoute(caseId);
     return {
-      url: data.isSuccess ? data?.data?.url : "",
+      url: data.isSuccess ? data?.url.replace("/documents/", "") : "",
       message: data.message,
     };
   },

@@ -23,6 +23,7 @@ import {
 import { MergeCaseForm } from "@/components/lien/forms/merge-case-form";
 import { HeaderMeta } from "./components/header-meta";
 import { CaseDetailContextProvider } from "./case-detail-context";
+import { documentsService } from "@/lib/documents";
 
 const TABS = [
   { key: "details", label: "Details" },
@@ -174,9 +175,9 @@ export function CaseDetailShell({
   const generatePayoff = async () => {
     try {
       const response = await casesService.payoffQoute(id);
-
-      if (response.url) {
-        setShowPayoffQoute({ isOpen: true, url: response.url });
+      const viewUrl = await documentsService.getViewUrl(response.url);
+      if (viewUrl) {
+        setShowPayoffQoute({ isOpen: true, url: viewUrl });
       } else {
         addToast({
           type: "error",
