@@ -22,7 +22,7 @@ export default async function IntroductionPage({ searchParams }: any) {
 
   try {
     const resp = await fetchPublicCareConnect(
-      `/api/public/referrals/introduction?token=${encodeURIComponent(token)}`,
+      `/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
     );
     if (resp.ok) {
       threadData = await resp.json();

@@ -472,7 +472,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
     actionState === "error";
 
   const referralId = data.referralId;
-  const activateUrl = `/referrals/introduction?token=${encodeURIComponent(token)}`;
+  const activateUrl = `/referrals/thread?token=${encodeURIComponent(token)}`;
 
   const handleAccept = () => {
     setActionError("");
