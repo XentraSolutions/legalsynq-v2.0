@@ -7,28 +7,22 @@ export interface LienScheduleFieldsValue {
   notes: string;
 }
 
-// Values must match the backend's ListingVisibility casing ("Public" /
-// "Private") — a lowercase mismatch here means a hydrated lien's saved
-// value never matches an option, showing the select as unset.
-const LISTING_VISIBILITY_OPTIONS = [
-  { key: "Public", value: "Public", label: "Public" },
-  { key: "Private", value: "Private", label: "Private" },
-];
+// Listing visibility has no UI control — every lien is created/edited as
+// "Private" (matches the backend's ListingVisibility casing).
+export const DEFAULT_LISTING_VISIBILITY = "Private";
 
 // Shared by LienInfo (add/edit step-1) and EditLienInformationModal (lien
-// detail page) — the schedule/visibility/notes fields both capture for a
-// lien. LienInfo additionally renders its own "Lien Status" field above
-// this, since only the wizard step edits status.
+// detail page) — the schedule/notes fields both capture for a lien.
+// LienInfo additionally renders its own "Lien Status" field above this,
+// since only the wizard step edits status.
 export function LienScheduleFields({
   value,
   onChange,
   requireInitialServiceDate = false,
-  requireListingVisibility = false,
 }: {
   value: LienScheduleFieldsValue;
   onChange: (patch: Partial<LienScheduleFieldsValue>) => void;
   requireInitialServiceDate?: boolean;
-  requireListingVisibility?: boolean;
 }) {
   return (
     <>
@@ -45,16 +39,6 @@ export function LienScheduleFields({
           label="End Service Date"
           value={value.endServiceDate}
           onChange={(v) => onChange({ endServiceDate: v })}
-        />
-      </div>
-      <div className="grid grid-cols-1 gap-4 mt-4">
-        <Field
-          type="select"
-          options={LISTING_VISIBILITY_OPTIONS}
-          required={requireListingVisibility}
-          label="Listing Visibility"
-          value={value.listingVisibility}
-          onChange={(v: string) => onChange({ listingVisibility: v })}
         />
       </div>
       <div className="grid grid-cols-1 gap-4 mt-4">

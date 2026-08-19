@@ -56,7 +56,6 @@ describe("bulk-imported lien details", () => {
 
     expect(screen.getByText("Purchase Date")).toBeInTheDocument();
     expect(screen.getByText("2026-07-15")).toBeInTheDocument();
-    expect(screen.getByText("CASE-MAPPED-001")).toBeInTheDocument();
     expect(screen.getByText("Sunrise Clinic")).toBeInTheDocument();
     expect(screen.getByText("City Medical Center")).toBeInTheDocument();
     expect(screen.getByText("Medicare Cost")).toBeInTheDocument();

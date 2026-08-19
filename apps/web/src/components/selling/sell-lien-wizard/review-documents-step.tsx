@@ -10,6 +10,10 @@ import { useSessionContext } from "@/providers/session-provider";
 import { toast } from "sonner";
 import { ConfirmDialog, Modal } from "@/components/selling/modal";
 import { Button } from "@/components/selling/button";
+import UploadDocumentComponent, {
+  FileDropzoneRef,
+} from "@/components/selling/upload-document";
+import Field from "@/components/lien/field";
 import {
   fileExtLabel,
   fileIconFor,
@@ -26,11 +30,11 @@ import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
 import type { LienDetailsResult } from "@/types/lien-selling";
 import {
   REQUIRED_SALE_DOCUMENT_TYPES,
-  OPTIONAL_SALE_DOCUMENT_TYPES,
   SALE_DOCUMENT_LABELS,
-  SALE_DOCUMENT_TYPE_TO_CATEGORY_CODE,
-  SALE_DOCUMENT_TYPE_TO_SELLING_TYPE,
+  camelCaseToLabel,
+  optionalSaleDocumentTypes,
   parseDocumentReference,
+  resolveDocumentCategory,
 } from "@/lib/selling/selling-detail.mapper";
 import { TOTAL_STEPS, goToStep } from "./shared";
 
@@ -97,11 +101,11 @@ interface DocSlotState {
   createdAt: string | null;
 }
 
-function emptyDocSlots(): Record<string, DocSlotState> {
+function emptyDocSlots(sellingDocumentTypes: string[]): Record<string, DocSlotState> {
   const slots: Record<string, DocSlotState> = {};
   for (const type of [
     ...REQUIRED_SALE_DOCUMENT_TYPES,
-    ...OPTIONAL_SALE_DOCUMENT_TYPES,
+    ...optionalSaleDocumentTypes(sellingDocumentTypes),
   ]) {
     slots[type] = {
       uploading: false,
@@ -113,26 +117,15 @@ function emptyDocSlots(): Record<string, DocSlotState> {
   return slots;
 }
 
-// Reverse of SALE_DOCUMENT_TYPE_TO_SELLING_TYPE — used to repopulate docSlots
-// from documents already saved on the lien (lien.documents). "Other" is
-// ambiguous (both the PoliceReport slot and a true "Other" upload save as
-// "Other"), but PoliceReport is the only wizard slot that maps to it, so it's
-// the correct slot to restore into.
-const SELLING_TYPE_TO_SALE_DOCUMENT_TYPE: Record<string, string> = {
-  LienAgreement: "LienAgreement",
-  MedicalBill: "MedicalBill",
-  MedicalRecord: "MedicalRecord",
-  Other: "PoliceReport",
-};
-
 // Enriches each slot with the upload timestamp — lien.documents only carries
 // documentId/type/displayName, so the createdAt shown in the card comes from
 // a follow-up fetch per attached document (same pattern as the edit wizard's
 // UploadDocuments component).
 async function docSlotsFromLien(
   documents: LienDetailsResult["documents"],
+  sellingDocumentTypes: string[],
 ): Promise<Record<string, DocSlotState>> {
-  const slots = emptyDocSlots();
+  const slots = emptyDocSlots(sellingDocumentTypes);
   const refs: {
     slotType: string;
     documentId: string;
@@ -140,11 +133,9 @@ async function docSlotsFromLien(
   }[] = [];
   for (const doc of documents) {
     const data = parseDocumentReference(doc);
-    if (!data.documentId) continue;
-    const slotType = SELLING_TYPE_TO_SALE_DOCUMENT_TYPE[data.documentType];
-    if (!slotType || !slots[slotType]) continue;
+    if (!data.documentId || !slots[data.documentType]) continue;
     refs.push({
-      slotType,
+      slotType: data.documentType,
       documentId: data.documentId,
       displayName: data.displayName,
     });
@@ -187,8 +178,9 @@ export default function ReviewDocumentsStep({
   const [lien, setLien] = useState<LienDetailsResult | null>(null);
 
   const [messageToBuyer] = useState("");
-  const [docSlots, setDocSlots] =
-    useState<Record<string, DocSlotState>>(emptyDocSlots());
+  const [docSlots, setDocSlots] = useState<Record<string, DocSlotState>>(
+    emptyDocSlots([]),
+  );
   const [sellingDocumentTypes, setSellingDocumentTypes] = useState<string[]>(
     [],
   );
@@ -201,6 +193,7 @@ export default function ReviewDocumentsStep({
   >(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showAddSupportingDoc, setShowAddSupportingDoc] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -213,7 +206,10 @@ export default function ReviewDocumentsStep({
         if (cancelled) return;
         setLien(detail);
         setSellingDocumentTypes(documentTypesRes.data.items);
-        const slots = await docSlotsFromLien(detail.documents);
+        const slots = await docSlotsFromLien(
+          detail.documents,
+          documentTypesRes.data.items,
+        );
         if (cancelled) return;
         setDocSlots(slots);
       } catch (err) {
@@ -250,6 +246,14 @@ export default function ReviewDocumentsStep({
   );
   const canAuthorize = !!companyId && pricingReady && requiredDocsReady;
 
+  const optionalTypes = optionalSaleDocumentTypes(sellingDocumentTypes);
+  const uploadedOptionalTypes = optionalTypes.filter(
+    (type) => docSlots[type]?.documentId,
+  );
+  const availableOptionalTypes = optionalTypes.filter(
+    (type) => !docSlots[type]?.documentId,
+  );
+
   const handleFileSelect = async (documentType: string, file: File) => {
     setDocSlots((prev) => ({
       ...prev,
@@ -260,9 +264,9 @@ export default function ReviewDocumentsStep({
       },
     }));
     try {
-      const categoryCode = SALE_DOCUMENT_TYPE_TO_CATEGORY_CODE[documentType];
-      const documentTypeId = documentCategories.find(
-        (c) => c.code === categoryCode,
+      const documentTypeId = resolveDocumentCategory(
+        documentType,
+        documentCategories,
       )?.id;
       if (!documentTypeId) {
         throw new Error(
@@ -314,17 +318,13 @@ export default function ReviewDocumentsStep({
   ) =>
     Object.entries(slots)
       .filter(([, slot]) => slot.documentId)
-      .map(([documentType, slot]) => {
-        const sellingType =
-          SALE_DOCUMENT_TYPE_TO_SELLING_TYPE[documentType] ?? documentType;
-        return {
-          documentId: slot.documentId!,
-          documentType: sellingDocumentTypes.includes(sellingType)
-            ? sellingType
-            : "Other",
-          displayName: slot.displayName ?? undefined,
-        };
-      });
+      .map(([documentType, slot]) => ({
+        documentId: slot.documentId!,
+        documentType: sellingDocumentTypes.includes(documentType)
+          ? documentType
+          : "Other",
+        displayName: slot.displayName ?? undefined,
+      }));
 
   const runDelete = async () => {
     if (!deleteTarget) return;
@@ -491,18 +491,35 @@ export default function ReviewDocumentsStep({
               ))}
             </div>
             <div className="bg-white border border-gray-200 rounded-lg p-5 space-y-4">
-              <h3 className="text-md font-semibold">
-                Optional Supporting Documents
-              </h3>
-              {OPTIONAL_SALE_DOCUMENT_TYPES.map((type) => (
-                <DocumentSlot
-                  key={type}
-                  type={type}
-                  slot={docSlots[type]}
-                  onSelect={(file) => handleFileSelect(type, file)}
-                  onDelete={() => setDeleteTarget(type)}
-                />
-              ))}
+              <div className="flex items-center justify-between">
+                <h3 className="text-md font-semibold">
+                  Optional Supporting Documents
+                </h3>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  rightIcon="plus"
+                  disabled={availableOptionalTypes.length === 0}
+                  onClick={() => setShowAddSupportingDoc(true)}
+                >
+                  Add
+                </Button>
+              </div>
+              {uploadedOptionalTypes.length === 0 ? (
+                <p className="text-sm text-gray-400">
+                  No supporting documents added yet.
+                </p>
+              ) : (
+                uploadedOptionalTypes.map((type) => (
+                  <DocumentSlot
+                    key={type}
+                    type={type}
+                    slot={docSlots[type]}
+                    onSelect={(file) => handleFileSelect(type, file)}
+                    onDelete={() => setDeleteTarget(type)}
+                  />
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -563,6 +580,17 @@ export default function ReviewDocumentsStep({
         confirmVariant="danger"
       />
 
+      {showAddSupportingDoc && (
+        <AddSupportingDocumentModal
+          types={availableOptionalTypes}
+          onClose={() => setShowAddSupportingDoc(false)}
+          onUpload={async (type, file) => {
+            await handleFileSelect(type, file);
+            setShowAddSupportingDoc(false);
+          }}
+        />
+      )}
+
       <Modal
         open={showSuccess}
         onClose={() => router.push(`/selling/portfolio/lien/${lienId}`)}
@@ -600,6 +628,7 @@ export default function ReviewDocumentsStep({
           lienId={lienId}
           fundingCompany={lien.fundingCompany}
           medicalProvider={lien.medicalProvider}
+          facility={lien.facility}
           caseInformation={lien.caseInformation}
           onClose={() => setEditModal(null)}
           onSaved={() => {
@@ -620,6 +649,66 @@ export default function ReviewDocumentsStep({
         />
       )}
     </div>
+  );
+}
+
+function AddSupportingDocumentModal({
+  types,
+  onClose,
+  onUpload,
+}: {
+  types: string[];
+  onClose: () => void;
+  onUpload: (type: string, file: File) => Promise<void>;
+}) {
+  const [type, setType] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const dropzoneRef = useRef<FileDropzoneRef>(null);
+
+  const options = types.map((t) => ({
+    key: t,
+    value: t,
+    label: camelCaseToLabel(t),
+  }));
+
+  const handleFiles = async (files: File[]) => {
+    const file = files[0];
+    if (!file || !type) return;
+    setUploading(true);
+    try {
+      await onUpload(type, file);
+    } finally {
+      setUploading(false);
+      dropzoneRef.current?.reset();
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Add Supporting Document"
+      size="sm"
+    >
+      <div className="space-y-4">
+        <Field
+          label="Document Type"
+          required
+          type="select"
+          value={type}
+          options={options}
+          onChange={(v: string) => setType(v)}
+          placeholder="Select document type"
+          clearable
+        />
+        <UploadDocumentComponent
+          ref={dropzoneRef}
+          isMultiple={false}
+          disabled={!type || uploading}
+          onUploaded={handleFiles}
+        />
+      </div>
+    </Modal>
   );
 }
 
@@ -644,7 +733,7 @@ function DocumentSlot({
       icon={slot.displayName ? fileIconFor(slot.displayName) : undefined}
       title={
         <>
-          {meta?.title ?? type}
+          {meta?.title ?? camelCaseToLabel(type)}
           {required && <span className="text-red-500 ml-0.5">*</span>}
         </>
       }
@@ -653,7 +742,7 @@ function DocumentSlot({
           ? "Uploading..."
           : slot.documentId
             ? `${slot.displayName} · ${fileExtLabel(slot.displayName ?? "")}`
-            : (meta?.description ?? "(Optional)")
+            : (required ? "(Required)" : "(Optional)")
       }
       timestamp={slot.documentId && !slot.uploading ? slot.createdAt : null}
       actions={

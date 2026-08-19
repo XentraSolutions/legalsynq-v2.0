@@ -54,7 +54,6 @@ export function LienInformationPanel({ lien, onEdit }: LienDetailPanelProps) {
             <SellerStatusBadge status={lien.sellerStatus} />
           </dd>
         </div>
-        <Field label="Listing Visibility" value={lien.listingVisibility} />
         <Field label="Purchase Date" value={lien.purchaseDate} />
         <Field label="Initial Service Date" value={lien.initialServiceDate} />
         <Field label="End Service Date" value={lien.endServiceDate} />

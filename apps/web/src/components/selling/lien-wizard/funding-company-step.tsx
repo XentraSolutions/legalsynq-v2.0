@@ -10,9 +10,9 @@ import { LienWizardShell } from "./shell";
 import { buildFormsFromLien, goToStep } from "./shared";
 import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
 
-// Mirrors FundingCompanyInfo's layout: title + description, then three rows
-// of two selects each (medical provider/funding company, contact/medical
-// provider, law firm/case manager).
+// Mirrors FundingCompanyInfo's layout: title + description, then 6 selects
+// (medical provider, facility, funding company, contact, law firm, case
+// manager) across full-width and paired rows.
 function FundingCompanyStepSkeleton() {
   return (
     <div className="space-y-4 animate-pulse pt-5">
@@ -73,6 +73,7 @@ export default function FundingCompanyStep({
         fundingCompanyId: formData?.fundingCompanyId || undefined,
         fundingCompanyContactId:
           formData?.fundingCompanyContactId || undefined,
+        facilityId: formData?.facilityId || undefined,
         handlingLawFirmId: formData?.lawfirmId || undefined,
         caseManagerId: formData?.caseManagerId || undefined,
         caseId: caseId || undefined,

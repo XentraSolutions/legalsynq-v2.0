@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import Field from "@/components/lien/field";
-import { LienScheduleFields } from "./lien-schedule-fields";
+import {
+  DEFAULT_LISTING_VISIBILITY,
+  LienScheduleFields,
+} from "./lien-schedule-fields";
 
 export interface LienInfoProps {
   caseId?: string;
@@ -12,7 +15,7 @@ export interface LienInfoProps {
 
 const INITIAL_FORM = {
   status: "Pending",
-  listingVisibility: "",
+  listingVisibility: DEFAULT_LISTING_VISIBILITY,
   initialServiceDate: "",
   endServiceDate: "",
   notes: "",
@@ -46,8 +49,7 @@ export default function LienInfo(props: LienInfoProps) {
   }, [form]);
 
   function validateForm() {
-    const valid =
-      !!form.status && !!form.listingVisibility && !!form.initialServiceDate;
+    const valid = !!form.status && !!form.initialServiceDate;
     onFormValid?.(valid, form);
   }
 
@@ -76,7 +78,6 @@ export default function LienInfo(props: LienInfoProps) {
           value={form}
           onChange={(patch) => setForm({ ...form, ...patch })}
           requireInitialServiceDate
-          requireListingVisibility
         />
       </div>
     </div>
