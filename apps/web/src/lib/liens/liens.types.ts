@@ -285,8 +285,9 @@ export interface LienInfoParams {
 }
 
 export interface LienFundingCompanyParams {
-  fundingCompanyId: string;
-  fundingCompanyContactId: string;
+  fundingCompanyId?: string;
+  fundingCompanyContactId?: string;
+  facilityId?: string;
   handlingLawFirmId: string;
   caseManagerId: string;
   caseId: string;

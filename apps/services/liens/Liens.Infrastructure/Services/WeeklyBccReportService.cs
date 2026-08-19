@@ -416,6 +416,7 @@ public sealed class WeeklyBccReportService : IWeeklyBccReportService
             TotalClosedCases = totalClosedCases,
             TotalLiens = liens.Count,
             TotalOpenLiens = liens.Count(lien => LienStatus.Open.Contains(lien.Status)),
+            TotalClosedLiens = liens.Count(lien => LienStatus.Terminal.Contains(lien.Status)),
             TotalPurchaseAmt = totalPurchase,
             TotalReturnedAmt = totalReturned,
             TotalBillingAmt = totalBilling,

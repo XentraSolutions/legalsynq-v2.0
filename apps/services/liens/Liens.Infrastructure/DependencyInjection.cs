@@ -63,6 +63,7 @@ public static class DependencyInjection
         services.AddSingleton<IBillOfSalePdfGenerator, BillOfSalePdfGenerator>();
         services.AddScoped<IBillOfSaleDocumentService, BillOfSaleDocumentService>();
         services.AddScoped<ILegacyDocumentUploadClient, LegacyDocumentUploadClient>();
+        services.AddScoped<IPayoffQuoteService, PayoffQuoteService>();
         services.AddScoped<ISellingDocumentReferenceValidator, SellingDocumentReferenceValidator>();
         services.AddScoped<ILienSaleService, LienSaleService>();
         services.AddScoped<ILienService, LienService>();

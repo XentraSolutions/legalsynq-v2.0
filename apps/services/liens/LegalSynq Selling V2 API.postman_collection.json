@@ -79,10 +79,10 @@
         {
           "name": "Save Case Information",
           "request": {
-            "description": "Reference IDs may come from either legacy Contacts or the Company Directory. Directory fundingCompanyId and handlingLawFirmId values must identify active Funding Company and Law Firm companies; medicalProviderId must identify an active Medical Provider company owned by the seller organization; fundingCompanyContactId must belong to the funding company, and caseManagerId must belong to the law firm with the Case Manager contact-person type.",
+            "description": "Reference IDs may come from either legacy Contacts or the Company Directory. fundingCompanyId and fundingCompanyContactId are optional; when supplied, fundingCompanyContactId must belong to the selected funding company. Directory fundingCompanyId and handlingLawFirmId values must identify active Funding Company and Law Firm companies; facilityId must identify an active facility owned by the seller organization; medicalProviderId must identify an active Medical Provider company owned by the seller organization; caseManagerId must belong to the law firm with the Case Manager contact-person type.",
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"fundingCompanyContactId\": \"{{fundingCompanyContactId}}\",\n  \"medicalProviderId\": \"{{medicalProviderId}}\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseId\": \"{{caseId}}\",\n  \"createCaseIfMissing\": false\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"fundingCompanyContactId\": \"{{fundingCompanyContactId}}\",\n  \"facilityId\": \"{{facilityId}}\",\n  \"medicalProviderId\": \"{{medicalProviderId}}\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseId\": \"{{caseId}}\",\n  \"createCaseIfMissing\": false\n}", "options": { "raw": { "language": "json" } } },
             "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/case-information"
           }
         },

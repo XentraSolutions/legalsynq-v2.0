@@ -981,6 +981,8 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
         body.RootElement.GetProperty("url").GetString()
             .Should().Be($"/documents/{uploadClient.Uploads.Single().DocumentId}");
+        body.RootElement.GetProperty("base64").GetString()
+            .Should().Be(Convert.ToBase64String(StubDocumentsServiceHandler.DownloadContent));
     }
 
     [Fact]
@@ -1010,10 +1012,12 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
         body.RootElement.GetProperty("url").GetString()
             .Should().Be($"/documents/{uploadClient.Uploads.Single().DocumentId}");
+        body.RootElement.GetProperty("base64").GetString()
+            .Should().Be(Convert.ToBase64String(StubDocumentsServiceHandler.DownloadContent));
     }
 
     [Fact]
-    public async Task PayoffQuote_returns_ok_with_empty_url_when_document_missing()
+    public async Task PayoffQuote_generates_document_when_missing()
     {
         Guid caseId;
         using (var scope = _factory.Services.CreateScope())
@@ -1031,13 +1035,35 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             caseId = caseEntity.Id;
         }
 
+        using var uploadScope = _factory.Services.CreateScope();
+        var uploadClient = uploadScope.ServiceProvider.GetRequiredService<CapturingLegacyDocumentUploadClient>();
+        uploadClient.Clear();
+
         var resp = await _client.GetAsync($"/api/liens/cases/payoff-qoute/{caseId}");
         resp.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await resp.Content.ReadAsStringAsync()}");
 
         var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
-        body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeFalse();
-        body.RootElement.GetProperty("url").GetString().Should().BeEmpty();
+        body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        body.RootElement.GetProperty("url").GetString()
+            .Should().Be($"/documents/{uploadClient.Uploads.Single().DocumentId}");
+        body.RootElement.GetProperty("base64").GetString().Should().NotBeNullOrWhiteSpace();
+
+        var upload = uploadClient.Uploads.Single();
+        upload.ReferenceId.Should().Be(caseId);
+        upload.ReferenceType.Should().Be("Case");
+        upload.Title.Should().Be($"PayoffQuote_{caseId}");
+        upload.FileName.Should().Be($"PayoffQuote_{caseId}.pdf");
+        upload.ContentType.Should().Be("application/pdf");
+        upload.Length.Should().BeGreaterThan(0);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var item = verifyDb.ServicingItems.Single(i =>
+            i.CaseId == caseId &&
+            i.TaskType == "LegacyCaseDocument");
+        item.Notes.Should().Contain("typeId=14");
+        item.Notes.Should().Contain(upload.DocumentId.ToString());
     }
 
     [Fact]

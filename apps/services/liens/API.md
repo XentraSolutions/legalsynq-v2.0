@@ -1206,6 +1206,27 @@ The dashboard Total Lien Report, including its status chart and totals, excludes
 
 ---
 
+### GET `/api/liens/cases/payoff-quote/{caseId}`
+
+Compatibility alias: `GET /api/liens/cases/payoff-qoute/{caseId}`.
+
+Returns the latest payoff statement URL for the case. If no payoff document exists, the service generates a payoff PDF from the case and its open servicing liens, uploads it to the Documents service as a case document, records `LegacyCaseDocument` metadata with legacy type ID `14`, and returns the uploaded document URL.
+
+**Response:** `200 OK`
+
+```json
+{
+  "isSuccess": true,
+  "message": "Successfully retrieved Payoff Quote",
+  "url": "/documents/{documentId}",
+  "base64": "JVBERi0xLjQ..."
+}
+```
+
+Missing cases return `404` with `Error: Unable to retrieve Payoff Quote`.
+
+---
+
 ### POST `/api/liens/cases/upload/document`
 
 Legacy-compatible case document upload endpoint.
@@ -2203,6 +2224,7 @@ Eligible Weekly BCC liens are ordered by purchase date, lien number, and record 
     "totalClosedCases": 40,
     "totalLiens": 187,
     "totalOpenLiens": 130,
+    "totalClosedLiens": 57,
     "totalPurchaseAmt": 22462370.62,
     "totalReturnedAmt": 19089906.53,
     "totalBillingAmt": 79778606.30
@@ -2220,7 +2242,7 @@ Eligible Weekly BCC liens are ordered by purchase date, lien number, and record 
 }
 ```
 
-`columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). The `noted` field is labeled `Notes` in report previews and CSV exports. Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. Both direct and saved-report execution responses add `summaryTotals` with `totalCases`, `totalOpenCases`, `totalClosedCases`, `totalLiens`, `totalOpenLiens`, `totalPurchaseAmt`, `totalReturnedAmt`, and `totalBillingAmt` calculated from the complete eligible result set.
+`columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). The `noted` field is labeled `Notes` in report previews and CSV exports. Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. Both direct and saved-report execution responses add `summaryTotals` with `totalCases`, `totalOpenCases`, `totalClosedCases`, `totalLiens`, `totalOpenLiens`, `totalClosedLiens`, `totalPurchaseAmt`, `totalReturnedAmt`, and `totalBillingAmt` calculated from the complete eligible result set.
 
 ### POST `/api/liens/reports/auto-generated/{reportId}/export`
 

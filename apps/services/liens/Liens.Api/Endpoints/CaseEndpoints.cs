@@ -3714,18 +3714,36 @@ public static class CaseEndpoints
 
     private static async Task<IResult> GeneratePayoffQuoteLegacy(
         Guid caseId,
-        ICaseService caseService,
-        IServicingItemService servicingItemService,
-        ILookupValueService lookupValueService,
+        IPayoffQuoteService payoffQuoteService,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
+        var orgId = RequireOrgId(ctx);
+        var userId = RequireUserId(ctx);
 
         try
         {
-            var existingCase = await caseService.GetByIdAsync(tenantId, caseId, ct);
-            if (existingCase is null)
+            var result = await payoffQuoteService.GetOrGenerateAsync(
+                tenantId,
+                orgId,
+                userId,
+                caseId,
+                ctx.Email ?? ctx.Name ?? userId.ToString(),
+                ct);
+
+            if (result.Status == PayoffQuoteStatus.Success)
+            {
+                return Results.Ok(new
+                {
+                    isSuccess = true,
+                    message = "Successfully retrieved Payoff Quote",
+                    url = result.Url,
+                    base64 = result.Base64,
+                });
+            }
+
+            if (result.Status == PayoffQuoteStatus.CaseNotFound)
             {
                 return Results.NotFound(new
                 {
@@ -3734,71 +3752,12 @@ public static class CaseEndpoints
                 });
             }
 
-            const int pageSize = 200;
-            var page = 1;
-            var candidates = new List<ServicingItemResponse>();
-
-            while (true)
-            {
-                var result = await servicingItemService.SearchAsync(
-                    tenantId,
-                    search: null,
-                    status: null,
-                    priority: null,
-                    assignedTo: null,
-                    caseId: caseId,
-                    lienId: null,
-                    page: page,
-                    pageSize: pageSize,
-                    ct);
-
-                if (result.Items.Count == 0)
-                    break;
-
-                candidates.AddRange(result.Items);
-                if (candidates.Count >= result.TotalCount)
-                    break;
-
-                page++;
-            }
-
-            var payoffStatementType = await lookupValueService.GetByCodeAsync(
-                tenantId,
-                LookupCategory.DocumentCategory,
-                "PayoffStatement",
-                ct);
-
-            var payoffStatementTypeId = payoffStatementType?.Id.ToString();
-
-            var payoffUrl = candidates
-                .Where(i => string.Equals(i.TaskType, "LegacyCaseDocument", StringComparison.Ordinal))
-                .OrderByDescending(i => i.CreatedAtUtc)
-                .Select(i => ParseLegacyNoteFields(i.Notes))
-                .Where(fields => IsLegacyPayoffQuoteDocument(fields, payoffStatementTypeId))
-                .Select(fields =>
-                {
-                    var url = fields.GetValueOrDefault("url", string.Empty);
-                    if (string.IsNullOrWhiteSpace(url))
-                        url = fields.GetValueOrDefault("documentUrl", string.Empty);
-                    return url;
-                })
-                .FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
-
-            if (!string.IsNullOrWhiteSpace(payoffUrl))
-            {
-                return Results.Ok(new
-                {
-                    isSuccess = true,
-                    message = "Successfully retrieved Payoff Quote",
-                    url = payoffUrl,
-                });
-            }
-
             return Results.Ok(new
             {
                 isSuccess = false,
                 message = "No payoff quote found.",
                 url = string.Empty,
+                base64 = string.Empty,
             });
         }
         catch
@@ -3808,6 +3767,7 @@ public static class CaseEndpoints
                 isSuccess = false,
                 message = "No payoff quote found.",
                 url = string.Empty,
+                base64 = string.Empty,
             });
         }
     }

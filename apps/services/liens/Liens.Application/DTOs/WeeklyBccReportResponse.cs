@@ -17,6 +17,7 @@ public sealed class WeeklyBccReportSummaryTotals
     public int TotalClosedCases { get; init; }
     public int TotalLiens { get; init; }
     public int TotalOpenLiens { get; init; }
+    public int TotalClosedLiens { get; init; }
     public decimal TotalPurchaseAmt { get; init; }
     public decimal TotalReturnedAmt { get; init; }
     public decimal TotalBillingAmt { get; init; }

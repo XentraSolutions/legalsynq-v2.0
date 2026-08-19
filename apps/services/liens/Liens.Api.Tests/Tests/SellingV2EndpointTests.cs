@@ -248,6 +248,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         {
             fundingCompanyId = SeedHelper.FundingCompanyId,
             fundingCompanyContactId = fundingContactId,
+            facilityId = SeedHelper.FacilityId,
             handlingLawFirmId = SeedHelper.LawFirmId,
             caseManagerId,
             caseId = SeedHelper.CaseId,
@@ -259,6 +260,9 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var facility = payload.RootElement.GetProperty("facility");
+        facility.GetProperty("id").GetGuid().Should().Be(SeedHelper.FacilityId);
+        facility.GetProperty("name").GetString().Should().Be("Sunrise Clinic");
         var fundingCompany = payload.RootElement.GetProperty("fundingCompany");
         fundingCompany.GetProperty("contactPerson").GetString().Should().Be("Fiona Funder");
         fundingCompany.GetProperty("emailAddress").GetString().Should().Be("fiona@capital-fund.test");
@@ -267,6 +271,37 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         caseInfo.GetProperty("caseManagerName").GetString().Should().Be("Casey Manager");
         caseInfo.GetProperty("lawFirmId").GetGuid().Should().Be(SeedHelper.LawFirmId);
         caseInfo.GetProperty("lawFirm").GetString().Should().Be("Smith & Associates LLP");
+    }
+
+    [Fact]
+    public async Task Case_information_accepts_facility_without_funding_company_references()
+    {
+        var lienId = await CreateSellingLienAsync();
+
+        var response = await _client.PutAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/case-information",
+            new
+            {
+                facilityId = SeedHelper.FacilityId,
+                handlingLawFirmId = SeedHelper.LawFirmId,
+                caseId = SeedHelper.CaseId,
+                createCaseIfMissing = false,
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var savedPayload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        savedPayload.RootElement.GetProperty("facilityId").GetGuid().Should().Be(SeedHelper.FacilityId);
+        savedPayload.RootElement.GetProperty("fundingCompanyId").ValueKind.Should().Be(JsonValueKind.Null);
+        savedPayload.RootElement.GetProperty("fundingCompanyContactId").ValueKind.Should().Be(JsonValueKind.Null);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persisted = await db.Liens.SingleAsync(item => item.Id == lienId);
+        persisted.FacilityId.Should().Be(SeedHelper.FacilityId);
+        persisted.FundingCompanyId.Should().BeNull();
+        persisted.FundingCompanyContactId.Should().BeNull();
+        persisted.FundingCompanyCompanyId.Should().BeNull();
+        persisted.FundingCompanyContactPersonId.Should().BeNull();
     }
 
     [Fact]

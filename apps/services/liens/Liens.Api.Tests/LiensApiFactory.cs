@@ -155,6 +155,7 @@ internal sealed class StubDocumentsServiceHandler : HttpMessageHandler
 {
     private const string ViewToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     private const string DownloadToken = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    public static readonly byte[] DownloadContent = "%PDF-1.4 stub payoff"u8.ToArray();
 
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
@@ -183,6 +184,10 @@ internal sealed class StubDocumentsServiceHandler : HttpMessageHandler
                   }
                 }
                 """),
+            _ when path.Contains("/content", StringComparison.OrdinalIgnoreCase) => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(DownloadContent)
+            },
             _ => new HttpResponseMessage(HttpStatusCode.NotFound)
         };
 

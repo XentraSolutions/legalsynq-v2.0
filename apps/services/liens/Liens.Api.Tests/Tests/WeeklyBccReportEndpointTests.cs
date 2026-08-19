@@ -214,6 +214,7 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
         summary.GetProperty("totalClosedCases").GetInt32().Should().Be(1);
         summary.GetProperty("totalLiens").GetInt32().Should().Be(2);
         summary.GetProperty("totalOpenLiens").GetInt32().Should().Be(1);
+        summary.GetProperty("totalClosedLiens").GetInt32().Should().Be(1);
         summary.GetProperty("totalPurchaseAmt").GetDecimal().Should().Be(850m);
         summary.GetProperty("totalReturnedAmt").GetDecimal().Should().Be(1000m);
         summary.GetProperty("totalBillingAmt").GetDecimal().Should().Be(1700m);

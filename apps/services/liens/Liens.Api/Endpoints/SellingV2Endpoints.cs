@@ -403,51 +403,72 @@ public static class SellingV2Endpoints
         var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
         if (IntakeMutationBlocked(lien) is { } intakeError) return intakeError;
-        if (!request.FundingCompanyId.HasValue || request.FundingCompanyId.Value == Guid.Empty)
-            return ValidationError("fundingCompanyId", "fundingCompanyId is required.");
 
-        var canonicalFundingCompany = await db.Companies.AsNoTracking().FirstOrDefaultAsync(company =>
-            company.TenantId == tenantId &&
-            company.OrgId == sellerOrgId &&
-            company.Id == request.FundingCompanyId.Value &&
-            company.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
-            company.IsActive, ct);
+        var fundingCompanyId = NormalizeOptionalGuid(request.FundingCompanyId);
+        var fundingCompanyContactId = NormalizeOptionalGuid(request.FundingCompanyContactId);
+        var facilityId = NormalizeOptionalGuid(request.FacilityId);
+
+        Company? canonicalFundingCompany = null;
         Contact? legacyFundingCompany = null;
         CompanyContactPerson? canonicalFundingContact = null;
-        if (canonicalFundingCompany is not null)
+        if (fundingCompanyId.HasValue)
         {
-            if (request.FundingCompanyContactId.HasValue)
+            canonicalFundingCompany = await db.Companies.AsNoTracking().FirstOrDefaultAsync(company =>
+                company.TenantId == tenantId &&
+                company.OrgId == sellerOrgId &&
+                company.Id == fundingCompanyId.Value &&
+                company.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
+                company.IsActive, ct);
+            if (canonicalFundingCompany is not null)
             {
-                canonicalFundingContact = await db.CompanyContactPersons
-                    .AsNoTracking()
-                    .Include(contact => contact.ContactPersonType)
-                    .FirstOrDefaultAsync(contact =>
-                        contact.TenantId == tenantId &&
-                        contact.Id == request.FundingCompanyContactId.Value &&
-                        contact.CompanyId == canonicalFundingCompany.Id &&
-                        contact.IsActive &&
-                        contact.ContactPersonType != null &&
-                        contact.ContactPersonType.IsActive &&
-                        contact.ContactPersonType.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
-                        (contact.ContactPersonType.TenantId == null ||
-                         (contact.ContactPersonType.TenantId == tenantId && contact.ContactPersonType.OrgId == sellerOrgId)),
-                        ct);
-                if (canonicalFundingContact is null)
-                    return ValidationError("fundingCompanyContactId", "Funding company contact must be active and belong to the selected funding company.");
+                if (fundingCompanyContactId.HasValue)
+                {
+                    canonicalFundingContact = await db.CompanyContactPersons
+                        .AsNoTracking()
+                        .Include(contact => contact.ContactPersonType)
+                        .FirstOrDefaultAsync(contact =>
+                            contact.TenantId == tenantId &&
+                            contact.Id == fundingCompanyContactId.Value &&
+                            contact.CompanyId == canonicalFundingCompany.Id &&
+                            contact.IsActive &&
+                            contact.ContactPersonType != null &&
+                            contact.ContactPersonType.IsActive &&
+                            contact.ContactPersonType.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
+                            (contact.ContactPersonType.TenantId == null ||
+                             (contact.ContactPersonType.TenantId == tenantId && contact.ContactPersonType.OrgId == sellerOrgId)),
+                            ct);
+                    if (canonicalFundingContact is null)
+                        return ValidationError("fundingCompanyContactId", "Funding company contact must be active and belong to the selected funding company.");
+                }
+            }
+            else
+            {
+                legacyFundingCompany = await GetFundingCompanyAsync(db, tenantId, fundingCompanyId.Value, ct);
+                if (legacyFundingCompany is null)
+                    return ValidationError("fundingCompanyId", "Funding company was not found in this tenant.");
+                if (fundingCompanyContactId.HasValue)
+                {
+                    var contact = await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c =>
+                        c.TenantId == tenantId && c.Id == fundingCompanyContactId.Value && c.IsActive, ct);
+                    if (contact is null || contact.OrgId != legacyFundingCompany.OrgId)
+                        return ValidationError("fundingCompanyContactId", "Funding company contact must be active and belong to the selected funding company.");
+                }
             }
         }
-        else
+        else if (fundingCompanyContactId.HasValue)
         {
-            legacyFundingCompany = await GetFundingCompanyAsync(db, tenantId, request.FundingCompanyId.Value, ct);
-            if (legacyFundingCompany is null)
-                return ValidationError("fundingCompanyId", "Funding company was not found in this tenant.");
-            if (request.FundingCompanyContactId.HasValue)
-            {
-                var contact = await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c =>
-                    c.TenantId == tenantId && c.Id == request.FundingCompanyContactId.Value && c.IsActive, ct);
-                if (contact is null || contact.OrgId != legacyFundingCompany.OrgId)
-                    return ValidationError("fundingCompanyContactId", "Funding company contact must be active and belong to the selected funding company.");
-            }
+            return ValidationError("fundingCompanyContactId", "Funding company contact requires a funding company.");
+        }
+
+        if (facilityId.HasValue)
+        {
+            var facilityExists = await db.Facilities.AsNoTracking().AnyAsync(facility =>
+                facility.TenantId == tenantId &&
+                facility.OrgId == sellerOrgId &&
+                facility.Id == facilityId.Value &&
+                facility.IsActive, ct);
+            if (!facilityExists)
+                return ValidationError("facilityId", "Facility must be active and owned by the seller organization.");
         }
 
         Company? canonicalMedicalProvider = null;
@@ -531,10 +552,12 @@ public static class SellingV2Endpoints
         lien.AttachCase(caseEntity.Id, userId);
         lien.SetSellingFundingReferences(
             legacyFundingCompany?.Id,
-            legacyFundingCompany is null ? null : request.FundingCompanyContactId,
+            legacyFundingCompany is null ? null : fundingCompanyContactId,
             canonicalFundingCompany?.Id,
             canonicalFundingContact?.Id,
             userId);
+        if (facilityId.HasValue)
+            lien.AttachFacility(facilityId.Value, userId);
         if (canonicalMedicalProvider is not null)
             lien.SetCanonicalMedicalProvider(canonicalMedicalProvider.Id, userId);
 
@@ -569,6 +592,7 @@ public static class SellingV2Endpoints
             caseId = lien.CaseId,
             fundingCompanyId = lien.FundingCompanyCompanyId ?? lien.FundingCompanyId,
             fundingCompanyContactId = lien.FundingCompanyContactPersonId ?? lien.FundingCompanyContactId,
+            facilityId = lien.FacilityId,
             medicalProviderId = lien.MedicalProviderCompanyId,
             handlingLawFirmId = caseEntity.HandlingLawFirmCompanyId ?? (legacyLawFirmSelected ? request.HandlingLawFirmId : null),
             caseManagerId = caseEntity.CaseManagerContactPersonId ?? (legacyCaseManagerSelected ? request.CaseManagerId : null),
@@ -1597,6 +1621,9 @@ public static class SellingV2Endpoints
     private static async Task<Lien?> GetSellerLienAsync(LiensDbContext db, Guid tenantId, Guid sellerOrgId, Guid lienId, CancellationToken ct) =>
         await db.Liens.FirstOrDefaultAsync(lien => lien.TenantId == tenantId && lien.Id == lienId &&
             (lien.SellingOrgId == sellerOrgId || (lien.SellingOrgId == null && lien.OrgId == sellerOrgId)), ct);
+
+    private static Guid? NormalizeOptionalGuid(Guid? value) =>
+        value is { } id && id != Guid.Empty ? id : null;
 
     private static async Task<Lien?> ResolveGrantedBuyerLienAsync(LiensDbContext db, Guid tenantId, Guid buyerOrgId, Guid lienId, CancellationToken ct)
     {
