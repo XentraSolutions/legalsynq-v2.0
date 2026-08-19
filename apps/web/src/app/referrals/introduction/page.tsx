@@ -13,36 +13,36 @@ export default async function IntroductionPage({ searchParams }: any) {
   const sp = await searchParams;
   const token = sp.token?.trim() ?? "";
 
-  // if (!token) {
-  //   redirect("/referrals/accept/invalid?reason=missing-token");
-  // }
+  if (!token) {
+    redirect("/referrals/accept/invalid?reason=missing-token");
+  }
 
   let threadData: any = null;
-  // let failureReason: string | null = null;
+  let failureReason: string | null = null;
 
-  // try {
-  //   const resp = await fetchPublicCareConnect(
-  //     `/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
-  //   );
-  //   console.log(resp, "hereee");
+  try {
+    const resp = await fetchPublicCareConnect(
+      `/api/public/referrals/thread?token=${encodeURIComponent(token)}`,
+    );
+    console.log(resp, "hereee");
 
-  //   if (resp.ok) {
-  //     threadData = await resp.json();
-  //     console.log(threadData, "hereee");
-  //   } else {
-  //     failureReason = await readPublicReferralFailureReason(resp);
-  //   }
-  // } catch {
-  //   threadData = null;
-  // }
+    if (resp.ok) {
+      threadData = await resp.json();
+      console.log(threadData, "hereee");
+    } else {
+      failureReason = await readPublicReferralFailureReason(resp);
+    }
+  } catch {
+    threadData = null;
+  }
 
-  // if (!threadData) {
-  //   redirect(
-  //     `/referrals/accept/invalid?reason=${mapFailureReasonToInvalidReason(failureReason)}`,
-  //   );
-  // }
+  if (!threadData) {
+    redirect(
+      `/referrals/accept/invalid?reason=${mapFailureReasonToInvalidReason(failureReason)}`,
+    );
+  }
 
-  const activateUrl = ""; //`/referrals/activate?referralId=${threadData.referralId}&token=${encodeURIComponent(token)}&companyName=${encodeURIComponent(threadData.providerName)}`;
+  const activateUrl = `/referrals/activate?referralId=${threadData.referralId}&token=${encodeURIComponent(token)}&companyName=${encodeURIComponent(threadData.providerName)}`;
 
   const cardDetails = [
     {
