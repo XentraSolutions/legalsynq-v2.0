@@ -204,10 +204,10 @@ export function mapMedicalInfo(
     id: result.id,
     caseId: result.caseId,
     status: result.status,
-    purchaseDate: dateConvertertoIso(result.purchaseDate),
-    initialServiceDate: dateConvertertoIso(result.initialServiceDate),
+    purchaseDate: dateConvertertoIso(formatDateField(result.purchaseDate)),
+    initialServiceDate: dateConvertertoIso(formatDateField(result.initialServiceDate)),
     endServiceDate: result.endServiceDate
-      ? dateConvertertoIso(result.endServiceDate)
+      ? dateConvertertoIso(formatDateField(result.endServiceDate))
       : "",
     note: result.note,
     isBulk: result.isBulk == "Yes" ? "true" : "false",
