@@ -249,7 +249,7 @@ export function AddPaymentForm({
         ...selectedPayment,
         lienStatus: isEditing
           ? selectedPayment.lienStatus
-          : (active ?? lienStatusOptions[0]?.code ?? ""),
+          : (active ?? lienStatusOptions[1]?.code ?? ""),
       }));
       if(isEditing) {
        const filtered = new Set(openLiens.filter((l)=>l.id == selectedPayment.lienId).map((l) => l.id))
