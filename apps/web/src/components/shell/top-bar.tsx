@@ -12,6 +12,7 @@ import { useTenantBranding } from "@/providers/tenant-branding-provider";
 import { NotificationBell } from "@/components/shell/notification-bell";
 import { XeniaAssistant } from "@/components/xenia/xenia-assistant";
 import type { PlatformSession } from "@/types";
+import { GlobalSearch } from "../ui/global-search";
 
 // ── All platform products shown in the app switcher ──────────────────────────
 
@@ -68,7 +69,7 @@ const ALL_PRODUCTS = [
 export function TopBar() {
   const { session, clearSession, logout } = useSession();
   const branding = useTenantBranding();
-
+  const { selectedProductId } = useProduct();
   const [portalConfig, setPortalConfig] = useState<PortalConfig | null>(null);
   useEffect(() => {
     setPortalConfig(getClientPortalConfig());
@@ -112,7 +113,10 @@ export function TopBar() {
       )}
 
       {/* ── Spacer ──────────────────────────────────────────────────────── */}
-      <div className="flex-1" />
+      <div className="flex-1" /> 
+      {/* added a global search for liens feature */}
+        {selectedProductId == "lien" && (<GlobalSearch></GlobalSearch>)}
+      <div className="flex-1" /> 
 
       {/* ── Notification bell ──────────────────────────────────────────── */}
       {session && hasProductAccess(session, "xenia") && (
