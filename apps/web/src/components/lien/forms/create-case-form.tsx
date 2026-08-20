@@ -1,9 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { FormModal } from "@/components/lien/modal";
+import { useRouter } from "next/navigation";
+import { FormModal, Modal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
-import { type CreateCaseRequestDto } from "@/lib/cases";
+import {
+  casesService,
+  type CaseDuplicateMatchDto,
+  type CreateCaseRequestDto,
+} from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
 import { getCreateCaseFormErrors } from "./create-case-form-validator";
 import Field from "../field";
@@ -112,8 +117,9 @@ export function CreateCaseForm({
   onClose,
   onCreated,
 }: CreateCaseFormProps) {
+  const router = useRouter();
   const { lookup } = useSessionContext();
-  const { mutateAsync: createCase, isPending } = useCreateCase();
+  const { mutateAsync: createCase } = useCreateCase();
 
   const addToast = useLienStore((s) => s.addToast);
   const [form, setForm] = useState({
@@ -138,6 +144,10 @@ export function CreateCaseForm({
 
   const [isValid, setIsValid] = useState(false);
   const [showLitigationForm, setShowLitigationForm] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    message: string;
+    matches: CaseDuplicateMatchDto[];
+  } | null>(null);
 
   const [touched, setTouched] = useState<
     Record<keyof typeof INITIAL_FORM, boolean>
@@ -231,50 +241,69 @@ export function CreateCaseForm({
     return formatter.format(date);
   };
 
+  const buildRequest = (): CreateCaseRequestDto => {
+    return {
+      // caseNumber: form.caseNumber.trim(),
+      firstname: form.clientFirstName.trim(),
+      lastname: form.clientLastName.trim(),
+      externalReference: form.externalReference.trim(),
+      title: form.title.trim() || undefined,
+      dob: dateConverter(form.clientDob) || undefined,
+      phone: form.clientPhone.trim(),
+      email: form.clientEmail.trim(),
+      address: form.clientAddress.trim(),
+      city: form.clientCity.trim(),
+      state: form.clientState,
+      zipcode: form.clientZipcode,
+      dateOfLoss: dateConverter(form.dateOfIncident) || undefined,
+      insuranceCarrier: form.insuranceCarrier.trim() || undefined,
+      policyNumber: form.policyNumber.trim(),
+      claimNumber: form.claimNumber.trim(),
+      description: form.notes.trim() || undefined,
+      notes: form.notes.trim(),
+      caseStatusId: form.caseStatusId,
+      lawfirmId: form.lawfirmId || undefined,
+      accidentTypeId: form.accidentTypeId || undefined,
+      accidentStateId:
+        data.accidentState.find((s) => s.value == form.accidentStateId)?.key ??
+        "",
+      caseManagerId: form.caseManagerId || undefined,
+      isServicing: form.isServicing == "true",
+      caseType: form.accidentTypeId || undefined,
+      dateOfIncident: dateConverter(form.dateOfIncident) || undefined,
+      stateOfIncident: form.accidentStateId || undefined,
+      minorComp: isMinor() ? "true" : "false",
+    };
+  };
+
+  const markAllTouched = () => {
+    setTouched(
+      Object.keys(INITIAL_FORM).reduce(
+        (acc, key) => ({ ...acc, [key as keyof typeof INITIAL_FORM]: true }),
+        {} as Record<keyof typeof INITIAL_FORM, boolean>,
+      ),
+    );
+  };
+
   const handleSubmit = async () => {
     if (!validate()) {
-      setTouched(
-        Object.keys(INITIAL_FORM).reduce(
-          (acc, key) => ({ ...acc, [key as keyof typeof INITIAL_FORM]: true }),
-          {} as Record<keyof typeof INITIAL_FORM, boolean>,
-        ),
-      );
+      markAllTouched();
       return;
     }
+
     setSubmitting(true);
     try {
-      const request: CreateCaseRequestDto = {
-        // caseNumber: form.caseNumber.trim(),
-        firstname: form.clientFirstName.trim(),
-        lastname: form.clientLastName.trim(),
-        externalReference: form.externalReference.trim(),
-        title: form.title.trim() || undefined,
-        dob: dateConverter(form.clientDob) || undefined,
-        phone: form.clientPhone.trim(),
-        email: form.clientEmail.trim(),
-        address: form.clientAddress.trim(),
-        city: form.clientCity.trim(),
-        state: form.clientState,
-        zipcode: form.clientZipcode,
-        dateOfLoss: dateConverter(form.dateOfIncident) || undefined,
-        insuranceCarrier: form.insuranceCarrier.trim() || undefined,
-        policyNumber: form.policyNumber.trim(),
-        claimNumber: form.claimNumber.trim(),
-        description: form.notes.trim() || undefined,
-        notes: form.notes.trim(),
-        caseStatusId: form.caseStatusId,
-        lawfirmId: form.lawfirmId || undefined,
-        accidentTypeId: form.accidentTypeId || undefined,
-        accidentStateId:
-          data.accidentState.find((s) => s.value == form.accidentStateId)
-            ?.key ?? "",
-        caseManagerId: form.caseManagerId || undefined,
-        isServicing: form.isServicing == "true",
-        caseType: form.accidentTypeId || undefined,
-        dateOfIncident: dateConverter(form.dateOfIncident) || undefined,
-        stateOfIncident: form.accidentStateId || undefined,
-        minorComp: isMinor() ? "true" : "false",
-      };
+      const request = buildRequest();
+      const duplicate = await casesService.checkDuplicateCase(request);
+      if (duplicate.isDuplicate && duplicate.matches.length > 0) {
+        setDuplicateWarning({
+          message:
+            duplicate.message ||
+            "A case with similar information already exists. Would you like to view the existing case?",
+          matches: duplicate.matches,
+        });
+        return;
+      }
 
       const res = await createCase(request);
       addToast({
@@ -319,6 +348,7 @@ export function CreateCaseForm({
     setForm({ ...INITIAL_FORM });
     setErrors({});
     setIsValid(false);
+    setDuplicateWarning(null);
     setTouched(
       Object.keys(INITIAL_FORM).reduce(
         (acc, key) => ({ ...acc, [key as keyof typeof INITIAL_FORM]: false }),
@@ -326,6 +356,16 @@ export function CreateCaseForm({
       ),
     );
     onClose();
+  };
+
+  const closeDuplicateWarning = () => {
+    setDuplicateWarning(null);
+  };
+
+  const viewDuplicateCase = (caseId: string) => {
+    setDuplicateWarning(null);
+    onClose();
+    router.push(`/lien/cases/${caseId}`);
   };
 
   const checkStatus = (caseStatus: string) => {
@@ -589,6 +629,65 @@ export function CreateCaseForm({
           }}
         />
       )}
+      {duplicateWarning && (
+        <Modal
+          open={Boolean(duplicateWarning)}
+          onClose={closeDuplicateWarning}
+          title="Potential Duplicate Case"
+          size="md"
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={closeDuplicateWarning}
+                className="text-sm px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-600"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => viewDuplicateCase(duplicateWarning.matches[0].id)}
+                className="text-sm px-4 py-2 rounded-lg text-white bg-primary hover:bg-primary/90"
+              >
+                View Existing Case
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-gray-700">{duplicateWarning.message}</p>
+            <div className="space-y-2">
+              {duplicateWarning.matches.map((match) => (
+                <button
+                  key={match.id}
+                  type="button"
+                  onClick={() => viewDuplicateCase(match.id)}
+                  className="w-full text-left rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 hover:bg-amber-100"
+                >
+                  <span className="block text-sm font-medium text-gray-900">
+                    {match.clientDisplayName ||
+                      `${match.clientFirstName} ${match.clientLastName}`.trim()}
+                  </span>
+                  <span className="block text-xs text-gray-600">
+                    {match.caseNumber} | DOB{" "}
+                    {formatDisplayDate(match.clientDob)} | DOL{" "}
+                    {formatDisplayDate(match.dateOfIncident)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </Modal>
+      )}
     </>
   );
+}
+
+function formatDisplayDate(value?: string | null): string {
+  if (!value) return "N/A";
+  const isoDate = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoDate) return `${isoDate[2]}/${isoDate[3]}/${isoDate[1]}`;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-US").format(date);
 }

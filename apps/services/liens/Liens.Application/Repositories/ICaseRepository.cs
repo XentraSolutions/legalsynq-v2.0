@@ -9,6 +9,11 @@ public interface ICaseRepository
     Task<Case?> GetByCaseNumberAsync(Guid tenantId, string caseNumber, CancellationToken ct = default);
     Task<Case?> GetByExternalReferenceAsync(Guid tenantId, string externalReference, CancellationToken ct = default);
     Task<List<Case>> GetByCaseNumberPrefixAsync(Guid tenantId, string caseNumberPrefix, CancellationToken ct = default);
+    Task<List<Case>> GetPotentialDuplicateCandidatesAsync(
+        Guid tenantId,
+        DateOnly clientDob,
+        DateOnly dateOfIncident,
+        CancellationToken ct = default);
     Task<List<Case>> SearchUnlinkedReportCasesAsync(
         Guid tenantId,
         string? search,

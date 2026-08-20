@@ -5,6 +5,7 @@ using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
 using Liens.Application.Services;
+using Liens.Api;
 using Liens.Domain;
 using Liens.Domain.Enums;
 using Liens.Api.Serialization;
@@ -60,7 +61,6 @@ public static class CaseEndpoints
         ".xls",
         ".csv",
     ];
-    private const long LegacyMaxDocumentUploadBytes = 50L * 1024 * 1024;
 
     private sealed class LegacyCreateCaseRequest
     {
@@ -560,6 +560,9 @@ public static class CaseEndpoints
         group.MapPost("/", CreateCase)
             .RequirePermission(LiensPermissions.CaseCreate);
 
+        group.MapPost("/duplicate-check", CheckDuplicateCase)
+            .RequirePermission(LiensPermissions.CaseCreate);
+
         // Legacy compatibility route from previous service: POST /case/v3
         // under the new base path becomes POST /api/liens/cases/v3.
         group.MapPost("/v3", GetCasesV3Legacy)
@@ -619,7 +622,7 @@ public static class CaseEndpoints
         // under the new base path becomes POST /api/liens/cases/liens/upload/document.
         group.MapPost("/liens/upload/document", UploadLienDocumentLegacy)
             .RequirePermission(LiensPermissions.LienUpdate)
-            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LegacyMaxDocumentUploadBytes))
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LiensUploadLimits.MultipartRequestBytes))
             .DisableAntiforgery();
 
         // Legacy compatibility route from previous service: GET /case/liens/get-medicaldocument/{liensId}
@@ -631,7 +634,7 @@ public static class CaseEndpoints
         // under the new base path becomes POST /api/liens/cases/upload/document.
         group.MapPost("/upload/document", UploadCaseDocumentLegacy)
             .RequirePermission(LiensPermissions.CaseUpdate)
-            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LegacyMaxDocumentUploadBytes))
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LiensUploadLimits.MultipartRequestBytes))
             .DisableAntiforgery();
 
         // Legacy compatibility route from previous service: GET /case/get-allcasedocument/{caseId}
@@ -1439,7 +1442,21 @@ public static class CaseEndpoints
         var tenantId = RequireTenantId(ctx);
         var userId = RequireUserId(ctx);
 
-        if (!Guid.TryParse(request.id, out var medicalCodeId))
+        Guid? requestedMedicalCodeId = Guid.TryParse(request.id, out var medicalCodeId)
+            ? medicalCodeId
+            : null;
+        Guid? requestedLienId = Guid.TryParse(request.liensId, out var parsedLienId)
+            ? parsedLienId
+            : null;
+
+        var existing = await ResolveLegacyMedicalCodeForUpdateAsync(
+            tenantId,
+            requestedMedicalCodeId,
+            requestedLienId,
+            request.code,
+            servicingItemService,
+            ct);
+        if (existing is null)
         {
             return Results.NotFound(new
             {
@@ -1448,17 +1465,7 @@ public static class CaseEndpoints
             });
         }
 
-        var existing = await servicingItemService.GetByIdAsync(tenantId, medicalCodeId, ct);
-        if (existing is null || !string.Equals(existing.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
-        {
-            return Results.NotFound(new
-            {
-                isSuccess = false,
-                message = "No record found to update.",
-            });
-        }
-
-        if (Guid.TryParse(request.liensId, out var lienId) && existing.LienId != lienId)
+        if (requestedLienId.HasValue && existing.LienId != requestedLienId)
         {
             return Results.NotFound(new
             {
@@ -1495,7 +1502,7 @@ public static class CaseEndpoints
 
         try
         {
-            await servicingItemService.UpdateAsync(tenantId, medicalCodeId, userId, mapped, ct);
+            await servicingItemService.UpdateAsync(tenantId, existing.Id, userId, mapped, ct);
             return Results.Ok(new
             {
                 isSuccess = true,
@@ -1510,6 +1517,52 @@ public static class CaseEndpoints
                 message = ex.Message,
             });
         }
+    }
+
+    private static async Task<ServicingItemResponse?> ResolveLegacyMedicalCodeForUpdateAsync(
+        Guid tenantId,
+        Guid? requestedMedicalCodeId,
+        Guid? requestedLienId,
+        string? code,
+        IServicingItemService servicingItemService,
+        CancellationToken ct)
+    {
+        if (requestedMedicalCodeId.HasValue)
+        {
+            var byId = await servicingItemService.GetByIdAsync(tenantId, requestedMedicalCodeId.Value, ct);
+            if (byId is not null &&
+                string.Equals(byId.TaskType, "LegacyMedicalCode", StringComparison.Ordinal) &&
+                (!requestedLienId.HasValue || byId.LienId == requestedLienId.Value))
+            {
+                return byId;
+            }
+        }
+
+        if (!requestedLienId.HasValue)
+            return null;
+
+        var result = await SearchLegacyMedicalCodesAsync(
+            servicingItemService,
+            tenantId,
+            requestedLienId.Value,
+            ct);
+        var candidates = result.Items
+            .Where(i => string.Equals(i.TaskType, "LegacyMedicalCode", StringComparison.Ordinal) &&
+                        i.LienId == requestedLienId.Value)
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(code))
+        {
+            var codeMatch = candidates.FirstOrDefault(i =>
+                string.Equals(
+                    ParseLegacyNoteFields(i.Notes).GetValueOrDefault("code", string.Empty),
+                    code.Trim(),
+                    StringComparison.OrdinalIgnoreCase));
+            if (codeMatch is not null)
+                return codeMatch;
+        }
+
+        return candidates.Count == 1 ? candidates[0] : null;
     }
 
     private static Task<IResult> UploadCaseDocumentLegacy(
@@ -1720,12 +1773,12 @@ public static class CaseEndpoints
         if (file.Length == 0)
             return Results.BadRequest(new { isSuccess = false, message = "Empty file upload not allowed" });
 
-        if (file.Length > LegacyMaxDocumentUploadBytes)
+        if (file.Length > LiensUploadLimits.MaxBytes)
         {
             return Results.BadRequest(new
             {
                 isSuccess = false,
-                message = "File size exceeds the allowed limit (50 MB)",
+                message = $"File size exceeds the allowed limit ({LiensUploadLimits.MaxMegabytes} MB)",
             });
         }
 
@@ -4848,6 +4901,27 @@ public static class CaseEndpoints
         var result = await caseService.CreateAsync(tenantId, orgId, userId, request, ct);
         await CreateCaseHistoryEntryAsync(result, caseNoteService, tenantId, userId, ctx, ct);
         return Results.Created($"/api/liens/cases/{result.Id}", result);
+    }
+
+    private static async Task<IResult> CheckDuplicateCase(
+        LegacyCreateCaseRequest request,
+        ICaseService caseService,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId(ctx);
+        var result = await caseService.CheckDuplicatesAsync(
+            tenantId,
+            new CaseDuplicateCheckRequest
+            {
+                ClientFirstName = request.firstname ?? string.Empty,
+                ClientLastName = request.lastname ?? string.Empty,
+                ClientDob = ParseLegacyDate(request.dob),
+                DateOfIncident = ParseLegacyDate(request.dateOfLoss),
+            },
+            ct);
+
+        return Results.Ok(result);
     }
 
     private static Task CreateCaseHistoryEntryAsync(

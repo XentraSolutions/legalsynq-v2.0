@@ -3,6 +3,7 @@ import type {
   CaseResponseDto,
   PaginatedResultDto,
   CreateCaseRequestDto,
+  CaseDuplicateCheckResponseDto,
   UpdateCaseRequestDto,
   CasesQuery,
   DashboardStats,
@@ -77,6 +78,13 @@ export const casesApi = {
 
   create(request: CreateCaseRequestDto) {
     return apiClient.post<{ data: { id: string } }>(`${BASE}/create`, request);
+  },
+
+  checkDuplicate(request: CreateCaseRequestDto) {
+    return apiClient.post<CaseDuplicateCheckResponseDto>(
+      `${BASE}/duplicate-check`,
+      request,
+    );
   },
 
   mergecase(request: { caseIdA: string; caseIdB: string }) {

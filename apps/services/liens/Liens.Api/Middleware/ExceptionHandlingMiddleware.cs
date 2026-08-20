@@ -1,4 +1,5 @@
 using BuildingBlocks.Exceptions;
+using Liens.Api;
 
 namespace Liens.Api.Middleware;
 
@@ -98,6 +99,32 @@ public class ExceptionHandlingMiddleware
                 }
             });
         }
+        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = new
+                {
+                    code = "file_too_large",
+                    message = $"The uploaded file exceeds the maximum allowed size of {LiensUploadLimits.MaxMegabytes} MB."
+                }
+            });
+        }
+        catch (InvalidDataException ex) when (IsMultipartBodyLimitError(ex))
+        {
+            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = new
+                {
+                    code = "file_too_large",
+                    message = $"The uploaded file exceeds the maximum allowed size of {LiensUploadLimits.MaxMegabytes} MB."
+                }
+            });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception");
@@ -113,4 +140,7 @@ public class ExceptionHandlingMiddleware
             });
         }
     }
+
+    private static bool IsMultipartBodyLimitError(InvalidDataException ex) =>
+        ex.Message.Contains("Multipart body length limit", StringComparison.OrdinalIgnoreCase);
 }

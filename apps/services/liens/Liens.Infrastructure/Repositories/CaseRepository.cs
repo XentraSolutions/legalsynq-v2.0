@@ -53,6 +53,23 @@ public class CaseRepository : ICaseRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<Case>> GetPotentialDuplicateCandidatesAsync(
+        Guid tenantId,
+        DateOnly clientDob,
+        DateOnly dateOfIncident,
+        CancellationToken ct = default)
+    {
+        return await _db.Cases
+            .AsNoTracking()
+            .Where(c =>
+                c.TenantId == tenantId &&
+                c.ClientDob == clientDob &&
+                c.DateOfIncident == dateOfIncident)
+            .OrderByDescending(c => c.CreatedAtUtc)
+            .Take(25)
+            .ToListAsync(ct);
+    }
+
     public async Task<List<Case>> SearchUnlinkedReportCasesAsync(
         Guid tenantId,
         string? search,

@@ -198,6 +198,22 @@ public sealed class CaseService : ICaseService
         return entity is null ? null : await MapToResponseAsync(tenantId, entity, ct);
     }
 
+    public async Task<CaseDuplicateCheckResponse> CheckDuplicatesAsync(
+        Guid tenantId,
+        CaseDuplicateCheckRequest request,
+        CancellationToken ct = default)
+    {
+        var matches = await FindDuplicateMatchesAsync(tenantId, request, ct);
+        return new CaseDuplicateCheckResponse
+        {
+            IsDuplicate = matches.Count > 0,
+            Message = matches.Count > 0
+                ? "A case with similar information already exists. Would you like to view the existing case?"
+                : string.Empty,
+            Matches = matches.Select(MapDuplicateMatch).ToList(),
+        };
+    }
+
     public async Task<CaseResponse> CreateAsync(
         Guid tenantId, Guid orgId, Guid actingUserId,
         CreateCaseRequest request, CancellationToken ct = default)
@@ -217,6 +233,21 @@ public sealed class CaseService : ICaseService
             if (idempotent is not null)
                 return await MapToResponseAsync(tenantId, idempotent, ct);
         }
+
+        var duplicateCheck = await CheckDuplicatesAsync(
+            tenantId,
+            new CaseDuplicateCheckRequest
+            {
+                ClientFirstName = request.ClientFirstName,
+                ClientLastName = request.ClientLastName,
+                ClientDob = request.ClientDob,
+                DateOfIncident = request.DateOfIncident,
+            },
+            ct);
+        if (duplicateCheck.IsDuplicate)
+            throw new ConflictException(
+                "A case with similar information already exists. Would you like to view the existing case?",
+                "CASE_POTENTIAL_DUPLICATE");
 
         var caseNumber = string.IsNullOrWhiteSpace(request.CaseNumber)
             ? await GenerateCaseNumberAsync(tenantId, ct)
@@ -295,6 +326,123 @@ public sealed class CaseService : ICaseService
         _taskGenDispatcher.Dispatch(genContext);
 
         return await MapToResponseAsync(tenantId, entity, ct);
+    }
+
+    private async Task<List<Case>> FindDuplicateMatchesAsync(
+        Guid tenantId,
+        CaseDuplicateCheckRequest request,
+        CancellationToken ct)
+    {
+        if (request.ClientDob is null || request.DateOfIncident is null)
+            return [];
+
+        if (string.IsNullOrWhiteSpace(request.ClientFirstName) ||
+            string.IsNullOrWhiteSpace(request.ClientLastName))
+        {
+            return [];
+        }
+
+        var candidates = await _caseRepo.GetPotentialDuplicateCandidatesAsync(
+            tenantId,
+            request.ClientDob.Value,
+            request.DateOfIncident.Value,
+            ct);
+
+        return candidates
+            .Where(candidate =>
+                IsSimilarName(candidate.ClientFirstName, request.ClientFirstName) &&
+                IsSimilarName(candidate.ClientLastName, request.ClientLastName))
+            .OrderByDescending(candidate => GetNameSimilarityScore(candidate.ClientFirstName, request.ClientFirstName) +
+                                           GetNameSimilarityScore(candidate.ClientLastName, request.ClientLastName))
+            .ThenByDescending(candidate => candidate.CreatedAtUtc)
+            .Take(5)
+            .ToList();
+    }
+
+    private static CaseDuplicateMatchResponse MapDuplicateMatch(Case entity) => new()
+    {
+        Id = entity.Id,
+        CaseNumber = entity.CaseNumber,
+        ClientFirstName = entity.ClientFirstName,
+        ClientLastName = entity.ClientLastName,
+        ClientDisplayName = string.Join(" ", new[] { entity.ClientFirstName, entity.ClientLastName }
+            .Where(value => !string.IsNullOrWhiteSpace(value))),
+        ClientDob = entity.ClientDob,
+        DateOfIncident = entity.DateOfIncident,
+        Status = entity.Status,
+    };
+
+    private static bool IsSimilarName(string? existing, string? incoming) =>
+        GetNameSimilarityScore(existing, incoming) >= 70 ||
+        ContainsNormalized(existing, incoming) ||
+        ContainsNormalized(incoming, existing);
+
+    private static int GetNameSimilarityScore(string? existing, string? incoming)
+    {
+        var normalizedExisting = NormalizeName(existing);
+        var normalizedIncoming = NormalizeName(incoming);
+        if (string.IsNullOrWhiteSpace(normalizedExisting) || string.IsNullOrWhiteSpace(normalizedIncoming))
+            return 0;
+
+        if (normalizedExisting == normalizedIncoming)
+            return 100;
+
+        var distance = LevenshteinDistance(normalizedExisting, normalizedIncoming);
+        var maxLength = Math.Max(normalizedExisting.Length, normalizedIncoming.Length);
+        return maxLength == 0 ? 0 : (int)((1.0 - ((double)distance / maxLength)) * 100);
+    }
+
+    private static bool ContainsNormalized(string? source, string? target)
+    {
+        var normalizedSource = NormalizeName(source);
+        var normalizedTarget = NormalizeName(target);
+        return !string.IsNullOrWhiteSpace(normalizedSource) &&
+               !string.IsNullOrWhiteSpace(normalizedTarget) &&
+               normalizedSource.Length >= 3 &&
+               normalizedTarget.Length >= 3 &&
+               normalizedSource.Contains(normalizedTarget, StringComparison.Ordinal);
+    }
+
+    private static string NormalizeName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var normalized = new System.Text.StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            if (char.IsLetterOrDigit(character))
+                normalized.Append(char.ToLowerInvariant(character));
+        }
+
+        return normalized.ToString();
+    }
+
+    private static int LevenshteinDistance(string source, string target)
+    {
+        if (source.Length == 0)
+            return target.Length;
+        if (target.Length == 0)
+            return source.Length;
+
+        var previous = Enumerable.Range(0, target.Length + 1).ToArray();
+        var current = new int[target.Length + 1];
+
+        for (var sourceIndex = 1; sourceIndex <= source.Length; sourceIndex++)
+        {
+            current[0] = sourceIndex;
+            for (var targetIndex = 1; targetIndex <= target.Length; targetIndex++)
+            {
+                var substitutionCost = source[sourceIndex - 1] == target[targetIndex - 1] ? 0 : 1;
+                current[targetIndex] = Math.Min(
+                    Math.Min(current[targetIndex - 1] + 1, previous[targetIndex] + 1),
+                    previous[targetIndex - 1] + substitutionCost);
+            }
+
+            (previous, current) = (current, previous);
+        }
+
+        return previous[target.Length];
     }
 
     private async Task<string> GenerateCaseNumberAsync(Guid tenantId, CancellationToken ct)

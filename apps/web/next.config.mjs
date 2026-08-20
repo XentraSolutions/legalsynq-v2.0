@@ -31,6 +31,10 @@ const nextConfig = {
     // Reduce peak memory usage during webpack compilation by flushing module
     // data from RAM sooner. Beneficial in memory-constrained build environments.
     webpackMemoryOptimizations: true,
+    // The global Next proxy runs before /api/lien route handlers. Keep its
+    // request-body buffer above SynqLien's 50 MB multipart upload limit so
+    // documents are not rejected before the BFF can forward them.
+    proxyClientMaxBodySize: '60mb',
   },
   webpack(config) {
     // Disable webpack's persistent filesystem cache for production builds.

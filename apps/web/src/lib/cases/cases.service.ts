@@ -69,6 +69,11 @@ export const casesService = {
     return { id: data.data.id };
   },
 
+  async checkDuplicateCase(request: CreateCaseRequestDto) {
+    const { data } = await casesApi.checkDuplicate(request);
+    return data;
+  },
+
   async deleteCase(id: string): Promise<ApiResponse> {
     const { data } = await casesApi.deleteCase(id);
     return data;

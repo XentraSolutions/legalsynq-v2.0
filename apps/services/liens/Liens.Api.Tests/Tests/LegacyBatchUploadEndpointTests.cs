@@ -122,6 +122,27 @@ public class LegacyBatchUploadEndpointTests : IClassFixture<LiensApiFactory>, IA
     }
 
     [Fact]
+    public async Task Upload_accepts_csv_above_previous_20mb_limit()
+    {
+        var largeNote = new string('x', 21 * 1024 * 1024);
+        var csv = $"Notes{Environment.NewLine}{largeNote}{Environment.NewLine}";
+
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent("Large CSV import"), "label");
+        form.Add(new StringContent("ADD_LIENS_EXISTING_CASE"), "template");
+        var file = new ByteArrayContent(Encoding.UTF8.GetBytes(csv));
+        file.Headers.ContentType = new MediaTypeHeaderValue("text/csv");
+        form.Add(file, "file", "large-liens.csv");
+
+        var uploadResponse = await _client.PostAsync("/Batch/Upload", form);
+
+        uploadResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await uploadResponse.Content.ReadAsStringAsync()}");
+        var body = JsonNode.Parse(await uploadResponse.Content.ReadAsStringAsync())!;
+        body["isSuccess"]!.GetValue<bool>().Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Download_template_reconciles_an_existing_lien_template_header()
     {
         var seededResponse = await _client.GetAsync("/Batch/download-template/ADD_LIENS_EXISTING_CASE");

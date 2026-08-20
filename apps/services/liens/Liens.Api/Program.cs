@@ -9,10 +9,12 @@ using Liens.Api.Endpoints;
 using Liens.Api.HostedServices;
 using Liens.Api.Middleware;
 using Liens.Api.Serialization;
+using Liens.Api;
 using Liens.Domain;
 using Liens.Infrastructure;
 using Liens.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -74,6 +76,14 @@ builder.Services.AddAuthorization(options =>
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.Converters.Add(new PacificDateTimeJsonConverterFactory());
+});
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = LiensUploadLimits.MultipartRequestBytes;
+});
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = LiensUploadLimits.MultipartRequestBytes;
 });
 
 builder.Services.AddLiensServices(builder.Configuration);

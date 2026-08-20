@@ -15,6 +15,8 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
 {
     private const string LegacyPayoffTypeId = "14";
     private const string DocumentsServiceAudience = "documents-service";
+    private const string PayoffNavy = "#0B2D52";
+    private const string PayoffBody = "#555667";
     private static readonly Guid LegacyFallbackDocumentTypeId =
         Guid.Parse("00000000-0000-0000-0000-000000000001");
 
@@ -71,7 +73,8 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
             return PayoffQuoteResult.Success(existing.Url, existing.Base64);
 
         var liens = await GetOpenServicingLiensAsync(tenantId, caseId, ct);
-        var pdfBytes = GeneratePdf(existingCase, liens);
+        var payoffLines = await BuildPayoffLinesAsync(tenantId, liens, ct);
+        var pdfBytes = GeneratePdf(existingCase, payoffLines);
         var base64 = Convert.ToBase64String(pdfBytes);
         var fileName = $"PayoffQuote_{caseId}.pdf";
         var documentTypeId = payoffStatementType?.Id ?? LegacyFallbackDocumentTypeId;
@@ -199,9 +202,135 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
 
     private static bool IsOpenServicingLien(LienResponse lien) =>
         LienStatus.Open.Any(status => string.Equals(status, lien.Status, StringComparison.OrdinalIgnoreCase)) &&
-        string.Equals(lien.IsServicing, "Yes", StringComparison.OrdinalIgnoreCase);
+        IsLegacyTrue(lien.IsServicing);
 
-    private static byte[] GeneratePdf(CaseResponse caseInfo, IReadOnlyList<LienResponse> liens)
+    private async Task<List<PayoffQuoteLine>> BuildPayoffLinesAsync(
+        Guid tenantId,
+        IReadOnlyList<LienResponse> liens,
+        CancellationToken ct)
+    {
+        var lines = new List<PayoffQuoteLine>(liens.Count);
+
+        foreach (var lien in liens)
+        {
+            var facilityFields = await GetLatestLegacyFieldsAsync(
+                tenantId,
+                "LegacyMedicalFacilityInfo",
+                lien.CaseId,
+                lien.Id,
+                ct);
+            var codeFields = await GetLegacyMedicalCodeFieldsAsync(tenantId, lien.CaseId, lien.Id, ct);
+
+            var legacyBillingAmount = codeFields.Count == 0
+                ? (decimal?)null
+                : codeFields.Sum(fields => ParseMoney(fields.GetValueOrDefault("billingAmount", string.Empty)));
+
+            lines.Add(new PayoffQuoteLine(
+                MedicalFacility: FirstNonEmpty(
+                    facilityFields.GetValueOrDefault("facilityName", string.Empty),
+                    lien.MedicalFacility,
+                    lien.FacilityId?.ToString()) ?? string.Empty,
+                DateOfService: FormatDate(lien.InitialServiceDate),
+                Amount: legacyBillingAmount ?? GetPayoffLineAmount(lien)));
+        }
+
+        return lines;
+    }
+
+    private async Task<Dictionary<string, string>> GetLatestLegacyFieldsAsync(
+        Guid tenantId,
+        string taskType,
+        Guid? caseId,
+        Guid lienId,
+        CancellationToken ct)
+    {
+        var result = await _servicingItemService.SearchAsync(
+            tenantId,
+            search: taskType,
+            status: null,
+            priority: null,
+            assignedTo: null,
+            caseId: null,
+            lienId: lienId,
+            page: 1,
+            pageSize: 100,
+            ct);
+
+        var item = result.Items.FirstOrDefault(i =>
+            string.Equals(i.TaskType, taskType, StringComparison.Ordinal) &&
+            i.LienId == lienId);
+        if (item is not null)
+            return ParseLegacyNoteFields(item.Notes);
+
+        if (!caseId.HasValue)
+            return [];
+
+        result = await _servicingItemService.SearchAsync(
+            tenantId,
+            search: taskType,
+            status: null,
+            priority: null,
+            assignedTo: null,
+            caseId: caseId,
+            lienId: null,
+            page: 1,
+            pageSize: 100,
+            ct);
+
+        item = result.Items.FirstOrDefault(i =>
+            string.Equals(i.TaskType, taskType, StringComparison.Ordinal) &&
+            i.LienId == lienId);
+
+        return item is null ? [] : ParseLegacyNoteFields(item.Notes);
+    }
+
+    private async Task<List<Dictionary<string, string>>> GetLegacyMedicalCodeFieldsAsync(
+        Guid tenantId,
+        Guid? caseId,
+        Guid lienId,
+        CancellationToken ct)
+    {
+        var result = await _servicingItemService.SearchAsync(
+            tenantId,
+            search: "LegacyMedicalCode",
+            status: null,
+            priority: null,
+            assignedTo: null,
+            caseId: null,
+            lienId: lienId,
+            page: 1,
+            pageSize: 100,
+            ct);
+
+        var items = result.Items
+            .Where(i => string.Equals(i.TaskType, "LegacyMedicalCode", StringComparison.Ordinal) &&
+                        i.LienId == lienId)
+            .ToList();
+
+        if (items.Count == 0 && caseId.HasValue)
+        {
+            result = await _servicingItemService.SearchAsync(
+                tenantId,
+                search: "LegacyMedicalCode",
+                status: null,
+                priority: null,
+                assignedTo: null,
+                caseId: caseId,
+                lienId: null,
+                page: 1,
+                pageSize: 100,
+                ct);
+
+            items = result.Items
+                .Where(i => string.Equals(i.TaskType, "LegacyMedicalCode", StringComparison.Ordinal) &&
+                            i.LienId == lienId)
+                .ToList();
+        }
+
+        return items.Select(item => ParseLegacyNoteFields(item.Notes)).ToList();
+    }
+
+    private static byte[] GeneratePdf(CaseResponse caseInfo, IReadOnlyList<PayoffQuoteLine> lines)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
@@ -209,55 +338,102 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
         {
             container.Page(page =>
             {
-                page.Size(PageSizes.Letter);
-                page.Margin(40);
-                page.DefaultTextStyle(x => x.FontSize(10));
+                page.Size(PageSizes.A4);
+                page.MarginHorizontal(16);
+                page.MarginVertical(25);
+                page.DefaultTextStyle(x => x
+                    .FontFamily("Times New Roman", "Georgia", "Liberation Serif", "DejaVu Serif")
+                    .FontSize(14)
+                    .FontColor(PayoffBody)
+                    .LineHeight(1.15f));
 
-                page.Header().Column(col =>
+                page.Content().Column(col =>
                 {
-                    col.Item().Text("Payoff Report").Bold().FontSize(18).FontColor(Colors.Grey.Darken3);
-                    col.Item().PaddingTop(3).Text($"{caseInfo.ClientFirstName} {caseInfo.ClientLastName}".Trim()).FontSize(12);
-                    col.Item().Text($"Date of Loss: {FormatDate(caseInfo.DateOfIncident)}").FontSize(9).FontColor(Colors.Grey.Darken1);
-                    col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
-                });
+                    col.Spacing(18);
 
-                page.Content().PaddingVertical(14).Column(col =>
-                {
-                    col.Spacing(10);
-                    col.Item().Text("Thank you for your inquiry regarding the payoff details for the referenced account. The current payoff amount is below for your convenience.");
+                    col.Item().Text($"RE: {BuildClientReference(caseInfo)} / DOL {FormatDate(caseInfo.DateOfIncident)}")
+                        .Bold()
+                        .FontSize(14)
+                        .FontColor(PayoffNavy);
 
-                    col.Item().Table(table =>
+                    col.Item().Column(intro =>
+                    {
+                        intro.Spacing(8);
+                        intro.Item().Text("PAYOUT INFORMATION")
+                            .Bold()
+                            .FontSize(18)
+                            .FontColor(PayoffNavy);
+                        intro.Item().Text("Thank you for your inquiry regarding the payoff details for the referenced individual. We are pleased to provide the current payoff amount below for your convenience:");
+                    });
+
+                    col.Item().PaddingTop(14).Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
                         {
-                            columns.RelativeColumn(2);
-                            columns.RelativeColumn();
+                            columns.RelativeColumn(2.15f);
+                            columns.RelativeColumn(1.05f);
                             columns.RelativeColumn();
                         });
 
                         table.Header(header =>
                         {
-                            HeaderCell(header, "Facility");
-                            HeaderCell(header, "Service Date");
-                            HeaderCell(header, "Amount");
+                            PayoffHeaderCell(header, "Medical Facility");
+                            PayoffHeaderCell(header, "Date of Service");
+                            PayoffHeaderCell(header, "Total Amount");
                         });
 
-                        foreach (var lien in liens)
+                        if (lines.Count == 0)
                         {
-                            BodyCell(table, FirstNonEmpty(lien.MedicalFacility, lien.FacilityId?.ToString()) ?? string.Empty);
-                            BodyCell(table, FormatDate(lien.InitialServiceDate));
-                            BodyCell(table, FormatMoney(lien.TotalBilling ?? lien.PayoffAmount ?? lien.CurrentBalance ?? lien.OriginalAmount));
+                            PayoffBodyCell(table, "No open servicing liens found");
+                            PayoffBodyCell(table, FormatDate(caseInfo.DateOfIncident));
+                            PayoffBodyCell(table, FormatMoney(0m));
+                        }
+                        else
+                        {
+                            foreach (var line in lines)
+                            {
+                                PayoffBodyCell(table, line.MedicalFacility);
+                                PayoffBodyCell(table, line.DateOfService);
+                                PayoffBodyCell(table, FormatMoney(line.Amount));
+                            }
                         }
                     });
 
-                    col.Item().AlignRight().Text($"Total Billing Amount: {FormatMoney(liens.Sum(GetPayoffLineAmount))}").Bold();
-                });
+                    col.Item().PaddingTop(4).Element(container => PayoffTotalBox(
+                        container,
+                        FormatMoney(lines.Sum(line => line.Amount))));
 
-                page.Footer().AlignCenter().Text(text =>
-                {
-                    text.Span("Generated ").FontSize(8).FontColor(Colors.Grey.Medium);
-                    text.Span(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC", CultureInfo.InvariantCulture)).FontSize(8).FontColor(Colors.Grey.Medium);
-                    text.Span(" - LegalSynq").FontSize(8).FontColor(Colors.Grey.Medium);
+                    col.Item().PaddingTop(10).Text(text =>
+                    {
+                        text.Span("To ensure timely and accurate processing of your payments, please direct all invoices payable to Guardian Liens LLC to our lockbox address or submit electronic payments as outlined below. ");
+                        text.Span("Please send all remittances to team@guardianliens.com").Bold();
+                    });
+
+                    col.Item().PaddingLeft(15).PaddingRight(35).Row(row =>
+                    {
+                        row.RelativeItem().Column(address =>
+                        {
+                            address.Spacing(10);
+                            address.Item().Text("Physical payment address:").Bold().FontSize(14).FontColor(PayoffNavy);
+                            address.Item().Text("Guardian Liens LLC\nP.O. BOX 150111\nOgden, UT 84415");
+                        });
+
+                        row.RelativeItem().Column(payment =>
+                        {
+                            payment.Spacing(10);
+                            payment.Item().Text("Electronic payments information:").Bold().FontSize(14).FontColor(PayoffNavy);
+                            payment.Item().Text("Guardian Liens LLC\nAccount #: 380003977\nRouting #: 124384657");
+                        });
+                    });
+
+                    col.Item().Text("If you have any questions, please feel free to contact us at team@guardianliens.com.");
+
+                    col.Item().Column(signature =>
+                    {
+                        signature.Spacing(10);
+                        signature.Item().Text("Sincerely,");
+                        signature.Item().Text("Guardian Liens Team").Bold().FontSize(24).FontColor("#174A82");
+                    });
                 });
             });
         });
@@ -268,14 +444,28 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
     private static decimal GetPayoffLineAmount(LienResponse lien) =>
         lien.TotalBilling ?? lien.PayoffAmount ?? lien.CurrentBalance ?? lien.OriginalAmount;
 
-    private static void HeaderCell(TableCellDescriptor table, string text)
+    private static void PayoffHeaderCell(TableCellDescriptor table, string text)
     {
-        table.Cell().Background(Colors.Grey.Lighten3).Padding(5).Text(text).Bold();
+        table.Cell().PaddingBottom(22).Text(text).Bold().FontSize(14).FontColor(PayoffNavy);
     }
 
-    private static void BodyCell(TableDescriptor table, string text)
+    private static void PayoffBodyCell(TableDescriptor table, string text)
     {
-        table.Cell().BorderBottom(1).BorderColor(Colors.Grey.Lighten2).Padding(5).Text(text);
+        table.Cell().BorderBottom(0.75f).BorderColor(Colors.Grey.Lighten1).PaddingBottom(14).Text(text);
+    }
+
+    private static void PayoffTotalBox(IContainer container, string total)
+    {
+        container
+            .Border(0.75f)
+            .BorderColor(PayoffNavy)
+            .PaddingHorizontal(10)
+            .PaddingVertical(14)
+            .Row(row =>
+            {
+                row.RelativeItem().Text("TOTAL OUTSTANDING BALANCE:").FontSize(15).FontColor(PayoffNavy);
+                row.AutoItem().Text(total).Bold().FontSize(14).FontColor(PayoffNavy);
+            });
     }
 
     private static string BuildLegacyDocumentNotes(
@@ -454,6 +644,42 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
     private static string FormatMoney(decimal amount) =>
         amount.ToString("C2", CultureInfo.GetCultureInfo("en-US"));
 
+    private static decimal ParseMoney(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return 0m;
+
+        var normalized = value.Trim().Replace("$", string.Empty, StringComparison.Ordinal);
+        return decimal.TryParse(
+            normalized,
+            NumberStyles.AllowThousands | NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign,
+            CultureInfo.InvariantCulture,
+            out var amount)
+            ? amount
+            : 0m;
+    }
+
+    private static bool IsLegacyTrue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        return value.Trim().ToUpperInvariant() switch
+        {
+            "YES" or "Y" or "TRUE" or "1" => true,
+            _ => false,
+        };
+    }
+
+    private static string BuildClientReference(CaseResponse caseInfo)
+    {
+        var displayName = FirstNonEmpty(
+            caseInfo.ClientDisplayName,
+            $"{caseInfo.ClientFirstName} {caseInfo.ClientLastName}") ?? "UNKNOWN";
+
+        return displayName.ToUpperInvariant();
+    }
+
     private static string? FirstNonEmpty(params string?[] values)
     {
         foreach (var value in values)
@@ -469,4 +695,6 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
     {
         public string Base64 { get; init; } = string.Empty;
     }
+
+    private sealed record PayoffQuoteLine(string MedicalFacility, string DateOfService, decimal Amount);
 }

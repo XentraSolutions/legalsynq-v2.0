@@ -7,12 +7,20 @@ using Microsoft.IdentityModel.Tokens;
 
 const string ServiceName = "gateway";
 const string Version = "v1";
+const long SynqLienUploadRequestLimitBytes = 60L * 1024 * 1024;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging
     .ClearProviders()
     .AddConsole();
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    // Permit SynqLien's 50 MB multipart uploads through the edge gateway.
+    // Downstream services still enforce their own product-specific file limits.
+    options.Limits.MaxRequestBodySize = SynqLienUploadRequestLimitBytes;
+});
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var signingKey = jwtSection["SigningKey"]

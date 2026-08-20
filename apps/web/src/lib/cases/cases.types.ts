@@ -105,6 +105,23 @@ export interface CreateCaseRequestDto {
   minorComp: string;
 }
 
+export interface CaseDuplicateMatchDto {
+  id: string;
+  caseNumber: string;
+  clientFirstName: string;
+  clientLastName: string;
+  clientDisplayName: string;
+  clientDob?: string | null;
+  dateOfIncident?: string | null;
+  status: string;
+}
+
+export interface CaseDuplicateCheckResponseDto {
+  isDuplicate: boolean;
+  message: string;
+  matches: CaseDuplicateMatchDto[];
+}
+
 export interface UpdateCaseRequestDto {
   caseId: string;
   currentStatus: string;

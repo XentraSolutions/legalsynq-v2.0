@@ -560,6 +560,9 @@ internal sealed class CapturingLegacyDocumentUploadClient : ILegacyDocumentUploa
         CancellationToken ct = default)
     {
         var documentId = Guid.CreateVersion7();
+        using var content = new MemoryStream();
+        request.Content.CopyTo(content);
+
         _uploads.Add(new CapturedLegacyDocumentUpload(
             request.TenantId,
             request.ActingUserId,
@@ -570,6 +573,7 @@ internal sealed class CapturingLegacyDocumentUploadClient : ILegacyDocumentUploa
             request.FileName,
             request.ContentType,
             request.Length,
+            content.ToArray(),
             documentId));
 
         return Task.FromResult(new LegacyDocumentUploadResult
@@ -590,4 +594,5 @@ internal sealed record CapturedLegacyDocumentUpload(
     string FileName,
     string ContentType,
     long Length,
+    byte[] Content,
     Guid DocumentId);

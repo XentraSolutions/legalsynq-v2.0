@@ -226,6 +226,53 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task MedicalCode_update_falls_back_to_lien_and_code_when_row_id_is_stale()
+    {
+        var code = "45385";
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/medicalcode",
+            new
+            {
+                id = (string?)null,
+                liensId = SeedHelper.LienId.ToString(),
+                code,
+                medicareCost = "879.00",
+                billingAmount = "1000.00",
+                purchaseAmount = "750.00",
+                payee = "",
+                outboundCheckNumber = "",
+            });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var updateResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/update-medicalcode",
+            new
+            {
+                id = Guid.CreateVersion7().ToString(),
+                liensId = SeedHelper.LienId.ToString(),
+                code,
+                medicareCost = "879.00",
+                billingAmount = "1000.00",
+                purchaseAmount = "1000.00",
+                payee = "",
+                outboundCheckNumber = "",
+            });
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updateResponse.Content.ReadAsStringAsync()}");
+
+        var getResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medicalcode/{SeedHelper.LienId}");
+        getResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await getResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await getResponse.Content.ReadAsStringAsync())!;
+        var item = body["data"]!
+            .AsArray()
+            .Single(item => item!["code"]!.GetValue<string>() == code)!;
+        item["purchaseAmount"]!.GetValue<string>().Should().Be("1000.00");
+    }
+
+    [Fact]
     public async Task DeleteMedicalCode_deletes_single_row_when_given_medical_code_id()
     {
         var codeA = $"A-{Guid.NewGuid():N}"[..10];

@@ -7,6 +7,7 @@ using BuildingBlocks.Notifications;
 using HtmlAgilityPack;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
+using Liens.Api;
 using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
@@ -27,7 +28,6 @@ namespace Liens.Api.Endpoints;
 
 public static class SellingEndpoints
 {
-    private const long SellingImportMaxBytes = 50L * 1024 * 1024;
     private const string SellingPatientDetailsTemplate = "SELLING_PATIENT_DETAILS_REPORT";
     private const string DocumentsServiceAudience = "documents-service";
     private static readonly HashSet<string> AllowedSellingImportExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -60,14 +60,14 @@ public static class SellingEndpoints
 
         group.MapPost("/imports/patient-details", ImportPatientDetailsReport)
             .RequirePermission(LiensPermissions.LienSaleCreate)
-            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(SellingImportMaxBytes));
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LiensUploadLimits.MultipartRequestBytes));
 
         group.MapGet("/bulk-import-template", DownloadBulkImportTemplate)
             .RequirePermission(LiensPermissions.LienSaleRead);
 
         group.MapPost("/bulk-imports", CreateBulkImport)
             .RequirePermission(LiensPermissions.LienSaleCreate)
-            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(SellingImportMaxBytes))
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LiensUploadLimits.MultipartRequestBytes))
             .DisableAntiforgery();
 
         group.MapGet("/dashboard", GetDashboard)
@@ -2035,14 +2035,14 @@ public static class SellingEndpoints
             });
         }
 
-        if (file.Length > SellingImportMaxBytes)
+        if (file.Length > LiensUploadLimits.MaxBytes)
         {
             return Results.BadRequest(new
             {
                 error = new
                 {
                     code = "file_too_large",
-                    message = $"The file exceeds the maximum allowed size of {SellingImportMaxBytes / (1024 * 1024)} MB.",
+                    message = $"The file exceeds the maximum allowed size of {LiensUploadLimits.MaxMegabytes} MB.",
                 },
             });
         }
@@ -2221,14 +2221,14 @@ public static class SellingEndpoints
             });
         }
 
-        if (file.Length > SellingImportMaxBytes)
+        if (file.Length > LiensUploadLimits.MaxBytes)
         {
             return Results.BadRequest(new
             {
                 error = new
                 {
                     code = "file_too_large",
-                    message = $"The file exceeds the maximum allowed size of {SellingImportMaxBytes / (1024 * 1024)} MB.",
+                    message = $"The file exceeds the maximum allowed size of {LiensUploadLimits.MaxMegabytes} MB.",
                 },
             });
         }

@@ -1141,6 +1141,43 @@ Create a new case.
 
 Returns the created case with a `Location` header pointing to `/api/liens/cases/{id}`.
 Creation also adds a `Case Created` entry to the legacy case-update history endpoint (`POST /api/liens/cases/case-updates/v3`), including the case code, client, status, law firm, manager, and creator.
+Potential duplicate cases are rejected before save when DOB and date of loss exactly match an existing case and first/last names closely or partially match. Clients can call `POST /api/liens/cases/duplicate-check` before create to display the existing case link.
+
+### POST `/api/liens/cases/duplicate-check`
+
+Checks a pending case creation for duplicate risk without saving.
+
+**Permission:** `SYNQ_LIENS.case:create`
+
+**Request Body:**
+
+```json
+{
+  "firstname": "Jane",
+  "lastname": "Doe",
+  "dob": "01/15/1990",
+  "dateOfLoss": "08/01/2026"
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "isDuplicate": true,
+  "message": "A case with similar information already exists. Would you like to view the existing case?",
+  "matches": [
+    {
+      "id": "guid",
+      "caseNumber": "26-00042",
+      "clientDisplayName": "Jane Doe",
+      "clientDob": "1990-01-15",
+      "dateOfIncident": "2026-08-01",
+      "status": "PreDemand"
+    }
+  ]
+}
+```
 
 ---
 
@@ -1224,6 +1261,12 @@ Returns the latest payoff statement URL for the case. If no payoff document exis
 ```
 
 Missing cases return `404` with `Error: Unable to retrieve Payoff Quote`.
+
+---
+
+## Upload Limits
+
+All SynqLien multipart upload endpoints accept files up to 50 MB. Requests over the limit return a size error instead of a generic upload failure.
 
 ---
 
