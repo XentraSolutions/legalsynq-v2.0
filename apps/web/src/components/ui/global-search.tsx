@@ -40,7 +40,7 @@ export const GlobalSearch: React.FC = () => {
           onFocus={() => {
             if (inputValue.trim().length >= 2) setIsOpen(true);
           }}
-          onBlur={() => setIsOpen(false)}
+          // onBlur={() => setIsOpen(false)}
           className="bg-white w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
         />
       </div>
@@ -61,46 +61,50 @@ export const GlobalSearch: React.FC = () => {
           {!isLoading &&
             results?.length > 0 &&
             results.map((l: any, index: number) => (
-              <button
+              <div
                 key={index}
-                type="button"
-                onClick={() => {
-                  //   setSearchFocused(false);
-                  router.push(lienDetailHref(l));
-                }}
-                className="w-full text-left py-2.5  border-b border-gray-100 last:border-b-0"
+                className="w-full text-left py-2 border-b border-gray-100 last:border-b-0"
               >
-                <div className="text-md font-semibold px-4 text-primary mt-0.5">
+                {/* Category Title Header */}
+                <div className="text-sm font-bold px-4 text-primary uppercase tracking-wider mb-1">
                   {l.title}
                 </div>
+
+                {/* Items Loop */}
                 {l.items.map((item: any, itemIndex: number) => (
                   <div
                     key={item.id || itemIndex}
-                    className="py-1 hover:bg-gray-50 px-4 "
+                    className="py-2 px-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                    onClick={() => {
+                      setIsOpen(false);
+                      router.push(item.url);
+                    }}
                   >
                     {/* Main Item Name */}
-                    <div className="text-sm font-medium text-gray-900 mt-0.5">
+                    <div className="text-sm font-medium text-gray-900">
                       {item.name}
                     </div>
 
-                    {/* Nested Details Loop */}
-                    {item.details &&
-                      item.details.map((detail: any, detailIndex: number) => (
-                        <div
-                          key={detailIndex}
-                          className="inline-flex items-center space-x-1"
-                        >
-                          <span className="text-primary font-medium text-xs ml-1">
-                            {detail.title}:
-                          </span>
-                          <span className="text-gray-700 text-xs">
-                            {detail.description}
-                          </span>
-                        </div>
-                      ))}
+                    {/* Inline Nested Details Loop */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1">
+                      {item.details &&
+                        item.details.map((detail: any, detailIndex: number) => (
+                          <div
+                            key={detailIndex}
+                            className="inline-flex items-center space-x-1 text-xs"
+                          >
+                            <span className="text-primary font-medium">
+                              {detail.title}:
+                            </span>
+                            <span className="text-gray-700">
+                              {detail.description}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
                   </div>
                 ))}
-              </button>
+              </div>
             ))}
 
           {!isLoading && results.length === 0 && !error && (

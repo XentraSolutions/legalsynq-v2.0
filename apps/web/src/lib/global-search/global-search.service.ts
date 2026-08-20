@@ -8,7 +8,7 @@ export function mapToListItem(dto: any): any {
       title: "Plaintiff Name",
       items: dto.plaintiffs.map((c: any) => ({
         id: c.id,
-        url: `/plaintiffs/${c.id}`,
+        url: `/lien/cases/${c.caseId}/details`,
         name: c.plaintiffName,
         details: [
           { title: "Case Id", description: c.caseCode },
@@ -21,7 +21,7 @@ export function mapToListItem(dto: any): any {
       title: "Medical Providers",
       items: dto.medicalProviders.map((c: any) => ({
         id: c.id,
-        url: `/plaintiffs/${c.id}`,
+        url: `/lien/contacts/${c.contactId}/overview`,
         name: c.name,
         details: [
           { title: "Active Cases", description: c.activeCases },
@@ -33,7 +33,7 @@ export function mapToListItem(dto: any): any {
       title: "Medical Facilities",
       items: dto.medicalFacilities.map((c: any) => ({
         id: c.id,
-        url: `/plaintiffs/${c.id}`,
+        url: `/lien/contacts/${c.contactId}/overview`,
         name: c.name,
         details: [
           { title: "Active Cases", description: c.activeCases },
@@ -45,7 +45,7 @@ export function mapToListItem(dto: any): any {
       title: "Funding Companies",
       items: dto.fundingCompanies.map((c: any) => ({
         id: c.id,
-        url: `/plaintiffs/${c.id}`,
+        url: `/lien/contacts/${c.contactId}/overview`,
         name: c.name,
         details: [
           { title: "Active Cases", description: c.activeCases },
@@ -57,7 +57,7 @@ export function mapToListItem(dto: any): any {
       title: "Leads",
       items: dto.Leads.map((c: any) => ({
         id: c.id,
-        url: `/plaintiffs/${c.id}`,
+        url: `/lien/contacts/${c.contactId}/overview`,
         name: c.name,
         details: [
           { title: "Active Cases", description: c.activeCases },
@@ -69,7 +69,7 @@ export function mapToListItem(dto: any): any {
       title: "Servicing",
       items: dto.servicing.map((c: any) => ({
         id: c.id,
-        url: `/plaintiffs/${c.id}`,
+        url: `/lien/cases/${c.caseId}/servicing`,
         name: c.plaintiffName,
         details: [
           { title: "Case Id", description: c.caseCode },
@@ -82,7 +82,7 @@ export function mapToListItem(dto: any): any {
       title: "Law Firms",
       items: dto.lawFirms.map((c: any) => ({
         id: c.id,
-        url: `/plaintiffs/${c.id}`,
+        url: `/lien/contacts/${c.contactId}/overview`,
         name: c.name,
         details: [
           { title: "Active Cases", description: c.activeCases },
