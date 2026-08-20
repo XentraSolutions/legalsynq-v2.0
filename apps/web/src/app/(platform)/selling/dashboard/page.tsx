@@ -17,6 +17,11 @@ import { Card } from "@/components/ui/dashboard-card";
 import { BaseTable } from "@/components/ui/base-table";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { Segment } from "@/components/lien/dashboard/types";
+import {
+  TABLE_CELL_CLASSNAME,
+  TABLE_HEADER_CLASSNAME,
+  TABLE_HEADER_CELL_CLASSNAME,
+} from "@/components/selling/table-cell-styles";
 
 export const dynamic = "force-dynamic";
 
@@ -137,7 +142,7 @@ const topBuyersColumns: ColumnDef<TopBuyerRow, any>[] = [
     id: "#",
     header: "#",
     cell: ({ row }) => (
-      <span className="text-xs text-gray-500">{row.index + 1}</span>
+      <span className={TABLE_CELL_CLASSNAME}>{row.index + 1}</span>
     ),
   },
   {
@@ -150,9 +155,7 @@ const topBuyersColumns: ColumnDef<TopBuyerRow, any>[] = [
         >
           {row.original.initials}
         </span>
-        <span className="text-sm font-medium text-gray-800">
-          {row.original.name}
-        </span>
+        <span className={TABLE_CELL_CLASSNAME}>{row.original.name}</span>
       </span>
     ),
   },
@@ -160,14 +163,14 @@ const topBuyersColumns: ColumnDef<TopBuyerRow, any>[] = [
     id: "activeLiens",
     header: "Active Liens",
     cell: ({ row }) => (
-      <span className="text-xs text-gray-700">{row.original.activeLiens}</span>
+      <span className={TABLE_CELL_CLASSNAME}>{row.original.activeLiens}</span>
     ),
   },
   {
     id: "lienBalance",
     header: "Lien Balance",
     cell: ({ row }) => (
-      <span className="text-xs text-gray-700">
+      <span className={TABLE_CELL_CLASSNAME}>
         {formatUsd(row.original.lienBalance)}
       </span>
     ),
@@ -176,7 +179,7 @@ const topBuyersColumns: ColumnDef<TopBuyerRow, any>[] = [
     id: "percentOfTotal",
     header: "% of Total",
     cell: ({ row }) => (
-      <span className="text-xs text-gray-700">
+      <span className={TABLE_CELL_CLASSNAME}>
         {row.original.percentOfTotal.toFixed(1)}%
       </span>
     ),
@@ -284,7 +287,7 @@ function agingCurrencyColumn(
     header,
     meta: DENSE_CELL_META,
     cell: ({ row }) => (
-      <span className="text-xs text-gray-700">
+      <span className={TABLE_CELL_CLASSNAME}>
         {formatUsd(accessor(row.original))}
       </span>
     ),
@@ -297,7 +300,7 @@ const agingColumns: ColumnDef<AgingByBuyerRow, any>[] = [
     header: "Funding Company",
     meta: DENSE_CELL_META,
     cell: ({ row }) => (
-      <span className="text-xs font-medium text-gray-800">
+      <span className={TABLE_CELL_CLASSNAME}>
         {row.original.fundingCompany}
       </span>
     ),
@@ -312,7 +315,7 @@ const agingColumns: ColumnDef<AgingByBuyerRow, any>[] = [
     header: "Total",
     meta: DENSE_CELL_META,
     cell: ({ row }) => (
-      <span className="text-xs font-medium text-gray-900">
+      <span className={TABLE_CELL_CLASSNAME}>
         {formatUsd(row.original.total)}
       </span>
     ),
@@ -322,7 +325,7 @@ const agingColumns: ColumnDef<AgingByBuyerRow, any>[] = [
     header: "Past Due %",
     meta: DENSE_CELL_META,
     cell: ({ row }) => (
-      <span className="text-xs text-gray-700">
+      <span className={TABLE_CELL_CLASSNAME}>
         {row.original.pastDuePercent.toFixed(1)}%
       </span>
     ),
@@ -450,6 +453,8 @@ export default function SellingDashboardPage() {
             enablePagination={false}
             emptyMessage="No buyers to show."
             className="bg-white border-none w-full p-0"
+            headerClassName={TABLE_HEADER_CLASSNAME}
+            headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
           />
         </Card>
       </div>
@@ -464,6 +469,8 @@ export default function SellingDashboardPage() {
             enablePagination={false}
             emptyMessage="No aging data to show."
             className="bg-white border-none w-full p-0"
+            headerClassName={TABLE_HEADER_CLASSNAME}
+            headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
           />
         </Card>
       </div>

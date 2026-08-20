@@ -2,7 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Repeat, Settings2, SquarePen, Trash2 } from "lucide-react";
+import {
+  Contact,
+  LayoutGrid,
+  List,
+  Mail,
+  Phone,
+  Repeat,
+  Search,
+  Settings2,
+  SquarePen,
+  Trash2,
+} from "lucide-react";
 import { ActionMenu, type ActionMenuItem } from "@/components/selling/action-menu";
 import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ConfirmDialog } from "@/components/selling/modal";
@@ -23,13 +34,21 @@ import {
   useExportCompanyContacts,
 } from "@/hooks/use-selling-companies";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
+import { ReassignContactPersonModal } from "@/components/selling/forms/reassign-contact-person-modal";
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
-import { CompanyStatsCards } from "@/components/selling/contacts/company-stats-cards";
 import type { ContactPerson } from "@/lib/selling/companies.types";
 import { useCompanyDetailContext } from "./context";
-import { Button } from "@/components/ui/button";
+import {
+  TABLE_CELL_CLASSNAME,
+  TABLE_HEADER_CLASSNAME,
+  TABLE_HEADER_CELL_CLASSNAME,
+} from "@/components/selling/table-cell-styles";
+import { Button } from "@/components/selling/button";
 import { downloadBlob } from "@/lib/utils";
 
+// Still needed as a passthrough for BaseTable/Pagination (src/components/ui),
+// which render a plain <button> (not the selling Button component) and
+// expose primaryButtonClassName as a generic override, not selling-specific.
 const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
@@ -49,6 +68,7 @@ export function CompanyContactPersonsTab() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ContactPerson | null>(null);
   const [confirmAction, setConfirmAction] = useState<ContactPerson | null>(null);
+  const [reassignTarget, setReassignTarget] = useState<ContactPerson | null>(null);
 
   const deactivateMutation = useDeactivateContactPerson();
   const exportMutation = useExportCompanyContacts();
@@ -64,7 +84,9 @@ export function CompanyContactPersonsTab() {
   }, [search, typeFilter, pageSize]);
 
   const allContacts = contactPersonsQuery.data ?? [];
-  // No backend query params for search/type on the list endpoint yet — filter client-side.
+  // REFACTOR: list endpoint has no server-side pagination or search/type query params yet.
+  // Filtering + paging below is client-side as a stopgap; move to the backend once it supports
+  // filtering contact persons by company type id or code and paginating results.
   const contacts = useMemo(() => {
     const q = search.trim().toLowerCase();
     return allContacts.filter((c) => {
@@ -134,13 +156,10 @@ export function CompanyContactPersonsTab() {
 
   const contactActions = (contact: ContactPerson): ActionMenuItem[] => [
     {
-      label: "Reassign Case",
+      label: "Reassign",
       icon: Repeat,
       disabled: !canEdit,
-      onClick: () =>
-        toast.info("Coming Soon", {
-          description: "Reassigning cases isn't available yet.",
-        }),
+      onClick: () => setReassignTarget(contact),
     },
     {
       label: "Edit",
@@ -158,15 +177,39 @@ export function CompanyContactPersonsTab() {
   ];
 
   const columns: ColumnDef<ContactPerson, any>[] = [
-    { accessorKey: "displayName", header: "Name" },
-    { accessorKey: "email", header: "Email", cell: ({ getValue }) => getValue<string>() || "—" },
-    { accessorKey: "phone", header: "Phone", cell: ({ getValue }) => getValue<string>() || "—" },
-    { accessorKey: "contactPersonTypeName", header: "Role" },
+    {
+      accessorKey: "displayName",
+      header: "Name",
+      cell: ({ getValue }) => (
+        <span className={TABLE_CELL_CLASSNAME}>{getValue<string>()}</span>
+      ),
+    },
+    {
+      accessorKey: "email",
+      header: "Email",
+      cell: ({ getValue }) => (
+        <span className={TABLE_CELL_CLASSNAME}>{getValue<string>() || "—"}</span>
+      ),
+    },
+    {
+      accessorKey: "phone",
+      header: "Phone",
+      cell: ({ getValue }) => (
+        <span className={TABLE_CELL_CLASSNAME}>{getValue<string>() || "—"}</span>
+      ),
+    },
+    {
+      accessorKey: "contactPersonTypeName",
+      header: "Role",
+      cell: ({ getValue }) => (
+        <span className={TABLE_CELL_CLASSNAME}>{getValue<string>() || "—"}</span>
+      ),
+    },
     {
       // No per-contact case-count endpoint yet — placeholder until it exists.
       id: "activeCases",
       header: "Active Cases",
-      cell: () => "—",
+      cell: () => <span className={TABLE_CELL_CLASSNAME}>—</span>,
     },
     {
       id: "actions",
@@ -185,8 +228,6 @@ export function CompanyContactPersonsTab() {
 
   return (
     <div className="space-y-5">
-      <CompanyStatsCards />
-
       <div className="bg-white border border-gray-200 rounded-xl">
         <FilterToolbar
           bare
@@ -210,7 +251,7 @@ export function CompanyContactPersonsTab() {
                 view === "grid" ? "bg-[#EE7132] text-white" : "text-gray-400 hover:text-gray-600"
               }`}
             >
-              <i className="ri-grid-fill text-base" />
+              <LayoutGrid className="h-4 w-4" />
             </button>
             <button
               aria-label="List view"
@@ -219,14 +260,13 @@ export function CompanyContactPersonsTab() {
                 view === "list" ? "bg-[#EE7132] text-white" : "text-gray-400 hover:text-gray-600"
               }`}
             >
-              <i className="ri-list-unordered text-base" />
+              <List className="h-4 w-4" />
             </button>
           </div>
 
           <Button
             variant="secondary"
-            iconDivider
-            rightIcon={<i className="ri-upload-2-line text-base" />}
+            rightIcon="upload"
             disabled={exportMutation.isPending}
             onClick={handleExport}
           >
@@ -235,9 +275,8 @@ export function CompanyContactPersonsTab() {
 
           {canEdit && (
             <Button
-              className={`${PRIMARY_BUTTON_CLASSNAME}`}
-              iconDivider
-              rightIcon={<i className="ri-add-line text-base" />}
+              variant="primary"
+              rightIcon="plus"
               onClick={() => setCreateOpen(true)}
             >
               Add Contact Person
@@ -251,7 +290,7 @@ export function CompanyContactPersonsTab() {
 
         {!contactPersonsQuery.isLoading && allContacts.length === 0 && (
           <ContactsEmptyState
-            icon="ri-contacts-line"
+            icon={Contact}
             title="No Contact Person Yet"
             description="No contact persons have been added yet to this company. Add your first contact person."
             actionLabel={canEdit ? "Add Contact Person" : undefined}
@@ -261,7 +300,7 @@ export function CompanyContactPersonsTab() {
 
         {!contactPersonsQuery.isLoading && allContacts.length > 0 && contacts.length === 0 && (
           <ContactsEmptyState
-            icon="ri-search-line"
+            icon={Search}
             title="No Matching Contact Person"
             description="No contact persons match your search or filter. Try adjusting them."
           />
@@ -276,6 +315,8 @@ export function CompanyContactPersonsTab() {
             footerCells={footerCells.length ? footerCells : undefined}
             className="border-0 rounded-none"
             primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
+            headerClassName={TABLE_HEADER_CLASSNAME}
+            headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
           />
         )}
 
@@ -294,11 +335,11 @@ export function CompanyContactPersonsTab() {
                 </div>
                 <div className="mt-3 space-y-1.5">
                   <p className="text-xs text-gray-500 flex items-center gap-1.5">
-                    <i className="ri-mail-line text-gray-300" />
+                    <Mail className="h-4 w-4 text-gray-300" />
                     {contact.email || "—"}
                   </p>
                   <p className="text-xs text-gray-500 flex items-center gap-1.5">
-                    <i className="ri-phone-line text-gray-300" />
+                    <Phone className="h-4 w-4 text-gray-300" />
                     {contact.phone || "—"}
                   </p>
                 </div>
@@ -374,6 +415,15 @@ export function CompanyContactPersonsTab() {
           editTarget={editTarget}
           onClose={() => setEditTarget(null)}
           onSaved={() => setEditTarget(null)}
+        />
+      )}
+
+      {reassignTarget && (
+        <ReassignContactPersonModal
+          open
+          companyId={companyId}
+          contactPerson={reassignTarget}
+          onClose={() => setReassignTarget(null)}
         />
       )}
 

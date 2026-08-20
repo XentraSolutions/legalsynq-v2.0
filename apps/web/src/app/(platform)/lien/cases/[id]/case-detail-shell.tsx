@@ -23,13 +23,14 @@ import {
 import { MergeCaseForm } from "@/components/lien/forms/merge-case-form";
 import { HeaderMeta } from "./components/header-meta";
 import { CaseDetailContextProvider } from "./case-detail-context";
+import { documentsService } from "@/lib/documents";
 
 const TABS = [
   { key: "details", label: "Details" },
   { key: "liens", label: "Liens" },
   { key: "documents", label: "Documents" },
   { key: "servicing", label: "Servicing" },
-  { key: "notes", label: "Notes" },
+  { key: "notes", label: "Case Tracking Notes" },
   { key: "taskmanager", label: "Task Manager" },
 ] as const;
 
@@ -174,9 +175,9 @@ export function CaseDetailShell({
   const generatePayoff = async () => {
     try {
       const response = await casesService.payoffQoute(id);
-
-      if (response.url) {
-        setShowPayoffQoute({ isOpen: true, url: response.url });
+      const viewUrl = await documentsService.getViewUrl(response.url);
+      if (viewUrl) {
+        setShowPayoffQoute({ isOpen: true, url: viewUrl });
       } else {
         addToast({
           type: "error",
@@ -290,7 +291,7 @@ export function CaseDetailShell({
                             }}
                             className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
                           >
-                            Payoff Qoute
+                            Payoff Quote
                           </button>
                           <button
                             onClick={() => {
@@ -425,7 +426,7 @@ export function CaseDetailShell({
         <Modal
           size="xl"
           open={showPayoffQoute.isOpen}
-          title="Payoff Qoute"
+          title="Payoff Quote"
           onClose={() => setShowPayoffQoute({ isOpen: false, url: "" })}
         >
           <div className="min-h-[75vh]">

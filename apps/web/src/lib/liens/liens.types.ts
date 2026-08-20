@@ -39,6 +39,7 @@ export interface LienResponseDto {
   closedAtUtc?: string | null;
   createdAtUtc: string;
   updatedAtUtc: string;
+  reductionDate?: string | null;
 }
 
 export interface LienOfferResponseDto {
@@ -204,6 +205,7 @@ export interface LienListItem {
   subjectName: string;
   createdAt: string;
   updatedAt: string;
+  reductionDate: string;
 }
 
 export interface LienDetail {
@@ -283,8 +285,9 @@ export interface LienInfoParams {
 }
 
 export interface LienFundingCompanyParams {
-  fundingCompanyId: string;
-  fundingCompanyContactId: string;
+  fundingCompanyId?: string;
+  fundingCompanyContactId?: string;
+  facilityId?: string;
   handlingLawFirmId: string;
   caseManagerId: string;
   caseId: string;
@@ -314,4 +317,14 @@ export interface LienUploadDocumentsParams {
       displayName: string;
     },
   ];
+}
+export interface LiensExportQuery {
+  caseId?: string | null;
+  keyword?: string | null,
+  lawFirmId?: string | null;
+  medicalFacilityId?: string | null;
+  caseManagerId?: string | null;
+  lienStatusId?: string |null;
+  purchaseDate?: string | null,
+  closedDate?: string | null,
 }

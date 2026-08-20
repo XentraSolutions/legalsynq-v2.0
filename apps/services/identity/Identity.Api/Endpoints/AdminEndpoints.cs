@@ -396,7 +396,6 @@ public static class AdminEndpoints
 
     private static async Task<IResult> GetTenant(Guid id, IdentityDbContext db, IDnsService dnsService)
     {
-        var dnsBaseDomain = dnsService.BaseDomain;
         var t = await db.Tenants
             .Include(t => t.Organizations)
             .Include(t => t.TenantProducts)
@@ -462,7 +461,7 @@ public static class AdminEndpoints
             provisioningFailureReason       = t.ProvisioningFailureReason,
             provisioningFailureStage        = t.ProvisioningFailureStage.ToString(),
             hostname                        = t.Subdomain != null
-                ? $"{t.Subdomain}.{dnsBaseDomain}"
+                ? dnsService.BuildHostname(t.Subdomain)
                 : (string?)null,
             verificationAttemptCount        = t.VerificationAttemptCount,
             lastVerificationAttemptUtc      = t.LastVerificationAttemptUtc,
@@ -894,7 +893,7 @@ public static class AdminEndpoints
         var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
         log.LogInformation("Verification retry requested (admin) for tenant {TenantCode}", tenant.Code);
 
-        var hostname = $"{tenant.Subdomain}.{dnsService.BaseDomain}";
+        var hostname = dnsService.BuildHostname(tenant.Subdomain);
 
         tenant.ResetVerificationRetryState();
         await db.SaveChangesAsync(ct);
@@ -968,7 +967,7 @@ public static class AdminEndpoints
         log.LogInformation("Infrastructure DNS provisioning requested for subdomain {Slug}", slug);
 
         var success = await dns.CreateSubdomainAsync(slug, ct);
-        var hostname = $"{slug}.{dns.BaseDomain}";
+        var hostname = dns.BuildHostname(slug);
 
         var now = DateTimeOffset.UtcNow;
         _ = auditClient.IngestAsync(new IngestAuditEventRequest

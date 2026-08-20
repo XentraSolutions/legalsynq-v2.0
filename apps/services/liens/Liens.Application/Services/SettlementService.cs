@@ -1,7 +1,9 @@
+using BuildingBlocks.Exceptions;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Repositories;
 using Liens.Domain.Entities;
+using Liens.Domain.Enums;
 using System.Globalization;
 
 namespace Liens.Application.Services;
@@ -201,6 +203,69 @@ public class SettlementService : ISettlementService
         return MapPayment(entity);
     }
 
+    public async Task<SettlementPaymentDetailResponse> UpdatePaymentAsync(
+        Guid tenantId,
+        Guid id,
+        Guid userId,
+        UpdateSettlementPaymentDetailRequest request,
+        CancellationToken ct = default)
+    {
+        var entity = await _paymentRepo.GetByIdAsync(tenantId, id, ct)
+            ?? throw new NotFoundException($"Settlement payment '{id}' not found.");
+
+        var errors = new Dictionary<string, string[]>();
+        if (request.Amount < 0)
+            errors["amount"] = ["amount cannot be negative."];
+        if (string.IsNullOrWhiteSpace(request.PaymentMethod))
+            errors["paymentMethod"] = ["paymentMethod is required."];
+        else if (ContainsReservedPaymentMetadataSyntax(request.PaymentMethod))
+            errors["paymentMethod"] = ["paymentMethod contains reserved payment metadata syntax."];
+        if (string.IsNullOrWhiteSpace(request.ReferenceNumber))
+            errors["referenceNumber"] = ["referenceNumber is required."];
+        else if (request.ReferenceNumber.Trim().Length > 100)
+            errors["referenceNumber"] = ["referenceNumber cannot exceed 100 characters."];
+        if (request.Notes is null)
+            errors["notes"] = ["notes is required but may be empty."];
+        else if (request.Notes.Contains(LegacyMetadataMarker, StringComparison.Ordinal))
+            errors["notes"] = ["notes cannot contain the reserved [legacy-meta] marker."];
+        if (string.IsNullOrWhiteSpace(request.SettlementType))
+            errors["settlementType"] = ["settlementType is required."];
+        else if (ContainsReservedPaymentMetadataSyntax(request.SettlementType))
+            errors["settlementType"] = ["settlementType contains reserved payment metadata syntax."];
+        if (string.IsNullOrWhiteSpace(request.SettlementStatus))
+            errors["settlementStatus"] = ["settlementStatus is required."];
+        else if (ContainsReservedPaymentMetadataSyntax(request.SettlementStatus))
+            errors["settlementStatus"] = ["settlementStatus contains reserved payment metadata syntax."];
+        if (string.IsNullOrWhiteSpace(request.LienStatus))
+            errors["lienStatus"] = ["lienStatus is required."];
+        else if (!IsSupportedLienStatus(request.LienStatus))
+            errors["lienStatus"] = ["lienStatus must be Open, Closed, or a canonical lien status."];
+
+        var metadata = ParsePaymentMetadata(entity.Note);
+        UpdateMetadata(metadata, "paymentMethod", request.PaymentMethod);
+        UpdateMetadata(metadata, "type", request.SettlementType);
+        UpdateMetadata(metadata, "status", request.SettlementStatus);
+        var updatedNote = SerializePaymentNote(request.Notes, metadata);
+        if (updatedNote.Length > 1000)
+            errors["notes"] = ["notes and payment metadata cannot exceed 1000 characters."];
+
+        if (errors.Count > 0)
+            throw new ValidationException("One or more settlement payment fields are invalid.", errors);
+
+        await _lienService.SetLegacyMedicalStatusAsync(
+            tenantId, entity.LienId, userId, request.LienStatus!, ct);
+
+        entity.Update(
+            request.Amount,
+            request.PaymentDate,
+            request.ReferenceNumber,
+            updatedNote,
+            userId);
+        await _paymentRepo.UpdateAsync(entity, ct);
+
+        return MapPayment(entity);
+    }
+
     private async Task<int> GetNextPaymentNumberAsync(
         Guid tenantId,
         Guid caseId,
@@ -282,11 +347,7 @@ public class SettlementService : ISettlementService
         SetMetadata(metadata, "type", settlementType);
         SetMetadata(metadata, "status", settlementStatus);
 
-        var note = FirstNonEmpty(request.Note, request.Notes);
-        var serializedMetadata = string.Join("; ", metadata.Select(pair => $"{pair.Key}={pair.Value}"));
-        return string.IsNullOrWhiteSpace(note)
-            ? $"{LegacyMetadataMarker}{Environment.NewLine}{serializedMetadata}"
-            : $"{note}{Environment.NewLine}{LegacyMetadataMarker}{Environment.NewLine}{serializedMetadata}";
+        return SerializePaymentNote(FirstNonEmpty(request.Note, request.Notes), metadata);
     }
 
     private static Dictionary<string, string> ParsePaymentMetadata(string? note)
@@ -344,6 +405,39 @@ public class SettlementService : ISettlementService
         string.Equals(value, "by_medical_provider", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(value, "by_funding_company", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(value, "other", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSupportedLienStatus(string value) =>
+        string.Equals(value.Trim(), "Open", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value.Trim(), "Closed", StringComparison.OrdinalIgnoreCase) ||
+        LienStatus.All.Contains(value.Trim());
+
+    private static bool ContainsReservedPaymentMetadataSyntax(string value) =>
+        value.Contains(';') ||
+        value.Contains('=') ||
+        value.Contains('\r') ||
+        value.Contains('\n') ||
+        value.Contains(LegacyMetadataMarker, StringComparison.Ordinal);
+
+    private static string SerializePaymentNote(
+        string? note,
+        IReadOnlyDictionary<string, string> metadata)
+    {
+        var serializedMetadata = string.Join("; ", metadata.Select(pair => $"{pair.Key}={pair.Value}"));
+        return string.IsNullOrWhiteSpace(note)
+            ? $"{LegacyMetadataMarker}{Environment.NewLine}{serializedMetadata}"
+            : $"{note.Trim()}{Environment.NewLine}{LegacyMetadataMarker}{Environment.NewLine}{serializedMetadata}";
+    }
+
+    private static void UpdateMetadata(
+        IDictionary<string, string> metadata,
+        string key,
+        string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            metadata.Remove(key);
+        else
+            metadata[key] = value.Trim();
+    }
 
     private static void SetMetadata(
         IDictionary<string, string> metadata,

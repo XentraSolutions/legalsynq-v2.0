@@ -109,4 +109,62 @@ describe("SynqLien catch-all proxy", () => {
     expect(response.headers.get("Location")).toBe("/api/lien/documents/access/abc123");
     expect(response.headers.get("X-Correlation-Id")).toBe("corr-public-doc");
   });
+
+  test("forwards multipart uploads with the original content type", async () => {
+    vi.mocked(cookies).mockResolvedValue({
+      get: vi.fn((name: string) =>
+        name === "platform_session" ? { value: "session-token" } : undefined,
+      ),
+    } as never);
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ isSuccess: true }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Correlation-Id": "corr-upload",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const uploadBytes = new Uint8Array([1, 2, 3, 4]);
+    const request = new NextRequest(
+      "http://localhost/api/lien/api/liens/cases/upload/document",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "multipart/form-data; boundary=----test",
+          host: "synqlien-demo.localhost:3000",
+          "x-forwarded-proto": "https",
+        },
+        body: uploadBytes,
+      },
+    );
+
+    const { POST } = await import("./route");
+    const response = await POST(request, {
+      params: Promise.resolve({
+        path: ["api", "liens", "cases", "upload", "document"],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "http://127.0.0.1:5010/liens/api/liens/cases/upload/document",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer session-token",
+          "Content-Type": "multipart/form-data; boundary=----test",
+        }),
+        redirect: "manual",
+      }),
+    );
+    const [, forwarded] = fetchSpy.mock.calls[0] as [
+      string,
+      { body: ArrayBuffer },
+    ];
+    expect(new Uint8Array(forwarded.body)).toEqual(uploadBytes);
+    expect(response.headers.get("X-Correlation-Id")).toBe("corr-upload");
+  });
 });

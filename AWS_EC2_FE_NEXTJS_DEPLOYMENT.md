@@ -451,6 +451,7 @@ Create `/etc/nginx/sites-available/legalsynq-frontend`:
 server {
     listen 80;
     server_name app.yourdomain.com;
+    client_max_body_size 60m;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -467,6 +468,7 @@ server {
 server {
     listen 80;
     server_name controlcenter.yourdomain.com;
+    client_max_body_size 60m;
 
     location / {
         proxy_pass http://127.0.0.1:5004;

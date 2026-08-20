@@ -17,6 +17,7 @@ import {
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import { useLienStore } from "@/stores/lien-store";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NoteCell } from "./note-cell";
 
 type SummaryTotals = {
   summaryTotals: ReportTotals;
@@ -188,44 +189,57 @@ export default function ReportDisplay({
     if (!report.config?.columns) {
       const cols = defaultColumns
         .flatMap((config: any) => config.value)
-        .map((item) => {
+        .map((item: any) => {
           const isCurrencyField = /amt|amount|price|cost|fee|total/i.test(
             item.key,
           );
+
+          const isNoteField = item.key.toLowerCase().includes("note");
 
           const isDefaultMinWidth =
             item.key.includes("facility") ||
             item.key.includes("law") ||
             item.key.includes("case_type")
               ? { minWidth: "220px", width: "100%" }
-              : item.key.includes("id") || item.key.includes("status")
-                ? { minWidth: "135px", width: "100%" }
-                : { minWidth: "50px" };
+              : isNoteField
+                ? { minWidth: "300px" }
+                : item.key.includes("id") || item.key.includes("status")
+                  ? { minWidth: "135px", width: "100%" }
+                  : { minWidth: "50px" };
 
           return {
             id: item.key,
             header: item.label,
             accessorFn: (row: any) => row[item.key],
+
             meta: {
               ...isDefaultMinWidth,
             },
+
             cell: ({ row }: any) => {
               const value = row.original[item.key];
+
+              // Handle note fields
+              if (isNoteField) {
+                return <NoteCell value={value} />;
+              }
+
               let formattedValue = value;
 
+              // Handle currency fields
               if (isCurrencyField && value !== null && value !== undefined) {
-                // Remove everything except numbers, periods, and minus signs
                 const cleanString = String(value).replace(/[^0-9.-]+/g, "");
                 const numericValue = parseFloat(cleanString);
 
-                // Format if it successfully parsed into a valid number
                 if (!isNaN(numericValue)) {
                   formattedValue = formatCurrency(numericValue);
                 }
               }
 
               return (
-                <span className="text-sm text-gray-700">{formattedValue}</span>
+                <span className="text-sm text-gray-700 whitespace-nowrap">
+                  {formattedValue}
+                </span>
               );
             },
           };
@@ -233,11 +247,13 @@ export default function ReportDisplay({
 
       setColumns(cols);
     } else {
-      const tableColumns = defaultColumns.map((item) => {
-        // Define keywords that identify an amount or numeric column
+      const tableColumns = defaultColumns.map((item: any) => {
         const isCurrencyField = /amt|amount|price|cost|fee|total/i.test(
           item.key,
         );
+
+        const isNoteField = item.key.toLowerCase().includes("note");
+
         const isDefaultMinWidth =
           item.key.includes("facility") ||
           item.key.includes("law") ||
@@ -248,37 +264,47 @@ export default function ReportDisplay({
                 item.key.includes("case_id") ||
                 item.key.includes("status")
               ? { minWidth: "135px", width: "100%" }
-              : { minWidth: "50px" };
+              : isNoteField
+                ? { minWidth: "300px" }
+                : { minWidth: "50px" };
+
         return {
           id: item.key,
           header: item.label,
           accessorFn: (row: any) => row[item.key],
+
           meta: {
             ...isDefaultMinWidth,
           },
+
           cell: ({ row }: any) => {
             const value = row.original[item.key];
 
+            // Handle note fields
+            if (isNoteField) {
+              return <NoteCell value={value} />;
+            }
+
             let formattedValue = value;
 
+            // Handle currency fields
             if (isCurrencyField && value !== null && value !== undefined) {
-              // 1. Remove everything except numbers, periods, and minus signs (e.g., "$1,200.50" -> "1200.50")
               const cleanString = String(value).replace(/[^0-9.-]+/g, "");
               const numericValue = parseFloat(cleanString);
 
-              // 2. Format if it successfully parsed into a valid number
               if (!isNaN(numericValue)) {
                 formattedValue = formatCurrency(numericValue);
               }
             }
 
             return (
-              <span className="text-sm text-gray-700">{formattedValue}</span>
+              <span className="text-sm text-gray-700 whitespace-nowrap">
+                {formattedValue}
+              </span>
             );
           },
         };
       });
-
       setColumns(tableColumns);
     }
 
@@ -294,7 +320,7 @@ export default function ReportDisplay({
   }, [report, report.data]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 space-y-6">
+    <div className="min-h-screen space-y-6">
       {/* HEADER */}
       <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-gray-200">
         <div>
@@ -310,7 +336,7 @@ export default function ReportDisplay({
         {metrics.map((m) => (
           <div
             key={m.label}
-            className="border border-gray-200 rounded-xl px-4 py-2 hover:shadow-sm break-words"
+            className="border border-gray-200 rounded-xl px-4 py-2 hover:shadow-sm break-words flex flex-col justify-between"
           >
             <p className="text-xs text-gray-500">{m.label}</p>
             <p className="text-lg font-semibold text-right py-3">{m.value}</p>
@@ -364,16 +390,16 @@ export default function ReportDisplay({
           {/* LEFT */}
           <button
             onClick={onBack}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm self-start hover:shadow-sm"
+            className="px-3 py-2 border border-gray-200 text-[#0A0A0A] font-semibold rounded-lg text-sm self-start hover:shadow-sm"
           >
-            Go Back
+            Back
           </button>
           {/* RIGHT */}
           <div className="flex flex-wrap gap-2 sm:gap-2 sm:flex-row sm:items-center sm:justify-end">
             <button
               disabled={exporting}
               onClick={onExport}
-              className="px-3 py-2 border border-gray-200 text-blue-500 rounded-lg text-sm hover:shadow-sm"
+              className="px-3 py-2 border border-gray-200 bg-[#F5F5F5] text-[#0A0A0A] font-semibold rounded-lg text-sm hover:shadow-sm"
             >
               {exporting ? "Exporting..." : "Export CSV"}
             </button>

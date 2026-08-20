@@ -65,7 +65,7 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
             "Provisioning {Action} for tenant {TenantCode} with subdomain {Slug} (priorStatus={PriorStatus})",
             isRetry ? "retry" : "started", tenant.Code, slug, priorStatus);
 
-        var hostname = $"{slug}.{_dns.BaseDomain}";
+        var hostname = _dns.BuildHostname(slug);
 
         try
         {

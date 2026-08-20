@@ -1,38 +1,50 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { CASE_REASSIGN_CONFIG } from '@/lib/contacts';
-import type { ContactCaseSummary } from '@/lib/contacts/contacts.types';
-import { StatusBadge } from '@/components/lien/status-badge';
-import { ActionMenu } from '@/components/lien/action-menu';
-import { Pagination } from '@/components/ui/pagination';
-import { Modal } from '@/components/lien/modal';
-import { ContactPicker } from '@/components/lien/contact-picker';
-import { useLienStore } from '@/stores/lien-store';
-import { ApiError } from '@/lib/api-client';
-import { useContactCases, useReassignContactCase } from '@/hooks/use-contact-cases';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { CASE_REASSIGN_CONFIG } from "@/lib/contacts";
+import type { ContactCaseSummary } from "@/lib/contacts/contacts.types";
+import { StatusBadge } from "@/components/lien/status-badge";
+import { ActionMenu } from "@/components/lien/action-menu";
+import { Pagination } from "@/components/ui/pagination";
+import { Modal } from "@/components/lien/modal";
+import { ContactPicker } from "@/components/lien/contact-picker";
+import { useLienStore } from "@/stores/lien-store";
+import { ApiError } from "@/lib/api-client";
+import {
+  useContactCases,
+  useReassignContactCase,
+} from "@/hooks/use-contact-cases";
 
 // Contact types with a known case-lookup API. Any other type (e.g.
 // LienHolder, CaseManager, InternalUser) has no equivalent endpoint, so the
 // section is hidden rather than showing an empty/broken table.
 const SUPPORTED_CONTACT_TYPES = [
-  'LawFirm',
-  'Lead',
-  'MedicalFacility',
-  'Provider',
-  'FundingCompany',
+  "LawFirm",
+  "Lead",
+  "MedicalFacility",
+  "Provider",
+  "FundingCompany",
 ];
 
 // Provider/facility/funding cases are surfaced via their liens, so the table
 // also shows lien id + billing/purchase amount. Law firm and lead cases are
 // shown at the case level only.
-const LIEN_DETAIL_CONTACT_TYPES = ['MedicalFacility', 'Provider', 'FundingCompany'];
+const LIEN_DETAIL_CONTACT_TYPES = [
+  "MedicalFacility",
+  "Provider",
+  "FundingCompany",
+];
 
 const PAGE_SIZE = 10;
 
 const currency = (value: number | null) =>
-  value != null ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value) : '—';
+  value != null
+    ? new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+      }).format(value)
+    : "—";
 
 interface Props {
   contactId: string;
@@ -41,24 +53,32 @@ interface Props {
   primaryButtonClassName?: string;
 }
 
-export function ContactCasesSection({ contactId, contactType, primaryButtonClassName }: Props) {
+export function ContactCasesSection({
+  contactId,
+  contactType,
+  primaryButtonClassName,
+}: Props) {
   const router = useRouter();
   const addToast = useLienStore((s) => s.addToast);
   const [page, setPage] = useState(1);
-  const [keyword, setKeyword] = useState('');
-  const [debouncedKeyword, setDebouncedKeyword] = useState('');
+  const [keyword, setKeyword] = useState("");
+  const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const supported = SUPPORTED_CONTACT_TYPES.includes(contactType);
   const showLienColumns = LIEN_DETAIL_CONTACT_TYPES.includes(contactType);
   const reassignConfig = CASE_REASSIGN_CONFIG[contactType];
 
-  const [reassignTarget, setReassignTarget] = useState<ContactCaseSummary | null>(null);
-  const [newPrimaryId, setNewPrimaryId] = useState('');
-  const [newSecondaryId, setNewSecondaryId] = useState('');
+  const [reassignTarget, setReassignTarget] =
+    useState<ContactCaseSummary | null>(null);
+  const [newPrimaryId, setNewPrimaryId] = useState("");
+  const [newSecondaryId, setNewSecondaryId] = useState("");
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
-  const [secondaryContactSubtype, setSecondaryContactSubtype] = useState<string | undefined>();
-  const [resolvingSecondarySubtype, setResolvingSecondarySubtype] = useState(false);
+  const [secondaryContactSubtype, setSecondaryContactSubtype] = useState<
+    string | undefined
+  >();
+  const [resolvingSecondarySubtype, setResolvingSecondarySubtype] =
+    useState(false);
 
-const { data, isLoading } = useContactCases(
+  const { data, isLoading } = useContactCases(
     contactId,
     contactType,
     { keyword: debouncedKeyword, page, limit: PAGE_SIZE },
@@ -76,7 +96,9 @@ const { data, isLoading } = useContactCases(
     return () => clearTimeout(timeout);
   }, [keyword]);
 
-  useEffect(() => { setPage(1); }, [debouncedKeyword]);
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedKeyword]);
 
   // Resolves the (tenant-configurable) secondary contact subtype once the
   // reassign modal opens, so the secondary picker knows which sub-contacts
@@ -94,13 +116,15 @@ const { data, isLoading } = useContactCases(
       setSecondaryContactSubtype(code);
       setResolvingSecondarySubtype(false);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [reassignTarget, reassignConfig]);
 
   const openReassign = (c: ContactCaseSummary) => {
     setReassignTarget(c);
-    setNewPrimaryId('');
-    setNewSecondaryId('');
+    setNewPrimaryId("");
+    setNewSecondaryId("");
     setReassignModalOpen(true);
   };
 
@@ -123,17 +147,19 @@ const { data, isLoading } = useContactCases(
         newSecondaryId: reassignConfig.secondary ? newSecondaryId : undefined,
       });
       addToast({
-        type: 'success',
-        title: 'Reassigned',
+        type: "success",
+        title: "Reassigned",
         description: `${reassignConfig.label} has been reassigned.`,
       });
       setReassignTarget(null);
     } catch (err) {
       addToast({
-        type: 'error',
-        title: 'Reassign Failed',
+        type: "error",
+        title: "Reassign Failed",
         description:
-          err instanceof ApiError ? err.message : 'An unexpected error occurred',
+          err instanceof ApiError
+            ? err.message
+            : "An unexpected error occurred",
       });
       // Reopen with the same selection so the user can retry — never
       // automatically resubmit the request.
@@ -152,7 +178,9 @@ const { data, isLoading } = useContactCases(
           <i className="ri-folder-2-line text-gray-500" />
           <h3 className="text-sm font-semibold text-gray-800">Cases</h3>
           {!loading && (
-            <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">{totalCount}</span>
+            <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
+              {totalCount}
+            </span>
           )}
         </div>
         <div className="relative w-full max-w-xs">
@@ -169,49 +197,90 @@ const { data, isLoading } = useContactCases(
 
       <div className="p-5">
         {loading ? (
-          <div className="text-center py-10 text-sm text-gray-400">Loading cases...</div>
+          <div className="text-center py-10 text-sm text-gray-400">
+            Loading cases...
+          </div>
         ) : cases.length === 0 ? (
-          <div className="text-center py-10 text-sm text-gray-400 italic">No Case Found</div>
+          <div className="text-center py-10 text-sm text-gray-400 italic">
+            No Case Found
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50/80 border-b border-gray-100">
-                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Case ID</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Case ID
+                  </th>
                   {showLienColumns && (
-                    <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Lien ID</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                      Lien ID
+                    </th>
                   )}
-                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Full Name</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Full Name
+                  </th>
                   {showLienColumns && (
                     <>
-                      <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Billing Amount</th>
-                      <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Purchase Amount</th>
+                      <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Billing Amount
+                      </th>
+                      <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        Purchase Amount
+                      </th>
                     </>
                   )}
-                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Accident Type</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Date of Loss</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Date of Birth</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                  <th className="text-right px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">Action</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Accident Type
+                  </th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Date of Loss
+                  </th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Date of Birth
+                  </th>
+                  <th className="text-left px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Status
+                  </th>
+                  <th className="text-right px-3 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {cases.map((c) => (
                   <tr key={c.lienId ?? c.id} className="hover:bg-gray-50/50">
-                    <td className="px-3 py-3 font-medium text-gray-900">{c.caseNumber}</td>
+                    <td
+                      className="px-3 py-3 font-medium text-gray-900 cursor-pointer"
+                      onClick={() => router.push(`/lien/cases/${c.id}`)}
+                    >
+                      {c.caseNumber}
+                    </td>
                     {showLienColumns && (
-                      <td className="px-3 py-3 text-gray-600">{c.lienId ?? '—'}</td>
+                      <td className="px-3 py-3 text-gray-600">
+                        {c.lienId ?? "—"}
+                      </td>
                     )}
                     <td className="px-3 py-3 text-gray-700">{c.personName}</td>
                     {showLienColumns && (
                       <>
-                        <td className="px-3 py-3 text-gray-900">{currency(c.billingAmount)}</td>
-                        <td className="px-3 py-3 text-gray-900">{currency(c.purchaseAmount)}</td>
+                        <td className="px-3 py-3 text-gray-900">
+                          {currency(c.billingAmount)}
+                        </td>
+                        <td className="px-3 py-3 text-gray-900">
+                          {currency(c.purchaseAmount)}
+                        </td>
                       </>
                     )}
-                    <td className="px-3 py-3 text-gray-600">{c.accidentType ?? '—'}</td>
-                    <td className="px-3 py-3 text-xs text-gray-500 tabular-nums">{c.dateOfLoss ?? '—'}</td>
-                    <td className="px-3 py-3 text-xs text-gray-500 tabular-nums">{c.dateOfBirth ?? '—'}</td>
+                    <td className="px-3 py-3 text-gray-600">
+                      {c.accidentType ?? "—"}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-gray-500 tabular-nums">
+                      {c.dateOfLoss ?? "—"}
+                    </td>
+                    <td className="px-3 py-3 text-xs text-gray-500 tabular-nums">
+                      {c.dateOfBirth ?? "—"}
+                    </td>
                     <td className="px-3 py-3">
                       <StatusBadge status={c.status} />
                     </td>
@@ -219,15 +288,15 @@ const { data, isLoading } = useContactCases(
                       <ActionMenu
                         items={[
                           {
-                            label: 'View Case',
-                            icon: 'ri-eye-line',
+                            label: "View Case",
+                            icon: "ri-eye-line",
                             onClick: () => router.push(`/lien/cases/${c.id}`),
                           },
                           ...(reassignConfig
                             ? [
                                 {
-                                  label: 'Reassign',
-                                  icon: 'ri-exchange-line',
+                                  label: "Reassign",
+                                  icon: "ri-exchange-line",
                                   onClick: () => openReassign(c),
                                 },
                               ]
@@ -242,7 +311,12 @@ const { data, isLoading } = useContactCases(
 
             {totalPages > 1 && (
               <div className="flex justify-end pt-4">
-                <Pagination page={page} totalPages={totalPages} onPageChange={setPage} primaryButtonClassName={primaryButtonClassName} />
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                  primaryButtonClassName={primaryButtonClassName}
+                />
               </div>
             )}
           </div>
@@ -267,9 +341,9 @@ const { data, isLoading } = useContactCases(
               <button
                 onClick={handleReassignSubmit}
                 disabled={submitting || !newPrimaryId}
-                className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-colors ${primaryButtonClassName ?? 'bg-primary hover:bg-primary/90'}`}
+                className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 transition-colors ${primaryButtonClassName ?? "bg-primary hover:bg-primary/90"}`}
               >
-                {submitting ? 'Assigning...' : 'Assign Case'}
+                {submitting ? "Assigning..." : "Assign Case"}
               </button>
             </div>
           }
@@ -278,7 +352,9 @@ const { data, isLoading } = useContactCases(
             <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-primary text-white shrink-0">
               <i className="ri-exchange-line text-sm" />
             </span>
-            <span className="text-sm font-semibold text-primary">Case Assignment Details</span>
+            <span className="text-sm font-semibold text-primary">
+              Case Assignment Details
+            </span>
           </div>
           <div className="space-y-4">
             <div>
@@ -292,7 +368,7 @@ const { data, isLoading } = useContactCases(
                 value={newPrimaryId}
                 onChange={(id) => {
                   setNewPrimaryId(id);
-                  setNewSecondaryId('');
+                  setNewSecondaryId("");
                 }}
                 placeholder="Please select"
                 disabled={submitting}
@@ -307,11 +383,21 @@ const { data, isLoading } = useContactCases(
                 <ContactPicker
                   contactType={reassignConfig.secondary.contactType}
                   contactSubtype={secondaryContactSubtype}
-                  lawFirmId={reassignConfig.secondary.scopeParam === 'lawFirmId' ? newPrimaryId : undefined}
-                  facilityId={reassignConfig.secondary.scopeParam === 'facilityId' ? newPrimaryId : undefined}
+                  lawFirmId={
+                    reassignConfig.secondary.scopeParam === "lawFirmId"
+                      ? newPrimaryId
+                      : undefined
+                  }
+                  facilityId={
+                    reassignConfig.secondary.scopeParam === "facilityId"
+                      ? newPrimaryId
+                      : undefined
+                  }
                   value={newSecondaryId}
                   onChange={setNewSecondaryId}
-                  disabled={submitting || !newPrimaryId || resolvingSecondarySubtype}
+                  disabled={
+                    submitting || !newPrimaryId || resolvingSecondarySubtype
+                  }
                   placeholder="Please select"
                 />
               </div>

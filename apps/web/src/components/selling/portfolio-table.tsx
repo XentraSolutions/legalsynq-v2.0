@@ -1,12 +1,11 @@
 "use client";
 import Link from "next/link";
-import { Eye, Trash2 } from "lucide-react";
+import { Archive, Eye, RotateCcw, SquarePen } from "lucide-react";
 import { DateDisplay } from "@/components/ui/date-display";
 import { LIEN_TYPE_LABELS } from "@/types/lien";
 import { LienStatusBadge } from "../lien/lien-status-badge";
 import { useMemo, useState } from "react";
 import { ColumnDef, SortingState } from "@tanstack/react-table";
-import { StatusBadge } from "../lien/status-badge";
 import { BaseTable } from "../ui/base-table";
 import { PaginationMeta } from "@/lib/contacts";
 import { LiensQuery } from "@/lib/liens";
@@ -18,7 +17,13 @@ import { LienListItem, liensService } from "@/lib/selling";
 import { useRouter } from "next/navigation";
 import { ActionMenu } from "@/components/selling/action-menu";
 import { ConfirmDialog } from "@/components/selling/modal";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
+import {
+  TABLE_CELL_CLASSNAME,
+  TABLE_LINK_CLASSNAME,
+  TABLE_HEADER_CLASSNAME,
+  TABLE_HEADER_CELL_CLASSNAME,
+} from "@/components/selling/table-cell-styles";
 
 interface PortfolioRowActionsProps {
   lien: LienListItem;
@@ -27,23 +32,30 @@ interface PortfolioRowActionsProps {
 
 function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProps) {
   const router = useRouter();
-  const { show: showToast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const isArchived = lien.status === "Archived" || lien.sellerStatus === "Archived";
 
-  const handleDelete = async () => {
+  const handleArchiveToggle = async () => {
     setLoading(true);
     try {
-      await liensService.archiveLien(lien.lienId);
-      showToast("Lien deleted.", "success");
+      if (isArchived) {
+        await liensService.restoreLien(lien.lienId);
+        toast.success("Lien restored.");
+      } else {
+        await liensService.archiveLien(lien.lienId);
+        toast.success("Lien archived.");
+      }
       setConfirmOpen(false);
       onActionComplete?.();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Action failed", "error");
+      toast.error(err instanceof Error ? err.message : "Action failed");
     } finally {
       setLoading(false);
     }
   };
+
+  const canEdit = ["Pending", "Internal", "Draft"].includes(lien.status);
 
   return (
     <>
@@ -52,25 +64,45 @@ function PortfolioRowActions({ lien, onActionComplete }: PortfolioRowActionsProp
           {
             label: "View",
             icon: Eye,
-            onClick: () => router.push(`portfolio/${lien.lienId}`),
+            onClick: () => router.push(`/selling/portfolio/lien/${lien.lienId}`),
           },
-          {
-            label: "Delete",
-            icon: Trash2,
-            variant: "danger",
-            onClick: () => setConfirmOpen(true),
-          },
+          ...(canEdit
+            ? [
+                {
+                  label: "Edit",
+                  icon: SquarePen,
+                  onClick: () =>
+                    router.push(`/selling/portfolio/lien/${lien.lienId}/edit`),
+                },
+              ]
+            : []),
+          isArchived
+            ? {
+                label: "Restore",
+                icon: RotateCcw,
+                onClick: () => setConfirmOpen(true),
+              }
+            : {
+                label: "Archive",
+                icon: Archive,
+                variant: "danger",
+                onClick: () => setConfirmOpen(true),
+              },
         ]}
       />
       <ConfirmDialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        onConfirm={handleDelete}
+        onConfirm={handleArchiveToggle}
         loading={loading}
-        title="Delete This Lien?"
-        description="This lien will be archived and hidden from the active portfolio. This can't be undone through this workflow."
-        confirmLabel="Delete"
-        confirmVariant="danger"
+        title={isArchived ? "Restore This Lien?" : "Archive This Lien?"}
+        description={
+          isArchived
+            ? "This lien will be restored to the Pending list for active portfolio tracking."
+            : "This lien will be hidden from active portfolio lists, but its record and history will be retained."
+        }
+        confirmLabel={isArchived ? "Restore" : "Archive"}
+        confirmVariant={isArchived ? "primary" : "danger"}
       />
     </>
   );
@@ -82,9 +114,16 @@ interface PortfolioTableProps {
   onSortingChange: (e: any) => void;
   pagination: PaginationMeta;
   handlePageChange: (e: any) => void;
-  onRowSelect: (id: string) => void;
+  onPageSizeChange: (pageSize: number) => void;
   onActionComplete?: () => void;
+  isLoading?: boolean;
 }
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+// Still needed as a passthrough for BaseTable (src/components/ui/base-table),
+// which renders a plain <button> (not the selling Button component) and
+// exposes primaryButtonClassName as a generic override, not selling-specific.
+const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 
 function formatCurrency(amount?: number): string {
   if (amount == null) return "—";
@@ -100,9 +139,10 @@ export function PortfolioTable({
   sorting,
   onSortingChange,
   handlePageChange,
+  onPageSizeChange,
   pagination,
-  onRowSelect,
   onActionComplete,
+  isLoading,
 }: PortfolioTableProps) {
   const columns = useMemo<ColumnDef<LienListItem, any>[]>(
     () => [
@@ -111,9 +151,13 @@ export function PortfolioTable({
         accessorKey: "lienId",
         header: "Lien ID",
         cell: ({ row }) => (
-          <span className="text-xs font-mono text-gray-700">
+          <Link
+            href={`/selling/portfolio/lien/${row.original.lienId}`}
+            onClick={(e) => e.stopPropagation()}
+            className={TABLE_LINK_CLASSNAME}
+          >
             {row.original.lienNumber}
-          </span>
+          </Link>
         ),
       },
       {
@@ -122,7 +166,7 @@ export function PortfolioTable({
         accessorKey: "fundingCompany",
 
         cell: ({ row }) => (
-          <span className="text-sm text-gray-700">
+          <span className={TABLE_CELL_CLASSNAME}>
             {row.original.fundingCompany || "—"}
           </span>
         ),
@@ -132,7 +176,7 @@ export function PortfolioTable({
         header: "Initial Service Date",
         accessorKey: "initialServiceDate",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-700">
+          <span className={TABLE_CELL_CLASSNAME}>
             {row.original.initialServiceDate || "—"}
           </span>
         ),
@@ -142,7 +186,7 @@ export function PortfolioTable({
         header: "Billing Amount",
         accessorKey: "billingAmount",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-700">
+          <span className={TABLE_CELL_CLASSNAME}>
             {formatCurrency(row.original.billingAmount) || "—"}
           </span>
         ),
@@ -152,7 +196,7 @@ export function PortfolioTable({
         header: "Ask Amount",
         accessorKey: "askAmount",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-700">
+          <span className={TABLE_CELL_CLASSNAME}>
             {formatCurrency(row.original.askAmount) || "—"}
           </span>
         ),
@@ -161,7 +205,7 @@ export function PortfolioTable({
         id: "status",
         accessorKey: "status",
         header: "Lien Status",
-        cell: ({ row }) => <StatusBadge status={row.original.status} />,
+        cell: ({ row }) => <LienStatusBadge status={row.original.status} />,
       },
       {
         id: "actions",
@@ -181,15 +225,15 @@ export function PortfolioTable({
   );
 
   return (
-    <div className="bg-white rounded-lg overflow-hidden">
+    <div className="bg-white overflow-hidden">
       <BaseTable
         data={liens}
         columns={columns}
         getRowId={(l) => l.lienId}
+        isLoading={isLoading}
         sorting={sorting}
         onSortingChange={onSortingChange}
         manualSorting
-        onRowClick={(l) => onRowSelect(l.lienId)}
         emptyMessage="No liens match your filters."
         manualPagination
         pageCount={pagination.totalPages}
@@ -207,8 +251,15 @@ export function PortfolioTable({
                 })
               : updater;
           handlePageChange(next.pageIndex + 1);
+          if (next.pageSize !== pagination.pageSize) {
+            onPageSizeChange(next.pageSize);
+          }
         }}
-        className="bg-white border-gray-200 rounded-xl"
+        pageSizeOptions={PAGE_SIZE_OPTIONS}
+        className="bg-white border-0 rounded-none"
+        primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
+        headerClassName={TABLE_HEADER_CLASSNAME}
+        headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
       />
     </div>
   );

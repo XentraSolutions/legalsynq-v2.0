@@ -10,7 +10,7 @@ const closedLienDisplayColumns: LienColumnDef[] = [
     id: "lienId",
     header: "Lien ID",
     cell: (l) => (
-      <span className="text-xs font-mono text-gray-500">{l.lienNumber}</span>
+      <span className="text-sm text-gray-600 whitespace-nowrap">{l.lienNumber}</span>
     ),
   },
   {
@@ -49,6 +49,16 @@ const closedLienDisplayColumns: LienColumnDef[] = [
     cell: (l) => (
       <span className="text-sm text-green-600 tabular-nums">
         {formatCurrency(l.reductionAmount)}
+      </span>
+    ),
+  },
+  {
+    id: "reductionDate",
+    header: "Reduction Date",
+    align: "right",
+    cell: (l) => (
+      <span className="text-sm text-green-600 tabular-nums">
+        {l.reductionDate}
       </span>
     ),
   },
@@ -154,6 +164,14 @@ export function ClosedLiensSection({
               content: (
                 <span className="text-sm font-semibold text-green-600 tabular-nums">
                   {formatCurrency(closedLiensTotalReduction)}
+                </span>
+              ),
+            },
+            {
+              align: "right",
+              content: (
+                <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                  ---
                 </span>
               ),
             },

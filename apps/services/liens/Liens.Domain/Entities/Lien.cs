@@ -36,6 +36,7 @@ public class Lien : AuditableEntity
 
     public DateOnly? IncidentDate { get; private set; }
     public DateOnly? PurchaseDate { get; private set; }
+    public DateOnly? ReceivableDueDate { get; private set; }
     public DateOnly? InitialServiceDate { get; private set; }
     public DateOnly? EndServiceDate { get; private set; }
     public string? IsBulk { get; private set; }
@@ -77,8 +78,108 @@ public class Lien : AuditableEntity
         MedicalFacilityCompanyId = NormalizeOptionalId(medicalFacilityCompanyId, nameof(medicalFacilityCompanyId));
     }
 
+    public void SetSellingFundingReferences(
+        Guid? legacyFundingCompanyId,
+        Guid? legacyFundingCompanyContactId,
+        Guid? fundingCompanyCompanyId,
+        Guid? fundingCompanyContactPersonId,
+        Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        legacyFundingCompanyId = NormalizeOptionalId(legacyFundingCompanyId, nameof(legacyFundingCompanyId));
+        legacyFundingCompanyContactId = NormalizeOptionalId(legacyFundingCompanyContactId, nameof(legacyFundingCompanyContactId));
+        fundingCompanyCompanyId = NormalizeOptionalId(fundingCompanyCompanyId, nameof(fundingCompanyCompanyId));
+        fundingCompanyContactPersonId = NormalizeOptionalId(fundingCompanyContactPersonId, nameof(fundingCompanyContactPersonId));
+
+        if (legacyFundingCompanyId.HasValue && fundingCompanyCompanyId.HasValue)
+            throw new ArgumentException("Legacy and canonical funding-company references cannot both be assigned.");
+        if (legacyFundingCompanyContactId.HasValue && !legacyFundingCompanyId.HasValue)
+            throw new ArgumentException("A legacy funding-company contact requires a legacy funding company.", nameof(legacyFundingCompanyContactId));
+        if (fundingCompanyContactPersonId.HasValue && !fundingCompanyCompanyId.HasValue)
+            throw new ArgumentException("A canonical funding-company contact requires a canonical funding company.", nameof(fundingCompanyContactPersonId));
+
+        FundingCompanyId = legacyFundingCompanyId;
+        FundingCompanyContactId = legacyFundingCompanyContactId;
+        FundingCompanyCompanyId = fundingCompanyCompanyId;
+        FundingCompanyContactPersonId = fundingCompanyContactPersonId;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetCanonicalMedicalProvider(Guid medicalProviderCompanyId, Guid updatedByUserId)
+    {
+        if (medicalProviderCompanyId == Guid.Empty)
+            throw new ArgumentException("Medical provider company id is required.", nameof(medicalProviderCompanyId));
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        MedicalProviderCompanyId = medicalProviderCompanyId;
+        Touch(updatedByUserId);
+    }
+
+    public void ReassignCanonicalCompany(Guid sourceCompanyId, Guid targetCompanyId, Guid updatedByUserId)
+    {
+        ValidateReassignment(sourceCompanyId, targetCompanyId, updatedByUserId);
+        var changed = false;
+        if (FundingCompanyCompanyId == sourceCompanyId)
+        {
+            FundingCompanyCompanyId = targetCompanyId;
+            changed = true;
+        }
+        if (MedicalProviderCompanyId == sourceCompanyId)
+        {
+            MedicalProviderCompanyId = targetCompanyId;
+            changed = true;
+        }
+        if (MedicalFacilityCompanyId == sourceCompanyId)
+        {
+            MedicalFacilityCompanyId = targetCompanyId;
+            changed = true;
+        }
+        if (changed) Touch(updatedByUserId);
+    }
+
+    public void ReassignCanonicalContactPerson(
+        Guid sourceContactPersonId,
+        Guid targetContactPersonId,
+        Guid targetCompanyId,
+        Guid updatedByUserId)
+    {
+        ValidateReassignment(sourceContactPersonId, targetContactPersonId, updatedByUserId);
+        if (targetCompanyId == Guid.Empty) throw new ArgumentException("Target company id is required.", nameof(targetCompanyId));
+        if (FundingCompanyContactPersonId != sourceContactPersonId) return;
+        FundingCompanyContactPersonId = targetContactPersonId;
+        FundingCompanyCompanyId = targetCompanyId;
+        Touch(updatedByUserId);
+    }
+
     private static Guid? NormalizeOptionalId(Guid? id, string parameterName)
         => id == Guid.Empty ? throw new ArgumentException("Canonical id cannot be empty.", parameterName) : id;
+
+    private static void ValidateReassignment(Guid sourceId, Guid targetId, Guid updatedByUserId)
+    {
+        if (sourceId == Guid.Empty) throw new ArgumentException("Source id is required.", nameof(sourceId));
+        if (targetId == Guid.Empty) throw new ArgumentException("Target id is required.", nameof(targetId));
+        if (sourceId == targetId) throw new ArgumentException("Source and target ids must differ.", nameof(targetId));
+        if (updatedByUserId == Guid.Empty) throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+    }
+
+    private void Touch(Guid updatedByUserId)
+    {
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void SetReceivableDueDate(DateOnly? receivableDueDate, Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        ReceivableDueDate = receivableDueDate;
+        Touch(updatedByUserId);
+    }
 
     public static Lien Create(
         Guid tenantId,
@@ -274,6 +375,23 @@ public class Lien : AuditableEntity
         UpdatedAtUtc    = DateTime.UtcNow;
     }
 
+    public void ReturnToSellingPending(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        if (Status != LienStatus.Offered && Status != LienStatus.UnderReview)
+            throw new InvalidOperationException($"Only offered or under-review liens can return to selling pending. Current status: '{Status}'.");
+
+        Status = LienStatus.Draft;
+        SellerStatus = SellingLienStatus.Pending;
+        OfferPrice = null;
+        SubmittedForSaleAtUtc = null;
+        ClosedAtUtc = null;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public void MarkSold(decimal purchasePrice, Guid buyingOrgId, Guid updatedByUserId)
     {
         if (Status != LienStatus.Offered && Status != LienStatus.Accepted && Status != LienStatus.UnderReview)
@@ -361,6 +479,18 @@ public class Lien : AuditableEntity
         WithdrawnAtUtc = withdrawnAtUtc ?? WithdrawnAtUtc;
         ArchivedAtUtc = archivedAtUtc ?? ArchivedAtUtc;
         ArchivedReason = archivedReason?.Trim() ?? ArchivedReason;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void RestoreFromArchive(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        SellerStatus = SellingLienStatus.Pending;
+        ArchivedAtUtc = null;
+        ArchivedReason = null;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }

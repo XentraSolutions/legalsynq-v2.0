@@ -103,6 +103,18 @@ Two additional env vars are required when hosting the CareConnect common portal 
 
 If `CC_COMMON_PORTAL_HOSTNAME` is unset, the CC forgot-password path is silently disabled (a startup warning is logged). See `apps/gateway/README.md` for the required proxy header-stripping rules.
 
+### Tenant registration common portal
+
+Tenant self-registration has a dedicated common-portal hostname, following the
+same environment naming convention as the product portals.
+
+| Variable | Example / Default | Purpose |
+|---|---|---|
+| `TENANT_COMMON_PORTAL_HOSTNAME` | `tenant-demo.localhost` | Exact hostname for tenant self-registration. Requests to `/` on this hostname redirect to `/register`; the registration page and submission endpoint return `404` on every other hostname. Use `tenant-qa.legalsynq.com` in QA and `tenant-demo.legalsynq.com` in demo. |
+
+For local development, open `http://tenant-demo.localhost:3000` when running
+`pnpm --dir apps/web dev`, or use port `5000` with the full development stack.
+
 ### SynqLien funding common portal
 
 The SynqLien funding-company common portal uses the same Identity-backed `platform_session` cookie as CareConnect common portal login, but it serves buyer-side SynqLien users from `/funding/*`.

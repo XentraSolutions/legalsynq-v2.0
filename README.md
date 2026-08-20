@@ -2,6 +2,11 @@
 
 LegalSynq is a multi-tenant SaaS platform for legal, healthcare, funding, workflow, billing, communications, automation, and support operations. It is a mixed .NET/Node monorepo with ASP.NET Core Minimal API services behind a YARP gateway and two main Next.js frontends.
 
+Tenant onboarding supports review-first self-registration: public submissions remain
+pending until a PlatformAdmin approves them, after which canonical tenant, Identity,
+secure administrator setup, and DNS provisioning run with independently retryable
+provisioning state.
+
 For agent-specific instructions, read [AGENTS.md](AGENTS.md) before changing code. If documentation and code disagree, trust the current package files, project files, configuration, and startup scripts.
 
 ## Products
@@ -62,7 +67,10 @@ bash scripts/bootstrap-worktree-local-config.sh
 The script copies only ignored `.env`, `.env.*`, and `appsettings.*.json` files,
 excludes generated directories, sets copied files to mode `600`, and does not
 overwrite existing worktree configuration. Use `--dry-run` to review the file
-list or `--force` to deliberately overwrite existing local configuration.
+list or `--force` to deliberately overwrite existing local configuration. Pass
+`--include-skip-worktree` to also copy matching tracked config files marked
+`skip-worktree` in the source checkout; clean destination copies are replaced
+and marked `skip-worktree`, while locally modified destinations are preserved.
 
 Install Node dependencies with the repository package manager:
 
@@ -75,6 +83,11 @@ Run the full local development stack:
 ```bash
 bash scripts/run-dev.sh
 ```
+
+The full-stack launcher explicitly rebuilds `Liens.Api` with conservative
+memory settings before starting it. If that targeted build fails, the backend
+startup stops instead of serving a stale cached Liens binary with missing API
+routes.
 
 Run backend services only:
 

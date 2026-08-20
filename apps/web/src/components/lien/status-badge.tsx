@@ -18,6 +18,9 @@ const STATUS_STYLES: Record<string, string> = {
   CaseSettled:           'bg-emerald-50  text-emerald-700 border-emerald-200',
   Closed:                'bg-red-200     text-red-600     border-gray-200',
   Pending:               'bg-[#dbf6e9]   text-yellow-700  border-yellow-200',
+  Approval:              'bg-amber-50    text-amber-700   border-amber-200',
+  PreparedForSale:       'bg-blue-50     text-blue-700    border-blue-200',
+  SubmittedForSale:      'bg-amber-50    text-amber-700   border-amber-200',
   InProgress:            'bg-blue-50     text-blue-700    border-blue-200',
   Completed:             'bg-[#dbf6e9]   text-[#10c469]   border-green-200',
   Escalated:             'bg-red-50      text-red-600     border-red-200',
@@ -40,6 +43,9 @@ const STATUS_STYLES: Record<string, string> = {
 
 export const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-Demand",
+  Approval: "Approval",
+  PreparedForSale: "Prepared for Sale",
+  SubmittedForSale: "Submitted for Sale",
   DemandSent: "Demand Sent",
   InNegotiation: "In Negotiation",
   CaseSettled: "Case Settled",

@@ -1,12 +1,17 @@
-import { headers } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { requireOrg } from '@/lib/auth-guards';
-import { PRODUCT_META, PRODUCT_NAV, orgTypeLabel, resolveEnabledNavKeys } from '@/lib/nav';
-import { getServerPortalConfig } from '@/lib/portal';
-import Link from 'next/link';
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { requireOrg } from "@/lib/auth-guards";
+import {
+  PRODUCT_META,
+  PRODUCT_NAV,
+  orgTypeLabel,
+  resolveEnabledNavKeys,
+} from "@/lib/nav";
+import { getServerPortalConfig } from "@/lib/portal";
+import Link from "next/link";
+import { NavItem } from "@/types";
 
-export const dynamic = 'force-dynamic';
-
+export const dynamic = "force-dynamic";
 
 /**
  * Dashboard — default landing page after login.
@@ -16,25 +21,27 @@ export default async function DashboardPage() {
   const session = await requireOrg();
 
   // Portal-specific overrides: redirect to the portal's own landing page.
-  const headersList  = await headers();
-  const rawHost      = headersList.get('x-forwarded-host') ?? headersList.get('host') ?? '';
+  const headersList = await headers();
+  const rawHost =
+    headersList.get("x-forwarded-host") ?? headersList.get("host") ?? "";
   const portalConfig = getServerPortalConfig(rawHost);
   if (portalConfig) redirect(portalConfig.landingPath);
 
   // Filter product tiles to only those enabled for this tenant.
-  const productList    = session.userProducts?.length
+  const productList = session.userProducts?.length
     ? session.userProducts
     : (session.enabledProducts ?? []);
-  const enabledKeys    = resolveEnabledNavKeys(productList);
-  const productEntries = Object.entries(PRODUCT_META).filter(([id]) => enabledKeys.has(id));
+  const enabledKeys = resolveEnabledNavKeys(productList);
+  const productEntries = Object.entries(PRODUCT_META).filter(([id]) =>
+    enabledKeys.has(id),
+  );
 
   return (
     <div className="max-w-4xl space-y-8">
-
       {/* Welcome header */}
       <div>
         <h1 className="text-xl font-bold text-[#0f1928]">
-          Welcome back{session.orgName ? `, ${session.orgName}` : ''}
+          Welcome back{session.orgName ? `, ${session.orgName}` : ""}
         </h1>
         <p className="text-sm text-gray-500 mt-1">
           {orgTypeLabel(session.orgType)} · {session.email}
@@ -53,7 +60,9 @@ export default async function DashboardPage() {
                 key={id}
                 id={id}
                 meta={meta}
-                items={(PRODUCT_NAV[id] ?? []).flatMap(s => s.items).slice(0, 3)}
+                items={(PRODUCT_NAV[id] ?? [])
+                  .flatMap((s) => s.items)
+                  .slice(0, 3)}
               />
             ))}
           </div>
@@ -86,7 +95,6 @@ export default async function DashboardPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
@@ -94,21 +102,23 @@ export default async function DashboardPage() {
 // ── Product card ──────────────────────────────────────────────────────────────
 
 function ProductCard({
-  id, meta, items,
+  id,
+  meta,
+  items,
 }: {
   id: string;
   meta: { label: string; icon: string; color: string; iconSrc: string };
-  items: { href: string; label: string }[];
+  items: NavItem[];
 }) {
   const bgMap: Record<string, string> = {
-    careconnect: '#eff6ff',
-    fund:        '#f0fdf4',
-    lien:        '#f5f3ff',
-    xenia:       '#fffbeb',
-    insights:    '#ecfeff',
+    careconnect: "#eff6ff",
+    fund: "#f0fdf4",
+    lien: "#f5f3ff",
+    xenia: "#fffbeb",
+    insights: "#ecfeff",
   };
-  const bg = bgMap[id] ?? '#f9fafb';
-  const primaryHref = items[0]?.href ?? '#';
+  const bg = bgMap[id] ?? "#f9fafb";
+  const primaryHref = items[0]?.href ?? "#";
 
   return (
     <Link
@@ -119,10 +129,16 @@ function ProductCard({
         className="inline-flex items-center justify-center w-10 h-10 rounded-lg mb-4"
         style={{ backgroundColor: bg }}
       >
-        {meta.iconSrc
-          ? <img src={meta.iconSrc} alt="" aria-hidden className="w-6 h-6 object-contain" />
-          : <i className={`${meta.icon} text-lg`} style={{ color: meta.color }} />
-        }
+        {meta.iconSrc ? (
+          <img
+            src={meta.iconSrc}
+            alt=""
+            aria-hidden
+            className="w-6 h-6 object-contain"
+          />
+        ) : (
+          <i className={`${meta.icon} text-lg`} style={{ color: meta.color }} />
+        )}
       </div>
 
       <p className="text-sm font-bold text-[#0f1928] group-hover:text-orange-600 transition-colors">
@@ -130,8 +146,11 @@ function ProductCard({
       </p>
 
       <ul className="mt-3 space-y-1">
-        {items.map(item => (
-          <li key={item.href} className="flex items-center gap-1.5 text-[11px] text-gray-500">
+        {items.map((item) => (
+          <li
+            key={item.href}
+            className="flex items-center gap-1.5 text-[11px] text-gray-500"
+          >
             <i className="ri-arrow-right-s-line text-gray-300 text-sm" />
             {item.label}
           </li>
@@ -143,8 +162,16 @@ function ProductCard({
 
 // ── Admin card ────────────────────────────────────────────────────────────────
 
-function AdminCard({ href, icon, label, description }: {
-  href: string; icon: string; label: string; description: string;
+function AdminCard({
+  href,
+  icon,
+  label,
+  description,
+}: {
+  href: string;
+  icon: string;
+  label: string;
+  description: string;
 }) {
   return (
     <Link

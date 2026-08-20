@@ -7,6 +7,7 @@ using BuildingBlocks.Notifications;
 using HtmlAgilityPack;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
+using Liens.Api;
 using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
@@ -27,7 +28,6 @@ namespace Liens.Api.Endpoints;
 
 public static class SellingEndpoints
 {
-    private const long SellingImportMaxBytes = 50L * 1024 * 1024;
     private const string SellingPatientDetailsTemplate = "SELLING_PATIENT_DETAILS_REPORT";
     private const string DocumentsServiceAudience = "documents-service";
     private static readonly HashSet<string> AllowedSellingImportExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -43,51 +43,6 @@ public static class SellingEndpoints
         ".xlsx",
     };
     private const string SellingBulkImportTemplateType = "SellingLienImport";
-    private static readonly string[] SellingBulkImportTemplateColumns =
-    [
-        "Case Code*",
-        "Lien Status*",
-        "Purchase Date*",
-        "Initial Service Date*",
-        "End Service Date",
-        "Notes",
-        "Funding Company",
-        "Facility Name*",
-        "Contact Person",
-        "Facility Email Address",
-        "Medical Provider Name",
-        "Medical Code & Description*",
-        "Medicare Cost",
-        "Billing Amount*",
-        "Purchase Amount*",
-        "Payee",
-        "Outbound Check Number",
-        "Document Type*",
-        "Attachment",
-    ];
-    private static readonly string[] SellingBulkImportTemplateExample =
-    [
-        "CASE-10001",
-        "Open",
-        "01/15/2026",
-        "01/10/2026",
-        "01/12/2026",
-        "Example selling lien import",
-        "Example Funding Co.",
-        "Example Medical Center",
-        "Jamie Smith",
-        "billing@example-medical-center.test",
-        "Example Medical Center",
-        "99213 - Office visit",
-        "82.00",
-        "250.00",
-        "175.00",
-        "Example Medical Center",
-        "CHK-10001",
-        "Medical bill",
-        "",
-    ];
-
     private static readonly string[] SellingDocumentTaskTypes =
     [
         "LegacyCaseDocument",
@@ -105,14 +60,14 @@ public static class SellingEndpoints
 
         group.MapPost("/imports/patient-details", ImportPatientDetailsReport)
             .RequirePermission(LiensPermissions.LienSaleCreate)
-            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(SellingImportMaxBytes));
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LiensUploadLimits.MultipartRequestBytes));
 
         group.MapGet("/bulk-import-template", DownloadBulkImportTemplate)
             .RequirePermission(LiensPermissions.LienSaleRead);
 
         group.MapPost("/bulk-imports", CreateBulkImport)
             .RequirePermission(LiensPermissions.LienSaleCreate)
-            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(SellingImportMaxBytes))
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LiensUploadLimits.MultipartRequestBytes))
             .DisableAntiforgery();
 
         group.MapGet("/dashboard", GetDashboard)
@@ -498,13 +453,44 @@ public static class SellingEndpoints
         if (lien is null)
             return Results.NotFound(new { error = new { code = "not_found", message = $"Offered lien '{accessLinkId}' not found." } });
 
-        var buyerContact = await db.Contacts
-            .AsNoTracking()
-            .FirstOrDefaultAsync(contact =>
-                contact.TenantId == tenantId &&
-                contact.Id == accessLink.BuyerContactId &&
-                contact.OrgId == accessLink.BuyerOrgId,
-                ct);
+        BuyerContactDisplay? buyerContact;
+        if (accessLink.BuyerCompanyId.HasValue && accessLink.BuyerCompanyContactPersonId.HasValue)
+        {
+            var canonicalContact = await db.CompanyContactPersons
+                .AsNoTracking()
+                .Include(contact => contact.Company)
+                .FirstOrDefaultAsync(contact =>
+                    contact.TenantId == tenantId &&
+                    contact.Id == accessLink.BuyerCompanyContactPersonId.Value &&
+                    contact.CompanyId == accessLink.BuyerCompanyId.Value &&
+                    contact.Company != null &&
+                    contact.Company.OrgId == accessLink.SellerOrgId,
+                    ct);
+            buyerContact = canonicalContact?.Company is null
+                ? null
+                : new BuyerContactDisplay(
+                    $"{canonicalContact.FirstName} {canonicalContact.LastName}".Trim(),
+                    canonicalContact.Company.Name,
+                    canonicalContact.Email,
+                    canonicalContact.Phone);
+        }
+        else
+        {
+            var legacyContact = await db.Contacts
+                .AsNoTracking()
+                .FirstOrDefaultAsync(contact =>
+                    contact.TenantId == tenantId &&
+                    contact.Id == accessLink.BuyerContactId &&
+                    contact.OrgId == accessLink.BuyerOrgId,
+                    ct);
+            buyerContact = legacyContact is null
+                ? null
+                : new BuyerContactDisplay(
+                    legacyContact.DisplayName,
+                    legacyContact.Organization,
+                    legacyContact.Email,
+                    legacyContact.Phone);
+        }
 
         var sellerContacts = await db.Contacts
             .AsNoTracking()
@@ -863,6 +849,22 @@ public static class SellingEndpoints
         foreach (var contactId in contactIds)
             buyerContactIds.Add(contactId);
 
+        var canonicalContactIds = await db.CompanyContactPersons
+            .AsNoTracking()
+            .Where(contact =>
+                contact.TenantId == tenantId &&
+                contact.IsActive &&
+                contact.Email != null &&
+                contact.Email.ToLower() == normalizedEmail &&
+                contact.Company != null &&
+                contact.Company.IsActive &&
+                contact.Company.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId)
+            .Select(contact => contact.Id)
+            .ToListAsync(ct);
+
+        foreach (var contactId in canonicalContactIds)
+            buyerContactIds.Add(contactId);
+
         return buyerContactIds;
     }
 
@@ -1188,7 +1190,7 @@ public static class SellingEndpoints
         SellingBuyerAccessLink accessLink,
         Lien lien,
         SellerOrganizationDisplay sellerDisplay,
-        Contact? buyerContact,
+        BuyerContactDisplay? buyerContact,
         string? providerName,
         IReadOnlyList<BuyerOfferedLienDocument> documents,
         IReadOnlyList<SellingPortalMessage> messages)
@@ -2033,14 +2035,14 @@ public static class SellingEndpoints
             });
         }
 
-        if (file.Length > SellingImportMaxBytes)
+        if (file.Length > LiensUploadLimits.MaxBytes)
         {
             return Results.BadRequest(new
             {
                 error = new
                 {
                     code = "file_too_large",
-                    message = $"The file exceeds the maximum allowed size of {SellingImportMaxBytes / (1024 * 1024)} MB.",
+                    message = $"The file exceeds the maximum allowed size of {LiensUploadLimits.MaxMegabytes} MB.",
                 },
             });
         }
@@ -2066,8 +2068,8 @@ public static class SellingEndpoints
         var csv = string.Join(
             Environment.NewLine,
             [
-                string.Join(',', SellingBulkImportTemplateColumns.Select(EscapeCsvField)),
-                string.Join(',', SellingBulkImportTemplateExample.Select(EscapeCsvField)),
+                string.Join(',', SellingBulkImportSchema.Columns.Select(EscapeCsvField)),
+                string.Join(',', SellingBulkImportSchema.Example.Select(EscapeCsvField)),
             ]);
 
         return Results.File(
@@ -2155,8 +2157,22 @@ public static class SellingEndpoints
         var parsed = ParseSellingBulkImportFile(stream, file.FileName);
         foreach (var row in parsed.Rows)
         {
-            row.TryAdd("Listing Visibility", defaultListingVisibility);
-            row.TryAdd("Seller Status", defaultSellerStatus);
+            if (SellingBulkImportSchema.GetValue(
+                    row,
+                    SellingBulkImportSchema.ListingVisibility,
+                    "Lien Visibility") is null)
+            {
+                row[SellingBulkImportSchema.ListingVisibility] = defaultListingVisibility;
+            }
+
+            if (SellingBulkImportSchema.GetValue(
+                    row,
+                    SellingBulkImportSchema.LienStatus,
+                    "Lien Status*",
+                    "Seller Status") is null)
+            {
+                row[SellingBulkImportSchema.LienStatus] = defaultSellerStatus;
+            }
         }
 
         var fileName = Truncate(Path.GetFileName(file.FileName), 255);
@@ -2205,14 +2221,14 @@ public static class SellingEndpoints
             });
         }
 
-        if (file.Length > SellingImportMaxBytes)
+        if (file.Length > LiensUploadLimits.MaxBytes)
         {
             return Results.BadRequest(new
             {
                 error = new
                 {
                     code = "file_too_large",
-                    message = $"The file exceeds the maximum allowed size of {SellingImportMaxBytes / (1024 * 1024)} MB.",
+                    message = $"The file exceeds the maximum allowed size of {LiensUploadLimits.MaxMegabytes} MB.",
                 },
             });
         }
@@ -2732,6 +2748,12 @@ public static class SellingEndpoints
         string Name,
         string? Company,
         string? Email);
+
+    private sealed record BuyerContactDisplay(
+        string DisplayName,
+        string? Organization,
+        string? Email,
+        string? Phone);
 
     private sealed record BuyerOfferedLienBuyerDetail(
         string? ContactName,

@@ -2,10 +2,8 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Button } from "@/components/ui/button";
-
-// Selling's brand accent, matching the convention used on other selling pages.
-const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
+import { X } from "lucide-react";
+import { Button } from "@/components/selling/button";
 
 interface ModalProps {
   open: boolean;
@@ -109,7 +107,7 @@ export function Modal({
                 onClick={onClose}
                 aria-label="Close dialog"
               >
-                <i className="ri-close-line text-xl" />
+                <X className="h-5 w-5" />
               </Button>
             </div>
           </div>
@@ -137,8 +135,6 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   confirmVariant?: "primary" | "danger";
-  /** Overrides the default bg-primary styling on the confirm button (e.g. selling's orange brand). */
-  primaryButtonClassName?: string;
   loading?: boolean;
   warningTitle?: string;
   warningItems?: string[];
@@ -154,7 +150,6 @@ export function ConfirmDialog({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   confirmVariant = "primary",
-  primaryButtonClassName,
   loading,
   warningTitle,
   warningItems,
@@ -174,7 +169,6 @@ export function ConfirmDialog({
           </Button>
           <Button
             variant={confirmVariant === "danger" ? "destructive" : "primary"}
-            className={confirmVariant === "danger" ? undefined : primaryButtonClassName}
             loading={loading}
             onClick={onConfirm}
           >
@@ -250,7 +244,8 @@ export function FormModal({
             {cancelLabel}
           </Button>
           <Button
-            className={`flex-1 ${PRIMARY_BUTTON_CLASSNAME}`}
+            variant="primary"
+            className="flex-1"
             disabled={submitDisabled || loading}
             loading={loading}
             onClick={onSubmit}

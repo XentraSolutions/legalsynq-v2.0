@@ -1,17 +1,31 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Loader } from "lucide-react";
 import { useSessionContext } from "@/providers/session-provider";
 import { useSession } from "@/hooks/use-session";
-import { liensService } from "@/lib/selling";
 import { documentsService } from "@/lib/documents";
 import UploadDocumentComponent, {
   FileDropzoneRef,
-} from "@/components/lien/upload-document";
+} from "@/components/selling/upload-document";
+import {
+  fileExtLabel,
+  fileIconFor,
+  UploadedFileRow,
+} from "@/components/selling/uploaded-file-row";
 import Field from "@/components/lien/field";
+import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
 import { ConfirmDialog } from "@/components/selling/modal";
-import { useToast } from "@/lib/toast-context";
-import { parseDocumentReference } from "@/lib/selling/selling-detail.mapper";
-import type { SellingDocumentReferenceRequest } from "@/lib/selling/liens.types";
-import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import {
+  sortByNewestFirst,
+  useLienDocuments,
+  useSaveLienDocuments,
+} from "@/lib/selling/use-lien-documents";
+import { Button } from "@/components/selling/button";
+import { sellingLookupsApi } from "@/lib/selling/lookup.api";
+import {
+  camelCaseToLabel,
+  resolveDocumentCategory,
+} from "@/lib/selling/selling-detail.mapper";
 
 export interface UploadDocumentsProps {
   caseId?: string;
@@ -19,106 +33,58 @@ export interface UploadDocumentsProps {
   data?: any;
   onFormValid?: (valid: boolean, data?: any) => void;
   onUploaded?: (valid: boolean, data?: any) => void;
-}
-
-interface AttachedDoc {
-  documentId: string;
-  documentType: string;
-  displayName: string;
-  createdAt: string;
-  fileSize: string;
-}
-
-function getFileIcon(filename: string): string {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  if (ext === "pdf") return "ri-file-pdf-2-line";
-  if (["doc", "docx"].includes(ext)) return "ri-file-word-2-line";
-  if (["xls", "xlsx", "csv"].includes(ext)) return "ri-file-excel-2-line";
-  if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext))
-    return "ri-image-line";
-  return "ri-file-text-line";
-}
-
-function fileExtLabel(filename: string): string {
-  return filename.split(".").pop()?.toUpperCase() ?? "FILE";
-}
-
-function toDocumentRefs(
-  docs: AttachedDoc[],
-): SellingDocumentReferenceRequest[] {
-  return docs.map((doc) => ({
-    documentId: doc.documentId,
-    documentType: doc.documentType,
-    displayName: doc.displayName,
-  }));
+  /** Hides the built-in "Upload Documents" heading/description — for callers (e.g. a modal) that already render their own title. */
+  hideHeading?: boolean;
+  /** Skips displaying documents already attached to the lien — for callers (e.g. a modal launched from a page that already lists them) that should only show files uploaded in this session. The full set is still fetched/persisted so saves append rather than overwrite. */
+  hideExistingDocuments?: boolean;
 }
 
 export default function UploadDocuments(props: UploadDocumentsProps) {
-  const { lienId, onUploaded, onFormValid } = props;
+  const { lienId, onUploaded, onFormValid, hideHeading, hideExistingDocuments } =
+    props;
   const { lookup } = useSessionContext();
   const { session } = useSession();
-  const { show: showToast } = useToast();
   const dropzoneRef = useRef<FileDropzoneRef>(null);
 
-  const documentTypes = lookup?.DocumentCategory ?? [];
-  const documentTypeOptions = documentTypes.map((d) => ({
-    key: d.id,
-    value: d.id,
-    label: d.name,
-  }));
-
-  const [documentTypeId, setDocumentTypeId] = useState("");
-  const [docs, setDocs] = useState<AttachedDoc[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [showDropzone, setShowDropzone] = useState(true);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  // A draft lien may already have documents attached from a previous visit —
-  // hydrate from the lien itself (same source sell-lien-wizard/portfolio-details
-  // use) rather than assuming this step always starts empty.
+  // The document-type dropdown is restricted to the selling domain's own
+  // fixed enum (GET /selling/lookups/document-types) rather than the full
+  // DocumentCategory catalog, since only those values are valid on a sale's
+  // saveDocuments payload. Each selection is then matched to the closest
+  // DocumentCategory row to get a real documentTypeId for the upload.
+  const documentCategories = lookup?.DocumentCategory ?? [];
+  const [sellingDocumentTypes, setSellingDocumentTypes] = useState<string[]>(
+    [],
+  );
   useEffect(() => {
     let cancelled = false;
-    if (!lienId) {
-      setLoading(false);
-      return;
-    }
-    (async () => {
-      try {
-        const lien = await liensService.getLienById(lienId);
-        const enriched = await Promise.all(
-          lien.documents.map(async (doc) => {
-            const parsed = parseDocumentReference(doc);
-            if (!parsed.documentId) return null;
-            try {
-              const detail = await documentsService.getById(
-                parsed.documentId,
-              );
-              return {
-                documentId: parsed.documentId,
-                documentType: parsed.documentType,
-                displayName: parsed.displayName ?? detail.title,
-                createdAt: detail.createdAt,
-                fileSize: detail.fileSize,
-              } as AttachedDoc;
-            } catch {
-              return null;
-            }
-          }),
-        );
-        if (cancelled) return;
-        const resolved = enriched.filter((d): d is AttachedDoc => !!d);
-        setDocs(resolved);
-        setShowDropzone(resolved.length === 0);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
+    sellingLookupsApi
+      .documentTypes()
+      .then((res) => {
+        if (!cancelled) setSellingDocumentTypes(res.data.items);
+      })
+      .catch(() => {
+        // Non-fatal — the dropdown just stays empty and upload stays disabled.
+      });
     return () => {
       cancelled = true;
     };
-  }, [lienId]);
+  }, []);
+
+  const documentTypeOptions = sellingDocumentTypes.map((type) => ({
+    key: type,
+    value: type,
+    label: camelCaseToLabel(type),
+  }));
+
+  const [documentType, setDocumentType] = useState("");
+  const { data: docs = [], isLoading: loading } = useLienDocuments(lienId);
+  const saveLienDocuments = useSaveLienDocuments(lienId);
+  // Uploaded during this component's lifetime — when hideExistingDocuments is
+  // set, only these render, while the full cached list still backs saves.
+  const [newDocumentIds, setNewDocumentIds] = useState<Set<string>>(new Set());
+  const [pendingFileName, setPendingFileName] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     onFormValid?.(true, docs);
@@ -130,13 +96,23 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     const file = files[0];
     if (!file) return;
 
-    if (!documentTypeId) {
-      showToast("Select a document type first", "error");
+    if (!documentType) {
+      toast.error("Select a document type first");
       dropzoneRef.current?.reset();
       return;
     }
 
-    setUploading(true);
+    const documentTypeId = resolveDocumentCategory(
+      documentType,
+      documentCategories,
+    )?.id;
+    if (!documentTypeId) {
+      toast.error("Document type list is still loading. Please try again.");
+      dropzoneRef.current?.reset();
+      return;
+    }
+
+    setPendingFileName(file.name);
     try {
       const uploaded = await documentsService.upload({
         file,
@@ -147,35 +123,33 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         documentTypeId,
         title: file.name,
       });
-      const documentType =
-        documentTypes.find((t) => t.id === documentTypeId)?.name ??
-        documentTypeId;
-      const nextDocs: AttachedDoc[] = [
-        ...docs,
-        {
-          documentId: uploaded.id,
-          documentType,
-          displayName: file.name,
-          createdAt: uploaded.createdAt,
-          fileSize: uploaded.fileSize,
-        },
-      ];
+      const documentTypeLabel = camelCaseToLabel(documentType);
       // Persist immediately so the attachment survives navigating away — the
       // wizard's final step doesn't re-save documents, it just confirms.
-      await liensService.saveDocuments(lienId ?? "", {
-        documents: toDocumentRefs(nextDocs),
-      });
-      setDocs(nextDocs);
-      setShowDropzone(false);
-      showToast("Document uploaded.", "success");
+      // Appends onto the latest server-side list (fetched inside
+      // saveLienDocuments), not the possibly-stale `docs` in local state.
+      await saveLienDocuments((current) =>
+        sortByNewestFirst([
+          ...current,
+          {
+            documentId: uploaded.id,
+            documentType: documentTypeLabel,
+            displayName: file.name,
+            createdAt: uploaded.createdAt,
+            fileSize: uploaded.fileSize,
+          },
+        ]),
+      );
+      setNewDocumentIds((prev) => new Set(prev).add(uploaded.id));
+      setDocumentType("");
+      toast.success("Document uploaded.");
     } catch (err) {
-      showToast(
+      toast.error(
         err instanceof Error ? err.message : "Failed to upload document",
-        "error",
       );
     } finally {
       dropzoneRef.current?.reset();
-      setUploading(false);
+      setPendingFileName(null);
     }
   };
 
@@ -183,106 +157,95 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const remaining = docs.filter((d) => d.documentId !== deleteTarget);
-      await liensService.saveDocuments(lienId ?? "", {
-        documents: toDocumentRefs(remaining),
-      });
-      setDocs(remaining);
+      await saveLienDocuments((current) =>
+        current.filter((d) => d.documentId !== deleteTarget),
+      );
       setDeleteTarget(null);
-      showToast("Document removed.", "success");
+      toast.success("Document removed.");
     } catch (err) {
-      showToast(
+      toast.error(
         err instanceof Error ? err.message : "Failed to remove document",
-        "error",
       );
     } finally {
       setDeleting(false);
     }
   };
 
+  const visibleDocs = hideExistingDocuments
+    ? docs.filter((doc) => newDocumentIds.has(doc.documentId))
+    : docs;
+
   return (
     <div className="container-fluid">
       <div className="row border-bottom border-solid pb-3 mb-3">
-        <div className="col-12 mb-2">
-          <span className="font-semibold mb-2 text-2xl mt-1">
-            Upload Documents
-          </span>
-          <p className="font-normal text-sm text-gray-600 mb-2 mt-1">
-            Upload supporting documents to provide additional information for
-            this lien.
-          </p>
-        </div>
+        {!hideHeading && (
+          <div className="col-12 mb-2">
+            <span className="font-semibold mb-2 text-2xl mt-1">
+              Upload Documents
+            </span>
+            <p className="font-normal text-sm text-gray-600 mb-2 mt-1">
+              Upload supporting documents to provide additional information
+              for this lien.
+            </p>
+          </div>
+        )}
 
         <Field
           label="Document Type"
           required
-          value={documentTypeId}
+          value={documentType}
           options={documentTypeOptions}
-          onChange={(v: string) => setDocumentTypeId(v)}
+          onChange={(v: string) => setDocumentType(v)}
           placeholder="Select document type"
           type="select"
+          clearable
         />
-
-        {!loading && docs.length > 0 && (
+        <div className="mt-4">
+          <UploadDocumentComponent
+            ref={dropzoneRef}
+            isMultiple={false}
+            disabled={!documentType}
+            onUploaded={handleFilesSelected}
+          />
+        </div>
+        {loading && (
           <div className="mt-4 space-y-3">
-            {docs.map((doc) => (
-              <div
-                key={doc.documentId}
-                className="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-3"
-              >
-                <div className="w-10 h-10 rounded bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0 text-gray-500">
-                  <i className={`${getFileIcon(doc.displayName)} text-lg`} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-800 truncate">
-                    {doc.displayName}
-                  </p>
-                  <p className="text-xs text-gray-400 truncate">
-                    {doc.documentType} · {fileExtLabel(doc.displayName)}
-                  </p>
-                </div>
-                {doc.createdAt && (
-                  <p className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
-                    {new Date(doc.createdAt).toLocaleDateString()} ·{" "}
-                    {new Date(doc.createdAt).toLocaleTimeString()}
-                  </p>
-                )}
-                <Button
-                  type="button"
-                  variant="icon-square"
-                  className="w-8 h-8 border-red-100 text-red-500 hover:bg-red-50 shrink-0"
-                  onClick={() => setDeleteTarget(doc.documentId)}
-                  aria-label="Delete document"
-                >
-                  <i className="ri-delete-bin-6-line text-sm" />
-                </Button>
-              </div>
-            ))}
+            <SkeletonFileRow />
+            <SkeletonFileRow />
           </div>
         )}
-
-        {showDropzone ? (
-          <div className="mt-4">
-            <UploadDocumentComponent
-              ref={dropzoneRef}
-              isMultiple={false}
-              onUploaded={handleFilesSelected}
-            />
-            {uploading && (
-              <p className="text-xs text-gray-400 mt-2">Uploading...</p>
+        {!loading && (visibleDocs.length > 0 || pendingFileName) && (
+          <div className="mt-4 space-y-3 max-h-70 overflow-y-auto pr-1">
+            {pendingFileName && (
+              <UploadedFileRow
+                icon={fileIconFor(pendingFileName)}
+                title={pendingFileName}
+                subtitle="Uploading..."
+                actions={
+                  <Loader className="w-4 h-4 text-gray-400 animate-spin" />
+                }
+              />
             )}
+            {visibleDocs.map((doc) => (
+              <UploadedFileRow
+                key={doc.documentId}
+                icon={fileIconFor(doc.displayName)}
+                title={doc.displayName}
+                subtitle={`${doc.documentType} · ${fileExtLabel(doc.displayName)}`}
+                timestamp={doc.createdAt}
+                actions={
+                  <Button
+                    type="button"
+                    variant="icon-square-destructive"
+                    className="w-8 h-8"
+                    icon="trash2"
+                    onClick={() => setDeleteTarget(doc.documentId)}
+                    aria-label="Delete document"
+                  />
+                }
+              />
+            ))}
           </div>
-        ) : (
-          <Button
-            type="button"
-            variant="secondary"
-            className="mt-4"
-            disabled={uploading}
-            rightIcon={<i className="ri-upload-cloud-2-line text-sm" />}
-            onClick={() => setShowDropzone(true)}
-          >
-            Upload More
-          </Button>
         )}
       </div>
 

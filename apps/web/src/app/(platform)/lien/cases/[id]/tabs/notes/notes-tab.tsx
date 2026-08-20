@@ -42,7 +42,7 @@ export function NotesTab({
     />
   );
   const leftContent = (
-    <CollapsibleSection title="Notes" icon="ri-compass-3-line">
+    <CollapsibleSection title="Case Tracking Notes" icon="ri-compass-3-line">
       <div className="space-y-4">
         <div className="pt-3">
           {loading ? (

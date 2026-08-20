@@ -17,6 +17,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         "pending",
         "internal",
         "sold",
+        "archived",
         "all",
     };
 
@@ -46,13 +47,22 @@ public sealed class SellingDashboardService : ISellingDashboardService
     {
         var normalizedQuery = Normalize(query);
 
+        var includeArchived = string.Equals(normalizedQuery.Tab, "archived", StringComparison.Ordinal);
         var lienQuery = _db.Liens
             .AsNoTracking()
-            .Where(l => l.TenantId == tenantId && (l.SellingOrgId == sellerOrgId || l.OrgId == sellerOrgId))
-            .Where(l => l.ArchivedAtUtc == null && l.SellerStatus != SellingLienStatus.Archived);
+            .Where(l => l.TenantId == tenantId
+                && (l.SellingOrgId == sellerOrgId
+                    || (!l.SellingOrgId.HasValue && l.OrgId == sellerOrgId)));
+
+        lienQuery = includeArchived
+            ? lienQuery.Where(l => l.ArchivedAtUtc != null || l.SellerStatus == SellingLienStatus.Archived)
+            : lienQuery.Where(l => l.ArchivedAtUtc == null && l.SellerStatus != SellingLienStatus.Archived);
 
         if (normalizedQuery.FundingCompanyId.HasValue)
-            lienQuery = lienQuery.Where(l => l.FundingCompanyId == normalizedQuery.FundingCompanyId);
+            lienQuery = lienQuery.Where(l =>
+                l.FundingCompanyCompanyId == normalizedQuery.FundingCompanyId
+                || (!l.FundingCompanyCompanyId.HasValue
+                    && l.FundingCompanyId == normalizedQuery.FundingCompanyId));
         if (normalizedQuery.FacilityId.HasValue)
             lienQuery = lienQuery.Where(l => l.FacilityId == normalizedQuery.FacilityId);
         if (normalizedQuery.InitialServiceDateFrom.HasValue)
@@ -76,6 +86,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
                 l.CaseId,
                 l.FacilityId,
                 l.FundingCompanyId,
+                l.FundingCompanyCompanyId,
                 l.InitialServiceDate,
                 l.OriginalAmount,
                 l.AskAmount,
@@ -85,7 +96,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
                 l.Status))
             .ToListAsync(ct);
 
-        var context = await LoadContextAsync(tenantId, liens, ct);
+        var context = await LoadContextAsync(tenantId, sellerOrgId, liens, ct);
         var rows = liens
             .Select(lien => CreateRow(lien, context))
             .Where(row => MatchesFilters(row, normalizedQuery))
@@ -130,6 +141,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
 
     private async Task<DashboardContext> LoadContextAsync(
         Guid tenantId,
+        Guid sellerOrgId,
         IReadOnlyCollection<DashboardLien> liens,
         CancellationToken ct)
     {
@@ -148,7 +160,13 @@ public sealed class SellingDashboardService : ISellingDashboardService
             ? []
             : await _db.Cases.AsNoTracking()
                 .Where(c => c.TenantId == tenantId && caseIds.Contains(c.Id))
-                .Select(c => new DashboardCase(c.Id, c.OrgId, c.CaseNumber, c.Notes))
+                .Select(c => new DashboardCase(
+                    c.Id,
+                    c.OrgId,
+                    c.CaseNumber,
+                    c.Notes,
+                    c.HandlingLawFirmCompanyId,
+                    c.CaseManagerContactPersonId))
                 .ToListAsync(ct);
         var facilities = facilityIds.Count == 0
             ? []
@@ -160,15 +178,28 @@ public sealed class SellingDashboardService : ISellingDashboardService
         var caseById = cases.ToDictionary(c => c.Id);
         var lawFirmOrgIds = cases.Select(c => c.OrgId).Distinct().ToHashSet();
         var referencedContactIds = liens
-            .Where(l => l.FundingCompanyId.HasValue)
+            .Where(l => !l.FundingCompanyCompanyId.HasValue && l.FundingCompanyId.HasValue)
             .Select(l => l.FundingCompanyId!.Value)
+            .ToHashSet();
+        var referencedCompanyIds = liens
+            .Where(l => l.FundingCompanyCompanyId.HasValue)
+            .Select(l => l.FundingCompanyCompanyId!.Value)
+            .ToHashSet();
+        var referencedCompanyContactIds = cases
+            .Where(c => c.CaseManagerContactPersonId.HasValue)
+            .Select(c => c.CaseManagerContactPersonId!.Value)
             .ToHashSet();
 
         foreach (var caseEntity in cases)
         {
+            if (caseEntity.HandlingLawFirmCompanyId.HasValue)
+                referencedCompanyIds.Add(caseEntity.HandlingLawFirmCompanyId.Value);
+
             var fields = ParseLegacyNoteFields(caseEntity.Notes);
-            AddGuid(fields, "lawFirmId", referencedContactIds);
-            AddGuid(fields, "caseManagerId", referencedContactIds);
+            if (!caseEntity.HandlingLawFirmCompanyId.HasValue)
+                AddGuid(fields, "lawFirmId", referencedContactIds);
+            if (!caseEntity.CaseManagerContactPersonId.HasValue)
+                AddGuid(fields, "caseManagerId", referencedContactIds);
         }
 
         var contacts = (referencedContactIds.Count == 0 && lawFirmOrgIds.Count == 0)
@@ -177,12 +208,28 @@ public sealed class SellingDashboardService : ISellingDashboardService
                 .Where(c => c.TenantId == tenantId &&
                     (referencedContactIds.Contains(c.Id) || referencedContactIds.Contains(c.OrgId) || lawFirmOrgIds.Contains(c.OrgId)))
                 .ToListAsync(ct);
+        var companies = referencedCompanyIds.Count == 0
+            ? []
+            : await _db.Companies.AsNoTracking()
+                .Where(c => c.TenantId == tenantId
+                    && c.OrgId == sellerOrgId
+                    && referencedCompanyIds.Contains(c.Id))
+                .ToListAsync(ct);
+        var companyContacts = referencedCompanyContactIds.Count == 0
+            ? []
+            : await _db.CompanyContactPersons.AsNoTracking()
+                .Where(c => c.TenantId == tenantId
+                    && referencedCompanyContactIds.Contains(c.Id)
+                    && referencedCompanyIds.Contains(c.CompanyId))
+                .ToListAsync(ct);
 
         return new DashboardContext(
             caseById,
             facilities.ToDictionary(f => f.Id),
             contacts.GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.First()),
-            contacts.GroupBy(c => c.OrgId).ToDictionary(g => g.Key, g => g.First()));
+            contacts.GroupBy(c => c.OrgId).ToDictionary(g => g.Key, g => g.First()),
+            companies.ToDictionary(c => c.Id),
+            companyContacts.ToDictionary(c => c.Id));
     }
 
     private async Task<IReadOnlyDictionary<Guid, decimal>> LoadHighestBidsAsync(
@@ -229,25 +276,29 @@ public sealed class SellingDashboardService : ISellingDashboardService
         var caseFields = caseEntity is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : ParseLegacyNoteFields(caseEntity.Notes);
-        var lawFirmId = TryGetGuid(caseFields, "lawFirmId") ?? caseEntity?.OrgId;
-        var caseManagerId = TryGetGuid(caseFields, "caseManagerId");
+        var lawFirmId = caseEntity?.HandlingLawFirmCompanyId
+            ?? TryGetGuid(caseFields, "lawFirmId")
+            ?? caseEntity?.OrgId;
+        var caseManagerId = caseEntity?.CaseManagerContactPersonId
+            ?? TryGetGuid(caseFields, "caseManagerId");
+        var fundingCompanyId = lien.FundingCompanyCompanyId ?? lien.FundingCompanyId;
 
-        var fundingCompany = ResolveContactLabel(
-            lien.FundingCompanyId,
-            context.ContactsById,
-            context.ContactsByOrgId);
-        var lawFirm = ResolveContactLabel(
-            lawFirmId,
-            context.ContactsById,
-            context.ContactsByOrgId);
-        var caseManager = ResolveContactLabel(
-            caseManagerId,
-            context.ContactsById,
-            context.ContactsByOrgId);
+        var fundingCompany = lien.FundingCompanyCompanyId.HasValue
+            ? context.CompaniesById.GetValueOrDefault(lien.FundingCompanyCompanyId.Value)?.Name
+            : ResolveContactLabel(lien.FundingCompanyId, context.ContactsById, context.ContactsByOrgId);
+        var lawFirm = caseEntity?.HandlingLawFirmCompanyId.HasValue == true
+            ? context.CompaniesById.GetValueOrDefault(caseEntity.HandlingLawFirmCompanyId.Value)?.Name
+            : ResolveContactLabel(lawFirmId, context.ContactsById, context.ContactsByOrgId);
+        var caseManager = caseEntity?.CaseManagerContactPersonId.HasValue == true
+            ? ResolveCompanyContactLabel(
+                caseEntity.CaseManagerContactPersonId,
+                context.CompanyContactsById)
+            : ResolveContactLabel(caseManagerId, context.ContactsById, context.ContactsByOrgId);
 
         return new DashboardRow(
             lien,
             caseEntity?.CaseNumber,
+            fundingCompanyId,
             lawFirmId,
             lawFirm,
             caseManagerId,
@@ -259,7 +310,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
 
     private static bool MatchesFilters(DashboardRow row, SellingDashboardQuery query)
     {
-        if (query.FundingCompanyId.HasValue && row.Lien.FundingCompanyId != query.FundingCompanyId)
+        if (query.FundingCompanyId.HasValue && row.FundingCompanyId != query.FundingCompanyId)
             return false;
         if (query.LawFirmId.HasValue && row.LawFirmId != query.LawFirmId)
             return false;
@@ -307,7 +358,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         {
             switch (row.Status)
             {
-                case SellingLienStatus.Pending:
+                case var status when IsPendingTabStatus(status):
                     totalPending += row.Lien.OriginalAmount;
                     pendingCount++;
                     break;
@@ -379,7 +430,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         LienNumber = row.Lien.LienNumber,
         CaseId = row.Lien.CaseId,
         CaseNumber = row.CaseNumber,
-        FundingCompanyId = row.Lien.FundingCompanyId,
+        FundingCompanyId = row.FundingCompanyId,
         FundingCompany = row.FundingCompany,
         LawFirmId = row.LawFirmId,
         LawFirm = row.LawFirm,
@@ -397,11 +448,18 @@ public sealed class SellingDashboardService : ISellingDashboardService
 
     private static bool MatchesTab(string status, string tab) => tab switch
     {
-        "pending" => status == SellingLienStatus.Pending,
+        "pending" => IsPendingTabStatus(status),
         "internal" => status == SellingLienStatus.Internal,
         "sold" => status == SellingLienStatus.Sold,
+        "archived" => status == SellingLienStatus.Archived,
         _ => true,
     };
+
+    private static bool IsPendingTabStatus(string status) =>
+        status is SellingLienStatus.Pending
+            or SellingLienStatus.Approval
+            or SellingLienStatus.PreparedForSale
+            or SellingLienStatus.SubmittedForSale;
 
     private static SellingDashboardQuery Normalize(SellingDashboardQuery query)
     {
@@ -415,7 +473,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
 
         var errors = new Dictionary<string, string[]>();
         if (!Tabs.Contains(tab))
-            errors["tab"] = ["Tab must be pending, internal, sold, or all."];
+            errors["tab"] = ["Tab must be pending, internal, sold, archived, or all."];
         if (!SortFields.Contains(sortBy))
             errors["sortBy"] = ["SortBy must be lienId, fundingCompany, initialServiceDate, billingAmount, askAmount, highestBid, or status."];
         if (sortDirection is not "asc" and not "desc")
@@ -487,6 +545,17 @@ public sealed class SellingDashboardService : ISellingDashboardService
             : contact.Organization;
     }
 
+    private static string? ResolveCompanyContactLabel(
+        Guid? id,
+        IReadOnlyDictionary<Guid, CompanyContactPerson> contactsById)
+    {
+        if (!id.HasValue || !contactsById.TryGetValue(id.Value, out var contact))
+            return null;
+
+        return string.Join(" ", new[] { contact.FirstName, contact.LastName }
+            .Where(value => !string.IsNullOrWhiteSpace(value)));
+    }
+
     private static Dictionary<string, string> ParseLegacyNoteFields(string? notes)
     {
         var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -521,7 +590,9 @@ public sealed class SellingDashboardService : ISellingDashboardService
         IReadOnlyDictionary<Guid, DashboardCase> CasesById,
         IReadOnlyDictionary<Guid, DashboardFacility> FacilitiesById,
         IReadOnlyDictionary<Guid, Contact> ContactsById,
-        IReadOnlyDictionary<Guid, Contact> ContactsByOrgId);
+        IReadOnlyDictionary<Guid, Contact> ContactsByOrgId,
+        IReadOnlyDictionary<Guid, Company> CompaniesById,
+        IReadOnlyDictionary<Guid, CompanyContactPerson> CompanyContactsById);
 
     private sealed record DashboardLien(
         Guid Id,
@@ -532,6 +603,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         Guid? CaseId,
         Guid? FacilityId,
         Guid? FundingCompanyId,
+        Guid? FundingCompanyCompanyId,
         DateOnly? InitialServiceDate,
         decimal OriginalAmount,
         decimal? AskAmount,
@@ -544,13 +616,16 @@ public sealed class SellingDashboardService : ISellingDashboardService
         Guid Id,
         Guid OrgId,
         string CaseNumber,
-        string? Notes);
+        string? Notes,
+        Guid? HandlingLawFirmCompanyId,
+        Guid? CaseManagerContactPersonId);
 
     private sealed record DashboardFacility(Guid Id, string Name);
 
     private sealed record DashboardRow(
         DashboardLien Lien,
         string? CaseNumber,
+        Guid? FundingCompanyId,
         Guid? LawFirmId,
         string? LawFirm,
         Guid? CaseManagerId,

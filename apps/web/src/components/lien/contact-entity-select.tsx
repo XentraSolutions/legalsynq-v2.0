@@ -34,7 +34,7 @@ interface ContactEntitySelectProps {
   disabled?: boolean;
 
   value?: string | null;
-  onChange: (value: string, option: BaseSelectOption) => void;
+  onChange: (value: string, option: BaseSelectOption | null) => void;
   placeholder?: string;
   searchPlaceholder?: string;
   error?: boolean;
@@ -159,7 +159,7 @@ export function ContactEntitySelect({
     return fetched;
   }, [fetched, value, selectedOption]);
 
-  const handleChange = (nextValue: string, option: BaseSelectOption) => {
+  const handleChange = (nextValue: string, option: BaseSelectOption | null) => {
     setSelectedOption(option);
     onChange(nextValue, option);
   };

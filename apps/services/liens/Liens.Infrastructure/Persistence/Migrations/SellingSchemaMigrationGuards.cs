@@ -37,8 +37,46 @@ internal static class SellingSchemaMigrationGuards
         string table,
         string index,
         string columns,
-        bool unique = false)
-        => ExecuteConditionally(
+        bool unique = false,
+        string? equivalentIndex = null,
+        string? replacementColumn = null)
+    {
+        var indexPredicate = equivalentIndex is null
+            ? $"INDEX_NAME = '{index}'"
+            : $"INDEX_NAME IN ('{index}', '{equivalentIndex}')";
+        var existenceQuery = replacementColumn is null
+            ? $"""
+              SELECT COUNT(*)
+              FROM information_schema.STATISTICS
+              WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = '{table}'
+                AND {indexPredicate}
+              """
+            : $"""
+              SELECT
+                  (SELECT COUNT(*)
+                   FROM information_schema.STATISTICS
+                   WHERE TABLE_SCHEMA = DATABASE()
+                     AND TABLE_NAME = '{table}'
+                     AND {indexPredicate})
+                + (SELECT COUNT(*)
+                   FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA = DATABASE()
+                     AND TABLE_NAME = '{table}'
+                     AND COLUMN_NAME = '{replacementColumn}')
+              """;
+
+        ExecuteConditionally(
+            migrationBuilder,
+            existenceQuery,
+            $"CREATE {(unique ? "UNIQUE " : string.Empty)}INDEX `{index}` ON `{table}` {columns}");
+    }
+
+    public static void DropIndexIfExists(
+        MigrationBuilder migrationBuilder,
+        string table,
+        string index)
+        => ExecuteWhenPresent(
             migrationBuilder,
             $"""
             SELECT COUNT(*)
@@ -47,7 +85,24 @@ internal static class SellingSchemaMigrationGuards
               AND TABLE_NAME = '{table}'
               AND INDEX_NAME = '{index}'
             """,
-            $"CREATE {(unique ? "UNIQUE " : string.Empty)}INDEX `{index}` ON `{table}` {columns}");
+            $"DROP INDEX `{index}` ON `{table}`");
+
+    public static void AddCheckConstraintIfMissing(
+        MigrationBuilder migrationBuilder,
+        string table,
+        string constraint,
+        string expression)
+        => ExecuteConditionally(
+            migrationBuilder,
+            $"""
+            SELECT COUNT(*)
+            FROM information_schema.TABLE_CONSTRAINTS
+            WHERE CONSTRAINT_SCHEMA = DATABASE()
+              AND TABLE_NAME = '{table}'
+              AND CONSTRAINT_NAME = '{constraint}'
+              AND CONSTRAINT_TYPE = 'CHECK'
+            """,
+            $"ALTER TABLE `{table}` ADD CONSTRAINT `{constraint}` CHECK ({expression})");
 
     public static void AddForeignKeyIfMissing(
         MigrationBuilder migrationBuilder,
@@ -70,13 +125,27 @@ internal static class SellingSchemaMigrationGuards
         MigrationBuilder migrationBuilder,
         string countQuery,
         string ddl)
+        => ExecuteConditionalDdl(migrationBuilder, countQuery, ddl, executeWhenPresent: false);
+
+    private static void ExecuteWhenPresent(
+        MigrationBuilder migrationBuilder,
+        string countQuery,
+        string ddl)
+        => ExecuteConditionalDdl(migrationBuilder, countQuery, ddl, executeWhenPresent: true);
+
+    private static void ExecuteConditionalDdl(
+        MigrationBuilder migrationBuilder,
+        string countQuery,
+        string ddl,
+        bool executeWhenPresent)
     {
         var escapedDdl = ddl.Replace("'", "''", StringComparison.Ordinal);
+        var comparison = executeWhenPresent ? "> 0" : "= 0";
 
         migrationBuilder.Sql(
             $"""
             SET @legalsynq_selling_ddl = IF(
-                ({countQuery}) = 0,
+                ({countQuery}) {comparison},
                 '{escapedDdl}',
                 'SELECT 1');
             PREPARE legalsynq_selling_stmt FROM @legalsynq_selling_ddl;

@@ -2,6 +2,7 @@ export interface LienDetail {
   lienNumber: string;
   sellerStatus: string;
   status: string;
+  purchaseDate: string | null;
   initialServiceDate: string | null;
   endServiceDate: string | null;
   listingVisibility: string;
@@ -17,7 +18,20 @@ export interface LienFundingCompanyContact {
 export interface LienFundingCompanyDetail {
   id: string;
   name: string;
+  contactPerson: string | null; // currently seem to be the same as LienFundingCompanyContact['name']
+  emailAddress: string | null; // old ui that ask for extra email field
   contact: LienFundingCompanyContact | null;
+}
+
+export interface LienMedicalProviderDetail {
+  id: string | null;
+  name: string;
+}
+
+export interface LienFacilityDetail {
+  id: string | null;
+  name: string;
+  emailAddress: string | null;
 }
 
 export interface LienCaseDetail {
@@ -68,13 +82,22 @@ export interface SaleReadiness {
   missing: string[];
 }
 
+export interface LienActivityItem {
+  id: string;
+  description: string;
+  changedByUserId: string;
+  changedAtUtc: string;
+}
+
 export interface LienDetailsResult {
   lienId: string;
   lienInformation: LienDetail;
   caseInformation: LienCaseDetail | null;
   fundingCompany: LienFundingCompanyDetail | null;
+  facility: LienFacilityDetail | null;
+  medicalProvider: LienMedicalProviderDetail | null;
   medicalPricing: {
-    askAmount: number;
+    askAmount: number | null;
     billingAmount: number;
     rows: MedicalPricingRowDetail[];
   };
@@ -84,7 +107,7 @@ export interface LienDetailsResult {
     count: number;
     highestBidAmount: number;
   };
-  activity: unknown[];
+  activity: LienActivityItem[];
   availableActions: string[];
 }
 export interface LienStatusHistoryItem {

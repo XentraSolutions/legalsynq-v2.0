@@ -3,8 +3,7 @@
 import { type ReactNode, useState } from 'react';
 import type { TenantDetail, ProvisioningStatus, ProvisioningFailureStage } from '@/types/control-center';
 import { PRODUCT_CATALOG } from '@/lib/product-catalog';
-import { RetryProvisioningButton } from './retry-provisioning-button';
-import { RetryVerificationButton } from './retry-verification-button';
+import { RetryDnsSetupButton } from './retry-dns-setup-button';
 
 interface TenantDetailCardProps {
   tenant: TenantDetail;
@@ -68,12 +67,9 @@ function failureStageBadge(stage?: ProvisioningFailureStage) {
   );
 }
 
-function canRetryProvisioning(status?: ProvisioningStatus): boolean {
-  return status === 'Failed' || status === 'Pending';
-}
-
-function canRetryVerification(status?: ProvisioningStatus, stage?: ProvisioningFailureStage): boolean {
-  return status === 'Failed' && (stage === 'DnsVerification' || stage === 'HttpVerification');
+function canRetryDnsSetup(tenant: TenantDetail, status?: ProvisioningStatus): boolean {
+  if (status === 'Failed' || status === 'Pending') return true;
+  return status == null && (tenant.subdomain != null || tenant.provisioningFailureReason != null);
 }
 
 function isActivelyRetrying(tenant: TenantDetail): boolean {
@@ -84,9 +80,16 @@ function isActivelyRetrying(tenant: TenantDetail): boolean {
   );
 }
 
+function effectiveProvisioningStatus(tenant: TenantDetail): ProvisioningStatus | undefined {
+  if (tenant.provisioningStatus) return tenant.provisioningStatus;
+  if (tenant.provisioningFailureReason) return 'Failed';
+  return undefined;
+}
+
 export function TenantDetailCard({ tenant, portalBaseDomain }: TenantDetailCardProps) {
   const enabledCount = tenant.productEntitlements.filter(p => p.enabled).length;
   const totalProductCount = PRODUCT_CATALOG.length;
+  const provisioningStatus = effectiveProvisioningStatus(tenant);
   const retrying = isActivelyRetrying(tenant);
 
   return (
@@ -113,7 +116,9 @@ export function TenantDetailCard({ tenant, portalBaseDomain }: TenantDetailCardP
           } />
           <InfoRow label="Provisioning" value={
             <div className="flex items-center gap-2">
-              {provisioningStatusBadge(tenant.provisioningStatus)}
+              {provisioningStatusBadge(provisioningStatus) ?? (
+                <span className="text-xs text-gray-400 italic">Not reported by Identity</span>
+              )}
               {retrying && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border bg-amber-50 text-amber-700 border-amber-200 animate-pulse">
                   Auto-retrying
@@ -164,16 +169,18 @@ export function TenantDetailCard({ tenant, portalBaseDomain }: TenantDetailCardP
             } />
           )}
           {tenant.lastProvisioningAttemptUtc && (
-            <InfoRow label="Last Provisioning" value={formatDate(tenant.lastProvisioningAttemptUtc)} />
+            <InfoRow label="Last Provisioning" value={
+              <span className="text-xs text-gray-600">{formatDate(tenant.lastProvisioningAttemptUtc)}</span>
+            } />
           )}
-          {canRetryProvisioning(tenant.provisioningStatus) && (
+          {canRetryDnsSetup(tenant, provisioningStatus) && (
             <div className="px-5 py-3">
-              <RetryProvisioningButton tenantId={tenant.id} />
-            </div>
-          )}
-          {canRetryVerification(tenant.provisioningStatus, tenant.provisioningFailureStage) && (
-            <div className="px-5 py-3">
-              <RetryVerificationButton tenantId={tenant.id} />
+              <RetryDnsSetupButton
+                tenantId={tenant.id}
+                status={provisioningStatus}
+                failureStage={tenant.provisioningFailureStage}
+                hostname={tenant.hostname}
+              />
             </div>
           )}
           {tenant.subdomain && (
@@ -182,7 +189,7 @@ export function TenantDetailCard({ tenant, portalBaseDomain }: TenantDetailCardP
                 subdomain={tenant.subdomain}
                 hostname={tenant.hostname}
                 portalBaseDomain={portalBaseDomain}
-                status={tenant.provisioningStatus}
+                status={provisioningStatus}
               />
             </div>
           )}

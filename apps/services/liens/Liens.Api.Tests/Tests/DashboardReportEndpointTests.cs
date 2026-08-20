@@ -137,6 +137,36 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
+    public async Task TotalCaseReportV3_includes_new_frontend_case_without_a_lien()
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/cases/create", new
+        {
+            firstname = "Dashboard",
+            lastname = "Visible",
+            caseStatusId = "PreDemand",
+        });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK, await createResponse.Content.ReadAsStringAsync());
+
+        using var createdPayload = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var caseId = createdPayload.RootElement.GetProperty("data").GetProperty("id").GetGuid();
+        var caseResponse = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        caseResponse.StatusCode.Should().Be(HttpStatusCode.OK, await caseResponse.Content.ReadAsStringAsync());
+        using var casePayload = JsonDocument.Parse(await caseResponse.Content.ReadAsStringAsync());
+        var caseNumber = casePayload.RootElement.GetProperty("caseNumber").GetString();
+
+        var reportResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/dashboard/total-case-report-export/v3",
+            new { page = 1, limit = 100 });
+        reportResponse.StatusCode.Should().Be(HttpStatusCode.OK, await reportResponse.Content.ReadAsStringAsync());
+
+        using var reportPayload = JsonDocument.Parse(await reportResponse.Content.ReadAsStringAsync());
+        reportPayload.RootElement.GetProperty("items").EnumerateArray()
+            .Should().Contain(item =>
+                item.GetProperty("id").GetGuid() == caseId &&
+                item.GetProperty("caseNumber").GetString() == caseNumber);
+    }
+
+    [Fact]
     public async Task TotalLienReportV3_returns_seeded_lien_rows()
     {
         var response = await _client.PostAsJsonAsync(
@@ -314,7 +344,7 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
-    public async Task TotalCaseReportV3_filters_cases_by_linked_purchase_dates_and_defaults_no_date_to_completed_history()
+    public async Task TotalCaseReportV3_filters_explicit_dates_by_linked_purchases_and_includes_all_cases_without_dates()
     {
         var orgId = Guid.NewGuid();
         var rangeStart = new DateOnly(2020, 6, 1);
@@ -326,6 +356,7 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
             CreateDateParityCase(orgId, "CASE-DATE-PAST", CaseStatus.DemandSent),
             CreateDateParityCase(orgId, "CASE-DATE-FUTURE", CaseStatus.CaseSettled),
             CreateDateParityCase(orgId, "CASE-DATE-NULL", CaseStatus.InNegotiation),
+            CreateDateParityCase(orgId, "CASE-DATE-NO-LIEN", CaseStatus.PreDemand),
         };
         var liens = new[]
         {
@@ -373,28 +404,24 @@ public class DashboardReportEndpointTests : IClassFixture<LiensApiFactory>, IAsy
                     .GetProperty("totalLienAmount").GetDecimal().Should().Be(1_000m);
             }
 
-            var completedHistoryResponse = await _client.PostAsJsonAsync(
+            var allCasesResponse = await _client.PostAsJsonAsync(
                 "/api/liens/cases/dashboard/total-case-report-export/v3",
                 new { page = 1, limit = 10 });
 
-            completedHistoryResponse.StatusCode.Should().Be(
+            allCasesResponse.StatusCode.Should().Be(
                 HttpStatusCode.OK,
-                await completedHistoryResponse.Content.ReadAsStringAsync());
-            using var completedHistoryPayload = JsonDocument.Parse(await completedHistoryResponse.Content.ReadAsStringAsync());
-            var completedHistoryRoot = completedHistoryPayload.RootElement;
-            completedHistoryRoot.GetProperty("totalCount").GetInt32().Should().Be(3);
-            completedHistoryRoot.GetProperty("items").EnumerateArray()
+                await allCasesResponse.Content.ReadAsStringAsync());
+            using var allCasesPayload = JsonDocument.Parse(await allCasesResponse.Content.ReadAsStringAsync());
+            var allCasesRoot = allCasesPayload.RootElement;
+            allCasesRoot.GetProperty("totalCount").GetInt32().Should().Be(cases.Length);
+            allCasesRoot.GetProperty("items").EnumerateArray()
                 .Select(item => item.GetProperty("caseNumber").GetString())
-                .Should().BeEquivalentTo(cases.Take(3).Select(item => item.CaseNumber));
-            foreach (var status in new[]
-                     {
-                         CaseStatus.PreDemand,
-                         CaseStatus.Closed,
-                         CaseStatus.DemandSent,
-                     })
-            {
-                completedHistoryRoot.GetProperty("statusCounts").GetProperty(status).GetInt32().Should().Be(1);
-            }
+                .Should().BeEquivalentTo(cases.Select(item => item.CaseNumber));
+            allCasesRoot.GetProperty("statusCounts").GetProperty(CaseStatus.PreDemand).GetInt32().Should().Be(2);
+            allCasesRoot.GetProperty("statusCounts").GetProperty(CaseStatus.Closed).GetInt32().Should().Be(1);
+            allCasesRoot.GetProperty("statusCounts").GetProperty(CaseStatus.DemandSent).GetInt32().Should().Be(1);
+            allCasesRoot.GetProperty("statusCounts").GetProperty(CaseStatus.CaseSettled).GetInt32().Should().Be(1);
+            allCasesRoot.GetProperty("statusCounts").GetProperty(CaseStatus.InNegotiation).GetInt32().Should().Be(1);
         }
         finally
         {

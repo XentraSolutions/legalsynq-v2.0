@@ -31,6 +31,8 @@ export interface NumberFieldProps {
   type: "number";
   value?: string | number | null;
   onChange: (value: string) => void; // Emits the raw (unformatted) numeric string
+  /** Opt-in currency mode: strips leading zeros and caps the decimal part to this many digits, e.g. 2 for cents. */
+  maxDecimals?: number;
 }
 
 interface DateFieldProps {
@@ -60,7 +62,7 @@ interface SelectFieldProps<TOption extends BaseSelectOption> extends Omit<
 
   multiple?: false;
   value?: string | null;
-  onChange: (value: string, option: TOption) => void;
+  onChange: (value: string, option: TOption | null) => void;
 }
 
 interface MultiSelectFieldProps<TOption extends BaseSelectOption> extends Omit<
@@ -154,6 +156,7 @@ export default function Field<
           filterLocally={props.filterLocally}
           className={props.className}
           onOpen={props.onOpen}
+          clearable={props.clearable}
         />
       ) : props.type === "select" ? (
         <BaseSelect
@@ -175,6 +178,7 @@ export default function Field<
           filterLocally={props.filterLocally}
           className={props.className}
           onOpen={props.onOpen}
+          clearable={props.clearable}
         />
       ) : props.type === "checkbox" ? (
         <input
@@ -208,6 +212,7 @@ export default function Field<
           prefix={prefix}
           suffix={suffix}
           error={error}
+          maxDecimals={props.maxDecimals}
         />
       ) : (
         <div className={hasAdornment ? "relative" : ""}>

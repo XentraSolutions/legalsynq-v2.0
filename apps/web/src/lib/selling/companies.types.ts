@@ -141,3 +141,65 @@ export interface UpdateContactPersonRequest {
 }
 
 export type CompaniesPaginatedResult = PaginatedResultDto<Company>;
+
+export interface CompanyRecentCase {
+  id: string;
+  caseNumber: string;
+  clientName: string;
+  status: string;
+  statusLabel: string;
+  billingAmount: number;
+  updatedAtUtc: string;
+}
+
+export interface CompanyDetailsQuery {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CompanyDetailsSummary {
+  company: CompanyDetail;
+  totalCases: number;
+  activeCases: number;
+  totalBillingForActiveCases: number;
+  recentCases: PaginatedResultDto<CompanyRecentCase>;
+}
+
+export interface ReassignCompanyRequest {
+  targetCompanyId: string;
+}
+
+// Cross-company contact person directory — unlike ContactPersonDto (scoped to
+// a single company via the URL), this list spans companies, so each row also
+// carries the parent company's name/type for display.
+export interface ContactPersonDirectoryDto extends ContactPersonDto {
+  companyName: string;
+  companyTypeId: string;
+  companyTypeCode: string;
+  companyTypeName: string;
+}
+
+export interface ContactPersonDirectoryItem extends ContactPersonDirectoryDto {
+  displayName: string;
+}
+
+export function toContactPersonDirectoryItem(
+  dto: ContactPersonDirectoryDto,
+): ContactPersonDirectoryItem {
+  return { ...dto, displayName: `${dto.firstName} ${dto.lastName}`.trim() };
+}
+
+export interface ContactPersonsDirectoryQuery {
+  search?: string;
+  isActive?: boolean;
+  companyTypeId?: string;
+  contactPersonTypeId?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export type ContactPersonsDirectoryPaginatedResult = PaginatedResultDto<ContactPersonDirectoryItem>;
+
+export interface ReassignContactPersonRequest {
+  targetContactPersonId: string;
+}

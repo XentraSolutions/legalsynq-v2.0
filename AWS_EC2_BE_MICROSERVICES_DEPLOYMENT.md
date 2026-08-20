@@ -188,6 +188,11 @@ Create service-specific files under `/etc/legalsynq`.
 # required shared boundary
 PublicTrustBoundary__InternalRequestSecret=<secret>
 
+# verified deep-link association artifacts
+# Point this at the generated directory for the deployed environment.
+# It must contain apple-app-site-association and assetlinks.json.
+DeepLinks__AssociationDirectory=/opt/legalsynq/app/apps/gateway/Gateway.Api/DeepLinks/Associations/production
+
 # reverse proxy destination overrides
 ReverseProxy__Clusters__identity_cluster__Destinations__identity_primary__Address=http://127.0.0.1:5001
 ReverseProxy__Clusters__fund_cluster__Destinations__fund_primary__Address=http://127.0.0.1:5002
@@ -1353,6 +1358,7 @@ Create `/etc/nginx/sites-available/legalsynq-api`:
 server {
     listen 80;
     server_name api.yourdomain.com;
+    client_max_body_size 60m;
 
     location / {
         proxy_pass http://127.0.0.1:5010;
@@ -1375,6 +1381,41 @@ sudo systemctl reload nginx
 ```
 
 Add TLS with Certbot or use an AWS Application Load Balancer with ACM. For a single EC2 Nginx deployment, Certbot is the simplest.
+
+## 8A. Deep-Link Association Files
+
+The gateway serves Apple and Android association files anonymously at these canonical paths:
+
+```text
+/.well-known/apple-app-site-association
+/.well-known/assetlinks.json
+```
+
+Generate the files only after Platform has approved the host and Mobile release owners have provided the Apple Team ID and public Android SHA-256 app signing certificate fingerprint:
+
+```bash
+python3 scripts/deep-links/generate-association-files.py \
+  --config <approved-association-config.json> \
+  --routes shared/contracts/deep-links/routes.json \
+  --output apps/gateway/Gateway.Api/DeepLinks/Associations
+```
+
+Validate before restart:
+
+```bash
+python3 scripts/deep-links/validate-association-files.py \
+  --routes shared/contracts/deep-links/routes.json \
+  --directory apps/gateway/Gateway.Api/DeepLinks/Associations/production \
+  --apple-app-id <APPLE_TEAM_ID>.com.legalsynq \
+  --android-package com.legalsynq
+```
+
+After deployment, verify direct public HTTPS delivery without redirects or authentication:
+
+```bash
+curl -i https://<approved-deep-link-host>/.well-known/apple-app-site-association
+curl -i https://<approved-deep-link-host>/.well-known/assetlinks.json
+```
 
 ## 9. Verify Health
 

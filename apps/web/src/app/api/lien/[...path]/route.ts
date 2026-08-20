@@ -23,7 +23,7 @@ async function proxy(
   const path = segments.join("/");
   const search = req.nextUrl.search;
   const url = `${GATEWAY_URL}/liens/${path}${search}`;
-  console.log("PROXY!", url);
+  // console.log("PROXY!", url);
 
   const cookieStore = await cookies();
   // Support both portal users (portal_session) and platform/admin users (platform_session).

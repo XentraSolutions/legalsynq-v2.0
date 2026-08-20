@@ -9,8 +9,12 @@ public sealed class ContactPersonTypeConfiguration : IEntityTypeConfiguration<Co
 {
     public void Configure(EntityTypeBuilder<ContactPersonType> builder)
     {
-        builder.ToTable("liens_ContactPersonTypes");
+        builder.ToTable("liens_ContactPersonTypes", table => table.HasCheckConstraint(
+            "CK_ContactPersonTypes_Scope",
+            "(`TenantId` IS NULL AND `OrgId` IS NULL) OR (`TenantId` IS NOT NULL AND `OrgId` IS NOT NULL)"));
         builder.HasKey(value => value.Id);
+        builder.Property(value => value.TenantId);
+        builder.Property(value => value.OrgId);
         builder.Property(value => value.CompanyTypeId).IsRequired();
         builder.Property(value => value.Code).IsRequired().HasMaxLength(100);
         builder.Property(value => value.Name).IsRequired().HasMaxLength(150);
@@ -24,9 +28,9 @@ public sealed class ContactPersonTypeConfiguration : IEntityTypeConfiguration<Co
             .WithMany()
             .HasForeignKey(value => value.CompanyTypeId)
             .OnDelete(DeleteBehavior.Restrict);
-        builder.HasIndex(value => new { value.CompanyTypeId, value.Code })
+        builder.HasIndex(value => new { value.TenantId, value.OrgId, value.CompanyTypeId, value.Code })
             .IsUnique()
-            .HasDatabaseName("UX_ContactPersonTypes_CompanyTypeId_Code");
+            .HasDatabaseName("UX_ContactPersonTypes_Scope_CompanyTypeId_Code");
         builder.HasIndex(value => new { value.CompanyTypeId, value.IsActive, value.SortOrder })
             .HasDatabaseName("IX_ContactPersonTypes_CompanyTypeId_IsActive_SortOrder");
 

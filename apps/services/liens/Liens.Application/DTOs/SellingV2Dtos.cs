@@ -13,12 +13,15 @@ public sealed class SaveSellingLienInformationRequest
     public DateOnly? EndServiceDate { get; init; }
     public string? ListingVisibility { get; init; }
     public string? Notes { get; init; }
+    public System.Text.Json.JsonElement ReceivableDueDate { get; init; }
 }
 
 public sealed class SaveSellingCaseInformationRequest
 {
     public Guid? FundingCompanyId { get; init; }
     public Guid? FundingCompanyContactId { get; init; }
+    public Guid? FacilityId { get; init; }
+    public Guid? MedicalProviderId { get; init; }
     public Guid? HandlingLawFirmId { get; init; }
     public Guid? CaseManagerId { get; init; }
     public Guid? CaseId { get; init; }

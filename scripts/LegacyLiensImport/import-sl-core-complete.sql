@@ -204,6 +204,16 @@ BEGIN
             SET MESSAGE_TEXT = 'LSLTE-034 target purchase/settlement date migration is not applied';
     END IF;
 
+    SELECT COUNT(*) INTO v_column_count
+    FROM information_schema.columns
+    WHERE table_schema = 'SL-CORE'
+      AND table_name = 'SL_CASE_NOTES'
+      AND column_name IN ('CN_ID','CN_CASE_ID','CN_NOTE','CN_CREATED','CN_CREATED_BY','CN_IS_DELETED','CN_USER_ID');
+    IF v_column_count <> 7 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'LSLTE-035 SL_CASE_NOTES source column contract is incomplete';
+    END IF;
+
     -- -------------------------------------------------------------------------
     -- 3. Approval record
     -- -------------------------------------------------------------------------
@@ -784,8 +794,9 @@ BEGIN
         n.CN_CREATED                  AS CreatedAtUtc,
         NULLIF(TRIM(n.CN_CREATED_BY),'') AS CreatedByName,
         n.CN_IS_DELETED               AS IsDeleted,
-        SHA2(CONCAT_WS('|', n.CN_ID, n.CN_CASE_ID, n.CN_NOTE, n.CN_CREATED,
-                       n.CN_CREATED_BY, n.CN_IS_DELETED, v_fingerprint), 256) AS SourceHash
+        n.CN_USER_ID                  AS LegacyUserId,
+        CONCAT('case-note-v2:', SHA2(CONCAT_WS('|', n.CN_ID, n.CN_CASE_ID, n.CN_NOTE, n.CN_CREATED,
+                       n.CN_CREATED_BY, n.CN_IS_DELETED, n.CN_USER_ID, v_fingerprint), 256)) AS SourceHash
     FROM `SL-CORE`.`SL_CASE_NOTES` n
     INNER JOIN tmp_sle_cases c ON c.LegacyCaseId = n.CN_CASE_ID
     WHERE NULLIF(TRIM(n.CN_NOTE),'') IS NOT NULL;
@@ -1372,7 +1383,7 @@ BEGIN
             CreatedAtUtc, UpdatedAtUtc)
         SELECT
             TargetNoteId, TargetCaseId, v_tenant_id, Content,
-            'general', 0, v_user_id,
+            CASE WHEN LegacyUserId IS NULL THEN 'general' ELSE 'feed' END, 0, v_user_id,
             COALESCE(CreatedByName,'Legacy SL-CORE'), 0,
             CASE WHEN UPPER(COALESCE(IsDeleted,'N')) = 'Y' THEN 1 ELSE 0 END,
             COALESCE(CreatedAtUtc, UTC_TIMESTAMP(6)), NULL

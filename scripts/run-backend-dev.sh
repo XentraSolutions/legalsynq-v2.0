@@ -100,6 +100,7 @@ require_free_port 5020 "artifacts API"
 
   ASPNETCORE_ENVIRONMENT=Development \
     DOTNET_GCConserveMemory=9 \
+    TenantRegistration__Enabled=true \
     dotnet run --no-build --project "$ROOT/apps/services/tenant/Tenant.Api/Tenant.Api.csproj" &
   sleep 5
 
@@ -121,7 +122,10 @@ require_free_port 5020 "artifacts API"
     DOTNET_GCConserveMemory=9 \
     NotificationsService__BaseUrl=http://127.0.0.1:5008 \
     NotificationsService__PortalBaseUrl=http://localhost:3000 \
+    NotificationsService__PortalBaseDomain=nonprod.legalsynq.net \
     NotificationsService__CareConnectPortalBaseUrl=http://careconnect-demo.localhost:3000 \
+    Route53__BaseDomain=legalsynq.net \
+    Route53__EnvironmentLabel=nonprod \
     dotnet run --no-build --project "$ROOT/apps/services/identity/Identity.Api/Identity.Api.csproj" &
   sleep 3
   ASPNETCORE_ENVIRONMENT=Development \

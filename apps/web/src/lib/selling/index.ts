@@ -9,5 +9,6 @@ export type {
   UpdateLienRequestDto,
   CreateLienOfferRequestDto,
   SaleFinalizationResultDto,
+  LienArchivedStatusResult,
 } from "./liens.types";
 export type { LienListResult, LienOffersResult } from "./selling-liens.service";

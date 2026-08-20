@@ -1,7 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useLienStore } from "@/stores/lien-store";
+import {
+  Contact,
+  LayoutGrid,
+  List,
+  Mail,
+  Pencil,
+  Phone,
+  Trash2,
+} from "lucide-react";
+import { toast } from "sonner";
 import { contactsApi } from "@/lib/contacts/contacts.api";
 import { lookupApi } from "@/lib/lookup/lookup.api";
 import { type ContactResponseDto } from "@/lib/contacts/contacts.types";
@@ -10,15 +19,13 @@ import { ApiError } from "@/lib/api-client";
 import { ConfirmDialog } from "@/components/selling/modal";
 import { AddSubContactModal } from "@/components/lien/add-subcontact-modal";
 import { ActionMenu } from "@/components/selling/action-menu";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 
 interface Props {
   /** The parent contact's own contactType (LawFirm, Provider, FundingCompany, Lead, ...). */
   contactType: string;
   /** The parent contact's id. */
   parentId: string;
-  /** Overrides the default bg-primary styling on the Add Contact button and its modal/delete-confirm actions (selling's orange brand). */
-  primaryButtonClassName?: string;
 }
 
 const PAGE_SIZE = 12;
@@ -40,8 +47,7 @@ const PAGE_SIZE = 12;
  * (components/lien/contact-detail/staff-tab.tsx) still only renders
  * LawFirmContactSection/MedicalFacilityStaffSection, unchanged.
  */
-export function ContactPersonSection({ contactType, parentId, primaryButtonClassName }: Props) {
-  const addToast = useLienStore((s) => s.addToast);
+export function ContactPersonSection({ contactType, parentId }: Props) {
   const [contacts, setContacts] = useState<ContactResponseDto[]>([]);
   const [roles, setRoles] = useState<LookupData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,17 +98,13 @@ export function ContactPersonSection({ contactType, parentId, primaryButtonClass
     if (!deleteTarget) return;
     try {
       await contactsApi.delete(deleteTarget.id);
-      addToast({
-        type: "success",
-        title: "Contact Removed",
+      toast.success("Contact Removed", {
         description: `${deleteTarget.firstName} ${deleteTarget.lastName} has been removed.`,
       });
       setDeleteTarget(null);
       fetchContacts();
     } catch (err) {
-      addToast({
-        type: "error",
-        title: "Delete Failed",
+      toast.error("Delete Failed", {
         description:
           err instanceof ApiError
             ? err.message
@@ -124,7 +126,7 @@ export function ContactPersonSection({ contactType, parentId, primaryButtonClass
     <div className="bg-white border border-gray-200 rounded-xl">
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
         <div className="flex items-center gap-2">
-          <i className="ri-contacts-line text-gray-500" />
+          <Contact className="h-4 w-4 text-gray-500" />
           <h3 className="text-sm font-semibold text-gray-800">
             Contact Persons
           </h3>
@@ -140,20 +142,16 @@ export function ContactPersonSection({ contactType, parentId, primaryButtonClass
             title="Tile view"
             className={`p-1.5 rounded-lg transition-colors ${viewMode === "tile" ? "bg-primary/10 text-primary" : "text-gray-400 hover:bg-gray-100"}`}
           >
-            <i className="ri-layout-grid-line text-base" />
+            <LayoutGrid className="h-4 w-4" />
           </button>
           <button
             onClick={() => setViewMode("list")}
             title="List view"
             className={`p-1.5 rounded-lg transition-colors ${viewMode === "list" ? "bg-primary/10 text-primary" : "text-gray-400 hover:bg-gray-100"}`}
           >
-            <i className="ri-list-unordered text-base" />
+            <List className="h-4 w-4" />
           </button>
-          <Button
-            className={`px-3 py-1.5 text-white ${primaryButtonClassName ?? "bg-primary hover:bg-primary/90"}`}
-            rightIcon={<i className="ri-add-line" />}
-            onClick={openAdd}
-          >
+          <Button variant="primary" rightIcon="plus" onClick={openAdd}>
             Add Contact
           </Button>
         </div>
@@ -220,7 +218,6 @@ export function ContactPersonSection({ contactType, parentId, primaryButtonClass
           allowCreateRole
           onRoleCreated={(role) => setRoles((prev) => [...prev, role])}
           editTarget={editTarget}
-          primaryButtonClassName={primaryButtonClassName}
           onSaved={() => {
             setModalOpen(false);
             fetchContacts();
@@ -246,7 +243,6 @@ export function ContactPersonSection({ contactType, parentId, primaryButtonClass
           }
           confirmLabel="Delete"
           confirmVariant="danger"
-          primaryButtonClassName={primaryButtonClassName}
           warningTitle="Warning: Deleting this contact will also remove:"
           warningItems={[
             "All case associations",
@@ -292,12 +288,12 @@ function TileView({
               items={[
                 {
                   label: "Edit Contact",
-                  icon: "ri-edit-line",
+                  icon: Pencil,
                   onClick: () => onEdit(c),
                 },
                 {
                   label: "Delete",
-                  icon: "ri-delete-bin-line",
+                  icon: Trash2,
                   onClick: () => onDelete(c),
                   variant: "danger",
                   divider: true,
@@ -309,11 +305,11 @@ function TileView({
             <p className="text-xs text-gray-500 mb-1.5">{c.organization}</p>
           )}
           <div className="flex items-center gap-2 text-xs text-gray-500 mb-1.5">
-            <i className="ri-mail-line text-gray-400 shrink-0" />
+            <Mail className="h-4 w-4 text-gray-400 shrink-0" />
             <span className="truncate">{c.email || "--"}</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500">
-            <i className="ri-phone-line text-gray-400 shrink-0" />
+            <Phone className="h-4 w-4 text-gray-400 shrink-0" />
             <span>{c.phone || "--"}</span>
           </div>
         </div>
@@ -382,12 +378,12 @@ function ListView({
                   items={[
                     {
                       label: "Edit Contact",
-                      icon: "ri-edit-line",
+                      icon: Pencil,
                       onClick: () => onEdit(c),
                     },
                     {
                       label: "Delete",
-                      icon: "ri-delete-bin-line",
+                      icon: Trash2,
                       onClick: () => onDelete(c),
                       variant: "danger",
                       divider: true,

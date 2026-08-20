@@ -25,8 +25,6 @@ interface AddContactPersonPromptProps {
   /** The just-created parent contact, or null/undefined to keep the prompt closed. */
   contact: ContactDetail | null;
   onClose: () => void;
-  /** Overrides the default bg-primary styling on the confirm/save buttons (selling's orange brand). */
-  primaryButtonClassName?: string;
 }
 
 /**
@@ -46,7 +44,6 @@ interface AddContactPersonPromptProps {
 export function AddContactPersonPrompt({
   contact,
   onClose,
-  primaryButtonClassName,
 }: AddContactPersonPromptProps) {
   const [step, setStep] = useState<"confirm" | "form">("confirm");
   const [roles, setRoles] = useState<LookupData[]>([]);
@@ -78,7 +75,6 @@ export function AddContactPersonPrompt({
         description="The new contact has been added. Would you like to add a contact person associated with this contact? You can always do this later."
         confirmLabel="Yes"
         cancelLabel="Maybe Later"
-        primaryButtonClassName={primaryButtonClassName}
       />
 
       {step === "form" && (
@@ -102,7 +98,6 @@ export function AddContactPersonPrompt({
           roleOptions={usesRoles ? roles : undefined}
           allowCreateRole={usesRoles}
           onRoleCreated={(role) => setRoles((prev) => [...prev, role])}
-          primaryButtonClassName={primaryButtonClassName}
           onSaved={onClose}
         />
       )}

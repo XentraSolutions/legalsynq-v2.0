@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FormModal } from "@/components/selling/modal";
-import { useLienStore } from "@/stores/lien-store";
+import { toast } from "sonner";
 import { contactsService } from "@/lib/contacts";
 import { facilityApi } from "@/lib/facility/facility.api";
 import type { LookupData } from "@/lib/lookup/lookup.types";
@@ -80,7 +80,6 @@ export function AddContactForm({
   onCreated,
   mode = "create",
 }: AddContactFormProps) {
-  const addToast = useLienStore((s) => s.addToast);
   const [form, setForm] = useState(
     mode === "create"
       ? { ...EMPTY_FORM, contactType: defaultContactType ?? "" }
@@ -181,11 +180,7 @@ export function AddContactForm({
           state: form.state || "",
           postalCode: form.postalCode || "",
         });
-        addToast({
-          type: "success",
-          title: "Medical Facility Created",
-          description: form.name,
-        });
+        toast.success("Medical Facility Created", { description: form.name });
       } else if (mode === "create") {
         await contactsService.createContact({
           firstName: form.firstName,
@@ -203,11 +198,7 @@ export function AddContactForm({
           website: "",
           notes: "",
         });
-        addToast({
-          type: "success",
-          title: "Contact Created",
-          description: `${form.firstName} ${form.lastName}`,
-        });
+        toast.success("Contact Created", { description: `${form.firstName} ${form.lastName}` });
       } else {
         await contactsService.updateContact(data?.id ?? "", {
           firstName: form.firstName,
@@ -221,19 +212,13 @@ export function AddContactForm({
           addressLine1: form.addressLine1 || undefined,
           postalCode: form.postalCode || undefined,
         });
-        addToast({
-          type: "success",
-          title: "Contact Updated",
-          description: `${form.firstName} ${form.lastName}`,
-        });
+        toast.success("Contact Updated", { description: `${form.firstName} ${form.lastName}` });
       }
 
       resetAndClose();
       onCreated?.();
     } catch (err) {
-      addToast({
-        type: "error",
-        title: mode === "create" ? "Create Failed" : "Update Failed",
+      toast.error(mode === "create" ? "Create Failed" : "Update Failed", {
         description:
           err instanceof Error
             ? err.message

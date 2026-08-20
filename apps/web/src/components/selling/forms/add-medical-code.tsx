@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FormModal } from "@/components/selling/modal";
-import { useLienStore } from "@/stores/lien-store";
+import { toast } from "sonner";
 import { casesService, type CreateCaseRequestDto } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
 import { CreateMedicalCodeDto } from "@/lib/cases/cases.types";
@@ -24,7 +24,6 @@ export function CreateMedicalCode({
   onClose,
   onCreated,
 }: CreateMedicalCodeProps) {
-  const addToast = useLienStore((s) => s.addToast);
   const [form, setForm] = useState({ ...INITIAL_FORM });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -46,9 +45,7 @@ export function CreateMedicalCode({
         description: form.description.trim(),
       };
       await casesService.createMedicalCode(request);
-      addToast({
-        type: "success",
-        title: "Code Created",
+      toast.success("Code Created", {
         description: `Medical Code has been created.`,
       });
       setForm({ ...INITIAL_FORM });
@@ -59,16 +56,10 @@ export function CreateMedicalCode({
         if (err.isConflict) {
           setErrors({ code: "A code with this number already exists" });
         } else {
-          addToast({
-            type: "error",
-            title: "Create Failed",
-            description: err.message,
-          });
+          toast.error("Create Failed", { description: err.message });
         }
       } else {
-        addToast({
-          type: "error",
-          title: "Create Failed",
+        toast.error("Create Failed", {
           description: "An unexpected error occurred",
         });
       }

@@ -12,7 +12,9 @@ import type {
   ReassignContactPersonRequestDto,
   ReassignFundingCompanyRequestDto,
   ReassignMedicalProviderRequestDto,
+  LiensExportQuery,
 } from './liens.types';
+import { ExportResponse } from '../contacts/contacts.types';
 
 // Arrays are sent as a single comma-joined value (e.g. `lawFirmIds=a,b`) —
 // same convention the cases v3 endpoint uses for its multi-select filters
@@ -126,6 +128,12 @@ export const liensApi = {
     return apiClient.post<LienResponseDto>(
       '/lien/api/liens/liens/reassign/medical-provider',
       request,
+    );
+  },
+
+  export(request:LiensExportQuery={}) {
+    return apiClient.post<ExportResponse>(`/lien/api/liens/cases/liens/generate-csv`,
+     request
     );
   },
 };

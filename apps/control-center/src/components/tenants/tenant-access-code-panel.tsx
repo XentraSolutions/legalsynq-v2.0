@@ -84,11 +84,11 @@ export function TenantAccessCodePanel({ tenantId, initialStatus }: Props) {
       </div>
 
       <div className="px-5 py-5 space-y-4">
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <div>
-            <label htmlFor="tenant-access-code" className="block text-xs font-medium text-gray-600 mb-1.5">
-              Access code
-            </label>
+        <div>
+          <label htmlFor="tenant-access-code" className="block text-xs font-medium text-gray-600 mb-1.5">
+            Access code
+          </label>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
             <input
               id="tenant-access-code"
               type="password"
@@ -97,29 +97,29 @@ export function TenantAccessCodePanel({ tenantId, initialStatus }: Props) {
               maxLength={128}
               onChange={e => { setCode(e.target.value); setError(null); setRevealedCode(null); }}
               placeholder={status.configured ? 'Replace current code' : 'Set access code'}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              className="h-[38px] w-full rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
             />
-            <p className="mt-1 text-xs text-gray-400">8 to 128 characters. Leading and trailing spaces are ignored.</p>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isPending || code.trim().length < 8}
-              className="px-4 py-2 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {isPending ? 'Saving…' : status.configured ? 'Replace Code' : 'Set Code'}
-            </button>
-            <button
-              type="button"
-              onClick={handleClear}
-              disabled={isPending || !status.configured}
-              className="px-4 py-2 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              Clear
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isPending || code.trim().length < 8}
+                className="h-[38px] px-4 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {isPending ? 'Saving…' : status.configured ? 'Replace Code' : 'Set Code'}
+              </button>
+              <button
+                type="button"
+                onClick={handleClear}
+                disabled={isPending || !status.configured}
+                className="h-[38px] px-4 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Clear
+              </button>
+            </div>
           </div>
+          <p className="mt-1 text-xs text-gray-400">8 to 128 characters. Leading and trailing spaces are ignored.</p>
         </div>
 
         <div className="grid gap-2 text-xs text-gray-500 sm:grid-cols-3">

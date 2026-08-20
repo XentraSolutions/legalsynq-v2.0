@@ -35,12 +35,38 @@ public interface ISellingBuyerAccessLinkService
         TimeSpan ttl,
         CancellationToken ct = default);
 
+    Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid? buyerCompanyId,
+        Guid? buyerCompanyContactPersonId,
+        Guid actingUserId,
+        string idempotencyKey,
+        TimeSpan ttl,
+        CancellationToken ct = default);
+
     Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleSellerViewAsync(
         Guid tenantId,
         Guid lienId,
         Guid sellerOrgId,
         Guid buyerOrgId,
         Guid buyerContactId,
+        Guid actingUserId,
+        string idempotencyKey,
+        TimeSpan ttl,
+        CancellationToken ct = default);
+
+    Task<SellingBuyerAccessLinkResult> CreateOrGetForConfirmSaleSellerViewAsync(
+        Guid tenantId,
+        Guid lienId,
+        Guid sellerOrgId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid? buyerCompanyId,
+        Guid? buyerCompanyContactPersonId,
         Guid actingUserId,
         string idempotencyKey,
         TimeSpan ttl,

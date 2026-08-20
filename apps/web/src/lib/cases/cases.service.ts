@@ -69,6 +69,11 @@ export const casesService = {
     return { id: data.data.id };
   },
 
+  async checkDuplicateCase(request: CreateCaseRequestDto) {
+    const { data } = await casesApi.checkDuplicate(request);
+    return data;
+  },
+
   async deleteCase(id: string): Promise<ApiResponse> {
     const { data } = await casesApi.deleteCase(id);
     return data;
@@ -240,7 +245,7 @@ export const casesService = {
   async payoffQoute(caseId: string): Promise<{ url: string; message: string }> {
     const { data } = await casesApi.payoffQoute(caseId);
     return {
-      url: data.isSuccess ? data?.data?.url : "",
+      url: data.isSuccess ? data?.url.replace("/documents/", "") : "",
       message: data.message,
     };
   },

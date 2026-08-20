@@ -4,9 +4,11 @@ using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
+using Liens.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 
 namespace Liens.Api.Endpoints;
 
@@ -53,6 +55,9 @@ public static class SettlementEndpoints
             .RequirePermission(LiensPermissions.LienRead);
 
         v2.MapPost("/payments", CreatePayment)
+            .RequirePermission(LiensPermissions.LienUpdate);
+
+        v2.MapPut("/payments/{id:guid}", UpdatePayment)
             .RequirePermission(LiensPermissions.LienUpdate);
 
         v2.MapDelete("/payments/{id:guid}", DeletePayment)
@@ -310,6 +315,35 @@ public static class SettlementEndpoints
         var userId   = CaseEndpoints.RequireUserId(ctx);
         var result = await svc.CreatePaymentAsync(tenantId, userId, request, ct);
         return Results.Created($"/api/liens/settlement/payments/lien/{request.LienId}", result);
+    }
+
+    private static async Task<IResult> UpdatePayment(
+        Guid id,
+        UpdateSettlementPaymentDetailRequest request,
+        ISettlementService svc,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = CaseEndpoints.RequireTenantId(ctx);
+        var userId   = CaseEndpoints.RequireUserId(ctx);
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+
+        try
+        {
+            var result = await svc.UpdatePaymentAsync(tenantId, id, userId, request, ct);
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+            return Results.Ok(result);
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     private static async Task<IResult> DeletePayment(

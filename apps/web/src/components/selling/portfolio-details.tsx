@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Clipboard, Copy } from "lucide-react";
 import { LienDetailsResult } from "@/types/lien-selling";
 import { LienInformationPanel } from "./lien-detail/lien-information-panel";
 import { FundingCompanyAndCaseInformationPanel } from "./lien-detail/funding-company-information-panel";
@@ -8,60 +10,76 @@ import { MedicalCodesInformationPanel } from "./lien-detail/medical-codes-inform
 import { EditLienInformationModal } from "./lien-detail/edit-lien-information-modal";
 import { EditCaseInformationModal } from "./lien-detail/edit-case-information-modal";
 import { EditMedicalPricingModal } from "./lien-detail/edit-medical-pricing-modal";
-import { ConfirmDialog, FormModal } from "@/components/selling/modal";
-import { liensService } from "@/lib/selling";
-import { documentsService } from "@/lib/documents";
-import { useSession } from "@/hooks/use-session";
-import { useSessionContext } from "@/providers/session-provider";
-import Field from "@/components/lien/field";
-import UploadDocumentComponent from "@/components/lien/upload-document";
+import { ConfirmDialog, Modal } from "@/components/selling/modal";
+import UploadDocuments from "./forms/add-medical-lien/medical-upload-document";
+import { fileIconFor, UploadedFileRow } from "./uploaded-file-row";
 import {
-  parseDocumentReference,
-  sellerStatusLabel,
   SALE_DOCUMENT_LABELS,
+  camelCaseToLabel,
 } from "@/lib/selling/selling-detail.mapper";
-import { useToast } from "@/lib/toast-context";
-import { Tabs } from "@/components/ui/tabs";
+import { useLienDocuments, useSaveLienDocuments } from "@/lib/selling/use-lien-documents";
+import { useLienActivity } from "@/lib/selling/use-lien-activity";
+import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
+import { toast } from "sonner";
+import { Tabs } from "@/components/selling/tabs";
 import { LienRowActionsMenu } from "./lien-row-actions-menu";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
+import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
 
 interface LienDetailPanelProps {
   lien: LienDetailsResult;
   onRefresh: () => void;
 }
 
-const SELLER_STATUS_STYLES: Record<string, string> = {
-  Draft: "bg-gray-50 text-gray-600 border-gray-200",
-  Pending: "bg-amber-50 text-amber-700 border-amber-200",
-  Internal: "bg-blue-50 text-blue-700 border-blue-200",
-  PreparedForSale: "bg-blue-50 text-blue-700 border-blue-200",
-  SubmittedForSale: "bg-amber-50 text-amber-700 border-amber-200",
-  Accepted: "bg-green-50 text-green-700 border-green-200",
-  Declined: "bg-red-50 text-red-600 border-red-200",
-  Sold: "bg-green-50 text-green-700 border-green-200",
-  Withdrawn: "bg-red-50 text-red-600 border-red-200",
-  Archived: "bg-gray-50 text-gray-500 border-gray-200",
-};
-
-function SellerStatusBadge({ status }: { status: string }) {
-  const style =
-    SELLER_STATUS_STYLES[status] ?? "bg-gray-50 text-gray-600 border-gray-200";
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border font-medium px-2.5 py-1 text-sm ${style}`}
-    >
-      {sellerStatusLabel(status)}
-    </span>
-  );
-}
+const BASE_PATH = "/selling/portfolio";
 
 const TABS = [
   { key: "details", label: "Details" },
   { key: "documents", label: "Documents" },
+  { key: "activity", label: "Activity" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
 type EditModalKey = "lien-information" | "case-information" | "medical-pricing";
+
+export function PortfolioDetailSkeleton() {
+  return (
+    <div className="space-y-5 animate-pulse">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-gray-100 shrink-0" />
+          <div className="space-y-2">
+            <div className="h-6 w-56 bg-gray-100 rounded" />
+            <div className="h-3.5 w-40 bg-gray-100 rounded" />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="h-7 w-20 bg-gray-100 rounded-full" />
+          <div className="h-10 w-32 bg-gray-100 rounded-lg" />
+        </div>
+      </div>
+
+      <div className="h-[38px] w-64 bg-[#FAFAFA] rounded-md" />
+
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div
+          key={i}
+          className="bg-white border border-gray-200 rounded-lg px-6 py-5 space-y-4"
+        >
+          <div className="h-4 w-40 bg-gray-100 rounded" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+            {Array.from({ length: 4 }).map((_, j) => (
+              <div key={j} className="space-y-2">
+                <div className="h-3 w-24 bg-gray-100 rounded" />
+                <div className="h-4 w-32 bg-gray-100 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function PortfolioDetailPanel({
   lien,
@@ -69,57 +87,58 @@ export function PortfolioDetailPanel({
 }: LienDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("details");
   const [editModal, setEditModal] = useState<EditModalKey | null>(null);
+  const { data: docs = [] } = useLienDocuments(lien.lienId);
 
   const title = lien.fundingCompany?.name || lien.lienInformation.lienNumber;
   const sellerStatus = lien.lienInformation.sellerStatus;
   const canEdit = ["Draft", "Pending", "Internal"].includes(sellerStatus);
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white border border-gray-200 rounded-lg">
-        <div className="px-6 py-4 flex items-start justify-between gap-4">
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link
+            href={BASE_PATH}
+            aria-label="Back to Portfolio"
+            className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
           <div className="min-w-0">
-            <h1 className="text-xl font-bold text-gray-900 truncate">
+            <h1 className="text-2xl font-bold text-gray-900 truncate">
               {title}
             </h1>
-            <p className="text-xs text-gray-400 mt-1 font-medium">
+            <p className="text-sm text-gray-400 mt-1 truncate">
               {lien.lienInformation.lienNumber}
             </p>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <SellerStatusBadge status={sellerStatus} />
-            <LienRowActionsMenu
-              lienId={lien.lienId}
-              availableActions={lien.availableActions}
-              onActionComplete={onRefresh}
-              autoOpenDecision={sellerStatus === "Pending"}
-              trigger={({ onClick }) => (
-                <Button
-                  className="bg-[#EE7132] hover:bg-[#EE7132]/90 text-white"
-                  rightIcon={<i className="ri-arrow-down-s-line text-base" />}
-                  onClick={onClick}
-                >
-                  Manage Lien
-                </Button>
-              )}
-            />
-          </div>
         </div>
-        <div className="border-t border-gray-100 px-6 py-3">
-          <div className="basis-2/4">
-            <Tabs
-              bordered={false}
-              defaultTab={activeTab}
-              onChange={(key) => setActiveTab(key as TabKey)}
-              tabs={TABS.map((tab) => ({
-                key: tab.key,
-                label: tab.label,
-                badge:
-                  tab.key === "documents" ? lien.documents.length : undefined,
-              }))}
-            />
-          </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <LienRowActionsMenu
+            lienId={lien.lienId}
+            availableActions={lien.availableActions}
+            onActionComplete={onRefresh}
+            autoOpenDecision={sellerStatus === "Pending"}
+            trigger={
+              <Button variant="primary" rightIcon="chevronDown">
+                Manage Lien
+              </Button>
+            }
+          />
         </div>
+      </div>
+
+      <div className="basis-2/4">
+        <Tabs
+          bordered={false}
+          defaultTab={activeTab}
+          onChange={(key) => setActiveTab(key as TabKey)}
+          tabs={TABS.map((tab) => ({
+            key: tab.key,
+            label: tab.label,
+            badge: tab.key === "documents" ? docs.length : undefined,
+          }))}
+        />
       </div>
 
       {activeTab === "details" && (
@@ -132,6 +151,8 @@ export function PortfolioDetailPanel({
           />
           <FundingCompanyAndCaseInformationPanel
             fundingCompany={lien.fundingCompany}
+            facility={lien.facility}
+            medicalProvider={lien.medicalProvider}
             caseInformation={lien.caseInformation}
             onEdit={
               canEdit ? () => setEditModal("case-information") : undefined
@@ -143,9 +164,8 @@ export function PortfolioDetailPanel({
           />
         </>
       )}
-      {activeTab === "documents" && (
-        <DocumentsTab lien={lien} onRefresh={onRefresh} />
-      )}
+      {activeTab === "documents" && <DocumentsTab lien={lien} />}
+      {activeTab === "activity" && <ActivityTab lienId={lien.lienId} />}
 
       {editModal === "lien-information" && (
         <EditLienInformationModal
@@ -162,6 +182,8 @@ export function PortfolioDetailPanel({
         <EditCaseInformationModal
           lienId={lien.lienId}
           fundingCompany={lien.fundingCompany}
+          medicalProvider={lien.medicalProvider}
+          facility={lien.facility}
           caseInformation={lien.caseInformation}
           onClose={() => setEditModal(null)}
           onSaved={() => {
@@ -185,80 +207,126 @@ export function PortfolioDetailPanel({
   );
 }
 
-function DocumentsTab({
-  lien,
-  onRefresh,
-}: {
-  lien: LienDetailsResult;
-  onRefresh: () => void;
-}) {
-  const { session } = useSession();
-  const { show: showToast } = useToast();
-  const [enriched, setEnriched] = useState<
-    Record<string, { title: string; createdAt: string; fileSize: string }>
-  >({});
+const ACTIVITY_PAGE_SIZE = 5;
+
+function ActivityTab({ lienId }: { lienId: string }) {
+  const { data, isLoading, isError } = useLienActivity(lienId);
+  const items = data?.items ?? [];
+
+  // The API returns the full activity history in one response — pagination
+  // here is purely client-side, slicing further into the already-fetched
+  // array on each "Load More" click.
+  const [visibleCount, setVisibleCount] = useState(ACTIVITY_PAGE_SIZE);
+
+  useEffect(() => {
+    setVisibleCount(ACTIVITY_PAGE_SIZE);
+  }, [lienId]);
+
+  const visibleItems = items.slice(0, visibleCount);
+  const hasMore = visibleCount < items.length;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg">
+      <div className="px-6 py-5">
+        <h3 className="text-md font-semibold mb-4">Activity</h3>
+
+        {isLoading ? (
+          <div className="space-y-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex gap-3 animate-pulse">
+                <div className="w-5 h-5 rounded-full bg-gray-100 shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3.5 w-2/3 bg-gray-100 rounded" />
+                  <div className="h-3 w-24 bg-gray-100 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : isError ? (
+          <p className="text-sm text-red-600 py-6 text-center">
+            Failed to load activity.
+          </p>
+        ) : items.length === 0 ? (
+          <ContactsEmptyState
+            icon={Clipboard}
+            title="No Recent Activity"
+            description="There are no recent activities to display. New updates will appear here as they occur."
+          />
+        ) : (
+          <>
+            <ol className="relative space-y-5">
+              {visibleItems.length > 1 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute left-[7px] top-4 h-[calc(100%-32px)] w-px bg-gray-200"
+                />
+              )}
+              {visibleItems.map((item) => (
+                <li key={item.id} className="relative flex gap-3">
+                  <span className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary">
+                    <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800">
+                      {item.description}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(item.timestampUtc).toLocaleDateString()} ·{" "}
+                      {new Date(item.timestampUtc).toLocaleTimeString()}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            {hasMore ? (
+              <div className="pt-5 flex flex-col items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleCount((count) => count + ACTIVITY_PAGE_SIZE)
+                  }
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Load More
+                </button>
+                <span className="text-xs text-gray-400">
+                  Showing {visibleItems.length} of {items.length}
+                </span>
+              </div>
+            ) : (
+              items.length > ACTIVITY_PAGE_SIZE && (
+                <p className="pt-5 text-xs text-gray-400 text-center">
+                  You&apos;re all caught up — showing all {items.length} activities.
+                </p>
+              )
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DocumentsTab({ lien }: { lien: LienDetailsResult }) {
+  const { data: docs = [], isLoading } = useLienDocuments(lien.lienId);
+  const saveLienDocuments = useSaveLienDocuments(lien.lienId);
   const [showUpload, setShowUpload] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all(
-      lien.documents.map(async (doc) => {
-        const data = parseDocumentReference(doc);
-        if (!data.documentId) return null;
-        try {
-          const detail = await documentsService.getById(data.documentId);
-          return [
-            data.documentId,
-            {
-              title: detail.title,
-              createdAt: detail.createdAt,
-              fileSize: detail.fileSize,
-            },
-          ] as const;
-        } catch {
-          return null;
-        }
-      }),
-    ).then((results) => {
-      if (cancelled) return;
-      const map: Record<
-        string,
-        { title: string; createdAt: string; fileSize: string }
-      > = {};
-      for (const r of results) {
-        if (r) map[r[0]] = r[1];
-      }
-      setEnriched(map);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [lien.documents]);
 
   const runDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const remaining = lien.documents
-        .filter((doc) => doc.id !== deleteTarget)
-        .map((doc) => {
-          const data = parseDocumentReference(doc);
-          return {
-            documentId: data.documentId,
-            documentType: data.documentType,
-            displayName: data.displayName ?? undefined,
-          };
-        });
-      await liensService.saveDocuments(lien.lienId, { documents: remaining });
-      showToast("Document removed.", "success");
+      await saveLienDocuments((current) =>
+        current.filter((d) => d.documentId !== deleteTarget),
+      );
+      toast.success("Document removed.");
       setDeleteTarget(null);
-      onRefresh();
     } catch (err) {
-      showToast(
+      toast.error(
         err instanceof Error ? err.message : "Failed to remove document",
-        "error",
       );
     } finally {
       setDeleting(false);
@@ -272,51 +340,48 @@ function DocumentsTab({
           <h3 className="text-md font-semibold">Documents</h3>
           <Button
             variant="secondary"
-            className="px-3 py-1.5"
-            rightIcon={<i className="ri-upload-cloud-2-line text-sm" />}
+            rightIcon="cloudUpload"
             onClick={() => setShowUpload(true)}
           >
             Upload Document
           </Button>
         </div>
 
-        {lien.documents.length === 0 ? (
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+            <SkeletonFileRow />
+            <SkeletonFileRow />
+          </div>
+        ) : docs.length === 0 ? (
           <div className="py-10 text-center">
-            <i className="ri-file-copy-2-line text-3xl text-gray-300" />
+            <Copy className="h-6 w-6 text-gray-300" />
             <p className="text-sm text-gray-400 mt-2">
               No documents attached to this lien yet
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
-            {lien.documents.map((doc) => {
-              const data = parseDocumentReference(doc);
-              const meta = enriched[data.documentId];
-              return (
-                <div key={doc.id} className="flex items-center gap-3 py-1">
-                  <div className="w-10 h-10 rounded bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">
-                    <i className="ri-file-text-line text-lg text-gray-500" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-800 truncate">
-                      {meta?.title || data.displayName || doc.description}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {meta?.createdAt ? `${meta.createdAt} · ` : ""}
-                      {SALE_DOCUMENT_LABELS[data.documentType]?.title ??
-                        data.documentType}
-                    </p>
-                  </div>
+            {docs.map((doc) => (
+              <UploadedFileRow
+                key={doc.documentId}
+                icon={fileIconFor(doc.displayName)}
+                title={doc.displayName}
+                subtitle={
+                  SALE_DOCUMENT_LABELS[doc.documentType]?.title ??
+                  camelCaseToLabel(doc.documentType)
+                }
+                timestamp={doc.createdAt}
+                actions={
                   <Button
-                    variant="icon-square"
-                    className="w-8 h-8 border-red-100 text-red-500 hover:bg-red-50 shrink-0"
-                    onClick={() => setDeleteTarget(doc.id)}
-                  >
-                    <i className="ri-delete-bin-6-line text-sm" />
-                  </Button>
-                </div>
-              );
-            })}
+                    variant="icon-square-destructive"
+                    className="w-8 h-8"
+                    icon="trash2"
+                    onClick={() => setDeleteTarget(doc.documentId)}
+                    aria-label="Delete document"
+                  />
+                }
+              />
+            ))}
           </div>
         )}
       </div>
@@ -324,13 +389,7 @@ function DocumentsTab({
       {showUpload && (
         <UploadDocumentModal
           lienId={lien.lienId}
-          tenantId={session?.tenantId ?? ""}
-          existingDocuments={lien.documents}
           onClose={() => setShowUpload(false)}
-          onUploaded={() => {
-            setShowUpload(false);
-            onRefresh();
-          }}
         />
       )}
 
@@ -348,105 +407,29 @@ function DocumentsTab({
   );
 }
 
+// Files upload (and persist to the lien) as soon as each one is dropped in
+// UploadDocuments — same auto-commit behavior as the edit wizard's step-4 —
+// so there's no separate submit step, just a "Done" button to close up.
 function UploadDocumentModal({
   lienId,
-  tenantId,
-  existingDocuments,
   onClose,
-  onUploaded,
 }: {
   lienId: string;
-  tenantId: string;
-  existingDocuments: LienDetailsResult["documents"];
   onClose: () => void;
-  onUploaded: () => void;
 }) {
-  const { show: showToast } = useToast();
-  const { lookup } = useSessionContext();
-  const [file, setFile] = useState<File | null>(null);
-  const documentTypes = lookup?.DocumentCategory ?? [];
-  const documentTypeOptions = documentTypes.map((type) => ({
-    value: type.id,
-    label: type.name,
-  }));
-  const [documentTypeId, setDocumentTypeId] = useState("");
-  const [uploading, setUploading] = useState(false);
-
-  useEffect(() => {
-    if (!documentTypeId && documentTypes.length > 0) {
-      setDocumentTypeId(documentTypes[0].id);
-      // setDocumentTypeId('00000000-0000-0000-0000-000000000001');
-    }
-  }, [documentTypes, documentTypeId]);
-
-  const handleSubmit = async () => {
-    if (!file || !documentTypeId) return;
-    setUploading(true);
-    try {
-      const uploaded = await documentsService.upload({
-        file,
-        tenantId,
-        productId: "SYNQ_LIENS",
-        referenceType: "Lien",
-        referenceId: lienId,
-        documentTypeId,
-        title: file.name,
-      });
-      const documentType =
-        documentTypes.find((t) => t.id === documentTypeId)?.name ??
-        documentTypeId;
-      const documents = [
-        ...existingDocuments.map((doc) => {
-          const data = parseDocumentReference(doc);
-          return {
-            documentId: data.documentId,
-            documentType: data.documentType,
-            displayName: data.displayName ?? undefined,
-          };
-        }),
-        { documentId: uploaded.id, documentType, displayName: file.name },
-      ];
-      await liensService.saveDocuments(lienId, { documents });
-      showToast("Document uploaded.", "success");
-      onUploaded();
-    } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to upload document",
-        "error",
-      );
-    } finally {
-      setUploading(false);
-    }
-  };
-
   return (
-    <FormModal
+    <Modal
       open
       onClose={onClose}
-      onSubmit={handleSubmit}
-      title="Upload Document"
-      submitLabel={uploading ? "Uploading..." : "Upload"}
-      submitDisabled={!file || !documentTypeId || uploading}
-      size="sm"
+      title="Upload Documents"
+      size="lg"
+      footer={
+        <Button variant="primary" onClick={onClose}>
+          Done
+        </Button>
+      }
     >
-      <div className="space-y-4">
-        <Field
-          label="Document Type"
-          type="select"
-          value={documentTypeId}
-          options={documentTypeOptions}
-          onChange={(value: string) => setDocumentTypeId(value)}
-        />
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            File
-          </label>
-          <UploadDocumentComponent
-            isMultiple={false}
-            onUploaded={(files) => setFile(files[0] ?? null)}
-          />
-        </div>
-      </div>
-    </FormModal>
+      <UploadDocuments lienId={lienId} hideHeading hideExistingDocuments />
+    </Modal>
   );
 }

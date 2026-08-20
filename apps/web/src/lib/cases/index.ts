@@ -7,6 +7,8 @@ export type {
   CaseLienItemMetadata,
   PaginationMeta,
   CreateCaseRequestDto,
+  CaseDuplicateCheckResponseDto,
+  CaseDuplicateMatchDto,
   UpdateCaseRequestDto,
   CaseAllocationReportRequest,
   AllocationSegment,

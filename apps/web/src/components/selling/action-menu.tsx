@@ -1,6 +1,7 @@
 'use client';
 
-import type { LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { MoreVertical, type LucideIcon } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +13,7 @@ import { cn } from '@/lib/utils';
 
 export interface ActionMenuItem {
   label: string;
-  /** Remix icon class name (e.g. "ri-eye-line") or a lucide-react icon component. */
+  /** Icon class name string or a lucide-react icon component. */
   icon?: string | LucideIcon;
   onClick: () => void;
   variant?: 'default' | 'danger';
@@ -24,20 +25,29 @@ export interface ActionMenuItem {
 
 interface ActionMenuProps {
   items: ActionMenuItem[];
-  triggerIcon?: string;
+  triggerIcon?: LucideIcon;
+  /** Custom trigger element (e.g. a labeled Button); defaults to a bare ellipsis icon button. */
+  trigger?: ReactNode;
+  align?: 'start' | 'end';
 }
 
-export function ActionMenu({ items, triggerIcon = 'ri-more-2-fill' }: ActionMenuProps) {
+export function ActionMenu({ items, triggerIcon: TriggerIcon = MoreVertical, trigger, align = 'end' }: ActionMenuProps) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        onClick={(e) => e.stopPropagation()}
-        aria-label="Actions menu"
-        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors outline-none"
-      >
-        <i className={`${triggerIcon} text-base`} />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      {trigger ? (
+        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+          {trigger}
+        </DropdownMenuTrigger>
+      ) : (
+        <DropdownMenuTrigger
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Actions menu"
+          className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors outline-none"
+        >
+          <TriggerIcon className="h-4 w-4" />
+        </DropdownMenuTrigger>
+      )}
+      <DropdownMenuContent align={align} className="w-48">
         {items.map((item, i) => {
           const hasReason = Boolean(item.disabled && item.disabledReason);
           return (

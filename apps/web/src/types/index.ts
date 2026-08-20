@@ -102,8 +102,9 @@ export interface PlatformSession {
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 export interface NavItem {
-  href: string;
-  label: string;
+  heading?: string;
+  href?: string;
+  label?: string;
   icon?: string;
   badge?: string;
   badgeKey?: string;

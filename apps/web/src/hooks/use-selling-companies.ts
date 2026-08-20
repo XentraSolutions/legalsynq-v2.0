@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo } from "react";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { companiesApi } from "@/lib/selling/companies.api";
 import type { BaseSelectOption } from "@/components/ui/base-select";
 import type { InfiniteOptions } from "@/hooks/use-filter-options";
@@ -16,6 +22,10 @@ import type {
   CompaniesExportQuery,
   ContactPersonsExportQuery,
   ContactsExportQuery,
+  ReassignCompanyRequest,
+  ReassignContactPersonRequest,
+  CompanyDetailsQuery,
+  ContactPersonsDirectoryQuery,
 } from "@/lib/selling/companies.types";
 
 function toOptions(items: { id: string; name: string }[]): BaseSelectOption[] {
@@ -91,6 +101,35 @@ export function useCompanies(query: CompaniesQuery = {}, options?: { enabled?: b
   };
 }
 
+const COMPANIES_INFINITE_PAGE_SIZE = 20;
+
+/**
+ * Scroll-paginated + debounced-server-search companies list, for pickers
+ * (e.g. reassign target) where eagerly loading every page up front
+ * (`useInfiniteCompanyOptions`) would be wasteful — this only fetches a page
+ * at a time as the caller scrolls or types. Pairs with `BaseSelect`'s
+ * `loadingMode="infinite"`, same shape as `useInfiniteContacts`.
+ */
+export function useInfiniteCompanies(
+  query: CompaniesQuery,
+  options?: { enabled?: boolean },
+) {
+  return useInfiniteQuery({
+    queryKey: ["selling-companies-infinite", query],
+    queryFn: ({ pageParam }) =>
+      companiesApi
+        .listCompanies({ ...query, page: pageParam, pageSize: COMPANIES_INFINITE_PAGE_SIZE })
+        .then(({ data }) => data),
+    initialPageParam: 1,
+    getNextPageParam: nextCompanyOptionsPageParam,
+    staleTime: 0,
+    placeholderData: keepPreviousData,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    enabled: options?.enabled,
+  });
+}
+
 export const COMPANY_QUERY_KEY = (id: string) => ["selling-company", id] as const;
 
 export function useCompany(id: string | null | undefined, options?: { enabled?: boolean }) {
@@ -99,6 +138,23 @@ export function useCompany(id: string | null | undefined, options?: { enabled?: 
     queryKey: COMPANY_QUERY_KEY(id ?? ""),
     queryFn: () => companiesApi.getCompany(id as string).then(({ data }) => data),
     enabled,
+  });
+}
+
+export const COMPANY_DETAILS_QUERY_KEY = (id: string, query: CompanyDetailsQuery = {}) =>
+  ["selling-company-details", id, query] as const;
+
+export function useCompanyDetailsSummary(
+  id: string | null | undefined,
+  query: CompanyDetailsQuery = {},
+  options?: { enabled?: boolean },
+) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  return useQuery({
+    queryKey: COMPANY_DETAILS_QUERY_KEY(id ?? "", query),
+    queryFn: () => companiesApi.companyDetails(id as string, query).then(({ data }) => data),
+    enabled,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -222,6 +278,18 @@ export function useReactivateCompany() {
   });
 }
 
+export function useReassignCompany() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, request }: { id: string; request: ReassignCompanyRequest }) =>
+      companiesApi.reassignCompany(id, request).then(({ data }) => data),
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["selling-companies"] });
+      queryClient.invalidateQueries({ queryKey: COMPANY_QUERY_KEY(id) });
+    },
+  });
+}
+
 export function useExportCompanies() {
   return useMutation({
     mutationFn: (query: CompaniesExportQuery) => companiesApi.exportCompanies(query),
@@ -235,6 +303,22 @@ export function useExportContacts() {
 }
 
 // ── Contact persons ──────────────────────────────────────────────────────────
+
+export const CONTACT_PERSONS_DIRECTORY_QUERY_KEY = (
+  query: ContactPersonsDirectoryQuery = {},
+) => ["selling-contact-persons-directory", query] as const;
+
+export function useContactPersonsDirectory(
+  query: ContactPersonsDirectoryQuery = {},
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: CONTACT_PERSONS_DIRECTORY_QUERY_KEY(query),
+    queryFn: () => companiesApi.listContactPersonsDirectory(query).then(({ data }) => data),
+    placeholderData: keepPreviousData,
+    enabled: options?.enabled,
+  });
+}
 
 export const CONTACT_PERSONS_QUERY_KEY = (companyId: string, isActive?: boolean) =>
   ["selling-contact-persons", companyId, isActive ?? true] as const;
@@ -291,6 +375,7 @@ export function useCreateContactPerson() {
     }) => companiesApi.createContactPerson(companyId, request).then(({ data }) => data),
     onSuccess: (_data, { companyId }) => {
       queryClient.invalidateQueries({ queryKey: ["selling-contact-persons", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["selling-contact-persons-directory"] });
     },
   });
 }
@@ -312,6 +397,7 @@ export function useUpdateContactPerson() {
         .then(({ data }) => data),
     onSuccess: (_data, { companyId, contactId }) => {
       queryClient.invalidateQueries({ queryKey: ["selling-contact-persons", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["selling-contact-persons-directory"] });
       queryClient.invalidateQueries({ queryKey: CONTACT_PERSON_QUERY_KEY(companyId, contactId) });
     },
   });
@@ -324,6 +410,7 @@ export function useDeactivateContactPerson() {
       companiesApi.deactivateContactPerson(companyId, contactId),
     onSuccess: (_data, { companyId, contactId }) => {
       queryClient.invalidateQueries({ queryKey: ["selling-contact-persons", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["selling-contact-persons-directory"] });
       queryClient.invalidateQueries({ queryKey: CONTACT_PERSON_QUERY_KEY(companyId, contactId) });
     },
   });
@@ -336,6 +423,30 @@ export function useReactivateContactPerson() {
       companiesApi.reactivateContactPerson(companyId, contactId),
     onSuccess: (_data, { companyId, contactId }) => {
       queryClient.invalidateQueries({ queryKey: ["selling-contact-persons", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["selling-contact-persons-directory"] });
+      queryClient.invalidateQueries({ queryKey: CONTACT_PERSON_QUERY_KEY(companyId, contactId) });
+    },
+  });
+}
+
+export function useReassignContactPerson() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      companyId,
+      contactId,
+      request,
+    }: {
+      companyId: string;
+      contactId: string;
+      request: ReassignContactPersonRequest;
+    }) =>
+      companiesApi
+        .reassignContactPerson(companyId, contactId, request)
+        .then(({ data }) => data),
+    onSuccess: (_data, { companyId, contactId }) => {
+      queryClient.invalidateQueries({ queryKey: ["selling-contact-persons", companyId] });
+      queryClient.invalidateQueries({ queryKey: ["selling-contact-persons-directory"] });
       queryClient.invalidateQueries({ queryKey: CONTACT_PERSON_QUERY_KEY(companyId, contactId) });
     },
   });

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import { casesService, type CaseDetail, type CaseLienItem } from "@/lib/cases";
+import { CaseLienItemMetadata, casesService, type CaseDetail, type CaseLienItem } from "@/lib/cases";
 import type { LiensQuery } from "@/lib/liens";
 import { useCaseLiens, useDeleteLien } from "@/hooks/use-case-liens";
 import { StatusBadge } from "@/components/lien/status-badge";
@@ -25,6 +25,7 @@ import {
   type CaseLienUpdateRow,
 } from "./sections/lien-updates-section";
 
+
 export function LiensTab({
   caseId,
   liens: liensProp,
@@ -35,7 +36,7 @@ export function LiensTab({
   onAddMedicalLien,
 }: {
   caseId: string;
-  liens: CaseLienItem[];
+  liens: CaseLienItem[] & CaseLienItemMetadata[];
   liensPagination: PaginationMeta;
   caseDetail: CaseDetail;
   panelMode: PanelMode;
@@ -72,7 +73,7 @@ export function LiensTab({
     [liensPagination.pageSize, filters],
   );
   const { data: filteredLiens } = useCaseLiens(caseId, serverQuery, "liens");
-  const liensData: CaseLienItem[] = filteredLiens?.items ?? liensProp;
+  const liensData = (filteredLiens?.items ?? liensProp) as unknown as (CaseLienItem & CaseLienItemMetadata)[];
 
   const fetchData = useCallback(async () => {
     const updates = await casesService.getCaseLiensUpdates(caseId);
@@ -177,7 +178,7 @@ export function LiensTab({
       id: "lienId",
       header: "Lien ID",
       cell: ({ row }) => (
-        <span className="text-sm text-gray-600 truncate max-w-40 block">
+        <span className="text-sm text-gray-600 max-w-40 block">
           {row.original.lienNumber}
         </span>
       ),
@@ -240,6 +241,15 @@ export function LiensTab({
         </span>
       ),
     },
+     {
+    id: "payment",
+    header: "Amount Received",
+    cell: ({row}) => (
+      <span className="text-sm text-gray-700 tabular-nums">
+        {formatCurrency(row.original.paymentAmount ?? 0)}
+      </span>
+    ),
+  },
     {
       id: "status",
       header: "Lien Status",

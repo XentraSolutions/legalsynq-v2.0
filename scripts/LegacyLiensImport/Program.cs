@@ -397,6 +397,7 @@ Relationship repair:
 
         public static async Task<SourceData> LoadAsync(MySqlConnection connection, long legacyProgram)
         {
+            await VerifyCaseNoteContractAsync(connection);
             var cases = await LoadCasesAsync(connection, legacyProgram);
             var liens = await LoadLiensAsync(connection, legacyProgram);
             var notes = await LoadNotesAsync(connection, legacyProgram);
@@ -408,6 +409,21 @@ Relationship repair:
                 Notes = notes,
                 AmountsByLienId = amounts
             };
+        }
+
+        private static async Task VerifyCaseNoteContractAsync(MySqlConnection connection)
+        {
+            const string sql = """
+SELECT COUNT(*)
+FROM information_schema.columns
+WHERE table_schema = DATABASE()
+  AND table_name = 'SL_CASE_NOTES'
+  AND column_name IN ('CN_ID','CN_CASE_ID','CN_NOTE','CN_CREATED','CN_CREATED_BY','CN_IS_DELETED','CN_USER_ID');
+""";
+            await using var command = new MySqlCommand(sql, connection);
+            var count = Convert.ToInt32(await command.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
+            if (count != 7)
+                throw new InvalidOperationException("SL_CASE_NOTES source column contract is incomplete; CN_USER_ID is required for tracking/feed classification.");
         }
 
         public static async Task VerifyRestoreProvenanceAsync(MySqlConnection connection, string expectedFingerprint)
@@ -522,7 +538,7 @@ ORDER BY lm.LM_ID;
         private static async Task<List<LegacyCaseNote>> LoadNotesAsync(MySqlConnection connection, long legacyProgram)
         {
             const string sql = """
-SELECT n.CN_ID, n.CN_CASE_ID, n.CN_NOTE, n.CN_CREATED, n.CN_CREATED_BY, n.CN_IS_DELETED
+SELECT n.CN_ID, n.CN_CASE_ID, n.CN_NOTE, n.CN_CREATED, n.CN_CREATED_BY, n.CN_IS_DELETED, n.CN_USER_ID
 FROM SL_CASE_NOTES n
 INNER JOIN SL_CASE c ON c.CASE_ID = n.CN_CASE_ID
 WHERE c.CASE_PROGRAM = @program AND COALESCE(c.CASE_IS_DELETED, 'N') <> 'Y'
@@ -540,7 +556,8 @@ ORDER BY n.CN_ID;
                     Text(reader, 2),
                     DateTimeValue(reader, 3),
                     Text(reader, 4),
-                    Text(reader, 5)));
+                    Text(reader, 5),
+                    Text(reader, 6)));
             }
             return result;
         }
@@ -624,9 +641,17 @@ ORDER BY code.LMC_LM_ID, code.LMC_ID;
         public string SourceHash => Hash($"{Id}|{CaseId}|{Status}|{PurchaseDate}|{InitialServiceDate}|{EndServiceDate}|{Notes}|{CreatedAtUtc:o}|{UpdatedAtUtc:o}|{Code}|{IsBulk}|{IsServicing}|{DateOfLoss}|{SubjectFirstName}|{SubjectLastName}|{Jurisdiction}");
     }
 
-    private sealed record LegacyCaseNote(long Id, long CaseId, string? Content, DateTime? CreatedAtUtc, string? CreatedByName, string? IsDeleted)
+    private sealed record LegacyCaseNote(
+        long Id,
+        long CaseId,
+        string? Content,
+        DateTime? CreatedAtUtc,
+        string? CreatedByName,
+        string? IsDeleted,
+        string? LegacyUserId)
     {
-        public string SourceHash => Hash($"{Id}|{CaseId}|{Content}|{CreatedAtUtc:o}|{CreatedByName}|{IsDeleted}");
+        public string VersionedSourceHash(string sourceFingerprint)
+            => $"case-note-v2:{Hash($"{Id}|{CaseId}|{Content}|{CreatedAtUtc:o}|{CreatedByName}|{IsDeleted}|{LegacyUserId}|{sourceFingerprint}")}";
     }
 
     private sealed record ExistingCrosswalk(Guid TargetId, string SourceHash);
@@ -727,11 +752,12 @@ ORDER BY code.LMC_LM_ID, code.LMC_ID;
                     continue;
                 }
 
+                var sourceHash = source.VersionedSourceHash(sourceFingerprint);
                 var crosswalkKey = Key(CaseNoteTable, source.Id);
                 var existing = crosswalks.GetValueOrDefault(crosswalkKey);
-                if (existing is not null && !string.Equals(existing.SourceHash, source.SourceHash, StringComparison.Ordinal))
+                if (existing is not null && !string.Equals(existing.SourceHash, sourceHash, StringComparison.Ordinal))
                     result.Blockers.Add($"Legacy case note {source.Id} changed after an earlier import; delta migration is not supported by this tool.");
-                result.Notes.Add(new NotePlan(source, existing?.TargetId ?? Guid.CreateVersion7(), casePlan.TargetId, existing is null));
+                result.Notes.Add(new NotePlan(source, existing?.TargetId ?? Guid.CreateVersion7(), casePlan.TargetId, sourceHash, existing is null));
             }
 
             ValidateTargetNumberCollisions(result.CasesToInsert, plan => plan.CaseNumber, targetNumbers.CaseNumbers, "case", result.Blockers);
@@ -831,7 +857,7 @@ ORDER BY code.LMC_LM_ID, code.LMC_ID;
 
     private sealed record CasePlan(LegacyCase Source, Guid TargetId, string CaseNumber, bool ShouldInsert);
     private sealed record LienPlan(LegacyLien Source, Guid TargetId, Guid TargetCaseId, string LienNumber, LienAmounts Amounts, string SourceHash, bool ShouldInsert);
-    private sealed record NotePlan(LegacyCaseNote Source, Guid TargetId, Guid TargetCaseId, bool ShouldInsert);
+    private sealed record NotePlan(LegacyCaseNote Source, Guid TargetId, Guid TargetCaseId, string SourceHash, bool ShouldInsert);
 
     private sealed class TargetStore(MySqlConnection connection, Options options)
     {
@@ -1131,7 +1157,7 @@ INSERT INTO liens_CaseNotes
     (Id, CaseId, TenantId, Content, Category, IsPinned, CreatedByUserId, CreatedByName,
      IsEdited, IsDeleted, CreatedAtUtc, UpdatedAtUtc)
 VALUES
-    (@id, @caseId, @tenantId, @content, 'general', 0, @createdByUserId, @createdByName,
+    (@id, @caseId, @tenantId, @content, @category, 0, @createdByUserId, @createdByName,
      0, @isDeleted, @createdAtUtc, NULL);
 """;
                 await using var command = new MySqlCommand(sql, connection, transaction);
@@ -1139,12 +1165,13 @@ VALUES
                 command.Parameters.AddWithValue("@caseId", plan.TargetCaseId.ToString());
                 command.Parameters.AddWithValue("@tenantId", options.TenantId.ToString());
                 command.Parameters.AddWithValue("@content", plan.Source.Content!.Trim());
+                command.Parameters.AddWithValue("@category", plan.Source.LegacyUserId is null ? "general" : "feed");
                 command.Parameters.AddWithValue("@createdByUserId", options.MigrationUserId.ToString());
                 command.Parameters.AddWithValue("@createdByName", Truncate(string.IsNullOrWhiteSpace(plan.Source.CreatedByName) ? "Legacy SL-CORE" : plan.Source.CreatedByName.Trim(), 250));
                 command.Parameters.AddWithValue("@isDeleted", string.Equals(plan.Source.IsDeleted, "Y", StringComparison.OrdinalIgnoreCase));
                 command.Parameters.AddWithValue("@createdAtUtc", plan.Source.CreatedAtUtc ?? DateTime.UtcNow);
                 await command.ExecuteNonQueryAsync();
-                await InsertCrosswalkAsync(transaction, runId, CaseNoteTable, plan.Source.Id, "CaseNote", plan.TargetId, plan.Source.SourceHash);
+                await InsertCrosswalkAsync(transaction, runId, CaseNoteTable, plan.Source.Id, "CaseNote", plan.TargetId, plan.SourceHash);
             }
             await transaction.CommitAsync();
             return plans.Count;

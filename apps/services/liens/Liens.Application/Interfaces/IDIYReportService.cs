@@ -56,6 +56,13 @@ public sealed class DIYReportRow
     public string LawFirm { get; init; } = string.Empty;
     public string CaseType { get; init; } = string.Empty;
     public string CaseManager { get; init; } = string.Empty;
+    public string UccFiled { get; init; } = "No";
+    public string FeedNote { get; init; } = string.Empty;
+    public DateOnly? FeedNoteDate { get; init; }
+    public string TrackingNotes { get; init; } = string.Empty;
+    public DateOnly? LastTrackingNoteDate { get; init; }
+    public string LastActivity { get; init; } = string.Empty;
+    public DateTime? LastActivityAtUtc { get; init; }
     public Dictionary<string, object?> Extra { get; init; } = new();
 }
 

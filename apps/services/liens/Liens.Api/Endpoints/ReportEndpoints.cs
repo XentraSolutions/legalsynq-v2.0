@@ -3,6 +3,7 @@ using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
+using Liens.Api.Serialization;
 using Liens.Domain.Enums;
 using Liens.Domain;
 using Microsoft.AspNetCore.Builder;
@@ -25,6 +26,13 @@ public static class ReportEndpoints
 
     public static void MapReportEndpoints(this WebApplication app)
     {
+        var reports = app.MapGroup("/api/liens/reports")
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductAccess(LiensPermissions.ProductCode);
+
+        reports.MapPost("/weekly-bcc", GetWeeklyBccReport)
+            .RequirePermission(LiensPermissions.CaseRead);
+
         // ── v2 routes ─────────────────────────────────────────────────────────
         var v2 = app.MapGroup("/api/liens/reports/diy")
             .RequireAuthorization(Policies.AuthenticatedUser)
@@ -61,6 +69,9 @@ public static class ReportEndpoints
         legacy.MapPost("/diy", RunReport)
             .RequirePermission(LiensPermissions.CaseRead);
 
+        legacy.MapPost("/weekly-bcc", GetWeeklyBccReport)
+            .RequirePermission(LiensPermissions.CaseRead);
+
         // POST /report/diy/export  — export as CSV
         legacy.MapPost("/diy/export", ExportReport)
             .RequirePermission(LiensPermissions.CaseRead);
@@ -95,6 +106,60 @@ public static class ReportEndpoints
     }
 
     // ── Handlers ──────────────────────────────────────────────────────────────
+
+    private static async Task<IResult> GetWeeklyBccReport(
+        WeeklyBccReportRequest? request,
+        IWeeklyBccReportService svc,
+        ICurrentRequestContext ctx,
+        HttpContext httpContext,
+        CancellationToken ct = default)
+    {
+        httpContext.Response.Headers.CacheControl = "no-store";
+        if (request is null)
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "Request body is required.",
+            });
+        }
+
+        if (!TryParseWeeklyBccAsOfDate(request.AsOfDate, out var asOfDate))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "A valid asOfDate is required. Use MM/dd/yyyy or yyyy-MM-dd.",
+            });
+        }
+
+        var tenantId = CaseEndpoints.RequireTenantId(ctx);
+        var result = await svc.GetAsync(tenantId, asOfDate, ct);
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Weekly BCC report generated.",
+            asOfDate = result.AsOfDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            totalCount = result.Items.Count,
+            summaryTotals = result.SummaryTotals,
+            data = result.Items,
+        });
+    }
+
+    private static bool TryParseWeeklyBccAsOfDate(string? value, out DateOnly asOfDate)
+    {
+        asOfDate = default;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        string[] formats = ["MM/dd/yyyy", "M/d/yyyy", "yyyy-MM-dd", "yyyy-M-d"];
+        return DateOnly.TryParseExact(
+            value.Trim(),
+            formats,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out asOfDate);
+    }
 
     private static async Task<IResult> GetSavedReports(
         IDIYReportService svc,
@@ -417,7 +482,8 @@ public static class ReportEndpoints
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var csv = new StringBuilder();
-        csv.AppendLine(string.Join(',', columns.Select(EscapeCsvValue)));
+        csv.AppendLine(string.Join(',', columns.Select(column =>
+            EscapeCsvValue(GetLegacyCsvColumnHeader(column)))));
 
         foreach (var row in rows)
         {
@@ -430,8 +496,23 @@ public static class ReportEndpoints
 
     private static string EscapeCsvValue(string? value)
     {
-        var escaped = (value ?? string.Empty).Replace("\"", "\"\"");
+        var rawValue = value ?? string.Empty;
+        var firstSignificant = rawValue.FirstOrDefault(character =>
+            !char.IsWhiteSpace(character) && !char.IsControl(character));
+        var safeValue = firstSignificant is '=' or '+' or '-' or '@'
+            ? $"'{rawValue}"
+            : rawValue;
+        var escaped = safeValue.Replace("\"", "\"\"");
         return escaped.IndexOfAny([',', '\"', '\r', '\n']) >= 0 ? $"\"{escaped}\"" : escaped;
+    }
+
+    private static string GetLegacyCsvColumnHeader(string key)
+    {
+        if (string.Equals(key, "last_case_tracking_note", StringComparison.OrdinalIgnoreCase))
+            return "Last Activity";
+        if (string.Equals(key, "last_case_tracking_date", StringComparison.OrdinalIgnoreCase))
+            return "Last Activity Date";
+        return key;
     }
 
     private static Dictionary<string, object?> BuildLegacyRow(DIYReportRow r) =>
@@ -472,7 +553,8 @@ public static class ReportEndpoints
             ["medical_facility_state"] = string.Empty,
             ["medical_facility_zip_code"] = string.Empty,
             ["medical_codes"] = string.Empty,
-            ["notes"] = string.Empty,
+            ["notes"] = r.FeedNote,
+            ["notes_date"] = FormatLegacyDate(r.FeedNoteDate),
             ["lien_status"] = r.Status ?? string.Empty,
             ["attorney"] = string.Empty,
             ["attorney_phone"] = string.Empty,
@@ -497,13 +579,15 @@ public static class ReportEndpoints
             ["number_of_liens"] = r.NumberOfLiens,
             ["case_status"] = FormatLegacyStatus(r.CaseStatus),
             ["medical_status"] = string.Empty,
-            ["last_case_tracking_date"] = string.Empty,
-            ["last_case_tracking_note"] = string.Empty,
+            ["last_case_tracking_date"] = r.LastActivityAtUtc.HasValue
+                ? PacificTimeHelper.FormatTimestamp(r.LastActivityAtUtc.Value)
+                : string.Empty,
+            ["last_case_tracking_note"] = r.LastActivity,
             ["case_tracking_follow_up_date"] = string.Empty,
             ["case_tracking_contact"] = string.Empty,
             ["case_tracking_contact_email"] = string.Empty,
-            ["last_case_note"] = string.Empty,
-            ["last_case_note_date"] = string.Empty,
+            ["last_case_note"] = r.TrackingNotes,
+            ["last_case_note_date"] = FormatLegacyDate(r.LastTrackingNoteDate),
             ["date_of_loss"] = FormatLegacyDate(r.DateOfLoss),
             ["plaintiff_date_of_birth"] = string.Empty,
             ["plaintiff_phone"] = string.Empty,
@@ -515,7 +599,7 @@ public static class ReportEndpoints
             ["case_entered_by"] = string.Empty,
             ["lead_source"] = string.Empty,
             ["case_dropped"] = string.Empty,
-            ["ucc_filed"] = string.Empty,
+            ["ucc_filed"] = r.UccFiled,
             ["minor_comp"] = string.Empty,
             ["id"] = r.CaseId?.ToString() ?? string.Empty,
             ["l_id"] = r.LienId?.ToString() ?? string.Empty,
@@ -828,6 +912,7 @@ public static class ReportEndpoints
             new("medical_facility_zip_code", "Medical Facility ZIP Code", "procedureInfo"),
             new("medical_codes", "Medical Codes", "procedureInfo"),
             new("notes", "Notes", "procedureInfo"),
+            new("notes_date", "Notes Date", "procedureInfo"),
             new("attorney", "Attorney", "caseInfo"),
             new("attorney_phone", "Attorney Phone", "caseInfo"),
             new("attorney_email", "Attorney Email", "caseInfo"),
@@ -849,13 +934,13 @@ public static class ReportEndpoints
             new("lawfirm_email", "Lawfirm Email", "caseInfo"),
             new("case_status", "Case Status", "caseTrackingInfo"),
             new("medical_status", "Medical Status", "caseTrackingInfo"),
-            new("last_case_tracking_date", "Last Case Tracking Date", "caseTrackingInfo"),
-            new("last_case_tracking_note", "Last Case Tracking Note", "caseTrackingInfo"),
+            new("last_case_tracking_date", "Last Activity Date", "caseTrackingInfo"),
+            new("last_case_tracking_note", "Last Activity", "caseTrackingInfo"),
             new("case_tracking_follow_up_date", "Case Tracking Follow Up Date (For later from Servicing)", "caseTrackingInfo"),
             new("case_tracking_contact", "Case Tracking Contact (case manager)", "caseTrackingInfo"),
             new("case_tracking_contact_email", "Case Tracking Contact Email (case manager note)", "caseTrackingInfo"),
-            new("last_case_note", "Last Case Note", "caseTrackingInfo"),
-            new("last_case_note_date", "Last Case Note Date", "caseTrackingInfo"),
+            new("last_case_note", "Tracking Notes", "caseTrackingInfo"),
+            new("last_case_note_date", "Last Tracking Note Date", "caseTrackingInfo"),
             new("plaintiff_date_of_birth", "Plaintiff Date of Birth", "plaintiffInfo"),
             new("plaintiff_phone", "Plaintiff Phone", "plaintiffInfo"),
             new("plaintiff_email", "Plaintiff Email", "plaintiffInfo"),

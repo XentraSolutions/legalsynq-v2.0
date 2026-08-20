@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { CloudUpload, Download, FileText, X } from "lucide-react";
+import { toast } from "sonner";
 import { FormModal } from "@/components/selling/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { documentsService } from "@/lib/documents";
 import { liensService } from "@/lib/selling";
 import { liensApi } from "@/lib/selling/selling-liens.api";
-import { useToast } from "@/lib/toast-context";
 import { ApiError } from "@/lib/api-client";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
+import { ReviewBulkUploadModal } from "@/components/selling/forms/review-bulk-upload-modal";
 
 interface BulkUploadFormProps {
   open: boolean;
@@ -34,8 +36,6 @@ export function BulkUploadForm({
   tenantId,
   documentTypeId,
 }: BulkUploadFormProps) {
-  const { show: showToast } = useToast();
-
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [form, setForm] = useState({
@@ -47,6 +47,8 @@ export function BulkUploadForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [reviewImportId, setReviewImportId] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -70,27 +72,16 @@ export function BulkUploadForm({
       const validated = await liensService.validateUpload(
         uploadedfiles.importId,
       );
-      const confirmed = await liensService.confirmUpload(
-        uploadedfiles.importId,
-      );
+
       if (validated.status == "VALIDATED_WITH_ERRORS") {
-        return showToast(
-          `Failed to import ${validated.invalidCount} row/s`,
-          "error",
-        );
+        toast.error(`Failed to import ${validated.invalidCount} row/s`);
+        return;
       }
 
-      if (confirmed.status == "CONFIRMED" || confirmed.status == "PARTIAL") {
-        showToast(
-          `${confirmed.createdCount} ${confirmed.createdCount > 1 ? "liens" : "lien"} s has been successfully added to the Portfolio.`,
-          "success",
-        );
-        onUploaded?.();
-        resetAndClose();
-      }
+      setReviewImportId(uploadedfiles.importId);
     } catch (err) {
       if (err instanceof ApiError) {
-        showToast(err?.message ?? "Unexpected error", "error");
+        toast.error(err?.message ?? "Unexpected error");
       }
     } finally {
       setUploading(false);
@@ -110,7 +101,29 @@ export function BulkUploadForm({
   const resetAndClose = () => {
     setFile(null);
     setErrors({});
+    setReviewImportId(null);
     onClose();
+  };
+
+  const handleConfirmImport = async () => {
+    if (!reviewImportId) return;
+    try {
+      setConfirming(true);
+      const confirmed = await liensService.confirmUpload(reviewImportId);
+      if (confirmed.status == "CONFIRMED" || confirmed.status == "PARTIAL") {
+        toast.success(
+          `${confirmed.createdCount} ${confirmed.createdCount > 1 ? "liens" : "lien"} has been successfully added to the Portfolio.`,
+        );
+        onUploaded?.();
+        resetAndClose();
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.error(err?.message ?? "Unexpected error");
+      }
+    } finally {
+      setConfirming(false);
+    }
   };
 
   const downloadTemplate = async () => {
@@ -128,13 +141,14 @@ export function BulkUploadForm({
   };
 
   return (
+    <>
     <FormModal
-      open={open}
+      open={open && !reviewImportId}
       onClose={resetAndClose}
       onSubmit={handleSubmit}
       title=""
       hasHeader={false}
-      submitLabel={uploading ? "Uploading..." : "Upload"}
+      submitLabel={uploading ? "Uploading..." : "Continue"}
     >
       <div className="space-y-4">
         <input
@@ -144,6 +158,17 @@ export function BulkUploadForm({
           accept=".csv,.xlsx"
           onChange={(e) => handleFileSelect(e.target.files)}
         />
+        {file && (
+          <div>
+            <label className="block text-xl font-medium text-gray-700 mb-1">
+              Lien Bulk Upload
+            </label>
+            <p className="text-sm text-gray-600 mb-1">
+              Import multiple liens in a single upload by selecting a
+              supported file.
+            </p>
+          </div>
+        )}
         <div
           className={`border-2 border relative rounded-xl p-8 text-center transition-colors cursor-pointer overflow-hidden border-gray-200 ${dragOver ? "border-primary bg-primary/5" : "border-gray-200"}`}
           onClick={() => fileInputRef.current?.click()}
@@ -160,7 +185,7 @@ export function BulkUploadForm({
         >
           {file ? (
             <div className="flex items-center w-full gap-2">
-              <i className="ri-file-text-line text-2xl" />
+              <FileText className="h-6 w-6" />
               <div className="flex-1 min-w-0  text-left">
                 <span className="block text-sm font-medium text-gray-700 truncate">
                   {file.name}
@@ -178,20 +203,19 @@ export function BulkUploadForm({
                   setFile(null);
                 }}
               >
-                <i className="ri-close-line" />
+                <X className="h-4 w-4" />
               </Button>
             </div>
           ) : (
             <>
-              <i className="ri-upload-cloud-2-line text-3xl p-2 px-3 rounded-lg bg-[#F5F5F5]" />
+              <CloudUpload className="h-6 w-6 p-2 px-3 rounded-lg bg-[#F5F5F5] box-content mx-auto" />
               <div>
                 <label className="block text-xl font-medium text-gray-700 mb-1 mt-4">
                   Lien Bulk Upload
                 </label>
                 <p className="text-sm text-gray-600 mb-1">
                   Import multiple liens in a single upload by selecting a
-                  supported file. Review your data to ensure all required
-                  information is included.
+                  supported file.
                 </p>
                 <Button
                   type="button"
@@ -209,12 +233,21 @@ export function BulkUploadForm({
           onClick={() => {
             downloadTemplate();
           }}
-          className="text-xs cursor-pointer text-[#EE7132]"
+          className="inline-flex items-center gap-1.5 text-xs cursor-pointer text-[#EE7132]"
         >
-          Download template
+          <Download className="h-3.5 w-3.5" />
+          Download Template
         </button>
         {errors.file && <p className="text-xs text-red-500">{errors.file}</p>}
       </div>
     </FormModal>
+    <ReviewBulkUploadModal
+      open={!!reviewImportId}
+      importId={reviewImportId}
+      onClose={resetAndClose}
+      onConfirm={handleConfirmImport}
+      confirming={confirming}
+    />
+    </>
   );
 }

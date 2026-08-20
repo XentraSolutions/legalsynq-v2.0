@@ -265,6 +265,11 @@ CALL liens_migrate_sl_core_complete('<tenant-guid>', '1'); -- apply
 The complete procedure maps `LM_PURCHASE_DATE` to `liens_Liens.PurchaseDate`,
 maps nonblank `SLS_SETTLE_AMOUNT` and `SLS_SETTLE_DATE` rows to
 `liens_LienSettlements`, and retains non-deleted settlement payment details.
+Case-note staging carries `SL_CASE_NOTES.CN_USER_ID`: a null value maps to the
+tracking category `general`, while a non-null value maps to `feed`. The note
+crosswalk hash is prefixed with `case-note-v2:` and includes that discriminator
+and the approved source fingerprint. The .NET runner, canonical complete SQL,
+tenant-only SQL, and hard-bound rehearsal SQL all follow this rule.
 It excludes `CASE_IS_DELETED = 'Y'`, `LM_IS_DELETED = 'Y'`, and
 `SLSPD_IS_DELETED = 'Y'`; medical-code amounts and servicing rows require the
 legacy active status `LMC_STATUS = 'A'`, matching the dashboard calculations.
@@ -273,6 +278,41 @@ remains single-use and tenant-scoped through the approval and crosswalk guards.
 The preflight result includes case/lien/settlement counts plus the all-time
 purchase, billing, and cash-received totals that the migrated dashboard should
 reconcile against.
+
+### Existing-import case-note reconciliation
+
+Imports completed before the v2 discriminator was added stored every case note
+as `general`. The Case Notes History API intentionally returns
+`409 legacy_history_not_reconciled` for a tenant that still has an unversioned
+`SL_CASE_NOTES` crosswalk hash. With the same immutable `SL-CORE` restore used
+by the approved import available, deploy
+[`reconcile-sl-core-case-note-categories.sql`](reconcile-sl-core-case-note-categories.sql)
+and run preflight before apply:
+
+```sql
+CALL liens_reconcile_sl_core_case_note_categories(
+  '<tenant-guid>', '<approved-source-fingerprint>', '<approval-reference>',
+  NULL, NULL, '0');
+CALL liens_reconcile_sl_core_case_note_categories(
+  '<tenant-guid>', '<approved-source-fingerprint>', '<approval-reference>',
+  <preflight-eligible-notes>, '<preflight-checksum>', '1');
+```
+
+Retain the preflight `EligibleNotes` and `ExpectedChecksum` with the release
+record; apply requires both values and stops if the snapshot has changed. The
+procedure accepts either a consumed SQL-import approval or the signed-manifest
+evidence recorded by the supported .NET importer, plus exactly one completed
+note-owning import run and the immutable source-provenance receipt. It verifies
+exact note and case crosswalk ownership, tenant ownership on both target rows,
+source content and deletion state, unedited target notes, and an allowed
+current category. It shares the importer's tenant lock, locks and stages inside
+one transaction, guards writes against concurrent changes, updates both
+`Category` and the versioned `SourceHash`, verifies complete left-join and
+row-count postconditions, and is safe to rerun after a new preflight.
+
+`import-sl-core-complete.sql` is the supported complete SQL runner. Files named
+`import-sl-core-complete - Copy*.sql` are archival working copies and must not
+be deployed or used for a new import.
 
 For a MySQL-only rehearsal or controlled one-time import, use
 [`import-sl-core-core-to-019ea7f6-21e9-7421-ab54-7846cdc6bc76.sql`](import-sl-core-core-to-019ea7f6-21e9-7421-ab54-7846cdc6bc76.sql).

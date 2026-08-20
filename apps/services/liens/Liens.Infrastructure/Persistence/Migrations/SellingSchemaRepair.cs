@@ -10,9 +10,10 @@ public static class SellingSchemaRepair
 {
     private const string RepairLockName = "legalsynq-liens-selling-schema-repair";
     private const int ExpectedTableCount = 7;
-    private const int ExpectedColumnCount = 10;
-    private const int ExpectedIndexCount = 27;
+    private const int ExpectedColumnCount = 13;
+    private const int ExpectedIndexCount = 31;
     private const int ExpectedForeignKeyCount = 16;
+    private const int ExpectedCheckConstraintCount = 1;
     private const int ExpectedCompanyTypeSeedCount = 4;
     private const int ExpectedContactTypeSeedCount = 28;
 
@@ -63,13 +64,7 @@ public static class SellingSchemaRepair
             logger.LogWarning(
                 "Selling schema is incomplete despite migration history; applying guarded recovery DDL.");
 
-            Migration[] recoveryMigrations =
-            [
-                new AddSellingCompanyDirectory(),
-                new AddSellingPartyCompatibility(),
-            ];
-
-            foreach (var migration in recoveryMigrations)
+            foreach (var migration in CreateRecoveryMigrations())
             {
                 foreach (var operation in migration.UpOperations)
                 {
@@ -115,6 +110,14 @@ public static class SellingSchemaRepair
             }
         }
     }
+
+    internal static Migration[] CreateRecoveryMigrations() =>
+    [
+        new AddSellingCompanyDirectory(),
+        new AddSellingPartyCompatibility(),
+        new AddScopedContactPersonTypes(),
+        new AddReceivableDueDate(),
+    ];
 
     private static async Task<bool> AcquireRepairLockAsync(
         System.Data.Common.DbConnection connection,
@@ -170,9 +173,10 @@ public static class SellingSchemaRepair
                  WHERE TABLE_SCHEMA = DATABASE()
                    AND ((TABLE_NAME = 'liens_SellingPortfolioBuyers' AND COLUMN_NAME = 'BuyerCompanyId')
                      OR (TABLE_NAME = 'liens_SellingBuyerAccessLinks' AND COLUMN_NAME IN ('BuyerCompanyContactPersonId', 'BuyerCompanyId'))
-                     OR (TABLE_NAME = 'liens_Liens' AND COLUMN_NAME IN ('FundingCompanyCompanyId', 'FundingCompanyContactPersonId', 'MedicalFacilityCompanyId', 'MedicalProviderCompanyId'))
+                     OR (TABLE_NAME = 'liens_Liens' AND COLUMN_NAME IN ('FundingCompanyCompanyId', 'FundingCompanyContactPersonId', 'MedicalFacilityCompanyId', 'MedicalProviderCompanyId', 'ReceivableDueDate'))
                      OR (TABLE_NAME = 'liens_LienOffers' AND COLUMN_NAME = 'BuyerCompanyId')
-                     OR (TABLE_NAME = 'liens_Cases' AND COLUMN_NAME IN ('CaseManagerContactPersonId', 'HandlingLawFirmCompanyId')))) AS ColumnCount,
+                     OR (TABLE_NAME = 'liens_Cases' AND COLUMN_NAME IN ('CaseManagerContactPersonId', 'HandlingLawFirmCompanyId'))
+                     OR (TABLE_NAME = 'liens_ContactPersonTypes' AND COLUMN_NAME IN ('TenantId', 'OrgId')))) AS ColumnCount,
                 (SELECT COUNT(DISTINCT INDEX_NAME)
                  FROM information_schema.STATISTICS
                  WHERE TABLE_SCHEMA = DATABASE()
@@ -186,7 +190,7 @@ public static class SellingSchemaRepair
                        'IX_liens_CompanyContactPersons_ContactPersonTypeId',
                        'UX_CompanyTypes_Code',
                        'IX_ContactPersonTypes_CompanyTypeId_IsActive_SortOrder',
-                       'UX_ContactPersonTypes_CompanyTypeId_Code',
+                       'UX_ContactPersonTypes_Scope_CompanyTypeId_Code',
                        'IX_liens_SellingPortfolioBuyers_BuyerCompanyId',
                        'IX_liens_SellingBuyerAccessLinks_BuyerCompanyContactPersonId',
                        'IX_liens_SellingBuyerAccessLinks_BuyerCompanyId',
@@ -203,7 +207,11 @@ public static class SellingSchemaRepair
                        'UX_SellingPartyAliases_PreferredCompany',
                        'UX_SellingPartyAliases_PreferredContact',
                        'UX_SellingPartyBackfillCheckpoints_Tenant_Workflow',
-                       'UX_SellingPartyBackfillQuarantines_SourceReason')) AS IndexCount,
+                       'UX_SellingPartyBackfillQuarantines_SourceReason',
+                       'IX_SettlementPayments_Tenant_Date_Deleted',
+                       'IX_SettlementPayments_Tenant_Lien_Deleted',
+                       'IX_Liens_Tenant_Seller_FundingCompanyCompanyId',
+                       'IX_Liens_Tenant_Seller_ReceivableDueDate')) AS IndexCount,
                 (SELECT COUNT(*)
                  FROM information_schema.TABLE_CONSTRAINTS
                  WHERE CONSTRAINT_SCHEMA = DATABASE()
@@ -225,6 +233,12 @@ public static class SellingSchemaRepair
                        'FK_liens_SellingPortfolioBuyers_liens_Companies_BuyerCompanyId',
                        'FK_liens_SellingPartyAliases_liens_Companies_CompanyId',
                        'FK_liens_SellingPartyAliases_liens_CompanyContactPersons_Compan~')) AS ForeignKeyCount,
+                (SELECT COUNT(*)
+                 FROM information_schema.TABLE_CONSTRAINTS
+                 WHERE CONSTRAINT_SCHEMA = DATABASE()
+                   AND TABLE_NAME = 'liens_ContactPersonTypes'
+                   AND CONSTRAINT_NAME = 'CK_ContactPersonTypes_Scope'
+                   AND CONSTRAINT_TYPE = 'CHECK') AS CheckConstraintCount,
                 (SELECT COUNT(*) FROM `liens_CompanyTypes`
                  WHERE `Id` IN (
                      '10000000-0000-0000-0000-000000000001',
@@ -245,7 +259,8 @@ public static class SellingSchemaRepair
         return Convert.ToInt32(reader.GetValue(0)) != ExpectedColumnCount
             || Convert.ToInt32(reader.GetValue(1)) != ExpectedIndexCount
             || Convert.ToInt32(reader.GetValue(2)) != ExpectedForeignKeyCount
-            || Convert.ToInt32(reader.GetValue(3)) != ExpectedCompanyTypeSeedCount
-            || Convert.ToInt32(reader.GetValue(4)) != ExpectedContactTypeSeedCount;
+            || Convert.ToInt32(reader.GetValue(3)) != ExpectedCheckConstraintCount
+            || Convert.ToInt32(reader.GetValue(4)) != ExpectedCompanyTypeSeedCount
+            || Convert.ToInt32(reader.GetValue(5)) != ExpectedContactTypeSeedCount;
     }
 }

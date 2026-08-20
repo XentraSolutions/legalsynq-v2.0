@@ -20,8 +20,13 @@ import type {
   ConfirmSellingLienSaleRequest,
   WithdrawSellingLienRequest,
   ArchiveSellingLienRequest,
+  LienArchivedStatusResult,
   SubmitSellingLienRequest,
   LienListItem,
+  LienActivityFeedResult,
+  BulkImportSummary,
+  BulkImportRowsResult,
+  BulkImportRowStatus,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
@@ -69,6 +74,16 @@ export const liensApi = {
     return apiClient.get<LienDetailsResult>(`${BASE}/liens/${id}`);
   },
 
+  getArchivedStatus(id: string) {
+    return apiClient.get<LienArchivedStatusResult>(
+      `${BASE}/liens/${id}/archived-status`,
+    );
+  },
+
+  getActivity(id: string) {
+    return apiClient.get<LienActivityFeedResult>(`${BASE}/liens/${id}/activity`);
+  },
+
   getDashboard(query: DashboardQuery = {}) {
     return apiClient.get<LienResponseDto>(
       `${BASE}/dashboard${toQs(query as Record<string, unknown>)}`,
@@ -92,6 +107,19 @@ export const liensApi = {
 
   validateUpload(id: string) {
     return apiClient.post<any>(`${BASE}/bulk-imports/${id}/validate`, {});
+  },
+
+  getBulkImport(id: string) {
+    return apiClient.get<BulkImportSummary>(`${BASE}/bulk-imports/${id}`);
+  },
+
+  getBulkImportRows(
+    id: string,
+    params: { status?: BulkImportRowStatus | "all"; page?: number; pageSize?: number } = {},
+  ) {
+    return apiClient.get<BulkImportRowsResult>(
+      `${BASE}/bulk-imports/${id}/rows${toQs({ status: "all", page: 1, pageSize: 100, ...params })}`,
+    );
   },
 
   createLienInfo(lienId: string, request: LienInfoParams) {
@@ -177,6 +205,14 @@ export const liensApi = {
     return apiClient.post<any>(
       `${BASE}/liens/${lienId}/archive`,
       request,
+      idempotencyHeaders(),
+    );
+  },
+
+  restoreLien(lienId: string) {
+    return apiClient.post<any>(
+      `${BASE}/liens/${lienId}/restore`,
+      {},
       idempotencyHeaders(),
     );
   },

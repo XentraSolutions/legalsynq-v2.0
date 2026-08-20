@@ -1,29 +1,31 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { toast } from "sonner";
+import {
+  ActionMenu,
+  type ActionMenuItem,
+} from "@/components/selling/action-menu";
+import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
+import { ReassignCompanyModal } from "@/components/selling/forms/reassign-company-modal";
+import { ConfirmDialog } from "@/components/selling/modal";
+import { Button } from "@/components/selling/button";
 import { useRoleAccess } from "@/hooks/use-role-access";
 import {
   useCompany,
+  useCompanyDetailsSummary,
   useCompanyTypes,
   useDeactivateCompany,
   useReactivateCompany,
 } from "@/hooks/use-selling-companies";
-import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
-import { ConfirmDialog } from "@/components/selling/modal";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ArrowLeft, CircleAlert, Mail, Repeat, SquarePen, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
 import { CompanyDetailContextProvider } from "./context";
-import { Button } from "@/components/ui/button";
+import { CompanyStatsCards } from "./company-stats-cards";
 
-const PRIMARY_BUTTON_CLASSNAME = "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
+const RECENT_CASES_PAGE_SIZE = 4;
+
 const BASE_PATH = "/selling/contacts";
 
 const TABS = [
@@ -40,17 +42,24 @@ export function CompanyDetailShell({
   id: string;
   children: React.ReactNode;
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const ra = useRoleAccess();
 
   const companyQuery = useCompany(id);
-  const companyTypesQuery = useCompanyTypes();
   const deactivateMutation = useDeactivateCompany();
   const reactivateMutation = useReactivateCompany();
 
+  const [recentCasesPage, setRecentCasesPage] = useState(1);
+  const detailsQuery = useCompanyDetailsSummary(id, {
+    page: recentCasesPage,
+    pageSize: RECENT_CASES_PAGE_SIZE,
+  });
+
   const [editOpen, setEditOpen] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<"deactivate" | "reactivate" | null>(null);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<
+    "deactivate" | "reactivate" | null
+  >(null);
 
   const canEdit = ra.can("contact:edit");
 
@@ -63,7 +72,7 @@ export function CompanyDetailShell({
   if (!company) {
     return (
       <div className="p-10 text-center space-y-3">
-        <i className="ri-error-warning-line text-3xl text-gray-300" />
+        <CircleAlert className="h-6 w-6 text-gray-300" />
         <p className="text-sm text-gray-500">Company not found.</p>
         <Link href={BASE_PATH} className="text-sm text-primary hover:underline">
           Back to Contacts
@@ -80,13 +89,19 @@ export function CompanyDetailShell({
     setConfirmAction(null);
     mutation.mutate(company.id, {
       onSuccess: () => {
-        toast.success(`Company ${doneVerb}`, { id: toastId, description: company.name });
+        toast.success(`Company ${doneVerb}`, {
+          id: toastId,
+          description: company.name,
+        });
       },
       onError: (err) => {
-        toast.error(`Couldn't ${company.isActive ? "delete" : "reactivate"} company`, {
-          id: toastId,
-          description: err instanceof Error ? err.message : company.name,
-        });
+        toast.error(
+          `Couldn't ${company.isActive ? "delete" : "reactivate"} company`,
+          {
+            id: toastId,
+            description: err instanceof Error ? err.message : company.name,
+          },
+        );
       },
     });
   };
@@ -100,78 +115,73 @@ export function CompanyDetailShell({
             aria-label="Back to Contacts"
             className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
           >
-            <i className="ri-arrow-left-line text-lg" />
+            <ArrowLeft className="h-5 w-5" />
           </Link>
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-bold text-gray-900 truncate">{company.name}</h1>
+              <h1 className="text-2xl font-bold text-gray-900 truncate">
+                {company.name}
+              </h1>
               {!company.isActive && (
                 <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold bg-red-50 text-red-600 border-red-200 shrink-0">
                   Inactive
                 </span>
               )}
             </div>
-            <p className="text-sm text-gray-400 mt-1 truncate">Contact ID: {company.id}</p>
+            <p className="text-sm text-gray-400 mt-1 truncate">
+              Contact ID: {company.id}
+            </p>
           </div>
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              className={`${PRIMARY_BUTTON_CLASSNAME} shrink-0`}
-              iconDivider
-              rightIcon={<i className="ri-arrow-down-s-line text-base" />}
-            >
+        <ActionMenu
+          align="end"
+          trigger={
+            <Button variant="primary" className="shrink-0" rightIcon="chevronDown">
               Manage Company
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {canEdit && (
-              <DropdownMenuItem
-                onClick={() =>
-                  toast.info("Coming Soon", {
-                    description: "Reassigning cases isn't available yet.",
-                  })
-                }
-              >
-                <i className="ri-repeat-line" />
-                Reassign Case
-              </DropdownMenuItem>
-            )}
-            {canEdit && (
-              <DropdownMenuItem onClick={() => setEditOpen(true)}>
-                <i className="ri-pencil-line" />
-                Edit Company
-              </DropdownMenuItem>
-            )}
-            {company.email && (
-              <DropdownMenuItem asChild>
-                <a href={`mailto:${company.email}`}>
-                  <i className="ri-mail-line" />
-                  Send Email
-                </a>
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            {company.isActive ? (
-              <DropdownMenuItem
-                onClick={() => setConfirmAction("deactivate")}
-                className="text-red-600 focus:bg-red-50"
-              >
-                <i className="ri-delete-bin-line" />
-                Delete Company
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onClick={() => setConfirmAction("reactivate")}>
-                <i className="ri-check-line" />
-                Reactivate Company
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          }
+          items={[
+            ...(canEdit
+              ? [
+                  {
+                    label: "Reassign Case",
+                    icon: Repeat,
+                    onClick: () => setReassignOpen(true),
+                  } satisfies ActionMenuItem,
+                ]
+              : []),
+            ...(canEdit
+              ? [
+                  {
+                    label: "Edit",
+                    icon: SquarePen,
+                    onClick: () => setEditOpen(true),
+                  } satisfies ActionMenuItem,
+                ]
+              : []),
+            ...(company.email
+              ? [
+                  {
+                    label: "Send Email",
+                    icon: Mail,
+                    onClick: () => {
+                      window.location.href = `mailto:${company.email}`;
+                    },
+                  } satisfies ActionMenuItem,
+                ]
+              : []),
+            {
+              label: "Delete",
+              icon: Trash2,
+              variant: "danger",
+              onClick: () => setConfirmAction("deactivate"),
+            },
+          ]}
+        />
       </div>
 
-      <nav className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+      <nav className="flex items-center h-[38px] gap-1 bg-[#FAFAFA] rounded-md p-1">
         {TABS.map((tab) => {
           const href = `${BASE_PATH}/${id}/${tab.key}`;
           const isActive = pathname?.startsWith(href);
@@ -180,10 +190,10 @@ export function CompanyDetailShell({
               key={tab.key}
               href={href}
               className={[
-                "flex-1 text-center px-4 py-2.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap",
+                "flex-1 h-[30px] flex items-center justify-center text-sm font-medium rounded-md transition-colors whitespace-nowrap border",
                 isActive
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700",
+                  ? "bg-white border-[#E5E5E5] shadow-sm text-gray-900"
+                  : "border-transparent text-gray-500 hover:text-gray-700",
               ].join(" ")}
             >
               {tab.label}
@@ -192,7 +202,15 @@ export function CompanyDetailShell({
         })}
       </nav>
 
-      <CompanyDetailContextProvider value={{ id, company, canEdit }}>
+      <CompanyStatsCards
+        totalCases={detailsQuery.data?.totalCases}
+        activeCases={detailsQuery.data?.activeCases}
+        totalBillingForActiveCases={detailsQuery.data?.totalBillingForActiveCases}
+      />
+
+      <CompanyDetailContextProvider
+        value={{ id, company, canEdit, detailsQuery, recentCasesPage, setRecentCasesPage }}
+      >
         {children}
       </CompanyDetailContextProvider>
 
@@ -207,20 +225,42 @@ export function CompanyDetailShell({
         />
       )}
 
+      {reassignOpen && (
+        <ReassignCompanyModal
+          open
+          company={company}
+          onClose={() => setReassignOpen(false)}
+        />
+      )}
+
       {confirmAction && (
         <ConfirmDialog
           open
           onClose={() => setConfirmAction(null)}
           onConfirm={handleToggleActive}
-          title={confirmAction === "deactivate" ? "Delete Company" : "Reactivate Company"}
+          title={
+            confirmAction === "deactivate"
+              ? "Delete Company"
+              : "Reactivate Company"
+          }
           description={`Are you sure you want to ${confirmAction === "deactivate" ? "delete" : "reactivate"} ${company.name}?${confirmAction === "deactivate" ? " This action cannot be undone." : ""}`}
-          confirmLabel={confirmAction === "deactivate" ? "Delete" : "Reactivate"}
+          confirmLabel={
+            confirmAction === "deactivate" ? "Delete" : "Reactivate"
+          }
           confirmVariant={confirmAction === "deactivate" ? "danger" : "primary"}
           loading={deactivateMutation.isPending || reactivateMutation.isPending}
-          warningTitle={confirmAction === "deactivate" ? "Warning: Deleting this company will also remove:" : undefined}
+          warningTitle={
+            confirmAction === "deactivate"
+              ? "Warning: Deleting this company will also remove:"
+              : undefined
+          }
           warningItems={
             confirmAction === "deactivate"
-              ? ["All associated contact persons", "All case associations", "All activity history"]
+              ? [
+                  "All associated contact persons",
+                  "All case associations",
+                  "All activity history",
+                ]
               : undefined
           }
         />
@@ -243,7 +283,7 @@ function CompanyDetailShellSkeleton() {
         <div className="h-10 w-40 bg-gray-100 rounded-lg" />
       </div>
 
-      <div className="h-12 bg-gray-100 rounded-xl" />
+      <div className="h-[38px] bg-[#FAFAFA] rounded-md" />
 
       <div className="h-64 bg-white border border-gray-200 rounded-xl" />
     </div>

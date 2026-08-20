@@ -29,6 +29,7 @@ DELIMITER $$
 CREATE PROCEDURE liens_import_sl_core_core_019ea7f6()
 BEGIN
     DECLARE v_required_tables INT DEFAULT 0;
+    DECLARE v_source_columns INT DEFAULT 0;
     DECLARE v_provenance_rows INT DEFAULT 0;
     DECLARE v_approval_rows INT DEFAULT 0;
     DECLARE v_source_rows INT DEFAULT 0;
@@ -82,6 +83,16 @@ BEGIN
     IF v_required_tables <> 7 THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'Liens schema incomplete. Apply all legacy-import migrations.';
+    END IF;
+
+    SELECT COUNT(*) INTO v_source_columns
+    FROM information_schema.columns
+    WHERE table_schema = 'SL-CORE'
+      AND table_name = 'SL_CASE_NOTES'
+      AND column_name IN ('CN_ID','CN_CASE_ID','CN_NOTE','CN_CREATED','CN_CREATED_BY','CN_IS_DELETED','CN_USER_ID');
+    IF v_source_columns <> 7 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'SL_CASE_NOTES source column contract is incomplete; CN_USER_ID is required.';
     END IF;
 
     SELECT COUNT(*) INTO v_approval_rows
@@ -382,12 +393,14 @@ BEGIN
     CREATE TEMPORARY TABLE tmp_sl_core_note_map AS
     SELECT
         source_note.CN_ID AS LegacyNoteId,
+        source_note.CN_CASE_ID AS LegacyCaseId,
         source_case.TargetCaseId,
         UUID() AS TargetNoteId,
         source_note.CN_NOTE AS Content,
         source_note.CN_CREATED AS CreatedAtUtc,
         source_note.CN_CREATED_BY AS CreatedByName,
-        source_note.CN_IS_DELETED AS IsDeleted
+        source_note.CN_IS_DELETED AS IsDeleted,
+        source_note.CN_USER_ID AS LegacyUserId
     FROM `SL-CORE`.`SL_CASE_NOTES` source_note
     INNER JOIN tmp_sl_core_case_map source_case
         ON source_case.LegacyCaseId = source_note.CN_CASE_ID;
@@ -461,7 +474,8 @@ BEGIN
         (Id, CaseId, TenantId, Content, Category, IsPinned, CreatedByUserId, CreatedByName,
          IsEdited, IsDeleted, CreatedAtUtc, UpdatedAtUtc)
     SELECT
-        TargetNoteId, TargetCaseId, @tenant_id, TRIM(Content), 'general', 0,
+        TargetNoteId, TargetCaseId, @tenant_id, TRIM(Content),
+        CASE WHEN LegacyUserId IS NULL THEN 'general' ELSE 'feed' END, 0,
         v_migration_user_id, COALESCE(NULLIF(TRIM(CreatedByName), ''), 'Legacy SL-CORE'),
         0, CASE WHEN UPPER(TRIM(IsDeleted)) = 'Y' THEN 1 ELSE 0 END,
         COALESCE(CreatedAtUtc, UTC_TIMESTAMP(6)), NULL
@@ -486,7 +500,8 @@ BEGIN
         (Id, TenantId, SourceSystem, SourceTable, LegacyId, TargetEntity, TargetId, SourceHash, ImportRunId, CreatedAtUtc)
     SELECT
         UUID(), @tenant_id, 'SL-CORE', 'SL_CASE_NOTES', CAST(LegacyNoteId AS CHAR), 'CaseNote', TargetNoteId,
-        SHA2(CONCAT('sql-v1|SL_CASE_NOTES|', LegacyNoteId, '|', LOWER(v_source_fingerprint)), 256), v_run_id, UTC_TIMESTAMP(6)
+        CONCAT('case-note-v2:', SHA2(CONCAT_WS('|', LegacyNoteId, LegacyCaseId, Content, CreatedAtUtc,
+               CreatedByName, IsDeleted, LegacyUserId, LOWER(v_source_fingerprint)), 256)), v_run_id, UTC_TIMESTAMP(6)
     FROM tmp_sl_core_note_map;
 
     UPDATE liens_LegacyImportRuns

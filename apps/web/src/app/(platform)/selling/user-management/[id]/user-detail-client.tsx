@@ -1,19 +1,20 @@
 'use client';
 
 import { useState } from 'react';
+import { CircleCheckBig } from 'lucide-react';
+import { toast } from 'sonner';
 import { useLienStore } from '@/stores/lien-store';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { formatDate, formatDateTime } from '@/lib/lien-utils';
 import { DetailHeader, DetailSection } from '@/components/lien/detail-section';
 import { StatusBadge } from '@/components/lien/status-badge';
 import { ConfirmDialog } from '@/components/lien/modal';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/selling/button';
 
 export function UserDetailClient({ id }: { id: string }) {
   const users = useLienStore((s) => s.users);
   const userDetails = useLienStore((s) => s.userDetails);
   const updateUser = useLienStore((s) => s.updateUser);
-  const addToast = useLienStore((s) => s.addToast);
   const ra = useRoleAccess();
   const [confirmAction, setConfirmAction] = useState<{ status: string; label: string } | null>(null);
 
@@ -36,10 +37,10 @@ export function UserDetailClient({ id }: { id: string }) {
         ]}
         actions={isAdmin ? (
           <div className="flex gap-2">
-            <Button variant="secondary" className="px-3 py-1.5" onClick={() => addToast({ type: 'info', title: 'Edit', description: 'Edit mode simulated' })}>Edit</Button>
-            {d.status === 'Locked' && <Button className="px-3 py-1.5" onClick={() => { updateUser(id, { status: 'Active' }); addToast({ type: 'success', title: 'User Unlocked' }); }}>Unlock</Button>}
-            {d.status === 'Active' && <Button variant="secondary" className="px-3 py-1.5 border-red-200 text-red-600 hover:bg-red-50" onClick={() => setConfirmAction({ status: 'Inactive', label: 'Deactivate' })}>Deactivate</Button>}
-            {d.status === 'Inactive' && <Button className="px-3 py-1.5" onClick={() => { updateUser(id, { status: 'Active' }); addToast({ type: 'success', title: 'User Activated' }); }}>Activate</Button>}
+            <Button variant="secondary" onClick={() => toast.info('Edit', { description: 'Edit mode simulated' })}>Edit</Button>
+            {d.status === 'Locked' && <Button variant="primary" onClick={() => { updateUser(id, { status: 'Active' }); toast.success('User Unlocked'); }}>Unlock</Button>}
+            {d.status === 'Active' && <Button variant="destructive" onClick={() => setConfirmAction({ status: 'Inactive', label: 'Deactivate' })}>Deactivate</Button>}
+            {d.status === 'Inactive' && <Button variant="primary" onClick={() => { updateUser(id, { status: 'Active' }); toast.success('User Activated'); }}>Activate</Button>}
           </div>
         ) : undefined}
       />
@@ -65,7 +66,7 @@ export function UserDetailClient({ id }: { id: string }) {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
             {d.permissions.map((p: string) => (
               <div key={p} className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
-                <i className="ri-checkbox-circle-line text-green-500" />{p}
+                <CircleCheckBig className="h-4 w-4 text-green-500" />{p}
               </div>
             ))}
           </div>
@@ -88,7 +89,7 @@ export function UserDetailClient({ id }: { id: string }) {
 
       {confirmAction && (
         <ConfirmDialog open onClose={() => setConfirmAction(null)}
-          onConfirm={() => { updateUser(id, { status: confirmAction.status }); addToast({ type: 'warning', title: `User ${confirmAction.label}d` }); setConfirmAction(null); }}
+          onConfirm={() => { updateUser(id, { status: confirmAction.status }); toast.warning(`User ${confirmAction.label}d`); setConfirmAction(null); }}
           title={`${confirmAction.label} User`} description={`Are you sure you want to ${confirmAction.label.toLowerCase()} ${d.name}?`}
           confirmLabel={confirmAction.label} confirmVariant="danger"
         />

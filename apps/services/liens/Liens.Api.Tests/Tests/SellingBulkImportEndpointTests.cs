@@ -39,15 +39,17 @@ public class SellingBulkImportEndpointTests : IClassFixture<LiensApiFactory>, IA
         response.Content.Headers.ContentDisposition!.FileNameStar.Should().Be("selling-lien-import-template.csv");
 
         var content = await response.Content.ReadAsStringAsync();
-        content.Should().Contain("Case Code*");
-        content.Should().Contain("Billing Amount*");
+        content.Split('\n')[0].TrimEnd('\r').Should().Be(
+            "Case Code*,Lien Status,Listing Visibility,Purchase Date,Initial Service Date*,End Service Date,Lien Notes,Funding Company,Facility Name*,Medical Provider,Medical Code & Description*,Medicare Cost,Billing Amount*,Target Ask Amount");
+        content.Should().NotContain("Document Type*");
+        content.Should().NotContain("Attachment");
         content.Should().Contain("CASE-10001");
     }
 
     [Fact]
     public async Task Create_bulk_import_stages_csv_rows_with_the_requested_defaults()
     {
-        const string csv = "Case Code*,Facility Name*,Billing Amount*\r\nCASE-10001,Example Medical Center,250.00\r\n";
+        const string csv = "Case Code*,Lien Status*,Facility Name*,Billing Amount*\r\nCASE-10001,Internal,Example Medical Center,250.00\r\n";
         using var form = new MultipartFormDataContent();
         using var file = new ByteArrayContent(Encoding.UTF8.GetBytes(csv));
         file.Headers.ContentType = new MediaTypeHeaderValue("text/csv");
@@ -76,7 +78,54 @@ public class SellingBulkImportEndpointTests : IClassFixture<LiensApiFactory>, IA
 
         var detail = db.BatchUploadDetails.Single(item => item.BatchUploadId == importId);
         detail.DataJson.Should().Contain("\"Listing Visibility\":\"Private\"");
-        detail.DataJson.Should().Contain("\"Seller Status\":\"Pending\"");
+        detail.DataJson.Should().Contain("\"Lien Status*\":\"Internal\"");
+        detail.DataJson.Should().NotContain("\"Lien Status\":\"Pending\"");
+    }
+
+    [Fact]
+    public async Task Confirm_bulk_import_maps_the_canonical_template_to_lien_details()
+    {
+        const string csv = "Case Code*,Lien Status,Listing Visibility,Purchase Date,Initial Service Date*,End Service Date,Lien Notes,Funding Company,Facility Name*,Medical Provider,Medical Code & Description*,Medicare Cost,Billing Amount*,Target Ask Amount\r\nCASE-MAPPED-001,Internal,Public,2026-07-15,2026-07-19,2026-07-22,Imported detail notes,Capital Fund LLC,Sunrise Clinic,City Medical Center,45385 - Colonoscopy,879.00,250.00,175.00\r\n";
+        using var form = new MultipartFormDataContent();
+        using var file = new ByteArrayContent(Encoding.UTF8.GetBytes(csv));
+        file.Headers.ContentType = new MediaTypeHeaderValue("text/csv");
+        form.Add(file, "file", "selling-lien-import.csv");
+        form.Add(new StringContent("SellingLienImport"), "templateType");
+
+        var upload = await _client.PostAsync("/api/liens/selling/bulk-imports", form);
+        upload.EnsureSuccessStatusCode();
+        using var uploadJson = JsonDocument.Parse(await upload.Content.ReadAsStringAsync());
+        var importId = uploadJson.RootElement.GetProperty("importId").GetGuid();
+
+        (await _client.PostAsync($"/api/liens/selling/bulk-imports/{importId}/validate", null)).EnsureSuccessStatusCode();
+        using var confirm = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/bulk-imports/{importId}/confirm");
+        confirm.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        (await _client.SendAsync(confirm)).EnsureSuccessStatusCode();
+
+        Guid lienId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseId = db.Cases.Single(item => item.CaseNumber == "CASE-MAPPED-001").Id;
+            var lien = db.Liens.Single(item => item.CaseId == caseId);
+            lienId = lien.Id;
+            lien.SellerStatus.Should().Be("Internal");
+            lien.ListingVisibility.Should().Be("Public");
+            lien.PurchaseDate.Should().Be(new DateOnly(2026, 7, 15));
+            lien.InitialServiceDate.Should().Be(new DateOnly(2026, 7, 19));
+            lien.EndServiceDate.Should().Be(new DateOnly(2026, 7, 22));
+            lien.Notes.Should().Be("Imported detail notes");
+            lien.AskAmount.Should().Be(175m);
+        }
+
+        var detailResponse = await _client.GetAsync($"/api/liens/selling/liens/{lienId}");
+        detailResponse.EnsureSuccessStatusCode();
+        using var detail = JsonDocument.Parse(await detailResponse.Content.ReadAsStringAsync());
+        detail.RootElement.GetProperty("lienInformation").GetProperty("purchaseDate").GetString().Should().Be("2026-07-15");
+        detail.RootElement.GetProperty("caseInformation").GetProperty("caseNumber").GetString().Should().Be("CASE-MAPPED-001");
+        detail.RootElement.GetProperty("facility").GetProperty("name").GetString().Should().Be("Sunrise Clinic");
+        detail.RootElement.GetProperty("medicalProvider").GetProperty("name").GetString().Should().Be("City Medical Center");
+        detail.RootElement.GetProperty("medicalPricing").GetProperty("askAmount").GetDecimal().Should().Be(175m);
     }
 
     [Fact]

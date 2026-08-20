@@ -3,10 +3,14 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Liens.Api;
+using Liens.Application.DTOs;
+using Liens.Application.Interfaces;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Liens.Api.Tests.Tests;
@@ -954,6 +958,54 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
     }
 
     [Fact]
+    public async Task UploadDocument_accepts_document_up_to_50mb()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var uploadClient = scope.ServiceProvider.GetRequiredService<CapturingLegacyDocumentUploadClient>();
+        uploadClient.Clear();
+
+        var content = new byte[(int)LiensUploadLimits.MaxBytes];
+        "%PDF-1.4"u8.CopyTo(content);
+
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(SeedHelper.CaseId.ToString()), "caseId");
+        form.Add(new StringContent("large-document"), "DocName");
+        var file = new ByteArrayContent(content);
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        form.Add(file, "file", "large-document.pdf");
+
+        var resp = await _client.PostAsync("/api/liens/cases/upload/document", form);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+        uploadClient.Uploads.Should().ContainSingle();
+        uploadClient.Uploads.Single().Length.Should().Be(content.LongLength);
+    }
+
+    [Fact]
+    public async Task UploadDocument_returns_size_error_when_document_exceeds_50mb()
+    {
+        var content = new byte[(int)LiensUploadLimits.MaxBytes + (2 * 1024 * 1024)];
+        "%PDF-1.4"u8.CopyTo(content);
+
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(SeedHelper.CaseId.ToString()), "caseId");
+        form.Add(new StringContent("too-large-document"), "DocName");
+        var file = new ByteArrayContent(content);
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        form.Add(file, "file", "too-large-document.pdf");
+
+        var resp = await _client.PostAsync("/api/liens/cases/upload/document", form);
+        var bodyText = await resp.Content.ReadAsStringAsync();
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest, $"Body: {bodyText}");
+        using var body = JsonDocument.Parse(bodyText);
+        body.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeFalse();
+        body.RootElement.GetProperty("message").GetString()
+            .Should().Be("File size exceeds the allowed limit (50 MB)");
+    }
+
+    [Fact]
     public async Task PayoffQuote_accepts_legacy_misspelled_route()
     {
         using var scope = _factory.Services.CreateScope();
@@ -980,6 +1032,8 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
         body.RootElement.GetProperty("url").GetString()
             .Should().Be($"/documents/{uploadClient.Uploads.Single().DocumentId}");
+        body.RootElement.GetProperty("base64").GetString()
+            .Should().Be(Convert.ToBase64String(StubDocumentsServiceHandler.DownloadContent));
     }
 
     [Fact]
@@ -1009,10 +1063,12 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
         body.RootElement.GetProperty("url").GetString()
             .Should().Be($"/documents/{uploadClient.Uploads.Single().DocumentId}");
+        body.RootElement.GetProperty("base64").GetString()
+            .Should().Be(Convert.ToBase64String(StubDocumentsServiceHandler.DownloadContent));
     }
 
     [Fact]
-    public async Task PayoffQuote_returns_ok_with_empty_url_when_document_missing()
+    public async Task PayoffQuote_generates_document_when_missing()
     {
         Guid caseId;
         using (var scope = _factory.Services.CreateScope())
@@ -1030,13 +1086,130 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             caseId = caseEntity.Id;
         }
 
+        using var uploadScope = _factory.Services.CreateScope();
+        var uploadClient = uploadScope.ServiceProvider.GetRequiredService<CapturingLegacyDocumentUploadClient>();
+        uploadClient.Clear();
+
         var resp = await _client.GetAsync($"/api/liens/cases/payoff-qoute/{caseId}");
         resp.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await resp.Content.ReadAsStringAsync()}");
 
         var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
-        body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeFalse();
-        body.RootElement.GetProperty("url").GetString().Should().BeEmpty();
+        body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        body.RootElement.GetProperty("url").GetString()
+            .Should().Be($"/documents/{uploadClient.Uploads.Single().DocumentId}");
+        body.RootElement.GetProperty("base64").GetString().Should().NotBeNullOrWhiteSpace();
+
+        var upload = uploadClient.Uploads.Single();
+        upload.ReferenceId.Should().Be(caseId);
+        upload.ReferenceType.Should().Be("Case");
+        upload.Title.Should().Be($"PayoffQuote_{caseId}");
+        upload.FileName.Should().Be($"PayoffQuote_{caseId}.pdf");
+        upload.ContentType.Should().Be("application/pdf");
+        upload.Length.Should().BeGreaterThan(0);
+        body.RootElement.GetProperty("base64").GetString()
+            .Should().Be(Convert.ToBase64String(upload.Content));
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var item = verifyDb.ServicingItems.Single(i =>
+            i.CaseId == caseId &&
+            i.TaskType == "LegacyCaseDocument");
+        item.Notes.Should().Contain("typeId=14");
+        item.Notes.Should().Contain(upload.DocumentId.ToString());
+    }
+
+    [Fact]
+    public async Task PayoffQuote_uses_legacy_medical_metadata_for_generated_rows()
+    {
+        var caseId = Guid.CreateVersion7();
+        var lienId = Guid.CreateVersion7();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-PAYOFF-DATA-{Guid.NewGuid():N}"[..20],
+                "Patria",
+                "Test",
+                SeedHelper.UserId,
+                dateOfIncident: new DateOnly(2026, 7, 30));
+            SetProperty(caseEntity, nameof(Case.Id), caseId);
+            db.Cases.Add(caseEntity);
+
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-PAYOFF-{Guid.NewGuid():N}"[..20],
+                LienType.MedicalLien,
+                999m,
+                SeedHelper.UserId,
+                caseId: caseId,
+                initialServiceDate: new DateOnly(2026, 7, 27),
+                isServicing: "1");
+            SetProperty(lien, nameof(Lien.Id), lienId);
+            db.Liens.Add(lien);
+
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LMFI-{Guid.CreateVersion7():N}"[..20],
+                "LegacyMedicalFacilityInfo",
+                "Legacy medical facility information",
+                "system",
+                SeedHelper.UserId,
+                caseId: caseId,
+                lienId: lienId,
+                notes: "facilityName=Universal Spine & Joint Specialists"));
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LMC-{Guid.CreateVersion7():N}"[..20],
+                "LegacyMedicalCode",
+                "Legacy medical code",
+                "system",
+                SeedHelper.UserId,
+                caseId: caseId,
+                lienId: lienId,
+                notes: "billingAmount=234.00; purchaseAmount=120.00"));
+
+            await db.SaveChangesAsync();
+        }
+
+        using var serviceScope = _factory.Services.CreateScope();
+        var service = serviceScope.ServiceProvider.GetRequiredService<IPayoffQuoteService>();
+        var method = service.GetType().GetMethod(
+            "BuildPayoffLinesAsync",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        method.Should().NotBeNull();
+
+        var task = (Task)method!.Invoke(
+            service,
+            [SeedHelper.TenantId, new List<LienResponse>
+            {
+                new()
+                {
+                    Id = lienId,
+                    CaseId = caseId,
+                    Status = LienStatus.Draft,
+                    OriginalAmount = 999m,
+                    InitialServiceDate = new DateOnly(2026, 7, 27),
+                    IsServicing = "1",
+                },
+            }, CancellationToken.None])!;
+
+        await task;
+        var result = (System.Collections.IEnumerable)task.GetType().GetProperty("Result")!.GetValue(task)!;
+        var line = result.Cast<object>().Single();
+
+        line.GetType().GetProperty("MedicalFacility")!.GetValue(line)
+            .Should().Be("Universal Spine & Joint Specialists");
+        line.GetType().GetProperty("DateOfService")!.GetValue(line)
+            .Should().Be("07/27/2026");
+        line.GetType().GetProperty("Amount")!.GetValue(line)
+            .Should().Be(234m);
     }
 
     [Fact]
@@ -1071,6 +1244,145 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
         body.RootElement.GetProperty("data").EnumerateArray().Should().BeEmpty();
         body.RootElement.GetProperty("totalCount").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task DuplicateCheck_returns_match_for_similar_name_with_exact_dob_and_dol()
+    {
+        Guid existingCaseId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var existingCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DUP-{Guid.NewGuid():N}"[..20],
+                "Jonathan",
+                "Smith",
+                SeedHelper.UserId,
+                clientDob: new DateOnly(1985, 4, 10),
+                dateOfIncident: new DateOnly(2026, 1, 15));
+            db.Cases.Add(existingCase);
+            await db.SaveChangesAsync();
+            existingCaseId = existingCase.Id;
+        }
+
+        var resp = await _client.PostAsJsonAsync("/api/liens/cases/duplicate-check", new
+        {
+            firstname = "Jon",
+            lastname = "Smit",
+            dob = "04/10/1985",
+            dateOfLoss = "01/15/2026",
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+        var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("isDuplicate").GetBoolean().Should().BeTrue();
+        body.RootElement.GetProperty("message").GetString()
+            .Should().Be("A case with similar information already exists. Would you like to view the existing case?");
+        var match = body.RootElement.GetProperty("matches").EnumerateArray().Single();
+        match.GetProperty("id").GetGuid().Should().Be(existingCaseId);
+        match.GetProperty("clientDisplayName").GetString().Should().Be("Jonathan Smith");
+    }
+
+    [Fact]
+    public async Task CreateCase_rejects_potential_duplicate_before_saving()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-BLOCK-{Guid.NewGuid():N}"[..20],
+                "Maria",
+                "Garcia",
+                SeedHelper.UserId,
+                clientDob: new DateOnly(1990, 6, 2),
+                dateOfIncident: new DateOnly(2025, 12, 9)));
+            await db.SaveChangesAsync();
+        }
+
+        var resp = await _client.PostAsJsonAsync("/api/liens/cases/create", new
+        {
+            firstname = "Maria",
+            lastname = "Garcia",
+            dob = "06/02/1990",
+            dateOfLoss = "12/09/2025",
+            caseStatusId = "New",
+            accidentTypeId = "MVA",
+            accidentStateId = "NV",
+            lawFirmId = SeedHelper.LawFirmId.ToString(),
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict,
+            $"Body: {await resp.Content.ReadAsStringAsync()}");
+        var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("error").GetProperty("message").GetString()
+            .Should().Be("A case with similar information already exists. Would you like to view the existing case?");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        verifyDb.Cases.Count(c =>
+                c.TenantId == SeedHelper.TenantId &&
+                c.ClientDob == new DateOnly(1990, 6, 2) &&
+                c.DateOfIncident == new DateOnly(2025, 12, 9) &&
+                c.ClientFirstName == "Maria" &&
+                c.ClientLastName == "Garcia")
+            .Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CaseUpdatesV3_normalizes_legacy_note_updated_description()
+    {
+        Guid caseId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-OLD-NOTE-{Guid.CreateVersion7():N}"[..24],
+                "Old",
+                "Note",
+                SeedHelper.UserId);
+            db.Cases.Add(caseEntity);
+            db.LienCaseNotes.Add(LienCaseNote.Create(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Note updated",
+                CaseNoteCategory.Internal,
+                SeedHelper.UserId,
+                "Legacy User"));
+            db.LienCaseNotes.Add(LienCaseNote.Create(
+                caseEntity.Id,
+                SeedHelper.TenantId,
+                "Case updated: status changed to Closed; Note updated.",
+                CaseNoteCategory.Internal,
+                SeedHelper.UserId,
+                "Legacy User"));
+            await db.SaveChangesAsync();
+            caseId = caseEntity.Id;
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/case-updates/v3", new
+        {
+            CaseId = caseId,
+            page = 1,
+            limit = 10,
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var updates = payload!.RootElement.GetProperty("data").EnumerateArray().ToList();
+        updates.Select(update => update.GetProperty("description").GetString()).Should().BeEquivalentTo(
+            "Case Tracking Note Update",
+            "Case updated: status changed to Closed; Case Tracking Note Update.");
+        updates.Select(update => update.GetProperty("note").GetString()).Should().BeEquivalentTo(
+            "Case Tracking Note Update",
+            "Case updated: status changed to Closed; Case Tracking Note Update.");
     }
 
     [Fact]
@@ -1119,9 +1431,130 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         body.RootElement.GetProperty("totalCount").GetInt32().Should().BeGreaterThan(0);
         body.RootElement.GetProperty("data").EnumerateArray().Should().Contain(item =>
             item.GetProperty("description").GetString()!.Contains("Case updated:", StringComparison.Ordinal) &&
-            item.GetProperty("description").GetString()!.Contains("medical status changed to Treating", StringComparison.Ordinal));
+            item.GetProperty("description").GetString()!.Contains("medical status changed to Treating", StringComparison.Ordinal) &&
+            item.GetProperty("description").GetString()!.Contains("Case Tracking Note Update", StringComparison.Ordinal) &&
+            item.GetProperty("action").GetString() == "Case Details Update");
         body.RootElement.GetProperty("data").EnumerateArray().Should().NotContain(item =>
             item.GetProperty("description").GetString() == "status change from details update");
+    }
+
+    [Fact]
+    public async Task DetailsUpdate_when_notes_change_records_case_update_without_duplicates()
+    {
+        Guid caseId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-NOTE-UPD-{Guid.NewGuid():N}"[..24],
+                "Note",
+                "Update",
+                SeedHelper.UserId,
+                notes: "Original note");
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+            caseId = caseEntity.Id;
+        }
+
+        async Task<HttpResponseMessage> UpdateNotesAsync(string notes) =>
+            await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+            {
+                caseId,
+                notes,
+            });
+
+        var changedResponse = await UpdateNotesAsync("Updated note");
+        changedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await changedResponse.Content.ReadAsStringAsync()}");
+
+        var unchangedResponse = await UpdateNotesAsync("Updated note");
+        unchangedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await unchangedResponse.Content.ReadAsStringAsync()}");
+
+        var clearedResponse = await UpdateNotesAsync("   ");
+        clearedResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await clearedResponse.Content.ReadAsStringAsync()}");
+
+        var updatesResponse = await _client.PostAsJsonAsync("/api/liens/cases/case-updates/v3", new
+        {
+            CaseId = caseId,
+            page = 1,
+            limit = 10,
+        });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var payload = await updatesResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var updates = payload!.RootElement.GetProperty("data").EnumerateArray().ToList();
+        updates.Should().HaveCount(2);
+        updates.Should().OnlyContain(item =>
+            item.GetProperty("action").GetString() == "Case Details Update" &&
+            item.GetProperty("description").GetString() == "Case Tracking Note Update");
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var storedNotes = await verificationDb.LienCaseNotes
+            .Where(note => note.TenantId == SeedHelper.TenantId && note.CaseId == caseId)
+            .ToListAsync();
+        storedNotes.Count(note => note.Category == CaseNoteCategory.General).Should().Be(1);
+        storedNotes.Count(note => note.Category == CaseNoteCategory.Internal).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task DetailsUpdate_when_history_write_fails_rolls_back_case_and_tracking_note()
+    {
+        using var factory = new TransactionalLiensApiFactory();
+        Guid caseId;
+
+        using (var setupScope = factory.Services.CreateScope())
+        {
+            await SeedHelper.SeedAsync(setupScope.ServiceProvider);
+            var db = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-NOTE-ROLLBACK-{Guid.NewGuid():N}"[..28],
+                "Rollback",
+                "Case",
+                SeedHelper.UserId,
+                notes: "Original note");
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+            caseId = caseEntity.Id;
+        }
+
+        factory.Services.GetRequiredService<CapturingAuditPublisher>().Clear();
+
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                JwtTokenHelper.CreateFullAccessToken(SeedHelper.TenantId, SeedHelper.UserId));
+
+        var response = await client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId,
+            notes = "Updated note",
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verificationScope = factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var storedCase = await verificationDb.Cases
+            .AsNoTracking()
+            .SingleAsync(caseEntity => caseEntity.Id == caseId);
+        storedCase.Notes.Should().Be("Original note");
+        (await verificationDb.LienCaseNotes
+                .AsNoTracking()
+                .Where(note => note.CaseId == caseId)
+                .ToListAsync())
+            .Should().BeEmpty();
+        verificationScope.ServiceProvider
+            .GetRequiredService<CapturingAuditPublisher>()
+            .Events.Should().BeEmpty();
     }
 
     [Fact]
@@ -1203,5 +1636,14 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             i.Notes.Contains(upload.DocumentId.ToString()));
         item.LienId.Should().Be(SeedHelper.LienId);
         item.Notes.Should().Contain(upload.DocumentId.ToString());
+    }
+
+    private static void SetProperty<T>(T entity, string propertyName, object? value) where T : class
+    {
+        var property = typeof(T).GetProperty(
+            propertyName,
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        property.Should().NotBeNull();
+        property!.SetValue(entity, value);
     }
 }

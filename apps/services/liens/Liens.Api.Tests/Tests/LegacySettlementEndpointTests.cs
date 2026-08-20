@@ -537,6 +537,384 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         payment.GetProperty("netProfit").GetString().Should().Be("0.00");
     }
 
+    [Fact]
+    public async Task UpdatePayment_changes_type_and_fields_without_duplicates_or_sibling_changes()
+    {
+        var target = SettlementPaymentDetail.Create(
+            SeedHelper.TenantId,
+            SeedHelper.CaseId,
+            SeedHelper.LienId,
+            11,
+            100m,
+            SeedHelper.UserId,
+            new DateOnly(2026, 8, 1),
+            checkNumber: "OLD-REFERENCE",
+            note: "Original payment note\n[legacy-meta]\npaymentMethod=Wire; type=by_attorney; status=reduced_payment; netProfit=12.50; customFlag=preserved");
+        var sibling = SettlementPaymentDetail.Create(
+            SeedHelper.TenantId,
+            SeedHelper.CaseId,
+            SeedHelper.LienId,
+            12,
+            75m,
+            SeedHelper.UserId,
+            new DateOnly(2026, 8, 2),
+            checkNumber: "SIBLING-REFERENCE",
+            note: "Sibling payment\n[legacy-meta]\npaymentMethod=Cash; type=by_medical_provider; status=partial_loss; customFlag=sibling");
+        int paymentCountBefore;
+        int settlementCountBefore;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.SettlementPaymentDetails.AddRange(target, sibling);
+            await db.SaveChangesAsync();
+            paymentCountBefore = db.SettlementPaymentDetails.Count();
+            settlementCountBefore = db.LienSettlements.Count();
+        }
+
+        var response = await _client.PutAsJsonAsync($"/api/liens/settlement/payments/{target.Id}", new
+        {
+            amount = 530m,
+            paymentDate = "2026-08-16",
+            paymentMethod = "Check",
+            referenceNumber = "123456",
+            notes = "Payment Testing",
+            settlementType = "by_funding_company",
+            settlementStatus = "full_payment",
+            lienStatus = "Closed",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var updatedResponse = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var updatedRoot = updatedResponse!.RootElement;
+        updatedRoot.GetProperty("id").GetGuid().Should().Be(target.Id);
+        updatedRoot.GetProperty("amount").GetDecimal().Should().Be(530m);
+        updatedRoot.GetProperty("paymentDate").GetString().Should().Be("2026-08-16");
+        updatedRoot.GetProperty("paymentMethod").GetString().Should().Be("Check");
+        updatedRoot.GetProperty("checkNumber").GetString().Should().Be("123456");
+        updatedRoot.GetProperty("note").GetString().Should().Be("Payment Testing");
+        updatedRoot.GetProperty("settlementTypeId").GetString().Should().Be("by_funding_company");
+        updatedRoot.GetProperty("settlementStatusId").GetString().Should().Be("full_payment");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.SettlementPaymentDetails.Count().Should().Be(paymentCountBefore);
+            db.LienSettlements.Count().Should().Be(settlementCountBefore);
+
+            var persistedTarget = await db.SettlementPaymentDetails.FindAsync(target.Id);
+            persistedTarget!.Amount.Should().Be(530m);
+            persistedTarget.PaymentDate.Should().Be(new DateOnly(2026, 8, 16));
+            persistedTarget.CheckNumber.Should().Be("123456");
+            persistedTarget.Note.Should().StartWith("Payment Testing");
+            persistedTarget.Note.Should().Contain("paymentMethod=Check");
+            persistedTarget.Note.Should().Contain("type=by_funding_company");
+            persistedTarget.Note.Should().Contain("status=full_payment");
+            persistedTarget.Note.Should().Contain("netProfit=12.50");
+            persistedTarget.Note.Should().Contain("customFlag=preserved");
+            persistedTarget.UpdatedByUserId.Should().Be(SeedHelper.UserId);
+
+            var persistedSibling = await db.SettlementPaymentDetails.FindAsync(sibling.Id);
+            persistedSibling!.Amount.Should().Be(75m);
+            persistedSibling.CheckNumber.Should().Be("SIBLING-REFERENCE");
+            persistedSibling.Note.Should().Contain("type=by_medical_provider");
+            persistedSibling.Note.Should().Contain("customFlag=sibling");
+
+            var persistedLien = await db.Liens.FindAsync(SeedHelper.LienId);
+            persistedLien!.Status.Should().Be(LienStatus.Settled);
+        }
+
+        var detailsResponse = await _client.GetAsync(
+            $"/service/liens/settlement/payment-details/{SeedHelper.CaseId}");
+        detailsResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await detailsResponse.Content.ReadAsStringAsync()}");
+        var details = await detailsResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var payment = details!.RootElement.GetProperty("data").EnumerateArray().Single(item =>
+            item.GetProperty("id").GetGuid() == target.Id);
+        payment.GetProperty("amount").GetString().Should().Be("530.00");
+        payment.GetProperty("checkDate").GetString().Should().Be("08/16/2026");
+        payment.GetProperty("checkNumber").GetString().Should().Be("123456");
+        payment.GetProperty("payor").GetString().Should().Be("Check");
+        payment.GetProperty("note").GetString().Should().Be("Payment Testing");
+        payment.GetProperty("typeId").GetString().Should().Be("by_funding_company");
+        payment.GetProperty("type").GetString().Should().Be("By Funding Company");
+        payment.GetProperty("statusId").GetString().Should().Be("full_payment");
+        payment.GetProperty("status").GetString().Should().Be("Full Payment");
+        payment.GetProperty("lienStatus").GetString().Should().Be("Closed");
+    }
+
+    [Fact]
+    public async Task UpdatePayment_returns404_for_missing_or_cross_tenant_payment()
+    {
+        var otherTenantPayment = SettlementPaymentDetail.Create(
+            Guid.CreateVersion7(),
+            Guid.CreateVersion7(),
+            Guid.CreateVersion7(),
+            1,
+            100m,
+            SeedHelper.UserId,
+            new DateOnly(2026, 8, 1),
+            checkNumber: "OTHER-TENANT",
+            note: "Other tenant\n[legacy-meta]\ntype=by_attorney; status=full_payment");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.SettlementPaymentDetails.Add(otherTenantPayment);
+            await db.SaveChangesAsync();
+        }
+
+        var request = new
+        {
+            amount = 530m,
+            paymentDate = "2026-08-16",
+            paymentMethod = "Check",
+            referenceNumber = "123456",
+            notes = "Payment Testing",
+            settlementType = "by_funding_company",
+            settlementStatus = "full_payment",
+            lienStatus = "Closed",
+        };
+
+        var missingResponse = await _client.PutAsJsonAsync(
+            $"/api/liens/settlement/payments/{Guid.CreateVersion7()}", request);
+        missingResponse.StatusCode.Should().Be(HttpStatusCode.NotFound,
+            $"Body: {await missingResponse.Content.ReadAsStringAsync()}");
+
+        var crossTenantResponse = await _client.PutAsJsonAsync(
+            $"/api/liens/settlement/payments/{otherTenantPayment.Id}", request);
+        crossTenantResponse.StatusCode.Should().Be(HttpStatusCode.NotFound,
+            $"Body: {await crossTenantResponse.Content.ReadAsStringAsync()}");
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedOtherTenant = await verificationDb.SettlementPaymentDetails.FindAsync(otherTenantPayment.Id);
+        persistedOtherTenant!.Amount.Should().Be(100m);
+        persistedOtherTenant.CheckNumber.Should().Be("OTHER-TENANT");
+        persistedOtherTenant.Note.Should().Contain("type=by_attorney");
+    }
+
+    [Fact]
+    public async Task UpdatePayment_rejects_unknown_and_invalid_fields_without_changes()
+    {
+        var payment = SettlementPaymentDetail.Create(
+            SeedHelper.TenantId,
+            SeedHelper.CaseId,
+            SeedHelper.LienId,
+            13,
+            100m,
+            SeedHelper.UserId,
+            new DateOnly(2026, 8, 1),
+            checkNumber: "STRICT-CONTRACT",
+            note: "Strict contract\n[legacy-meta]\ntype=by_attorney; status=full_payment");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.SettlementPaymentDetails.Add(payment);
+            await db.SaveChangesAsync();
+        }
+
+        var unknownFieldResponse = await _client.PutAsJsonAsync(
+            $"/api/liens/settlement/payments/{payment.Id}", new
+            {
+                amount = 530m,
+                paymentDate = "2026-08-16",
+                paymentMethod = "Check",
+                referenceNumber = "123456",
+                notes = "Payment Testing",
+                settlementType = "by_funding_company",
+                settlementStatus = "full_payment",
+                lienStatus = "Closed",
+                caseId = SeedHelper.CaseId,
+            });
+        unknownFieldResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            $"Body: {await unknownFieldResponse.Content.ReadAsStringAsync()}");
+
+        var invalidFieldResponse = await _client.PutAsJsonAsync(
+            $"/api/liens/settlement/payments/{payment.Id}", new
+            {
+                amount = -1m,
+                paymentDate = "2026-08-16",
+                paymentMethod = "Check",
+                referenceNumber = "123456",
+                notes = "Payment Testing",
+                settlementType = "by_funding_company",
+                settlementStatus = "full_payment",
+                lienStatus = "Closed",
+            });
+        invalidFieldResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            $"Body: {await invalidFieldResponse.Content.ReadAsStringAsync()}");
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persisted = await verificationDb.SettlementPaymentDetails.FindAsync(payment.Id);
+        persisted!.Amount.Should().Be(100m);
+        persisted.CheckNumber.Should().Be("STRICT-CONTRACT");
+        persisted.Note.Should().Contain("type=by_attorney");
+        var persistedLien = await verificationDb.Liens.FindAsync(SeedHelper.LienId);
+        persistedLien!.Status.Should().Be(LienStatus.Draft);
+    }
+
+    [Fact]
+    public async Task UpdatePayment_rejects_missing_null_and_blank_required_strings_without_changes()
+    {
+        var payment = await SeedEditablePaymentAsync(
+            14,
+            "REQUIRED-FIELDS",
+            "Required fields\n[legacy-meta]\npaymentMethod=Wire; type=by_attorney; status=reduced_payment");
+        var invalidRequests = new List<(string Field, Dictionary<string, object?> Body)>();
+
+        foreach (var field in new[]
+                 {
+                     "paymentMethod",
+                     "referenceNumber",
+                     "notes",
+                     "settlementType",
+                     "settlementStatus",
+                     "lienStatus",
+                 })
+        {
+            var body = ValidPaymentUpdateRequest();
+            body.Remove(field);
+            invalidRequests.Add((field, body));
+        }
+
+        foreach (var (field, value) in new (string Field, string? Value)[]
+                 {
+                     ("paymentMethod", null),
+                     ("paymentMethod", ""),
+                     ("paymentMethod", "   "),
+                     ("referenceNumber", null),
+                     ("referenceNumber", ""),
+                     ("referenceNumber", "   "),
+                     ("notes", null),
+                     ("settlementType", null),
+                     ("settlementType", "   "),
+                     ("settlementStatus", null),
+                     ("settlementStatus", "   "),
+                     ("lienStatus", null),
+                     ("lienStatus", "   "),
+                 })
+        {
+            var body = ValidPaymentUpdateRequest();
+            body[field] = value;
+            invalidRequests.Add((field, body));
+        }
+
+        foreach (var (field, body) in invalidRequests)
+        {
+            var response = await _client.PutAsJsonAsync(
+                $"/api/liens/settlement/payments/{payment.Id}", body);
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+                $"{field} must be rejected. Body: {await response.Content.ReadAsStringAsync()}");
+            (await response.Content.ReadAsStringAsync()).Should().ContainEquivalentOf(field);
+        }
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persisted = await verificationDb.SettlementPaymentDetails.FindAsync(payment.Id);
+        persisted!.Amount.Should().Be(100m);
+        persisted.CheckNumber.Should().Be("REQUIRED-FIELDS");
+        persisted.Note.Should().Contain("type=by_attorney");
+        var persistedLien = await verificationDb.Liens.FindAsync(SeedHelper.LienId);
+        persistedLien!.Status.Should().Be(LienStatus.Draft);
+    }
+
+    [Fact]
+    public async Task UpdatePayment_rejects_reserved_metadata_syntax_without_changes()
+    {
+        var payment = await SeedEditablePaymentAsync(
+            15,
+            "SAFE-METADATA",
+            "Safe note\n[legacy-meta]\npaymentMethod=Wire; type=by_attorney; status=reduced_payment; customFlag=preserved");
+        var invalidValues = new (string Field, string Value)[]
+        {
+            ("paymentMethod", "Check; type=by_funding_company"),
+            ("paymentMethod", "Check\r\nWire"),
+            ("settlementType", "by_funding_company=status"),
+            ("settlementStatus", "[legacy-meta]"),
+            ("settlementStatus", "full_payment\ncustom=overwritten"),
+            ("notes", "User note [legacy-meta] status=full_payment"),
+        };
+
+        foreach (var (field, value) in invalidValues)
+        {
+            var body = ValidPaymentUpdateRequest();
+            body[field] = value;
+            var response = await _client.PutAsJsonAsync(
+                $"/api/liens/settlement/payments/{payment.Id}", body);
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+                $"{field} metadata syntax must be rejected. Body: {await response.Content.ReadAsStringAsync()}");
+            (await response.Content.ReadAsStringAsync()).Should().ContainEquivalentOf(field);
+        }
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persisted = await verificationDb.SettlementPaymentDetails.FindAsync(payment.Id);
+        persisted!.Amount.Should().Be(100m);
+        persisted.CheckNumber.Should().Be("SAFE-METADATA");
+        persisted.Note.Should().Contain("customFlag=preserved");
+        persisted.Note.Should().Contain("type=by_attorney");
+        var persistedLien = await verificationDb.Liens.FindAsync(SeedHelper.LienId);
+        persistedLien!.Status.Should().Be(LienStatus.Draft);
+    }
+
+    [Fact]
+    public async Task UpdatePayment_enforces_reference_maximum_and_normalizes_open_status()
+    {
+        var payment = await SeedEditablePaymentAsync(
+            16,
+            "REFERENCE-BOUNDARY",
+            "Boundary note\n[legacy-meta]\npaymentMethod=Wire; type=by_attorney; status=reduced_payment");
+        var overMaximum = ValidPaymentUpdateRequest();
+        overMaximum["referenceNumber"] = new string('X', 101);
+
+        var invalidResponse = await _client.PutAsJsonAsync(
+            $"/api/liens/settlement/payments/{payment.Id}", overMaximum);
+        invalidResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            $"Body: {await invalidResponse.Content.ReadAsStringAsync()}");
+        (await invalidResponse.Content.ReadAsStringAsync()).Should().ContainEquivalentOf("referenceNumber");
+
+        using (var verificationScope = _factory.Services.CreateScope())
+        {
+            var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var unchanged = await verificationDb.SettlementPaymentDetails.FindAsync(payment.Id);
+            unchanged!.CheckNumber.Should().Be("REFERENCE-BOUNDARY");
+            var unchangedLien = await verificationDb.Liens.FindAsync(SeedHelper.LienId);
+            unchangedLien!.Status.Should().Be(LienStatus.Draft);
+        }
+
+        var atMaximum = ValidPaymentUpdateRequest();
+        atMaximum["referenceNumber"] = new string('R', 100);
+        atMaximum["notes"] = "";
+        atMaximum["lienStatus"] = "Open";
+        var validResponse = await _client.PutAsJsonAsync(
+            $"/api/liens/settlement/payments/{payment.Id}", atMaximum);
+        validResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await validResponse.Content.ReadAsStringAsync()}");
+        var responseBody = await validResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        responseBody!.RootElement.GetProperty("checkNumber").GetString().Should().HaveLength(100);
+        responseBody.RootElement.GetProperty("note").ValueKind.Should().Be(JsonValueKind.Null);
+
+        atMaximum["notes"] = "Normal punctuation; equation=a=b";
+        var punctuationResponse = await _client.PutAsJsonAsync(
+            $"/api/liens/settlement/payments/{payment.Id}", atMaximum);
+        punctuationResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await punctuationResponse.Content.ReadAsStringAsync()}");
+        var punctuationBody = await punctuationResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        punctuationBody!.RootElement.GetProperty("note").GetString().Should().Be("Normal punctuation; equation=a=b");
+
+        using var finalScope = _factory.Services.CreateScope();
+        var finalDb = finalScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persisted = await finalDb.SettlementPaymentDetails.FindAsync(payment.Id);
+        persisted!.CheckNumber.Should().HaveLength(100);
+        persisted.Note.Should().StartWith("Normal punctuation; equation=a=b");
+        var persistedLien = await finalDb.Liens.FindAsync(SeedHelper.LienId);
+        persistedLien!.Status.Should().Be(LienStatus.Active);
+    }
+
     // ── DELETE /service/delete-payment/{id} ───────────────────────────────────
 
     [Fact]
@@ -584,4 +962,39 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
             $"/service/settlement/history/{SeedHelper.CaseId}");
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
+
+    private async Task<SettlementPaymentDetail> SeedEditablePaymentAsync(
+        int paymentNumber,
+        string referenceNumber,
+        string note)
+    {
+        var payment = SettlementPaymentDetail.Create(
+            SeedHelper.TenantId,
+            SeedHelper.CaseId,
+            SeedHelper.LienId,
+            paymentNumber,
+            100m,
+            SeedHelper.UserId,
+            new DateOnly(2026, 8, 1),
+            checkNumber: referenceNumber,
+            note: note);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        db.SettlementPaymentDetails.Add(payment);
+        await db.SaveChangesAsync();
+        return payment;
+    }
+
+    private static Dictionary<string, object?> ValidPaymentUpdateRequest() => new()
+    {
+        ["amount"] = 530m,
+        ["paymentDate"] = "2026-08-16",
+        ["paymentMethod"] = "Check",
+        ["referenceNumber"] = "123456",
+        ["notes"] = "Payment Testing",
+        ["settlementType"] = "by_funding_company",
+        ["settlementStatus"] = "full_payment",
+        ["lienStatus"] = "Closed",
+    };
 }

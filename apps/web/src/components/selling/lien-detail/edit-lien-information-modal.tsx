@@ -2,10 +2,14 @@
 
 import { useState } from "react";
 import { FormModal } from "@/components/selling/modal";
-import Field from "@/components/lien/field";
 import { liensService } from "@/lib/selling";
-import { useToast } from "@/lib/toast-context";
+import { toast } from "sonner";
 import type { LienDetail } from "@/types/lien-selling";
+import {
+  DEFAULT_LISTING_VISIBILITY,
+  LienScheduleFields,
+  type LienScheduleFieldsValue,
+} from "@/components/selling/forms/add-medical-lien/lien-schedule-fields";
 
 interface EditLienInformationModalProps {
   lienId: string;
@@ -20,17 +24,12 @@ export function EditLienInformationModal({
   onClose,
   onSaved,
 }: EditLienInformationModalProps) {
-  const { show: showToast } = useToast();
-  const [initialServiceDate, setInitialServiceDate] = useState(
-    lien.initialServiceDate ?? "",
-  );
-  const [endServiceDate, setEndServiceDate] = useState(
-    lien.endServiceDate ?? "",
-  );
-  const [listingVisibility, setListingVisibility] = useState(
-    lien.listingVisibility || "Private",
-  );
-  const [notes, setNotes] = useState(lien.notes ?? "");
+  const [form, setForm] = useState<LienScheduleFieldsValue>({
+    initialServiceDate: lien.initialServiceDate ?? "",
+    endServiceDate: lien.endServiceDate ?? "",
+    listingVisibility: lien.listingVisibility || DEFAULT_LISTING_VISIBILITY,
+    notes: lien.notes ?? "",
+  });
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async () => {
@@ -38,18 +37,15 @@ export function EditLienInformationModal({
     try {
       await liensService.saveLienInformation(lienId, {
         sellerStatus: lien.sellerStatus,
-        initialServiceDate: initialServiceDate || undefined,
-        endServiceDate: endServiceDate || undefined,
-        listingVisibility,
-        notes: notes || undefined,
+        initialServiceDate: form.initialServiceDate || undefined,
+        endServiceDate: form.endServiceDate || undefined,
+        listingVisibility: form.listingVisibility,
+        notes: form.notes || undefined,
       });
-      showToast("Lien information updated.", "success");
+      toast.success("Lien information updated.");
       onSaved();
     } catch (err) {
-      showToast(
-        err instanceof Error ? err.message : "Failed to save lien information",
-        "error",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to save lien information");
     } finally {
       setSaving(false);
     }
@@ -64,38 +60,10 @@ export function EditLienInformationModal({
       submitLabel={saving ? "Saving..." : "Save"}
       loading={saving}
     >
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <Field
-            type="date"
-            label="Initial Service Date"
-            value={initialServiceDate}
-            onChange={setInitialServiceDate}
-          />
-          <Field
-            type="date"
-            label="End Service Date"
-            value={endServiceDate}
-            onChange={setEndServiceDate}
-          />
-        </div>
-        <Field
-          type="select"
-          label="Listing Visibility"
-          value={listingVisibility}
-          onChange={setListingVisibility}
-          options={[
-            { key: "Private", value: "Private", label: "Private" },
-            { key: "Public", value: "Public", label: "Public" },
-          ]}
-        />
-        <Field
-          type="textarea"
-          label="Lien Notes"
-          value={notes}
-          onChange={setNotes}
-        />
-      </div>
+      <LienScheduleFields
+        value={form}
+        onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+      />
     </FormModal>
   );
 }

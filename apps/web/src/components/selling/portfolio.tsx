@@ -3,11 +3,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Search, Settings2 } from "lucide-react";
+import { CloudUpload, File, Search } from "lucide-react";
+import { ActionMenu } from "./action-menu";
 import { LiensQuery, liensService } from "@/lib/selling";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MetricCard } from "./dashboard/metric-card";
-import { Tabs } from "../ui/tabs";
+import { Tabs } from "./tabs";
 import { PortfolioTable } from "./portfolio-table";
 import { Card } from "../ui/dashboard-card";
 import {
@@ -24,13 +25,15 @@ import { BulkUploadForm } from "./forms/bulk-upload-form";
 import { PaginationMeta } from "@/lib/liens";
 import { SortingState } from "@tanstack/react-table";
 import { useLienStore } from "@/stores/lien-store";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 import { PageHeader } from "@/components/lien/page-header";
+import { SkeletonCard, SkeletonTable } from "@/components/lien/skeleton-loader";
 
 const PORTFOLIO_STATUSES = [
   { key: "Pending", label: "Pending" },
   { key: "Internal", label: "Internal" },
   { key: "Sold", label: "Sold" },
+  { key: "Archived", label: "Archived" },
   // { key: "all", label: "all" },
 ];
 
@@ -61,6 +64,40 @@ const INITIAL_QUERY: Record<string, unknown> = {
   pageSize: 20,
 };
 
+function PortfolioSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-2">
+          <div className="h-5 bg-gray-200 rounded w-40" />
+          <div className="h-3 bg-gray-100 rounded w-80" />
+        </div>
+        <div className="h-9 bg-gray-100 rounded-lg w-36" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <SkeletonCard key={i} />
+        ))}
+      </div>
+
+      <div className="flex gap-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-8 bg-gray-100 rounded-lg w-20" />
+        ))}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="h-9 bg-gray-100 rounded-lg flex-1 max-w-md" />
+          <div className="h-9 bg-gray-100 rounded-lg w-24" />
+        </div>
+        <SkeletonTable rows={6} cols={6} />
+      </div>
+    </div>
+  );
+}
+
 export default function PortfolioClient() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -75,7 +112,6 @@ export default function PortfolioClient() {
     useState<LiensFilterValues>(EMPTY_LIENS_FILTERS);
   const [showFilter, setShowFilter] = useState(false);
   const activeFilterCount = countActiveFilters(filters);
-  const [actionOpen, setActionOpen] = useState(false);
   const [bulkUpload, setbulkUpload] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationMeta>({
@@ -141,6 +177,10 @@ export default function PortfolioClient() {
     setPagination((prev) => ({ ...prev, page: newPage }));
   };
 
+  const handlePageSizeChange = (newPageSize: number) => {
+    setPagination((prev) => ({ ...prev, page: 1, pageSize: newPageSize }));
+  };
+
   useEffect(() => {
     refetchLiens();
   }, [currentQuery, refetchLiens]);
@@ -159,7 +199,7 @@ export default function PortfolioClient() {
     return () => clearTimeout(timeout);
   }, [searchInput]);
 
-  if (isPending) return <p>Loading...</p>;
+  if (isPending) return <PortfolioSkeleton />;
 
   if (error) return <p>Something went wrong.</p>;
 
@@ -175,44 +215,25 @@ export default function PortfolioClient() {
           subtitle="Manage, monitor, and bundle multiple liens into structured portfolios for sale."
           card={false}
           actions={
-            <div className="relative">
-              <Button
-                className="bg-[#EE7132] hover:bg-[#EE7132]/90 text-white"
-                rightIcon={<ChevronDown className="h-4 w-4" />}
-                iconDivider
-                onClick={() => {
-                  setActionOpen(!actionOpen);
-                }}
-              >
-                Add New Lien
-              </Button>
-              {actionOpen && (
-                <div
-                  className={`absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 overflow-hidden divide-y divide-gray-100`}
-                >
-                  <button
-                    onClick={() => {
-                      router.push("add-liens");
-                      setActionOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                  >
-                    <i className="ri-file-line mr-2"></i>
-                    Add Single Lien
-                  </button>
-                  <button
-                    onClick={() => {
-                      setbulkUpload(true);
-                      setActionOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                  >
-                    <i className="ri-upload-cloud-2-line mr-2"></i>
-                    Bulk Upload
-                  </button>
-                </div>
-              )}
-            </div>
+            <ActionMenu
+              trigger={
+                <Button variant="primary" rightIcon="chevronDown">
+                  Add New Lien
+                </Button>
+              }
+              items={[
+                {
+                  label: "Add Single Lien",
+                  icon: File,
+                  onClick: () => router.push("/selling/portfolio/lien/add"),
+                },
+                {
+                  label: "Bulk Upload",
+                  icon: CloudUpload,
+                  onClick: () => setbulkUpload(true),
+                },
+              ]}
+            />
           }
         />
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -268,7 +289,7 @@ export default function PortfolioClient() {
             <Button
               variant="secondary"
               className="border-gray-300"
-              leftIcon={<Settings2 className="h-4 w-4" />}
+              leftIcon="settings2"
               onClick={() => setShowFilter(true)}
             >
               Filter
@@ -292,8 +313,9 @@ export default function PortfolioClient() {
             sorting={sorting}
             onSortingChange={setSorting}
             handlePageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
             liens={liens?.items ?? []}
-            onRowSelect={(id) => router.push(`portfolio/${id}`)}
+            isLoading={isLiensPending}
             onActionComplete={() => {
               refetchLiens();
               refetch();

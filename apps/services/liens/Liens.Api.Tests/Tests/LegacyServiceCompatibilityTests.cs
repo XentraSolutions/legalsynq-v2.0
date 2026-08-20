@@ -427,6 +427,151 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
+    public async Task ServiceCase_v3_search_alias_preserves_fuzzy_ranking_filters_tenant_and_paging()
+    {
+        var nameToken = string.Concat(Guid.CreateVersion7().ToString("N").Select(value =>
+            (char)('a' + (value <= '9' ? value - '0' : value - 'a' + 10))));
+        var targetFirstName = $"Zorvella{nameToken}";
+        var targetLastName = $"Quendrix{nameToken}";
+
+        var targetCase = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-SEARCH-TARGET-{Guid.CreateVersion7():N}"[..40],
+            targetFirstName,
+            targetLastName,
+            SeedHelper.UserId);
+        var unrelatedCase = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-SEARCH-LOWER-{Guid.CreateVersion7():N}"[..40],
+            $"Mara{nameToken}",
+            targetLastName,
+            SeedHelper.UserId);
+        var filteredCase = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-SEARCH-FILTER-{Guid.CreateVersion7():N}"[..40],
+            targetFirstName,
+            targetLastName,
+            SeedHelper.UserId);
+        filteredCase.TransitionStatus(CaseStatus.DemandSent, SeedHelper.UserId);
+
+        var otherTenantCase = Case.Create(
+            Guid.CreateVersion7(),
+            Guid.CreateVersion7(),
+            $"CASE-SEARCH-TENANT-{Guid.CreateVersion7():N}"[..40],
+            targetFirstName,
+            targetLastName,
+            SeedHelper.UserId);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.AddRange(targetCase, unrelatedCase, filteredCase, otherTenantCase);
+            await db.SaveChangesAsync();
+        }
+
+        var broadResponse = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            search = $"{targetLastName} {targetFirstName}",
+            statusId = CaseStatus.PreDemand,
+            page = 1,
+            limit = 100,
+        });
+        broadResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await broadResponse.Content.ReadAsStringAsync()}");
+
+        var broad = JsonNode.Parse(await broadResponse.Content.ReadAsStringAsync())!;
+        var broadItems = broad["data"]!.AsArray();
+        broadItems.Should().HaveCount(2);
+        broadItems[0]!["caseId"]!.GetValue<string>().Should().Be(targetCase.Id.ToString());
+        broadItems.Should().Contain(item =>
+            item!["caseId"]!.GetValue<string>() == unrelatedCase.Id.ToString());
+        broadItems.Should().NotContain(item =>
+            item!["caseId"]!.GetValue<string>() == filteredCase.Id.ToString() ||
+            item["caseId"]!.GetValue<string>() == otherTenantCase.Id.ToString());
+        broad["totalCount"]!.GetValue<int>().Should().Be(2);
+
+        var forwardExactResponse = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            search = $"{targetFirstName} {targetLastName}",
+            statusId = CaseStatus.PreDemand,
+            page = 1,
+            limit = 100,
+        });
+        forwardExactResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await forwardExactResponse.Content.ReadAsStringAsync()}");
+
+        var forwardExact = JsonNode.Parse(await forwardExactResponse.Content.ReadAsStringAsync())!;
+        forwardExact["data"]!.AsArray()[0]!["caseId"]!.GetValue<string>()
+            .Should().Be(targetCase.Id.ToString());
+
+        var firstPageResponse = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            search = $"{targetLastName} {targetFirstName}",
+            statusId = CaseStatus.PreDemand,
+            page = 1,
+            limit = 1,
+        });
+        firstPageResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await firstPageResponse.Content.ReadAsStringAsync()}");
+
+        var firstPage = JsonNode.Parse(await firstPageResponse.Content.ReadAsStringAsync())!;
+        firstPage["data"]!.AsArray().Should().ContainSingle();
+        firstPage["data"]![0]!["caseId"]!.GetValue<string>().Should().Be(targetCase.Id.ToString());
+        firstPage["page"]!.GetValue<int>().Should().Be(1);
+        firstPage["limit"]!.GetValue<int>().Should().Be(1);
+        firstPage["totalCount"]!.GetValue<int>().Should().Be(2);
+
+        var secondPageResponse = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            search = $"{targetLastName} {targetFirstName}",
+            statusId = CaseStatus.PreDemand,
+            page = 2,
+            limit = 1,
+        });
+        secondPageResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await secondPageResponse.Content.ReadAsStringAsync()}");
+
+        var secondPage = JsonNode.Parse(await secondPageResponse.Content.ReadAsStringAsync())!;
+        secondPage["data"]!.AsArray().Should().ContainSingle();
+        secondPage["data"]![0]!["caseId"]!.GetValue<string>().Should().Be(unrelatedCase.Id.ToString());
+        secondPage["totalCount"]!.GetValue<int>().Should().Be(2);
+
+        var typoResponse = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            search = $"Quendri{nameToken} Zorvell{nameToken}",
+            statusId = CaseStatus.PreDemand,
+            page = 1,
+            limit = 10,
+        });
+        typoResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await typoResponse.Content.ReadAsStringAsync()}");
+
+        var typo = JsonNode.Parse(await typoResponse.Content.ReadAsStringAsync())!;
+        typo["data"]!.AsArray()[0]!["caseId"]!.GetValue<string>().Should().Be(targetCase.Id.ToString());
+        typo["data"]!.AsArray().Should().NotContain(item =>
+            item!["caseId"]!.GetValue<string>() == filteredCase.Id.ToString() ||
+            item["caseId"]!.GetValue<string>() == otherTenantCase.Id.ToString());
+
+        var keywordPrecedenceResponse = await _client.PostAsJsonAsync("/service/case/v3", new
+        {
+            keyword = targetCase.CaseNumber,
+            search = "does not match",
+            statusId = CaseStatus.PreDemand,
+            page = 1,
+            limit = 10,
+        });
+        keywordPrecedenceResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await keywordPrecedenceResponse.Content.ReadAsStringAsync()}");
+
+        var keywordPrecedence = JsonNode.Parse(await keywordPrecedenceResponse.Content.ReadAsStringAsync())!;
+        keywordPrecedence["data"]!.AsArray().Should().ContainSingle(item =>
+            item!["caseId"]!.GetValue<string>() == targetCase.Id.ToString());
+    }
+
+    [Fact]
     public async Task ServiceSettlementCompatibility_routes_return_data()
     {
         var historyResponse = await _client.PostAsJsonAsync("/service/settlement/history/v3", new

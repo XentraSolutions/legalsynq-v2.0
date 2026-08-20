@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
+using Liens.Api;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
@@ -92,6 +93,7 @@ public static class BatchUploadEndpoints
             .RequirePermission(LiensPermissions.CaseUpdate);
         group.MapPost("/Upload", UploadBatchFile)
             .RequirePermission(LiensPermissions.CaseUpdate)
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(LiensUploadLimits.MultipartRequestBytes))
             .DisableAntiforgery();
         group.MapPost("/update", UpdateBatchUpload)
             .RequirePermission(LiensPermissions.CaseUpdate);
@@ -330,8 +332,8 @@ public static class BatchUploadEndpoints
         var file = form.Files["file"];
         if (file is null || file.Length == 0)
             return Results.BadRequest(new { isSuccess = false, message = "No file uploaded" });
-        if (file.Length > 20 * 1024 * 1024)
-            return Results.BadRequest(new { isSuccess = false, message = "File size exceeds the allowed limit (20 MB)" });
+        if (file.Length > LiensUploadLimits.MaxBytes)
+            return Results.BadRequest(new { isSuccess = false, message = $"File size exceeds the allowed limit ({LiensUploadLimits.MaxMegabytes} MB)" });
 
         var ext = Path.GetExtension(file.FileName)?.ToLowerInvariant();
         if (ext != ".csv")

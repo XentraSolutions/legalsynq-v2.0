@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { FormModal } from "@/components/selling/modal";
 import { BaseSelect } from "@/components/ui/base-select";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 
 interface FilterOption {
   value: string;
@@ -88,22 +88,22 @@ export function ContactsFilterModal({
       title={title}
       subtitle="Narrow down results using filters to quickly find relevant records."
       submitLabel="Apply Filters"
-      size="sm"
-      headerActions={
+      size="md"
+    >
+      <div className="mb-4 flex justify-end">
         <Button
           type="button"
-          variant="ghost"
-          leftIcon={<i className="ri-refresh-line text-sm" />}
-          className="text-xs px-3 py-1.5 text-primary border border-primary/30 hover:bg-primary/5"
+          variant="secondary"
+          leftIcon="refreshCw"
+          className="self-baseline-last"
           onClick={handleClear}
         >
           Clear Filter
         </Button>
-      }
-    >
-      <div className="space-y-4">
+      </div>
+      <div className="gap-4 grid grid-cols-2">
         {fields.map((field) => (
-          <div key={field.key}>
+          <div className="col-span-1" key={field.key}>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               {field.label}
             </label>

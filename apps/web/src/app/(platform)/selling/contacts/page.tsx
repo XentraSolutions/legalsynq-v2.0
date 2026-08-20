@@ -6,12 +6,11 @@ import { toast } from "sonner";
 import {
   Building2,
   Eye,
-  Plus,
+  Loader,
   Repeat,
   Settings2,
   SquarePen,
   Trash2,
-  Upload,
   UserCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/lien/page-header";
@@ -19,6 +18,7 @@ import { FilterToolbar } from "@/components/lien/filter-toolbar";
 import { ActionMenu } from "@/components/selling/action-menu";
 import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
+import { ReassignCompanyModal } from "@/components/selling/forms/reassign-company-modal";
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
 import { ContactPersonsDirectoryView } from "@/components/selling/contacts/contact-persons-directory-view";
 import { useRoleAccess } from "@/hooks/use-role-access";
@@ -32,16 +32,22 @@ import { ConfirmDialog } from "@/components/selling/modal";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { BaseTable } from "@/components/ui/base-table";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/selling/button";
 import type { Company } from "@/lib/selling/companies.types";
 import { downloadBlob } from "@/lib/utils";
+import {
+  TABLE_CELL_CLASSNAME,
+  TABLE_LINK_CLASSNAME,
+  TABLE_HEADER_CLASSNAME,
+  TABLE_HEADER_CELL_CLASSNAME,
+} from "@/components/selling/table-cell-styles";
 
 const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
-// Selling's brand accent — used on every primary action button on this page
-// and everything opened from it, instead of the tenant bg-primary blue used
-// on the lien side.
+// Still needed as a passthrough for BaseTable (src/components/ui/base-table),
+// which renders a plain <button> (not the selling Button component) and
+// exposes primaryButtonClassName as a generic override, not selling-specific.
 const PRIMARY_BUTTON_CLASSNAME =
   "bg-[#EE7132] hover:bg-[#EE7132]/90 text-white";
 
@@ -112,6 +118,7 @@ function CompaniesListView() {
   const [contactAddedFor, setContactAddedFor] = useState<Company | null>(null);
   const [editTarget, setEditTarget] = useState<Company | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
+  const [reassignTarget, setReassignTarget] = useState<Company | null>(null);
 
   const deactivateCompanyMutation = useDeactivateCompany();
   const exportCompaniesMutation = useExportCompanies();
@@ -221,7 +228,7 @@ function CompaniesListView() {
             <Link
               href={`/selling/contacts/${c.id}`}
               onClick={(e) => e.stopPropagation()}
-              className="text-sm font-medium text-gray-700 hover:text-primary"
+              className={TABLE_LINK_CLASSNAME}
             >
               {c.name}
             </Link>
@@ -232,7 +239,7 @@ function CompaniesListView() {
         id: "email",
         header: "Email",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">
+          <span className={TABLE_CELL_CLASSNAME}>
             {row.original.email || "—"}
           </span>
         ),
@@ -241,7 +248,7 @@ function CompaniesListView() {
         id: "type",
         header: "Type",
         cell: ({ row }) => (
-          <span className="text-sm text-gray-500">
+          <span className={TABLE_CELL_CLASSNAME}>
             {row.original.companyTypeName || "—"}
           </span>
         ),
@@ -250,7 +257,11 @@ function CompaniesListView() {
         id: "activeCases",
         header: "Active Cases",
         // No case-linkage API exists for companies yet — placeholder until it does.
-        cell: () => <span className="text-sm text-gray-400">—</span>,
+        cell: () => (
+          <span className={TABLE_CELL_CLASSNAME}>
+            —
+          </span>
+        ),
       },
       {
         id: "actions",
@@ -268,13 +279,10 @@ function CompaniesListView() {
                     onClick: () => router.push(`/selling/contacts/${c.id}`),
                   },
                   {
-                    label: "Reassign Case",
+                    label: "Reassign",
                     icon: Repeat,
                     disabled: !ra.can("contact:edit"),
-                    onClick: () =>
-                      toast.info("Coming Soon", {
-                        description: "Reassigning cases isn't available yet.",
-                      }),
+                    onClick: () => setReassignTarget(c),
                   },
                   {
                     label: "Edit",
@@ -325,8 +333,7 @@ function CompaniesListView() {
     >
       <Button
         variant="secondary"
-        iconDivider
-        rightIcon={<Upload className="h-4 w-4" />}
+        rightIcon="upload"
         disabled={exportCompaniesMutation.isPending}
         onClick={handleExport}
       >
@@ -334,9 +341,8 @@ function CompaniesListView() {
       </Button>
       {ra.can("contact:create") && (
         <Button
-          iconDivider
-          rightIcon={<Plus className="h-4 w-4" />}
-          className={PRIMARY_BUTTON_CLASSNAME}
+          variant="primary"
+          rightIcon="plus"
           onClick={() => setShowCreate(true)}
         >
           Add Company
@@ -351,7 +357,7 @@ function CompaniesListView() {
         {toolbar}
         {showEmptyState ? (
           <ContactsEmptyState
-            icon="ri-building-4-line"
+            icon={Building2}
             title={`No ${selectedCompanyTypeName} Yet`}
             description={`No ${selectedCompanyTypeNamePlural.toLowerCase()} have been added yet. Add your first ${selectedCompanyTypeName.toLowerCase()} to get started.`}
             actionLabel={
@@ -367,7 +373,7 @@ function CompaniesListView() {
           <div className="relative">
             {refreshing && (
               <div className="absolute top-2 right-3 z-10 flex items-center gap-1.5 text-xs text-gray-400">
-                <i className="ri-loader-4-line animate-spin text-sm" />
+                <Loader className="h-4 w-4 animate-spin" />
                 Refreshing...
               </div>
             )}
@@ -392,6 +398,8 @@ function CompaniesListView() {
               pageSizeOptions={[10, 25, 50, 100]}
               className="border-0 rounded-none"
               primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
+              headerClassName={TABLE_HEADER_CLASSNAME}
+              headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
             />
           </div>
         )}
@@ -427,7 +435,6 @@ function CompaniesListView() {
           description="The new company has been added. Would you like to add contact person associated with this company? You can always do this later."
           confirmLabel="Add Contact Person"
           cancelLabel="Maybe Later"
-          primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
         />
       )}
 
@@ -463,7 +470,6 @@ function CompaniesListView() {
           description="The new contact person has been added to the company. You can add another contact person if needed."
           confirmLabel="Add More"
           cancelLabel="Done"
-          primaryButtonClassName={PRIMARY_BUTTON_CLASSNAME}
         />
       )}
 
@@ -475,6 +481,14 @@ function CompaniesListView() {
           editTarget={editTarget}
           onClose={() => setEditTarget(null)}
           onSaved={() => setEditTarget(null)}
+        />
+      )}
+
+      {reassignTarget && (
+        <ReassignCompanyModal
+          open
+          company={reassignTarget}
+          onClose={() => setReassignTarget(null)}
         />
       )}
 

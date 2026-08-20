@@ -75,11 +75,11 @@ The Identity service uses **JWT Bearer tokens** for authentication. Endpoints fa
 
 ### Role-Based Access
 
-| Role | Scope |
-|---|---|
-| `PlatformAdmin` | Full platform access, cross-tenant |
-| `TenantAdmin` | Full tenant access, restricted to own tenant |
-| `User` | Standard authenticated user |
+| Role            | Scope                                        |
+| --------------- | -------------------------------------------- |
+| `PlatformAdmin` | Full platform access, cross-tenant           |
+| `TenantAdmin`   | Full tenant access, restricted to own tenant |
+| `User`          | Standard authenticated user                  |
 
 ---
 
@@ -89,11 +89,11 @@ The Identity service uses **JWT Bearer tokens** for authentication. Endpoints fa
 
 Many list endpoints return results wrapped in this paginated envelope.
 
-| Field | Type | Description |
-|---|---|---|
-| `items` | `T[]` | Array of result items for the current page |
-| `page` | `integer` | Current page number |
-| `pageSize` | `integer` | Number of items per page |
+| Field        | Type      | Description                                     |
+| ------------ | --------- | ----------------------------------------------- |
+| `items`      | `T[]`     | Array of result items for the current page      |
+| `page`       | `integer` | Current page number                             |
+| `pageSize`   | `integer` | Number of items per page                        |
 | `totalCount` | `integer` | Total number of matching items across all pages |
 
 ---
@@ -134,14 +134,14 @@ Returned when an operation conflicts with existing state (e.g., duplicate email,
 
 ### Common Status Codes
 
-| Endpoint Type | Success | Possible Errors |
-|---|---|---|
-| List / Search (`GET` returning paginated results) | `200 OK` | `401`, `403` |
-| Get by ID (`GET` returning single item) | `200 OK` | `401`, `403`, `404` |
-| Create (`POST`) | `201 Created` | `400`, `401`, `403`, `409` |
-| Update (`PUT` / `PATCH`) | `200 OK` | `400`, `401`, `403`, `404` |
-| Delete / Deactivate (`DELETE`) | `204 No Content` | `401`, `403`, `404` |
-| Action (`POST` on resource) | `200 OK` or `204 No Content` | `400`, `401`, `403`, `404` |
+| Endpoint Type                                     | Success                      | Possible Errors            |
+| ------------------------------------------------- | ---------------------------- | -------------------------- |
+| List / Search (`GET` returning paginated results) | `200 OK`                     | `401`, `403`               |
+| Get by ID (`GET` returning single item)           | `200 OK`                     | `401`, `403`, `404`        |
+| Create (`POST`)                                   | `201 Created`                | `400`, `401`, `403`, `409` |
+| Update (`PUT` / `PATCH`)                          | `200 OK`                     | `400`, `401`, `403`, `404` |
+| Delete / Deactivate (`DELETE`)                    | `204 No Content`             | `401`, `403`, `404`        |
+| Action (`POST` on resource)                       | `200 OK` or `204 No Content` | `400`, `401`, `403`, `404` |
 
 ---
 
@@ -155,21 +155,22 @@ Authenticate a user with credentials and receive a JWT access token.
 
 **Request Body: `LoginRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `tenantCode` | `string` | Yes | Tenant code (e.g., `ACME`) |
-| `email` | `string` | Yes | User email address |
-| `password` | `string` | Yes | User password |
+| Field        | Type     | Required | Description                |
+| ------------ | -------- | -------- | -------------------------- |
+| `tenantCode` | `string` | Yes      | Tenant code (e.g., `ACME`) |
+| `email`      | `string` | Yes      | User email address         |
+| `password`   | `string` | Yes      | User password              |
 
 **Response:** `200 OK` — `LoginResponse`
 
-| Field | Type | Description |
-|---|---|---|
-| `accessToken` | `string` | JWT access token |
-| `expiresAtUtc` | `datetime` | Token expiration timestamp |
-| `user` | `UserResponse` | Authenticated user details |
+| Field          | Type           | Description                |
+| -------------- | -------------- | -------------------------- |
+| `accessToken`  | `string`       | JWT access token           |
+| `expiresAtUtc` | `datetime`     | Token expiration timestamp |
+| `user`         | `UserResponse` | Authenticated user details |
 
 **Errors:**
+
 - `401` — Invalid credentials
 - `400` — Account locked or inactive
 
@@ -183,21 +184,21 @@ Get the current authenticated user's session envelope from the validated JWT cla
 
 **Response:** `200 OK` — `AuthMeResponse`
 
-| Field | Type | Nullable | Description |
-|---|---|---|---|
-| `userId` | `string` | No | User unique identifier |
-| `email` | `string` | No | User email address |
-| `tenantId` | `string` | No | Tenant unique identifier |
-| `tenantCode` | `string` | No | Tenant code |
-| `orgId` | `string` | Yes | Primary organization ID |
-| `orgType` | `string` | Yes | Primary organization type |
-| `orgName` | `string` | Yes | Primary organization name |
-| `productRoles` | `string[]` | No | Product-scoped role codes |
-| `systemRoles` | `string[]` | No | System role names (e.g., `PlatformAdmin`) |
-| `expiresAtUtc` | `datetime` | No | Session expiration |
-| `sessionTimeoutMinutes` | `integer` | No | Idle session timeout (default: 30) |
-| `avatarDocumentId` | `guid` | Yes | User's avatar document ID |
-| `enabledProducts` | `string[]` | Yes | Frontend product codes enabled for the tenant |
+| Field                   | Type       | Nullable | Description                                   |
+| ----------------------- | ---------- | -------- | --------------------------------------------- |
+| `userId`                | `string`   | No       | User unique identifier                        |
+| `email`                 | `string`   | No       | User email address                            |
+| `tenantId`              | `string`   | No       | Tenant unique identifier                      |
+| `tenantCode`            | `string`   | No       | Tenant code                                   |
+| `orgId`                 | `string`   | Yes      | Primary organization ID                       |
+| `orgType`               | `string`   | Yes      | Primary organization type                     |
+| `orgName`               | `string`   | Yes      | Primary organization name                     |
+| `productRoles`          | `string[]` | No       | Product-scoped role codes                     |
+| `systemRoles`           | `string[]` | No       | System role names (e.g., `PlatformAdmin`)     |
+| `expiresAtUtc`          | `datetime` | No       | Session expiration                            |
+| `sessionTimeoutMinutes` | `integer`  | No       | Idle session timeout (default: 30)            |
+| `avatarDocumentId`      | `guid`     | Yes      | User's avatar document ID                     |
+| `enabledProducts`       | `string[]` | Yes      | Frontend product codes enabled for the tenant |
 
 ---
 
@@ -219,11 +220,11 @@ Get organization-level configuration for the caller's organization. The `org_id`
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `organizationId` | `string` | Organization ID (`null` if `org_id` claim is missing or org not found) |
-| `productCode` | `string` | Product code (currently always `LIENS`) |
-| `settings` | `object` | Settings object with `providerMode` (currently always `"sell"`; `"manage"` mode planned for a future DB-backed setting) |
+| Field            | Type     | Description                                                                                                             |
+| ---------------- | -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `organizationId` | `string` | Organization ID (`null` if `org_id` claim is missing or org not found)                                                  |
+| `productCode`    | `string` | Product code (currently always `LIENS`)                                                                                 |
+| `settings`       | `object` | Settings object with `providerMode` (currently always `"sell"`; `"manage"` mode planned for a future DB-backed setting) |
 
 ---
 
@@ -235,10 +236,10 @@ Accept an invitation token, set a new password, and activate the invited user ac
 
 **Request Body: `AcceptInviteRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `token` | `string` | Yes | Raw invitation token |
-| `newPassword` | `string` | Yes | New password (minimum 8 characters) |
+| Field         | Type     | Required | Description                         |
+| ------------- | -------- | -------- | ----------------------------------- |
+| `token`       | `string` | Yes      | Raw invitation token                |
+| `newPassword` | `string` | Yes      | New password (minimum 8 characters) |
 
 **Response:** `200 OK`
 
@@ -252,6 +253,7 @@ Accept an invitation token, set a new password, and activate the invited user ac
 `tenantPortalUrl` is the base URL for the tenant's portal (used by the frontend to redirect to the correct subdomain login page). May be `null` if portal URL is not configured.
 
 **Errors:**
+
 - `400` — Invalid/expired token, already accepted, or password too short
 
 ---
@@ -264,10 +266,10 @@ Change the authenticated user's password.
 
 **Request Body: `ChangePasswordRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `currentPassword` | `string` | Yes | Current password |
-| `newPassword` | `string` | Yes | New password (minimum 8 characters, must differ from current) |
+| Field             | Type     | Required | Description                                                   |
+| ----------------- | -------- | -------- | ------------------------------------------------------------- |
+| `currentPassword` | `string` | Yes      | Current password                                              |
+| `newPassword`     | `string` | Yes      | New password (minimum 8 characters, must differ from current) |
 
 **Response:** `200 OK`
 
@@ -278,6 +280,7 @@ Change the authenticated user's password.
 ```
 
 **Errors:**
+
 - `400` — Current password incorrect, new password too short, or same as current
 - `404` — User record not found
 
@@ -291,9 +294,9 @@ Set the authenticated user's avatar document reference.
 
 **Request Body: `SetAvatarRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `documentId` | `string` | Yes | UUID of the uploaded avatar document |
+| Field        | Type     | Required | Description                          |
+| ------------ | -------- | -------- | ------------------------------------ |
+| `documentId` | `string` | Yes      | UUID of the uploaded avatar document |
 
 **Response:** `200 OK`
 
@@ -323,10 +326,10 @@ Confirm a password reset using an admin-triggered reset token. Sets a new passwo
 
 **Request Body: `PasswordResetConfirmRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `token` | `string` | Yes | Raw reset token |
-| `newPassword` | `string` | Yes | New password (minimum 8 characters) |
+| Field         | Type     | Required | Description                         |
+| ------------- | -------- | -------- | ----------------------------------- |
+| `token`       | `string` | Yes      | Raw reset token                     |
+| `newPassword` | `string` | Yes      | New password (minimum 8 characters) |
 
 **Response:** `200 OK`
 
@@ -337,6 +340,7 @@ Confirm a password reset using an admin-triggered reset token. Sets a new passwo
 ```
 
 **Errors:**
+
 - `400` — Invalid/expired/used token, or password too short
 
 ---
@@ -351,12 +355,12 @@ Self-service password reset request. Generates a reset token stored hashed in th
 
 **Request Body: `ForgotPasswordRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `tenantCode` | `string` | Yes | Tenant code |
-| `email` | `string` | Yes | User email address |
-| `subdomain` | `string` | No | Tenant subdomain fallback (tried when `tenantCode` lookup misses) |
-| `tenantId` | `guid` | No | Tenant ID fallback (tried when code + subdomain lookup both miss — AUTH-B01) |
+| Field        | Type     | Required | Description                                                                  |
+| ------------ | -------- | -------- | ---------------------------------------------------------------------------- |
+| `tenantCode` | `string` | Yes      | Tenant code                                                                  |
+| `email`      | `string` | Yes      | User email address                                                           |
+| `subdomain`  | `string` | No       | Tenant subdomain fallback (tried when `tenantCode` lookup misses)            |
+| `tenantId`   | `guid`   | No       | Tenant ID fallback (tried when code + subdomain lookup both miss — AUTH-B01) |
 
 **Response:** `200 OK` — Always returns `200` regardless of whether the email/tenant exists (prevents enumeration)
 
@@ -367,6 +371,7 @@ Self-service password reset request. Generates a reset token stored hashed in th
 ```
 
 **Errors:**
+
 - `400` — Missing `tenantCode` or `email`
 
 ---
@@ -383,20 +388,21 @@ Create a new user within the caller's tenant.
 
 **Request Body: `CreateUserRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `tenantId` | `guid` | Yes | Tenant ID (must match caller's tenant) |
-| `email` | `string` | Yes | User email address |
-| `password` | `string` | Yes | Initial password |
-| `firstName` | `string` | Yes | First name |
-| `lastName` | `string` | Yes | Last name |
-| `roleIds` | `guid[]` | No | List of role IDs to assign |
+| Field       | Type     | Required | Description                            |
+| ----------- | -------- | -------- | -------------------------------------- |
+| `tenantId`  | `guid`   | Yes      | Tenant ID (must match caller's tenant) |
+| `email`     | `string` | Yes      | User email address                     |
+| `password`  | `string` | Yes      | Initial password                       |
+| `firstName` | `string` | Yes      | First name                             |
+| `lastName`  | `string` | Yes      | Last name                              |
+| `roleIds`   | `guid[]` | No       | List of role IDs to assign             |
 
 **Response:** `201 Created` — `UserResponse`
 
 Returns the created user with a `Location` header pointing to `/api/users/{id}`.
 
 **Errors:**
+
 - `400` — Validation failure (e.g., duplicate email)
 - `401` — Missing tenant claim
 - `403` — Cross-tenant creation attempt
@@ -421,13 +427,14 @@ Get a user by ID (must be in the caller's tenant).
 
 **Path Parameters:**
 
-| Parameter | Type | Description |
-|---|---|---|
-| `id` | `guid` | User unique identifier |
+| Parameter | Type   | Description            |
+| --------- | ------ | ---------------------- |
+| `id`      | `guid` | User unique identifier |
 
 **Response:** `200 OK` — `UserResponse`
 
 **Errors:**
+
 - `403` — User belongs to a different tenant
 - `404` — User not found
 
@@ -435,18 +442,18 @@ Get a user by ID (must be in the caller's tenant).
 
 ### UserResponse
 
-| Field | Type | Nullable | Description |
-|---|---|---|---|
-| `id` | `guid` | No | User unique identifier |
-| `tenantId` | `guid` | No | Tenant ID |
-| `email` | `string` | No | Email address |
-| `firstName` | `string` | No | First name |
-| `lastName` | `string` | No | Last name |
-| `isActive` | `boolean` | No | Active status |
-| `roles` | `string[]` | No | Assigned role names |
-| `organizationId` | `guid` | Yes | Primary organization ID |
-| `orgType` | `string` | Yes | Organization type code |
-| `productRoles` | `string[]` | Yes | Product-scoped role codes |
+| Field            | Type       | Nullable | Description               |
+| ---------------- | ---------- | -------- | ------------------------- |
+| `id`             | `guid`     | No       | User unique identifier    |
+| `tenantId`       | `guid`     | No       | Tenant ID                 |
+| `email`          | `string`   | No       | Email address             |
+| `firstName`      | `string`   | No       | First name                |
+| `lastName`       | `string`   | No       | Last name                 |
+| `isActive`       | `boolean`  | No       | Active status             |
+| `roles`          | `string[]` | No       | Assigned role names       |
+| `organizationId` | `guid`     | Yes      | Primary organization ID   |
+| `orgType`        | `string`   | Yes      | Organization type code    |
+| `productRoles`   | `string[]` | Yes      | Product-scoped role codes |
 
 ---
 
@@ -460,12 +467,12 @@ List all tenants.
 
 **Response:** `200 OK` — `TenantDto[]`
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Tenant unique identifier |
-| `name` | `string` | Tenant name |
-| `code` | `string` | Tenant code |
-| `isActive` | `boolean` | Active status |
+| Field      | Type      | Description              |
+| ---------- | --------- | ------------------------ |
+| `id`       | `guid`    | Tenant unique identifier |
+| `name`     | `string`  | Tenant name              |
+| `code`     | `string`  | Tenant code              |
+| `isActive` | `boolean` | Active status            |
 
 ---
 
@@ -479,13 +486,13 @@ List all active products.
 
 **Response:** `200 OK` — `ProductDto[]`
 
-| Field | Type | Nullable | Description |
-|---|---|---|---|
-| `id` | `guid` | No | Product unique identifier |
-| `name` | `string` | No | Product name |
-| `code` | `string` | No | Product code (e.g., `SYNQ_FUND`) |
-| `description` | `string` | Yes | Product description |
-| `isActive` | `boolean` | No | Active status |
+| Field         | Type      | Nullable | Description                      |
+| ------------- | --------- | -------- | -------------------------------- |
+| `id`          | `guid`    | No       | Product unique identifier        |
+| `name`        | `string`  | No       | Product name                     |
+| `code`        | `string`  | No       | Product code (e.g., `SYNQ_FUND`) |
+| `description` | `string`  | Yes      | Product description              |
+| `isActive`    | `boolean` | No       | Active status                    |
 
 ---
 
@@ -513,13 +520,13 @@ Create a new group.
 
 **Request Body: `CreateGroupRequest`**
 
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `name` | `string` | Yes | | Group name |
-| `description` | `string` | No | `null` | Group description |
-| `scopeType` | `string` | No | `Tenant` | Scope type (`Tenant`, `Product`, `Organization`) |
-| `productCode` | `string` | No | `null` | Product code for product-scoped groups |
-| `organizationId` | `guid` | No | `null` | Organization ID for org-scoped groups |
+| Field            | Type     | Required | Default  | Description                                      |
+| ---------------- | -------- | -------- | -------- | ------------------------------------------------ |
+| `name`           | `string` | Yes      |          | Group name                                       |
+| `description`    | `string` | No       | `null`   | Group description                                |
+| `scopeType`      | `string` | No       | `Tenant` | Scope type (`Tenant`, `Product`, `Organization`) |
+| `productCode`    | `string` | No       | `null`   | Product code for product-scoped groups           |
+| `organizationId` | `guid`   | No       | `null`   | Organization ID for org-scoped groups            |
 
 **Response:** `201 Created` — `GroupResponse`
 
@@ -545,10 +552,10 @@ Update a group.
 
 **Request Body: `UpdateGroupRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | `string` | Yes | Group name |
-| `description` | `string` | No | Group description |
+| Field         | Type     | Required | Description       |
+| ------------- | -------- | -------- | ----------------- |
+| `name`        | `string` | Yes      | Group name        |
+| `description` | `string` | No       | Group description |
 
 **Response:** `200 OK` — `GroupResponse`
 
@@ -568,18 +575,18 @@ Archive (soft-delete) a group.
 
 ### GroupResponse
 
-| Field | Type | Nullable | Description |
-|---|---|---|---|
-| `id` | `guid` | No | Group unique identifier |
-| `tenantId` | `guid` | No | Tenant ID |
-| `name` | `string` | No | Group name |
-| `description` | `string` | Yes | Description |
-| `status` | `string` | No | Status (`Active`, `Archived`) |
-| `scopeType` | `string` | No | Scope type (`Tenant`, `Product`, `Organization`) |
-| `productCode` | `string` | Yes | Product code (if product-scoped) |
-| `organizationId` | `guid` | Yes | Organization ID (if org-scoped) |
-| `createdAtUtc` | `datetime` | No | Creation timestamp |
-| `updatedAtUtc` | `datetime` | No | Last update timestamp |
+| Field            | Type       | Nullable | Description                                      |
+| ---------------- | ---------- | -------- | ------------------------------------------------ |
+| `id`             | `guid`     | No       | Group unique identifier                          |
+| `tenantId`       | `guid`     | No       | Tenant ID                                        |
+| `name`           | `string`   | No       | Group name                                       |
+| `description`    | `string`   | Yes      | Description                                      |
+| `status`         | `string`   | No       | Status (`Active`, `Archived`)                    |
+| `scopeType`      | `string`   | No       | Scope type (`Tenant`, `Product`, `Organization`) |
+| `productCode`    | `string`   | Yes      | Product code (if product-scoped)                 |
+| `organizationId` | `guid`     | Yes      | Organization ID (if org-scoped)                  |
+| `createdAtUtc`   | `datetime` | No       | Creation timestamp                               |
+| `updatedAtUtc`   | `datetime` | No       | Last update timestamp                            |
 
 ---
 
@@ -593,15 +600,15 @@ List members of a group.
 
 **Response:** `200 OK` — Array of membership objects
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Membership ID |
-| `tenantId` | `guid` | Tenant ID |
-| `groupId` | `guid` | Group ID |
-| `userId` | `guid` | User ID |
-| `membershipStatus` | `string` | Status (`Active`, `Removed`) |
-| `addedAtUtc` | `datetime` | When the member was added |
-| `removedAtUtc` | `datetime` | When the member was removed (null if active) |
+| Field              | Type       | Description                                  |
+| ------------------ | ---------- | -------------------------------------------- |
+| `id`               | `guid`     | Membership ID                                |
+| `tenantId`         | `guid`     | Tenant ID                                    |
+| `groupId`          | `guid`     | Group ID                                     |
+| `userId`           | `guid`     | User ID                                      |
+| `membershipStatus` | `string`   | Status (`Active`, `Removed`)                 |
+| `addedAtUtc`       | `datetime` | When the member was added                    |
+| `removedAtUtc`     | `datetime` | When the member was removed (null if active) |
 
 ---
 
@@ -613,9 +620,9 @@ Add a member to a group.
 
 **Request Body: `AddMemberRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `userId` | `guid` | Yes | User ID to add |
+| Field    | Type   | Required | Description    |
+| -------- | ------ | -------- | -------------- |
+| `userId` | `guid` | Yes      | User ID to add |
 
 **Response:** `201 Created` — Membership object
 
@@ -653,14 +660,14 @@ List products granted to a group.
 
 **Response:** `200 OK` — Array of group product access objects
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Access record ID |
-| `tenantId` | `guid` | Tenant ID |
-| `groupId` | `guid` | Group ID |
-| `productCode` | `string` | Product code |
-| `accessStatus` | `string` | Status (`Active`, `Revoked`) |
-| `grantedAtUtc` | `datetime` | When access was granted |
+| Field          | Type       | Description                              |
+| -------------- | ---------- | ---------------------------------------- |
+| `id`           | `guid`     | Access record ID                         |
+| `tenantId`     | `guid`     | Tenant ID                                |
+| `groupId`      | `guid`     | Group ID                                 |
+| `productCode`  | `string`   | Product code                             |
+| `accessStatus` | `string`   | Status (`Active`, `Revoked`)             |
+| `grantedAtUtc` | `datetime` | When access was granted                  |
 | `revokedAtUtc` | `datetime` | When access was revoked (null if active) |
 
 ---
@@ -695,17 +702,17 @@ List roles assigned to a group.
 
 **Response:** `200 OK` — Array of group role assignment objects
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Assignment ID |
-| `tenantId` | `guid` | Tenant ID |
-| `groupId` | `guid` | Group ID |
-| `roleCode` | `string` | Role code |
-| `productCode` | `string` | Product code (null if global) |
-| `organizationId` | `guid` | Organization scope (null if unscoped) |
-| `assignmentStatus` | `string` | Status (`Active`, `Removed`) |
-| `assignedAtUtc` | `datetime` | When the role was assigned |
-| `removedAtUtc` | `datetime` | When the role was removed (null if active) |
+| Field              | Type       | Description                                |
+| ------------------ | ---------- | ------------------------------------------ |
+| `id`               | `guid`     | Assignment ID                              |
+| `tenantId`         | `guid`     | Tenant ID                                  |
+| `groupId`          | `guid`     | Group ID                                   |
+| `roleCode`         | `string`   | Role code                                  |
+| `productCode`      | `string`   | Product code (null if global)              |
+| `organizationId`   | `guid`     | Organization scope (null if unscoped)      |
+| `assignmentStatus` | `string`   | Status (`Active`, `Removed`)               |
+| `assignedAtUtc`    | `datetime` | When the role was assigned                 |
+| `removedAtUtc`     | `datetime` | When the role was removed (null if active) |
 
 ---
 
@@ -717,11 +724,11 @@ Assign a role to a group.
 
 **Request Body: `AssignGroupRoleRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `roleCode` | `string` | Yes | Role code to assign |
-| `productCode` | `string` | No | Product scope |
-| `organizationId` | `guid` | No | Organization scope |
+| Field            | Type     | Required | Description         |
+| ---------------- | -------- | -------- | ------------------- |
+| `roleCode`       | `string` | Yes      | Role code to assign |
+| `productCode`    | `string` | No       | Product scope       |
+| `organizationId` | `guid`   | No       | Organization scope  |
 
 **Response:** `201 Created` — Role assignment object
 
@@ -753,16 +760,16 @@ List product entitlements for a tenant.
 
 **Response:** `200 OK` — Array of tenant product entitlements
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Entitlement ID |
-| `tenantId` | `guid` | Tenant ID |
-| `productCode` | `string` | Product code |
-| `status` | `string` | Status (`Active`, `Disabled`) |
-| `enabledAtUtc` | `datetime` | When enabled |
+| Field           | Type       | Description                    |
+| --------------- | ---------- | ------------------------------ |
+| `id`            | `guid`     | Entitlement ID                 |
+| `tenantId`      | `guid`     | Tenant ID                      |
+| `productCode`   | `string`   | Product code                   |
+| `status`        | `string`   | Status (`Active`, `Disabled`)  |
+| `enabledAtUtc`  | `datetime` | When enabled                   |
 | `disabledAtUtc` | `datetime` | When disabled (null if active) |
-| `createdAtUtc` | `datetime` | Creation timestamp |
-| `updatedAtUtc` | `datetime` | Last update timestamp |
+| `createdAtUtc`  | `datetime` | Creation timestamp             |
+| `updatedAtUtc`  | `datetime` | Last update timestamp          |
 
 ---
 
@@ -798,18 +805,18 @@ List product access records for a user.
 
 **Response:** `200 OK` — Array of user product access objects
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Access record ID |
-| `tenantId` | `guid` | Tenant ID |
-| `userId` | `guid` | User ID |
-| `productCode` | `string` | Product code |
-| `accessStatus` | `string` | Status (`Active`, `Revoked`) |
-| `sourceType` | `string` | How access was granted |
-| `grantedAtUtc` | `datetime` | When granted |
+| Field          | Type       | Description                   |
+| -------------- | ---------- | ----------------------------- |
+| `id`           | `guid`     | Access record ID              |
+| `tenantId`     | `guid`     | Tenant ID                     |
+| `userId`       | `guid`     | User ID                       |
+| `productCode`  | `string`   | Product code                  |
+| `accessStatus` | `string`   | Status (`Active`, `Revoked`)  |
+| `sourceType`   | `string`   | How access was granted        |
+| `grantedAtUtc` | `datetime` | When granted                  |
 | `revokedAtUtc` | `datetime` | When revoked (null if active) |
-| `createdAtUtc` | `datetime` | Creation timestamp |
-| `updatedAtUtc` | `datetime` | Last update timestamp |
+| `createdAtUtc` | `datetime` | Creation timestamp            |
+| `updatedAtUtc` | `datetime` | Last update timestamp         |
 
 ---
 
@@ -843,20 +850,20 @@ List role assignments for a user.
 
 **Response:** `200 OK` — Array of user role assignment objects
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Assignment ID |
-| `tenantId` | `guid` | Tenant ID |
-| `userId` | `guid` | User ID |
-| `roleCode` | `string` | Role code |
-| `productCode` | `string` | Product scope (null if unscoped) |
-| `organizationId` | `guid` | Organization scope (null if unscoped) |
-| `assignmentStatus` | `string` | Status (`Active`, `Removed`) |
-| `sourceType` | `string` | How the role was assigned |
-| `assignedAtUtc` | `datetime` | When assigned |
-| `removedAtUtc` | `datetime` | When removed (null if active) |
-| `createdAtUtc` | `datetime` | Creation timestamp |
-| `updatedAtUtc` | `datetime` | Last update timestamp |
+| Field              | Type       | Description                           |
+| ------------------ | ---------- | ------------------------------------- |
+| `id`               | `guid`     | Assignment ID                         |
+| `tenantId`         | `guid`     | Tenant ID                             |
+| `userId`           | `guid`     | User ID                               |
+| `roleCode`         | `string`   | Role code                             |
+| `productCode`      | `string`   | Product scope (null if unscoped)      |
+| `organizationId`   | `guid`     | Organization scope (null if unscoped) |
+| `assignmentStatus` | `string`   | Status (`Active`, `Removed`)          |
+| `sourceType`       | `string`   | How the role was assigned             |
+| `assignedAtUtc`    | `datetime` | When assigned                         |
+| `removedAtUtc`     | `datetime` | When removed (null if active)         |
+| `createdAtUtc`     | `datetime` | Creation timestamp                    |
+| `updatedAtUtc`     | `datetime` | Last update timestamp                 |
 
 ---
 
@@ -868,11 +875,11 @@ Assign a role to a user.
 
 **Request Body: `AssignRoleRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `roleCode` | `string` | Yes | Role code to assign |
-| `productCode` | `string` | No | Product scope |
-| `organizationId` | `guid` | No | Organization scope |
+| Field            | Type     | Required | Description         |
+| ---------------- | -------- | -------- | ------------------- |
+| `roleCode`       | `string` | Yes      | Role code to assign |
+| `productCode`    | `string` | No       | Product scope       |
+| `organizationId` | `guid`   | No       | Organization scope  |
 
 **Response:** `201 Created` — Role assignment object
 
@@ -898,11 +905,11 @@ Get a complete access snapshot for a user showing tenant products, user products
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
+| Field            | Type    | Description                       |
+| ---------------- | ------- | --------------------------------- |
 | `tenantProducts` | `array` | Tenant-level product entitlements |
-| `userProducts` | `array` | User-level product access records |
-| `userRoles` | `array` | User role assignments |
+| `userProducts`   | `array` | User-level product access records |
+| `userRoles`      | `array` | User role assignments             |
 
 ---
 
@@ -915,21 +922,22 @@ Resolve tenant branding for the current request context. Used by the login page 
 **Auth:** Anonymous
 
 **Tenant Resolution Priority:**
+
 1. `X-Tenant-Code` request header (dev override / Next.js BFF)
 2. `Host` / `X-Forwarded-Host` header — subdomain-based (production)
 
 **Response:** `200 OK` — `TenantBrandingResponse`
 
-| Field | Type | Nullable | Description |
-|---|---|---|---|
-| `tenantId` | `string` | No | Tenant ID (empty string if unresolved) |
-| `tenantCode` | `string` | No | Tenant code (empty string if unresolved) |
-| `displayName` | `string` | No | Display name (defaults to `LegalSynq`) |
-| `logoUrl` | `string` | Yes | Logo URL (reserved for future use) |
-| `logoDocumentId` | `string` | Yes | Logo document ID for authenticated proxy |
-| `logoWhiteDocumentId` | `string` | Yes | White/reversed logo document ID |
-| `primaryColor` | `string` | Yes | Primary brand color (Phase 2) |
-| `faviconUrl` | `string` | Yes | Favicon URL (Phase 2) |
+| Field                 | Type     | Nullable | Description                              |
+| --------------------- | -------- | -------- | ---------------------------------------- |
+| `tenantId`            | `string` | No       | Tenant ID (empty string if unresolved)   |
+| `tenantCode`          | `string` | No       | Tenant code (empty string if unresolved) |
+| `displayName`         | `string` | No       | Display name (defaults to `LegalSynq`)   |
+| `logoUrl`             | `string` | Yes      | Logo URL (reserved for future use)       |
+| `logoDocumentId`      | `string` | Yes      | Logo document ID for authenticated proxy |
+| `logoWhiteDocumentId` | `string` | Yes      | White/reversed logo document ID          |
+| `primaryColor`        | `string` | Yes      | Primary brand color (Phase 2)            |
+| `faviconUrl`          | `string` | Yes      | Favicon URL (Phase 2)                    |
 
 ---
 
@@ -949,11 +957,11 @@ List tenants with pagination and search.
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `page` | `integer` | No | `1` | Page number |
-| `pageSize` | `integer` | No | `20` | Items per page |
-| `search` | `string` | No | `""` | Search by name or code |
+| Parameter  | Type      | Required | Default | Description            |
+| ---------- | --------- | -------- | ------- | ---------------------- |
+| `page`     | `integer` | No       | `1`     | Page number            |
+| `pageSize` | `integer` | No       | `20`    | Items per page         |
+| `search`   | `string`  | No       | `""`    | Search by name or code |
 
 **Response:** `200 OK` — `PaginatedResult` with tenant summary objects
 
@@ -965,9 +973,9 @@ Get detailed tenant information including users, organizations, product entitlem
 
 **Path Parameters:**
 
-| Parameter | Type | Description |
-|---|---|---|
-| `id` | `guid` | Tenant unique identifier |
+| Parameter | Type   | Description              |
+| --------- | ------ | ------------------------ |
+| `id`      | `guid` | Tenant unique identifier |
 
 **Response:** `200 OK` — Detailed tenant object
 
@@ -981,34 +989,35 @@ Create a new tenant with a default admin user in a single atomic transaction.
 
 **Request Body: `CreateTenantRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | `string` | Yes | Tenant display name |
-| `code` | `string` | Yes | Unique tenant code (2–12 alphanumeric, uppercased) |
-| `adminEmail` | `string` | Yes | Admin user email |
-| `adminFirstName` | `string` | Yes | Admin user first name |
-| `adminLastName` | `string` | Yes | Admin user last name |
-| `orgType` | `string` | No | Organization type (`PROVIDER`, `FUNDER`, `LIEN_OWNER`, or default `LAW_FIRM`) |
-| `preferredSubdomain` | `string` | No | Preferred subdomain for DNS provisioning |
-| `products` | `string[]` | No | Product codes to enable |
+| Field                | Type       | Required | Description                                                                   |
+| -------------------- | ---------- | -------- | ----------------------------------------------------------------------------- |
+| `name`               | `string`   | Yes      | Tenant display name                                                           |
+| `code`               | `string`   | Yes      | Unique tenant code (2–12 alphanumeric, uppercased)                            |
+| `adminEmail`         | `string`   | Yes      | Admin user email                                                              |
+| `adminFirstName`     | `string`   | Yes      | Admin user first name                                                         |
+| `adminLastName`      | `string`   | Yes      | Admin user last name                                                          |
+| `orgType`            | `string`   | No       | Organization type (`PROVIDER`, `FUNDER`, `LIEN_OWNER`, or default `LAW_FIRM`) |
+| `preferredSubdomain` | `string`   | No       | Preferred subdomain for DNS provisioning                                      |
+| `products`           | `string[]` | No       | Product codes to enable                                                       |
 
 **Response:** `201 Created`
 
-| Field | Type | Description |
-|---|---|---|
-| `tenantId` | `guid` | New tenant ID |
-| `displayName` | `string` | Tenant name |
-| `code` | `string` | Tenant code |
-| `status` | `string` | `Active` |
-| `adminUserId` | `guid` | Admin user ID |
-| `adminEmail` | `string` | Admin email |
-| `temporaryPassword` | `string` | One-time temporary password |
-| `subdomain` | `string` | Assigned subdomain |
-| `provisioningStatus` | `string` | DNS provisioning status |
-| `hostname` | `string` | Full hostname |
-| `productsProvisioned` | `array` | Products provisioned |
+| Field                 | Type     | Description                 |
+| --------------------- | -------- | --------------------------- |
+| `tenantId`            | `guid`   | New tenant ID               |
+| `displayName`         | `string` | Tenant name                 |
+| `code`                | `string` | Tenant code                 |
+| `status`              | `string` | `Active`                    |
+| `adminUserId`         | `guid`   | Admin user ID               |
+| `adminEmail`          | `string` | Admin email                 |
+| `temporaryPassword`   | `string` | One-time temporary password |
+| `subdomain`           | `string` | Assigned subdomain          |
+| `provisioningStatus`  | `string` | DNS provisioning status     |
+| `hostname`            | `string` | Full hostname               |
+| `productsProvisioned` | `array`  | Products provisioned        |
 
 **Errors:**
+
 - `400` — Validation failure
 - `409` — Duplicate tenant code or admin email
 
@@ -1020,9 +1029,9 @@ Update a product entitlement for a tenant (enable or disable).
 
 **Request Body: `EntitlementRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `enabled` | `boolean` | Yes | Whether the product is enabled |
+| Field     | Type      | Required | Description                    |
+| --------- | --------- | -------- | ------------------------------ |
+| `enabled` | `boolean` | Yes      | Whether the product is enabled |
 
 **Response:** `200 OK` — Entitlement status with provisioning result
 
@@ -1034,9 +1043,9 @@ Update tenant session timeout settings.
 
 **Request Body: `SessionSettingsRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `sessionTimeoutMinutes` | `integer` | No | Session timeout in minutes |
+| Field                   | Type      | Required | Description                |
+| ----------------------- | --------- | -------- | -------------------------- |
+| `sessionTimeoutMinutes` | `integer` | No       | Session timeout in minutes |
 
 **Response:** `200 OK`
 
@@ -1048,9 +1057,9 @@ Set the tenant's logo document ID.
 
 **Request Body:**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `documentId` | `string` | Yes | UUID of the uploaded logo document |
+| Field        | Type     | Required | Description                        |
+| ------------ | -------- | -------- | ---------------------------------- |
+| `documentId` | `string` | Yes      | UUID of the uploaded logo document |
 
 **Response:** `200 OK`
 
@@ -1070,9 +1079,9 @@ Set the tenant's white/reversed logo document ID.
 
 **Request Body:**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `documentId` | `string` | Yes | UUID of the uploaded logo document |
+| Field        | Type     | Required | Description                        |
+| ------------ | -------- | -------- | ---------------------------------- |
+| `documentId` | `string` | Yes      | UUID of the uploaded logo document |
 
 **Response:** `200 OK`
 
@@ -1092,12 +1101,12 @@ Retry DNS provisioning for a tenant whose provisioning previously failed.
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `success` | `boolean` | Whether provisioning succeeded |
-| `provisioningStatus` | `string` | Current provisioning status |
-| `hostname` | `string` | Assigned hostname (null if failed) |
-| `error` | `string` | Error message (null if succeeded) |
+| Field                | Type      | Description                        |
+| -------------------- | --------- | ---------------------------------- |
+| `success`            | `boolean` | Whether provisioning succeeded     |
+| `provisioningStatus` | `string`  | Current provisioning status        |
+| `hostname`           | `string`  | Assigned hostname (null if failed) |
+| `error`              | `string`  | Error message (null if succeeded)  |
 
 ---
 
@@ -1107,17 +1116,17 @@ Retry DNS verification for a tenant whose verification previously failed.
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `success` | `boolean` | Whether verification succeeded |
-| `provisioningStatus` | `string` | Current provisioning status |
-| `hostname` | `string` | Hostname |
-| `error` | `string` | Error message (null if succeeded) |
-| `failureStage` | `string` | Stage where failure occurred |
-| `attemptNumber` | `integer` | Attempt count |
-| `stillRetrying` | `boolean` | Whether retries remain |
-| `exhausted` | `boolean` | Whether all retries are exhausted |
-| `nextRetryAtUtc` | `datetime` | Next scheduled retry (null if exhausted) |
+| Field                | Type       | Description                              |
+| -------------------- | ---------- | ---------------------------------------- |
+| `success`            | `boolean`  | Whether verification succeeded           |
+| `provisioningStatus` | `string`   | Current provisioning status              |
+| `hostname`           | `string`   | Hostname                                 |
+| `error`              | `string`   | Error message (null if succeeded)        |
+| `failureStage`       | `string`   | Stage where failure occurred             |
+| `attemptNumber`      | `integer`  | Attempt count                            |
+| `stillRetrying`      | `boolean`  | Whether retries remain                   |
+| `exhausted`          | `boolean`  | Whether all retries are exhausted        |
+| `nextRetryAtUtc`     | `datetime` | Next scheduled retry (null if exhausted) |
 
 ---
 
@@ -1172,28 +1181,29 @@ List users belonging to a tenant with pagination and search.
 
 **Path Parameters:**
 
-| Parameter | Type | Description |
-|---|---|---|
+| Parameter  | Type   | Description              |
+| ---------- | ------ | ------------------------ |
 | `tenantId` | `guid` | Tenant unique identifier |
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `page` | `integer` | No | `1` | Page number |
-| `pageSize` | `integer` | No | `20` | Items per page |
-| `search` | `string` | No | `""` | Search by email, first name, or last name |
+| Parameter  | Type      | Required | Default | Description                               |
+| ---------- | --------- | -------- | ------- | ----------------------------------------- |
+| `page`     | `integer` | No       | `1`     | Page number                               |
+| `pageSize` | `integer` | No       | `20`    | Items per page                            |
+| `search`   | `string`  | No       | `""`    | Search by email, first name, or last name |
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `items` | `array` | User summaries with `userId`, `email`, `firstName`, `lastName`, `displayName`, `userType`, `isActive`, `tenantId`, `roles`, `createdAtUtc`, `updatedAtUtc`, `lastLoginAtUtc` |
-| `totalCount` | `integer` | Total matching users |
-| `page` | `integer` | Current page |
-| `pageSize` | `integer` | Page size |
+| Field        | Type      | Description                                                                                                                                                                  |
+| ------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `items`      | `array`   | User summaries with `userId`, `email`, `firstName`, `lastName`, `displayName`, `userType`, `isActive`, `tenantId`, `roles`, `createdAtUtc`, `updatedAtUtc`, `lastLoginAtUtc` |
+| `totalCount` | `integer` | Total matching users                                                                                                                                                         |
+| `page`       | `integer` | Current page                                                                                                                                                                 |
+| `pageSize`   | `integer` | Page size                                                                                                                                                                    |
 
 **Errors:**
+
 - `403` — Cross-tenant access attempt
 - `404` — Tenant not found
 
@@ -1207,31 +1217,32 @@ Verify a user belongs to a tenant and optionally assign a Tenant-scoped role. Sa
 
 **Path Parameters:**
 
-| Parameter | Type | Description |
-|---|---|---|
+| Parameter  | Type   | Description   |
+| ---------- | ------ | ------------- |
 | `tenantId` | `guid` | Target tenant |
 
 **Request Body: `AssignUserToTenantRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `userId` | `guid` | Yes | User to assign |
-| `roleId` | `guid` | No | Tenant-scoped role ID to assign |
-| `roleKey` | `string` | No | Tenant-scoped role name (used if `roleId` not provided) |
+| Field     | Type     | Required | Description                                             |
+| --------- | -------- | -------- | ------------------------------------------------------- |
+| `userId`  | `guid`   | Yes      | User to assign                                          |
+| `roleId`  | `guid`   | No       | Tenant-scoped role ID to assign                         |
+| `roleKey` | `string` | No       | Tenant-scoped role name (used if `roleId` not provided) |
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `userId` | `guid` | User ID |
-| `tenantId` | `guid` | Tenant ID |
-| `email` | `string` | User email |
-| `firstName` | `string` | First name |
-| `lastName` | `string` | Last name |
-| `isActive` | `boolean` | Active status |
-| `roles` | `array` | Active tenant-scoped role assignments |
+| Field       | Type      | Description                           |
+| ----------- | --------- | ------------------------------------- |
+| `userId`    | `guid`    | User ID                               |
+| `tenantId`  | `guid`    | Tenant ID                             |
+| `email`     | `string`  | User email                            |
+| `firstName` | `string`  | First name                            |
+| `lastName`  | `string`  | Last name                             |
+| `isActive`  | `boolean` | Active status                         |
+| `roles`     | `array`   | Active tenant-scoped role assignments |
 
 **Errors:**
+
 - `403` — Cross-tenant access
 - `404` — Tenant or user not found
 - `409` — `USER_IN_DIFFERENT_TENANT` — user belongs to a different tenant
@@ -1244,14 +1255,15 @@ Soft-remove a user from a tenant by revoking all their active Tenant-scoped role
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `message` | `string` | Result summary |
-| `userId` | `guid` | User ID |
-| `tenantId` | `guid` | Tenant ID |
+| Field          | Type      | Description                        |
+| -------------- | --------- | ---------------------------------- |
+| `message`      | `string`  | Result summary                     |
+| `userId`       | `guid`    | User ID                            |
+| `tenantId`     | `guid`    | Tenant ID                          |
 | `revokedCount` | `integer` | Number of role assignments revoked |
 
 **Errors:**
+
 - `403` — Cross-tenant access
 - `404` — Tenant or user not found
 
@@ -1263,21 +1275,22 @@ Assign a Tenant-scoped role to a specific user within a tenant. Idempotent.
 
 **Path Parameters:**
 
-| Parameter | Type | Description |
-|---|---|---|
-| `tenantId` | `guid` | Tenant ID |
-| `userId` | `guid` | User ID |
+| Parameter  | Type   | Description |
+| ---------- | ------ | ----------- |
+| `tenantId` | `guid` | Tenant ID   |
+| `userId`   | `guid` | User ID     |
 
 **Request Body:**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `roleId` | `guid` | No | Role ID to assign |
-| `roleKey` | `string` | No | Role name to assign (used if `roleId` not provided) |
+| Field     | Type     | Required | Description                                         |
+| --------- | -------- | -------- | --------------------------------------------------- |
+| `roleId`  | `guid`   | No       | Role ID to assign                                   |
+| `roleKey` | `string` | No       | Role name to assign (used if `roleId` not provided) |
 
 **Response:** `200 OK` — Current tenant role assignments for the user
 
 **Errors:**
+
 - `403` — Cross-tenant access
 - `404` — Tenant, user, or role not found
 - `400` — Role is not Tenant-scoped
@@ -1291,6 +1304,7 @@ Revoke a specific Tenant-scoped role assignment from a user.
 **Response:** `204 No Content`
 
 **Errors:**
+
 - `403` — Cross-tenant access
 - `404` — Assignment not found
 
@@ -1304,17 +1318,17 @@ Provision an infrastructure subdomain for a service.
 
 **Request Body: `InfraSubdomainRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `subdomain` | `string` | Yes | Subdomain to provision |
+| Field       | Type     | Required | Description            |
+| ----------- | -------- | -------- | ---------------------- |
+| `subdomain` | `string` | Yes      | Subdomain to provision |
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `success` | `boolean` | Whether provisioning succeeded |
-| `hostname` | `string` | Full hostname |
-| `subdomain` | `string` | Subdomain slug |
+| Field       | Type      | Description                    |
+| ----------- | --------- | ------------------------------ |
+| `success`   | `boolean` | Whether provisioning succeeded |
+| `hostname`  | `string`  | Full hostname                  |
+| `subdomain` | `string`  | Subdomain slug                 |
 
 **Error:** `502` — DNS provisioning failed
 
@@ -1328,13 +1342,13 @@ List users with pagination, search, and filters.
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `page` | `integer` | No | `1` | Page number |
-| `pageSize` | `integer` | No | `20` | Items per page |
-| `search` | `string` | No | `""` | Search by email, first name, or last name |
-| `tenantId` | `guid` | No | | Filter by tenant (PlatformAdmin only) |
-| `status` | `string` | No | | Filter by status: `active`, `inactive`, `invited` |
+| Parameter  | Type      | Required | Default | Description                                       |
+| ---------- | --------- | -------- | ------- | ------------------------------------------------- |
+| `page`     | `integer` | No       | `1`     | Page number                                       |
+| `pageSize` | `integer` | No       | `20`    | Items per page                                    |
+| `search`   | `string`  | No       | `""`    | Search by email, first name, or last name         |
+| `tenantId` | `guid`    | No       |         | Filter by tenant (PlatformAdmin only)             |
+| `status`   | `string`  | No       |         | Filter by status: `active`, `inactive`, `invited` |
 
 **Response:** `200 OK` — `PaginatedResult` with user summary objects
 
@@ -1356,11 +1370,11 @@ Get audit trail entries for a user.
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `page` | `integer` | No | `1` | Page number |
-| `pageSize` | `integer` | No | `20` | Items per page (max 100) |
-| `category` | `string` | No | `""` | Filter by entity type |
+| Parameter  | Type      | Required | Default | Description              |
+| ---------- | --------- | -------- | ------- | ------------------------ |
+| `page`     | `integer` | No       | `1`     | Page number              |
+| `pageSize` | `integer` | No       | `20`    | Items per page (max 100) |
+| `category` | `string`  | No       | `""`    | Filter by entity type    |
 
 **Response:** `200 OK` — `PaginatedResult` with audit log entries
 
@@ -1390,24 +1404,25 @@ Create a new user and send an invitation.
 
 **Request Body: `InviteUserRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `tenantId` | `guid` | Yes | Tenant to invite user into |
-| `email` | `string` | Yes | User email |
-| `firstName` | `string` | Yes | First name |
-| `lastName` | `string` | Yes | Last name |
-| `roleId` | `guid` | No | Initial role to assign |
-| `invitedByUserId` | `guid` | No | Admin who sent the invite |
+| Field             | Type     | Required | Description                |
+| ----------------- | -------- | -------- | -------------------------- |
+| `tenantId`        | `guid`   | Yes      | Tenant to invite user into |
+| `email`           | `string` | Yes      | User email                 |
+| `firstName`       | `string` | Yes      | First name                 |
+| `lastName`        | `string` | Yes      | Last name                  |
+| `roleId`          | `guid`   | No       | Initial role to assign     |
+| `invitedByUserId` | `guid`   | No       | Admin who sent the invite  |
 
 **Response:** `201 Created`
 
-| Field | Type | Description |
-|---|---|---|
-| `userId` | `guid` | New user ID |
-| `invitationId` | `guid` | Invitation record ID |
-| `email` | `string` | Normalized email |
+| Field          | Type     | Description          |
+| -------------- | -------- | -------------------- |
+| `userId`       | `guid`   | New user ID          |
+| `invitationId` | `guid`   | Invitation record ID |
+| `email`        | `string` | Normalized email     |
 
 **Errors:**
+
 - `400` — Missing required fields
 - `404` — Tenant not found
 - `409` — Email already exists in tenant
@@ -1420,11 +1435,12 @@ Revoke existing invitations and create a new one for the user. Sends the new inv
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
+| Field          | Type   | Description       |
+| -------------- | ------ | ----------------- |
 | `invitationId` | `guid` | New invitation ID |
 
 **Errors:**
+
 - `404` — User not found
 - `503` — Portal URL or notifications service not configured
 
@@ -1437,6 +1453,7 @@ Revoke all pending invitations for a user without creating a new one.
 **Response:** `204 No Content`
 
 **Errors:**
+
 - `404` — User not found
 - `409` — No pending invitations found
 
@@ -1450,9 +1467,9 @@ Set or clear the admin-managed primary phone number for a user. The phone is nor
 
 **Request Body:**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `phone` | `string` | No | Phone number in any format. Pass `null` or empty string to clear. |
+| Field   | Type     | Required | Description                                                       |
+| ------- | -------- | -------- | ----------------------------------------------------------------- |
+| `phone` | `string` | No       | Phone number in any format. Pass `null` or empty string to clear. |
 
 **Response:** `200 OK`
 
@@ -1463,6 +1480,7 @@ Set or clear the admin-managed primary phone number for a user. The phone is nor
 `phone` is `null` if cleared.
 
 **Errors:**
+
 - `400` — Invalid phone number format
 - `404` — User not found
 
@@ -1476,23 +1494,24 @@ Set or clear the admin-managed primary phone number for a user. The phone is nor
 
 **Request Body: `InvitePlatformUserRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `email` | `string` | Yes | User email |
-| `firstName` | `string` | Yes | First name |
-| `lastName` | `string` | Yes | Last name |
-| `roleId` | `guid` | No | Initial platform role to assign |
+| Field       | Type     | Required | Description                     |
+| ----------- | -------- | -------- | ------------------------------- |
+| `email`     | `string` | Yes      | User email                      |
+| `firstName` | `string` | Yes      | First name                      |
+| `lastName`  | `string` | Yes      | Last name                       |
+| `roleId`    | `guid`   | No       | Initial platform role to assign |
 
 **Response:** `201 Created`
 
-| Field | Type | Description |
-|---|---|---|
-| `userId` | `guid` | New user ID |
-| `invitationId` | `guid` | Invitation record ID |
-| `email` | `string` | Normalised email |
+| Field            | Type     | Description                                        |
+| ---------------- | -------- | -------------------------------------------------- |
+| `userId`         | `guid`   | New user ID                                        |
+| `invitationId`   | `guid`   | Invitation record ID                               |
+| `email`          | `string` | Normalised email                                   |
 | `activationLink` | `string` | Activation link (non-production environments only) |
 
 **Errors:**
+
 - `400` — Missing required fields
 - `409` — Email already exists
 - `500` — No active platform tenant found
@@ -1537,9 +1556,9 @@ Directly set a new password for a user. Invalidates all existing sessions.
 
 **Request Body: `SetPasswordRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `newPassword` | `string` | Yes | New password (minimum 8 characters) |
+| Field         | Type     | Required | Description                         |
+| ------------- | -------- | -------- | ----------------------------------- |
+| `newPassword` | `string` | Yes      | New password (minimum 8 characters) |
 
 **Response:** `200 OK`
 
@@ -1565,17 +1584,17 @@ Get security summary for a user.
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `userId` | `guid` | User ID |
-| `email` | `string` | User email |
-| `isLocked` | `boolean` | Lock status |
-| `lockedAtUtc` | `datetime` | When locked (null if not locked) |
-| `lastLoginAtUtc` | `datetime` | Last login timestamp |
-| `sessionVersion` | `integer` | Current session version |
-| `isActive` | `boolean` | Active status |
-| `hasPendingInvite` | `boolean` | Whether a pending invite exists |
-| `recentPasswordResets` | `array` | Last 5 password reset tokens |
+| Field                  | Type       | Description                      |
+| ---------------------- | ---------- | -------------------------------- |
+| `userId`               | `guid`     | User ID                          |
+| `email`                | `string`   | User email                       |
+| `isLocked`             | `boolean`  | Lock status                      |
+| `lockedAtUtc`          | `datetime` | When locked (null if not locked) |
+| `lastLoginAtUtc`       | `datetime` | Last login timestamp             |
+| `sessionVersion`       | `integer`  | Current session version          |
+| `isActive`             | `boolean`  | Active status                    |
+| `hasPendingInvite`     | `boolean`  | Whether a pending invite exists  |
+| `recentPasswordResets` | `array`    | Last 5 password reset tokens     |
 
 ---
 
@@ -1587,10 +1606,10 @@ List all roles with user counts and permission counts.
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `page` | `integer` | No | `1` | Page number |
-| `pageSize` | `integer` | No | `20` | Items per page |
+| Parameter  | Type      | Required | Default | Description    |
+| ---------- | --------- | -------- | ------- | -------------- |
+| `page`     | `integer` | No       | `1`     | Page number    |
+| `pageSize` | `integer` | No       | `20`    | Items per page |
 
 **Response:** `200 OK` — `PaginatedResult` with role objects
 
@@ -1612,18 +1631,19 @@ Assign a role to a user. Supports GLOBAL scope (default). Enforces product enabl
 
 **Request Body: `AssignRoleRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `roleId` | `guid` | Yes | Role to assign |
-| `assignedByUserId` | `guid` | No | Admin who assigned the role |
-| `scopeType` | `string` | No | Scope type (default: `GLOBAL`) |
-| `organizationId` | `guid` | No | Organization scope |
-| `productId` | `guid` | No | Product scope |
-| `organizationRelationshipId` | `guid` | No | Relationship scope |
+| Field                        | Type     | Required | Description                    |
+| ---------------------------- | -------- | -------- | ------------------------------ |
+| `roleId`                     | `guid`   | Yes      | Role to assign                 |
+| `assignedByUserId`           | `guid`   | No       | Admin who assigned the role    |
+| `scopeType`                  | `string` | No       | Scope type (default: `GLOBAL`) |
+| `organizationId`             | `guid`   | No       | Organization scope             |
+| `productId`                  | `guid`   | No       | Product scope                  |
+| `organizationRelationshipId` | `guid`   | No       | Relationship scope             |
 
 **Response:** `201 Created` — Assignment details
 
 **Errors:**
+
 - `400` — Scope validation error, product not enabled, or org type mismatch
 - `404` — User or role not found
 - `409` — Duplicate assignment
@@ -1644,11 +1664,11 @@ Get all roles with eligibility metadata for a specific user. Includes org-type a
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `items` | `array` | Roles with `assignable`, `disabledReason`, `isAssigned` flags |
-| `userOrgType` | `string` | User's primary organization type |
-| `tenantEnabledProducts` | `integer` | Count of enabled products |
+| Field                   | Type      | Description                                                   |
+| ----------------------- | --------- | ------------------------------------------------------------- |
+| `items`                 | `array`   | Roles with `assignable`, `disabledReason`, `isAssigned` flags |
+| `userOrgType`           | `string`  | User's primary organization type                              |
+| `tenantEnabledProducts` | `integer` | Count of enabled products                                     |
 
 ---
 
@@ -1658,12 +1678,12 @@ Get all active scoped role assignments for a user grouped by scope type.
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `userId` | `guid` | User ID |
-| `totalActive` | `integer` | Total active assignments |
-| `assignments` | `array` | Assignment details with scope information |
-| `byScope` | `object` | Count of assignments per scope type |
+| Field         | Type      | Description                               |
+| ------------- | --------- | ----------------------------------------- |
+| `userId`      | `guid`    | User ID                                   |
+| `totalActive` | `integer` | Total active assignments                  |
+| `assignments` | `array`   | Assignment details with scope information |
+| `byScope`     | `object`  | Count of assignments per scope type       |
 
 ---
 
@@ -1675,9 +1695,9 @@ List active organizations, optionally filtered by tenant.
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `tenantId` | `guid` | No | | Filter by tenant ID |
+| Parameter  | Type   | Required | Default | Description         |
+| ---------- | ------ | -------- | ------- | ------------------- |
+| `tenantId` | `guid` | No       |         | Filter by tenant ID |
 
 **Response:** `200 OK`
 
@@ -1689,18 +1709,18 @@ Create a minimal PROVIDER organization for a CareConnect provider. Idempotent.
 
 **Request Body: `CreateProviderOrgRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `tenantId` | `guid` | Yes | Tenant ID |
-| `providerCcId` | `guid` | Yes | CareConnect provider ID |
-| `providerName` | `string` | Yes | Provider display name |
+| Field          | Type     | Required | Description             |
+| -------------- | -------- | -------- | ----------------------- |
+| `tenantId`     | `guid`   | Yes      | Tenant ID               |
+| `providerCcId` | `guid`   | Yes      | CareConnect provider ID |
+| `providerName` | `string` | Yes      | Provider display name   |
 
 **Response:** `201 Created` (new) or `200 OK` (existing)
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Organization ID |
-| `name` | `string` | Organization name |
+| Field   | Type      | Description                   |
+| ------- | --------- | ----------------------------- |
+| `id`    | `guid`    | Organization ID               |
+| `name`  | `string`  | Organization name             |
 | `isNew` | `boolean` | Whether a new org was created |
 
 ---
@@ -1723,11 +1743,11 @@ Update an organization's name, display name, or org type.
 
 **Request Body: `UpdateOrganizationRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | `string` | No | Organization name |
-| `displayName` | `string` | No | Display name |
-| `orgType` | `string` | No | Organization type code |
+| Field         | Type     | Required | Description            |
+| ------------- | -------- | -------- | ---------------------- |
+| `name`        | `string` | No       | Organization name      |
+| `displayName` | `string` | No       | Display name           |
+| `orgType`     | `string` | No       | Organization type code |
 
 **Response:** `200 OK` — Updated organization
 
@@ -1741,21 +1761,21 @@ Update an organization's name, display name, or org type.
 
 **Request Body: `CreateLawFirmOrgRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `tenantId` | `guid` | Yes | Tenant that owns the organization |
-| `adminEmail` | `string` | Yes | Email for the default admin user |
-| `adminFirstName` | `string` | Yes | Admin first name |
-| `adminLastName` | `string` | Yes | Admin last name |
-| `orgName` | `string` | No | Organization display name (defaults to admin email prefix) |
+| Field            | Type     | Required | Description                                                |
+| ---------------- | -------- | -------- | ---------------------------------------------------------- |
+| `tenantId`       | `guid`   | Yes      | Tenant that owns the organization                          |
+| `adminEmail`     | `string` | Yes      | Email for the default admin user                           |
+| `adminFirstName` | `string` | Yes      | Admin first name                                           |
+| `adminLastName`  | `string` | Yes      | Admin last name                                            |
+| `orgName`        | `string` | No       | Organization display name (defaults to admin email prefix) |
 
 **Response:** `201 Created` (new) or `200 OK` (existing)
 
-| Field | Type | Description |
-|---|---|---|
-| `organizationId` | `guid` | Organization ID |
-| `userId` | `guid` | Admin user ID |
-| `isNew` | `boolean` | Whether a new organization was created |
+| Field            | Type      | Description                            |
+| ---------------- | --------- | -------------------------------------- |
+| `organizationId` | `guid`    | Organization ID                        |
+| `userId`         | `guid`    | Admin user ID                          |
+| `isNew`          | `boolean` | Whether a new organization was created |
 
 ---
 
@@ -1767,9 +1787,9 @@ Update the `providerMode` of an organization. Controls whether the organization 
 
 **Request Body:**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `providerMode` | `string` | Yes | `sell` or `manage` |
+| Field          | Type     | Required | Description        |
+| -------------- | -------- | -------- | ------------------ |
+| `providerMode` | `string` | Yes      | `sell` or `manage` |
 
 **Response:** `200 OK`
 
@@ -1781,6 +1801,7 @@ Update the `providerMode` of an organization. Controls whether the organization 
 ```
 
 **Errors:**
+
 - `400` — Invalid `providerMode` value
 - `403` — Not PlatformAdmin
 - `404` — Organization not found
@@ -1795,10 +1816,10 @@ List all organization types.
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `items` | `array` | Organization types with `id`, `code`, `displayName`, `description`, `isSystem`, `isActive` |
-| `totalCount` | `integer` | Total count |
+| Field        | Type      | Description                                                                                |
+| ------------ | --------- | ------------------------------------------------------------------------------------------ |
+| `items`      | `array`   | Organization types with `id`, `code`, `displayName`, `description`, `isSystem`, `isActive` |
+| `totalCount` | `integer` | Total count                                                                                |
 
 ---
 
@@ -1820,10 +1841,10 @@ List all relationship types.
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `items` | `array` | Relationship types with `id`, `code`, `displayName`, `description`, `isDirectional`, `isSystem`, `isActive` |
-| `totalCount` | `integer` | Total count |
+| Field        | Type      | Description                                                                                                 |
+| ------------ | --------- | ----------------------------------------------------------------------------------------------------------- |
+| `items`      | `array`   | Relationship types with `id`, `code`, `displayName`, `description`, `isDirectional`, `isSystem`, `isActive` |
+| `totalCount` | `integer` | Total count                                                                                                 |
 
 ---
 
@@ -1845,13 +1866,13 @@ List organization relationships with filters.
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `page` | `integer` | No | `1` | Page number |
-| `pageSize` | `integer` | No | `20` | Items per page |
-| `tenantId` | `guid` | No | | Filter by tenant |
-| `sourceOrgId` | `guid` | No | | Filter by source organization |
-| `activeOnly` | `boolean` | No | `true` | Show only active relationships |
+| Parameter     | Type      | Required | Default | Description                    |
+| ------------- | --------- | -------- | ------- | ------------------------------ |
+| `page`        | `integer` | No       | `1`     | Page number                    |
+| `pageSize`    | `integer` | No       | `20`    | Items per page                 |
+| `tenantId`    | `guid`    | No       |         | Filter by tenant               |
+| `sourceOrgId` | `guid`    | No       |         | Filter by source organization  |
+| `activeOnly`  | `boolean` | No       | `true`  | Show only active relationships |
 
 **Response:** `200 OK` — `PaginatedResult` with relationship objects
 
@@ -1873,16 +1894,17 @@ Create an organization relationship.
 
 **Request Body: `CreateOrgRelationshipRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `sourceOrganizationId` | `guid` | Yes | Source organization ID |
-| `targetOrganizationId` | `guid` | Yes | Target organization ID |
-| `relationshipTypeId` | `guid` | Yes | Relationship type ID |
-| `productId` | `guid` | No | Associated product ID |
+| Field                  | Type   | Required | Description            |
+| ---------------------- | ------ | -------- | ---------------------- |
+| `sourceOrganizationId` | `guid` | Yes      | Source organization ID |
+| `targetOrganizationId` | `guid` | Yes      | Target organization ID |
+| `relationshipTypeId`   | `guid` | Yes      | Relationship type ID   |
+| `productId`            | `guid` | No       | Associated product ID  |
 
 **Response:** `201 Created` — Relationship details
 
 **Errors:**
+
 - `404` — Source org, target org, or relationship type not found
 - `409` — Relationship already exists
 
@@ -1894,10 +1916,10 @@ Deactivate an organization relationship.
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Relationship ID |
-| `isActive` | `boolean` | `false` |
+| Field      | Type      | Description     |
+| ---------- | --------- | --------------- |
+| `id`       | `guid`    | Relationship ID |
+| `isActive` | `boolean` | `false`         |
 
 ---
 
@@ -1909,19 +1931,19 @@ List active product org-type rules (plain array, not paginated).
 
 **Response:** `200 OK` — Array of rule objects
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Rule ID |
-| `productId` | `guid` | Product ID |
-| `productCode` | `string` | Product code |
-| `productRoleId` | `guid` | Product role ID |
-| `productRoleCode` | `string` | Product role code |
-| `productRoleName` | `string` | Product role name |
-| `organizationTypeId` | `guid` | Organization type ID |
-| `organizationTypeCode` | `string` | Organization type code |
-| `organizationTypeName` | `string` | Organization type display name |
-| `isActive` | `boolean` | Active status |
-| `createdAtUtc` | `datetime` | Creation timestamp |
+| Field                  | Type       | Description                    |
+| ---------------------- | ---------- | ------------------------------ |
+| `id`                   | `guid`     | Rule ID                        |
+| `productId`            | `guid`     | Product ID                     |
+| `productCode`          | `string`   | Product code                   |
+| `productRoleId`        | `guid`     | Product role ID                |
+| `productRoleCode`      | `string`   | Product role code              |
+| `productRoleName`      | `string`   | Product role name              |
+| `organizationTypeId`   | `guid`     | Organization type ID           |
+| `organizationTypeCode` | `string`   | Organization type code         |
+| `organizationTypeName` | `string`   | Organization type display name |
+| `isActive`             | `boolean`  | Active status                  |
+| `createdAtUtc`         | `datetime` | Creation timestamp             |
 
 ---
 
@@ -1935,16 +1957,16 @@ List active product relationship-type rules (plain array, not paginated).
 
 **Response:** `200 OK` — Array of rule objects
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Rule ID |
-| `productId` | `guid` | Product ID |
-| `productCode` | `string` | Product code |
-| `relationshipTypeId` | `guid` | Relationship type ID |
-| `relationshipTypeCode` | `string` | Relationship type code |
-| `relationshipTypeName` | `string` | Relationship type display name |
-| `isActive` | `boolean` | Active status |
-| `createdAtUtc` | `datetime` | Creation timestamp |
+| Field                  | Type       | Description                    |
+| ---------------------- | ---------- | ------------------------------ |
+| `id`                   | `guid`     | Rule ID                        |
+| `productId`            | `guid`     | Product ID                     |
+| `productCode`          | `string`   | Product code                   |
+| `relationshipTypeId`   | `guid`     | Relationship type ID           |
+| `relationshipTypeCode` | `string`   | Relationship type code         |
+| `relationshipTypeName` | `string`   | Relationship type display name |
+| `isActive`             | `boolean`  | Active status                  |
+| `createdAtUtc`         | `datetime` | Creation timestamp             |
 
 ---
 
@@ -1956,23 +1978,24 @@ Assign a user to an organization.
 
 **Request Body: `AssignMembershipRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `organizationId` | `guid` | Yes | Organization to join |
-| `memberRole` | `string` | No | Member role (default: `Member`) |
-| `grantedByUserId` | `guid` | No | Admin who granted the membership |
+| Field             | Type     | Required | Description                      |
+| ----------------- | -------- | -------- | -------------------------------- |
+| `organizationId`  | `guid`   | Yes      | Organization to join             |
+| `memberRole`      | `string` | No       | Member role (default: `Member`)  |
+| `grantedByUserId` | `guid`   | No       | Admin who granted the membership |
 
 **Response:** `201 Created`
 
-| Field | Type | Description |
-|---|---|---|
-| `membershipId` | `guid` | Membership ID |
-| `userId` | `guid` | User ID |
-| `organizationId` | `guid` | Organization ID |
-| `memberRole` | `string` | Assigned member role |
-| `isPrimary` | `boolean` | Whether this is the primary membership |
+| Field            | Type      | Description                            |
+| ---------------- | --------- | -------------------------------------- |
+| `membershipId`   | `guid`    | Membership ID                          |
+| `userId`         | `guid`    | User ID                                |
+| `organizationId` | `guid`    | Organization ID                        |
+| `memberRole`     | `string`  | Assigned member role                   |
+| `isPrimary`      | `boolean` | Whether this is the primary membership |
 
 **Errors:**
+
 - `404` — User or organization not found
 - `400` — Organization not in user's tenant
 - `409` — Already a member
@@ -1994,6 +2017,7 @@ Remove a membership. Safety rules prevent removing the last membership or the pr
 **Response:** `204 No Content`
 
 **Errors:**
+
 - `404` — Membership not found
 - `409` — Cannot remove last membership or primary membership
 
@@ -2011,18 +2035,19 @@ Create an external customer user account with optional product access grants.
 
 **Request Body: `CreateExternalUserRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `tenantId` | `guid` | Yes | Tenant to create the user under |
-| `email` | `string` | Yes | User email |
-| `firstName` | `string` | Yes | First name |
-| `lastName` | `string` | Yes | Last name |
-| `isActive` | `boolean` | No | Whether to activate immediately (default: `true`) |
-| `productKeys` | `string[]` | No | Product codes to grant access to on creation |
+| Field         | Type       | Required | Description                                       |
+| ------------- | ---------- | -------- | ------------------------------------------------- |
+| `tenantId`    | `guid`     | Yes      | Tenant to create the user under                   |
+| `email`       | `string`   | Yes      | User email                                        |
+| `firstName`   | `string`   | Yes      | First name                                        |
+| `lastName`    | `string`   | Yes      | Last name                                         |
+| `isActive`    | `boolean`  | No       | Whether to activate immediately (default: `true`) |
+| `productKeys` | `string[]` | No       | Product codes to grant access to on creation      |
 
 **Response:** `201 Created` — Created user with access records
 
 **Errors:**
+
 - `409` — Email already exists
 
 ---
@@ -2033,12 +2058,12 @@ List external customer users with pagination and optional tenant filter.
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `page` | `integer` | No | `1` | Page number |
-| `pageSize` | `integer` | No | `20` | Items per page |
-| `tenantId` | `guid` | No | | Filter by tenant (PlatformAdmin only) |
-| `search` | `string` | No | `""` | Search by email or name |
+| Parameter  | Type      | Required | Default | Description                           |
+| ---------- | --------- | -------- | ------- | ------------------------------------- |
+| `page`     | `integer` | No       | `1`     | Page number                           |
+| `pageSize` | `integer` | No       | `20`    | Items per page                        |
+| `tenantId` | `guid`    | No       |         | Filter by tenant (PlatformAdmin only) |
+| `search`   | `string`  | No       | `""`    | Search by email or name               |
 
 **Response:** `200 OK` — `PaginatedResult` with external user summaries
 
@@ -2051,6 +2076,7 @@ Get an external customer user by ID.
 **Response:** `200 OK` — External user details with product access records
 
 **Errors:**
+
 - `400` — User is not an `ExternalCustomer`
 - `404` — User not found
 
@@ -2062,16 +2088,16 @@ Check whether an external customer user has active access to a specific product.
 
 **Path Parameters:**
 
-| Parameter | Type | Description |
-|---|---|---|
-| `userId` | `guid` | External user ID |
+| Parameter    | Type     | Description                        |
+| ------------ | -------- | ---------------------------------- |
+| `userId`     | `guid`   | External user ID                   |
 | `productKey` | `string` | Product code (frontend or DB form) |
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `tenantId` | `guid` | No | Override tenant scope (defaults to user's tenant) |
+| Parameter  | Type   | Required | Description                                       |
+| ---------- | ------ | -------- | ------------------------------------------------- |
+| `tenantId` | `guid` | No       | Override tenant scope (defaults to user's tenant) |
 
 **Response:** `200 OK`
 
@@ -2085,6 +2111,7 @@ Check whether an external customer user has active access to a specific product.
 ```
 
 **Errors:**
+
 - `400` — `USER_TYPE_MISMATCH` — user is not an `ExternalCustomer`; use `GET /api/admin/users/{id}/products/{productKey}/access` for non-external users
 - `404` — User or product not found
 
@@ -2098,17 +2125,17 @@ List all active permissions (capabilities) in the platform.
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `productId` | `guid` | No | | Filter by product |
-| `search` | `string` | No | `""` | Search by code, name, or description |
+| Parameter   | Type     | Required | Default | Description                          |
+| ----------- | -------- | -------- | ------- | ------------------------------------ |
+| `productId` | `guid`   | No       |         | Filter by product                    |
+| `search`    | `string` | No       | `""`    | Search by code, name, or description |
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `items` | `array` | Permissions with `id`, `code`, `name`, `description`, `category`, `productId`, `productCode`, `productName`, `isActive` |
-| `totalCount` | `integer` | Total count |
+| Field        | Type      | Description                                                                                                             |
+| ------------ | --------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `items`      | `array`   | Permissions with `id`, `code`, `name`, `description`, `category`, `productId`, `productCode`, `productName`, `isActive` |
+| `totalCount` | `integer` | Total count                                                                                                             |
 
 ---
 
@@ -2130,14 +2157,14 @@ Create a new permission.
 
 **Request Body: `CreatePermissionRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `code` | `string` | Yes | Permission code (format: `PRODUCT.resource:action`) |
-| `name` | `string` | Yes | Display name |
-| `description` | `string` | No | Description |
-| `category` | `string` | No | Category for grouping |
-| `productCode` | `string` | No | Product code (provide this or `productId`) |
-| `productId` | `guid` | No | Product ID (provide this or `productCode`) |
+| Field         | Type     | Required | Description                                         |
+| ------------- | -------- | -------- | --------------------------------------------------- |
+| `code`        | `string` | Yes      | Permission code (format: `PRODUCT.resource:action`) |
+| `name`        | `string` | Yes      | Display name                                        |
+| `description` | `string` | No       | Description                                         |
+| `category`    | `string` | No       | Category for grouping                               |
+| `productCode` | `string` | No       | Product code (provide this or `productId`)          |
+| `productId`   | `guid`   | No       | Product ID (provide this or `productCode`)          |
 
 **Response:** `201 Created` — Permission details
 
@@ -2151,11 +2178,11 @@ Update a permission's name, description, or category.
 
 **Request Body: `UpdatePermissionRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | `string` | Yes | Display name |
-| `description` | `string` | No | Description |
-| `category` | `string` | No | Category |
+| Field         | Type     | Required | Description  |
+| ------------- | -------- | -------- | ------------ |
+| `name`        | `string` | Yes      | Display name |
+| `description` | `string` | No       | Description  |
+| `category`    | `string` | No       | Category     |
 
 **Response:** `200 OK` — Updated permission
 
@@ -2181,10 +2208,10 @@ List all permissions assigned to a role.
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `items` | `array` | Permissions with assignment metadata (`assignedAtUtc`, `assignedByUserId`) |
-| `totalCount` | `integer` | Total count |
+| Field        | Type      | Description                                                                |
+| ------------ | --------- | -------------------------------------------------------------------------- |
+| `items`      | `array`   | Permissions with assignment metadata (`assignedAtUtc`, `assignedByUserId`) |
+| `totalCount` | `integer` | Total count                                                                |
 
 ---
 
@@ -2196,9 +2223,9 @@ Assign a permission to a role. Idempotent (returns 200 if already assigned).
 
 **Request Body: `AssignRolePermissionRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `permissionId` | `guid` | Yes | Permission to assign |
+| Field          | Type   | Required | Description          |
+| -------------- | ------ | -------- | -------------------- |
+| `permissionId` | `guid` | Yes      | Permission to assign |
 
 **Response:** `201 Created` or `200 OK` (if already assigned)
 
@@ -2224,11 +2251,11 @@ Get the effective (union) permissions for a user, derived from all active role a
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `items` | `array` | Permissions with `sources` array showing granting roles |
-| `totalCount` | `integer` | Total distinct permissions |
-| `roleCount` | `integer` | Number of active role assignments |
+| Field        | Type      | Description                                             |
+| ------------ | --------- | ------------------------------------------------------- |
+| `items`      | `array`   | Permissions with `sources` array showing granting roles |
+| `totalCount` | `integer` | Total distinct permissions                              |
+| `roleCount`  | `integer` | Number of active role assignments                       |
 
 ---
 
@@ -2242,21 +2269,21 @@ Comprehensive authorization debug view for a user showing all access sources.
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `userId` | `guid` | User ID |
-| `tenantId` | `guid` | Tenant ID |
-| `accessVersion` | `integer` | Access version |
-| `products` | `array` | Product access sources (direct, group) |
-| `roles` | `array` | Role sources (direct, group) |
-| `systemRoles` | `array` | System-level scoped roles |
-| `groups` | `array` | Group memberships |
-| `entitlements` | `array` | Tenant-level entitlements |
-| `productRolesFlat` | `string[]` | Flattened product role codes |
-| `tenantRoles` | `string[]` | Tenant-level role codes |
-| `permissions` | `string[]` | Effective permission codes |
-| `permissionSources` | `array` | Permission source details |
-| `policies` | `array` | ABAC policies linked to effective permissions |
+| Field               | Type       | Description                                   |
+| ------------------- | ---------- | --------------------------------------------- |
+| `userId`            | `guid`     | User ID                                       |
+| `tenantId`          | `guid`     | Tenant ID                                     |
+| `accessVersion`     | `integer`  | Access version                                |
+| `products`          | `array`    | Product access sources (direct, group)        |
+| `roles`             | `array`    | Role sources (direct, group)                  |
+| `systemRoles`       | `array`    | System-level scoped roles                     |
+| `groups`            | `array`    | Group memberships                             |
+| `entitlements`      | `array`    | Tenant-level entitlements                     |
+| `productRolesFlat`  | `string[]` | Flattened product role codes                  |
+| `tenantRoles`       | `string[]` | Tenant-level role codes                       |
+| `permissions`       | `string[]` | Effective permission codes                    |
+| `permissionSources` | `array`    | Permission source details                     |
+| `policies`          | `array`    | ABAC policies linked to effective permissions |
 
 ---
 
@@ -2270,11 +2297,11 @@ List ABAC policies.
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `productCode` | `string` | No | `""` | Filter by product |
-| `search` | `string` | No | `""` | Search by policy code or name |
-| `activeOnly` | `boolean` | No | `true` | Show only active policies |
+| Parameter     | Type      | Required | Default | Description                   |
+| ------------- | --------- | -------- | ------- | ----------------------------- |
+| `productCode` | `string`  | No       | `""`    | Filter by product             |
+| `search`      | `string`  | No       | `""`    | Search by policy code or name |
+| `activeOnly`  | `boolean` | No       | `true`  | Show only active policies     |
 
 **Response:** `200 OK`
 
@@ -2298,14 +2325,14 @@ Create a new ABAC policy.
 
 **Request Body: `CreatePolicyRequest`**
 
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `policyCode` | `string` | Yes | | Unique policy code |
-| `name` | `string` | Yes | | Display name |
-| `productCode` | `string` | Yes | | Associated product code |
-| `description` | `string` | No | `null` | Description |
-| `priority` | `integer` | No | `0` | Evaluation priority |
-| `effect` | `string` | No | `Allow` | Policy effect (`Allow` or `Deny`) |
+| Field         | Type      | Required | Default | Description                       |
+| ------------- | --------- | -------- | ------- | --------------------------------- |
+| `policyCode`  | `string`  | Yes      |         | Unique policy code                |
+| `name`        | `string`  | Yes      |         | Display name                      |
+| `productCode` | `string`  | Yes      |         | Associated product code           |
+| `description` | `string`  | No       | `null`  | Description                       |
+| `priority`    | `integer` | No       | `0`     | Evaluation priority               |
+| `effect`      | `string`  | No       | `Allow` | Policy effect (`Allow` or `Deny`) |
 
 **Response:** `201 Created` — Policy details
 
@@ -2319,12 +2346,12 @@ Update a policy.
 
 **Request Body: `UpdatePolicyRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | `string` | Yes | Display name |
-| `description` | `string` | No | Description |
-| `priority` | `integer` | Yes | Evaluation priority |
-| `effect` | `string` | No | Policy effect (`Allow` or `Deny`) |
+| Field         | Type      | Required | Description                       |
+| ------------- | --------- | -------- | --------------------------------- |
+| `name`        | `string`  | Yes      | Display name                      |
+| `description` | `string`  | No       | Description                       |
+| `priority`    | `integer` | Yes      | Evaluation priority               |
+| `effect`      | `string`  | No       | Policy effect (`Allow` or `Deny`) |
 
 **Response:** `200 OK` — Updated policy
 
@@ -2350,23 +2377,23 @@ List rules for a policy.
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `policyId` | `guid` | Policy ID |
-| `policyCode` | `string` | Policy code |
-| `rules` | `array` | Array of rule objects |
+| Field        | Type     | Description           |
+| ------------ | -------- | --------------------- |
+| `policyId`   | `guid`   | Policy ID             |
+| `policyCode` | `string` | Policy code           |
+| `rules`      | `array`  | Array of rule objects |
 
 Rule object fields:
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | `guid` | Rule ID |
-| `conditionType` | `string` | Condition type (enum) |
-| `field` | `string` | Field being evaluated |
-| `op` | `string` | Operator (enum) |
-| `value` | `string` | Comparison value |
-| `logicalGroup` | `string` | Logical group (`And` or `Or`) |
-| `createdAtUtc` | `datetime` | Creation timestamp |
+| Field           | Type       | Description                   |
+| --------------- | ---------- | ----------------------------- |
+| `id`            | `guid`     | Rule ID                       |
+| `conditionType` | `string`   | Condition type (enum)         |
+| `field`         | `string`   | Field being evaluated         |
+| `op`            | `string`   | Operator (enum)               |
+| `value`         | `string`   | Comparison value              |
+| `logicalGroup`  | `string`   | Logical group (`And` or `Or`) |
+| `createdAtUtc`  | `datetime` | Creation timestamp            |
 
 ---
 
@@ -2378,13 +2405,13 @@ Create a rule for a policy.
 
 **Request Body: `CreatePolicyRuleRequest`**
 
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `conditionType` | `string` | Yes | | Condition type |
-| `field` | `string` | Yes | | Field to evaluate (must be a supported field) |
-| `operator` | `string` | Yes | | Comparison operator |
-| `value` | `string` | Yes | | Comparison value |
-| `logicalGroup` | `string` | No | `And` | Logical group (`And` or `Or`) |
+| Field           | Type     | Required | Default | Description                                   |
+| --------------- | -------- | -------- | ------- | --------------------------------------------- |
+| `conditionType` | `string` | Yes      |         | Condition type                                |
+| `field`         | `string` | Yes      |         | Field to evaluate (must be a supported field) |
+| `operator`      | `string` | Yes      |         | Comparison operator                           |
+| `value`         | `string` | Yes      |         | Comparison value                              |
+| `logicalGroup`  | `string` | No       | `And`   | Logical group (`And` or `Or`)                 |
 
 **Response:** `201 Created` — Rule details
 
@@ -2398,13 +2425,13 @@ Update a policy rule.
 
 **Request Body: `UpdatePolicyRuleRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `conditionType` | `string` | Yes | Condition type |
-| `field` | `string` | Yes | Field to evaluate |
-| `operator` | `string` | Yes | Comparison operator |
-| `value` | `string` | Yes | Comparison value |
-| `logicalGroup` | `string` | Yes | Logical group |
+| Field           | Type     | Required | Description         |
+| --------------- | -------- | -------- | ------------------- |
+| `conditionType` | `string` | Yes      | Condition type      |
+| `field`         | `string` | Yes      | Field to evaluate   |
+| `operator`      | `string` | Yes      | Comparison operator |
+| `value`         | `string` | Yes      | Comparison value    |
+| `logicalGroup`  | `string` | Yes      | Logical group       |
 
 **Response:** `200 OK` — Updated rule
 
@@ -2428,13 +2455,13 @@ Get the supported fields, operators, condition types, logical groups, and effect
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `fields` | `string[]` | Supported field names |
-| `operators` | `string[]` | Supported operators |
+| Field            | Type       | Description               |
+| ---------------- | ---------- | ------------------------- |
+| `fields`         | `string[]` | Supported field names     |
+| `operators`      | `string[]` | Supported operators       |
 | `conditionTypes` | `string[]` | Supported condition types |
-| `logicalGroups` | `string[]` | Supported logical groups |
-| `effects` | `string[]` | Supported policy effects |
+| `logicalGroups`  | `string[]` | Supported logical groups  |
+| `effects`        | `string[]` | Supported policy effects  |
 
 ---
 
@@ -2448,10 +2475,10 @@ List permission-to-policy mappings.
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `permissionCode` | `string` | No | Filter by permission code |
-| `policyId` | `guid` | No | Filter by policy ID |
+| Parameter        | Type     | Required | Description               |
+| ---------------- | -------- | -------- | ------------------------- |
+| `permissionCode` | `string` | No       | Filter by permission code |
+| `policyId`       | `guid`   | No       | Filter by policy ID       |
 
 **Response:** `200 OK`
 
@@ -2465,14 +2492,15 @@ Create a permission-to-policy mapping. Reactivates if a deactivated mapping exis
 
 **Request Body: `CreatePermissionPolicyRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `permissionCode` | `string` | Yes | Permission code |
-| `policyId` | `guid` | Yes | Policy ID |
+| Field            | Type     | Required | Description     |
+| ---------------- | -------- | -------- | --------------- |
+| `permissionCode` | `string` | Yes      | Permission code |
+| `policyId`       | `guid`   | Yes      | Policy ID       |
 
 **Response:** `201 Created` — Mapping details
 
 **Errors:**
+
 - `400` — Policy or permission not found
 - `409` — Mapping already exists and is active
 
@@ -2498,26 +2526,26 @@ Simulate an authorization check for a user with optional draft policies.
 
 **Request Body: `SimulateAuthorizationRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `tenantId` | `guid` | Yes | Tenant ID |
-| `userId` | `guid` | Yes | User to simulate for |
-| `permissionCode` | `string` | Yes | Permission to check (format: `PRODUCT.resource:action`) |
-| `resourceContext` | `object` | No | Resource attributes for ABAC evaluation |
-| `requestContext` | `object` | No | Request attributes for ABAC evaluation |
-| `draftPolicy` | `object` | No | Draft policy to include in simulation |
-| `excludePolicyIds` | `guid[]` | No | Policies to exclude from simulation |
+| Field              | Type     | Required | Description                                             |
+| ------------------ | -------- | -------- | ------------------------------------------------------- |
+| `tenantId`         | `guid`   | Yes      | Tenant ID                                               |
+| `userId`           | `guid`   | Yes      | User to simulate for                                    |
+| `permissionCode`   | `string` | Yes      | Permission to check (format: `PRODUCT.resource:action`) |
+| `resourceContext`  | `object` | No       | Resource attributes for ABAC evaluation                 |
+| `requestContext`   | `object` | No       | Request attributes for ABAC evaluation                  |
+| `draftPolicy`      | `object` | No       | Draft policy to include in simulation                   |
+| `excludePolicyIds` | `guid[]` | No       | Policies to exclude from simulation                     |
 
 **Draft Policy object:**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `policyCode` | `string` | Yes | Policy code |
-| `name` | `string` | Yes | Policy name |
-| `description` | `string` | No | Description |
-| `priority` | `integer` | No | Priority |
-| `effect` | `string` | No | Effect (`Allow` or `Deny`) |
-| `rules` | `array` | No | Draft rules with `field`, `operator`, `value`, `logicalGroup` |
+| Field         | Type      | Required | Description                                                   |
+| ------------- | --------- | -------- | ------------------------------------------------------------- |
+| `policyCode`  | `string`  | Yes      | Policy code                                                   |
+| `name`        | `string`  | Yes      | Policy name                                                   |
+| `description` | `string`  | No       | Description                                                   |
+| `priority`    | `integer` | No       | Priority                                                      |
+| `effect`      | `string`  | No       | Effect (`Allow` or `Deny`)                                    |
+| `rules`       | `array`   | No       | Draft rules with `field`, `operator`, `value`, `logicalGroup` |
 
 **Response:** `200 OK` — Simulation result with `allowed` boolean and evaluation details
 
@@ -2531,13 +2559,13 @@ List audit log entries.
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `page` | `integer` | No | `1` | Page number |
-| `pageSize` | `integer` | No | `20` | Items per page |
-| `search` | `string` | No | `""` | Search in action, entity ID, or actor name |
-| `entityType` | `string` | No | `""` | Filter by entity type |
-| `actorType` | `string` | No | `""` | Filter by actor type |
+| Parameter    | Type      | Required | Default | Description                                |
+| ------------ | --------- | -------- | ------- | ------------------------------------------ |
+| `page`       | `integer` | No       | `1`     | Page number                                |
+| `pageSize`   | `integer` | No       | `20`    | Items per page                             |
+| `search`     | `string`  | No       | `""`    | Search in action, entity ID, or actor name |
+| `entityType` | `string`  | No       | `""`    | Filter by entity type                      |
+| `actorType`  | `string`  | No       | `""`    | Filter by actor type                       |
 
 **Response:** `200 OK` — `PaginatedResult` with audit log entries
 
@@ -2551,14 +2579,14 @@ List all platform settings (static seed, no DB table).
 
 **Response:** `200 OK` — `PaginatedResult` with setting objects
 
-| Field | Type | Description |
-|---|---|---|
-| `key` | `string` | Setting key |
-| `label` | `string` | Display label |
-| `value` | `any` | Current value |
-| `type` | `string` | Value type (`boolean`, `number`, `string`) |
-| `description` | `string` | Setting description |
-| `editable` | `boolean` | Whether the setting can be modified |
+| Field         | Type      | Description                                |
+| ------------- | --------- | ------------------------------------------ |
+| `key`         | `string`  | Setting key                                |
+| `label`       | `string`  | Display label                              |
+| `value`       | `any`     | Current value                              |
+| `type`        | `string`  | Value type (`boolean`, `number`, `string`) |
+| `description` | `string`  | Setting description                        |
+| `editable`    | `boolean` | Whether the setting can be modified        |
 
 ---
 
@@ -2568,9 +2596,9 @@ Update a platform setting.
 
 **Request Body: `SettingUpdateRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `value` | `any` | Yes | New setting value |
+| Field   | Type  | Required | Description       |
+| ------- | ----- | -------- | ----------------- |
+| `value` | `any` | Yes      | New setting value |
 
 **Response:** `200 OK` — Updated setting
 
@@ -2602,11 +2630,11 @@ Create a support case (stub).
 
 **Request Body: `CreateSupportRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `title` | `string` | Yes | Case title |
-| `priority` | `string` | No | Priority (default: `Medium`) |
-| `category` | `string` | No | Category (default: `General`) |
+| Field      | Type     | Required | Description                   |
+| ---------- | -------- | -------- | ----------------------------- |
+| `title`    | `string` | Yes      | Case title                    |
+| `priority` | `string` | No       | Priority (default: `Medium`)  |
+| `category` | `string` | No       | Category (default: `General`) |
 
 **Response:** `201 Created` — Stub case object
 
@@ -2618,9 +2646,9 @@ Add a note to a support case (stub).
 
 **Request Body: `SupportNoteRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `message` | `string` | Yes | Note message |
+| Field     | Type     | Required | Description  |
+| --------- | -------- | -------- | ------------ |
+| `message` | `string` | Yes      | Note message |
 
 **Response:** `200 OK` — Stub note object
 
@@ -2632,9 +2660,9 @@ Update support case status (stub).
 
 **Request Body: `SupportStatusRequest`**
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `status` | `string` | Yes | New status |
+| Field    | Type     | Required | Description |
+| -------- | -------- | -------- | ----------- |
+| `status` | `string` | Yes      | New status  |
 
 **Response:** `200 OK` — Stub status update
 
@@ -2648,11 +2676,11 @@ Get a point-in-time snapshot of Phase F/G migration coverage including eligibili
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `generatedAtUtc` | `datetime` | Snapshot timestamp |
-| `eligibilityRules` | `object` | OrgTypeRule coverage statistics |
-| `roleAssignments` | `object` | ScopedRoleAssignment adoption statistics |
+| Field              | Type       | Description                              |
+| ------------------ | ---------- | ---------------------------------------- |
+| `generatedAtUtc`   | `datetime` | Snapshot timestamp                       |
+| `eligibilityRules` | `object`   | OrgTypeRule coverage statistics          |
+| `roleAssignments`  | `object`   | ScopedRoleAssignment adoption statistics |
 
 ---
 
@@ -2664,14 +2692,14 @@ Get a cross-domain readiness summary covering Phase G completion, org-type consi
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `generatedAtUtc` | `datetime` | Snapshot timestamp |
-| `phaseGCompletion` | `object` | Phase G migration status |
-| `orgTypeCoverage` | `object` | Organization type consistency |
-| `productRoleEligibility` | `object` | Product role OrgTypeRule coverage |
-| `orgRelationships` | `object` | Organization relationship counts |
-| `scopedAssignmentsByScope` | `object` | Active SRAs by scope type (global, organization, product, relationship, tenant) |
+| Field                      | Type       | Description                                                                     |
+| -------------------------- | ---------- | ------------------------------------------------------------------------------- |
+| `generatedAtUtc`           | `datetime` | Snapshot timestamp                                                              |
+| `phaseGCompletion`         | `object`   | Phase G migration status                                                        |
+| `orgTypeCoverage`          | `object`   | Organization type consistency                                                   |
+| `productRoleEligibility`   | `object`   | Product role OrgTypeRule coverage                                               |
+| `orgRelationships`         | `object`   | Organization relationship counts                                                |
+| `scopedAssignmentsByScope` | `object`   | Active SRAs by scope type (global, organization, product, relationship, tenant) |
 
 ---
 
@@ -2683,16 +2711,16 @@ Check whether a user meets the four conditions required for CareConnect referral
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `userId` | `guid` | User ID |
-| `hasPrimaryOrg` | `boolean` | Has active primary org membership |
-| `primaryOrgId` | `guid` | Primary org ID (null if none) |
-| `primaryOrgType` | `string` | Primary org type (null if none) |
+| Field                  | Type      | Description                         |
+| ---------------------- | --------- | ----------------------------------- |
+| `userId`               | `guid`    | User ID                             |
+| `hasPrimaryOrg`        | `boolean` | Has active primary org membership   |
+| `primaryOrgId`         | `guid`    | Primary org ID (null if none)       |
+| `primaryOrgType`       | `string`  | Primary org type (null if none)     |
 | `tenantHasCareConnect` | `boolean` | Tenant has SYNQ_CARECONNECT enabled |
-| `orgHasCareConnect` | `boolean` | Org has SYNQ_CARECONNECT enabled |
-| `hasCareConnectRole` | `boolean` | User has RECEIVER or REFERRER role |
-| `isFullyProvisioned` | `boolean` | All four conditions met |
+| `orgHasCareConnect`    | `boolean` | Org has SYNQ_CARECONNECT enabled    |
+| `hasCareConnectRole`   | `boolean` | User has RECEIVER or REFERRER role  |
+| `isFullyProvisioned`   | `boolean` | All four conditions met             |
 
 ---
 
@@ -2702,17 +2730,18 @@ Idempotently provision a user for CareConnect. Ensures tenant product, org produ
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `userId` | `guid` | User ID |
-| `organizationId` | `guid` | Organization ID |
-| `organizationName` | `string` | Organization name |
+| Field                | Type      | Description                              |
+| -------------------- | --------- | ---------------------------------------- |
+| `userId`             | `guid`    | User ID                                  |
+| `organizationId`     | `guid`    | Organization ID                          |
+| `organizationName`   | `string`  | Organization name                        |
 | `tenantProductAdded` | `boolean` | Whether tenant product was newly created |
-| `orgProductAdded` | `boolean` | Whether org product was newly created |
-| `roleAdded` | `boolean` | Whether role was newly assigned |
-| `isFullyProvisioned` | `boolean` | `true` |
+| `orgProductAdded`    | `boolean` | Whether org product was newly created    |
+| `roleAdded`          | `boolean` | Whether role was newly assigned          |
+| `isFullyProvisioned` | `boolean` | `true`                                   |
 
 **Errors:**
+
 - `422` — No primary org membership or org not found
 
 ---
@@ -2727,20 +2756,21 @@ Idempotently provision a user for CareConnect. Ensures tenant product, org produ
 
 **Query Parameters:**
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `tenantId` | `guid` | Yes | Tenant to resolve users within |
-| `roleKey` | `string` | No | Role name filter (at least one of `roleKey` or `orgId` required) |
-| `orgId` | `guid` | No | Organization membership filter |
+| Parameter  | Type     | Required | Description                                                      |
+| ---------- | -------- | -------- | ---------------------------------------------------------------- |
+| `tenantId` | `guid`   | Yes      | Tenant to resolve users within                                   |
+| `roleKey`  | `string` | No       | Role name filter (at least one of `roleKey` or `orgId` required) |
+| `orgId`    | `guid`   | No       | Organization membership filter                                   |
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `items` | `array` | Matching users with `userId`, `email`, `phone`, `organizationId` |
-| `totalCount` | `integer` | Total matched users |
+| Field        | Type      | Description                                                      |
+| ------------ | --------- | ---------------------------------------------------------------- |
+| `items`      | `array`   | Matching users with `userId`, `email`, `phone`, `organizationId` |
+| `totalCount` | `integer` | Total matched users                                              |
 
 **Errors:**
+
 - `400` — Missing or invalid `tenantId`; neither `roleKey` nor `orgId` provided
 - `403` — TenantAdmin cross-tenant access attempt
 
@@ -2756,13 +2786,13 @@ Operator-facing snapshot of the identity → notifications cache invalidation co
 
 **Response:** `200 OK`
 
-| Field | Type | Description |
-|---|---|---|
-| `configured` | `boolean` | Whether the notifications service `BaseUrl` is set |
-| `attempted` | `integer` | Total invalidation attempts made |
-| `succeeded` | `integer` | Total successful invalidations |
-| `failed` | `integer` | Total failed invalidations |
-| `lastFailureUtc` | `datetime` | Timestamp of the last failure (null if none) |
-| `lastFailureReason` | `string` | Description of the last failure (null if none) |
+| Field               | Type       | Description                                        |
+| ------------------- | ---------- | -------------------------------------------------- |
+| `configured`        | `boolean`  | Whether the notifications service `BaseUrl` is set |
+| `attempted`         | `integer`  | Total invalidation attempts made                   |
+| `succeeded`         | `integer`  | Total successful invalidations                     |
+| `failed`            | `integer`  | Total failed invalidations                         |
+| `lastFailureUtc`    | `datetime` | Timestamp of the last failure (null if none)       |
+| `lastFailureReason` | `string`   | Description of the last failure (null if none)     |
 
 A healthy configuration shows `succeeded` incrementing and `failed` staying at 0. If `succeeded` stays 0 while `failed` climbs, check `NotificationsService:BaseUrl` and the shared token configuration.

@@ -21,6 +21,8 @@ const nextConfig = {
       // mismatches. allowedOrigins is set to allow all for development.
       // TODO: lock down to explicit origins for production.
       allowedOrigins: ['*'],
+      //allow maxBodySize
+       proxyClientMaxBodySize: '60mb',
     },
     // Disable the separate webpack build worker process. The worker spawns a
     // Node.js subprocess that can receive SIGBUS in memory-constrained
@@ -31,6 +33,10 @@ const nextConfig = {
     // Reduce peak memory usage during webpack compilation by flushing module
     // data from RAM sooner. Beneficial in memory-constrained build environments.
     webpackMemoryOptimizations: true,
+    // The global Next proxy runs before /api/lien route handlers. Keep its
+    // request-body buffer above SynqLien's 50 MB multipart upload limit so
+    // documents are not rejected before the BFF can forward them.
+    proxyClientMaxBodySize: '60mb',
   },
   webpack(config) {
     // Disable webpack's persistent filesystem cache for production builds.

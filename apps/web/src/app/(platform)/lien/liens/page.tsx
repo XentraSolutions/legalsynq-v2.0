@@ -27,6 +27,8 @@ import {
   EMPTY_LIENS_FILTERS,
   type LiensFilterValues,
 } from "./components/liens-filter";
+import { LiensExportQuery } from "@/lib/liens/liens.types";
+import { dateConverter } from "@/lib/cases/cases.mapper";
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "—";
@@ -116,6 +118,7 @@ export default function LiensPage() {
   const [showFilter, setShowFilter] = useState(false);
 
   const activeFilterCount = countActiveFilters(filters);
+  const [exporting, setExporting] = useState(false);
 
   const currentQuery = useCallback(
     (): LiensQuery => ({
@@ -157,6 +160,47 @@ export default function LiensPage() {
       setLoading(false);
     }
   }, []);
+
+  const exportLiens = async()=>{
+    const params:LiensExportQuery = {
+    keyword: search ?? "",
+    caseId: null,
+    lawFirmId: filters.lawFirmIds?.length ? filters.lawFirmIds.toString() : null,
+    medicalFacilityId: filters.medicalFacilityIds?.length ? filters.medicalFacilityIds.toString() : null,
+    caseManagerId: filters.caseManagerIds?.length ? filters.caseManagerIds.toString() : null,
+    lienStatusId: filters.lienStatusIds?.length ? filters.lienStatusIds.toString() : null,
+    purchaseDate: 
+      filters.purchaseDateFrom && filters.purchaseDateTo
+        ? `${dateConverter(filters.purchaseDateFrom)}-${dateConverter(filters.purchaseDateTo)}`
+        : filters.purchaseDateFrom ?? filters.purchaseDateTo ?? null,
+
+    closedDate: 
+      filters.closedDateFrom && filters.closedDateTo
+        ? `${dateConverter(filters.closedDateFrom)}-${dateConverter(filters.closedDateTo)}`
+        : filters.closedDateFrom ?? filters.closedDateTo ?? null,  
+    }
+    try {
+      setExporting(true)
+      const req = await liensService.export(params);
+      const item = req.data?.[0];
+      const src = `data:text/${item.export_format};base64,${item.base64}`;
+      const link = document.createElement("a");
+      link.href = src;
+      link.download = item.filename;
+      link.click();
+      link.remove();
+    } catch (err){
+        if(err instanceof ApiError){
+          addToast({
+            type: "error",
+            title: "Export Failed",
+            description: err?.message,
+          });
+        }
+    } finally {
+        setExporting(false)
+    }
+  }
 
   useEffect(() => {
     fetchLiens(currentQuery());
@@ -337,8 +381,11 @@ export default function LiensPage() {
             </span>
           )}
         </button>
-        <button className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors">
-          Export
+        <button className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors disabled:bg-primary/50 cursor-pointer"
+          onClick={()=>exportLiens()}
+          disabled={exporting}
+        >
+          {exporting ? "Exporting..." : "Export"}
         </button>
       </div>
 

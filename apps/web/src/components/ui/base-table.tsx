@@ -101,6 +101,10 @@ export interface BaseTableProps<TData> {
   className?: string;
   /** Overrides the default bg-primary styling on the active pagination page button (e.g. selling's orange brand). */
   primaryButtonClassName?: string;
+  /** Overrides the default header row background (e.g. selling's #F5F5F5). */
+  headerClassName?: string;
+  /** Overrides the default per-column header cell typography (e.g. selling's 14px/500). */
+  headerCellClassName?: string;
 }
 
 export function BaseTable<TData>({
@@ -137,6 +141,8 @@ export function BaseTable<TData>({
   onRowClick,
   getRowClassName,
   primaryButtonClassName,
+  headerClassName,
+  headerCellClassName,
 }: BaseTableProps<TData>) {
   const selectable = rowSelection !== undefined;
   const expandable = enableExpanding && renderSubRow !== undefined;
@@ -242,7 +248,7 @@ export function BaseTable<TData>({
     >
       {toolbar}
       <Table>
-        <TableHeader>
+        <TableHeader className={headerClassName}>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow
               key={headerGroup.id}
@@ -284,6 +290,7 @@ export function BaseTable<TData>({
                       "text-[12px] whitespace-nowrap",
                       align === "right" ? "text-right" : "text-left",
                       sortable && "cursor-pointer select-none",
+                      headerCellClassName,
                       meta?.headerClassName,
                     )}
                     onClick={
@@ -325,14 +332,15 @@ export function BaseTable<TData>({
         </TableHeader>
         <TableBody>
           {isLoading ? (
-            <TableRow>
-              <TableCell
-                colSpan={totalCols}
-                className="text-center py-8 text-sm text-gray-400"
-              >
-                Loading...
-              </TableCell>
-            </TableRow>
+            Array.from({ length: currentPageSize }).map((_, i) => (
+              <TableRow key={i} className="animate-pulse">
+                {Array.from({ length: totalCols }).map((_, j) => (
+                  <TableCell key={j}>
+                    <div className="h-4 bg-gray-100 rounded w-3/4" />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
           ) : rows.length === 0 ? (
             <TableRow>
               <TableCell

@@ -319,7 +319,7 @@ export function SetupReductionForm({
       id: "lienId",
       header: "Lien ID",
       cell: (l) => (
-        <span className="text-xs font-mono text-primary">{l.lienNumber}</span>
+        <span className="text-sm text-primary">{l.lienNumber}</span>
       ),
     },
     {
@@ -476,7 +476,7 @@ export function SetupReductionForm({
       title="Reduction Details"
       submitLabel={saving ? "Saving..." : "Save"}
       submitDisabled={saving || checkedIds.size === 0}
-      size="lg"
+      size="xl"
     >
       <div className="space-y-5">
         <div>

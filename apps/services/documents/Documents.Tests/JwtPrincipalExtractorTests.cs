@@ -42,4 +42,21 @@ public class JwtPrincipalExtractorTests
         Assert.Equal(Guid.Empty, result.UserId);
         Assert.Equal(tenantId, result.TenantId);
     }
+
+    [Fact]
+    public void Extract_IncludesPlatformProductRoles()
+    {
+        var userId = Guid.NewGuid();
+        var tenantId = Guid.NewGuid();
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("sub", userId.ToString()),
+            new Claim("tenantId", tenantId.ToString()),
+            new Claim("product_roles", "SYNQ_LIENS:SYNQLIEN_SELLER"),
+        ], "test"));
+
+        var result = JwtPrincipalExtractor.Extract(principal);
+
+        Assert.Contains("SYNQ_LIENS:SYNQLIEN_SELLER", result.ProductRoles);
+    }
 }

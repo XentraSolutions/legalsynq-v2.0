@@ -12,6 +12,7 @@
 - [Bills of Sale](#bills-of-sale-endpoints)
 - [Lien Offers](#lien-offers-endpoints)
 - [Contacts](#contacts-endpoints)
+- [Settlement Payments](#settlement-payment-endpoints)
 - [Servicing](#servicing-endpoints)
 - [Reports](#reports-endpoints)
 
@@ -995,9 +996,10 @@ requires service JWT auth for producer submissions.
 ### POST `/api/liens/selling/public/{token}/decline`
 
 Records a declined buyer response for the token-scoped lien. This is anonymous and uses the same token validation and
-conflict behavior as public accept. Declining can record an optional reason and marks the offered lien with
-`Status=Declined` and `SellerStatus=Declined`; it does not mark the lien sold, withdraw the seller listing, or create a
-Bill of Sale. Seller-view tokens are read-only and return `403 read-only-link`. The first declined response submits
+conflict behavior as public accept. Declining can record an optional reason, records the buyer access-link response as
+`Declined`, and returns the seller lien to `Pending` so it appears in the seller Pending list and can be submitted for sale
+again. It does not mark the lien sold, withdraw the seller listing, or create a Bill of Sale. Seller-view tokens are
+read-only and return `403 read-only-link`. The first declined response submits
 `lien.offer.rejected` emails to both the buyer and seller through Notifications with recipient-specific idempotency
 keys. Repeated same-response posts return the recorded response and retry those idempotent notification submissions, so
 transient failures can recover without duplicate emails. Notification submission failures are logged and do not roll back
@@ -1029,8 +1031,8 @@ requires service JWT auth for producer submissions.
     "respondedAtUtc": "2026-07-23T14:10:00Z"
   },
   "lien": {
-    "status": "Declined",
-    "sellerStatus": "Declined"
+    "status": "Draft",
+    "sellerStatus": "Pending"
   }
 }
 ```
@@ -1139,6 +1141,43 @@ Create a new case.
 
 Returns the created case with a `Location` header pointing to `/api/liens/cases/{id}`.
 Creation also adds a `Case Created` entry to the legacy case-update history endpoint (`POST /api/liens/cases/case-updates/v3`), including the case code, client, status, law firm, manager, and creator.
+Potential duplicate cases are rejected before save when DOB and date of loss exactly match an existing case and first/last names closely or partially match. Clients can call `POST /api/liens/cases/duplicate-check` before create to display the existing case link.
+
+### POST `/api/liens/cases/duplicate-check`
+
+Checks a pending case creation for duplicate risk without saving.
+
+**Permission:** `SYNQ_LIENS.case:create`
+
+**Request Body:**
+
+```json
+{
+  "firstname": "Jane",
+  "lastname": "Doe",
+  "dob": "01/15/1990",
+  "dateOfLoss": "08/01/2026"
+}
+```
+
+**Response:** `200 OK`
+
+```json
+{
+  "isDuplicate": true,
+  "message": "A case with similar information already exists. Would you like to view the existing case?",
+  "matches": [
+    {
+      "id": "guid",
+      "caseNumber": "26-00042",
+      "clientDisplayName": "Jane Doe",
+      "clientDob": "1990-01-15",
+      "dateOfIncident": "2026-08-01",
+      "status": "PreDemand"
+    }
+  ]
+}
+```
 
 ---
 
@@ -1186,6 +1225,8 @@ Update an existing case.
 
 Return the legacy case-note history. Each changed non-empty `notes` value submitted through `PATCH /api/liens/cases/details-update` is appended as a new case-note entry rather than replacing prior entries. Feed notes and system update-history entries are intentionally excluded.
 
+Every explicit `notes` change through `details-update`, including clearing an existing value, also creates a case-update history entry with action `Case Details Update` and description `Case Tracking Note Update`. Repeating the same normalized Notes value does not create a duplicate update. When Notes changes together with other case-detail fields, `Case Tracking Note Update` is included in the existing combined change description returned by `POST /api/liens/cases/case-updates/v3`. Case creation history prefers the authenticated user's email over the token's organization-oriented display name for its `updatedBy` value.
+
 **Permission:** `SYNQ_LIENS.case:read`
 
 The response uses the legacy envelope `{ isSuccess, message, data }`. `data` is ordered newest first and each item includes the historical `note` value and creator metadata. `created` is the U.S. Pacific display string, while `createdAtUtc` is the corresponding canonical UTC ISO timestamp.
@@ -1199,6 +1240,33 @@ The response uses the legacy envelope `{ isSuccess, message, data }`. `data` is 
 Return dashboard totals for deployed liens and cash received. Supplying both `startDate` and `endDate` filters the metric to that inclusive range. When neither date is supplied, the metric includes all dated tenant history; `periodStart` and `periodEnd` are returned as empty strings to indicate the all-time result. Deployed always excludes liens without a persisted `PurchaseDate`, and Cash Received always excludes settlement headers without a persisted `SettlementDate`.
 
 The dashboard Total Lien Report, including its status chart and totals, excludes `Rejected` and `Cancelled` liens before aggregation and pagination.
+
+---
+
+### GET `/api/liens/cases/payoff-quote/{caseId}`
+
+Compatibility alias: `GET /api/liens/cases/payoff-qoute/{caseId}`.
+
+Returns the latest payoff statement URL for the case. If no payoff document exists, the service generates a payoff PDF from the case and its open servicing liens, uploads it to the Documents service as a case document, records `LegacyCaseDocument` metadata with legacy type ID `14`, and returns the uploaded document URL.
+
+**Response:** `200 OK`
+
+```json
+{
+  "isSuccess": true,
+  "message": "Successfully retrieved Payoff Quote",
+  "url": "/documents/{documentId}",
+  "base64": "JVBERi0xLjQ..."
+}
+```
+
+Missing cases return `404` with `Error: Unable to retrieve Payoff Quote`.
+
+---
+
+## Upload Limits
+
+All SynqLien multipart upload endpoints accept files up to 50 MB. Requests over the limit return a size error instead of a generic upload failure.
 
 ---
 
@@ -1863,6 +1931,65 @@ Reactivate a previously deactivated contact.
 
 ---
 
+## Settlement Payment Endpoints
+
+Base path: `/api/liens/settlement/payments`
+
+### PUT `/api/liens/settlement/payments/{paymentId}`
+
+Update one existing settlement payment. The payment is resolved from the authenticated tenant and the route `paymentId`; `caseId` and `lienId` are immutable and are not accepted in the body. The legacy `POST /service/liens/update/settlement` remains a create-settlement endpoint and must not be used to edit a payment.
+
+**Permission:** `SYNQ_LIENS.lien:update`
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|---|---|---|
+| `paymentId` | `guid` | Settlement payment identifier returned by payment-details APIs |
+
+**Request Body: `UpdateSettlementPaymentDetailRequest`**
+
+All fields are required. Unknown JSON fields are rejected with `400 Bad Request`.
+
+| Field | Type | Description |
+|---|---|---|
+| `amount` | `decimal` | Updated payment amount; must be zero or greater |
+| `paymentDate` | `date` | Payment date in `YYYY-MM-DD` format |
+| `paymentMethod` | `string` | Nonblank payment method, such as `Check` |
+| `referenceNumber` | `string` | Nonblank check or external payment reference number; maximum 100 characters |
+| `notes` | `string` | User-visible payment note; must be present and non-null but may be empty |
+| `settlementType` | `string` | Nonblank settlement source, such as `by_funding_company` |
+| `settlementStatus` | `string` | Nonblank payment outcome, such as `full_payment` |
+| `lienStatus` | `string` | Linked lien lifecycle value. `Open` and `Closed` normalize to `Active` and `Settled` |
+
+```json
+{
+  "amount": 530,
+  "paymentDate": "2026-08-16",
+  "paymentMethod": "Check",
+  "referenceNumber": "123456",
+  "notes": "Payment Testing",
+  "settlementType": "by_funding_company",
+  "settlementStatus": "full_payment",
+  "lienStatus": "Closed"
+}
+```
+
+**Response:** `200 OK` — `SettlementPaymentDetailResponse`
+
+The response returns the immutable payment identity and linkage, the updated amount/date/reference/note, `paymentMethod`, `settlementTypeId`, `settlementStatusId`, and audit fields. Settlement classification remains stored in the existing payment metadata representation; unrelated metadata is preserved. The payment update and linked-lien status change commit atomically.
+
+Because payment method and settlement classifications use the legacy metadata representation, `paymentMethod`, `settlementType`, and `settlementStatus` reject `;`, `=`, CR/LF, and the `[legacy-meta]` marker. `notes` rejects the exact `[legacy-meta]` marker but otherwise permits normal punctuation, including semicolons and equals signs.
+
+**Errors:**
+
+| Status | Condition |
+|---|---|
+| `400 Bad Request` | Missing, malformed, unknown, or invalid request field |
+| `404 Not Found` | Payment is missing, deleted, or belongs to another tenant |
+
+---
+
 ## Servicing Endpoints
 
 Base path: `/api/liens/servicing`
@@ -2025,6 +2152,176 @@ Update the status of a servicing item.
 
 ## Reports Endpoints
 
+### POST `/api/liens/reports/case-notes-history`
+
+Returns the tenant-wide Case Notes History report used by the Case Tracking Notes and Feed Notes tabs. The compatibility alias is `POST /report/case-notes-history`. Both routes require authenticated SynqLien product access and `SYNQ_LIENS.case:read`, use the tenant from the authenticated request context, and return `Cache-Control: no-store`.
+
+Request:
+
+```json
+{
+  "noteType": "TRACKING",
+  "page": 1,
+  "limit": 10,
+  "sortBy": "noteDate",
+  "sortDirection": "desc"
+}
+```
+
+`noteType` is required and accepts `TRACKING` or `FEED` case-insensitively. `TRACKING` includes `general` and `follow-up` notes; `FEED` includes only `feed`. Deleted, blank, internal, case-created, and settlement-history notes are excluded. `page` defaults to 1, `limit` defaults to 10 and is limited to 1-100. `sortBy` accepts `caseId`, `caseName`, `noteType`, `noteDate`, `noteAuthor`, or `noteContent`; every order is stabilized by note timestamp and ID.
+
+```json
+{
+  "isSuccess": true,
+  "message": "Case notes history retrieved.",
+  "data": [
+    {
+      "noteId": "019f0000-0000-7000-8000-000000000001",
+      "caseRecordId": "019f0000-0000-7000-8000-000000000002",
+      "caseId": "26-31959",
+      "caseName": "Greenfield Holdings",
+      "noteType": "TRACKING",
+      "noteTypeLabel": "Case Tracking Note",
+      "noteDate": "2026-07-28",
+      "createdAtUtc": "2026-07-28T16:30:00.0000000Z",
+      "noteAuthor": "Sarah Mitchell",
+      "noteContent": "Complete full note text"
+    }
+  ],
+  "page": 1,
+  "limit": 10,
+  "totalCount": 37,
+  "isComplete": false,
+  "excludedUnreconciledLegacyNoteCount": 2,
+  "warning": {
+    "code": "legacy_history_incomplete",
+    "message": "Some unreconciled legacy case notes were excluded. Native and reconciled notes are included.",
+    "excludedCount": 2
+  }
+}
+```
+
+The legacy alias omits only the additive `createdAtUtc` row property. An empty or out-of-range page is `200` with an empty `data` array. Invalid selectors, paging, or sort values return `400` with `error.code = validation_error`. Native notes and reconciled legacy notes remain visible when stale legacy crosswalks exist. Only eligible report notes whose target IDs belong to unreconciled, tenant-matching `SL-CORE` `SL_CASE_NOTES` crosswalks are excluded. Both routes return `isComplete`, `excludedUnreconciledLegacyNoteCount`, and a nullable `warning`; complete responses set the count to `0`, `isComplete=true`, and `warning=null`.
+
+### POST `/api/liens/reports/case-notes-history/export`
+
+Exports all rows matching `noteType` and the requested ordering; `page` and `limit` are ignored. The compatibility alias is `POST /report/case-notes-history/export`. The CSV contains the six visible report columns, preserves complete Unicode/multiline content, quotes CSV fields, and neutralizes spreadsheet-formula prefixes. The Base64 CSV envelope is retained for legacy clients:
+
+```json
+{
+  "isSuccess": true,
+  "message": "CSV generated successfully.",
+  "isComplete": false,
+  "excludedUnreconciledLegacyNoteCount": 2,
+  "warning": {
+    "code": "legacy_history_incomplete",
+    "message": "Some unreconciled legacy case notes were excluded. Native and reconciled notes are included.",
+    "excludedCount": 2
+  },
+  "data": [
+    {
+      "base64": "Q2FzZSBJRCxDYXNlIE5hbWUuLi4=",
+      "filename": "case_notes_history_tracking_20260813123000.csv",
+      "export_format": "csv"
+    }
+  ]
+}
+```
+
+CSV generation stops at 10 MiB and returns `400 validation_error` rather than materializing an unbounded export. Export uses the same tenant-scoped unreconciled-target exclusion and additive completeness fields as preview, so eligible native and reconciled rows are exported without silently including stale legacy classifications.
+
+### POST `/api/liens/reports/auto-generated/{reportId}/execute`
+
+Executes the tenant-scoped stored report using its saved report date. The compatibility alias is `POST /report/auto-generated/{reportId}/execute`. No request body is required.
+
+Query parameters:
+
+- `page`: optional, defaults to `1`, and must be at least `1`.
+- `pageSize`: optional, defaults to `50`, and must be between `1` and `100`.
+
+Eligible Weekly BCC liens are ordered by purchase date, lien number, and record ID before database paging. Only the selected page is enriched. An out-of-range page returns `200` with an empty `data` array while retaining the full-result count and column schema.
+
+```json
+{
+  "isSuccess": true,
+  "message": "Weekly BCC report generated.",
+  "report": {
+    "reportId": 42,
+    "code": "weekly_bcc_2026-08-14",
+    "description": "Weekly BCC - 08/14/2026",
+    "date": "2026-08-14",
+    "createDate": "2026-08-14T11:00:00Z",
+    "tenantId": "11111111-1111-1111-1111-111111111111",
+    "apiPath": "/api/liens/reports/weekly-bcc"
+  },
+  "reportType": "WEEKLY_BCC",
+  "schemaVersion": 1,
+  "asOfDate": "2026-08-14",
+  "page": 1,
+  "pageSize": 50,
+  "totalPages": 4,
+  "totalCount": 187,
+  "summaryTotals": {
+    "totalCases": 120,
+    "totalOpenCases": 80,
+    "totalClosedCases": 40,
+    "totalLiens": 187,
+    "totalOpenLiens": 130,
+    "totalClosedLiens": 57,
+    "totalPurchaseAmt": 22462370.62,
+    "totalReturnedAmt": 19089906.53,
+    "totalBillingAmt": 79778606.30
+  },
+  "columns": [
+    { "key": "plaintiffFirstName", "label": "Plaintiff First Name", "index": 0 },
+    { "key": "caseId", "label": "Case ID", "index": 9 }
+  ],
+  "data": [
+    {
+      "plaintiffFirstName": "Ada",
+      "caseId": "CASE-001"
+    }
+  ]
+}
+```
+
+`columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). The `noted` field is labeled `Notes` in report previews and CSV exports. Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. Both direct and saved-report execution responses add `summaryTotals` with `totalCases`, `totalOpenCases`, `totalClosedCases`, `totalLiens`, `totalOpenLiens`, `totalClosedLiens`, `totalPurchaseAmt`, `totalReturnedAmt`, and `totalBillingAmt` calculated from the complete eligible result set.
+
+### POST `/api/liens/reports/auto-generated/{reportId}/export`
+
+Exports all eligible rows from the tenant-scoped stored Weekly BCC report. The compatibility alias is `POST /report/auto-generated/{reportId}/export`. No request body or pagination parameters are required.
+
+Rows retain the same deterministic purchase-date, lien-number, and record-ID order as execution. The exporter enriches bounded pages, writes headers in the versioned 57-column order, quotes CSV values, preserves Unicode and multiline content, and neutralizes spreadsheet-formula prefixes. The response uses the established Base64 CSV envelope:
+
+```json
+{
+  "isSuccess": true,
+  "message": "CSV generated successfully.",
+  "data": [
+    {
+      "base64": "UGxhaW50aWZmIEZpcnN0IE5hbWUsLi4u",
+      "filename": "weekly_bcc_20260814.csv",
+      "export_format": "csv"
+    }
+  ]
+}
+```
+
+The 10 MiB limit is enforced before Base64 encoding. An oversized export returns `400` with `error.code = validation_error`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`.
+
 ### GET `/report/diy/columns`
 
 Returns the legacy DIY-report column metadata and the ordered default selection for the requested report type. For `LIENS`, the default selection includes `days_since_reduction_approval` in position 9 (zero-based), followed by `case_status` and `date_of_loss` in positions 14 and 15 respectively. `initial_service_date` and `number_of_liens` remain available as optional columns but are not selected by default.
+
+The optional `notes` column returns the latest active, nonblank Feed note for the row's case. `notes_date` returns that exact note's creation date in `MM/dd/yyyy` format. Both columns are grouped under `procedureInfo`, are not selected by default, and use one tenant-scoped batch lookup for CASES, LIENS, and COMBINED reports. Deleted, blank, non-Feed, and cross-tenant notes are excluded. When no eligible Feed note exists, `notes` is empty and `notes_date` is null in preview responses and blank in CSV exports. Equal creation timestamps are resolved by descending note ID. Saved report preview and export use the same mapping.
+
+The existing compatibility keys have these Tracking Notes definitions:
+
+| Key | Label | Value |
+|---|---|---|
+| `last_case_note` | `Tracking Notes` | All active, nonblank General and Follow-up notes for the case, newest first and separated by `\n` line breaks |
+| `last_case_note_date` | `Last Tracking Note Date` | Date of the newest included Tracking Note in `MM/dd/yyyy` format |
+
+Feed, internal, system/history, deleted, blank, and cross-tenant notes are excluded. `POST /report/diy` and its canonical `/api/liens/reports/diy/run` route return the same aggregated value. Both DIY export routes quote the multiline field in the Base64-encoded CSV, so every Tracking Note is retained.
+
+The distinct Case Update fields use the newest active Case Activity row for the tenant. `last_case_tracking_note` is exposed as `Last Activity` and contains its normalized Description; `last_case_tracking_date` is exposed as `Last Activity Date` and contains its Pacific-time Timestamp in `MM/dd/yyyy hh:mm tt` format. Eligible rows match the Case Activity table (`Case Created` and internal Case Details Update entries), equal timestamps use descending activity ID, and preview and CSV export use the same mapping.

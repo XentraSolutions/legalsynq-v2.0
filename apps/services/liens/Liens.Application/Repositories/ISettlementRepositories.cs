@@ -29,5 +29,6 @@ public interface ISettlementPaymentDetailRepository
     Task<List<SettlementPaymentDetail>> GetByLienIdAsync(Guid tenantId, Guid lienId, CancellationToken ct = default);
     Task<List<SettlementPaymentDetail>> GetByLienIdsAsync(Guid tenantId, IReadOnlyCollection<Guid> lienIds, CancellationToken ct = default);
     Task AddAsync(SettlementPaymentDetail detail, CancellationToken ct = default);
+    Task UpdateAsync(SettlementPaymentDetail detail, CancellationToken ct = default);
     Task SoftDeleteAsync(SettlementPaymentDetail detail, CancellationToken ct = default);
 }

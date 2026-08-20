@@ -5,6 +5,18 @@ namespace Liens.Application.Repositories;
 public interface ILienCaseNoteRepository
 {
     Task<List<LienCaseNote>> GetByCaseIdAsync(Guid tenantId, Guid caseId, CancellationToken ct = default);
+    Task<List<LienCaseNote>> GetTrackingByCaseIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> caseIds,
+        CancellationToken ct = default);
+    Task<List<LienCaseNote>> GetLatestCaseUpdatesByCaseIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> caseIds,
+        CancellationToken ct = default);
+    Task<List<LienCaseNote>> GetLatestFeedByCaseIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> caseIds,
+        CancellationToken ct = default);
     Task<List<LienCaseNote>> GetByCaseIdIncludingDeletedAsync(Guid tenantId, Guid caseId, CancellationToken ct = default);
     Task<LienCaseNote?> GetByIdAsync(Guid tenantId, Guid noteId, CancellationToken ct = default);
     Task AddAsync(LienCaseNote note, CancellationToken ct = default);
