@@ -15,6 +15,7 @@ import type {
   UpdateLienRequestDto,
   CreateLienOfferRequestDto,
   SaleFinalizationResultDto,
+  LiensExportQuery,
 } from './liens.types';
 
 export interface LienListResult {
@@ -69,6 +70,10 @@ export const liensService = {
 
   async acceptOffer(offerId: string): Promise<SaleFinalizationResultDto> {
     const { data } = await liensApi.acceptOffer(offerId);
+    return data;
+  },
+  async export(request:LiensExportQuery={}): Promise<any> {
+    const { data } = await liensApi.export(request);
     return data;
   },
 };

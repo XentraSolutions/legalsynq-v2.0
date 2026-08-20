@@ -318,3 +318,13 @@ export interface LienUploadDocumentsParams {
     },
   ];
 }
+export interface LiensExportQuery {
+  caseId?: string | null;
+  keyword?: string | null,
+  lawFirmId?: string | null;
+  medicalFacilityId?: string | null;
+  caseManagerId?: string | null;
+  lienStatusId?: string |null;
+  purchaseDate?: string | null,
+  closedDate?: string | null,
+}
