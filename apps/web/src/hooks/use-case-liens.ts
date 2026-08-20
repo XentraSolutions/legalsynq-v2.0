@@ -298,6 +298,15 @@ export function useCases(query: CasesQuery) {
   });
 }
 
+export function useLiens(query: LiensQuery) {
+  return useQuery({
+    queryKey: ["liens", query],
+    queryFn: () => liensService.getLiens(query),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
 async function fetchProcedureCodes() {
   const codes = await lookupService.getMedicalProcedureCodes();
   const uniqueCodes = Array.from(
