@@ -1,3 +1,7 @@
+const { createNativeDeepLinkConfig } = require('./app.config.helpers');
+
+const nativeDeepLinkConfig = createNativeDeepLinkConfig();
+
 module.exports = {
   "expo": {
     "name": process.env.EXPO_PUBLIC_APP_ENV === 'production' ? "LegalSynq" : "LegalSynq QA",
@@ -9,6 +13,7 @@ module.exports = {
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": process.env.EXPO_PUBLIC_APP_ENV === 'production' ? "com.legalsynq" : "com.legalsynq.qa",
+      "associatedDomains": nativeDeepLinkConfig.iosAssociatedDomains,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "Allow $(PRODUCT_NAME) to use Face ID to securely access your saved login."
@@ -20,6 +25,7 @@ module.exports = {
         "backgroundColor": "#0d1f35"
       },
       "package": process.env.EXPO_PUBLIC_APP_ENV === 'production' ? "com.legalsynq" : "com.legalsynq.qa",
+      "intentFilters": nativeDeepLinkConfig.androidIntentFilters,
       "permissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"

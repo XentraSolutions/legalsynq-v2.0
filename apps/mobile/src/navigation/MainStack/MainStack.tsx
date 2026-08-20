@@ -1,5 +1,6 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
+import { ApplicationDetailScreen } from '@/features/applications';
 import {
   CaseDetailScreen,
   CaseTaskFormScreen,
@@ -48,6 +49,7 @@ export function MainStack() {
       <Stack.Screen component={ServicingListScreen} name="Servicing" />
       <Stack.Screen component={ContactsScreen} name="Contacts" />
       <Stack.Screen component={ContactDetailScreen} name="ContactDetail" />
+      <Stack.Screen component={ApplicationDetailScreen} name="ApplicationDetail" />
       <Stack.Screen component={ContactFormScreen} name="ContactForm" />
       <Stack.Screen component={ReassignContactCasesScreen} name="ReassignContactCases" />
       <Stack.Screen component={FacilityDetailScreen} name="FacilityDetail" />

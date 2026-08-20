@@ -1,4 +1,5 @@
 export * from './Authentication';
+export * from './Applications';
 export * from './BillOfSales';
 export * from './Cases';
 export * from './Contacts';

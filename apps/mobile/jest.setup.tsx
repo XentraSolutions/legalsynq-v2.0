@@ -6,14 +6,13 @@ jest.mock('@sentry/react-native', () => {
   const React = require('react');
 
   return {
-    NavigationContainer: ({ children }: { children: React.ReactNode }) => (
-      React.createElement(React.Fragment, null, children)
-    ),
     addBreadcrumb: jest.fn(),
     captureException: jest.fn(),
     init: jest.fn(),
     mobileReplayIntegration: jest.fn(() => ({})),
-    reactNavigationIntegration: jest.fn(() => ({})),
+    reactNavigationIntegration: jest.fn(() => ({
+      registerNavigationContainer: jest.fn(),
+    })),
     setContext: jest.fn(),
     setTag: jest.fn(),
     wrap: jest.fn((component) => component),

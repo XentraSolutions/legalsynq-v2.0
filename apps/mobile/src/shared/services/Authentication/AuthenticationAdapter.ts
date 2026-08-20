@@ -4,7 +4,8 @@ import type { AuthState, UserSession } from '@/shared/types/auth';
 export const AuthenticationAdapter = {
   toUserSession(response: LoginResponse): UserSession {
     const { user } = response;
-    const tenant = response.tenants?.find((item) => item.tenantId === user.tenantId) ?? response.tenants?.[0];
+    const tenant =
+      response.tenants?.find((item) => item.tenantId === user.tenantId) ?? response.tenants?.[0];
 
     return {
       id: user.id,
@@ -27,6 +28,8 @@ export const AuthenticationAdapter = {
       user,
       token: accessToken,
       isAuthenticated: true,
+      status: 'authenticated',
+      sessionVersion: 0,
     };
   },
 };

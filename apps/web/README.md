@@ -88,9 +88,12 @@ src/
 `apps/web/.env.local` (gitignored):
 ```
 NEXT_PUBLIC_ENV=development
+NEXT_PUBLIC_DEEP_LINK_BASE_URL=http://localhost:5000
 NEXT_PUBLIC_TENANT_CODE=LEGALSYNQ
 GATEWAY_URL=http://127.0.0.1:5010
 ```
+
+`NEXT_PUBLIC_DEEP_LINK_BASE_URL` is required only when the shared deep-link URL generator is called. Approved deployed domains must be supplied by each environment; no Production default is committed. See [`shared/contracts/deep-links/README.md`](../../shared/contracts/deep-links/README.md).
 
 ### CareConnect common portal (AUTH-CC01)
 

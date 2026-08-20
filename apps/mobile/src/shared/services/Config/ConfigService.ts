@@ -27,6 +27,10 @@ export const ConfigService = {
     return 'development';
   },
 
+  getDeepLinkHost(): string | null {
+    return process.env.EXPO_PUBLIC_DEEP_LINK_HOST?.trim() || null;
+  },
+
   isProduction(): boolean {
     return ConfigService.getEnvironment() === 'production';
   },

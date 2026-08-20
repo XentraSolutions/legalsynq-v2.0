@@ -19,4 +19,6 @@ export interface AuthState {
   user: UserSession | null;
   token: string | null;
   isAuthenticated: boolean;
+  status: 'hydrating' | 'authenticated' | 'unauthenticated';
+  sessionVersion: number;
 }

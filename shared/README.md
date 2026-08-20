@@ -11,6 +11,7 @@ Shared DTOs and constants with zero dependencies.
 - `Contracts/Audit/` — `AuditEventDto`, `AuditQueryRequest`, `AuditExportRequest`
 - `Contracts/Commerce/` — `CommerceEventTypes` (34 constants), `CommerceLifecycleEvent`, `CommerceTelemetryContract`
 - `Contracts/Notifications/` — `NotificationTemplateKeys` (all template key constants), `NotificationTemplateRegistry` (platform defaults including 11 Commerce templates)
+- `contracts/deep-links/routes.json` — authoritative language-neutral deep-link route registry; `Contracts/DeepLinks/` provides the typed .NET reader
 - `HealthResponse`, `InfoResponse`, `ServiceResponse<T>` — standard health/info shapes used by all services
 
 ### `shared/building-blocks` — `BuildingBlocks.csproj`

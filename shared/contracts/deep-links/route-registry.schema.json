@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.legalsynq.invalid/deep-links/route-registry.schema.json",
+  "title": "LegalSynq Deep-Link Route Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "routes"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/route"
+      }
+    }
+  },
+  "$defs": {
+    "parameterNames": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9]*$"
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "pathTemplate",
+        "mobileDestination",
+        "requiresAuthentication",
+        "requiresAuthorization",
+        "requiredPathParameters",
+        "optionalQueryParameters",
+        "fallbackDestination",
+        "analyticsEvent",
+        "enabled"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$"
+        },
+        "pathTemplate": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "mobileDestination": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requiresAuthentication": {
+          "type": "boolean"
+        },
+        "requiresAuthorization": {
+          "type": "boolean"
+        },
+        "requiredPathParameters": {
+          "$ref": "#/$defs/parameterNames"
+        },
+        "optionalQueryParameters": {
+          "$ref": "#/$defs/parameterNames"
+        },
+        "fallbackDestination": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analyticsEvent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
