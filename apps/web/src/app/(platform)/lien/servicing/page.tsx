@@ -25,6 +25,7 @@ import {
   type BulkActionConfig,
   type BulkOperationResult,
 } from "@/lib/bulk-operations";
+import { ApiError } from "@/lib/api-client";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,7 @@ export default function ServicingPage() {
   const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(
     null,
   );
+  const [exporting, setExporting] = useState(true);
 
   const fetchData = useCallback(
     async (page = 1) => {
@@ -174,14 +176,26 @@ export default function ServicingPage() {
   };
 
   const exportServicing = async () => {
-    const response = await servicingService.export();
+    try {
+      const response = await servicingService.export();
 
-    const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
-    const link = document.createElement("a");
-    link.href = src;
-    link.download = response.data[0]?.filename;
-    link.click();
-    link.remove();
+      const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
+      const link = document.createElement("a");
+      link.href = src;
+      link.download = response.data[0]?.filename;
+      link.click();
+      link.remove();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Export Failed",
+          description: err?.message,
+        });
+      }
+    } finally {
+      setExporting(false);
+    }
   };
 
   const columns = useMemo<ColumnDef<ServicingListItem, any>[]>(
@@ -285,8 +299,9 @@ export default function ServicingPage() {
             <button
               onClick={() => exportServicing()}
               className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
+              disabled={exporting}
             >
-              Export
+              {exporting ? "Exporting..." : "Export"}
             </button>
           ) : undefined
         }

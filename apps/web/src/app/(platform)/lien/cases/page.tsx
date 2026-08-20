@@ -38,6 +38,7 @@ import {
   useBackgroundReady,
 } from "@/hooks/use-background-queue";
 import MedicalLienComponent from "@/components/lien/add-medical-lien/add-medical-lien/medical-lien-component";
+import { ApiError } from "@/lib/api-client";
 
 export const dynamic = "force-dynamic";
 
@@ -106,7 +107,7 @@ export default function CasesPage() {
     totalCount: 0,
     totalPages: 0,
   });
-  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(true);
 
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -159,21 +160,34 @@ export default function CasesPage() {
   }, [showCreate, pagination]);
 
   const exportCases = async () => {
-    const response = await casesService.exportCases({
-      caseId: null,
-      keyword: search,
-      lawFirmId: filters.lawFirmId.join(",") || null,
-      accidentTypeId: filters.accidentTypeId.join(",") || null,
-      statusId: filters.statusId.join(",") || null,
-      caseManagerId: filters.caseManagerId.join(",") || null,
-    });
+    setExporting(true);
+    try {
+      const response = await casesService.exportCases({
+        caseId: null,
+        keyword: search,
+        lawFirmId: filters.lawFirmId.join(",") || null,
+        accidentTypeId: filters.accidentTypeId.join(",") || null,
+        statusId: filters.statusId.join(",") || null,
+        caseManagerId: filters.caseManagerId.join(",") || null,
+      });
 
-    const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
-    const link = document.createElement("a");
-    link.href = src;
-    link.download = response.data[0]?.filename;
-    link.click();
-    link.remove();
+      const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
+      const link = document.createElement("a");
+      link.href = src;
+      link.download = response.data[0]?.filename;
+      link.click();
+      link.remove();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Export Failed",
+          description: err?.message,
+        });
+      }
+    } finally {
+      setExporting(false);
+    }
   };
 
   useEffect(() => {
@@ -393,8 +407,9 @@ export default function CasesPage() {
         <button
           onClick={exportCases}
           className="flex items-center gap-1.5 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-lg px-4 py-2 transition-colors"
+          disabled={exporting}
         >
-          Export
+          {exporting ? "Exporting..." : "Export"}
         </button>
       </FilterToolbar>
 
