@@ -53,13 +53,9 @@ export function parseDocumentReference(
   }
 }
 
-const SELLER_STATUS_LABEL_OVERRIDES: Record<string, string> = {
-  SubmittedForSale: "Under Review",
-};
-
 export function sellerStatusLabel(sellerStatus: string | null | undefined): string {
   if (!sellerStatus) return "—";
-  return SELLER_STATUS_LABEL_OVERRIDES[sellerStatus] ?? camelCaseToLabel(sellerStatus);
+  return camelCaseToLabel(sellerStatus);
 }
 
 const WHO = "WHO";
