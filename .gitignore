@@ -28,6 +28,7 @@ nuget.config.local
 appsettings.*.json
 !appsettings.Development.json
 !appsettings.Production.json
+config/deep-links/association-config.qa.json
 *.env
 .env*
 *.pfx

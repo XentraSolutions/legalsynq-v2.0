@@ -196,7 +196,7 @@ async function enrichLiens(
       facilityName:
         lien.facilityName || facilityName(lien.facilityId ?? "") || "",
       serviceDate: lien.initialServiceDate,
-      purchaseDateDate: lien.purchaseDate,
+      purchaseDate: lien.purchaseDate,
       originalAmount,
       reductionAmount,
       reductionDate,
@@ -293,6 +293,15 @@ export function useCases(query: CasesQuery) {
   return useQuery({
     queryKey: ["cases", query],
     queryFn: () => casesService.getCases(query),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useLiens(query: LiensQuery) {
+  return useQuery({
+    queryKey: ["liens", query],
+    queryFn: () => liensService.getLiens(query),
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });

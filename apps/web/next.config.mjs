@@ -21,6 +21,8 @@ const nextConfig = {
       // mismatches. allowedOrigins is set to allow all for development.
       // TODO: lock down to explicit origins for production.
       allowedOrigins: ['*'],
+      //allow maxBodySize
+       proxyClientMaxBodySize: '60mb',
     },
     // Disable the separate webpack build worker process. The worker spawns a
     // Node.js subprocess that can receive SIGBUS in memory-constrained

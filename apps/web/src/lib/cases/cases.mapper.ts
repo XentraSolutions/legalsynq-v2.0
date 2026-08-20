@@ -119,6 +119,7 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
       dto.trackingFollowUp ?? dto.trackingFollowUpDate,
     ),
     leadId: safeString(dto.leadId),
+    lienStatus: safeString(dto.lienStatus),
     shareCase: safeString(dto.shareCase),
     minorComp: safeString(dto.minorComp),
     caseDropped: safeString(dto.caseDropped),
@@ -129,6 +130,8 @@ export function mapCaseToDetail(dto: CaseResponseDto): CaseDetail {
     claimNumber: safeString(dto.claimNumber),
     demandAmount: dto.demandAmount ?? null,
     settlementAmount: dto.settlementAmount ?? null,
+    settlementStatus: safeString(dto.settlementStatus),
+    settlementStatusId: safeString(dto.settlementStatusId),
     description: safeString(dto.description),
     notes: safeString(dto.notes),
     openedAt: formatDateField(dto.openedAtUtc),
@@ -201,10 +204,10 @@ export function mapMedicalInfo(
     id: result.id,
     caseId: result.caseId,
     status: result.status,
-    purchaseDate: dateConvertertoIso(result.purchaseDate),
-    initialServiceDate: dateConvertertoIso(result.initialServiceDate),
+    purchaseDate: dateConvertertoIso(formatDateField(result.purchaseDate)),
+    initialServiceDate: dateConvertertoIso(formatDateField(result.initialServiceDate)),
     endServiceDate: result.endServiceDate
-      ? dateConvertertoIso(result.endServiceDate)
+      ? dateConvertertoIso(formatDateField(result.endServiceDate))
       : "",
     note: result.note,
     isBulk: result.isBulk == "Yes" ? "true" : "false",

@@ -24,6 +24,7 @@ import { MergeCaseForm } from "@/components/lien/forms/merge-case-form";
 import { HeaderMeta } from "./components/header-meta";
 import { CaseDetailContextProvider } from "./case-detail-context";
 import { documentsService } from "@/lib/documents";
+import { SettlementStatusChip } from "@/components/lien/settlement-status-chip";
 
 const TABS = [
   { key: "details", label: "Details" },
@@ -246,6 +247,16 @@ export function CaseDetailShell({
               <p className="text-xs text-gray-400 mt-1.5 font-medium">
                 {d.caseNumber}
               </p>
+              {d.lienStatus == "Closed" && (
+                <SettlementStatusChip
+                  status={d.settlementStatusId || d.lienStatus}
+                  label={
+                    d.lienStatus
+                      ? `${d.lienStatus}${d.settlementStatus ? `-${d.settlementStatus}` : ""}`
+                      : ""
+                  }
+                />
+              )}
             </div>
 
             <div className="min-w-0 col-lg-9 flex-1">
@@ -291,7 +302,7 @@ export function CaseDetailShell({
                             }}
                             className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
                           >
-                            Payoff Qoute
+                            Payoff Quote
                           </button>
                           <button
                             onClick={() => {
@@ -426,7 +437,7 @@ export function CaseDetailShell({
         <Modal
           size="xl"
           open={showPayoffQoute.isOpen}
-          title="Payoff Qoute"
+          title="Payoff Quote"
           onClose={() => setShowPayoffQoute({ isOpen: false, url: "" })}
         >
           <div className="min-h-[75vh]">
