@@ -48,9 +48,7 @@ function toDateInputValue(value: string): string {
   if (isoDate) return isoDate[1];
 
   const legacyDate = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
-  return legacyDate
-    ? `${legacyDate[3]}-${legacyDate[1]}-${legacyDate[2]}`
-    : "";
+  return legacyDate ? `${legacyDate[3]}-${legacyDate[1]}-${legacyDate[2]}` : "";
 }
 
 export function ServicingTab({
@@ -117,11 +115,15 @@ export function ServicingTab({
     historyQueryClient.invalidateQueries({
       queryKey: ["case-liens-all", caseDetail.id],
     });
+
     historyQueryClient.invalidateQueries({
       queryKey: CASE_PAYMENTS_QUERY_KEY(caseDetail.id),
     });
     historyQueryClient.invalidateQueries({
       queryKey: SETTLEMENT_PAYMENT_DETAILS_QUERY_KEY(caseDetail.id),
+    });
+    historyQueryClient.invalidateQueries({
+      queryKey: ["caseDetail", caseDetail.id],
     });
   };
 
