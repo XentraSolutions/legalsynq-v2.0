@@ -196,7 +196,7 @@ async function enrichLiens(
       facilityName:
         lien.facilityName || facilityName(lien.facilityId ?? "") || "",
       serviceDate: lien.initialServiceDate,
-      purchaseDateDate: lien.purchaseDate,
+      purchaseDate: lien.purchaseDate,
       originalAmount,
       reductionAmount,
       reductionDate,
