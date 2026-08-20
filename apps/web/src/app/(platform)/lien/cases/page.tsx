@@ -107,7 +107,7 @@ export default function CasesPage() {
     totalCount: 0,
     totalPages: 0,
   });
-  const [exporting, setExporting] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");

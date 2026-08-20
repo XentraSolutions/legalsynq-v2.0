@@ -82,7 +82,7 @@ export default function ServicingPage() {
   const [bulkResult, setBulkResult] = useState<BulkOperationResult | null>(
     null,
   );
-  const [exporting, setExporting] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   const fetchData = useCallback(
     async (page = 1) => {
