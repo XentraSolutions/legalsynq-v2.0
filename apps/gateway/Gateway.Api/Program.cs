@@ -8,6 +8,8 @@ using Microsoft.IdentityModel.Tokens;
 const string ServiceName = "gateway";
 const string Version = "v1";
 const long SynqLienUploadRequestLimitBytes = 60L * 1024 * 1024;
+const string AppleAppSiteAssociationFileName = "apple-app-site-association";
+const string AndroidAssetLinksFileName = "assetlinks.json";
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -113,6 +115,16 @@ app.MapGet("/info", () =>
     Results.Ok(new InfoResponse(ServiceName, env, Version)))
     .AllowAnonymous();
 
+MapDeepLinkAssociationFile(
+    app,
+    "/.well-known/apple-app-site-association",
+    AppleAppSiteAssociationFileName);
+
+MapDeepLinkAssociationFile(
+    app,
+    "/.well-known/assetlinks.json",
+    AndroidAssetLinksFileName);
+
 app.MapReverseProxy(pipeline =>
 {
     // BLK-SEC-02-02: Public CareConnect tenant-header trust boundary enforcement.
@@ -136,3 +148,56 @@ app.MapReverseProxy(pipeline =>
 }).RequireAuthorization();
 
 app.Run();
+
+static void MapDeepLinkAssociationFile(WebApplication app, string route, string fileName)
+{
+    app.MapGet(route, (
+        IWebHostEnvironment hostEnvironment,
+        IConfiguration configuration) =>
+    {
+        var associationDirectory = ResolveAssociationDirectory(hostEnvironment, configuration);
+        var fullPath = Path.GetFullPath(Path.Combine(associationDirectory, fileName));
+        var directoryRoot = Path.GetFullPath(associationDirectory);
+        var requiredPrefix = directoryRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? directoryRoot
+            : directoryRoot + Path.DirectorySeparatorChar;
+
+        if (!fullPath.StartsWith(requiredPrefix, StringComparison.Ordinal))
+        {
+            app.Logger.LogError(
+                "Deep-link association path resolution escaped configured directory. Route: {Route}, Directory: {Directory}",
+                route,
+                associationDirectory);
+            return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        if (!File.Exists(fullPath))
+        {
+            app.Logger.LogWarning(
+                "Deep-link association file missing. Route: {Route}, File: {File}",
+                route,
+                fullPath);
+            return Results.NotFound(new
+            {
+                error = "deep_link_association_file_missing",
+                route,
+                fileName
+            });
+        }
+
+        return Results.File(fullPath, "application/json");
+    }).AllowAnonymous();
+}
+
+static string ResolveAssociationDirectory(IWebHostEnvironment hostEnvironment, IConfiguration configuration)
+{
+    var configured = configuration["DeepLinks:AssociationDirectory"];
+    if (string.IsNullOrWhiteSpace(configured))
+    {
+        configured = Path.Combine("DeepLinks", "Associations", hostEnvironment.EnvironmentName);
+    }
+
+    return Path.IsPathRooted(configured)
+        ? configured
+        : Path.GetFullPath(Path.Combine(hostEnvironment.ContentRootPath, configured));
+}

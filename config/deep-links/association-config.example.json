@@ -1,0 +1,25 @@
+{
+  "environments": {
+    "development": {
+      "host": null,
+      "appleTeamId": null,
+      "iosBundleId": "com.legalsynq.qa",
+      "androidPackage": "com.legalsynq.qa",
+      "androidSha256Fingerprints": []
+    },
+    "qa-preview": {
+      "host": null,
+      "appleTeamId": null,
+      "iosBundleId": "com.legalsynq.qa",
+      "androidPackage": "com.legalsynq.qa",
+      "androidSha256Fingerprints": []
+    },
+    "production": {
+      "host": null,
+      "appleTeamId": null,
+      "iosBundleId": "com.legalsynq",
+      "androidPackage": "com.legalsynq",
+      "androidSha256Fingerprints": []
+    }
+  }
+}
