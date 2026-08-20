@@ -41,7 +41,7 @@ def route_path(route):
     if isinstance(route, str):
         return route
     if isinstance(route, dict):
-        for key in ("path", "route", "pattern"):
+        for key in ("pathTemplate", "path", "route", "pattern"):
             value = route.get(key)
             if isinstance(value, str):
                 return value
