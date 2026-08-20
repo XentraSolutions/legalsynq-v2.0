@@ -247,8 +247,13 @@ export function CaseDetailShell({
               <p className="text-xs text-gray-400 mt-1.5 font-medium">
                 {d.caseNumber}
               </p>
-              {d.lienStatus && (
-                <SettlementStatusChip status={d.settlementStatusId} label={d.lienStatus ? `${d.lienStatus}-${d.settlementStatus}` : ""}/>
+              {d.lienStatus == "Closed" && (
+                <SettlementStatusChip
+                  status={d.settlementStatusId}
+                  label={
+                    d.lienStatus ? `${d.lienStatus}-${d.settlementStatus}` : ""
+                  }
+                />
               )}
             </div>
 
