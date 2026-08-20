@@ -67,7 +67,13 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             ("Check", "Check"),
             ("AddTestQA", "Add Test QA"),
             ("BillsAndRecords", "Bills & Records"),
-            ("BillsAndRecs", "Bills & Recs"));
+            ("BillsAndRecs", "Bills & Recs"),
+            ("PayoffStatement", "Payoff Quote"));
+
+        payload.AsArray()
+            .Single(item => item?["code"]?.GetValue<string>() == "PayoffStatement")!["id"]!
+            .GetValue<Guid>()
+            .Should().Be(SeedHelper.PayoffStatementDocumentTypeId);
     }
 
     [Fact]
@@ -134,6 +140,27 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
+    public async Task LookupAll_orders_contact_types_by_configured_sort_order()
+    {
+        var resp = await _client.GetAsync("/lookup/all");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
+        var items = payload[LookupCategory.ContactType]!.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                SortOrder: item?["sortOrder"]?.GetValue<int>()))
+            .ToList();
+
+        items.Should().Equal(
+            (ContactType.LawFirm, 1),
+            (ContactType.MedicalFacility, 2),
+            (ContactType.Provider, 3),
+            (ContactType.FundingCompany, 4),
+            (ContactType.Lead, 5));
+    }
+
+    [Fact]
     public async Task LookupAll_includes_curated_legacy_lien_statuses()
     {
         var resp = await _client.GetAsync("/lookup/all");
@@ -175,7 +202,8 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             ("Check", "Check"),
             ("AddTestQA", "Add Test QA"),
             ("BillsAndRecords", "Bills & Records"),
-            ("BillsAndRecs", "Bills & Recs"));
+            ("BillsAndRecs", "Bills & Recs"),
+            ("PayoffStatement", "Payoff Quote"));
     }
 
     [Fact]
@@ -242,7 +270,8 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             ("Check", "Check"),
             ("AddTestQA", "Add Test QA"),
             ("BillsAndRecords", "Bills & Records"),
-            ("BillsAndRecs", "Bills & Recs"));
+            ("BillsAndRecs", "Bills & Recs"),
+            ("PayoffStatement", "Payoff Quote"));
     }
 
     [Fact]
@@ -308,9 +337,9 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
 
         items.Should().Equal(
             (ContactType.LawFirm, "Law Firms"),
+            (ContactType.MedicalFacility, "Medical Facilities"),
             (ContactType.Provider, "Medical Providers"),
             (ContactType.FundingCompany, "Funding Companies"),
-            (ContactType.MedicalFacility, "Medical Facilities"),
             (ContactType.Lead, "Leads"));
     }
 
@@ -347,14 +376,15 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
-    public async Task ProcedureCost_returns404_when_medicare_cost_is_not_found()
+    public async Task ProcedureCost_returns_empty_data_when_medicare_cost_is_not_found()
     {
         var resp = await _client.GetAsync("/lookup/medical/procedure/costs/99213");
-        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var payload = JsonNode.Parse(await resp.Content.ReadAsStringAsync())!;
-        payload["isSuccess"]!.GetValue<bool>().Should().BeFalse();
-        payload["message"]!.GetValue<string>().Should().Be("Unable to get procedure cost.");
+        payload["isSuccess"]!.GetValue<bool>().Should().BeTrue();
+        payload["message"]!.GetValue<string>().Should().Be("Procedure cost is not available.");
+        payload["data"]!.AsArray().Should().BeEmpty();
     }
 
     [Fact]

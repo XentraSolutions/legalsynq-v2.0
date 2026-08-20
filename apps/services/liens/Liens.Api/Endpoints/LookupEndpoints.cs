@@ -27,9 +27,9 @@ public static class LookupEndpoints
     private static readonly (string Code, string Name, string[] SourceCodes, int SortOrder)[] LegacyContactTypeOptions =
     [
         (ContactType.LawFirm, "Law Firms", [ContactType.LawFirm], 1),
-        (ContactType.Provider, "Medical Providers", [ContactType.Provider], 2),
-        (ContactType.FundingCompany, "Funding Companies", [ContactType.FundingCompany, ContactType.LienHolder], 3),
-        (ContactType.MedicalFacility, "Medical Facilities", [ContactType.MedicalFacility, ContactType.Facility], 4),
+        (ContactType.MedicalFacility, "Medical Facilities", [ContactType.MedicalFacility, ContactType.Facility], 2),
+        (ContactType.Provider, "Medical Providers", [ContactType.Provider], 3),
+        (ContactType.FundingCompany, "Funding Companies", [ContactType.FundingCompany, ContactType.LienHolder], 4),
         (ContactType.Lead, "Leads", [ContactType.Lead], 5),
     ];
 
@@ -74,6 +74,7 @@ public static class LookupEndpoints
         (Guid.Parse("10000000-0000-0000-0000-000000000008"), "AddTestQA", "Add Test QA", [], 8),
         (Guid.Parse("10000000-0000-0000-0000-000000000009"), "BillsAndRecords", "Bills & Records", [], 9),
         (Guid.Parse("10000000-0000-0000-0000-000000000010"), "BillsAndRecs", "Bills & Recs", [], 10),
+        (Guid.Parse("10000000-0000-0000-0000-000000000011"), "PayoffStatement", "Payoff Quote", ["PayoffStatement"], 11),
     ];
     public static void MapLookupEndpoints(this WebApplication app)
     {
@@ -296,7 +297,12 @@ public static class LookupEndpoints
             return Results.Ok(new { isSuccess = true, message = "Retrieved from Medicare procedure price lookup.", data });
         }
 
-        return Results.NotFound(new { isSuccess = false, message = "Unable to get procedure cost." });
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Procedure cost is not available.",
+            data = Array.Empty<object>(),
+        });
     }
 
     private static async Task<IResult> GetContactsByRole(

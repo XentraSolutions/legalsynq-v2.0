@@ -99,12 +99,13 @@ function parseLegacyApiDateTime(value: string): Date {
   return new Date(value);
 }
 
-// Pure calendar-date values (e.g. "2024-01-15", no time component) don't
+// Pure calendar-date values (e.g. "2024-01-15" or "01/15/2024") don't
 // carry a timezone-meaningful instant — they represent one specific day,
-// full stop. Extract the Y-M-D parts directly and format without running
-// them through any timezone conversion, so the day never appears to move
-// forward/back depending on the viewer's or tenant's timezone offset.
+// full stop. Extract the date parts directly and format without running them
+// through any timezone conversion, so the day never appears to move based on
+// the viewer's or tenant's timezone offset.
 const LEGACY_DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const LEGACY_US_DATE_ONLY_PATTERN = /^(\d{2})\/(\d{2})\/(\d{4})$/;
 
 // Legacy-system default: MM/DD/YYYY.
 const LEGACY_DEFAULT_DATE_OPTIONS: Intl.DateTimeFormatOptions = {
@@ -131,6 +132,15 @@ export function formatLegacyDateOnly(
   if (dateOnlyMatch) {
     const [, year, month, day] = dateOnlyMatch;
     const utcDate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    return utcDate.toLocaleDateString('en-US', { ...options, timeZone: 'UTC' });
+  }
+
+  const usDateOnlyMatch = LEGACY_US_DATE_ONLY_PATTERN.exec(trimmed);
+  if (usDateOnlyMatch) {
+    const [, month, day, year] = usDateOnlyMatch;
+    const utcDate = new Date(
+      Date.UTC(Number(year), Number(month) - 1, Number(day)),
+    );
     return utcDate.toLocaleDateString('en-US', { ...options, timeZone: 'UTC' });
   }
 

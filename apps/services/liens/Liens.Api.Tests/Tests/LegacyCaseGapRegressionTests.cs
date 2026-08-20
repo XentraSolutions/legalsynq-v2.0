@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
@@ -348,6 +349,25 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
 
         var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
-        body.RootElement.GetProperty("data")[0].GetProperty("base64").GetString().Should().NotBeNullOrWhiteSpace();
+        var encodedCsv = body.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        encodedCsv.Should().NotBeNullOrWhiteSpace();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
+        var lines = csv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        lines[0].Should().Be("Case number,Plaintiff Name,Current Law Firm,Current Status,Settlement Status,Billing Amount,Purchase Amount,Amount Settled,Settled Date");
+        lines[1].Should().Contain("CASE-TEST-001,John Plaintiff,Smith & Associates LLP");
+
+        var legacyResponse = await _client.PostAsJsonAsync("/service/generate-csv", new
+        {
+            caseId = SeedHelper.CaseId,
+            legacyFormat = true,
+        });
+        legacyResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await legacyResponse.Content.ReadAsStringAsync()}");
+
+        var legacyBody = await legacyResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var legacyEncodedCsv = legacyBody!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        var legacyCsv = Encoding.UTF8.GetString(Convert.FromBase64String(legacyEncodedCsv!));
+        legacyCsv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)[0]
+            .Should().Be("CaseId,CaseNumber,ClientFirstName,ClientLastName,Status,DateOfLoss");
     }
 }

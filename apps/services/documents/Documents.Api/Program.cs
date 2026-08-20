@@ -10,6 +10,7 @@ using Documents.Infrastructure;
 using Documents.Infrastructure.Database;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,22 @@ using Serilog;
 using Serilog.Formatting.Compact;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Keep the transport and multipart parser above the configured file-size limit.
+// Multipart metadata and boundaries need a small envelope beyond the file itself.
+const int MultipartEnvelopeOverheadMb = 10;
+var maxUploadSizeMb = builder.Configuration.GetValue<int>("Documents:MaxUploadSizeMb", 25);
+var multipartRequestLimitBytes = checked(
+    ((long)maxUploadSizeMb + MultipartEnvelopeOverheadMb) * 1024 * 1024);
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = multipartRequestLimitBytes;
+});
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = multipartRequestLimitBytes;
+});
 
 // ── Serilog structured logging ────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
@@ -370,8 +387,8 @@ catch (Exception ex)
 
 // ── Middleware pipeline ────────────────────────────────────────────────────────
 app.UseCorrelationId();
-app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSerilogRequestLogging();
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 // ── Prometheus HTTP metrics (request count, duration, in-flight) ──────────────
 app.UseHttpMetrics(options =>

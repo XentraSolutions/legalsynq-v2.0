@@ -462,6 +462,8 @@ public class DIYReportService : IDIYReportService
         var returnedAmount = ResolveReturnedAmount(l, enrichment);
         var reductionAmount = ResolveReductionAmount(l, enrichment);
         var toSettleAmount = ResolveToSettleAmount(l, enrichment);
+        var reductionDate = ResolveReductionDate(l, enrichment);
+        var paidDate = ResolvePaidDate(l, enrichment);
         var daysSincePurchase = GetDaysSincePurchase(l.PurchaseDate);
         var grossProfit = returnedAmount - (purchaseAmount ?? 0m);
 
@@ -486,7 +488,7 @@ public class DIYReportService : IDIYReportService
             InitialServiceDate = l.InitialServiceDate,
             EndServiceDate = l.EndServiceDate,
             SettlementDate = ResolveSettlementDate(l, enrichment),
-            ReductionDate = ResolveReductionDate(l, enrichment),
+            ReductionDate = reductionDate,
             FirstPurchaseDate = l.PurchaseDate,
             LastPurchaseDate = l.PurchaseDate,
             DaysSincePurchase = daysSincePurchase,
@@ -509,9 +511,7 @@ public class DIYReportService : IDIYReportService
             NumberOfLiens = 1,
             ToSettleAmount = toSettleAmount,
             SettledAmount = returnedAmount,
-            DaysSinceReductionApproval = ResolveReductionDate(l, enrichment) is { } reductionDate
-                ? GetDaysSinceReductionApproval(reductionDate)
-                : null,
+            DaysSinceReductionApproval = GetDaysSinceReductionApproval(reductionDate, paidDate),
             MedicalFacility = enrichment.MedicalFacilityByLienId.GetValueOrDefault(l.Id, string.Empty),
             LawFirm = caseDetails.LawFirm,
             CaseType = caseDetails.CaseType,
@@ -579,6 +579,11 @@ public class DIYReportService : IDIYReportService
                     .Where(date => date.HasValue)
                     .Select(date => date!.Value)
                     .ToList();
+                var paidDates = caseLiens
+                    .Select(l => ResolvePaidDate(l, enrichment))
+                    .Where(date => date.HasValue)
+                    .Select(date => date!.Value)
+                    .ToList();
                 var settlementDates = caseLiens
                     .Select(l => ResolveSettlementDate(l, enrichment))
                     .Where(date => date.HasValue)
@@ -624,9 +629,9 @@ public class DIYReportService : IDIYReportService
                     NumberOfLiens = caseLiens.Count,
                     ToSettleAmount = caseLiens.Sum(l => ResolveToSettleAmount(l, enrichment)),
                     SettledAmount = caseLiens.Sum(l => ResolveReturnedAmount(l, enrichment)),
-                    DaysSinceReductionApproval = reductionDates.Count > 0
-                        ? GetDaysSinceReductionApproval(reductionDates.Max())
-                        : null,
+                    DaysSinceReductionApproval = GetDaysSinceReductionApproval(
+                        reductionDates.Count > 0 ? reductionDates.Max() : null,
+                        paidDates.Count > 0 ? paidDates.Max() : null),
                     MedicalFacility = string.Join(", ", facilities),
                     LawFirm = caseDetails.LawFirm,
                     CaseType = caseDetails.CaseType,
@@ -769,9 +774,14 @@ public class DIYReportService : IDIYReportService
             .GroupBy(settlement => settlement.LienId)
             .ToDictionary(group => group.Key, BuildSettlementReportAmounts);
 
-        var returnedAmountsByLienId = (await _paymentDetailRepo.GetByLienIdsAsync(tenantId, lienIds, ct))
+        var paymentDetails = await _paymentDetailRepo.GetByLienIdsAsync(tenantId, lienIds, ct);
+        var returnedAmountsByLienId = paymentDetails
             .GroupBy(payment => payment.LienId)
             .ToDictionary(group => group.Key, group => group.Sum(payment => payment.Amount));
+        var paidDatesByLienId = paymentDetails
+            .Where(payment => payment.PaymentDate.HasValue)
+            .GroupBy(payment => payment.LienId)
+            .ToDictionary(group => group.Key, group => group.Max(payment => payment.PaymentDate!.Value));
 
         var trackingNotesByCaseId = new Dictionary<Guid, TrackingNoteReportDetails>();
         if (includeTrackingNotes)
@@ -831,6 +841,7 @@ public class DIYReportService : IDIYReportService
             reductionAmountsByLienId,
             settlementAmountsByLienId,
             returnedAmountsByLienId,
+            paidDatesByLienId,
             trackingNotesByCaseId,
             caseActivityByCaseId,
             feedNotesByCaseId);
@@ -979,6 +990,7 @@ public class DIYReportService : IDIYReportService
         var hasLegacyReductionAmount = false;
         var hasLegacyReturnedAmount = false;
         DateOnly? reductionDate = null;
+        var reductionSettlementDates = new List<DateOnly>();
 
         foreach (var settlement in settlements)
         {
@@ -986,6 +998,9 @@ public class DIYReportService : IDIYReportService
             if (fields.TryGetValue("reductionAmount", out var reductionValue))
             {
                 hasLegacyReductionAmount = true;
+                if (settlement.SettlementDate.HasValue)
+                    reductionSettlementDates.Add(settlement.SettlementDate.Value);
+
                 if (decimal.TryParse(reductionValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
                     reductionAmount += amount;
             }
@@ -1017,7 +1032,7 @@ public class DIYReportService : IDIYReportService
             hasLegacyReductionAmount,
             hasLegacyReturnedAmount,
             settlementDates.Count > 0 ? settlementDates.Max() : null,
-            reductionDate);
+            reductionDate ?? (reductionSettlementDates.Count > 0 ? reductionSettlementDates.Max() : null));
     }
 
     private static bool TryParseLegacyDate(string? value, out DateOnly date)
@@ -1084,13 +1099,26 @@ public class DIYReportService : IDIYReportService
             : null;
     }
 
+    private static DateOnly? ResolvePaidDate(Lien lien, ReportRowEnrichment enrichment)
+    {
+        if (enrichment.PaidDatesByLienId.TryGetValue(lien.Id, out var paidDate))
+            return paidDate;
+
+        return string.Equals(lien.Status, LienStatus.Settled, StringComparison.OrdinalIgnoreCase) &&
+               lien.ClosedAtUtc.HasValue
+            ? DateOnly.FromDateTime(lien.ClosedAtUtc.Value)
+            : null;
+    }
+
     private static int? GetDaysSincePurchase(DateOnly? purchaseDate) =>
         purchaseDate.HasValue
             ? Math.Max(DateOnly.FromDateTime(DateTime.UtcNow).DayNumber - purchaseDate.Value.DayNumber, 0)
             : null;
 
-    private static int GetDaysSinceReductionApproval(DateOnly reductionDate) =>
-        Math.Max(DateOnly.FromDateTime(DateTime.UtcNow).DayNumber - reductionDate.DayNumber, 0);
+    private static int? GetDaysSinceReductionApproval(DateOnly? reductionDate, DateOnly? paidDate) =>
+        reductionDate.HasValue && paidDate.HasValue
+            ? Math.Max(paidDate.Value.DayNumber - reductionDate.Value.DayNumber, 0)
+            : null;
 
     private sealed record CaseReportDetails(string LawFirm, string CaseManager, string CaseType, string UccFiled)
     {
@@ -1118,6 +1146,7 @@ public class DIYReportService : IDIYReportService
         IReadOnlyDictionary<Guid, ReductionReportAmounts> ReductionAmountsByLienId,
         IReadOnlyDictionary<Guid, SettlementReportAmounts> SettlementAmountsByLienId,
         IReadOnlyDictionary<Guid, decimal> ReturnedAmountsByLienId,
+        IReadOnlyDictionary<Guid, DateOnly> PaidDatesByLienId,
         IReadOnlyDictionary<Guid, TrackingNoteReportDetails> TrackingNotesByCaseId,
         IReadOnlyDictionary<Guid, CaseActivityReportDetails> CaseActivityByCaseId,
         IReadOnlyDictionary<Guid, FeedNoteReportDetails> FeedNotesByCaseId);

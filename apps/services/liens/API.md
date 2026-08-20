@@ -1052,6 +1052,18 @@ requires service JWT auth for producer submissions.
 
 Base path: `/api/liens/cases`
 
+### POST `/api/liens/cases/global-search`
+
+Search cases, liens, and the legacy global-search categories for the authenticated tenant. The request accepts
+`query` or the legacy alias `keyword`, plus optional `page` and `limit` values. The response preserves the paginated
+`cases` and `liens` objects and adds the legacy `plaintiffs`, `lawFirms`, `medicalFacilities`, `medicalProviders`,
+`fundingCompanies`, `Leads`, and `servicing` arrays. Funding-company results include both imported `LienHolder`
+contacts and canonical `FundingCompany` contacts.
+
+**Permission:** `SYNQ_LIENS.case:read`
+
+---
+
 ### GET `/api/liens/cases`
 
 Search and list cases with optional filters.
@@ -1087,7 +1099,14 @@ Get a case by its unique identifier.
 |---|---|---|
 | `id` | `guid` | Case unique identifier |
 
-**Response:** `200 OK` — `CaseResponse`
+**Response:** `200 OK` — `CaseResponse`. The response includes the latest linked lien's UI lifecycle
+label in `lienStatus` and matching LienStatus lookup UUID in `lienStatusId`. It also includes the latest
+settlement payment's display value in `settlementStatus` and its stored lookup ID or code in
+`settlementStatusId` only when the case has at least one lien and every linked lien is `Settled`
+(legacy/UI `Closed`). The settlement fields return empty strings while any linked lien remains open or
+rejected, or when the case has no liens. Each field pair also returns empty strings when its corresponding
+record does not exist. Recognized legacy numeric settlement-status IDs are returned as human-readable
+labels in `settlementStatus`; the original identifier remains in `settlementStatusId`.
 
 **Error:** `404 Not Found` — if the case does not exist.
 
@@ -1345,6 +1364,10 @@ Uploads the file to the Documents service and records legacy document metadata a
 `GET /api/liens/cases/get-casedocument/{caseId}`, `GET
 /api/liens/cases/liens/get-medicaldocument/{liensId}`, and `GET
 /api/liens/cases/get-allcasedocument/{caseId}` return a legacy `url` field.
+Document responses also return `documentTypeId`, normalized to the UUID used by
+`GET /lookup/document/type`. The existing `typeId` remains available for legacy
+callers. When historical metadata has no usable type, both fields fall back to
+the canonical `Other` document type so the tenant portal always displays a label.
 
 Current uploads return `/documents/{documentId}` and must be opened through the
 Documents-service view-token endpoint. SQL-migrated SL-CORE records instead
@@ -1902,6 +1925,24 @@ Reactivate a previously deactivated contact.
 **Response:** `200 OK` — `ContactResponse`
 
 **Error:** `404 Not Found` — if the contact does not exist.
+
+---
+
+### POST `/api/liens/contacts/export-csv`
+
+Export all matching active, top-level contacts as a Base64-encoded CSV. The default columns match the Contacts table: the selected contact-type name, Email, and Active Cases.
+
+**Permission:** `SYNQ_LIENS.lien:service`
+
+**Request Body:**
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `contactType` | `string` | No | `null` | Contact-type tab to export |
+| `search` | `string` | No | `null` | Matches the Contacts table search |
+| `legacyFormat` | `boolean` | No | `false` | Returns the previous ten-column schema, including inactive and sub-contact records |
+
+**Response:** `200 OK` — `{ "data": "<base64 CSV>" }`
 
 ---
 

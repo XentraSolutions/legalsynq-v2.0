@@ -300,6 +300,140 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task GetCaseById_returns_latest_settlement_status_value_and_id()
+    {
+        Guid lienStatusId;
+        Guid settlementStatusId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lienStatus = LookupValue.Create(
+                LookupCategory.LienStatus,
+                LienStatus.Settled,
+                "Settled",
+                SeedHelper.UserId,
+                tenantId: SeedHelper.TenantId);
+            lienStatusId = lienStatus.Id;
+            db.LookupValues.Add(lienStatus);
+            await db.SaveChangesAsync();
+
+            settlementStatusId = db.LookupValues.Single(value =>
+                value.Category == LookupCategory.SettlementType &&
+                value.Code == "Full").Id;
+        }
+
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
+        {
+            caseId = SeedHelper.CaseId,
+            lienId = SeedHelper.LienId,
+            amount = 100m,
+            paymentDate = "2026-08-20",
+            paymentMethod = "Check",
+            referenceNumber = "CHK-CASE-STATUS",
+            notes = "",
+            settlementType = "by_attorney",
+            settlementStatus = settlementStatusId,
+            lienStatus = "Closed",
+        });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var caseResponse = await _client.GetAsync($"/api/liens/cases/{SeedHelper.CaseId}");
+        caseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await caseResponse.Content.ReadAsStringAsync()}");
+
+        var caseBody = await caseResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        caseBody!.RootElement.GetProperty("lienStatusId").GetString()
+            .Should().Be(lienStatusId.ToString());
+        caseBody.RootElement.GetProperty("lienStatus").GetString()
+            .Should().Be("Closed");
+        caseBody.RootElement.GetProperty("settlementStatusId").GetString()
+            .Should().Be(settlementStatusId.ToString());
+        caseBody.RootElement.GetProperty("settlementStatus").GetString()
+            .Should().Be("Full Settlement");
+    }
+
+    [Fact]
+    public async Task GetCaseById_hides_settlement_status_until_all_liens_are_closed()
+    {
+        Guid settlementStatusId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            settlementStatusId = db.LookupValues.Single(value =>
+                value.Category == LookupCategory.SettlementType &&
+                value.Code == "Full").Id;
+
+            var openLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"OPEN-LIEN-{Guid.CreateVersion7():N}",
+                LienType.MedicalLien,
+                500m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            db.Liens.Add(openLien);
+            await db.SaveChangesAsync();
+        }
+
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
+        {
+            caseId = SeedHelper.CaseId,
+            lienId = SeedHelper.LienId,
+            amount = 100m,
+            paymentDate = "2026-08-20",
+            paymentMethod = "Check",
+            referenceNumber = "CHK-PARTIAL-CASE-STATUS",
+            notes = "",
+            settlementType = "by_attorney",
+            settlementStatus = settlementStatusId,
+            lienStatus = "Closed",
+        });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var caseResponse = await _client.GetAsync($"/api/liens/cases/{SeedHelper.CaseId}");
+        caseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await caseResponse.Content.ReadAsStringAsync()}");
+
+        var caseBody = await caseResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        caseBody!.RootElement.GetProperty("settlementStatusId").GetString()
+            .Should().BeEmpty();
+        caseBody.RootElement.GetProperty("settlementStatus").GetString()
+            .Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetCaseById_returns_label_for_legacy_numeric_settlement_status()
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/settlement/payments", new
+        {
+            caseId = SeedHelper.CaseId,
+            lienId = SeedHelper.LienId,
+            amount = 100m,
+            paymentDate = "2026-08-20",
+            paymentMethod = "Check",
+            referenceNumber = "CHK-NUMERIC-CASE-STATUS",
+            notes = "",
+            settlementType = "by_attorney",
+            settlementStatus = "2",
+            lienStatus = "Closed",
+        });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var caseResponse = await _client.GetAsync($"/api/liens/cases/{SeedHelper.CaseId}");
+        caseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await caseResponse.Content.ReadAsStringAsync()}");
+
+        var caseBody = await caseResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        caseBody!.RootElement.GetProperty("settlementStatusId").GetString()
+            .Should().Be("2");
+        caseBody.RootElement.GetProperty("settlementStatus").GetString()
+            .Should().Be("Reduced Payment");
+    }
+
+    [Fact]
     public async Task PaymentDetails_uses_recorded_amount_when_closed_lien_balance_is_zero()
     {
         Lien lien;

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
@@ -908,13 +910,33 @@ public class LegacyContactEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     // ── CSV exports ───────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task GenerateContactCsv_returns200()
+    public async Task GenerateContactCsv_defaults_to_table_columns_and_supports_legacy_format()
     {
-        var resp = await _client.PostAsJsonAsync("/contact/generate-csv", new
+        var resp = await _client.PostAsJsonAsync("/api/liens/contacts/export-csv", new
         {
             contactType = "LawFirm",
         });
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
+        var encodedCsv = body!.RootElement.GetProperty("data").GetString();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
+        var lines = csv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        lines[0].Should().Be("Law Firm,Email,Active Cases");
+        lines[1].Should().Be("Smith Associates,,1");
+
+        var legacyResp = await _client.PostAsJsonAsync("/contact/generate-csv", new
+        {
+            contactType = "LawFirm",
+            legacyFormat = true,
+        });
+        legacyResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var legacyBody = await legacyResp.Content.ReadFromJsonAsync<JsonDocument>();
+        var legacyEncodedCsv = legacyBody!.RootElement.GetProperty("data").GetString();
+        var legacyCsv = Encoding.UTF8.GetString(Convert.FromBase64String(legacyEncodedCsv!));
+        legacyCsv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)[0]
+            .Should().Be("ContactType,FirstName,LastName,DisplayName,Email,Phone,Organization,City,State,IsActive");
     }
 
     [Fact]

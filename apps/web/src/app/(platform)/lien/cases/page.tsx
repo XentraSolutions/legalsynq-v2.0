@@ -166,6 +166,8 @@ export default function CasesPage() {
       accidentTypeId: filters.accidentTypeId.join(",") || null,
       statusId: filters.statusId.join(",") || null,
       caseManagerId: filters.caseManagerId.join(",") || null,
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
     });
 
     const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;

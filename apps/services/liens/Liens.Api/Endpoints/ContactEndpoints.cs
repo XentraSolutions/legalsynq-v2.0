@@ -620,11 +620,42 @@ public static class ContactEndpoints
         CancellationToken ct)
     {
         var tenantId = RequireTenantId(ctx);
-        var contacts = await contactService.GetAllByTypeAsync(
-            tenantId, request.ContactType, isActive: null, ct);
+        if (request.LegacyFormat)
+        {
+            var legacyContacts = await contactService.GetAllByTypeAsync(
+                tenantId, request.ContactType, isActive: null, ct);
+            return Results.Ok(new { data = BuildLegacyContactCsv(legacyContacts) });
+        }
 
-        var csv = BuildContactCsv(contacts);
-        return Results.Ok(new { data = csv });
+        const int pageSize = 100;
+        var page = 1;
+        var contacts = new List<ContactResponse>();
+        while (true)
+        {
+            var result = await contactService.SearchAsync(
+                tenantId,
+                request.Search,
+                request.ContactType,
+                isActive: true,
+                page,
+                pageSize,
+                contactSubtype: string.Empty,
+                ct: ct);
+
+            if (result.Items.Count == 0)
+                break;
+
+            contacts.AddRange(result.Items);
+            if (contacts.Count >= result.TotalCount)
+                break;
+
+            page++;
+        }
+
+        return Results.Ok(new
+        {
+            data = BuildContactTableCsv(contacts, request.ContactType),
+        });
     }
 
     private static Task<IResult> ExportFacilityCsv(
@@ -636,7 +667,44 @@ public static class ContactEndpoints
         return Task.FromResult(Results.Ok(new { data = string.Empty }));
     }
 
-    private static string BuildContactCsv(List<ContactResponse> contacts)
+    private static string BuildContactTableCsv(
+        IReadOnlyList<ContactResponse> contacts,
+        string? contactType)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine(string.Join(",", new[]
+        {
+            CsvEscape(GetContactNameColumnHeader(contactType)),
+            "Email",
+            "Active Cases",
+        }));
+        foreach (var contact in contacts)
+        {
+            sb.AppendLine(string.Join(",", new[]
+            {
+                CsvEscape(contact.DisplayName),
+                CsvEscape(contact.Email),
+                contact.ActiveCases.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            }));
+        }
+
+        return Convert.ToBase64String(Encoding.UTF8.GetBytes(sb.ToString()));
+    }
+
+    private static string GetContactNameColumnHeader(string? contactType) => contactType switch
+    {
+        ContactType.LawFirm => "Law Firm",
+        ContactType.Provider => "Medical Provider",
+        ContactType.Facility or ContactType.MedicalFacility => "Medical Facility",
+        ContactType.LienHolder or ContactType.FundingCompany => "Funding Company",
+        ContactType.CaseManager => "Case Manager",
+        ContactType.InternalUser => "Internal User",
+        ContactType.Lead => "Lead",
+        null or "" => "Contact Name",
+        _ => contactType,
+    };
+
+    private static string BuildLegacyContactCsv(IReadOnlyList<ContactResponse> contacts)
     {
         var sb = new StringBuilder();
         sb.AppendLine("ContactType,FirstName,LastName,DisplayName,Email,Phone,Organization,City,State,IsActive");
@@ -761,6 +829,8 @@ public static class ContactEndpoints
     private sealed class ContactCsvRequest
     {
         public string? ContactType { get; init; }
+        public string? Search { get; init; }
+        public bool LegacyFormat { get; init; }
     }
 
     private sealed class FacilityCsvRequest

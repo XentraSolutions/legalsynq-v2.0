@@ -124,6 +124,10 @@ Returned when a requested resource does not exist.
 ### 413 Payload Too Large
 
 Returned when an uploaded file exceeds the configured maximum upload size.
+This also applies when the complete multipart request exceeds the server's
+configured upload envelope.
+Transport-level rejections use the same `FILE_TOO_LARGE` error code and
+correlation ID, but may omit file-size fields because form parsing did not run.
 
 ```json
 {

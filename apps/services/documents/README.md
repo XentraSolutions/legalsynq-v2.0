@@ -44,6 +44,13 @@ For local storage, redeemed file responses infer `Content-Type` from the stored 
 
 AWS S3 (configured via `AWS_S3_BUCKET_NAME`, `AWS_S3_REGION`, `AWS_S3_ACCESS_KEY_ID`, `AWS_S3_SECRET_ACCESS_KEY` secrets).
 
+## Upload Limits
+
+`Documents:MaxUploadSizeMb` controls the maximum file size. The API configures
+Kestrel and multipart parsing to allow an additional 10 MiB request envelope for
+multipart boundaries and metadata. Requests that exceed the transport envelope
+or the configured file limit return `413 Payload Too Large`.
+
 ## Database
 
 `DocsDb` (MySQL).

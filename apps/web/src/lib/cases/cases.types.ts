@@ -66,6 +66,8 @@ export interface CaseDocument {
   id: string;
   liensId: string;
   caseId: string;
+  typeId?: string;
+  documentTypeId?: string;
   url: string;
   created: string;
   mimeType: string;
@@ -440,6 +442,8 @@ export interface CasesFilters {
   accidentTypeId: string | null;
   statusId: string | null;
   caseManagerId: string | null;
+  sortBy?: string;
+  sortDirection?: string;
 }
 
 export interface CaseLiensFilters {

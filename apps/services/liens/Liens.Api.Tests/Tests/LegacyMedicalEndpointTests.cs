@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
+using Liens.Domain.Entities;
 using Liens.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -403,6 +404,46 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
             item!["filename"]!.GetValue<string>() == "lien-doc");
 
         caseDocument!["liensId"].Should().BeNull();
+        caseDocument["typeId"]!.GetValue<string>().Should().Be("14");
+        caseDocument["documentTypeId"]!.GetValue<string>()
+            .Should().Be("10000000-0000-0000-0000-000000000005");
         lienDocument!["liensId"]!.GetValue<string>().Should().Be(SeedHelper.LienId.ToString());
+        lienDocument["typeId"]!.GetValue<string>().Should().Be("7");
+        lienDocument["documentTypeId"]!.GetValue<string>()
+            .Should().Be("10000000-0000-0000-0000-000000000007");
+    }
+
+    [Fact]
+    public async Task GetAllCaseDocument_defaults_missing_document_types_to_other()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"DOC-UNTYPED-{Guid.CreateVersion7():N}"[..36],
+                "LegacyCaseDocument",
+                "Imported document without type metadata",
+                "Legacy import",
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                notes: "url=/documents/untyped; filename=untyped.pdf"));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync(
+            $"/api/liens/cases/get-allcasedocument/{SeedHelper.CaseId}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        var document = body["data"]!.AsArray().Single(item =>
+            item!["filename"]!.GetValue<string>() == "untyped.pdf")!;
+
+        document["typeId"]!.GetValue<string>()
+            .Should().Be("10000000-0000-0000-0000-000000000005");
+        document["documentTypeId"]!.GetValue<string>()
+            .Should().Be("10000000-0000-0000-0000-000000000005");
     }
 }

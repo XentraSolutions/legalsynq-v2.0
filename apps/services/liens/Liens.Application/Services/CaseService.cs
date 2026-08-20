@@ -13,20 +13,29 @@ public sealed class CaseService : ICaseService
 {
     private const string LegacyMetadataMarker = "[legacy-meta]";
     private readonly ICaseRepository           _caseRepo;
+    private readonly ILienRepository           _lienRepo;
     private readonly IContactRepository        _contactRepo;
+    private readonly ISettlementService        _settlementService;
+    private readonly ILookupValueService       _lookupValueService;
     private readonly IAuditPublisher           _audit;
     private readonly ILienTaskGenerationDispatcher _taskGenDispatcher;
     private readonly ILogger<CaseService>          _logger;
 
     public CaseService(
         ICaseRepository caseRepo,
+        ILienRepository lienRepo,
         IContactRepository contactRepo,
+        ISettlementService settlementService,
+        ILookupValueService lookupValueService,
         IAuditPublisher audit,
         ILienTaskGenerationDispatcher taskGenDispatcher,
         ILogger<CaseService> logger)
     {
         _caseRepo          = caseRepo;
+        _lienRepo          = lienRepo;
         _contactRepo       = contactRepo;
+        _settlementService = settlementService;
+        _lookupValueService = lookupValueService;
         _audit             = audit;
         _taskGenDispatcher = taskGenDispatcher;
         _logger            = logger;
@@ -591,7 +600,23 @@ public sealed class CaseService : ICaseService
             caseManager = caseManagerContact?.DisplayName;
         }
 
-        return MapToResponse(entity, lawFirm, caseManager);
+        var (lienStatus, lienStatusId) = await ResolveLienStatusAsync(
+            tenantId,
+            entity.Id,
+            ct);
+        var (settlementStatus, settlementStatusId) = await ResolveSettlementStatusAsync(
+            tenantId,
+            entity.Id,
+            ct);
+
+        return MapToResponse(
+            entity,
+            lawFirm: lawFirm,
+            caseManager: caseManager,
+            lienStatus: lienStatus,
+            lienStatusId: lienStatusId,
+            settlementStatus: settlementStatus,
+            settlementStatusId: settlementStatusId);
     }
 
     public async Task<bool> ReassignLawFirmAsync(
@@ -677,7 +702,11 @@ public sealed class CaseService : ICaseService
     private static CaseResponse MapToResponse(
         Case entity,
         string? lawFirm = null,
-        string? caseManager = null)
+        string? caseManager = null,
+        string? lienStatus = null,
+        string? lienStatusId = null,
+        string? settlementStatus = null,
+        string? settlementStatusId = null)
     {
         var noteBody = ExtractUserNotes(entity.Notes);
         var metadata = ParseCaseMetadata(entity.Notes);
@@ -714,6 +743,10 @@ public sealed class CaseService : ICaseService
             ClaimNumber = entity.ClaimNumber,
             DemandAmount = entity.DemandAmount,
             SettlementAmount = entity.SettlementAmount,
+            LienStatus = lienStatus ?? string.Empty,
+            LienStatusId = lienStatusId ?? string.Empty,
+            SettlementStatus = settlementStatus ?? string.Empty,
+            SettlementStatusId = settlementStatusId ?? string.Empty,
             Description = entity.Description,
             Notes = noteBody,
             Sex = GetMetadataValue(metadata, "gender"),
@@ -746,6 +779,107 @@ public sealed class CaseService : ICaseService
             CreatedAtUtc = entity.CreatedAtUtc,
             UpdatedAtUtc = entity.UpdatedAtUtc,
         };
+    }
+
+    private async Task<(string Status, string StatusId)> ResolveLienStatusAsync(
+        Guid tenantId,
+        Guid caseId,
+        CancellationToken ct)
+    {
+        var latestLien = (await _lienRepo.GetByCaseIdAsync(tenantId, caseId, ct))
+            .OrderByDescending(lien => lien.CreatedAtUtc)
+            .ThenByDescending(lien => lien.Id)
+            .FirstOrDefault();
+        if (latestLien is null)
+            return (string.Empty, string.Empty);
+
+        var statusLabel = latestLien.Status switch
+        {
+            LienStatus.Cancelled or LienStatus.Declined => "Rejected",
+            LienStatus.Settled or LienStatus.Withdrawn => "Closed",
+            _ => "Open",
+        };
+        var statusLookup = await _lookupValueService.GetByCodeAsync(
+            tenantId,
+            LookupCategory.LienStatus,
+            latestLien.Status,
+            ct);
+
+        return (statusLabel, statusLookup?.Id.ToString() ?? string.Empty);
+    }
+
+    private async Task<(string Status, string StatusId)> ResolveSettlementStatusAsync(
+        Guid tenantId,
+        Guid caseId,
+        CancellationToken ct)
+    {
+        var liens = await _lienRepo.GetByCaseIdAsync(tenantId, caseId, ct);
+        if (liens.Count == 0 || liens.Any(lien => lien.Status != LienStatus.Settled))
+            return (string.Empty, string.Empty);
+
+        var payments = await _settlementService.GetPaymentsByCaseAsync(tenantId, caseId, ct);
+        var settlements = await _settlementService.GetSettlementsByCaseAsync(tenantId, caseId, ct);
+        var latestPayment = payments
+            .OrderByDescending(payment => payment.CreatedAtUtc)
+            .ThenByDescending(payment => payment.Id)
+            .FirstOrDefault();
+        var matchingSettlement = latestPayment is null
+            ? null
+            : settlements
+                .Where(settlement =>
+                    settlement.LienId == latestPayment.LienId &&
+                    settlement.PaymentNumber == latestPayment.PaymentNumber)
+                .OrderByDescending(settlement => settlement.CreatedAtUtc)
+                .ThenByDescending(settlement => settlement.Id)
+                .FirstOrDefault();
+        var latestSettlement = settlements
+            .OrderByDescending(settlement => settlement.CreatedAtUtc)
+            .ThenByDescending(settlement => settlement.Id)
+            .FirstOrDefault();
+        var statusId = FirstNonEmpty(
+            latestPayment?.SettlementStatusId,
+            matchingSettlement?.Status,
+            latestSettlement?.Status);
+
+        if (statusId is null)
+            return (string.Empty, string.Empty);
+
+        var settlementTypes = await _lookupValueService.GetByCategoryAsync(
+            tenantId,
+            LookupCategory.SettlementType,
+            ct);
+        var settlementStatuses = await _lookupValueService.GetByCategoryAsync(
+            tenantId,
+            LookupCategory.SettlementStatus,
+            ct);
+        var lookup = settlementTypes
+            .Concat(settlementStatuses)
+            .FirstOrDefault(value =>
+                string.Equals(value.Id.ToString(), statusId, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(value.Code, statusId, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(value.Name, statusId, StringComparison.OrdinalIgnoreCase));
+
+        return (lookup?.Name ?? ResolveLegacySettlementStatusName(statusId), statusId);
+    }
+
+    private static string ResolveLegacySettlementStatusName(string value) => value switch
+    {
+        "1" => "Full Payment",
+        "2" => "Reduced Payment",
+        "3" => "Partial Loss",
+        "4" => "No Recovery",
+        _ when int.TryParse(value, out _) => string.Empty,
+        _ => HumanizeLegacyCode(value),
+    };
+
+    private static string HumanizeLegacyCode(string value)
+    {
+        if (!value.Contains('_'))
+            return value;
+
+        return string.Join(' ', value
+            .Split('_', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant()));
     }
 
     private static string? GetMetadataValue(

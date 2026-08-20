@@ -388,6 +388,7 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         {
             caseId = caseNumber,
             accidentTypeId,
+            legacyFormat = true,
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -424,6 +425,368 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         row["Summary"].Should().Be("Export summary");
         row["ToGeneratePdf"].Should().Be("Yes");
         row["SwitchedDate"].Should().Be("08/01/2026");
+    }
+
+    [Fact]
+    public async Task GenerateCaseCsv_applies_the_same_multi_select_filters_as_case_search()
+    {
+        var selectedLawFirmId = Guid.CreateVersion7();
+        var selectedCaseManagerId = Guid.CreateVersion7();
+        var selectedAccidentTypeId = $"ACC-{Guid.CreateVersion7():N}";
+        var matchingCaseNumber = $"CASE-CSV-MULTI-{Guid.CreateVersion7():N}";
+        var excludedCaseNumber = $"CASE-CSV-EXCLUDED-{Guid.CreateVersion7():N}";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                selectedLawFirmId,
+                matchingCaseNumber,
+                "CSV",
+                "Match",
+                SeedHelper.UserId,
+                notes: $"accidentTypeId={selectedAccidentTypeId}; caseManagerId={selectedCaseManagerId}"));
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                Guid.CreateVersion7(),
+                excludedCaseNumber,
+                "CSV",
+                "Excluded",
+                SeedHelper.UserId,
+                notes: $"accidentTypeId={selectedAccidentTypeId}; caseManagerId={selectedCaseManagerId}"));
+            await db.SaveChangesAsync();
+        }
+
+        var filters = new
+        {
+            keyword = "",
+            caseId = (string?)null,
+            lawFirmId = $"{Guid.CreateVersion7()},{selectedLawFirmId}",
+            accidentTypeId = $"{Guid.CreateVersion7()},{selectedAccidentTypeId}",
+            statusId = CaseStatus.PreDemand,
+            caseManagerId = $"{Guid.CreateVersion7()},{selectedCaseManagerId}",
+        };
+
+        var searchResponse = await _client.PostAsJsonAsync("/api/liens/cases/v3", filters);
+        searchResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await searchResponse.Content.ReadAsStringAsync()}");
+        var searchBody = await searchResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        searchBody!.RootElement.GetProperty("data").EnumerateArray()
+            .Select(item => item.GetProperty("caseNumber").GetString())
+            .Should().Equal(matchingCaseNumber);
+
+        var exportResponse = await _client.PostAsJsonAsync("/api/liens/cases/generate-csv", filters);
+        exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await exportResponse.Content.ReadAsStringAsync()}");
+
+        var exportBody = await exportResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var encodedCsv = exportBody!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
+        csv.Should().Contain(matchingCaseNumber);
+        csv.Should().NotContain(excludedCaseNumber);
+    }
+
+    [Fact]
+    public async Task GenerateCaseCsv_defaults_to_screen_columns_filters_and_sort()
+    {
+        var accidentTypeId = $"ACC-LIST-{Guid.CreateVersion7():N}";
+        var caseNumberPrefix = $"CASE-LIST-CSV-{Guid.CreateVersion7():N}";
+        var firstCaseNumber = $"{caseNumberPrefix}-A";
+        var secondCaseNumber = $"{caseNumberPrefix}-B";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                secondCaseNumber,
+                "List Export",
+                "Beta",
+                SeedHelper.UserId,
+                clientDob: new DateOnly(1991, 4, 2),
+                dateOfIncident: new DateOnly(2026, 8, 2),
+                notes: $"accidentTypeId={accidentTypeId}; accidentType=Dog Bite"));
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                firstCaseNumber,
+                "List Export",
+                "Alpha",
+                SeedHelper.UserId,
+                clientDob: new DateOnly(1990, 3, 1),
+                dateOfIncident: new DateOnly(2026, 8, 1),
+                notes: $"accidentTypeId={accidentTypeId}; accidentType=Dog Bite"));
+            await db.SaveChangesAsync();
+        }
+
+        var request = new
+        {
+            keyword = "",
+            accidentTypeId,
+            page = 1,
+            limit = 100,
+            sortBy = "caseCode",
+            sortDirection = "asc",
+        };
+
+        var searchResponse = await _client.PostAsJsonAsync("/api/liens/cases/v3", request);
+        searchResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await searchResponse.Content.ReadAsStringAsync()}");
+        var searchBody = await searchResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var screenCaseNumbers = searchBody!.RootElement.GetProperty("data")
+            .EnumerateArray()
+            .Select(item => item.GetProperty("caseNumber").GetString())
+            .ToArray();
+        screenCaseNumbers.Should().Equal(firstCaseNumber, secondCaseNumber);
+
+        var exportResponse = await _client.PostAsJsonAsync("/api/liens/cases/generate-csv", request);
+        exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await exportResponse.Content.ReadAsStringAsync()}");
+
+        var exportBody = await exportResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var encodedCsv = exportBody!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
+        var lines = csv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+
+        ParseCsvLine(lines[0]).Should().Equal(
+            "Case ID",
+            "Plaintiff Name",
+            "Law Firm",
+            "Case Manager",
+            "Accident Type",
+            "Date of Loss",
+            "DOB",
+            "Status");
+
+        var rows = lines.Skip(1).Select(ParseCsvLine).ToArray();
+        rows.Select(row => row[0]).Should().Equal(screenCaseNumbers);
+        rows[0].Should().Equal(
+            firstCaseNumber,
+            "List Export Alpha",
+            "Smith & Associates LLP",
+            "",
+            "Dog Bite",
+            "08/01/2026",
+            "03/01/1990",
+            "Pre-Demand");
+    }
+
+    [Fact]
+    public async Task GenerateLiensCsv_applies_keyword_multi_select_status_and_date_filters()
+    {
+        var selectedLawFirmId = Guid.CreateVersion7();
+        var selectedCaseManagerId = Guid.CreateVersion7();
+        var matchingCase = Case.Create(
+            SeedHelper.TenantId,
+            selectedLawFirmId,
+            $"CASE-LIEN-CSV-{Guid.CreateVersion7():N}",
+            "Lien",
+            "Match",
+            SeedHelper.UserId,
+            notes: $"caseManagerId={selectedCaseManagerId}");
+        var excludedCase = Case.Create(
+            SeedHelper.TenantId,
+            Guid.CreateVersion7(),
+            $"CASE-LIEN-CSV-EXCLUDED-{Guid.CreateVersion7():N}",
+            "Lien",
+            "Excluded",
+            SeedHelper.UserId,
+            notes: $"caseManagerId={selectedCaseManagerId}");
+        var matchingLienNumber = $"CSV-LIEN-FILTER-{Guid.CreateVersion7():N}";
+        var wrongLawFirmLienNumber = $"CSV-LIEN-FILTER-LAW-{Guid.CreateVersion7():N}";
+        var wrongFacilityLienNumber = $"CSV-LIEN-FILTER-FAC-{Guid.CreateVersion7():N}";
+        var wrongPurchaseDateLienNumber = $"CSV-LIEN-FILTER-PURCHASE-{Guid.CreateVersion7():N}";
+        var wrongClosedDateLienNumber = $"CSV-LIEN-FILTER-CLOSED-{Guid.CreateVersion7():N}";
+        var wrongFacilityId = Guid.CreateVersion7();
+        var purchaseDate = new DateOnly(2026, 8, 20);
+
+        var matchingLien = Lien.Create(
+            SeedHelper.TenantId,
+            selectedLawFirmId,
+            matchingLienNumber,
+            LienType.MedicalLien,
+            100m,
+            SeedHelper.UserId,
+            caseId: matchingCase.Id,
+            facilityId: SeedHelper.FacilityId,
+            purchaseDate: purchaseDate);
+        matchingLien.SetLegacyMedicalStatus("Closed", SeedHelper.UserId);
+        var wrongLawFirmLien = Lien.Create(
+            SeedHelper.TenantId,
+            excludedCase.OrgId,
+            wrongLawFirmLienNumber,
+            LienType.MedicalLien,
+            100m,
+            SeedHelper.UserId,
+            caseId: excludedCase.Id,
+            facilityId: SeedHelper.FacilityId,
+            purchaseDate: purchaseDate);
+        wrongLawFirmLien.SetLegacyMedicalStatus("Closed", SeedHelper.UserId);
+        var wrongFacilityLien = Lien.Create(
+            SeedHelper.TenantId,
+            selectedLawFirmId,
+            wrongFacilityLienNumber,
+            LienType.MedicalLien,
+            100m,
+            SeedHelper.UserId,
+            caseId: matchingCase.Id,
+            facilityId: wrongFacilityId,
+            purchaseDate: purchaseDate);
+        wrongFacilityLien.SetLegacyMedicalStatus("Closed", SeedHelper.UserId);
+        var wrongPurchaseDateLien = Lien.Create(
+            SeedHelper.TenantId,
+            selectedLawFirmId,
+            wrongPurchaseDateLienNumber,
+            LienType.MedicalLien,
+            100m,
+            SeedHelper.UserId,
+            caseId: matchingCase.Id,
+            facilityId: SeedHelper.FacilityId,
+            purchaseDate: purchaseDate.AddDays(-1));
+        wrongPurchaseDateLien.SetLegacyMedicalStatus("Closed", SeedHelper.UserId);
+        var wrongClosedDateLien = Lien.Create(
+            SeedHelper.TenantId,
+            selectedLawFirmId,
+            wrongClosedDateLienNumber,
+            LienType.MedicalLien,
+            100m,
+            SeedHelper.UserId,
+            caseId: matchingCase.Id,
+            facilityId: SeedHelper.FacilityId,
+            purchaseDate: purchaseDate);
+        wrongClosedDateLien.SetLegacyMedicalStatus("Closed", SeedHelper.UserId);
+        typeof(Lien).GetProperty(nameof(Lien.ClosedAtUtc))!.SetValue(
+            wrongClosedDateLien,
+            matchingLien.ClosedAtUtc!.Value.AddDays(-1));
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var wrongFacility = Facility.Create(
+                SeedHelper.TenantId,
+                selectedLawFirmId,
+                "Wrong CSV Facility",
+                SeedHelper.UserId);
+            typeof(Facility).GetProperty(nameof(Facility.Id))!.SetValue(wrongFacility, wrongFacilityId);
+            db.Facilities.Add(wrongFacility);
+            db.Cases.AddRange(matchingCase, excludedCase);
+            db.Liens.AddRange(
+                matchingLien,
+                wrongLawFirmLien,
+                wrongFacilityLien,
+                wrongPurchaseDateLien,
+                wrongClosedDateLien);
+            await db.SaveChangesAsync();
+        }
+
+        var closedDate = DateOnly.FromDateTime(matchingLien.ClosedAtUtc!.Value);
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/liens/generate-csv", new
+        {
+            keyword = "CSV-LIEN-FILTER",
+            caseId = (string?)null,
+            lawFirmId = $"{Guid.CreateVersion7()},{selectedLawFirmId}",
+            medicalFacilityId = $"{Guid.CreateVersion7()},{SeedHelper.FacilityId}",
+            caseManagerId = $"{Guid.CreateVersion7()},{selectedCaseManagerId}",
+            lienStatusId = "Closed",
+            purchaseDate = purchaseDate.ToString("yyyy-MM-dd"),
+            closedDate = closedDate.ToString("yyyy-MM-dd"),
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var encodedCsv = payload!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
+        var lines = csv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        ParseCsvLine(lines[0]).Should().Equal(
+            "Lien ID",
+            "Plaintiff Name",
+            "Law Firm",
+            "Medical Facility",
+            "Purchase Date",
+            "Purchase Amount",
+            "Billing Amount",
+            "Lien Status",
+            "Initial Service Date",
+            "Case Manager");
+        csv.Should().Contain(matchingLienNumber);
+        csv.Should().NotContain(wrongLawFirmLienNumber);
+        csv.Should().NotContain(wrongFacilityLienNumber);
+        csv.Should().NotContain(wrongPurchaseDateLienNumber);
+        csv.Should().NotContain(wrongClosedDateLienNumber);
+    }
+
+    [Fact]
+    public async Task GenerateLiensCsv_defaults_to_screen_columns_and_supports_legacy_format()
+    {
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/liens/generate-csv", new
+        {
+            liensId = SeedHelper.LienId,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var encodedCsv = payload!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        var csv = Encoding.UTF8.GetString(Convert.FromBase64String(encodedCsv!));
+        var lines = csv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+
+        ParseCsvLine(lines[0]).Should().Equal(
+            "Lien ID",
+            "Plaintiff Name",
+            "Law Firm",
+            "Medical Facility",
+            "Purchase Date",
+            "Purchase Amount",
+            "Billing Amount",
+            "Lien Status",
+            "Initial Service Date",
+            "Case Manager");
+        ParseCsvLine(lines[1]).Should().Equal(
+            "LIEN-TEST-001",
+            "John Plaintiff",
+            "Smith & Associates LLP",
+            "",
+            "",
+            "0.00",
+            "0.00",
+            "Open",
+            "",
+            "");
+
+        var legacyResponse = await _client.PostAsJsonAsync("/api/liens/cases/liens/generate-csv", new
+        {
+            liensId = SeedHelper.LienId,
+            legacyFormat = true,
+        });
+        legacyResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await legacyResponse.Content.ReadAsStringAsync()}");
+
+        var legacyPayload = await legacyResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var legacyEncodedCsv = legacyPayload!.RootElement.GetProperty("data")[0].GetProperty("base64").GetString();
+        var legacyCsv = Encoding.UTF8.GetString(Convert.FromBase64String(legacyEncodedCsv!));
+        var legacyHeader = legacyCsv.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)[0];
+        ParseCsvLine(legacyHeader).Should().Equal(
+            "CaseCode",
+            "LiensCode",
+            "Status",
+            "PurchaseDate",
+            "InitialServiceDate",
+            "EndServiceDate",
+            "Note",
+            "FacilityEmail",
+            "FacilityPhone",
+            "TotalPurchase",
+            "TotalBilling",
+            "LawFirm",
+            "CaseManager",
+            "FacilityName",
+            "FacilityContactName",
+            "MedicalProvider",
+            "PlainTiffName",
+            "ClosedDate");
     }
 
     private static string[] ParseCsvLine(string line)
@@ -881,6 +1244,10 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         root.GetProperty("caseDropped").GetString().Should().Be("false");
         root.GetProperty("childSupportLiens").GetString().Should().Be("false");
         root.GetProperty("isUccFiled").GetString().Should().Be("false");
+        root.GetProperty("lienStatus").GetString().Should().BeEmpty();
+        root.GetProperty("lienStatusId").GetString().Should().BeEmpty();
+        root.GetProperty("settlementStatus").GetString().Should().BeEmpty();
+        root.GetProperty("settlementStatusId").GetString().Should().BeEmpty();
     }
 
     [Fact]

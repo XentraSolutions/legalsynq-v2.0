@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Text;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
@@ -28,6 +29,8 @@ public static class CaseEndpoints
     private const string MedicareProcedureLookupAmaLicense = "b733fd32-ee85-4174-9ab1-e09ec14048bb";
     private static readonly Guid LegacyFallbackDocumentTypeId =
         Guid.Parse("00000000-0000-0000-0000-000000000001");
+    private static readonly Guid LegacyOtherDocumentTypeId =
+        Guid.Parse("10000000-0000-0000-0000-000000000005");
     private static readonly JsonSerializerOptions MedicareJsonOptions = new(JsonSerializerDefaults.Web);
 
     private sealed class IdentityUserResponse
@@ -304,17 +307,23 @@ public static class CaseEndpoints
         public string? accidentTypeId { get; init; }
         public string? statusId { get; init; }
         public string? caseManagerId { get; init; }
+        public string? sortBy { get; init; }
+        public string? sortDirection { get; init; }
+        public bool legacyFormat { get; init; }
     }
 
     private sealed class LegacyGenerateLiensCsvRequest
     {
+        public string? keyword { get; init; }
         public string? caseId { get; init; }
         public string? liensId { get; init; }
         public string? lawFirmId { get; init; }
         public string? medicalFacilityId { get; init; }
         public string? purchaseDate { get; init; }
+        public string? closedDate { get; init; }
         public string? caseManagerId { get; init; }
         public string? lienStatusId { get; init; }
+        public bool legacyFormat { get; init; }
     }
 
     private sealed class LegacyLiensCsvRow
@@ -322,6 +331,11 @@ public static class CaseEndpoints
         public string CaseCode { get; init; } = string.Empty;
         public string LiensCode { get; init; } = string.Empty;
         public string Status { get; init; } = string.Empty;
+        public string StatusLabel { get; init; } = string.Empty;
+        public string PlaintiffName { get; init; } = string.Empty;
+        public string DisplayLawFirm { get; init; } = string.Empty;
+        public string DisplayCaseManager { get; init; } = string.Empty;
+        public string DisplayFacilityName { get; init; } = string.Empty;
         public string PurchaseDate { get; init; } = string.Empty;
         public string InitialServiceDate { get; init; } = string.Empty;
         public string EndServiceDate { get; init; } = string.Empty;
@@ -412,6 +426,7 @@ public static class CaseEndpoints
         public string? liensId { get; init; }
         public string filename { get; init; } = string.Empty;
         public string typeId { get; init; } = string.Empty;
+        public string documentTypeId { get; init; } = string.Empty;
         public string url { get; init; } = string.Empty;
         public string created { get; init; } = string.Empty;
         public string createdBy { get; init; } = string.Empty;
@@ -425,6 +440,7 @@ public static class CaseEndpoints
         public string? liensId { get; init; }
         public string filename { get; init; } = string.Empty;
         public string typeId { get; init; } = string.Empty;
+        public string documentTypeId { get; init; } = string.Empty;
         public string url { get; init; } = string.Empty;
         public string created { get; init; } = string.Empty;
         public string createdBy { get; init; } = string.Empty;
@@ -2238,12 +2254,14 @@ public static class CaseEndpoints
     private static LegacyLiensMedicalDocumentResponse MapLegacyMedicalDocumentResponse(ServicingItemResponse item)
     {
         var fields = ParseLegacyNoteFields(item.Notes);
+        var documentTypeId = GetLegacyDocumentCanonicalTypeId(fields);
         return new LegacyLiensMedicalDocumentResponse
         {
             id = item.Id.ToString(),
             liensId = item.LienId?.ToString(),
             filename = GetLegacyDocumentFileName(fields),
-            typeId = fields.GetValueOrDefault("typeId", string.Empty),
+            typeId = GetLegacyDocumentResponseTypeId(fields, documentTypeId),
+            documentTypeId = documentTypeId,
             url = GetLegacyDocumentUrl(fields),
             created = FormatLegacyTimestamp(item.CreatedAtUtc),
             createdBy = string.Empty,
@@ -2259,19 +2277,60 @@ public static class CaseEndpoints
         var fields = ParseLegacyNoteFields(item.Notes);
         var filename = GetLegacyDocumentFileName(fields);
         var url = GetLegacyDocumentUrl(fields);
+        var documentTypeId = GetLegacyDocumentCanonicalTypeId(fields);
 
         return new LegacyAllCaseDocumentResponse
         {
             id = item.Id.ToString(),
             liensId = includeLienId ? item.LienId?.ToString() : null,
             filename = filename,
-            typeId = fields.GetValueOrDefault("typeId", string.Empty),
+            typeId = GetLegacyDocumentResponseTypeId(fields, documentTypeId),
+            documentTypeId = documentTypeId,
             url = url,
             created = FormatLegacyTimestamp(item.CreatedAtUtc),
             createdBy = string.Empty,
             updated = FormatLegacyTimestamp(item.UpdatedAtUtc),
             updatedBy = string.Empty,
             mimeType = GetLegacyDocumentMimeType(url, filename),
+        };
+    }
+
+    private static string GetLegacyDocumentResponseTypeId(
+        IReadOnlyDictionary<string, string> fields,
+        string documentTypeId)
+    {
+        var legacyTypeId = fields.GetValueOrDefault("typeId", string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(legacyTypeId) ? documentTypeId : legacyTypeId;
+    }
+
+    private static string GetLegacyDocumentCanonicalTypeId(IReadOnlyDictionary<string, string> fields)
+    {
+        var storedDocumentTypeId = fields.GetValueOrDefault("documentTypeId", string.Empty).Trim();
+        if (Guid.TryParse(storedDocumentTypeId, out var parsedDocumentTypeId) &&
+            parsedDocumentTypeId != LegacyFallbackDocumentTypeId)
+        {
+            return parsedDocumentTypeId.ToString();
+        }
+
+        var legacyTypeId = fields.GetValueOrDefault("typeId", string.Empty).Trim();
+        if (Guid.TryParse(legacyTypeId, out var parsedLegacyTypeId))
+            return parsedLegacyTypeId.ToString();
+
+        return legacyTypeId switch
+        {
+            "1" or "12" => "10000000-0000-0000-0000-000000000001",
+            "2" => "10000000-0000-0000-0000-000000000002",
+            "3" => "10000000-0000-0000-0000-000000000003",
+            "4" => "10000000-0000-0000-0000-000000000004",
+            "5" => LegacyOtherDocumentTypeId.ToString(),
+            "6" => "10000000-0000-0000-0000-000000000006",
+            "7" => "10000000-0000-0000-0000-000000000007",
+            "8" => "10000000-0000-0000-0000-000000000008",
+            "9" => "10000000-0000-0000-0000-000000000009",
+            "10" => "10000000-0000-0000-0000-000000000009",
+            "11" => "10000000-0000-0000-0000-000000000010",
+            "14" => LegacyOtherDocumentTypeId.ToString(),
+            _ => LegacyOtherDocumentTypeId.ToString(),
         };
     }
 
@@ -3961,35 +4020,23 @@ public static class CaseEndpoints
 
         try
         {
-            Guid? lawFirmOrgId = null;
-            if (!string.IsNullOrWhiteSpace(request.lawFirmId))
-            {
-                if (!Guid.TryParse(request.lawFirmId, out var parsedLawFirmId))
-                {
-                    return Results.NotFound(new
-                    {
-                        isSuccess = false,
-                        message = "No data generated.",
-                        data = (object?)null,
-                    });
-                }
-
-                lawFirmOrgId = parsedLawFirmId;
-            }
-
-            const int pageSize = 200;
+            const int pageSize = 100;
             var page = 1;
             var cases = new List<CaseResponse>();
 
             while (true)
             {
-                var result = await caseService.SearchAsync(
-                    tenantId,
-                    search: string.IsNullOrWhiteSpace(request.keyword) ? null : request.keyword,
-                    status: string.IsNullOrWhiteSpace(request.statusId) ? null : request.statusId,
+                var result = await caseService.SearchV3Async(
+                    tenantId: tenantId,
+                    keyword: request.keyword,
+                    statusId: request.statusId,
                     page: page,
-                    pageSize: pageSize,
-                    orgId: lawFirmOrgId,
+                    limit: pageSize,
+                    sortBy: request.legacyFormat ? "caseCode" : request.sortBy,
+                    sortDirection: request.legacyFormat ? "desc" : request.sortDirection,
+                    accidentTypeId: request.accidentTypeId,
+                    caseManagerId: request.caseManagerId,
+                    lawFirmIds: request.lawFirmId,
                     ct: ct);
 
                 if (result.Items.Count == 0)
@@ -4005,31 +4052,14 @@ public static class CaseEndpoints
             var filtered = cases
                 .Where(c => string.IsNullOrWhiteSpace(request.caseId) ||
                             string.Equals(c.CaseNumber, request.caseId, StringComparison.OrdinalIgnoreCase))
-                .Where(c =>
-                {
-                    if (string.IsNullOrWhiteSpace(request.accidentTypeId))
-                        return true;
-
-                    var fields = ParseLegacyNoteFields(c.Notes);
-                    return string.Equals(
-                        FirstNonEmpty(
-                            c.AccidentTypeId,
-                            fields.GetValueOrDefault("accidentTypeId", string.Empty)),
-                        request.accidentTypeId,
-                        StringComparison.OrdinalIgnoreCase);
-                })
-                .Where(c =>
-                {
-                    if (string.IsNullOrWhiteSpace(request.caseManagerId))
-                        return true;
-
-                    return string.Equals(
-                        c.CaseManagerId,
-                        request.caseManagerId,
-                        StringComparison.OrdinalIgnoreCase);
-                })
-                .OrderByDescending(c => c.CaseNumber, StringComparer.Ordinal)
                 .ToList();
+
+            if (request.legacyFormat)
+            {
+                filtered = filtered
+                    .OrderByDescending(c => c.CaseNumber, StringComparer.Ordinal)
+                    .ToList();
+            }
 
             if (filtered.Count == 0)
             {
@@ -4040,6 +4070,9 @@ public static class CaseEndpoints
                     data = (object?)null,
                 });
             }
+
+            if (!request.legacyFormat)
+                return BuildCaseCsvResponse(BuildCaseListCsv(filtered));
 
             var caseIds = filtered.Select(item => item.Id).ToList();
             var sourceByCaseId = await db.Cases
@@ -4121,33 +4154,7 @@ public static class CaseEndpoints
                     ResolveLegacyCsvUser(source?.UpdatedByUserId, contactsById));
             });
 
-            var csvBytes = BuildLegacyCaseCsv(filtered, supplements);
-            if (csvBytes.Length == 0)
-            {
-                return Results.NotFound(new
-                {
-                    isSuccess = false,
-                    message = "No data generated.",
-                    data = (object?)null,
-                });
-            }
-
-            var timeZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
-            var pacificNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone);
-            var filename = $"case_{pacificNow:yyyyMMddHHmmss}.csv";
-            var exportItem = new
-            {
-                base64 = Convert.ToBase64String(csvBytes),
-                filename,
-                export_format = "csv",
-            };
-
-            return Results.Ok(new
-            {
-                isSuccess = true,
-                message = "CSV generated successfully.",
-                data = new object[] { exportItem },
-            });
+            return BuildCaseCsvResponse(BuildLegacyCaseCsv(filtered, supplements));
         }
         catch (Exception ex)
         {
@@ -4158,6 +4165,36 @@ public static class CaseEndpoints
                 data = (object?)null,
             });
         }
+    }
+
+    private static IResult BuildCaseCsvResponse(byte[] csvBytes)
+    {
+        if (csvBytes.Length == 0)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "No data generated.",
+                data = (object?)null,
+            });
+        }
+
+        var timeZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
+        var pacificNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone);
+        var filename = $"case_{pacificNow:yyyyMMddHHmmss}.csv";
+        var exportItem = new
+        {
+            base64 = Convert.ToBase64String(csvBytes),
+            filename,
+            export_format = "csv",
+        };
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "CSV generated successfully.",
+            data = new object[] { exportItem },
+        });
     }
 
     private static byte[] BuildLegacyCaseCsv(
@@ -4227,6 +4264,29 @@ public static class CaseEndpoints
         return Encoding.UTF8.GetBytes(sb.ToString());
     }
 
+    private static byte[] BuildCaseListCsv(List<CaseResponse> items)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Case ID,Plaintiff Name,Law Firm,Case Manager,Accident Type,Date of Loss,DOB,Status");
+
+        foreach (var item in items)
+        {
+            sb.AppendLine(string.Join(",", new[]
+            {
+                EscapeLegacyCsv(item.CaseNumber),
+                EscapeLegacyCsv(item.ClientDisplayName),
+                EscapeLegacyCsv(item.LawFirm ?? string.Empty),
+                EscapeLegacyCsv(item.CaseManager ?? string.Empty),
+                EscapeLegacyCsv(item.AccidentType ?? string.Empty),
+                EscapeLegacyCsv(FormatLegacyDate(item.DateOfIncident)),
+                EscapeLegacyCsv(FormatLegacyDate(item.ClientDob)),
+                EscapeLegacyCsv(item.StatusLabel),
+            }));
+        }
+
+        return Encoding.UTF8.GetBytes(sb.ToString());
+    }
+
     private static string GetLegacyCsvField(
         IReadOnlyDictionary<string, string> fields,
         params string[] keys)
@@ -4273,13 +4333,10 @@ public static class CaseEndpoints
             var caseIdFilter = ParseGuidCsvValues(request.caseId);
             var lienIdFilter = ParseGuidCsvValues(request.liensId);
             var facilityIdFilter = ParseGuidCsvValues(request.medicalFacilityId);
-            var lawFirmFilter = ParseGuidCsvValues(request.lawFirmId);
-            var caseManagerFilter = (request.caseManagerId ?? string.Empty)
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
             var lienStatusFilter = (request.lienStatusId ?? string.Empty)
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var expandedLienStatusFilter = LienStatus.ExpandFilterValues(lienStatusFilter);
 
             var allLiens = new List<LienResponse>();
             const int pageSize = 200;
@@ -4292,8 +4349,8 @@ public static class CaseEndpoints
 
                 var result = await lienService.SearchAsync(
                     tenantId,
-                    search: null,
-                    status: null,
+                    search: request.keyword,
+                    status: request.lienStatusId,
                     lienType: null,
                     caseId: seededCaseId,
                     facilityId: seededFacilityId,
@@ -4311,44 +4368,51 @@ public static class CaseEndpoints
                 page++;
             }
 
-            var lawFirmCaseIds = new HashSet<Guid>();
-            if (lawFirmFilter.Count > 0)
+            var caseFilterRequested = !string.IsNullOrWhiteSpace(request.lawFirmId) ||
+                                      !string.IsNullOrWhiteSpace(request.caseManagerId);
+            var matchingCaseIds = new HashSet<Guid>();
+            if (caseFilterRequested)
             {
-                foreach (var orgId in lawFirmFilter)
+                var casePage = 1;
+                while (true)
                 {
-                    var casePage = 1;
-                    while (true)
-                    {
-                        var result = await caseService.SearchAsync(
-                            tenantId,
-                            search: null,
-                            status: null,
-                            page: casePage,
-                            pageSize: pageSize,
-                            orgId: orgId,
-                            ct: ct);
+                    var result = await caseService.SearchV3Async(
+                        tenantId: tenantId,
+                        keyword: null,
+                        statusId: null,
+                        page: casePage,
+                        limit: 100,
+                        sortBy: null,
+                        sortDirection: null,
+                        caseManagerId: request.caseManagerId,
+                        lawFirmIds: request.lawFirmId,
+                        ct: ct);
 
-                        if (result.Items.Count == 0)
-                            break;
+                    if (result.Items.Count == 0)
+                        break;
 
-                        foreach (var item in result.Items)
-                            lawFirmCaseIds.Add(item.Id);
+                    foreach (var item in result.Items)
+                        matchingCaseIds.Add(item.Id);
 
-                        if (lawFirmCaseIds.Count >= result.TotalCount)
-                            break;
+                    if (matchingCaseIds.Count >= result.TotalCount)
+                        break;
 
-                        casePage++;
-                    }
+                    casePage++;
                 }
             }
 
             var filteredLiens = allLiens
-                .Where(l => caseIdFilter.Count == 0 || (l.CaseId.HasValue && caseIdFilter.Contains(l.CaseId.Value)))
-                .Where(l => lienIdFilter.Count == 0 || lienIdFilter.Contains(l.Id))
-                .Where(l => facilityIdFilter.Count == 0 || (l.FacilityId.HasValue && facilityIdFilter.Contains(l.FacilityId.Value)))
-                .Where(l => lawFirmCaseIds.Count == 0 || (l.CaseId.HasValue && lawFirmCaseIds.Contains(l.CaseId.Value)))
-                .Where(l => lienStatusFilter.Count == 0 || lienStatusFilter.Contains(l.Status))
+                .Where(l => string.IsNullOrWhiteSpace(request.caseId) ||
+                            (l.CaseId.HasValue && caseIdFilter.Contains(l.CaseId.Value)))
+                .Where(l => string.IsNullOrWhiteSpace(request.liensId) || lienIdFilter.Contains(l.Id))
+                .Where(l => string.IsNullOrWhiteSpace(request.medicalFacilityId) ||
+                            (l.FacilityId.HasValue && facilityIdFilter.Contains(l.FacilityId.Value)))
+                .Where(l => !caseFilterRequested || (l.CaseId.HasValue && matchingCaseIds.Contains(l.CaseId.Value)))
+                .Where(l => expandedLienStatusFilter.Count == 0 || expandedLienStatusFilter.Contains(l.Status))
                 .Where(l => MatchesLegacyPurchaseDateFilter(ParseLegacyDate(l.PurchaseDate), request.purchaseDate))
+                .Where(l => MatchesLegacyDateFilter(
+                    l.ClosedAtUtc.HasValue ? DateOnly.FromDateTime(l.ClosedAtUtc.Value) : null,
+                    request.closedDate))
                 .OrderByDescending(l => l.CreatedAtUtc)
                 .ToList();
 
@@ -4368,13 +4432,6 @@ public static class CaseEndpoints
                 else
                 {
                     caseFields = new Dictionary<string, string>(StringComparer.Ordinal);
-                }
-
-                if (caseManagerFilter.Count > 0)
-                {
-                    var caseManagerId = caseFields.GetValueOrDefault("caseManagerId", string.Empty);
-                    if (!caseManagerFilter.Contains(caseManagerId))
-                        continue;
                 }
 
                 decimal totalPurchase = 0m;
@@ -4425,6 +4482,12 @@ public static class CaseEndpoints
                         facilityFields = ParseLegacyNoteFields(infoItem.Notes);
                 }
 
+                var plaintiffName = lien.IsConfidential
+                    ? "Confidential"
+                    : FirstNonEmpty(
+                        lien.Plaintiff,
+                        lien.SubjectDisplayName,
+                        caseInfo?.ClientDisplayName) ?? string.Empty;
                 var plainTiffName = caseInfo is null
                     ? string.Empty
                     : $"{caseInfo.ClientFirstName} {caseInfo.ClientLastName}".Trim();
@@ -4438,6 +4501,19 @@ public static class CaseEndpoints
                     CaseCode = caseInfo?.CaseNumber ?? string.Empty,
                     LiensCode = lien.LienNumber,
                     Status = lien.Status,
+                    StatusLabel = FirstNonEmpty(lien.StatusLabel, lien.Status) ?? string.Empty,
+                    PlaintiffName = plaintiffName,
+                    DisplayLawFirm = FirstNonEmpty(
+                        lien.LawFirm,
+                        caseInfo?.LawFirm,
+                        caseFields.GetValueOrDefault("lawFirm", string.Empty)) ?? string.Empty,
+                    DisplayCaseManager = FirstNonEmpty(
+                        lien.CaseManager,
+                        caseInfo?.CaseManager,
+                        caseFields.GetValueOrDefault("caseManager", string.Empty)) ?? string.Empty,
+                    DisplayFacilityName = FirstNonEmpty(
+                        lien.MedicalFacility,
+                        facilityFields.GetValueOrDefault("facilityName", string.Empty)) ?? string.Empty,
                     PurchaseDate = lien.PurchaseDate ?? string.Empty,
                     InitialServiceDate = FormatLegacyDate(lien.InitialServiceDate) is { Length: > 0 } initialServiceDate
                         ? initialServiceDate
@@ -4470,7 +4546,9 @@ public static class CaseEndpoints
                 });
             }
 
-            var csvBytes = BuildLegacyLiensCsv(rows);
+            var csvBytes = request.legacyFormat
+                ? BuildLegacyLiensCsv(rows)
+                : BuildLienListCsv(rows);
             var timeZone = TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
             var pacificNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZone);
             var filename = $"liens_{pacificNow:yyyyMMddHHmmss}.csv";
@@ -4497,6 +4575,31 @@ public static class CaseEndpoints
                 data = (object?)null,
             });
         }
+    }
+
+    private static byte[] BuildLienListCsv(List<LegacyLiensCsvRow> rows)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Lien ID,Plaintiff Name,Law Firm,Medical Facility,Purchase Date,Purchase Amount,Billing Amount,Lien Status,Initial Service Date,Case Manager");
+
+        foreach (var row in rows)
+        {
+            sb.AppendLine(string.Join(",", new[]
+            {
+                EscapeLegacyCsv(row.LiensCode),
+                EscapeLegacyCsv(row.PlaintiffName),
+                EscapeLegacyCsv(row.DisplayLawFirm),
+                EscapeLegacyCsv(row.DisplayFacilityName),
+                EscapeLegacyCsv(row.PurchaseDate),
+                EscapeLegacyCsv(row.TotalPurchase),
+                EscapeLegacyCsv(row.TotalBilling),
+                EscapeLegacyCsv(row.StatusLabel),
+                EscapeLegacyCsv(row.InitialServiceDate),
+                EscapeLegacyCsv(row.DisplayCaseManager),
+            }));
+        }
+
+        return Encoding.UTF8.GetBytes(sb.ToString());
     }
 
     private static byte[] BuildLegacyLiensCsv(List<LegacyLiensCsvRow> rows)
@@ -4548,29 +4651,52 @@ public static class CaseEndpoints
     }
 
     private static bool MatchesLegacyPurchaseDateFilter(DateOnly? value, string? rawFilter)
+        => MatchesLegacyDateFilter(value, rawFilter);
+
+    private static bool MatchesLegacyDateFilter(DateOnly? value, string? rawFilter)
     {
         if (string.IsNullOrWhiteSpace(rawFilter))
             return true;
         if (!value.HasValue)
             return false;
 
-        if (rawFilter.Contains('-', StringComparison.Ordinal))
+        var normalized = rawFilter.Trim();
+        if (TryParseLegacyFilterDate(normalized, out var exact))
+            return value.Value == exact;
+
+        foreach (var separator in new[] { " - ", " to ", "," })
         {
-            var range = rawFilter
-                .Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var range = normalized.Split(
+                separator,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
             if (range.Length == 2 &&
-                DateOnly.TryParseExact(range[0], "MM/dd/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var start) &&
-                DateOnly.TryParseExact(range[1], "MM/dd/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var end))
+                TryParseLegacyFilterDate(range[0], out var start) &&
+                TryParseLegacyFilterDate(range[1], out var end))
             {
                 return value.Value >= start && value.Value <= end;
             }
         }
 
-        if (DateOnly.TryParseExact(rawFilter, "MM/dd/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var exact))
-            return value.Value == exact;
+        if (normalized.Length == 21 && normalized[10] == '-' &&
+            TryParseLegacyFilterDate(normalized[..10], out var compactStart) &&
+            TryParseLegacyFilterDate(normalized[11..], out var compactEnd))
+        {
+            return value.Value >= compactStart && value.Value <= compactEnd;
+        }
 
-        return true;
+        return false;
+    }
+
+    private static bool TryParseLegacyFilterDate(string value, out DateOnly date)
+    {
+        string[] formats = ["MM/dd/yyyy", "yyyy-MM-dd"];
+        return DateOnly.TryParseExact(
+            value,
+            formats,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out date);
     }
 
     private static string EscapeLegacyCsv(string? value)
@@ -8419,23 +8545,172 @@ public static class CaseEndpoints
     private sealed class GlobalSearchRequest
     {
         public string? Query { get; init; }
+        public string? Keyword { get; init; }
         public int Page      { get; init; } = 1;
         public int Limit     { get; init; } = 20;
+    }
+
+    private sealed class GlobalSearchResponse
+    {
+        public required PaginatedResult<CaseResponse> Cases { get; init; }
+        public required PaginatedResult<LienResponse> Liens { get; init; }
+        public required List<GlobalSearchPlaintiffResponse> Plaintiffs { get; init; }
+        public required List<GlobalSearchCompanyResponse> LawFirms { get; init; }
+        public required List<GlobalSearchCompanyResponse> MedicalFacilities { get; init; }
+        public required List<GlobalSearchCompanyResponse> MedicalProviders { get; init; }
+        public required List<GlobalSearchCompanyResponse> FundingCompanies { get; init; }
+
+        [JsonPropertyName("Leads")]
+        public required List<GlobalSearchCompanyResponse> Leads { get; init; }
+
+        public required List<GlobalSearchServicingResponse> Servicing { get; init; }
+    }
+
+    private sealed class GlobalSearchPlaintiffResponse
+    {
+        public string CaseId { get; init; } = string.Empty;
+        public string PlaintiffName { get; init; } = string.Empty;
+        public string CaseCode { get; init; } = string.Empty;
+        public string DateOfLoss { get; init; } = string.Empty;
+        public string DateOfBirth { get; init; } = string.Empty;
+    }
+
+    private sealed class GlobalSearchCompanyResponse
+    {
+        public string? CaseId { get; init; }
+        public string ContactId { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public string ActiveCases { get; init; } = string.Empty;
+        public string Address { get; init; } = string.Empty;
+    }
+
+    private sealed class GlobalSearchServicingResponse
+    {
+        public string CaseId { get; init; } = string.Empty;
+        public string PlaintiffName { get; init; } = string.Empty;
+        public string CaseCode { get; init; } = string.Empty;
+        public string CurrentStatus { get; init; } = string.Empty;
+        public string SettlementStatus { get; init; } = string.Empty;
     }
 
     private static async Task<IResult> GlobalSearch(
         GlobalSearchRequest request,
         ICaseService caseService,
         ILienService lienService,
+        IContactService contactService,
+        IFacilityService facilityService,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
+        var query = string.IsNullOrWhiteSpace(request.Query)
+            ? request.Keyword
+            : request.Query;
         var cases = await caseService.SearchAsync(
-            tenantId, request.Query, null, request.Page, request.Limit, null, ct);
+            tenantId, query, null, request.Page, request.Limit, null, ct);
         var liens = await lienService.SearchAsync(
-            tenantId, request.Query, null, null, null, null,
+            tenantId, query, null, null, null, null,
             request.Page, request.Limit, ct);
-        return Results.Ok(new { cases, liens });
+
+        var lawFirms = await contactService.SearchAsync(
+            tenantId, query, ContactType.LawFirm, null,
+            request.Page, request.Limit, ct: ct);
+        var medicalProviders = await contactService.SearchAsync(
+            tenantId, query, ContactType.Provider, null,
+            request.Page, request.Limit, ct: ct);
+        var legacyFundingCompanies = await contactService.SearchAsync(
+            tenantId, query, ContactType.LienHolder, null,
+            request.Page, request.Limit, ct: ct);
+        var fundingCompanies = await contactService.SearchAsync(
+            tenantId, query, ContactType.FundingCompany, null,
+            request.Page, request.Limit, ct: ct);
+        var leads = await contactService.SearchAsync(
+            tenantId, query, ContactType.Lead, null,
+            request.Page, request.Limit, ct: ct);
+        var medicalFacilities = await facilityService.SearchAsync(
+            tenantId, query, null, request.Page, request.Limit, ct);
+
+        var combinedFundingCompanies = legacyFundingCompanies.Items
+            .Concat(fundingCompanies.Items)
+            .DistinctBy(contact => contact.Id)
+            .OrderBy(contact => contact.DisplayName)
+            .Take(cases.PageSize)
+            .ToList();
+
+        var response = new GlobalSearchResponse
+        {
+            Cases = cases,
+            Liens = liens,
+            Plaintiffs = cases.Items.Select(MapGlobalSearchPlaintiff).ToList(),
+            LawFirms = lawFirms.Items.Select(MapGlobalSearchCompany).ToList(),
+            MedicalFacilities = medicalFacilities.Items.Select(MapGlobalSearchFacility).ToList(),
+            MedicalProviders = medicalProviders.Items.Select(MapGlobalSearchCompany).ToList(),
+            FundingCompanies = combinedFundingCompanies.Select(MapGlobalSearchCompany).ToList(),
+            Leads = leads.Items.Select(MapGlobalSearchCompany).ToList(),
+            Servicing = cases.Items.Select(MapGlobalSearchServicing).ToList(),
+        };
+
+        return Results.Ok(response);
+    }
+
+    private static GlobalSearchPlaintiffResponse MapGlobalSearchPlaintiff(CaseResponse item)
+        => new()
+        {
+            CaseId = item.Id.ToString(),
+            PlaintiffName = item.ClientDisplayName,
+            CaseCode = item.CaseNumber,
+            DateOfLoss = FormatLegacyDate(item.DateOfIncident),
+            DateOfBirth = FormatLegacyDate(item.ClientDob),
+        };
+
+    private static GlobalSearchCompanyResponse MapGlobalSearchCompany(ContactResponse item)
+        => new()
+        {
+            ContactId = item.Id.ToString(),
+            Name = string.IsNullOrWhiteSpace(item.Organization)
+                ? item.DisplayName
+                : item.Organization,
+            ActiveCases = item.ActiveCases.ToString(CultureInfo.InvariantCulture),
+            Address = FormatGlobalSearchAddress(
+                item.AddressLine1,
+                item.City,
+                item.State,
+                item.PostalCode),
+        };
+
+    private static GlobalSearchCompanyResponse MapGlobalSearchFacility(FacilityResponse item)
+        => new()
+        {
+            ContactId = item.Id.ToString(),
+            Name = item.Name,
+            Address = FormatGlobalSearchAddress(
+                item.AddressLine1,
+                item.City,
+                item.State,
+                item.PostalCode),
+        };
+
+    private static GlobalSearchServicingResponse MapGlobalSearchServicing(CaseResponse item)
+        => new()
+        {
+            CaseId = item.Id.ToString(),
+            PlaintiffName = item.ClientDisplayName,
+            CaseCode = item.CaseNumber,
+            CurrentStatus = item.StatusLabel,
+            SettlementStatus = item.SettlementStatus,
+        };
+
+    private static string FormatGlobalSearchAddress(
+        string? addressLine1,
+        string? city,
+        string? state,
+        string? postalCode)
+    {
+        var stateAndPostalCode = string.Join(" ",
+            new[] { state, postalCode }.Where(value => !string.IsNullOrWhiteSpace(value)));
+
+        return string.Join(", ",
+            new[] { addressLine1, city, stateAndPostalCode }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
     }
 }

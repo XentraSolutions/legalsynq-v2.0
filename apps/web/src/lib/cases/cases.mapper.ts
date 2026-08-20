@@ -39,21 +39,21 @@ export function formatDateField(val: string | null | undefined): string {
 export const dateConverter = (dateData: string) => {
   if (!dateData) return "";
 
-  const date = new Date(dateData);
-
-  // Format the date using the US locale to automatically get MM/DD/YYYY
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    month: "2-digit",
-    day: "2-digit",
-    year: "numeric",
-  });
-
-  const formattedDate = formatter.format(date);
-  return formattedDate;
+  return formatLegacyDateOnly(dateData);
 };
 
 export const dateConvertertoIso = (dateData: string) => {
   if (!dateData) return "";
+
+  const isoDateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateData.trim());
+  if (isoDateOnlyMatch) return isoDateOnlyMatch[0];
+
+  const usDateOnlyMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dateData.trim());
+  if (usDateOnlyMatch) {
+    const [, month, day, year] = usDateOnlyMatch;
+    return `${year}-${month}-${day}`;
+  }
+
   const d = new Date(dateData);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
@@ -229,7 +229,10 @@ export function mapMedicalCodes(result: MedicalCodeLiensResponse[]): {
 
 function getDocumentTypeById(id: string, docs: DocumentTypeResponse[]) {
   const doc = docs.find((d) => d.id == id);
-  return doc?.name ?? "";
+  const fallback = docs.find(
+    (d) => d.code === "Other" || d.name.toLowerCase() === "other",
+  );
+  return doc?.name ?? fallback?.name ?? "Other";
 }
 
 export function mapDocuments(
@@ -240,11 +243,13 @@ export function mapDocuments(
   let cases: CaseDocument[] = [];
 
   (result.data || []).map((data: CaseDocument) => {
+    data.documentType = getDocumentTypeById(
+      data.documentTypeId || data.typeId || "",
+      cat,
+    );
     if (data.liensId) {
       liens.push(data);
-      data.documentType = getDocumentTypeById(data.typeId, cat);
     } else {
-      data.documentType = getDocumentTypeById(data.typeId, cat);
       cases.push(data);
     }
   });

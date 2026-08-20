@@ -25,6 +25,10 @@ public sealed class CaseResponse
     public string? ClaimNumber { get; init; }
     public decimal? DemandAmount { get; init; }
     public decimal? SettlementAmount { get; init; }
+    public string LienStatus { get; init; } = string.Empty;
+    public string LienStatusId { get; init; } = string.Empty;
+    public string SettlementStatus { get; init; } = string.Empty;
+    public string SettlementStatusId { get; init; } = string.Empty;
     public string? Description { get; init; }
     public string? Notes { get; init; }
     public string? Sex { get; init; }

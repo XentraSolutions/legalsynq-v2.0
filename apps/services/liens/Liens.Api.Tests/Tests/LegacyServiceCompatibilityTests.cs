@@ -427,6 +427,56 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
+    public async Task Global_search_returns_legacy_result_categories_with_v3_cases_and_liens()
+    {
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/global-search", new
+        {
+            page = 1,
+            limit = 20,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        body["cases"]!["items"]!.AsArray().Should().Contain(item =>
+            item!["id"]!.GetValue<Guid>() == SeedHelper.CaseId);
+        body["liens"]!["items"]!.AsArray().Should().Contain(item =>
+            item!["id"]!.GetValue<Guid>() == SeedHelper.LienId);
+        body["plaintiffs"]!.AsArray().Should().Contain(item =>
+            item!["caseId"]!.GetValue<string>() == SeedHelper.CaseId.ToString() &&
+            item["plaintiffName"]!.GetValue<string>() == "John Plaintiff");
+        body["lawFirms"]!.AsArray().Should().Contain(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.LawFirmId.ToString());
+        body["medicalFacilities"]!.AsArray().Should().Contain(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.MedicalFacilityContactId.ToString());
+        body["medicalProviders"]!.AsArray().Should().Contain(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.MedicalProviderId.ToString());
+        body["fundingCompanies"]!.AsArray().Should().Contain(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.FundingCompanyId.ToString());
+        body["Leads"]!.AsArray().Should().Contain(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.LeadContactId.ToString());
+        body["servicing"]!.AsArray().Should().Contain(item =>
+            item!["caseId"]!.GetValue<string>() == SeedHelper.CaseId.ToString());
+    }
+
+    [Fact]
+    public async Task Global_search_accepts_legacy_keyword_field()
+    {
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/global-search", new
+        {
+            keyword = "Jane Doe",
+            page = 1,
+            limit = 20,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        body["Leads"]!.AsArray().Should().ContainSingle(item =>
+            item!["contactId"]!.GetValue<string>() == SeedHelper.LeadContactId.ToString());
+    }
+
+    [Fact]
     public async Task ServiceCase_v3_search_alias_preserves_fuzzy_ranking_filters_tenant_and_paging()
     {
         var nameToken = string.Concat(Guid.CreateVersion7().ToString("N").Select(value =>

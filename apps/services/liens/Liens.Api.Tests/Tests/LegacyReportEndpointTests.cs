@@ -393,11 +393,89 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         row.GetProperty("purchase_date").GetString().Should().Be("06/15/2024");
         row.GetProperty("returned_amount").GetString().Should().Be("1,234.56");
         int.Parse(row.GetProperty("days_since_reduction_approval").GetString()!)
-            .Should().BeGreaterThan(0);
+            .Should().Be(22);
         row.GetProperty("medical_facility").GetString().Should().Be("Sunrise Clinic");
         row.GetProperty("lawfirm").GetString().Should().Be("Smith & Associates LLP");
         row.GetProperty("case_type").GetString().Should().Be("Motor Vehicle Accident");
         row.GetProperty("case_manager").GetString().Should().Be("Case Manager");
+    }
+
+    [Fact]
+    public async Task RunReport_uses_legacy_settlement_date_for_days_since_reduction_when_reduction_date_is_missing()
+    {
+        string lienNumber;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-REDUCTION-DAYS-{Guid.CreateVersion7():N}"[..30],
+                "LegacyReduction",
+                "Plaintiff",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DIY-REDUCTION-DAYS-{Guid.CreateVersion7():N}"[..36],
+                LienType.MedicalLien,
+                300m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                isBulk: "N",
+                purchaseDate: new DateOnly(2025, 1, 1));
+            var settlement = LienSettlement.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                1,
+                180m,
+                SeedHelper.UserId,
+                status: "Settled",
+                note: "reductionAmount=20; reductionDate=; totalSettledAmount=150",
+                settlementDate: new DateOnly(2025, 1, 10));
+            var payment = SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                caseEntity.Id,
+                lien.Id,
+                1,
+                150m,
+                SeedHelper.UserId,
+                paymentDate: new DateOnly(2025, 2, 1));
+
+            lien.SetLegacyMedicalStatus(LienStatus.Settled, SeedHelper.UserId);
+            lienNumber = lien.LienNumber;
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.LienSettlements.Add(settlement);
+            db.SettlementPaymentDetails.Add(payment);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            statusView = "ALL",
+            search = lienNumber,
+            isBulk = "N",
+            columns = new[]
+            {
+                "lien_id",
+                "reduction_date",
+                "days_since_reduction_approval",
+            },
+            page = 1,
+            limit = 50,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = payload.RootElement.GetProperty("data").EnumerateArray()
+            .Single(item => item.GetProperty("lien_id").GetString() == lienNumber);
+        row.GetProperty("reduction_date").GetString().Should().Be("01/10/2025");
+        row.GetProperty("days_since_reduction_approval").GetString().Should().Be("22");
     }
 
     [Fact]
