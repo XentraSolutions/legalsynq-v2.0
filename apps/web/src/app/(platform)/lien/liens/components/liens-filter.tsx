@@ -191,7 +191,6 @@ export function LiensFilter({ open, onClose, value, onApplyFilter, primaryReady 
                 // Can't be after the To date already picked (also implies
                 // "not in the future", since To is itself capped at today).
                 maxDate={parseLocalDate(draft.purchaseDateTo)}
-                disableFutureDates
               />
             </div>
             <div>
@@ -200,7 +199,6 @@ export function LiensFilter({ open, onClose, value, onApplyFilter, primaryReady 
                 value={draft.purchaseDateTo}
                 onChange={(v) => setDraft({ ...draft, purchaseDateTo: v })}
                 minDate={parseLocalDate(draft.purchaseDateFrom)}
-                disableFutureDates
               />
             </div>
           </div>
@@ -214,7 +212,6 @@ export function LiensFilter({ open, onClose, value, onApplyFilter, primaryReady 
                 value={draft.closedDateFrom}
                 onChange={(v) => setDraft({ ...draft, closedDateFrom: v })}
                 maxDate={parseLocalDate(draft.closedDateTo)}
-                disableFutureDates
               />
             </div>
             <div>
@@ -223,7 +220,6 @@ export function LiensFilter({ open, onClose, value, onApplyFilter, primaryReady 
                 value={draft.closedDateTo}
                 onChange={(v) => setDraft({ ...draft, closedDateTo: v })}
                 minDate={parseLocalDate(draft.closedDateFrom)}
-                disableFutureDates
               />
             </div>
           </div>
