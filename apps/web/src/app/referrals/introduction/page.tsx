@@ -6,6 +6,7 @@ import {
   mapFailureReasonToInvalidReason,
   readPublicReferralFailureReason,
 } from "../lib/public-referral-error";
+import { buildCareConnectReferralLoginUrl } from "@/lib/careconnect-login-url";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,10 @@ export default async function IntroductionPage({ searchParams }: any) {
   }
 
   const activateUrl = `/referrals/activate?referralId=${threadData.referralId}&token=${encodeURIComponent(token)}&companyName=${encodeURIComponent(threadData.providerName)}`;
+  const loginUrl = buildCareConnectReferralLoginUrl(
+    process.env.CC_COMMON_PORTAL_HOSTNAME,
+    `/careconnect/referrals/${threadData.referralId}`,
+  );
 
   const cardDetails = [
     {
@@ -113,7 +118,10 @@ export default async function IntroductionPage({ searchParams }: any) {
 
         <div className="grid grid-cols-2 gap-4 mb-10 px-8">
           {cardDetails.map((card) => (
-            <div className="bg-white min-h-[120px] flex flex-col p-6 px-4 text-[#404040] rounded-2xl">
+            <div
+              key={card.title}
+              className="bg-white min-h-[120px] flex flex-col p-6 px-4 text-[#404040] rounded-2xl"
+            >
               <div>
                 <i
                   className={`${card.icon} flex justify-end text-2xl text-[#EE7132]`}
@@ -143,7 +151,7 @@ export default async function IntroductionPage({ searchParams }: any) {
           Already have an activated portal account?
           <Link
             className="text-primary font-semibold ml-1 hover:underline"
-            href={threadData?.loginUrl}
+            href={loginUrl}
           >
             Log in
           </Link>
