@@ -363,10 +363,6 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView();
-  }, []);
-
   const [actionState, setActionState] = useState<ActionState>("idle");
   const [actionError, setActionError] = useState("");
   const [liveStatus, setLiveStatus] = useState(data.status);
@@ -476,7 +472,7 @@ export function ThreadClient({ token, data, loginUrl }: Props) {
     actionState === "error";
 
   const referralId = data.referralId;
-  const activateUrl = `/referrals/introduction?token=${encodeURIComponent(token)}`;
+  const activateUrl = `/referrals/thread?token=${encodeURIComponent(token)}`;
 
   const handleAccept = () => {
     setActionError("");
