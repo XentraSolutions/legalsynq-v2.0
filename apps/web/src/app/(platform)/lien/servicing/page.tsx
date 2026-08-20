@@ -177,6 +177,7 @@ export default function ServicingPage() {
 
   const exportServicing = async () => {
     try {
+      setExporting(true);
       const response = await servicingService.export();
 
       const src = `data:text/${response.data[0]?.export_format};base64,${response.data[0]?.base64}`;
