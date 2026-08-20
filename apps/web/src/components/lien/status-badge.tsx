@@ -45,7 +45,7 @@ export const STATUS_LABELS: Record<string, string> = {
   PreDemand: "Pre-Demand",
   Approval: "Approval",
   PreparedForSale: "Prepared for Sale",
-  SubmittedForSale: "Under Review",
+  SubmittedForSale: "Submitted for Sale",
   DemandSent: "Demand Sent",
   InNegotiation: "In Negotiation",
   CaseSettled: "Case Settled",
