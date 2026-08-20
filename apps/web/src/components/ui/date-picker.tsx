@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { useMask } from "@react-input/mask";
 import { DayPicker, Matcher } from "react-day-picker";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 import "react-day-picker/style.css";
@@ -17,6 +18,7 @@ interface DatePickerProps {
   maxDate?: Date | null;
   minDate?: Date | null;
   disableFutureDates?: boolean;
+  clearable?: boolean;
 }
 
 function parseDate(value?: string): Date | undefined {
@@ -62,6 +64,16 @@ function yearRange(centerYear: number, maxYear?: number, span = 100): number[] {
   return years;
 }
 
+function parseTypedDate(masked: string): Date | undefined {
+  const digits = masked.replace(/\D/g, "");
+  if (digits.length !== 8) return undefined;
+  const mm = Number(digits.slice(0, 2));
+  const dd = Number(digits.slice(2, 4));
+  const yyyy = Number(digits.slice(4, 8));
+  if (mm < 1 || mm > 12 || dd < 1) return undefined;
+  return new Date(yyyy, mm - 1, dd);
+}
+
 export function DatePicker({
   value,
   onChange,
@@ -71,6 +83,7 @@ export function DatePicker({
   maxDate,
   minDate,
   disableFutureDates,
+  clearable = true,
 }: DatePickerProps) {
   const effectiveMaxDate =
     maxDate !== undefined
@@ -82,11 +95,105 @@ export function DatePicker({
   const [open, setOpen] = React.useState(false);
   const selected = parseDate(value);
   const [month, setMonth] = React.useState<Date>(selected ?? new Date());
+  const [inputText, setInputText] = React.useState(
+    selected ? displayDate(selected) : "",
+  );
+  const isFocused = React.useRef(false);
+  const anchorRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const maskRef = useMask({
+    mask: "__/__/____",
+    replacement: { _: /\d/ },
+  });
+
+  const setInputRefs = React.useCallback(
+    (node: HTMLInputElement | null) => {
+      inputRef.current = node;
+      maskRef.current = node as HTMLInputElement;
+    },
+    [maskRef],
+  );
+
+  React.useEffect(() => {
+    if (isFocused.current) return;
+    setInputText(selected ? displayDate(selected) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  React.useEffect(() => {
+    setMonth((m) => {
+      if (
+        effectiveMaxDate &&
+        (m.getFullYear() > effectiveMaxDate.getFullYear() ||
+          (m.getFullYear() === effectiveMaxDate.getFullYear() &&
+            m.getMonth() > effectiveMaxDate.getMonth()))
+      ) {
+        return new Date(
+          effectiveMaxDate.getFullYear(),
+          effectiveMaxDate.getMonth(),
+          1,
+        );
+      }
+      if (
+        effectiveMinDate &&
+        (m.getFullYear() < effectiveMinDate.getFullYear() ||
+          (m.getFullYear() === effectiveMinDate.getFullYear() &&
+            m.getMonth() < effectiveMinDate.getMonth()))
+      ) {
+        return new Date(
+          effectiveMinDate.getFullYear(),
+          effectiveMinDate.getMonth(),
+          1,
+        );
+      }
+      return m;
+    });
+  }, [effectiveMaxDate, effectiveMinDate]);
+
+  function isWithinBounds(date: Date) {
+    if (effectiveMaxDate && date > effectiveMaxDate) return false;
+    if (effectiveMinDate && date < effectiveMinDate) return false;
+    return true;
+  }
 
   function handleSelect(date: Date | undefined) {
     if (date) {
       onChange?.(formatDate(date));
+      setInputText(displayDate(date));
       setOpen(false);
+    }
+  }
+
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const text = e.target.value;
+    setInputText(text);
+    const parsed = parseTypedDate(text);
+    if (parsed && isWithinBounds(parsed)) {
+      onChange?.(formatDate(parsed));
+      setMonth(parsed);
+    }
+  }
+
+  function handleClear(e: React.MouseEvent) {
+    e.stopPropagation();
+    onChange?.("");
+    setInputText("");
+    inputRef.current?.focus();
+  }
+
+  function handleInputFocus() {
+    isFocused.current = true;
+    setOpen(true);
+  }
+
+  function handleInputBlur() {
+    isFocused.current = false;
+    const parsed = parseTypedDate(inputText);
+    if (parsed && isWithinBounds(parsed)) {
+      setInputText(displayDate(parsed));
+    } else {
+      setInputText(selected ? displayDate(selected) : "");
     }
   }
 
@@ -139,27 +246,63 @@ export function DatePicker({
   }, [effectiveMaxDate, effectiveMinDate]);
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
-      <PopoverPrimitive.Trigger asChild>
-        <button
-          type="button"
-          disabled={disabled}
+      <PopoverPrimitive.Anchor asChild>
+        <div
+          ref={anchorRef}
           className={cn(
-            "h-9 w-full rounded-lg border border-gray-200 bg-white px-3 py-1 text-sm text-left transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:cursor-not-allowed disabled:opacity-50",
-            !selected && "text-gray-400",
+            "flex h-9 w-full items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1 text-sm transition-colors focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary",
+            disabled && "cursor-not-allowed opacity-50",
             className,
           )}
         >
-          <span className="flex items-center gap-2">
-            <i className="ri-calendar-line text-gray-400 text-base shrink-0" />
-            {selected ? displayDate(selected) : placeholder}
-          </span>
-        </button>
-      </PopoverPrimitive.Trigger>
+          <button
+            type="button"
+            disabled={disabled}
+            tabIndex={-1}
+            onClick={() => inputRef.current?.focus()}
+            className="shrink-0"
+          >
+            <i className="ri-calendar-line text-gray-400 text-base" />
+          </button>
+          <input
+            ref={setInputRefs}
+            type="text"
+            inputMode="numeric"
+            disabled={disabled}
+            placeholder={placeholder}
+            value={inputText}
+            onChange={handleInputChange}
+            onFocus={handleInputFocus}
+            onBlur={handleInputBlur}
+            className="w-full bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none disabled:cursor-not-allowed"
+          />
+          {clearable && !disabled && inputText && (
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={handleClear}
+              className="shrink-0 text-gray-400 hover:text-gray-600"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </PopoverPrimitive.Anchor>
 
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Content
           align="start"
           sideOffset={4}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onInteractOutside={(e) => {
+            if (
+              anchorRef.current &&
+              e.target instanceof Node &&
+              anchorRef.current.contains(e.target)
+            ) {
+              e.preventDefault();
+            }
+          }}
           className="z-50 rounded-xl border border-gray-200 bg-white p-3 shadow-lg"
         >
           <div className="flex items-center justify-between gap-1 px-1 mb-2">
