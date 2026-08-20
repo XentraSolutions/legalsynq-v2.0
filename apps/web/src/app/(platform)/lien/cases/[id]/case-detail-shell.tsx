@@ -291,7 +291,7 @@ export function CaseDetailShell({
                             }}
                             className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
                           >
-                            Payoff Qoute
+                            Payoff Quote
                           </button>
                           <button
                             onClick={() => {
@@ -426,7 +426,7 @@ export function CaseDetailShell({
         <Modal
           size="xl"
           open={showPayoffQoute.isOpen}
-          title="Payoff Qoute"
+          title="Payoff Quote"
           onClose={() => setShowPayoffQoute({ isOpen: false, url: "" })}
         >
           <div className="min-h-[75vh]">
