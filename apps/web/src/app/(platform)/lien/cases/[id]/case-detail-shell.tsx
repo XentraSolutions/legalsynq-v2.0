@@ -249,9 +249,11 @@ export function CaseDetailShell({
               </p>
               {d.lienStatus == "Closed" && (
                 <SettlementStatusChip
-                  status={d.settlementStatusId}
+                  status={d.settlementStatusId || d.lienStatus}
                   label={
-                    d.lienStatus ? `${d.lienStatus}-${d.settlementStatus}` : ""
+                    d.lienStatus
+                      ? `${d.lienStatus}${d.settlementStatus ? `-${d.settlementStatus}` : ""}`
+                      : ""
                   }
                 />
               )}
