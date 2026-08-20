@@ -6,15 +6,15 @@ React Native Expo app for the LegalSynq lien selling and buying workflow.
 
 - Name: `LegalSynq`
 - Version: `3.0.0`
-- Expo SDK: `54`
-- React Native: `0.81.5`
-- React: `19.1.0`
+- Expo SDK: `57`
+- React Native: `0.86.2`
+- React: `19.2.3`
 - iOS bundle ID: `com.legalsynq`
 - Android package: `com.legalsynq`
 
 ## Prerequisites
 
-- Node.js `20.19.x` or newer. Expo SDK 54 requires at least Node `20.19.x`; the app has been validated locally with Node `26.0.0`.
+- Node.js `20.19.x` or newer. The SDK 57 app has been validated locally with Node `26.0.0`.
 - `pnpm` is the expected package manager. The root repo declares `pnpm@10.26.1`.
 - Expo Go on a physical iOS or Android device, or local iOS/Android simulator tooling.
 - Optional for cloud/native builds: Expo account and EAS CLI.
@@ -435,7 +435,7 @@ After `eas build --platform ios`, install through TestFlight or an internal dist
 
 ## Known Notes
 
-- Expo SDK dependencies are aligned to SDK 54. `apps/mobile/pnpm-workspace.yaml` includes local pnpm settings for Storybook's `valibot` peer and the Bottom Sheet/Reanimated peer range used by the SDK 54 stack.
+- Expo SDK dependencies are aligned to SDK 57. `apps/mobile/pnpm-workspace.yaml` includes local pnpm settings for Storybook's `valibot` peer and the Bottom Sheet/Reanimated peer range used by the SDK 57 stack.
 - Splash screen configuration uses the `expo-splash-screen` config plugin.
 - On case-insensitive macOS filesystems, Expo CLI may print `Using src/app as the root directory for Expo Router` because the blueprint directory is `src/App`. The app does not use `expo-router`.
 - `.expo/`, `coverage/`, and `node_modules/` are generated local artifacts and are ignored.

@@ -1,4 +1,4 @@
-import * as Sentry from '@sentry/react-native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAtomValue } from 'jotai';
 
@@ -7,6 +7,7 @@ import { DeepLinkNavigationService } from '@/navigation/DeepLinkNavigation';
 import { MainStack } from '@/navigation/MainStack';
 import type { RootStackParamList } from '@/navigation/types/navigation';
 import { ErrorTrackingService } from '@/shared/services/ErrorTracking';
+import { sentryNavigationIntegration } from '@/shared/services/ErrorTracking/SentryNavigationIntegration';
 import { authAtom } from '@/shared/state/atoms/authAtom';
 
 import { rootNavigationRef } from './navigationRef';
@@ -27,9 +28,10 @@ export function RootNavigator() {
   const { isAuthenticated } = useAtomValue(authAtom);
 
   return (
-    <Sentry.NavigationContainer
+    <NavigationContainer
       ref={rootNavigationRef}
       onReady={() => {
+        sentryNavigationIntegration.registerNavigationContainer(rootNavigationRef);
         recordCurrentScreen();
         DeepLinkNavigationService.onNavigationReady();
       }}
@@ -42,6 +44,6 @@ export function RootNavigator() {
           <Stack.Screen component={AuthStack} name="Auth" />
         )}
       </Stack.Navigator>
-    </Sentry.NavigationContainer>
+    </NavigationContainer>
   );
 }
