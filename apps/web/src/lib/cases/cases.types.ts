@@ -24,6 +24,8 @@ export interface CaseResponseDto {
   stateOfIncident: string;
   trackingFollowUpDate: string;
   leadId: string;
+  lienStatus?: string;
+  lienStatusId?:string;
   lawFirmId?: string | null;
   lawFirm?: string | null;
   caseManagerId?: string | null;
@@ -37,6 +39,8 @@ export interface CaseResponseDto {
   claimNumber?: string | null;
   demandAmount?: number | null;
   settlementAmount?: number | null;
+  settlementStatus: string;
+  settlementStatusId: string;
   description?: string | null;
   notes?: string | null;
   openedAtUtc?: string | null;
@@ -271,11 +275,14 @@ export interface CaseDetail {
   stateOfIncident: string;
   trackingFollowUpDate: string;
   leadId: string;
+  lienStatus: string;
   insuranceCarrier: string;
   policyNumber: string;
   claimNumber: string;
   demandAmount: number | null;
   settlementAmount: number | null;
+  settlementStatus: string;
+  settlementStatusId: string;
   description: string | null;
   notes: string | null;
   trackingFollowUp: string;
