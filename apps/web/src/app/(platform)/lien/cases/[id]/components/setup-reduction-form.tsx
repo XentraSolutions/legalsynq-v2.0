@@ -49,8 +49,7 @@ function isLienReducible(l: CaseLienItem & CaseLienItemMetadata): boolean {
     l.status !== "Closed" &&
     l.status !== "Withdrawn" &&
     l.status !== "Sold" &&
-    l.balance > 0 &&
-    !l.reductionAmount
+    l.balance > 0
   );
 }
 
@@ -92,12 +91,11 @@ export function SetupReductionForm({
 
       for (const l of activeLiens) {
         const amt = l.reductionAmount ?? 0;
-        if (amt == 0) {
-          preChecked.add(l.id);
-          preReductions[l.id] = amt;
-          preInputs[l.id] = amt.toFixed(2);
-          totalExisting += amt;
-        }
+
+        preChecked.add(l.id);
+        preReductions[l.id] = amt;
+        preInputs[l.id] = amt.toFixed(2);
+        totalExisting += amt;
       }
 
       setCheckedIds(preChecked);
@@ -318,9 +316,7 @@ export function SetupReductionForm({
     {
       id: "lienId",
       header: "Lien ID",
-      cell: (l) => (
-        <span className="text-sm text-primary">{l.lienNumber}</span>
-      ),
+      cell: (l) => <span className="text-sm text-primary">{l.lienNumber}</span>,
     },
     {
       id: "billing",
