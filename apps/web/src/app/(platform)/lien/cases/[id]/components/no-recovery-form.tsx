@@ -18,7 +18,10 @@ import {
 import { DatePicker } from "@/components/ui/date-picker";
 import { Textarea } from "@/components/ui/textarea";
 import { LienTable } from "@/components/lien/lien-table";
-import type { LienColumnDef, LienFooterCell } from "@/components/lien/lien-table";
+import type {
+  LienColumnDef,
+  LienFooterCell,
+} from "@/components/lien/lien-table";
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "";
@@ -28,13 +31,15 @@ function formatCurrency(amount: number | null): string {
   }).format(amount);
 }
 
-function pickLienStatusOptions(items: LiensStatusResponse[]): LiensStatusResponse[] {
+function pickLienStatusOptions(
+  items: LiensStatusResponse[],
+): LiensStatusResponse[] {
   const byCode = (codes: string[]) =>
     items.find((i) => codes.includes((i.code || "").toLowerCase()));
   const openOrActive = byCode(["active", "open"]);
   const settledOrClosed = byCode(["settled", "closed"]);
-  return [openOrActive, settledOrClosed].filter(
-    (i): i is LiensStatusResponse => Boolean(i),
+  return [openOrActive, settledOrClosed].filter((i): i is LiensStatusResponse =>
+    Boolean(i),
   );
 }
 
@@ -72,10 +77,12 @@ export function NoRecoveryForm({
   const [lienStatuses, setLienStatuses] = useState<LiensStatusResponse[]>([]);
 
   const openLiens = liens.filter(
-    (l) => l.status !== "Closed" && l.status !== "Withdrawn" && l.status !== "Sold",
+    (l) =>
+      l.status !== "Closed" && l.status !== "Withdrawn" && l.status !== "Sold",
   );
 
-  const allChecked = openLiens.length > 0 && checkedIds.size === openLiens.length;
+  const allChecked =
+    openLiens.length > 0 && checkedIds.size === openLiens.length;
 
   useEffect(() => {
     if (open) {
@@ -89,8 +96,13 @@ export function NoRecoveryForm({
     lookupService.getLiensStatus().then((res) => {
       const options = pickLienStatusOptions(res.items);
       setLienStatuses(options);
-      const settled = options.find((s) => (s.code || "").toLowerCase() === "settled");
-      setForm((prev) => ({ ...prev, lienStatus: (settled ?? options[0])?.code ?? "" }));
+      const settled = options.find(
+        (s) => (s.code || "").toLowerCase() === "settled",
+      );
+      setForm((prev) => ({
+        ...prev,
+        lienStatus: (settled ?? options[1])?.code ?? "",
+      }));
     });
   }, [open]);
 
@@ -102,9 +114,7 @@ export function NoRecoveryForm({
   };
 
   const toggleAll = () => {
-    setCheckedIds(
-      allChecked ? new Set() : new Set(openLiens.map((l) => l.id)),
-    );
+    setCheckedIds(allChecked ? new Set() : new Set(openLiens.map((l) => l.id)));
   };
 
   const handleResetClose = () => {
