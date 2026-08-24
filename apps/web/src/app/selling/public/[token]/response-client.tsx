@@ -150,7 +150,7 @@ function LienSummaryCard({ data }: { data: PublicBuyerPortalData }) {
     { label: "Phone Number", value: data.buyer.phone },
   ];
   const lienRows: FieldRow[] = [
-    { label: "Submitted Date", value: formatDateTime(data.lien.submittedAtUtc) },
+    { label: "Submitted Date", value: formatDate(data.lien.submittedAtUtc) },
     { label: "Listing Visibility", value: data.lien.listingVisibility },
     { label: "Initial Service Date", value: formatDate(data.lien.initialServiceDate) },
     { label: "End Service Date", value: formatDate(data.lien.endServiceDate) },
@@ -158,13 +158,13 @@ function LienSummaryCard({ data }: { data: PublicBuyerPortalData }) {
   const fundingRows: FieldRow[] = [
     { label: "Funding Company", value: data.buyer.company },
     { label: "Handling Law Firm", value: data.case.handlingLawFirm },
-    { label: "Contact Person", value: data.case.handlingLawFirmContactName },
+    { label: "Contact Person", value: data.buyer.contactName },
     { label: "Case Manager", value: data.case.caseManager },
     {
       label: "Email Address",
-      value: data.case.handlingLawFirmEmail,
-      href: data.case.handlingLawFirmEmail
-        ? `mailto:${data.case.handlingLawFirmEmail}`
+      value: data.buyer.email,
+      href: data.buyer.email
+        ? `mailto:${data.buyer.email}`
         : undefined,
     },
   ];
@@ -326,25 +326,4 @@ function formatDate(value: string | null): string | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
   if (!match) return value;
   return `${match[2]}/${match[3]}/${match[1]}`;
-}
-
-function formatDateTime(value: string | null): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  const datePart = new Intl.DateTimeFormat("en-US", {
-    timeZone: "UTC",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-  const timePart = new Intl.DateTimeFormat("en-US", {
-    timeZone: "UTC",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(date);
-
-  return `${datePart} - ${timePart}`;
 }

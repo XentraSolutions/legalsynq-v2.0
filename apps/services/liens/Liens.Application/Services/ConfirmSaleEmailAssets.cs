@@ -14,15 +14,20 @@ internal static class ConfirmSaleEmailAssets
     internal static IReadOnlyList<NotificationEmailInlineAttachment> InlineAttachments { get; } =
     [
         BuildInlineAttachment(LegalSynqBrandIconContentId, "legalsynq-brand-icon.png"),
-        BuildInlineAttachment(SellerInformationIconContentId, "seller-information-icon.png"),
-        BuildInlineAttachment(AssetOverviewIconContentId, "asset-overview-icon.png"),
-        BuildInlineAttachment(SupportingDocumentsIconContentId, "supporting-documents-icon.png"),
+        BuildInlineAttachment(SellerInformationIconContentId, "seller-information-icon.svg"),
+        BuildInlineAttachment(AssetOverviewIconContentId, "asset-overview-icon.svg"),
+        BuildInlineAttachment(SupportingDocumentsIconContentId, "supporting-documents-icon.svg"),
     ];
 
     private static NotificationEmailInlineAttachment BuildInlineAttachment(
         string contentId,
         string fileName)
-        => new(contentId, fileName, "image/png", LoadBase64Content(fileName));
+        => new(contentId, fileName, ContentType(fileName), LoadBase64Content(fileName));
+
+    private static string ContentType(string fileName)
+        => Path.GetExtension(fileName).Equals(".svg", StringComparison.OrdinalIgnoreCase)
+            ? "image/svg+xml"
+            : "image/png";
 
     private static string LoadBase64Content(string fileName)
     {

@@ -342,7 +342,7 @@ such as `localhost` or `127.0.0.1` are rejected because the email CTA must work 
 `New Lien Offer` copy with a response CTA. The seller receives the same branded format with buyer/funding-company
 information and a `View Lien Details` CTA. Neither email inserts sample
 document data; both include only real supporting document names found in lien/case document metadata. The LegalSynq mark
-and section icons are sent as inline CID image attachments; no remote placeholder assets are required.
+and Figma-matched section icons are sent as inline CID image attachments; no remote placeholder assets are required.
 For a CTA hosted by the tenant portal, use
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
 `https://<portal-host>/selling/public` behind a real portal domain; that public browser route renders in `apps/web`,
