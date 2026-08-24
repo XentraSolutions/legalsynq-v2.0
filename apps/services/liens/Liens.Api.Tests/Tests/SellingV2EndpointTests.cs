@@ -633,11 +633,18 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     {
         Company buyerCompany;
         CompanyContactPerson buyerContact;
+        Company lawFirmCompany;
+        CompanyContactPerson caseManagerContact;
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
             var fundingRoleId = CompanyDirectoryReferenceData.ContactPersonTypes
                 .First(role => role.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId)
+                .Id;
+            var caseManagerRoleId = CompanyDirectoryReferenceData.ContactPersonTypes
+                .First(role =>
+                    role.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId &&
+                    role.Code == "CaseManager")
                 .Id;
             buyerCompany = Company.Create(
                 SeedHelper.TenantId,
@@ -653,6 +660,21 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
                 "Buyer",
                 SeedHelper.UserId,
                 email: "carla@canonical-buyer.test");
+            lawFirmCompany = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.LawFirmId,
+                "Canonical Handling Law Firm",
+                SeedHelper.UserId,
+                email: "canonical-handling@lawfirm.test");
+            caseManagerContact = CompanyContactPerson.Create(
+                SeedHelper.TenantId,
+                lawFirmCompany.Id,
+                caseManagerRoleId,
+                "Case",
+                "Manager",
+                SeedHelper.UserId,
+                email: "case.manager@lawfirm.test");
             var sellerContact = Contact.Create(
                 SeedHelper.TenantId,
                 SeedHelper.OrgId,
@@ -662,7 +684,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
                 SeedHelper.UserId,
                 organization: "Seller Law LLP",
                 email: "seller@canonical-buyer.test");
-            db.AddRange(buyerCompany, buyerContact, sellerContact);
+            db.AddRange(buyerCompany, buyerContact, lawFirmCompany, caseManagerContact, sellerContact);
             await db.SaveChangesAsync();
         }
 
@@ -676,6 +698,10 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
             preparedLien.FundingCompanyContactPersonId.Should().Be(buyerContact.Id);
             preparedLien.FundingCompanyId.Should().BeNull();
             preparedLien.FundingCompanyContactId.Should().BeNull();
+
+            var caseEntity = await db.Cases.SingleAsync(item => item.Id == SeedHelper.CaseId);
+            caseEntity.SetCanonicalCaseParties(lawFirmCompany.Id, caseManagerContact.Id, SeedHelper.UserId);
+            await db.SaveChangesAsync();
         }
 
         using var confirm = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/confirm-sale")
@@ -710,6 +736,9 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         buyer.GetProperty("contactName").GetString().Should().Be("Carla Buyer");
         buyer.GetProperty("company").GetString().Should().Be("Canonical Buyer Capital");
         buyer.GetProperty("email").GetString().Should().Be("carla@canonical-buyer.test");
+        var caseInfo = publicJson.RootElement.GetProperty("case");
+        caseInfo.GetProperty("handlingLawFirm").GetString().Should().Be("Canonical Handling Law Firm");
+        caseInfo.GetProperty("caseManager").GetString().Should().Be("Case Manager");
     }
 
     [Fact]

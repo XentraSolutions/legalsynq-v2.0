@@ -1537,7 +1537,10 @@ public static class SellingPublicEndpoints
                 FirstNonEmpty(view.SellerDisplay.Email))
             : (
                 FirstNonEmpty(view.BuyerContact?.DisplayName, view.BuyerContact?.Organization, view.BuyerAccountEmail, "Buyer")!,
-                FirstNonEmpty(view.BuyerAccountEmail, ResolveLatestBuyerMessageSenderEmail(view.Messages)));
+                FirstNonEmpty(
+                    view.BuyerAccountEmail,
+                    ResolveLatestBuyerMessageSenderEmail(view.Messages),
+                    view.BuyerContact?.Email));
 
     private static string? ResolveLatestBuyerMessageSenderEmail(IReadOnlyList<SellingPortalMessage> messages)
         => messages
@@ -1967,8 +1970,7 @@ public static class SellingPublicEndpoints
             fallbackEmail: null,
             includeIdentityOwnerEmailFallback: true,
             ct: ct);
-        var handlingLawFirmContact = await ResolveHandlingLawFirmContactAsync(db, accessLink.TenantId, caseEntity, ct);
-        var caseManager = await ResolveCaseManagerAsync(db, accessLink.TenantId, caseEntity, ct);
+        var caseParties = await ResolvePublicCasePartiesAsync(db, accessLink.TenantId, caseEntity, ct);
         var documents = await ResolveDocumentsAsync(db, accessLink.TenantId, lien, ct);
         var messages = await ResolveMessagesAsync(db, accessLink, ct);
         var buyerResponseAccessLink = await ResolveBuyerResponseAccessLinkAsync(db, accessLink, ct);
@@ -1981,8 +1983,7 @@ public static class SellingPublicEndpoints
             buyerContact,
             sellerContact,
             sellerDisplay,
-            handlingLawFirmContact,
-            caseManager,
+            caseParties,
             documents,
             messages,
             buyerResponseAccessLink,
@@ -2065,6 +2066,44 @@ public static class SellingPublicEndpoints
             .ThenByDescending(link => link.RespondedAtUtc)
             .ThenByDescending(link => link.CreatedAtUtc)
             .FirstOrDefaultAsync(ct);
+    }
+
+    private static async Task<PublicCaseParties> ResolvePublicCasePartiesAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Case? caseEntity,
+        CancellationToken ct)
+    {
+        if (caseEntity is null)
+            return new PublicCaseParties(null, null, null, null);
+
+        var canonicalLawFirm = caseEntity.HandlingLawFirmCompanyId.HasValue
+            ? await db.Companies
+                .AsNoTracking()
+                .FirstOrDefaultAsync(company =>
+                    company.TenantId == tenantId &&
+                    company.Id == caseEntity.HandlingLawFirmCompanyId.Value,
+                    ct)
+            : null;
+        var canonicalCaseManager = caseEntity.CaseManagerContactPersonId.HasValue
+            ? await db.CompanyContactPersons
+                .AsNoTracking()
+                .FirstOrDefaultAsync(contact =>
+                    contact.TenantId == tenantId &&
+                    contact.Id == caseEntity.CaseManagerContactPersonId.Value,
+                    ct)
+            : null;
+        var legacyHandlingLawFirmContact = await ResolveHandlingLawFirmContactAsync(db, tenantId, caseEntity, ct);
+        var legacyCaseManager = await ResolveCaseManagerAsync(db, tenantId, caseEntity, ct);
+
+        return new PublicCaseParties(
+            FirstNonEmpty(
+                canonicalLawFirm?.Name,
+                legacyHandlingLawFirmContact?.Organization,
+                legacyHandlingLawFirmContact?.DisplayName),
+            FirstNonEmpty(legacyHandlingLawFirmContact?.DisplayName),
+            FirstNonEmpty(legacyHandlingLawFirmContact?.Email, canonicalLawFirm?.Email),
+            FirstNonEmpty(DisplayName(canonicalCaseManager), legacyCaseManager));
     }
 
     private static async Task<Contact?> ResolveHandlingLawFirmContactAsync(
@@ -2343,7 +2382,7 @@ public static class SellingPublicEndpoints
                 ResolveLienCode(view.Lien),
                 view.Lien.Status,
                 view.Lien.SellerStatus,
-                view.Lien.SubmittedForSaleAtUtc ?? view.AccessLink.CreatedAtUtc,
+                view.AccessLink.NotificationSubmittedAtUtc ?? view.Lien.SubmittedForSaleAtUtc ?? view.AccessLink.CreatedAtUtc,
                 view.Lien.ListingVisibility,
                 view.Lien.InitialServiceDate,
                 view.Lien.EndServiceDate,
@@ -2360,12 +2399,10 @@ public static class SellingPublicEndpoints
                 view.BuyerContact?.Email,
                 view.BuyerContact?.Phone),
             new PublicBuyerCaseResponse(
-                FirstNonEmpty(
-                    view.HandlingLawFirmContact?.Organization,
-                    view.HandlingLawFirmContact?.DisplayName),
-                FirstNonEmpty(view.HandlingLawFirmContact?.DisplayName),
-                FirstNonEmpty(view.HandlingLawFirmContact?.Email),
-                view.CaseManager),
+                view.CaseParties.HandlingLawFirm,
+                view.CaseParties.HandlingLawFirmContactName,
+                view.CaseParties.HandlingLawFirmEmail,
+                view.CaseParties.CaseManager),
             view.Documents
                 .Select(document => new PublicBuyerDocumentResponse(
                     document.DocumentId,
@@ -2504,6 +2541,11 @@ public static class SellingPublicEndpoints
     private static string? FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 
+    private static string? DisplayName(CompanyContactPerson? contact)
+        => contact is null
+            ? null
+            : FirstNonEmpty($"{contact.FirstName} {contact.LastName}");
+
     private static string Html(string? value)
         => WebUtility.HtmlEncode(value ?? string.Empty);
 
@@ -2634,12 +2676,17 @@ public static class SellingPublicEndpoints
         PublicBuyerContact? BuyerContact,
         Contact? SellerContact,
         SellerOrganizationDisplay SellerDisplay,
-        Contact? HandlingLawFirmContact,
-        string? CaseManager,
+        PublicCaseParties CaseParties,
         IReadOnlyList<PublicDocumentView> Documents,
         IReadOnlyList<SellingPortalMessage> Messages,
         SellingBuyerAccessLink? BuyerResponseAccessLink,
         string? BuyerAccountEmail);
+
+    private sealed record PublicCaseParties(
+        string? HandlingLawFirm,
+        string? HandlingLawFirmContactName,
+        string? HandlingLawFirmEmail,
+        string? CaseManager);
 
     private sealed record PublicBuyerContact(
         Guid Id,

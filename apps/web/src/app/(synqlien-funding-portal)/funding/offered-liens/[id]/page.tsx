@@ -130,7 +130,7 @@ function OverviewTab({ detail }: { detail: OfferedLienDetail }) {
               {detail.status}
             </span>
           </div>
-          <DetailField label="Submitted Date" value={formatDateTimeParts(detail.submittedAtUtc)} />
+          <DetailField label="Submitted Date" value={formatOptionalDate(detail.submittedAtUtc)} />
           <DetailField label="Initial Service Date" value={formatOptionalDate(detail.initialServiceDate)} />
           <DetailField label="End Service Date" value={formatOptionalDate(detail.endServiceDate)} />
           <div className="pb-4 sm:col-span-2">

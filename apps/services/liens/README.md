@@ -304,16 +304,17 @@ company is resolved from the selling organization (`sellerOrgId`) through Identi
 and non-case-manager contacts in that seller organization. Handling law firm and case manager remain case/asset details.
 The public-link JSON and authenticated funding-company dashboard, offered-liens list, and detail views use the same
 seller-user and seller-organization resolver, so the email CTA and logged-in views do not select different seller
-information for the same offer. In buyer and seller notification Asset Overview sections, Contact Person, Email Address,
-and Handling Law Firm all come from the selected standalone handling law-firm contact: `liens_Contacts.FirstName` +
-`LastName`, `liens_Contacts.Email`, and `liens_Contacts.Organization` with `DisplayName` as the fallback for legacy
-or incomplete firm records. Creating a standalone law firm without a separate organization value persists its display
+information for the same offer. In buyer and seller notification Asset Overview sections, Contact Person and Email
+Address come from the funding-company contact selected for the offer. Handling Law Firm and Case Manager come from the
+case-level Company Directory references first, with legacy standalone handling law-firm and case-manager contacts as
+fallbacks for older case records. The notification intro uses the persisted lien type from the lien record instead of
+hardcoded medical-lien copy, but the Asset Overview does not render a separate Lien Type row. Creating a standalone law firm without a separate organization value persists its display
 name as the organization. The seller notification's Buyer Information section omits buyer phone number.
 Supporting document names are pulled from existing legacy
 lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
 email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark
-text, and the section icons are also delivered as inline CID image attachments. No remote placeholder assets are
-required.
+text, and the section icons use the Figma-matched contact, clipboard-list, and folder-open SVGs as inline CID image
+attachments. No remote placeholder assets are required.
 Configure the buyer portal URL with `Liens:Selling:BuyerPortalBaseUrl` or the environment variable
 `Liens__Selling__BuyerPortalBaseUrl`. If that value is absent, the API derives it from
 `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
@@ -344,7 +345,9 @@ values point to the authenticated tenant portal route
 `/funding/offered-liens/{accessLinkId}`. The portal backs that route with
 `GET /api/liens/selling/buyer/liens/{accessLinkId}`, which returns persisted seller/lien fields plus real servicing
 documents, portal messages, and response activity for the funding company. Missing documents, messages, or activity are
-returned as empty arrays for the frontend empty states. Detail documents include same-origin tenant-portal `viewUrl` and
+returned as empty arrays for the frontend empty states. Detail `submittedAtUtc` uses the buyer access-link notification
+timestamp when present so it matches the public offer page's Lien Information section, and detail `notes` uses the same
+persisted lien notes shown in the seller portfolio, with lien description only as an empty-notes fallback. Detail documents include same-origin tenant-portal `viewUrl` and
 `downloadUrl` BFF paths when a Documents-service id can be resolved; those paths call
 `GET /api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view` or `/download`, enforce the same buyer
 scope, and redirect to a short-lived Documents access URL. The authenticated detail page posts messages through
@@ -357,7 +360,8 @@ status, activity, and notification behavior.
 The temporary public portal endpoints are anonymous and token-scoped. `GET /api/liens/selling/public/{token}` returns
 JSON from persisted lien, case, contact, access-link, response, and servicing document metadata only, including
 `audience=buyer|seller`, handling law-firm organization, handling law-firm contact name, handling law-firm email, and
-case manager when available, and sets `Referrer-Policy: no-referrer`. It does not render HTML; the tenant portal route
+case manager when available, and sets `Referrer-Policy: no-referrer`. Handling law firm and case manager resolve from
+canonical case company-directory references first, with legacy contact metadata as fallback. It does not render HTML; the tenant portal route
 `/selling/public/{token}` in `apps/web`
 fetches this JSON through the gateway and renders either the funding-company response page or the seller details page.
 Both buyer-purpose and seller-purpose links can view and post public messages on the offer thread with
