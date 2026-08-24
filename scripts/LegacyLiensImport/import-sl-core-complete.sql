@@ -11,7 +11,10 @@
 --   liens_Liens.PurchaseDate     = SL_LEINS_MEDICAL.LM_PURCHASE_DATE
 --   liens_Cases.DemandAmount     = SUM(OriginalAmount) across all liens per case
 --   liens_Cases.SettlementAmount = SL_SETTLEMENT_HEADER.SH_TOTAL_AMOUNT per case
---   liens_LienSettlements        = nonblank SL_LIENS_SETTLEMENT settle rows
+--   liens_LienSettlements        = rows with a nonblank settle amount or
+--                                  reduction / total-settled metadata
+--     Metadata-only rows use Amount=0 and Status='Pending'; invalid nonblank
+--     settle amounts fail validation. Reduction dates are never inferred.
 --   liens_SettlementPaymentDetails = non-deleted SL_LIENS_SETTLEMENT_PAYMENT_DETAILS
 --   Only active medical-code rows (LMC_STATUS='A') contribute amounts/items.
 --
@@ -32,6 +35,11 @@
 --   CALL liens_migrate_sl_core_complete('<tenant-guid>', '1');  -- apply
 --
 -- Error prefix: LSLTE-
+
+-- Pin the routine creation context to the target schemas' MySQL 8 collation.
+-- Legacy SL-CORE text is collated explicitly where it is compared with target
+-- or routine values below.
+SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 DROP PROCEDURE IF EXISTS liens_migrate_sl_core_complete;
 
@@ -250,7 +258,8 @@ BEGIN
     SELECT COUNT(*) INTO v_provenance_count
     FROM `SL-CORE`.`SL_MIGRATION_SOURCE_PROVENANCE`
     WHERE PROVENANCE_KEY = 'sl-core-current'
-      AND LOWER(SOURCE_FINGERPRINT) = LOWER(v_fingerprint)
+      AND LOWER(SOURCE_FINGERPRINT) COLLATE utf8mb4_0900_ai_ci
+          = LOWER(v_fingerprint) COLLATE utf8mb4_0900_ai_ci
       AND IMPORT_SCOPE = 'sl-core-core-liens-v1';
     IF v_provenance_count <> 1 THEN
         SIGNAL SQLSTATE '45000'
@@ -280,7 +289,10 @@ BEGIN
     ) c
     WHERE NOT EXISTS (
         SELECT 1 FROM liens_LookupValues lv
-        WHERE lv.TenantId IS NULL AND lv.Category = 'AccidentType' AND lv.Code = c.Code
+        WHERE lv.TenantId IS NULL
+          AND lv.Category = 'AccidentType'
+          AND lv.Code COLLATE utf8mb4_0900_ai_ci
+              = c.Code COLLATE utf8mb4_0900_ai_ci
     );
     SET v_lookups_seeded = ROW_COUNT();
 
@@ -302,14 +314,16 @@ BEGIN
         WHERE TenantId IS NULL AND Category = 'AccidentType'
           AND IsActive = 1 AND IsSystem = 1
         GROUP BY LOWER(TRIM(Name))
-    ) lv  ON lv.Norm = LOWER(TRIM(at.AT_DESCRIPTION))
+    ) lv  ON lv.Norm COLLATE utf8mb4_0900_ai_ci
+             = LOWER(TRIM(at.AT_DESCRIPTION)) COLLATE utf8mb4_0900_ai_ci
     LEFT JOIN (
         SELECT LOWER(TRIM(Name)) AS Norm, COUNT(*) AS MatchCount
         FROM liens_LookupValues
         WHERE TenantId IS NULL AND Category = 'AccidentType'
           AND IsActive = 1 AND IsSystem = 1
         GROUP BY LOWER(TRIM(Name))
-    ) cnt ON cnt.Norm = LOWER(TRIM(at.AT_DESCRIPTION));
+    ) cnt ON cnt.Norm COLLATE utf8mb4_0900_ai_ci
+             = LOWER(TRIM(at.AT_DESCRIPTION)) COLLATE utf8mb4_0900_ai_ci;
 
     ALTER TABLE tmp_sle_at_lookups
         ADD PRIMARY KEY (LegacyAtId);
@@ -681,7 +695,10 @@ BEGIN
     END IF;
     IF EXISTS (
         SELECT 1 FROM tmp_sle_cases s
-        INNER JOIN liens_Cases t ON t.TenantId = v_tenant_id AND t.CaseNumber = s.CaseNumber
+        INNER JOIN liens_Cases t
+          ON t.TenantId = v_tenant_id
+         AND t.CaseNumber COLLATE utf8mb4_0900_ai_ci
+             = s.CaseNumber COLLATE utf8mb4_0900_ai_ci
     ) THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'LSLTE-018 target case number collision with existing data';
@@ -770,7 +787,10 @@ BEGIN
     END IF;
     IF EXISTS (
         SELECT 1 FROM tmp_sle_liens s
-        INNER JOIN liens_Liens t ON t.TenantId = v_tenant_id AND t.LienNumber = s.LienNumber
+        INNER JOIN liens_Liens t
+          ON t.TenantId = v_tenant_id
+         AND t.LienNumber COLLATE utf8mb4_0900_ai_ci
+             = s.LienNumber COLLATE utf8mb4_0900_ai_ci
     ) THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'LSLTE-021 target lien number collision with existing data';
@@ -1064,6 +1084,7 @@ BEGIN
               ORDER BY src.SLS_ID)
         END AS PaymentNumber,
         CASE
+          WHEN src.RawAmountText IS NULL THEN CAST(0 AS DECIMAL(18,4))
           WHEN src.RawAmount REGEXP '^-?[0-9]+(\\.[0-9]+)?$'
                AND CAST(src.RawAmount AS DECIMAL(30,8))
                    BETWEEN -99999999999999.9999 AND 99999999999999.9999
@@ -1085,7 +1106,10 @@ BEGIN
           ELSE NULL
         END AS SettlementDate,
         NULLIF(TRIM(CAST(src.SLS_SETTLE_DATE AS CHAR)), '') AS SettlementDateText,
-        'Settled' AS Status,
+        CASE
+          WHEN src.RawAmountText IS NULL THEN 'Pending'
+          ELSE 'Settled'
+        END AS Status,
         LEFT(CONCAT(
             'legacySettlementId=', src.SLS_ID,
             '; reductionAmount=', COALESCE(src.SLS_REDUCTION_AMOUNT, ''),
@@ -1103,12 +1127,16 @@ BEGIN
     FROM (
         SELECT
             s.*,
+            NULLIF(TRIM(CAST(s.SLS_SETTLE_AMOUNT AS CHAR)), '')
+                AS RawAmountText,
             TRIM(REPLACE(REPLACE(CAST(s.SLS_SETTLE_AMOUNT AS CHAR), ',', ''), '$', ''))
                 AS RawAmount
         FROM `SL-CORE`.`SL_LIENS_SETTLEMENT` s
     ) src
     INNER JOIN tmp_sle_liens lien ON lien.LegacyLienId = src.SLS_LIENS_ID
-    WHERE NULLIF(src.RawAmount, '') IS NOT NULL;
+    WHERE src.RawAmountText IS NOT NULL
+       OR NULLIF(TRIM(CAST(src.SLS_REDUCTION_AMOUNT AS CHAR)), '') IS NOT NULL
+       OR NULLIF(TRIM(CAST(src.SLS_TOTAL_SETTLED_AMOUNT AS CHAR)), '') IS NOT NULL;
 
     IF EXISTS (
         SELECT 1

@@ -31,7 +31,7 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
-    public async Task GetWeeklyBcc_returns_requested_fields_and_applies_inclusive_as_of_date()
+    public async Task GetWeeklyBcc_returns_requested_fields_and_applies_inclusive_weekly_date_range()
     {
         using (var scope = _factory.Services.CreateScope())
         {
@@ -59,9 +59,18 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
                 facilityId: SeedHelper.FacilityId,
                 initialServiceDate: new DateOnly(2026, 2, 1),
                 endServiceDate: new DateOnly(2026, 3, 1),
-                purchaseDate: new DateOnly(2026, 8, 1));
+                purchaseDate: new DateOnly(2026, 8, 14));
             lien.SetFinancials(1200m, SeedHelper.UserId, purchasePrice: 700m);
             lien.SetLegacyMedicalStatus(LienStatus.Settled, SeedHelper.UserId);
+            var olderLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                "LIEN-BCC-OLDER",
+                LienType.MedicalLien,
+                500m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                purchaseDate: new DateOnly(2026, 8, 13));
             var futureLien = Lien.Create(
                 SeedHelper.TenantId,
                 SeedHelper.OrgId,
@@ -70,7 +79,7 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
                 500m,
                 SeedHelper.UserId,
                 caseId: caseEntity.Id,
-                purchaseDate: new DateOnly(2026, 8, 14));
+                purchaseDate: new DateOnly(2026, 8, 21));
             var closedCase = Case.Create(
                 SeedHelper.TenantId,
                 SeedHelper.OrgId,
@@ -87,7 +96,7 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
                 500m,
                 SeedHelper.UserId,
                 caseId: closedCase.Id,
-                purchaseDate: new DateOnly(2026, 8, 2));
+                purchaseDate: new DateOnly(2026, 8, 20));
             closedCaseLien.SetFinancials(500m, SeedHelper.UserId, purchasePrice: 150m);
             var medicalCode = ServicingItem.Create(
                 SeedHelper.TenantId,
@@ -133,7 +142,7 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
                 SeedHelper.TenantId,
                 caseEntity.Id,
                 lien.Id,
-                new DateOnly(2026, 8, 14),
+                new DateOnly(2026, 8, 21),
                 500m,
                 SeedHelper.UserId);
             var settlement = LienSettlement.Create(
@@ -143,6 +152,7 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
                 1,
                 1000m,
                 SeedHelper.UserId,
+                note: "reductionAmount=20; reductionDate=; totalSettledAmount=1000",
                 settlementDate: new DateOnly(2026, 8, 10));
             var payment = SettlementPaymentDetail.Create(
                 SeedHelper.TenantId,
@@ -182,10 +192,10 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
                 999m,
                 SeedHelper.UserId,
                 caseId: otherTenantCase.Id,
-                purchaseDate: new DateOnly(2026, 8, 1));
+                purchaseDate: new DateOnly(2026, 8, 14));
 
             db.Cases.AddRange(caseEntity, closedCase, otherTenantCase);
-            db.Liens.AddRange(lien, futureLien, closedCaseLien, otherTenantLien);
+            db.Liens.AddRange(lien, olderLien, futureLien, closedCaseLien, otherTenantLien);
             db.ServicingItems.AddRange(medicalCode, facilityInfo, activity);
             db.LienReductions.AddRange(reduction, futureReduction);
             db.LienSettlements.Add(settlement);
@@ -196,7 +206,7 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
 
         var response = await _client.PostAsJsonAsync("/report/weekly-bcc", new
         {
-            asOfDate = "2026-08-13",
+            asOfDate = "2026-08-20",
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -204,8 +214,11 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
         var document = await response.Content.ReadFromJsonAsync<JsonDocument>();
         var root = document!.RootElement;
         root.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
-        root.GetProperty("asOfDate").GetString().Should().Be("2026-08-13");
+        root.GetProperty("asOfDate").GetString().Should().Be("2026-08-20");
         root.GetProperty("totalCount").GetInt32().Should().Be(2);
+        root.GetProperty("data").EnumerateArray()
+            .Select(item => item.GetProperty("lienId").GetString())
+            .Should().Equal("LIEN-BCC-001", "LIEN-BCC-002");
         response.Headers.CacheControl?.NoStore.Should().BeTrue();
 
         var summary = root.GetProperty("summaryTotals");
@@ -225,7 +238,7 @@ public sealed class WeeklyBccReportEndpointTests : IClassFixture<LiensApiFactory
         row.GetProperty("plaintiffCity").GetString().Should().Be("Austin");
         row.GetProperty("lienId").GetString().Should().Be("LIEN-BCC-001");
         row.GetProperty("caseId").GetString().Should().Be("CASE-BCC-001");
-        row.GetProperty("daysSincePurchase").GetInt32().Should().Be(12);
+        row.GetProperty("daysSincePurchase").GetInt32().Should().Be(6);
         row.GetProperty("purchaseAmt").GetString().Should().Be("700.00");
         row.GetProperty("billingAmt").GetString().Should().Be("1,200.00");
         row.GetProperty("expectedSettlementAmt").GetString().Should().Be("500.00");

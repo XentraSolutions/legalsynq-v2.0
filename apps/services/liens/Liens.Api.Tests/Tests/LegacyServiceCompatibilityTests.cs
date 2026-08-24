@@ -360,7 +360,7 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
             await db.SaveChangesAsync();
         }
 
-        const string keyword = "Hanna Jud";
+        const string keyword = "Hannab Judx";
 
         var globalResponse = await _client.PostAsJsonAsync("/api/liens/cases/global-search", new
         {

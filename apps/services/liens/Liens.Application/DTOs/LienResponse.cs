@@ -1,3 +1,7 @@
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace Liens.Application.DTOs;
 
 public sealed class LienResponse
@@ -30,6 +34,7 @@ public sealed class LienResponse
     public Guid? HoldingOrgId { get; init; }
     public DateOnly? IncidentDate { get; init; }
     public string? PurchaseDate { get; init; }
+    [JsonConverter(typeof(NullableUsDateOnlyJsonConverter))]
     public DateOnly? InitialServiceDate { get; init; }
     public DateOnly? EndServiceDate { get; init; }
     public decimal? TotalPurchase { get; init; }
@@ -41,4 +46,42 @@ public sealed class LienResponse
     public DateTime? ClosedAtUtc { get; init; }
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; init; }
+}
+
+public sealed class NullableUsDateOnlyJsonConverter : JsonConverter<DateOnly?>
+{
+    private const string DateFormat = "MM/dd/yyyy";
+
+    public override DateOnly? Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+            return null;
+
+        if (reader.TokenType != JsonTokenType.String ||
+            !DateOnly.TryParseExact(
+                reader.GetString(),
+                DateFormat,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var date))
+        {
+            throw new JsonException($"Date must use the {DateFormat} format.");
+        }
+
+        return date;
+    }
+
+    public override void Write(
+        Utf8JsonWriter writer,
+        DateOnly? value,
+        JsonSerializerOptions options)
+    {
+        if (value.HasValue)
+            writer.WriteStringValue(value.Value.ToString(DateFormat, CultureInfo.InvariantCulture));
+        else
+            writer.WriteNullValue();
+    }
 }

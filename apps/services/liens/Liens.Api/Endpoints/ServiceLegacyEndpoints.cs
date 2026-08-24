@@ -1055,26 +1055,105 @@ public static class ServiceLegacyEndpoints
     private static async Task<IResult> UpdateLienStatusBulkLegacy(
         LegacyUpdateMultipleLienStatusRequest request,
         ILienService lienService,
+        ISettlementService settlementService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
         var userId = RequireUserId(ctx);
-        if (string.IsNullOrWhiteSpace(request.lienIds) || string.IsNullOrWhiteSpace(request.lienStatus))
+        if (!Guid.TryParse(request.caseId, out var caseId) ||
+            string.IsNullOrWhiteSpace(request.lienIds) ||
+            string.IsNullOrWhiteSpace(request.lienStatus) ||
+            !TryParseLegacyClosedDate(request.closedDate, out var closedDate))
         {
             return Results.BadRequest(new { isSuccess = false, message = "Invalid request" });
         }
 
-        var lienIds = request.lienIds
+        var rawLienIds = request.lienIds
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(value => Guid.TryParse(value, out var id) ? id : Guid.Empty)
-            .Where(id => id != Guid.Empty)
             .ToList();
+        if (rawLienIds.Count == 0 || rawLienIds.Any(value => !Guid.TryParse(value, out _)))
+        {
+            return Results.BadRequest(new { isSuccess = false, message = "Invalid lienIds" });
+        }
 
-        foreach (var lienId in lienIds)
-            await lienService.SetLegacyMedicalStatusAsync(tenantId, lienId, userId, request.lienStatus.Trim(), ct);
+        var lienIds = rawLienIds.Select(Guid.Parse).Distinct().ToList();
+        var caseExists = await db.Cases.AsNoTracking()
+            .AnyAsync(item => item.TenantId == tenantId && item.Id == caseId, ct);
+        var selectedLiens = await db.Liens.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && lienIds.Contains(item.Id))
+            .Select(item => new { item.Id, item.CaseId })
+            .ToListAsync(ct);
+        if (!caseExists ||
+            selectedLiens.Count != lienIds.Count ||
+            selectedLiens.Any(item => item.CaseId != caseId))
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "Case and liens must belong to the authenticated tenant and match each other",
+            });
+        }
 
-        return Results.Ok(new { isSuccess = true, message = "Successfully updated lien statuses." });
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+
+        try
+        {
+            foreach (var lienId in lienIds)
+            {
+                await lienService.SetLegacyMedicalStatusAsync(
+                    tenantId,
+                    lienId,
+                    userId,
+                    request.lienStatus.Trim(),
+                    ct);
+                await settlementService.CreatePaymentAsync(
+                    tenantId,
+                    userId,
+                    new CreateSettlementPaymentDetailRequest
+                    {
+                        CaseId = caseId,
+                        LienId = lienId,
+                        Amount = 0m,
+                        PaymentDate = closedDate,
+                        Notes = request.note,
+                        SettlementType = "other",
+                        SettlementStatus = "4",
+                    },
+                    ct);
+            }
+
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+
+        return Results.Ok(new { isSuccess = true, message = "Lien(s) successfully updated." });
+    }
+
+    private static bool TryParseLegacyClosedDate(string? value, out DateOnly closedDate)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            closedDate = default;
+            return false;
+        }
+
+        return DateOnly.TryParseExact(
+                   value.Trim(),
+                   ["yyyy-MM-dd", "MM/dd/yyyy", "M/d/yyyy"],
+                   CultureInfo.InvariantCulture,
+                   DateTimeStyles.None,
+                   out closedDate) ||
+               DateOnly.TryParse(value.Trim(), CultureInfo.InvariantCulture, DateTimeStyles.None, out closedDate);
     }
 
     private static Guid RequireTenantId(ICurrentRequestContext ctx) =>

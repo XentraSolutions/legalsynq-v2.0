@@ -171,6 +171,116 @@ The target connection must select `LS_QA_LIENS` (or the explicitly approved
 The runner refuses an apply when the counts differ or any preflight/conflict
 check fails.
 
+## Litigation case-status repair
+
+[`update-litigation-case-statuses.sql`](update-litigation-case-statuses.sql)
+applies the reviewed `Litigation Status.xlsx` list. The workbook identifies
+1,136 liens but contains a case-status correction: 377 unique cases remain
+at `InNegotiation` before the repair, then `liens_Cases.Status` is set directly
+to either `Litigation (Open)` (166 cases) or `Litigation (Pending)` (211
+cases). It does not change lien lifecycle statuses, notes, or legacy metadata.
+
+Open an explicitly selected `LS_QA_LIENS` or approved `LS_LIENS` connection in
+DBeaver. Set the target tenant and audit actor IDs in the script, leave
+`@apply = 0`, and execute the entire file. Review its 377-case preflight output
+and copy `ChangesToApply` into `@expected_case_updates`; then set `@apply = 1`
+and execute the whole script again. It updates only when every target still has
+case status `InNegotiation`, the tenant-owned preimages match, and
+postconditions succeed; otherwise it rolls back.
+
+## Memet Hussein 25-02030 imported-payment repair
+
+[`repair-memet-hussein-25-02030-imported-payments.sql`](repair-memet-hussein-25-02030-imported-payments.sql)
+soft-deletes the two reviewed SL-CORE payment-detail artifacts that incorrectly
+make each open lien show `$1,795` received. Because QA and production target
+UUIDs differ, the repair resolves the reviewed legacy case (`27208`), liens
+(`59915`/`59916`), and payment details (`41411`/`41412`) through exact,
+tenant-scoped SL-CORE crosswalks. It also verifies the schema/tenant pair,
+target ownership, amount, receipt fields, note, and audit preimages. It
+preserves the rows and crosswalks for audit and does not change balances,
+reductions, settlements, or payment numbering.
+
+Open an explicitly selected `LS_QA_LIENS` or approved `LS_LIENS` connection in
+DBeaver, select the tenant line matching that database, set `@actor_user_id`,
+leave `@apply = 0`, and execute the entire file. Review both planned rows and
+copy `ChangesToApply` and `PlanChecksum` into `@expected_updates` and
+`@expected_checksum`. Set `@apply = 1` and execute the whole file again. Any
+missing or changed preimage, ambiguous legacy crosswalk, unexpected row count,
+checksum mismatch, or failed postcondition rolls back the transaction.
+
+## Darin Tellis 25-01967 lien-05 closed-at-zero repair
+
+[`repair-darin-tellis-25-01967-lien-05.sql`](repair-darin-tellis-25-01967-lien-05.sql)
+is a production-only manual repair for lien `25-01967-05`. It keeps the lien
+closed, changes its current balance and payoff to `$0`, soft-deletes the
+reviewed malformed imported `$16,000` payment, and retains the real zero-dollar
+closure record after removing its No Recovery classification. The case, its
+four earlier liens, `$33,500` in legitimate payments and settlements, legacy
+crosswalks, and status history remain unchanged.
+
+Open an explicitly selected `LS_LIENS` connection in DBeaver, replace the
+single `<identity-user-guid>` placeholder with an active Identity user for the
+production tenant, leave `@apply = 0`, and execute the complete file. Review
+the exact targets and copy `ChangesToApply` and `PlanChecksum` into
+`@expected_updates` and `@expected_checksum`. Set `@apply = 1` and execute the
+complete file again. The repair commits only if the case, lien, both payment
+rows, source crosswalks, sibling totals, receipt fields, notes, timestamps, and
+audit fields still match the reviewed preimages; otherwise it rolls back. If
+the SQL client reports an execution error before the final `Result` row, issue
+`ROLLBACK` in that same connection before investigating or rerunning.
+
+The emergency companion
+[`rollback-darin-tellis-25-01967-lien-05-repair.sql`](rollback-darin-tellis-25-01967-lien-05-repair.sql)
+reverses only those three repaired values. It intentionally restores the false
+`$16,000` received amount and No Recovery classification, so use it only under
+an approved rollback decision. The rollback has its own dry-run, count, actor,
+checksum, and postcondition gates. It also requires the lien and both payment
+rows to retain the identical repair timestamp and actor written by the forward
+script; any later edit blocks rollback. Run it with `@apply = 0`, review
+`ChangesToApply = 3` and `BlockingRows = 0`, copy its new `PlanChecksum`, then
+set `@apply = 1`, `@expected_updates = 3`, and its exact checksum before
+executing the complete rollback file again. If the SQL client reports an
+execution error before the final `Result` row, issue `ROLLBACK` in that same
+connection before investigating or rerunning.
+
+## Hector Zaldana 26-31912 imported-payment repair
+
+[`repair-hector-zaldana-26-31912-imported-payment.sql`](repair-hector-zaldana-26-31912-imported-payment.sql)
+soft-deletes the reviewed SL-CORE No Recovery artifact that incorrectly makes
+open lien `26-31912-01` show `$17,228` received. It verifies the production
+schema and tenant, active audit actor, case, both open liens, the exact payment
+preimage, empty receipt fields, zero settlement/reduction context, and all four
+source crosswalk hashes. It does not update the case or either lien.
+
+Run the complete file with `@apply = 0`, review `ChangesToApply = 1` and
+`BlockingRows = 0`, and copy its `PlanChecksum`. Then set `@apply = 1`,
+`@expected_updates = 1`, and `@expected_checksum` to that checksum before
+executing the complete file again. The emergency companion
+[`rollback-hector-zaldana-26-31912-payment-repair.sql`](rollback-hector-zaldana-26-31912-payment-repair.sql)
+intentionally restores the false receipt and No Recovery classification, so
+use it only under an approved rollback decision. Both files require a
+same-connection `ROLLBACK` if the SQL client errors before the final `Result`
+row.
+
+## Julio De Anda Fajardo 26-32723 No Recovery amount repair
+
+[`repair-julio-de-anda-fajardo-26-32723-no-recovery-amount.sql`](repair-julio-de-anda-fajardo-26-32723-no-recovery-amount.sql)
+is a production-only manual repair for lien `26-32723-01`. The imported
+SL-CORE status-4 declaration has no receipt evidence, but its `$3,700` face
+amount was stored as received cash. The repair changes only that payment
+amount to `$0`; it keeps the row active so V3 continues to show **No Recovery**
+and does not modify the Closed case or Settled lien.
+
+Open an explicitly selected `LS_LIENS` connection in DBeaver, replace
+`<identity-user-guid>` with an active Identity user for the production tenant,
+leave `@apply = 0`, and execute the complete file. Review
+`ChangesToApply = 1` and `BlockingRows = 0`, then copy `PlanChecksum` into
+`@expected_checksum`, set `@expected_updates = 1` and `@apply = 1`, and execute
+the complete file again. Exact source hashes, target preimages, tenant actor,
+serializable locks, and postconditions guard the one-row update. If the SQL
+client errors before the final `Result` row, issue `ROLLBACK` in the same
+connection before investigating or rerunning.
+
 ## Run
 
 Run preflight first. `TenantId`, `OrgId`, `MigrationUserId`, and the source
@@ -263,8 +373,156 @@ CALL liens_migrate_sl_core_complete('<tenant-guid>', '1'); -- apply
 ```
 
 The complete procedure maps `LM_PURCHASE_DATE` to `liens_Liens.PurchaseDate`,
-maps nonblank `SLS_SETTLE_AMOUNT` and `SLS_SETTLE_DATE` rows to
-`liens_LienSettlements`, and retains non-deleted settlement payment details.
+maps rows with a nonblank `SLS_SETTLE_AMOUNT` to `liens_LienSettlements`, and
+also preserves rows whose settle amount is blank when either
+`SLS_REDUCTION_AMOUNT` or `SLS_TOTAL_SETTLED_AMOUNT` is present. These
+metadata-only rows use `Amount = 0` and `Status = 'Pending'`, so they do not
+change Cash Received or amount-to-settle totals. A nonblank invalid or
+out-of-range `SLS_SETTLE_AMOUNT` still blocks the import. Reduction dates are
+carried only from `SLS_REDUCTION_DATE`; the importer does not infer one from a
+settlement date. The reductions API reads dated preserved metadata when a
+canonical `liens_LienReductions` row is unavailable. Source rows without a
+reduction date remain preserved for audit but are omitted from the reductions
+API. The procedure also retains non-deleted settlement payment details.
+
+### Existing-import settlement metadata repair
+
+Do not rerun the complete import to repair tenants that were imported before
+metadata-only settlement rows were preserved. Deploy
+[`backfill-sl-core-settlement-metadata.sql`](backfill-sl-core-settlement-metadata.sql)
+to an explicitly selected `LS_QA_LIENS` or approved `LS_LIENS` schema while the
+same immutable `SL-CORE` source restore is available. The repair uses the
+completed core import and lien crosswalks to insert only missing source
+settlement rows whose settle amount is blank but whose reduction or
+total-settled metadata is present.
+
+Run preflight first; the `NULL` assertion parameters are intentional:
+
+```sql
+CALL liens_backfill_sl_core_settlement_metadata(
+  '<tenant-guid>', '1', NULL,
+  NULL, NULL, NULL, NULL, NULL, '0');
+```
+
+Confirm that `DistinctLiens` and `ReductionTotal` reconcile to the approved
+exception report. `EligibleCanonicalReductionRows` reports reductions that can
+be written to `liens_LienReductions`. `BlankReductionDates` is calculated from
+the authoritative `SL-CORE.SL_LIENS_SETTLEMENT.SLS_REDUCTION_DATE` value. Those
+rows remain in preserved settlement metadata and are skipped by the canonical
+reduction phase. `InvalidReductionDates` must be `0`; any nonblank source value
+that cannot be parsed blocks both preflight approval and apply. The procedure
+never infers a reduction date from a settlement date or workbook data. Retain
+`SourceRows`, `DistinctLiens`, `BlankReductionDates`, `ReductionTotal`, and
+`ExpectedChecksum`, obtain a change/approval reference, then copy those exact
+values into the apply call:
+
+```sql
+CALL liens_backfill_sl_core_settlement_metadata(
+  '<tenant-guid>', '1', '<change-or-approval-id>',
+  <source-rows>, <distinct-liens>, <blank-reduction-dates>,
+  <reduction-total>, '<checksum>', '1');
+```
+
+When `BlankReductionDates` is greater than `0`, apply remains safe: the
+procedure skips those canonical rows and returns the count as
+`SkippedReductionRowsWithBlankDate`. The settlement metadata remains
+authoritative for audit, but undated metadata is omitted from the reductions
+API until a separately approved repair materializes a canonical dated
+reduction. This avoids inventing historical dates solely to satisfy the
+canonical table constraint.
+
+The repair holds the tenant core-import lock, verifies the completed import and
+source fingerprint, rejects conflicting or uncrosswalked target rows, and
+inserts zero-amount `Pending` settlements and eligible canonical lien
+reductions plus their crosswalks in one transaction. Version 3 is safe to apply
+after the original settlement-only repair or Version 2: its preflight reports
+the existing settlement rows, plans only missing reductions with valid dates,
+and skips missing-date rows for the API fallback. It records a separate
+completed repair run when writes are required and is safe to rerun; an already
+repaired tenant returns `settlement-metadata-backfill-already-complete`. It
+never fabricates a reduction date or changes Cash Received. Existing business
+rows are not deleted on rollback; reverse an applied repair only through an
+approved compensating script or database restore.
+
+Identity, provenance, checksum, and postcondition string comparisons use binary
+semantics so the same reviewed procedure works when production target columns
+use `utf8mb4_unicode_ci` and restored source or temporary columns use
+`utf8mb4_0900_ai_ci`.
+
+### Business-approved default reduction date
+
+If the business has separately approved `2026-04-27` as the default reduction
+date for the exact 192-row blank-date cohort, deploy
+[`materialize-sl-core-approved-default-reductions.sql`](materialize-sl-core-approved-default-reductions.sql)
+after the Version 3 metadata repair has completed. This is a separate,
+tenant-bound repair: it does not claim the date came from SL-CORE, does not
+change the preserved settlement metadata, and does not change Cash Received.
+It creates canonical `liens_LienReductions` rows so the existing reductions API
+and tenant portal can list the approved reductions.
+
+Run preflight using the real ticket, change request, or other durable approval
+reference. Replace the literal placeholder before execution:
+
+```sql
+CALL liens_materialize_sl_core_approved_default_reductions_v1(
+  '019fb470-f161-7fbd-93a0-c808d43c43c3',
+  '0ab1aa20-9e22-11f1-9a38-0a971fa4811b',
+  '2026-04-27',
+  '<change-or-approval-id>',
+  NULL, NULL, NULL, NULL, NULL, NULL,
+  '0'
+);
+```
+
+For the initial approved cohort, confirm that preflight returns `SourceRows =
+192`, `DistinctLiens = 192`, `BlankSourceReductionDates = 192`, `ExistingRows =
+0`, `RowsToInsert = 192`, and `ReductionTotal = 467303.5100`. Copy the returned
+values and checksum without editing them into apply:
+
+```sql
+CALL liens_materialize_sl_core_approved_default_reductions_v1(
+  '019fb470-f161-7fbd-93a0-c808d43c43c3',
+  '0ab1aa20-9e22-11f1-9a38-0a971fa4811b',
+  '2026-04-27',
+  '<same-change-or-approval-id>',
+  192, 192, 0, 192, 467303.5100,
+  '<checksum-from-immediately-preceding-preflight>',
+  '1'
+);
+```
+
+For the production cohort, deploy
+[`materialize-sl-core-approved-default-reductions-prod.sql`](materialize-sl-core-approved-default-reductions-prod.sql)
+only through an explicitly selected `LS_LIENS` connection. Its procedure has a
+separate name and is bound to production tenant
+`019f1a05-7459-7855-b46b-110a702e37a4` and completed Version 3 metadata repair
+run `35cece1a-9e54-11f1-b823-12a7a8afef43`; it does not replace or weaken the
+QA procedure. Run its production preflight with all assertion parameters null:
+
+```sql
+CALL liens_materialize_sl_core_approved_default_reductions_prod_v1(
+  '019f1a05-7459-7855-b46b-110a702e37a4',
+  '35cece1a-9e54-11f1-b823-12a7a8afef43',
+  '2026-04-27',
+  '<production-change-or-approval-id>',
+  NULL, NULL, NULL, NULL, NULL, NULL,
+  '0'
+);
+```
+
+Copy all six assertions from the immediately preceding production preflight
+into apply. Never reuse the QA counts or checksum even if the displayed totals
+match.
+
+The apply phase revalidates the immutable source fingerprint and all copied
+assertions inside a transaction. It rejects a changed cohort, nonblank source
+dates, unrelated canonical reductions, or conflicting crosswalks. New rows use
+a dedicated approved-default crosswalk and record the approval reference plus
+`reductionDateSource=business-approved-default` in the reduction note. A safe
+rerun with the same approval reference returns
+`approved-default-reductions-already-complete`; a different approval reference
+is treated as a conflict.
+
 Case-note staging carries `SL_CASE_NOTES.CN_USER_ID`: a null value maps to the
 tracking category `general`, while a non-null value maps to `feed`. The note
 crosswalk hash is prefixed with `case-note-v2:` and includes that discriminator

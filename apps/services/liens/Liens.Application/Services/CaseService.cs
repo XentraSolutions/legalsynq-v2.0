@@ -54,14 +54,27 @@ public sealed class CaseService : ICaseService
         var keyword = search?.Trim();
         var (items, totalCount) = await _caseRepo.SearchAsync(
             tenantId,
-            hasKeyword ? null : search,
+            search,
             status,
-            hasKeyword ? 1 : page,
-            hasKeyword ? FuzzySearchScorer.CandidateLimit : pageSize,
+            page,
+            pageSize,
             orgId,
             ct: ct);
+        var useFuzzyFallback = hasKeyword && totalCount == 0;
 
-        if (hasKeyword)
+        if (useFuzzyFallback)
+        {
+            (items, totalCount) = await _caseRepo.SearchAsync(
+                tenantId,
+                null,
+                status,
+                1,
+                FuzzySearchScorer.CandidateLimit,
+                orgId,
+                ct: ct);
+        }
+
+        if (useFuzzyFallback)
         {
             var matches = items
                 .Select(item => new { Item = item, Score = GetCaseKeywordScore(item, keyword!) })
@@ -814,11 +827,20 @@ public sealed class CaseService : ICaseService
         CancellationToken ct)
     {
         var liens = await _lienRepo.GetByCaseIdAsync(tenantId, caseId, ct);
-        if (liens.Count == 0 || liens.Any(lien => lien.Status != LienStatus.Settled))
+        if (liens.Count == 0)
             return (string.Empty, string.Empty);
+        var allLiensClosed = liens.All(lien => lien.Status == LienStatus.Settled);
 
         var payments = await _settlementService.GetPaymentsByCaseAsync(tenantId, caseId, ct);
         var settlements = await _settlementService.GetSettlementsByCaseAsync(tenantId, caseId, ct);
+        var hasNoRecoveryDeclaration = payments.Any(payment =>
+                IsNoRecoveryValue(payment.SettlementStatusId) ||
+                (IsLegacyLienStatusValue(payment.SettlementStatusId) &&
+                 IsNoRecoveryValue(payment.SettlementTypeId))) ||
+            settlements.Any(settlement => IsNoRecoveryValue(settlement.Status));
+        if (hasNoRecoveryDeclaration)
+            return ("No Recovery", "4");
+
         var latestPayment = payments
             .OrderByDescending(payment => payment.CreatedAtUtc)
             .ThenByDescending(payment => payment.Id)
@@ -858,15 +880,44 @@ public sealed class CaseService : ICaseService
                 string.Equals(value.Id.ToString(), statusId, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(value.Code, statusId, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(value.Name, statusId, StringComparison.OrdinalIgnoreCase));
+        var statusName = lookup?.Name ?? ResolveLegacySettlementStatusName(statusId);
+        var isNoRecovery = IsNoRecoverySettlementStatus(statusId, lookup?.Code, statusName);
 
-        return (lookup?.Name ?? ResolveLegacySettlementStatusName(statusId), statusId);
+        if (!allLiensClosed && !isNoRecovery)
+            return (string.Empty, string.Empty);
+
+        return isNoRecovery
+            ? ("No Recovery", "4")
+            : (statusName, statusId);
     }
+
+    private static bool IsNoRecoverySettlementStatus(
+        string statusId,
+        string? statusCode,
+        string statusName) =>
+        IsNoRecoveryValue(statusId) ||
+        IsNoRecoveryValue(statusCode) ||
+        IsNoRecoveryValue(statusName);
+
+    private static bool IsNoRecoveryValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var normalized = value.Trim()
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal);
+        return normalized == "4" ||
+               string.Equals(normalized, "NoRecovery", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLegacyLienStatusValue(string? value) =>
+        string.Equals(value?.Trim(), "Open", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(value?.Trim(), "Closed", StringComparison.OrdinalIgnoreCase);
 
     private static string ResolveLegacySettlementStatusName(string value) => value switch
     {
-        "1" => "Full Payment",
-        "2" => "Reduced Payment",
-        "3" => "Partial Loss",
         "4" => "No Recovery",
         _ when int.TryParse(value, out _) => string.Empty,
         _ => HumanizeLegacyCode(value),
@@ -1124,6 +1175,10 @@ public sealed class CaseService : ICaseService
 
     private static string ResolveCaseStatusLabel(string status, string? customStatusLabel)
     {
+        var litigationStatus = NormalizeConcreteLitigationStatus(status);
+        if (litigationStatus is not null)
+            return litigationStatus;
+
         if (!string.IsNullOrWhiteSpace(customStatusLabel))
             return customStatusLabel.Trim();
 
@@ -1140,10 +1195,30 @@ public sealed class CaseService : ICaseService
 
     private static string ResolveCaseStatusValue(string status, string? customStatusLabel)
     {
+        var litigationStatus = NormalizeConcreteLitigationStatus(status);
+        if (litigationStatus is not null)
+            return litigationStatus;
+
         if (!string.IsNullOrWhiteSpace(customStatusLabel))
             return customStatusLabel.Trim();
 
         return status;
+    }
+
+    private static string? NormalizeConcreteLitigationStatus(string status)
+    {
+        var normalized = status.Trim()
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .Replace("(", string.Empty, StringComparison.Ordinal)
+            .Replace(")", string.Empty, StringComparison.Ordinal)
+            .ToUpperInvariant();
+
+        return normalized switch
+        {
+            "LITIGATIONPENDING" => CaseStatus.LitigationPending,
+            "LITIGATIONOPEN" => CaseStatus.LitigationOpen,
+            _ => null,
+        };
     }
 
     private static string? NormalizeCaseFlagForStorage(string? value)

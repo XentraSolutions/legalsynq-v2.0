@@ -1,8 +1,12 @@
+-- Keep DBeaver session variables and literals compatible with the MySQL 8
+-- collations used by the Identity, Liens, and staging schemas.
+SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
 SET @tenant_id = '019f1a05-7459-7855-b46b-110a702e37a4';
 SET @org_id = '019f1a05-792b-7c0e-89a0-ae24990d1f89';
 SET @migration_user_id = '019f1a05-792f-74f2-b071-4fdc0d6bd30a';
 SET @approved_by_user_id = '019f1a05-792f-74f2-b071-4fdc0d6bd30a';
-SET @lien_amount_source = 'Billing'; -- Change to exactly 'billing' or 'purchase'.
+SET @lien_amount_source = 'billing'; -- Change to exactly 'billing' or 'purchase'.
 
 SET @legacy_program = '1';
 SET @source_fingerprint = '3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe';
@@ -61,7 +65,8 @@ SELECT
     SELECT 1
     FROM `SL-CORE`.`SL_MIGRATION_SOURCE_PROVENANCE` provenance
     WHERE provenance.PROVENANCE_KEY = 'sl-core-current'
-      AND LOWER(provenance.SOURCE_FINGERPRINT) = @source_fingerprint
+      AND LOWER(provenance.SOURCE_FINGERPRINT) COLLATE utf8mb4_0900_ai_ci
+          = @source_fingerprint COLLATE utf8mb4_0900_ai_ci
       AND provenance.IMPORT_SCOPE = 'sl-core-core-liens-v1'
   )
 INTO @org_is_valid, @migration_user_is_valid, @approver_is_valid,

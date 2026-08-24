@@ -2918,7 +2918,9 @@ public static class CaseEndpoints
         {
             "NEW" or "PROCESSING" or "OPEN" or "PREDEMAND" => CaseStatus.PreDemand,
             "DEMANDSENT" => CaseStatus.DemandSent,
-            "NEGOTIATIONS" or "INNEGOTIATION" or "LITIGATION" or "LITIGATIONPENDING" or "LITIGATIONOPEN" or "LITIGATIONCLOSE" or "LITIGATIONCLOSED" => CaseStatus.InNegotiation,
+            "NEGOTIATIONS" or "INNEGOTIATION" or "LITIGATION" or "LITIGATIONCLOSE" or "LITIGATIONCLOSED" => CaseStatus.InNegotiation,
+            "LITIGATIONPENDING" => CaseStatus.LitigationPending,
+            "LITIGATIONOPEN" => CaseStatus.LitigationOpen,
             "CASESETTLED" => CaseStatus.CaseSettled,
             "CLOSED" => CaseStatus.Closed,
             _ when CaseStatus.All.Contains(normalized) => normalized,
@@ -5552,8 +5554,7 @@ public static class CaseEndpoints
             ? NormalizeLegacyCaseStatus(request.caseStatusId)
             : null;
 
-        if (!string.IsNullOrWhiteSpace(normalizedCaseStatus) &&
-            !string.Equals(normalizedCaseStatus, result.Status, StringComparison.Ordinal))
+        if (!string.IsNullOrWhiteSpace(normalizedCaseStatus))
         {
             var updateRequest = new UpdateCaseRequest
             {

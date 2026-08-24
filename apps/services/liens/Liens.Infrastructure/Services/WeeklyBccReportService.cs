@@ -138,12 +138,19 @@ public sealed class WeeklyBccReportService : IWeeklyBccReportService
         };
     }
 
-    private IQueryable<Lien> EligibleLiens(Guid tenantId, DateOnly asOfDate) =>
-        _db.Liens
+    private IQueryable<Lien> EligibleLiens(Guid tenantId, DateOnly asOfDate)
+    {
+        var rangeStart = asOfDate.DayNumber >= 6
+            ? asOfDate.AddDays(-6)
+            : DateOnly.MinValue;
+
+        return _db.Liens
             .AsNoTracking()
             .Where(lien => lien.TenantId == tenantId &&
                            lien.PurchaseDate.HasValue &&
+                           lien.PurchaseDate.Value >= rangeStart &&
                            lien.PurchaseDate.Value <= asOfDate);
+    }
 
     private static IOrderedQueryable<Lien> OrderLiens(IQueryable<Lien> query) =>
         query.OrderBy(lien => lien.PurchaseDate)
@@ -464,9 +471,11 @@ public sealed class WeeklyBccReportService : IWeeklyBccReportService
             ? settlementFields.Sum(fields => ParseDecimal(fields.GetValueOrDefault("totalSettledAmount")))
             : lien.PayoffAmount ?? payments.Sum(item => item.Amount);
         var hasLegacyReduction = settlementFields.Any(fields => fields.ContainsKey("reductionAmount"));
-        var reductionAmount = hasLegacyReduction
-            ? settlementFields.Sum(fields => ParseDecimal(fields.GetValueOrDefault("reductionAmount")))
-            : reductions.Sum(item => item.Amount);
+        var reductionAmount = reductions.Count > 0
+            ? reductions.Sum(item => item.Amount)
+            : hasLegacyReduction
+                ? settlementFields.Sum(fields => ParseDecimal(fields.GetValueOrDefault("reductionAmount")))
+                : 0m;
         var expectedSettlement = reductionAmount > 0m
             ? billingAmount - purchaseAmount
             : (decimal?)null;

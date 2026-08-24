@@ -990,7 +990,6 @@ public class DIYReportService : IDIYReportService
         var hasLegacyReductionAmount = false;
         var hasLegacyReturnedAmount = false;
         DateOnly? reductionDate = null;
-        var reductionSettlementDates = new List<DateOnly>();
 
         foreach (var settlement in settlements)
         {
@@ -998,9 +997,6 @@ public class DIYReportService : IDIYReportService
             if (fields.TryGetValue("reductionAmount", out var reductionValue))
             {
                 hasLegacyReductionAmount = true;
-                if (settlement.SettlementDate.HasValue)
-                    reductionSettlementDates.Add(settlement.SettlementDate.Value);
-
                 if (decimal.TryParse(reductionValue, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
                     reductionAmount += amount;
             }
@@ -1032,7 +1028,7 @@ public class DIYReportService : IDIYReportService
             hasLegacyReductionAmount,
             hasLegacyReturnedAmount,
             settlementDates.Count > 0 ? settlementDates.Max() : null,
-            reductionDate ?? (reductionSettlementDates.Count > 0 ? reductionSettlementDates.Max() : null));
+            reductionDate);
     }
 
     private static bool TryParseLegacyDate(string? value, out DateOnly date)
@@ -1065,15 +1061,16 @@ public class DIYReportService : IDIYReportService
 
     private static decimal ResolveReductionAmount(Lien lien, ReportRowEnrichment enrichment)
     {
+        if (enrichment.ReductionAmountsByLienId.TryGetValue(lien.Id, out var reductionAmounts))
+            return reductionAmounts.Amount;
+
         if (enrichment.SettlementAmountsByLienId.TryGetValue(lien.Id, out var settlementAmounts) &&
             settlementAmounts.HasLegacyReductionAmount)
         {
             return settlementAmounts.ReductionAmount;
         }
 
-        return enrichment.ReductionAmountsByLienId.TryGetValue(lien.Id, out var reductionAmounts)
-            ? reductionAmounts.Amount
-            : 0m;
+        return 0m;
     }
 
     private static decimal ResolveToSettleAmount(Lien lien, ReportRowEnrichment enrichment) =>
@@ -1088,15 +1085,16 @@ public class DIYReportService : IDIYReportService
 
     private static DateOnly? ResolveReductionDate(Lien lien, ReportRowEnrichment enrichment)
     {
+        if (enrichment.ReductionAmountsByLienId.TryGetValue(lien.Id, out var reductionAmounts))
+            return reductionAmounts.ReductionDate;
+
         if (enrichment.SettlementAmountsByLienId.TryGetValue(lien.Id, out var settlementAmounts) &&
             settlementAmounts.ReductionDate.HasValue)
         {
             return settlementAmounts.ReductionDate;
         }
 
-        return enrichment.ReductionAmountsByLienId.TryGetValue(lien.Id, out var reductionAmounts)
-            ? reductionAmounts.ReductionDate
-            : null;
+        return null;
     }
 
     private static DateOnly? ResolvePaidDate(Lien lien, ReportRowEnrichment enrichment)
@@ -1112,7 +1110,7 @@ public class DIYReportService : IDIYReportService
 
     private static int? GetDaysSincePurchase(DateOnly? purchaseDate) =>
         purchaseDate.HasValue
-            ? Math.Max(DateOnly.FromDateTime(DateTime.UtcNow).DayNumber - purchaseDate.Value.DayNumber, 0)
+            ? DateOnly.FromDateTime(DateTime.UtcNow).DayNumber - purchaseDate.Value.DayNumber
             : null;
 
     private static int? GetDaysSinceReductionApproval(DateOnly? reductionDate, DateOnly? paidDate) =>

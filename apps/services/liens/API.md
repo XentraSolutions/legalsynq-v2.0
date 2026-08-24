@@ -12,6 +12,7 @@
 - [Bills of Sale](#bills-of-sale-endpoints)
 - [Lien Offers](#lien-offers-endpoints)
 - [Contacts](#contacts-endpoints)
+- [Settlement Reductions](#settlement-reduction-endpoints)
 - [Settlement Payments](#settlement-payment-endpoints)
 - [Servicing](#servicing-endpoints)
 - [Reports](#reports-endpoints)
@@ -132,6 +133,7 @@ Search and list liens with optional filters.
 
 Buying-facing lien list responses exclude liens in `Rejected`, `Declined`, or `Cancelled` status and normalize the remaining statuses to `Open` or `Closed`. Selling-specific workflow statuses remain available on selling endpoints and on direct lien detail responses.
 All liens API timestamp responses are serialized in U.S. Pacific time (`-07:00` or `-08:00` depending on DST). Legacy string-formatted timestamps use the same Pacific conversion.
+`LienResponse.purchaseDate` and `LienResponse.initialServiceDate` are formatted as `MM/dd/yyyy` when present.
 
 **Permission:** `SYNQ_LIENS.lien:read`
 
@@ -1068,6 +1070,10 @@ contacts and canonical `FundingCompany` contacts.
 
 Search and list cases with optional filters.
 
+Case statuses include `PreDemand`, `DemandSent`, `InNegotiation`, `Litigation (Open)`,
+`Litigation (Pending)`, `CaseSettled`, and `Closed`. The two litigation variants are
+stored values and can be filtered independently.
+
 **Permission:** `SYNQ_LIENS.case:read`
 
 **Query Parameters:**
@@ -1103,10 +1109,11 @@ Get a case by its unique identifier.
 label in `lienStatus` and matching LienStatus lookup UUID in `lienStatusId`. It also includes the latest
 settlement payment's display value in `settlementStatus` and its stored lookup ID or code in
 `settlementStatusId` only when the case has at least one lien and every linked lien is `Settled`
-(legacy/UI `Closed`). The settlement fields return empty strings while any linked lien remains open or
-rejected, or when the case has no liens. Each field pair also returns empty strings when its corresponding
-record does not exist. Recognized legacy numeric settlement-status IDs are returned as human-readable
-labels in `settlementStatus`; the original identifier remains in `settlementStatusId`.
+(legacy/UI `Closed`), or when any settlement or payment record on the case declares `No Recovery`. A No
+Recovery declaration remains visible while other liens are open and is normalized to `No Recovery` with
+legacy settlement-status ID `4`. Other settlement statuses remain empty while any linked lien is open or
+rejected; cases without liens also return empty settlement fields. Each field pair also returns empty
+strings when its corresponding record does not exist.
 
 **Error:** `404 Not Found` — if the case does not exist.
 
@@ -1230,7 +1237,7 @@ Update an existing case.
 | `claimNumber` | `string` | No | Yes | Insurance claim number |
 | `description` | `string` | No | Yes | Case description |
 | `notes` | `string` | No | Yes | Additional notes |
-| `status` | `string` | No | Yes | Case status |
+| `status` | `string` | No | Yes | Case status. Accepted values include `Litigation (Open)` and `Litigation (Pending)`. |
 | `demandAmount` | `decimal` | No | Yes | Demand amount |
 | `settlementAmount` | `decimal` | No | Yes | Settlement amount |
 
@@ -1972,9 +1979,36 @@ Export all matching active, top-level contacts as a Base64-encoded CSV. The defa
 
 ---
 
+## Settlement Reduction Endpoints
+
+Base path: `/api/liens/settlement/reductions`
+
+`GET /case/{caseId}` and `GET /lien/{lienId}` return canonical lien reductions.
+For a lien without a canonical reduction, the response also exposes preserved
+SL-CORE settlement metadata containing both a valid `reductionAmount` and an
+explicit `SLS_REDUCTION_DATE`. Historical source rows without a reduction date
+are omitted from this compatibility fallback; the service does not invent a
+date. A canonical reduction takes precedence over the legacy fallback for the
+same lien.
+
+---
+
 ## Settlement Payment Endpoints
 
 Base path: `/api/liens/settlement/payments`
+
+### POST `/service/update-liens-status`
+
+Legacy servicing endpoint for closing one or more selected liens and declaring No Recovery. `caseId`,
+comma-delimited `lienIds`, `lienStatus`, and `closedDate` are required; `closedDate` accepts `yyyy-MM-dd`
+and US `MM/dd/yyyy` formats. Every selected lien must belong to the authenticated tenant and the supplied
+case. The update is atomic on relational databases: each selected lien receives `lienStatus`, and a
+zero-amount payment-detail declaration is recorded for `closedDate` with the optional `note` and canonical
+No Recovery settlement status ID `4`.
+
+The No Recovery declaration is case-level for display compatibility. A subsequent
+`GET /api/liens/cases/{id}` returns `settlementStatus: "No Recovery"` and `settlementStatusId: "4"` even
+when other liens on the case remain open.
 
 ### PUT `/api/liens/settlement/payments/{paymentId}`
 
@@ -2280,7 +2314,7 @@ Query parameters:
 - `page`: optional, defaults to `1`, and must be at least `1`.
 - `pageSize`: optional, defaults to `50`, and must be between `1` and `100`.
 
-Eligible Weekly BCC liens are ordered by purchase date, lien number, and record ID before database paging. Only the selected page is enriched. An out-of-range page returns `200` with an empty `data` array while retaining the full-result count and column schema.
+The stored report date ends the inclusive seven-day purchase range (`date - 6 days` through `date`). Eligible Weekly BCC liens are ordered by purchase date, lien number, and record ID before database paging. Only the selected page is enriched. An out-of-range page returns `200` with an empty `data` array while retaining the full-result count and column schema.
 
 ```json
 {
@@ -2328,11 +2362,13 @@ Eligible Weekly BCC liens are ordered by purchase date, lien number, and record 
 
 `columns` always contains all 57 Weekly BCC v1 descriptors. Keys use the same camelCase names as the objects in `data`, and indexes are unique, contiguous, and zero-based (`0` through `56`). The `noted` field is labeled `Notes` in report previews and CSV exports. Invalid pagination returns `400`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`. Both direct and saved-report execution responses add `summaryTotals` with `totalCases`, `totalOpenCases`, `totalClosedCases`, `totalLiens`, `totalOpenLiens`, `totalClosedLiens`, `totalPurchaseAmt`, `totalReturnedAmt`, and `totalBillingAmt` calculated from the complete eligible result set.
 
+For the `reduction` field, canonical lien reductions take precedence when any exist for the lien. Preserved SL-CORE settlement metadata containing `reductionAmount` is used only when the lien has no canonical reduction.
+
 ### POST `/api/liens/reports/auto-generated/{reportId}/export`
 
 Exports all eligible rows from the tenant-scoped stored Weekly BCC report. The compatibility alias is `POST /report/auto-generated/{reportId}/export`. No request body or pagination parameters are required.
 
-Rows retain the same deterministic purchase-date, lien-number, and record-ID order as execution. The exporter enriches bounded pages, writes headers in the versioned 57-column order, quotes CSV values, preserves Unicode and multiline content, and neutralizes spreadsheet-formula prefixes. The response uses the established Base64 CSV envelope:
+Rows retain the same deterministic purchase-date, lien-number, and record-ID order as execution. The exporter enriches bounded pages into a delete-on-close temporary file, writes headers in the versioned 57-column order, quotes CSV values, preserves Unicode and multiline content, and neutralizes spreadsheet-formula prefixes. After size validation, the API Base64-encodes that file incrementally into the response without buffering the full CSV or Base64 string in memory. The response uses the established Base64 CSV envelope:
 
 ```json
 {
@@ -2348,11 +2384,13 @@ Rows retain the same deterministic purchase-date, lien-number, and record-ID ord
 }
 ```
 
-The 10 MiB limit is enforced before Base64 encoding. An oversized export returns `400` with `error.code = validation_error`; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`.
+The configurable raw CSV limit is enforced before Base64 encoding. `AutoGeneratedReports:ExportSizeLimitMiB` defaults to 50 MiB and accepts values from 1 through 100 MiB. `AutoGeneratedReports:MaximumConcurrentExports` defaults to 2 and accepts values from 1 through 10; the process-wide lease is held through response streaming, and saturated requests return `429` with `Retry-After: 5` and `error.code = too_many_requests`. An oversized export returns `400` with `error.code = validation_error` and identifies the configured ceiling; missing or cross-tenant reports return `404`; unsupported stored report paths return `409`.
 
 ### GET `/report/diy/columns`
 
 Returns the legacy DIY-report column metadata and the ordered default selection for the requested report type. For `LIENS`, the default selection includes `days_since_reduction_approval` in position 9 (zero-based), followed by `case_status` and `date_of_loss` in positions 14 and 15 respectively. `initial_service_date` and `number_of_liens` remain available as optional columns but are not selected by default.
+
+DIY lien reports use canonical lien reductions before preserved SL-CORE settlement metadata. When a legacy reduction has no explicit source reduction date, `reduction_date` and `days_since_reduction_approval` are null; a settlement date is never substituted for a reduction approval date.
 
 The optional `notes` column returns the latest active, nonblank Feed note for the row's case. `notes_date` returns that exact note's creation date in `MM/dd/yyyy` format. Both columns are grouped under `procedureInfo`, are not selected by default, and use one tenant-scoped batch lookup for CASES, LIENS, and COMBINED reports. Deleted, blank, non-Feed, and cross-tenant notes are excluded. When no eligible Feed note exists, `notes` is empty and `notes_date` is null in preview responses and blank in CSV exports. Equal creation timestamps are resolved by descending note ID. Saved report preview and export use the same mapping.
 

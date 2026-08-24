@@ -201,7 +201,7 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     }
 
     [Fact]
-    public async Task ListLiens_by_caseId_includes_purchaseDate_totalPurchase_and_totalBilling()
+    public async Task ListLiens_by_caseId_includes_formatted_dates_totalPurchase_and_totalBilling()
     {
         var caseId = Guid.CreateVersion7();
         var lienId = Guid.CreateVersion7();
@@ -232,6 +232,7 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
                 subjectFirstName: "Billing",
                 subjectLastName: "Case",
                 incidentDate: new DateOnly(2024, 6, 15),
+                initialServiceDate: new DateOnly(2024, 6, 10),
                 purchaseDate: new DateOnly(2024, 6, 15));
             typeof(Lien).GetProperty(nameof(Lien.Id))!.SetValue(lien, lienId);
             db.Liens.Add(lien);
@@ -259,6 +260,7 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         body.Should().NotBeNull();
         body!.Items.Should().ContainSingle();
         body.Items[0].PurchaseDate.Should().Be("06/15/2024");
+        body.Items[0].InitialServiceDate.Should().Be("06/10/2024");
         body.Items[0].TotalPurchase.Should().Be(100m);
         body.Items[0].TotalBilling.Should().Be(150m);
     }
@@ -1335,6 +1337,7 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         public string Status { get; init; } = string.Empty;
         public string StatusLabel { get; init; } = string.Empty;
         public string PurchaseDate { get; init; } = string.Empty;
+        public string InitialServiceDate { get; init; } = string.Empty;
         public decimal? TotalPurchase { get; init; }
         public decimal? TotalBilling { get; init; }
         public string? Plaintiff { get; init; }

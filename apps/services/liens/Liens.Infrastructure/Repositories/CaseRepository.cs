@@ -257,6 +257,8 @@ public class CaseRepository : ICaseRepository
         var normalized = value.Trim()
             .Replace("-", string.Empty, StringComparison.Ordinal)
             .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .Replace("(", string.Empty, StringComparison.Ordinal)
+            .Replace(")", string.Empty, StringComparison.Ordinal)
             .ToUpperInvariant();
 
         return normalized switch
@@ -274,9 +276,23 @@ public class CaseRepository : ICaseRepository
                 CaseStatus.InNegotiation,
                 ["Negotiations", "In Negotiation", "InNegotiation"],
                 ["NT", "Negotiations", "In Negotiation"]),
-            "LP" or "LO" or "LC" => FilterByLitigationStatus(query),
-            var status when status.StartsWith("LITIGATION", StringComparison.Ordinal) =>
-                FilterByLitigationStatus(query),
+            "LITIGATION" => FilterByLegacyStatusLabel(
+                query, CaseStatus.InNegotiation, ["Litigation"], ["Litigation"]),
+            "LP" or "LITIGATIONPENDING" => FilterByLitigationStatus(
+                query,
+                CaseStatus.LitigationPending,
+                ["Litigation (Pending)", "Litigation(Pending)"],
+                ["LP", "Litigation (Pending)", "Litigation(Pending)"]),
+            "LO" or "LITIGATIONOPEN" => FilterByLitigationStatus(
+                query,
+                CaseStatus.LitigationOpen,
+                ["Litigation (Open)", "Litigation(Open)"],
+                ["LO", "Litigation (Open)", "Litigation(Open)"]),
+            "LC" or "LITIGATIONCLOSE" or "LITIGATIONCLOSED" => FilterByLegacyStatusLabel(
+                query,
+                CaseStatus.InNegotiation,
+                ["Litigation (Closed)", "Litigation(Closed)"],
+                ["LC", "Litigation (Closed)", "Litigation(Closed)"]),
             "CS" or "CASESETTLED" => FilterByCanonicalStatus(
                 query, CaseStatus.CaseSettled, ["Case Settled", "CaseSettled"], ["CS", "Case Settled"]),
             "C" or "CLOSED" => FilterByCanonicalStatus(
@@ -285,21 +301,12 @@ public class CaseRepository : ICaseRepository
         };
     }
 
-    private static IQueryable<Case> FilterByLitigationStatus(IQueryable<Case> query)
-    {
-        string[] labels =
-        [
-            "Litigation",
-            "Litigation (Pending)",
-            "Litigation(Pending)",
-            "Litigation (Open)",
-            "Litigation(Open)",
-            "Litigation (Closed)",
-            "Litigation(Closed)",
-        ];
-
-        return FilterByLegacyStatusLabel(query, CaseStatus.InNegotiation, labels, ["LP", "LO", "LC", .. labels]);
-    }
+    private static IQueryable<Case> FilterByLitigationStatus(
+        IQueryable<Case> query,
+        string canonicalStatus,
+        IReadOnlyCollection<string> labels,
+        IReadOnlyCollection<string> historicalStatuses) =>
+        FilterByCanonicalStatus(query, canonicalStatus, labels, historicalStatuses);
 
     private static IQueryable<Case> FilterByCanonicalStatus(
         IQueryable<Case> query,

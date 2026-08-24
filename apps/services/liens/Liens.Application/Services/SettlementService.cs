@@ -34,15 +34,17 @@ public class SettlementService : ISettlementService
     public async Task<List<LienReductionResponse>> GetReductionsByCaseAsync(
         Guid tenantId, Guid caseId, CancellationToken ct = default)
     {
-        var items = await _reductionRepo.GetByCaseIdAsync(tenantId, caseId, ct);
-        return items.Select(MapReduction).ToList();
+        var reductions = await _reductionRepo.GetByCaseIdAsync(tenantId, caseId, ct);
+        var settlements = await _settlementRepo.GetByCaseIdAsync(tenantId, caseId, ct);
+        return MapReductionsWithLegacyFallback(reductions, settlements);
     }
 
     public async Task<List<LienReductionResponse>> GetReductionsByLienAsync(
         Guid tenantId, Guid lienId, CancellationToken ct = default)
     {
-        var items = await _reductionRepo.GetByLienIdAsync(tenantId, lienId, ct);
-        return items.Select(MapReduction).ToList();
+        var reductions = await _reductionRepo.GetByLienIdAsync(tenantId, lienId, ct);
+        var settlements = await _settlementRepo.GetByLienIdAsync(tenantId, lienId, ct);
+        return MapReductionsWithLegacyFallback(reductions, settlements);
     }
 
     public async Task<LienReductionResponse> CreateReductionAsync(
@@ -79,6 +81,115 @@ public class SettlementService : ISettlementService
         CreatedByUserId = r.CreatedByUserId,
         UpdatedByUserId = r.UpdatedByUserId,
     };
+
+    private static List<LienReductionResponse> MapReductionsWithLegacyFallback(
+        IReadOnlyCollection<LienReduction> reductions,
+        IReadOnlyCollection<LienSettlement> settlements)
+    {
+        var result = reductions.Select(MapReduction).ToList();
+        var liensWithCanonicalReduction = reductions
+            .Select(reduction => reduction.LienId)
+            .ToHashSet();
+
+        foreach (var settlement in settlements)
+        {
+            if (liensWithCanonicalReduction.Contains(settlement.LienId) ||
+                !TryParseLegacyReduction(settlement.Note, out var amount, out var reductionDate) ||
+                !reductionDate.HasValue)
+            {
+                continue;
+            }
+
+            result.Add(new LienReductionResponse
+            {
+                Id = settlement.Id,
+                TenantId = settlement.TenantId,
+                CaseId = settlement.CaseId,
+                LienId = settlement.LienId,
+                ReductionDate = reductionDate.Value,
+                Amount = amount,
+                Note = settlement.Note,
+                CreatedAtUtc = settlement.CreatedAtUtc,
+                UpdatedAtUtc = settlement.UpdatedAtUtc,
+                CreatedByUserId = settlement.CreatedByUserId,
+                UpdatedByUserId = settlement.UpdatedByUserId,
+            });
+        }
+
+        return result;
+    }
+
+    private static bool TryParseLegacyReduction(
+        string? note,
+        out decimal amount,
+        out DateOnly? reductionDate)
+    {
+        amount = 0m;
+        reductionDate = null;
+        var fields = ParseLegacyFields(note);
+        if (!fields.ContainsKey("legacySettlementId") ||
+            !fields.TryGetValue("reductionAmount", out var rawAmount))
+        {
+            return false;
+        }
+
+        var normalizedAmount = rawAmount.Replace(",", string.Empty, StringComparison.Ordinal)
+            .Replace("$", string.Empty, StringComparison.Ordinal)
+            .Trim();
+        if (!decimal.TryParse(
+                normalizedAmount,
+                NumberStyles.Number | NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture,
+                out amount))
+        {
+            return false;
+        }
+
+        if (fields.TryGetValue("reductionDate", out var rawDate) &&
+            !string.IsNullOrWhiteSpace(rawDate))
+        {
+            if (rawDate.Length >= 10 &&
+                DateOnly.TryParseExact(
+                    rawDate[..10],
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var isoDate))
+            {
+                reductionDate = isoDate;
+            }
+            else if (DateOnly.TryParse(
+                         rawDate,
+                         CultureInfo.InvariantCulture,
+                         DateTimeStyles.AllowWhiteSpaces,
+                         out var parsedDate))
+            {
+                reductionDate = parsedDate;
+            }
+        }
+
+        return true;
+    }
+
+    private static Dictionary<string, string> ParseLegacyFields(string? note)
+    {
+        var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(note))
+            return fields;
+
+        foreach (var segment in note.Split(
+                     ';',
+                     StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var separator = segment.IndexOf('=');
+            if (separator <= 0)
+                continue;
+
+            fields[segment[..separator].Trim()] = segment[(separator + 1)..].Trim();
+        }
+
+        return fields;
+    }
 
     // ── Settlements ───────────────────────────────────────────────────────────
 

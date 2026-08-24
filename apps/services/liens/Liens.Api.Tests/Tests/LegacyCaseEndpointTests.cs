@@ -1208,7 +1208,12 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
         var updatedCase = await verifyDb.Cases.FindAsync(caseId);
         updatedCase.Should().NotBeNull();
-        updatedCase!.Status.Should().Be(CaseStatus.InNegotiation);
+        updatedCase!.Status.Should().Be(currentStatus switch
+        {
+            "Litigation(Pending)" => CaseStatus.LitigationPending,
+            "Litigation(Open)" => CaseStatus.LitigationOpen,
+            _ => CaseStatus.InNegotiation,
+        });
     }
 
     [Fact]
