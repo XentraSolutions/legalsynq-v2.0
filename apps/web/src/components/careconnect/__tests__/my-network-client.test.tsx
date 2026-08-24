@@ -81,6 +81,7 @@ const BASE_PROVIDER: NetworkProviderItem = {
   isActive: true,
   acceptingReferrals: true,
   facilityIsActive: true,
+  visibility: 'Private',
   accessStage: 'PUBLIC',
   specialties: [],
   primarySpecialtyId: null,
@@ -127,8 +128,14 @@ function ok<T>(data: T) {
   return { data, status: 200, correlationId: 'test-correlation' } as const;
 }
 
+function labelByText(label: string, container: HTMLElement = document.body): HTMLElement {
+  return within(container).getByText(
+    (_content, element) => element?.tagName.toLowerCase() === 'label' && element.textContent?.trim() === label,
+  );
+}
+
 function inputFor(label: string): HTMLInputElement {
-  const labelNode = screen.getByText(label);
+  const labelNode = labelByText(label);
   const input = labelNode.parentElement?.querySelector('input');
   if (!input) throw new Error(`Input not found for ${label}`);
   return input as HTMLInputElement;
@@ -151,6 +158,10 @@ describe('MyNetworkClient', () => {
         }])}
         fetchError={null}
         specialtyOptions={MULTI_SPECIALTIES}
+      tenantName="Test Tenant"
+      canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -180,6 +191,10 @@ describe('MyNetworkClient', () => {
         initialNetwork={makeNetwork()}
         fetchError={null}
         specialtyOptions={SPECIALTIES}
+      tenantName="Test Tenant"
+      canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -248,6 +263,10 @@ describe('MyNetworkClient', () => {
         initialNetwork={makeNetwork()}
         fetchError={null}
         specialtyOptions={SPECIALTIES}
+      tenantName="Test Tenant"
+      canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -323,6 +342,10 @@ describe('MyNetworkClient', () => {
         initialNetwork={makeNetwork()}
         fetchError={null}
         specialtyOptions={SPECIALTIES}
+      tenantName="Test Tenant"
+      canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -350,6 +373,10 @@ describe('MyNetworkClient', () => {
         initialNetwork={makeNetwork([{ ...BASE_PROVIDER, name: 'Dr. Atlas Rehab', title: 'Dr.' }])}
         fetchError={null}
         specialtyOptions={SPECIALTIES}
+      tenantName="Test Tenant"
+      canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -427,14 +454,18 @@ describe('MyNetworkClient', () => {
         initialNetwork={makeNetwork([north, south])}
         fetchError={null}
         specialtyOptions={SPECIALTIES}
+      tenantName="Test Tenant"
+      canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
     await user.click(screen.getAllByTitle('Edit provider')[0]);
 
     expect(screen.queryByText('Location / Facility name *')).not.toBeInTheDocument();
-    expect(screen.getAllByText('Email *')).toHaveLength(1);
-    expect(screen.getAllByText('Phone *')).toHaveLength(1);
+    expect(labelByText('Email *')).toBeInTheDocument();
+    expect(labelByText('Phone *')).toBeInTheDocument();
     expect(screen.getByText('2 locations')).toBeInTheDocument();
 
     await user.clear(inputFor('Email *'));
@@ -487,6 +518,10 @@ describe('MyNetworkClient', () => {
         initialNetwork={makeNetwork([providerWithSpecialty])}
         fetchError={null}
         specialtyOptions={SPECIALTIES}
+      tenantName="Test Tenant"
+      canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -518,6 +553,10 @@ describe('MyNetworkClient', () => {
         initialNetwork={makeNetwork([BASE_PROVIDER])}
         fetchError={null}
         specialtyOptions={SPECIALTIES}
+      tenantName="Test Tenant"
+      canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -568,6 +607,10 @@ describe('MyNetworkClient', () => {
         initialNetwork={makeNetwork()}
         fetchError={null}
         specialtyOptions={SPECIALTIES}
+      tenantName="Test Tenant"
+      canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -623,6 +666,10 @@ describe('MyNetworkClient', () => {
         initialNetwork={makeNetwork([BASE_PROVIDER])}
         fetchError={null}
         specialtyOptions={SPECIALTIES}
+      tenantName="Test Tenant"
+      canManageAll
+      canManageVisibility
+      canAddProviders
       />,
     );
 
@@ -631,18 +678,15 @@ describe('MyNetworkClient', () => {
 
     await user.click(screen.getByRole('button', { name: /Add location/i }));
 
-    expect(screen.getByRole('heading', { name: /Add Provider Location/i })).toBeInTheDocument();
-    const locationForm = screen.getByRole('button', { name: /Add Location to My Network/i }).closest('form') as HTMLFormElement;
-    expect(within(locationForm).queryByRole('textbox', { name: /Organization \/ Practice/i })).not.toBeInTheDocument();
-    expect(within(locationForm).getByText('Atlas Health')).toBeInTheDocument();
-    expect(within(locationForm).getByText(BASE_PROVIDER.email)).toBeInTheDocument();
-    expect(within(locationForm).getByText('(555) 123-4567')).toBeInTheDocument();
+    const newLocationCard = screen.getByText('New location').closest('form') as HTMLFormElement;
+    expect(within(newLocationCard).queryByRole('textbox', { name: /Organization \/ Practice/i })).not.toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText('123 Main St'), '789 South St');
-    await user.type(inputFor('City *'), 'Dallas');
-    await user.type(screen.getByPlaceholderText('IL'), 'TX');
-    await user.type(screen.getByPlaceholderText('60601'), '75201');
-    await user.click(screen.getByRole('button', { name: /Add Location to My Network/i }));
+    const newLocationCity = labelByText('City *', newLocationCard).parentElement?.querySelector('input') as HTMLInputElement;
+    await user.type(within(newLocationCard).getByPlaceholderText('123 Main St'), '789 South St');
+    await user.type(newLocationCity, 'Dallas');
+    await user.type(within(newLocationCard).getByPlaceholderText('IL'), 'TX');
+    await user.type(within(newLocationCard).getByPlaceholderText('60601'), '75201');
+    await user.click(within(newLocationCard).getByRole('button', { name: /Save Location/i }));
 
     await waitFor(() => expect(careConnectApi.networks.addProvider).toHaveBeenCalledTimes(1));
     expect(careConnectApi.networks.addProvider).toHaveBeenCalledWith(
@@ -660,5 +704,64 @@ describe('MyNetworkClient', () => {
 
     expect(await screen.findByRole('heading', { name: /Edit Provider/i })).toBeInTheDocument();
     expect(screen.getByText('2 locations')).toBeInTheDocument();
+    expect(screen.queryByText('New location')).not.toBeInTheDocument();
+  });
+
+  test('LSV3-1084: shows "{tenantName} Preferred Providers" heading and no description', () => {
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork([BASE_PROVIDER])}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+        tenantName="Acme Law"
+        canManageAll
+        canManageVisibility
+        canAddProviders
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Acme Law Preferred Providers' })).toBeInTheDocument();
+    expect(screen.queryByText('Demo network')).not.toBeInTheDocument();
+  });
+
+  test('LSV3-1084: hides edit/remove actions for providers the caller does not own when canManageAll is false', () => {
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork([
+          { ...BASE_PROVIDER, owningOrganizationId: 'other-org' },
+        ])}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+        tenantName="Acme Law"
+        canManageAll={false}
+        canManageVisibility={false}
+        canAddProviders
+        callerOrgId="my-org"
+      />,
+    );
+
+    expect(screen.queryByTitle('Edit provider')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Remove from network')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('View only')).not.toBeInTheDocument();
+  });
+
+  test('LSV3-1084: shows edit/remove actions for a provider the caller owns even when canManageAll is false', () => {
+    render(
+      <MyNetworkClient
+        initialNetwork={makeNetwork([
+          { ...BASE_PROVIDER, owningOrganizationId: 'my-org' },
+        ])}
+        fetchError={null}
+        specialtyOptions={SPECIALTIES}
+        tenantName="Acme Law"
+        canManageAll={false}
+        canManageVisibility={false}
+        canAddProviders
+        callerOrgId="my-org"
+      />,
+    );
+
+    expect(screen.getByTitle('Edit provider')).toBeInTheDocument();
+    expect(screen.getByTitle('Remove from network')).toBeInTheDocument();
   });
 });

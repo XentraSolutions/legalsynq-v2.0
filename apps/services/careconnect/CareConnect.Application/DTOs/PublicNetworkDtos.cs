@@ -12,7 +12,8 @@ public sealed record PublicNetworkSummary(
     Guid   Id,
     string Name,
     string Description,
-    int    ProviderCount);
+    int    ProviderCount,
+    Guid?  OwningOrganizationId = null);
 
 /// <summary>
 /// Public-facing provider item within a network.
@@ -151,6 +152,9 @@ public sealed class PublicReferralRequest
 
     /// <summary>Additional case notes (optional).</summary>
     public string? Notes { get; set; }
+
+    public string? LienCompanyName { get; set; }
+    public string? LienCompanyEmail { get; set; }
 
     /// <summary>
     /// Urgency level (optional). Must be one of <c>Referral.ValidUrgencies.All</c>
