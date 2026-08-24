@@ -31,7 +31,7 @@ interface LienDetailPanelProps {
   onRefresh: () => void;
 }
 
-const BASE_PATH = "/selling/portfolio";
+const BASE_PATH = "/selling/portfolio/lien";
 
 const TABS = [
   { key: "details", label: "Details" },
