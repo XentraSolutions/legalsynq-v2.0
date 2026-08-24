@@ -73,6 +73,24 @@ export default async function SettingsPage() {
             </p>
           </div>
 
+          <div className="mb-6 rounded-lg border border-indigo-200 bg-indigo-50 px-5 py-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-indigo-900">Xenia Assistant Configuration</p>
+                <p className="mt-1 text-sm text-indigo-700">
+                  OpenAI provider, model, reasoning effort, verbosity, output token cap, base URL, and timeout are managed from the Xenia assistant settings UI.
+                </p>
+              </div>
+              <a
+                href="/xenia/settings"
+                className="inline-flex items-center gap-2 self-start rounded-md border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+              >
+                <i className="ri-settings-3-line text-base" aria-hidden />
+                Open Xenia Assistant Settings
+              </a>
+            </div>
+          </div>
+
           {/* Stats bar */}
           {settings.length > 0 && (
             <div className="flex items-center gap-4 mb-5 text-xs text-gray-500">

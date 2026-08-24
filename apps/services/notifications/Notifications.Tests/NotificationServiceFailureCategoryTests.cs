@@ -141,6 +141,30 @@ public class NotificationServiceFailureCategoryTests
     }
 
     [Fact]
+    public async Task SubmitAsync_ForwardsDisableClickTrackingFlagToEmailProvider()
+    {
+        var adapter = new StubEmailProviderAdapter(new EmailSendResult { Success = true });
+        var svc = BuildService(adapter);
+        var request = new SubmitNotificationDto
+        {
+            Channel = "email",
+            Recipient = new { email = "to@example.com" },
+            Message = new
+            {
+                subject = "New Lien Offer",
+                body = "View Lien for Sale: https://tenant.legalsynq.test/selling/public/token",
+                html = "<!doctype html><html><body><a href=\"https://tenant.legalsynq.test/selling/public/token\">View Lien for Sale</a></body></html>",
+                disableClickTracking = true,
+            },
+        };
+
+        await svc.SubmitAsync(TenantId, request);
+
+        Assert.NotNull(adapter.LastPayload);
+        Assert.True(adapter.LastPayload!.DisableClickTracking);
+    }
+
+    [Fact]
     public async Task SubmitAsync_FailureCategory_IsAuthConfigFailure_WhenNoProviderRoutesConfigured()
     {
         // With an empty route list (routing service returns nothing) the service
@@ -188,9 +212,14 @@ public class NotificationServiceFailureCategoryTests
     {
         private readonly EmailSendResult _result;
         public string ProviderType => "sendgrid";
+        public EmailSendPayload? LastPayload { get; private set; }
         public StubEmailProviderAdapter(EmailSendResult result) => _result = result;
         public Task<bool>               ValidateConfigAsync() => Task.FromResult(true);
-        public Task<EmailSendResult>    SendAsync(EmailSendPayload payload) => Task.FromResult(_result);
+        public Task<EmailSendResult>    SendAsync(EmailSendPayload payload)
+        {
+            LastPayload = payload;
+            return Task.FromResult(_result);
+        }
         public Task<ProviderHealthResult> HealthCheckAsync() => Task.FromResult(new ProviderHealthResult { Status = "healthy" });
     }
 

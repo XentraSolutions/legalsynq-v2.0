@@ -2,6 +2,8 @@ namespace Liens.Application.Interfaces;
 
 public interface IAuditPublisher
 {
+    IAuditPublicationBuffer BeginBuffer();
+
     void Publish(
         string eventType,
         string action,
@@ -13,4 +15,9 @@ public interface IAuditPublisher
         string? before = null,
         string? after = null,
         string? metadata = null);
+}
+
+public interface IAuditPublicationBuffer : IDisposable
+{
+    void Commit();
 }

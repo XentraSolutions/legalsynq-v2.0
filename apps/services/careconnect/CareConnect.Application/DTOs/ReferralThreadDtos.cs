@@ -7,6 +7,7 @@ public class ReferralCommentResponse
     public string SenderName { get; init; } = string.Empty;
     public string Message { get; init; } = string.Empty;
     public DateTime CreatedAtUtc { get; init; }
+    public IReadOnlyList<ReferralMessageAttachmentResponse> Attachments { get; init; } = [];
 }
 
 public class CreateReferralCommentRequest
@@ -21,6 +22,21 @@ public class ReferralThreadAttachmentResponse
     public string ContentType { get; init; } = string.Empty;
     public long FileSizeBytes { get; init; }
 }
+
+public class ReferralMessageAttachmentResponse
+{
+    public Guid Id { get; init; }
+    public string FileName { get; init; } = string.Empty;
+    public string ContentType { get; init; } = string.Empty;
+    public long FileSizeBytes { get; init; }
+    public DateTime CreatedAtUtc { get; init; }
+}
+
+public sealed record ReferralMessageAttachmentUpload(
+    Stream FileContent,
+    string FileName,
+    string ContentType,
+    long FileSizeBytes);
 
 public class PublicReferralThreadResponse
 {
@@ -37,14 +53,21 @@ public class PublicReferralThreadResponse
     public string? Urgency { get; init; }
     public string? Notes { get; init; }
     public string ProviderName { get; init; } = string.Empty;
+    public string? ProviderTitle { get; init; }
     public string? ProviderFirstName { get; init; }
     public string? ProviderLastName { get; init; }
     public string ProviderEmail { get; init; } = string.Empty;
     public string ProviderPhone { get; init; } = string.Empty;
-    public string ProviderAddressLine1 { get; init; } = string.Empty;
-    public string ProviderCity { get; init; } = string.Empty;
-    public string ProviderState { get; init; } = string.Empty;
-    public string ProviderPostalCode { get; init; } = string.Empty;
+    // Referral location — the specific facility this referral was routed to, falling back
+    // to the provider's own address for legacy/single-location referrals. See ReferralLocationResolver.
+    public string? FacilityName { get; init; }
+    public string LocationAddressLine1 { get; init; } = string.Empty;
+    public string LocationCity { get; init; } = string.Empty;
+    public string LocationState { get; init; } = string.Empty;
+    public string LocationPostalCode { get; init; } = string.Empty;
+    // True when the referral's location is a mobile/roaming facility — LocationAddressLine1
+    // holds a human-readable service-area label rather than a real street address in that case.
+    public bool LocationIsMobile { get; init; }
     public string? ReferrerFirmName { get; init; }
     public string? ReferrerPhone { get; init; }
     public string? ReferrerName { get; init; }

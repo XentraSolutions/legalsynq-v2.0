@@ -18,9 +18,20 @@ public class FacilityConfiguration : IEntityTypeConfiguration<Facility>
         builder.Property(f => f.AddressLine1).IsRequired().HasMaxLength(300);
         builder.Property(f => f.City).IsRequired().HasMaxLength(100);
         builder.Property(f => f.State).IsRequired().HasMaxLength(100);
-        builder.Property(f => f.PostalCode).IsRequired().HasMaxLength(20);
+        builder.Property(f => f.PostalCode).HasMaxLength(20);
+        builder.Property(f => f.Email).HasMaxLength(320);
         builder.Property(f => f.Phone).HasMaxLength(50);
         builder.Property(f => f.IsActive).IsRequired();
+        builder.Property(f => f.Latitude)
+            .HasColumnType("decimal(10,7)");
+        builder.Property(f => f.Longitude)
+            .HasColumnType("decimal(10,7)");
+        builder.Property(f => f.GeoPointSource)
+            .HasMaxLength(20);
+        builder.Property(f => f.GeoUpdatedAtUtc);
+        builder.Property(f => f.IsMobile).IsRequired().HasDefaultValue(false);
+        builder.Property(f => f.ServiceRadiusMiles)
+            .HasColumnType("decimal(5,1)");
         builder.Property(f => f.CreatedAtUtc).IsRequired();
         builder.Property(f => f.UpdatedAtUtc).IsRequired();
         builder.Property(f => f.CreatedByUserId);
@@ -32,6 +43,10 @@ public class FacilityConfiguration : IEntityTypeConfiguration<Facility>
             .HasDatabaseName("IX_Facilities_OrganizationId");
 
         builder.HasIndex(f => new { f.TenantId, f.Name });
+        builder.HasIndex(f => new { f.TenantId, f.Latitude, f.Longitude })
+            .HasDatabaseName("IX_Facilities_TenantId_Latitude_Longitude");
+        builder.HasIndex(f => new { f.TenantId, f.AddressLine1, f.City, f.State, f.PostalCode })
+            .HasDatabaseName("IX_Facilities_Tenant_Address");
 
         builder.HasMany(f => f.ProviderFacilities)
                .WithOne(pf => pf.Facility)

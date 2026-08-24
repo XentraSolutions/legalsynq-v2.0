@@ -129,13 +129,22 @@ static string ResolveClientIp(HttpContext ctx)
     return ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 }
 
+static string ResolveAuthPartition(HttpContext ctx)
+{
+    var account = ctx.User.FindFirst("sub")?.Value ?? "anonymous";
+    var device = ctx.User.FindFirst("device_session_id")?.Value
+        ?? ctx.Request.Headers["X-Device-Session-Id"].FirstOrDefault() ?? "unknown-device";
+    var client = ctx.Request.Headers["X-Application-Client"].FirstOrDefault() ?? "unknown-client";
+    return $"{ResolveClientIp(ctx)}:{account}:{device}:{client}";
+}
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
     options.AddPolicy("auth-login", context =>
         RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: ResolveClientIp(context),
+            partitionKey: ResolveAuthPartition(context),
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit          = 20,
@@ -146,7 +155,7 @@ builder.Services.AddRateLimiter(options =>
 
     options.AddPolicy("auth-forgot-password", context =>
         RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: ResolveClientIp(context),
+            partitionKey: ResolveAuthPartition(context),
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit          = 5,
@@ -157,10 +166,77 @@ builder.Services.AddRateLimiter(options =>
 
     options.AddPolicy("auth-token-exchange", context =>
         RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: ResolveClientIp(context),
+            partitionKey: ResolveAuthPartition(context),
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit          = 10,
+                Window               = TimeSpan.FromMinutes(5),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+
+    // ── BE-BIO-020: biometric login / device-session rate limits ────────────
+    options.AddPolicy("auth-refresh", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ResolveAuthPartition(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 30,
+                Window               = TimeSpan.FromMinutes(5),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+
+    options.AddPolicy("auth-logout", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ResolveAuthPartition(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 20,
+                Window               = TimeSpan.FromMinutes(5),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+
+    options.AddPolicy("auth-logout-all", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ResolveAuthPartition(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 5,
+                Window               = TimeSpan.FromMinutes(15),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+
+    options.AddPolicy("auth-biometric-toggle", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ResolveAuthPartition(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 20,
+                Window               = TimeSpan.FromMinutes(5),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+
+    options.AddPolicy("auth-device-session-list", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ResolveAuthPartition(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 30,
+                Window               = TimeSpan.FromMinutes(5),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0,
+            }));
+
+    options.AddPolicy("auth-device-session-revoke", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ResolveAuthPartition(context),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 15,
                 Window               = TimeSpan.FromMinutes(5),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit           = 0,
@@ -1044,6 +1120,7 @@ catch (Exception ex)
     app.Logger.LogError(ex, "LS-ID-CC-001 CC-user GLOBAL role cleanup guard failed — proceeding");
 }
 
+
 try
 {
     using var scope = app.Services.CreateScope();
@@ -1310,6 +1387,7 @@ app.MapUserMembershipEndpoints();      // BLK-ID-02
 app.MapAccessSourceEndpoints();
 app.MapGroupEndpoints();
 app.MapPermissionCatalogEndpoints();
+app.MapDeviceSessionEndpoints();
 
 app.Run();
 

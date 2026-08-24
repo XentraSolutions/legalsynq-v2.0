@@ -9,11 +9,19 @@ export interface NumberedMarker extends PublicProviderMarker {
   index: number;
 }
 
+export interface SearchLocationMarker {
+  latitude:  number;
+  longitude: number;
+  label:     string;
+}
+
 export interface PublicNetworkMapProps {
   markers:           NumberedMarker[];
   selectedId:        string | null;
   zoomToId?:         string | null;
   onZoomed?:         () => void;
+  searchLocation?:   SearchLocationMarker | null;
+  hideSearchMarker?: boolean;
   onSelect:          (id: string) => void;
   onRequestReferral: (m: PublicProviderMarker) => void;
 }

@@ -1,0 +1,1985 @@
+You are implementing LSI-B14 — SynqLien Routing / Case & Lien Creation for Synq Intake in the LegalSynq v3 repository.
+
+EXECUTION DIRECTIVE
+
+Execute this ticket now.
+
+Do not stop after reviewing requirements.
+Do not return a plan for approval.
+Do not ask whether to proceed.
+Implement the full scoped LSI-B14 work in this execution, run the required local validation, and produce /analysis/LSI-B14-report.md when complete.
+
+If a minor implementation decision is needed and the requirements already establish the intended behavior, make the safest architecture-consistent decision and continue.
+
+Only stop for a genuine blocking condition that cannot be resolved from the repository or these requirements.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Destination service: LegalSynq Liens / SynqLien API
+- Required implementation report: /analysis/LSI-B14-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B14 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, production deployment, push, PR, or merge work.
+3. Do not implement B15 document-association workflow, Flow tasks, notifications, SynqFund routing, CareConnect routing, straight-through automatic product execution, or unrelated product features.
+4. Preserve all prior analysis reports as read-only.
+5. Create/update only /analysis/LSI-B14-report.md for this ticket.
+6. Use the B13 adapter framework and immutable approved snapshot contract.
+7. Do not bypass B13 by loading B07-B12 persistence directly.
+8. Do not write directly to SynqLien/Liens database tables.
+9. All Case/Lien business writes must go through the supported Liens API/service boundary.
+10. Reuse the existing LegalSynq service-token, tenant propagation, correlation, resilience, audit, and authorization conventions.
+11. Before coding, inspect:
+   - current git branch/status;
+   - HEAD vs origin/xenia;
+   - B13 ApprovedIntakeSnapshotV1 contract;
+   - B13 IIntakeDestinationAdapter;
+   - B13 adapter registry;
+   - B13 execution/idempotency/external-reference model;
+   - B13 retry/cancellation/claim-token handling;
+   - actual Liens service project and current Case/Lien routes;
+   - actual Case/Lien request/response DTOs;
+   - actual Liens service auth policies;
+   - actual tenant propagation requirements;
+   - existing service-token/internal auth conventions;
+   - existing idempotency support in Liens API;
+   - existing error contracts/status codes;
+   - existing resilience/HTTP client patterns;
+   - existing audit patterns;
+   - current frontend adapter-execution surfaces if any;
+   - current tests for Liens API and Intake adapters.
+12. Record repository baseline and initial working-tree state in /analysis/LSI-B14-report.md before implementation.
+13. Preserve unrelated pre-existing changes.
+14. Do not commit uploaded specifications, local databases, generated binaries, secrets, or unrelated artifacts.
+15. Local/repository validation is required.
+16. Do not claim deployed/runtime/production/GitHub evidence unless separately proven.
+17. Do not begin LSI-B15 automatically.
+18. Do not push unless explicitly requested.
+
+LOCKED PLATFORM STACK
+
+Backend:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT/service-token authentication
+- existing tenant/current-request context
+- existing B13 adapter framework
+- existing LegalSynq audit conventions
+- existing HttpClient/resilience conventions
+
+Frontend:
+- Next.js 15
+- React
+- TypeScript
+- Tailwind
+- only minimal B14 status/link additions if justified
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+
+The intended flow is:
+
+B12 Human Review
+-> B13 Approved Snapshot
+-> B13 Adapter Execution
+-> B14 SYNQLIEN_V1
+-> Liens API
+-> Case
+-> Lien
+
+CRITICAL RULE:
+
+Synq Intake MUST NOT write directly to the Liens database.
+
+The B14 adapter is an integration client, not a shared-repository shortcut.
+
+==================================================
+1. REGISTER SYNQLIEN_V1
+==================================================
+
+Implement and register:
+
+SYNQLIEN_V1
+
+through the B13 adapter registry.
+
+Capabilities:
+
+- AdapterCode = SYNQLIEN_V1
+- SupportedSnapshotSchema = LIEN_INTAKE_APPROVED_SNAPSHOT_V1
+- SupportedProcessingProfile = LIEN_INTAKE_V1
+- SupportsRetry = true
+- SupportsDryRun = true
+
+Use exact current B13 capability types.
+
+==================================================
+2. ADAPTER INPUT BOUNDARY
+==================================================
+
+The adapter receives only:
+
+ApprovedIntakeSnapshotV1
++
+AdapterExecutionContext
+
+or exact current equivalents.
+
+It must not receive:
+
+- IntakeDbContext;
+- IntakeReview;
+- ArtifactExtraction;
+- ArtifactNormalization;
+- ArtifactMatchRun;
+- ArtifactPolicyEvaluation;
+- SynqLien DbContext;
+- SynqLien repositories.
+
+==================================================
+3. LIENS API DISCOVERY
+==================================================
+
+Inspect the actual Liens service before implementation.
+
+Document in the B14 report:
+
+- service project path;
+- actual Case API base route;
+- actual Lien API base route;
+- create/read/search endpoints;
+- DTO names;
+- auth policies;
+- tenant rules;
+- error contracts;
+- idempotency support;
+- health/readiness endpoints.
+
+Do not invent substitute routes if current APIs already exist.
+
+==================================================
+4. DEDICATED SYNQLIEN CLIENT
+==================================================
+
+Create:
+
+ISynqLienClient
+SynqLienClient
+
+or repository-convention equivalent.
+
+Responsibilities:
+
+- Case read/verification;
+- Case lookup if supported;
+- Case create;
+- Lien read/verification;
+- Lien create;
+- reconciliation after ambiguous/conflict outcomes;
+- tenant propagation;
+- service authentication;
+- correlation propagation;
+- idempotency key propagation;
+- timeout handling;
+- safe destination error mapping.
+
+==================================================
+5. CLIENT CONFIGURATION
+==================================================
+
+Use typed configuration.
+
+Conceptual:
+
+Intake:Destinations:SynqLien:Enabled
+Intake:Destinations:SynqLien:BaseUrl
+Intake:Destinations:SynqLien:CredentialRef or existing service-token option
+Intake:Destinations:SynqLien:TimeoutSeconds
+Intake:Destinations:SynqLien:CaseReadPath
+Intake:Destinations:SynqLien:CaseSearchPath
+Intake:Destinations:SynqLien:CaseCreatePath
+Intake:Destinations:SynqLien:LienReadPath
+Intake:Destinations:SynqLien:LienCreatePath
+
+Prefer actual service-discovery/config conventions rather than unnecessary path configurability.
+
+Do not store raw credentials in source.
+
+==================================================
+6. DISABLED CONFIGURATION
+==================================================
+
+If SYNQLIEN_V1 is disabled or not configured:
+
+- Intake service should still start;
+- explicit execution should fail safely with a stable adapter/configuration code.
+
+Do not make unrelated Intake startup dependent on destination availability.
+
+==================================================
+7. SERVICE AUTHENTICATION
+==================================================
+
+Use existing LegalSynq internal/service-token authentication.
+
+Do not introduce a new auth mechanism.
+
+If secrets are referenced by URI/secret reference, preserve that pattern.
+
+==================================================
+8. TENANT PROPAGATION
+==================================================
+
+Every destination read/write must explicitly propagate TenantId using the current platform convention.
+
+TenantId comes from:
+
+Approved Snapshot / AdapterExecutionContext
+
+Never infer tenant from:
+- patient;
+- provider;
+- facility;
+- Case;
+- sender;
+- source document.
+
+==================================================
+9. DESTINATION TENANT ENFORCEMENT
+==================================================
+
+The Liens API must independently validate tenant ownership.
+
+Intake-side tenant checks are not enough.
+
+If current Liens APIs do not enforce tenant boundaries correctly, make the smallest backward-compatible correction required.
+
+==================================================
+10. CORRELATION
+==================================================
+
+Propagate safe identifiers through existing correlation conventions:
+
+- CorrelationId
+- SnapshotId
+- AdapterExecutionId
+
+Do not place PHI in headers.
+
+==================================================
+11. DOWNSTREAM IDEMPOTENCY
+==================================================
+
+Every Case/Lien write must carry a stable downstream idempotency identity.
+
+Logical Case key:
+
+TenantId
++ SnapshotId
++ SYNQLIEN_V1
++ CASE
+
+Logical Lien key:
+
+TenantId
++ SnapshotId
++ SYNQLIEN_V1
++ LIEN
+
+Derive from the stable B13 adapter execution/idempotency context.
+
+==================================================
+12. LIENS API IDEMPOTENCY SUPPORT
+==================================================
+
+Inspect whether current Liens API already supports idempotency.
+
+If yes:
+- use it.
+
+If not:
+- add the smallest backward-compatible service-level idempotency implementation required for Case/Lien creation.
+
+Do not accept duplicate-create risk.
+
+Document any Liens service changes explicitly.
+
+==================================================
+13. RETRY SAFETY
+==================================================
+
+The following must never duplicate business records:
+
+POST Case
+-> destination commits
+-> response lost
+-> B13 retries
+
+Expected:
+
+same Case reused/reconciled
+
+Same requirement for Lien.
+
+==================================================
+14. SNAPSHOT VALIDATION
+==================================================
+
+Before destination calls validate:
+
+- Snapshot Status = READY;
+- SchemaCode = LIEN_INTAKE_APPROVED_SNAPSHOT_V1;
+- ProcessingProfileCode = LIEN_INTAKE_V1;
+- snapshot contract structurally valid;
+- duplicate state permits routing;
+- required routing values/decisions available;
+- snapshot is current if routing policy requires current snapshot only.
+
+==================================================
+15. CENTRALIZED ROUTING VALIDATOR
+==================================================
+
+Create a centralized validator/profile such as:
+
+ISynqLienRoutingValidator
+SynqLienRoutingProfile
+
+or equivalent.
+
+Do not scatter routing rules throughout adapter/HTTP client methods.
+
+==================================================
+16. ROUTING REQUIREMENTS
+==================================================
+
+The validator must derive the actual minimum requirements from the current Liens API contract.
+
+Likely categories:
+
+- Patient;
+- Provider or Facility;
+- Case decision;
+- account/reference identifiers where required;
+- service dates where required;
+- lien amount where required;
+- classification/type;
+- source/snapshot metadata.
+
+Actual destination API requirements are authoritative.
+
+==================================================
+17. PATIENT DECISION
+==================================================
+
+Consume the B13 approved PATIENT entity decision.
+
+If an existing selected Patient ID is present:
+- preserve it;
+- validate same-tenant compatibility where destination APIs support it.
+
+Do not rerun B10 matching.
+
+==================================================
+18. PATIENT NO_MATCH
+==================================================
+
+Do not automatically create a Patient unless the current Liens/domain API explicitly provides and requires a supported patient-creation boundary.
+
+If patient creation is outside the current Liens API:
+- fail with a clear routing validation code;
+- do not add cross-domain shortcuts.
+
+==================================================
+19. PROVIDER / FACILITY DECISION
+==================================================
+
+Consume approved:
+
+PROVIDER
+FACILITY
+
+decisions.
+
+Support Provider OR Facility where current Intake policy permits.
+
+Do not rerun matching.
+
+==================================================
+20. PROVIDER/FACILITY TENANT VALIDATION
+==================================================
+
+If destination references existing IDs, validate they belong to the current tenant through supported APIs.
+
+Reject cross-tenant references.
+
+==================================================
+21. ATTORNEY / LAW FIRM
+==================================================
+
+Consume approved ATTORNEY / LAW_FIRM decisions only if current Case/Lien API requires or supports them.
+
+Do not introduce unnecessary downstream lookups.
+
+==================================================
+22. CASE DECISION
+==================================================
+
+The B13 entity decision is authoritative.
+
+Supported paths:
+
+A. Existing selected Case
+B. NO_MATCH Case
+
+Do not re-decide candidate ambiguity.
+
+==================================================
+23. EXISTING CASE PATH
+==================================================
+
+If snapshot contains:
+
+EntityType = CASE
+Decision = CONFIRMED or MANUAL_SELECTION
+SelectedEntityId != null
+
+then:
+
+1. GET/verify Case through Liens API.
+2. Confirm same TenantId.
+3. Confirm Case eligible for Lien creation.
+4. Reuse it.
+5. Do not POST a new Case.
+
+==================================================
+24. SELECTED CASE VALIDATION
+==================================================
+
+Do not trust SelectedEntityId blindly.
+
+If selected Case:
+- not found;
+- wrong tenant;
+- inactive/ineligible where relevant;
+
+fail permanently with stable destination/reference code.
+
+==================================================
+25. CASE NO_MATCH PATH
+==================================================
+
+If snapshot contains:
+
+EntityType = CASE
+Decision = NO_MATCH
+SelectedEntityId = null
+
+and routing profile permits creation:
+
+1. map Case request;
+2. POST Case with idempotency key;
+3. persist/reconcile CASE external reference;
+4. proceed to Lien creation.
+
+==================================================
+26. CASE DECISION REQUIRED
+==================================================
+
+If no authoritative Case decision exists and profile requires one:
+
+SYNQLIEN_CASE_DECISION_REQUIRED
+
+Do not guess.
+
+==================================================
+27. CASE MAPPER
+==================================================
+
+Create:
+
+ISynqLienCaseMapper
+
+or equivalent.
+
+Input:
+- ApprovedIntakeSnapshotV1
+
+Output:
+- actual Liens Case create request contract
+
+Do not build request inline in orchestration.
+
+==================================================
+28. CASE MAPPING
+==================================================
+
+Map only approved/effective B13 data.
+
+Document exact mapping in report:
+
+Approved Snapshot Field
+-> Liens Case DTO Field
+
+Potential fields:
+- Patient ID/reference;
+- Attorney/LawFirm;
+- source/reference;
+- incident/case data if supported;
+- provider/facility context where required;
+- adapter/snapshot source metadata.
+
+Do not use rejected B12 facts.
+
+==================================================
+29. CASE SOURCE METADATA
+==================================================
+
+Where destination supports metadata, include safe fields such as:
+
+SourceSystem = SYNQ_INTAKE
+SnapshotId
+ReviewId
+AdapterExecutionId
+
+Do not include sensitive business facts in generic metadata.
+
+==================================================
+30. CASE CREATE
+==================================================
+
+Create Case only through Liens API.
+
+Use:
+- tenant context;
+- internal auth;
+- correlation;
+- idempotency key;
+- bounded timeout.
+
+==================================================
+31. CASE EXTERNAL REFERENCE
+==================================================
+
+On successful/reconciled Case:
+
+ReferenceType = CASE
+ReferenceId = <CaseId>
+
+Persist via B13 external-reference mechanism.
+
+==================================================
+32. CASE REFERENCE PERSISTENCE TIMING
+==================================================
+
+Persist/reconcile the CASE external reference before attempting Lien creation.
+
+This is mandatory for partial-success recovery.
+
+==================================================
+33. LIEN CREATION PRECONDITION
+==================================================
+
+Do not attempt Lien creation until a verified CaseId is available.
+
+==================================================
+34. LIEN MAPPER
+==================================================
+
+Create:
+
+ISynqLienLienMapper
+
+or equivalent.
+
+Input:
+- ApprovedIntakeSnapshotV1
+- resolved CaseId
+
+Output:
+- actual Liens Lien create request
+
+==================================================
+35. LIEN FIELD MAPPING
+==================================================
+
+Document exact mapping:
+
+Approved Snapshot Field
+-> Liens Lien DTO Field
+
+Potential:
+- CaseId;
+- Provider/Facility;
+- Patient;
+- account/reference;
+- amount;
+- service dates;
+- lien type/classification;
+- source reference;
+- snapshot metadata.
+
+Use actual destination contract.
+
+==================================================
+36. HUMAN-CORRECTED VALUES
+==================================================
+
+Only B13 effective approved values may be sent.
+
+Example:
+
+B09 amount = 14500
+B12 correction = 1450
+B13 snapshot = 1450
+
+B14 must send:
+
+1450
+
+Never fall back to B09.
+
+==================================================
+37. HUMAN-ADDED VALUES
+==================================================
+
+Approved human-added facts must map normally if relevant.
+
+Do not treat them as lower-quality merely because they are human-added.
+
+Preserve provenance in Intake, not destination business fields unless destination supports source metadata.
+
+==================================================
+38. REJECTED FACTS
+==================================================
+
+B12-rejected facts must never be sent as active data.
+
+==================================================
+39. AMOUNT HANDLING
+==================================================
+
+Never fabricate amount.
+
+If amount is required and absent:
+
+SYNQLIEN_REQUIRED_FACT_MISSING
+or more specific stable code.
+
+Do not convert null to zero unless zero is valid according to destination contract.
+
+==================================================
+40. DATE HANDLING
+==================================================
+
+Use B13 approved normalized dates.
+
+Do not reinterpret culture/date strings in B14.
+
+==================================================
+41. IDENTIFIERS
+==================================================
+
+Use approved account/claim/reference identifiers exactly as represented in the approved snapshot contract.
+
+Do not rerun normalization/extraction.
+
+==================================================
+42. DUPLICATE STATE
+==================================================
+
+Respect B13/B12 duplicate adjudication.
+
+Do not rerun duplicate detection.
+
+If snapshot should not produce another Lien:
+- refuse execution.
+
+==================================================
+43. LIEN CREATE
+==================================================
+
+POST Lien using:
+
+- verified CaseId;
+- tenant context;
+- service auth;
+- downstream idempotency key;
+- bounded timeout.
+
+==================================================
+44. LIEN EXTERNAL REFERENCE
+==================================================
+
+On success/reconciliation:
+
+ReferenceType = LIEN
+ReferenceId = <LienId>
+
+Persist via B13 external-reference model.
+
+==================================================
+45. ADAPTER SUCCESS RESULT
+==================================================
+
+Return existing B13 product-neutral result contract.
+
+Expected external references:
+
+CASE -> CaseId
+LIEN -> LienId
+
+Do not create a parallel SynqLien-specific adapter result abstraction unless needed internally.
+
+==================================================
+46. PARTIAL SUCCESS
+==================================================
+
+Critical path:
+
+Case created successfully
+-> CASE reference persisted
+-> Lien creation fails
+
+Adapter execution must preserve CASE success.
+
+Do not roll it back.
+
+==================================================
+47. PARTIAL SUCCESS RETRY
+==================================================
+
+On retry:
+
+1. detect existing CASE external reference;
+2. verify/reuse Case;
+3. do not POST another Case;
+4. retry Lien create only.
+
+==================================================
+48. EXISTING LIEN RECOVERY
+==================================================
+
+If LIEN external reference already exists but adapter execution was not finalized:
+
+1. verify Lien through Liens API;
+2. if valid and tenant-owned:
+   - finalize adapter success;
+3. do not create another Lien.
+
+==================================================
+49. CRASH RECOVERY
+==================================================
+
+Handle safely:
+
+- crash after Case write;
+- crash after CASE ref persistence;
+- crash after Lien write;
+- crash before LIEN ref persistence;
+- response loss;
+- timeout after destination commit.
+
+Use downstream idempotency + read/reconciliation.
+
+==================================================
+50. 409 RECONCILIATION
+==================================================
+
+If destination returns 409 due to idempotent duplicate/conflict:
+
+- query/read the existing resource by supported idempotency/reference mechanism;
+- verify tenant ownership;
+- treat as reconciled success when the same operation already succeeded.
+
+Do not blindly classify every 409 as fatal.
+
+==================================================
+51. AMBIGUOUS WRITE OUTCOME
+==================================================
+
+For timeout/network failure after request may have reached server:
+
+mark retryable and rely on stable idempotency/reconciliation on retry.
+
+==================================================
+52. DESTINATION ERROR MAPPING
+==================================================
+
+Create deterministic mapping.
+
+General expectations:
+
+400
+-> permanent validation failure
+
+401 / 403
+-> permanent auth/configuration failure
+
+404 for selected resource
+-> permanent/stale destination reference
+
+409
+-> reconcile if idempotent conflict; otherwise permanent conflict
+
+429
+-> retryable
+
+5xx
+-> retryable
+
+timeout
+-> retryable
+
+network unavailable
+-> retryable
+
+Use actual destination semantics if more precise.
+
+==================================================
+53. STABLE FAILURE CODES
+==================================================
+
+Support stable codes such as:
+
+SYNQLIEN_NOT_CONFIGURED
+SYNQLIEN_DISABLED
+SYNQLIEN_AUTH_FAILED
+SYNQLIEN_TIMEOUT
+SYNQLIEN_UNAVAILABLE
+
+SYNQLIEN_REQUIRED_FACT_MISSING
+
+SYNQLIEN_PATIENT_INVALID
+SYNQLIEN_PROVIDER_INVALID
+SYNQLIEN_FACILITY_INVALID
+
+SYNQLIEN_CASE_DECISION_REQUIRED
+SYNQLIEN_CASE_NOT_FOUND
+SYNQLIEN_CASE_TENANT_MISMATCH
+SYNQLIEN_CASE_VALIDATION_FAILED
+SYNQLIEN_CASE_CREATE_FAILED
+
+SYNQLIEN_LIEN_VALIDATION_FAILED
+SYNQLIEN_LIEN_CREATE_FAILED
+SYNQLIEN_LIEN_CONFLICT
+
+SYNQLIEN_UNSUPPORTED_SNAPSHOT
+SYNQLIEN_RESULT_INVALID
+
+Use repository naming conventions.
+
+==================================================
+54. DESTINATION ERROR PRIVACY
+==================================================
+
+Do not persist raw destination response bodies if they may contain PHI.
+
+Persist:
+- HTTP status;
+- safe error code;
+- sanitized message;
+- retryability.
+
+==================================================
+55. TIMEOUT
+==================================================
+
+Use typed bounded timeout.
+
+Do not leave requests unbounded.
+
+==================================================
+56. RETRY OWNERSHIP
+==================================================
+
+B13 adapter execution service owns business retries.
+
+Do not add an uncontrolled nested retry loop inside SynqLienAdapterV1.
+
+Low-level transient HTTP retries may be used only if current platform resilience conventions do so safely.
+
+==================================================
+57. RETRY KEY
+==================================================
+
+Every retry must reuse the same downstream idempotency key for the same logical resource.
+
+==================================================
+58. RATE LIMIT
+==================================================
+
+429 should be retryable.
+
+Honor Retry-After where the existing resilience infrastructure supports it.
+
+==================================================
+59. AUTH FAILURE
+==================================================
+
+401/403 should not be automatically retried indefinitely.
+
+Classify as permanent/configuration failure unless an established token refresh mechanism applies.
+
+==================================================
+60. CIRCUIT BREAKER
+==================================================
+
+Reuse current platform resilience/circuit-breaker infrastructure if present.
+
+Do not add a new resilience package unnecessarily.
+
+==================================================
+61. DRY RUN
+==================================================
+
+SYNQLIEN_V1 must support DryRun.
+
+Dry run should:
+
+- validate snapshot;
+- validate field mappings;
+- validate required decisions/facts;
+- optionally perform safe read-only selected-resource verification;
+- perform no POST/PUT domain writes;
+- create no real CASE/LIEN external references.
+
+Return a structured validation result through B13 adapter result.
+
+==================================================
+62. ADAPTER ENABLEMENT
+==================================================
+
+Support configuration-controlled SYNQLIEN_V1 enablement.
+
+Explicit adapter execution may be allowed only when enabled.
+
+Automatic product routing remains disabled.
+
+==================================================
+63. AUTOMATIC ROUTING
+==================================================
+
+DO NOT automatically invoke SYNQLIEN_V1 when snapshot becomes READY.
+
+B14 exposes a real adapter.
+
+Automatic straight-through execution remains future scope.
+
+==================================================
+64. ROUTING CONFIGURATION
+==================================================
+
+Where B02/B13 configuration permits:
+
+ProcessingProfileCode = LIEN_INTAKE_V1
+DestinationAdapterCode = SYNQLIEN_V1
+
+but automatic execution flag should remain false by default.
+
+==================================================
+65. EXTERNAL REFERENCES
+==================================================
+
+Use B13 external-reference storage for:
+
+CASE
+LIEN
+
+Do not add duplicate routing-specific reference tables unless truly required.
+
+==================================================
+66. REFERENCE UNIQUENESS
+==================================================
+
+Prevent duplicate identical references for the same adapter execution/logical operation.
+
+==================================================
+67. AUDIT
+==================================================
+
+Emit safe audit actions such as:
+
+SYNQLIEN_ROUTING_STARTED
+SYNQLIEN_CASE_REUSED
+SYNQLIEN_CASE_CREATED
+SYNQLIEN_LIEN_CREATED
+SYNQLIEN_ROUTING_FAILED
+
+Use existing audit client conventions.
+
+==================================================
+68. AUDIT PRIVACY
+==================================================
+
+Safe:
+
+- TenantId
+- SnapshotId
+- AdapterExecutionId
+- CaseId
+- LienId
+- Status
+- FailureCode
+
+Do not include:
+- patient name;
+- medical information;
+- document text;
+- raw snapshot facts;
+- evidence snippets.
+
+==================================================
+69. LOGGING
+==================================================
+
+Safe:
+
+TenantId
+SnapshotId
+ExecutionId
+AdapterCode
+Attempt
+CaseId
+LienId
+DestinationStatus
+FailureCode
+
+Never log snapshot payload.
+
+==================================================
+70. METRICS
+==================================================
+
+Where existing metrics conventions exist:
+
+SynqLienRoutingAttempts
+SynqLienRoutingSuccesses
+SynqLienRoutingFailures
+SynqLienCaseCreated
+SynqLienCaseReused
+SynqLienLienCreated
+SynqLienRetryCount
+SynqLienRoutingDuration
+
+No PHI labels.
+
+==================================================
+71. EVENTS
+==================================================
+
+If existing event/outbox conventions make it useful, emit identifier-only:
+
+SynqLienRoutingStartedV1
+SynqLienRoutingCompletedV1
+SynqLienRoutingFailedV1
+
+No snapshot payload.
+
+==================================================
+72. TRANSACTION BOUNDARY
+==================================================
+
+Never hold Intake DB transaction open across Liens API network calls.
+
+B13 execution claim/result persistence remains separate from external HTTP calls.
+
+==================================================
+73. NO DISTRIBUTED TRANSACTION
+==================================================
+
+Do not attempt distributed transaction coordination between Intake and Liens service.
+
+Use:
+- idempotency;
+- durable references;
+- retries;
+- reconciliation.
+
+==================================================
+74. LIENS SERVICE CHANGES
+==================================================
+
+If Liens API lacks any mandatory capability such as idempotent Case/Lien create:
+
+make the smallest backward-compatible API/service change.
+
+Any Liens service modification must:
+- remain tenant-safe;
+- preserve existing clients;
+- use existing service architecture;
+- include tests;
+- be documented in B14 report.
+
+==================================================
+75. NO SHARED DOMAIN DTO SHORTCUT
+==================================================
+
+Even though Intake and Liens may live in the same monorepo:
+
+do not reference internal Liens application/domain/persistence types directly from Intake.
+
+Use explicit API client contracts.
+
+==================================================
+76. DESTINATION CONTRACT TYPES
+==================================================
+
+Create Intake-side integration DTOs that mirror only the supported Liens API contract where needed.
+
+Avoid coupling to private internal types.
+
+==================================================
+77. AUTHORIZATION
+==================================================
+
+B13 adapter execution must remain gated by:
+
+intake.adapter.execute
+
+or current equivalent.
+
+Liens API must independently authenticate/authorize service calls.
+
+==================================================
+78. TENANT ISOLATION SECURITY
+==================================================
+
+Verify:
+
+Tenant A cannot:
+- reuse Tenant B Case;
+- reference Tenant B Patient;
+- reference Tenant B Provider;
+- reference Tenant B Facility;
+- create a Lien under Tenant B Case.
+
+Header/body/snapshot tenant mismatches must fail.
+
+==================================================
+79. DOCUMENT BOUNDARY
+==================================================
+
+B14 does not own full document association.
+
+Consume only B13 document references.
+
+Do not:
+- download/re-upload every document;
+- copy binary payload into adapter result;
+- create complex Case/Lien-document workflow.
+
+==================================================
+80. MINIMAL DOCUMENT REFERENCE
+==================================================
+
+If the Case/Lien creation API requires a source DocumentId/reference:
+
+include the reference only.
+
+If not required:
+leave document association for B15.
+
+==================================================
+81. FRONTEND SCOPE
+==================================================
+
+Keep minimal.
+
+If current adapter execution UI exists, optionally display:
+
+Destination = SynqLien
+Status
+CaseId
+LienId
+Attempts
+Last safe failure
+Retry
+
+Do not build Case/Lien management UI in Intake.
+
+==================================================
+82. EXTERNAL LINKS
+==================================================
+
+If safe tenant-aware URL conventions exist, optionally expose links to created Case/Lien pages.
+
+Do not hardcode hostnames.
+
+Use tenant/base-url conventions.
+
+==================================================
+83. TEST — REGISTRY
+==================================================
+
+Verify SYNQLIEN_V1 resolves through B13 registry.
+
+==================================================
+84. TEST — CAPABILITY
+==================================================
+
+Verify supported:
+- LIEN_INTAKE_APPROVED_SNAPSHOT_V1
+- LIEN_INTAKE_V1
+
+Reject unsupported schema/profile.
+
+==================================================
+85. TEST — EXISTING CASE
+==================================================
+
+Given approved selected Case:
+
+verify Case
+-> no Case create call
+-> create Lien
+-> return CASE + LIEN refs
+
+==================================================
+86. TEST — NEW CASE
+==================================================
+
+Given:
+
+CASE decision = NO_MATCH
+
+and valid routing data:
+
+POST Case
+-> persist CASE ref
+-> POST Lien
+-> persist LIEN ref
+
+==================================================
+87. TEST — MISSING CASE DECISION
+==================================================
+
+Missing authoritative Case decision must fail before write.
+
+==================================================
+88. TEST — CROSS TENANT CASE
+==================================================
+
+Selected Case belonging to another tenant must fail.
+
+No Lien write.
+
+==================================================
+89. TEST — CROSS TENANT ENTITY
+==================================================
+
+Reject cross-tenant Patient/Provider/Facility references.
+
+==================================================
+90. TEST — HUMAN CORRECTION
+==================================================
+
+Verify B13 human-corrected value is mapped to destination.
+
+Do not use older upstream value.
+
+==================================================
+91. TEST — HUMAN ADDED
+==================================================
+
+Verify human-added approved fact maps where required.
+
+==================================================
+92. TEST — REJECTED FACT
+==================================================
+
+Verify rejected fact is not sent.
+
+==================================================
+93. TEST — MANUAL MATCH
+==================================================
+
+Verify manually selected entity is honored after tenant-safe verification.
+
+==================================================
+94. TEST — NO_MATCH
+==================================================
+
+Verify Case NO_MATCH creates new Case only when profile allows.
+
+==================================================
+95. TEST — REQUIRED FACT
+==================================================
+
+Missing required fact fails validation before destination write.
+
+==================================================
+96. TEST — AMOUNT
+==================================================
+
+Missing required amount must not become zero automatically.
+
+==================================================
+97. TEST — CASE IDEMPOTENCY
+==================================================
+
+Simulate:
+
+Case POST committed
+response lost
+retry
+
+Expected:
+one Case.
+
+==================================================
+98. TEST — LIEN IDEMPOTENCY
+==================================================
+
+Simulate:
+
+Lien POST committed
+response lost
+retry
+
+Expected:
+one Lien.
+
+==================================================
+99. TEST — PARTIAL SUCCESS
+==================================================
+
+Case succeeds.
+Lien transiently fails.
+
+Verify:
+- CASE ref retained;
+- execution retryable;
+- retry reuses Case;
+- only Lien retried.
+
+==================================================
+100. TEST — CASE FAILURE
+==================================================
+
+Case permanent failure:
+
+- no Lien call.
+
+==================================================
+101. TEST — EXISTING LIEN RECOVERY
+==================================================
+
+Persisted LIEN ref + incomplete execution:
+
+verify Lien
+-> finalize success
+-> no duplicate POST.
+
+==================================================
+102. TEST — CRASH RECOVERY
+==================================================
+
+Simulate crash after Case/Lien write/reference phases.
+
+Verify safe resume.
+
+==================================================
+103. TEST — TIMEOUT
+==================================================
+
+Timeout:
+- retryable;
+- same idempotency key retained;
+- no unbounded retry.
+
+==================================================
+104. TEST — 400
+==================================================
+
+Destination 400:
+- permanent validation failure;
+- sanitized response.
+
+==================================================
+105. TEST — 401/403
+==================================================
+
+Destination auth failure:
+- permanent/configuration class;
+- no endless retry.
+
+==================================================
+106. TEST — 404
+==================================================
+
+Selected Case/entity 404:
+- stale/permanent destination reference;
+- no create fallback unless explicitly allowed by reviewed decision.
+
+==================================================
+107. TEST — 409
+==================================================
+
+Idempotent duplicate/conflict:
+- reconcile existing Case/Lien when possible;
+- avoid duplicate create.
+
+==================================================
+108. TEST — 429
+==================================================
+
+Retryable.
+Honor Retry-After where supported.
+
+==================================================
+109. TEST — 5XX
+==================================================
+
+Retryable destination failure.
+
+==================================================
+110. TEST — DRY RUN
+==================================================
+
+Dry run:
+- validates;
+- may perform safe reads;
+- no Case POST;
+- no Lien POST;
+- no real external references.
+
+==================================================
+111. TEST — DISABLED ADAPTER
+==================================================
+
+Disabled/unconfigured destination:
+- fail safely;
+- Intake service still starts.
+
+==================================================
+112. TEST — AUDIT PRIVACY
+==================================================
+
+Audit entries contain identifiers/status only.
+
+No PHI.
+
+==================================================
+113. TEST — LOG PRIVACY
+==================================================
+
+No snapshot payload or PHI written to logs.
+
+==================================================
+114. HTTP INTEGRATION TESTS
+==================================================
+
+Where infrastructure exists, exercise:
+
+POST /snapshots/{snapshotId}/adapters/SYNQLIEN_V1/execute
+
+plus retry/read paths.
+
+Test:
+- 401;
+- 403;
+- wrong tenant;
+- disabled adapter;
+- dry run;
+- success;
+- idempotent repeat;
+- retry after partial failure.
+
+Use fake/test destination host where practical.
+
+==================================================
+115. LIENS API CONTRACT TESTS
+==================================================
+
+If Liens service changes are required, verify:
+
+- service auth;
+- tenant enforcement;
+- Case read;
+- Case create;
+- Case idempotency;
+- Lien read;
+- Lien create;
+- Lien idempotency;
+- conflict reconciliation;
+- backward compatibility.
+
+==================================================
+116. DATABASE IMPACT
+==================================================
+
+Prefer no new Intake persistence.
+
+Use B13:
+- AdapterExecution;
+- ExternalReferences;
+- Attempt history.
+
+If additional routing state is absolutely necessary:
+- justify it;
+- keep it generic where practical.
+
+==================================================
+117. MIGRATION
+==================================================
+
+No migration is required if B13 persistence is sufficient.
+
+If a new B14 persistence/config table is genuinely required, use a narrowly scoped migration such as:
+
+AddSynqLienRoutingV1
+
+Do not create SynqLien business tables in Intake DB.
+
+==================================================
+118. CONFIGURATION VALIDATION
+==================================================
+
+Validate when adapter is enabled:
+
+- BaseUrl/configured service endpoint;
+- credential/service-token reference;
+- timeout range;
+- required options.
+
+Disabled adapter must not block Intake startup.
+
+==================================================
+119. HEALTH / READINESS
+==================================================
+
+If current integration-health conventions exist:
+
+report SynqLien destination readiness using:
+- health endpoint;
+- safe read-only check.
+
+Never create business records as a health check.
+
+==================================================
+120. PERFORMANCE
+==================================================
+
+B14 should:
+
+- avoid repeated snapshot reads;
+- avoid duplicate destination GETs where result already persisted;
+- use bounded HTTP timeouts;
+- reuse HttpClient factory;
+- avoid serializing entire snapshot into logs;
+- perform only required destination calls.
+
+==================================================
+121. SECURITY VALIDATION
+==================================================
+
+Verify:
+
+- no direct SynqLien DB access;
+- no SynqLien DB credentials in Intake;
+- no cross-tenant Case reuse;
+- no cross-tenant entity use;
+- no arbitrary Case ID injection;
+- no raw snapshot payload in logs/audit/errors;
+- no secrets committed;
+- destination token handled through approved secret/config pattern;
+- product writes only through Liens API.
+
+==================================================
+122. B15 BOUNDARY
+==================================================
+
+B14 returns:
+
+CASE
+LIEN
+
+external references.
+
+B15 will use those references for full document association/workflow.
+
+Do not begin B15.
+
+==================================================
+123. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- full document association;
+- document lifecycle synchronization;
+- Flow tasks;
+- notifications;
+- lien selling;
+- SynqFund;
+- CareConnect;
+- straight-through automatic adapter execution;
+- AI reprocessing;
+- product management UI;
+- AWS/RDS/ECS/Route53;
+- deployment;
+- production migration;
+- direct Liens DB operations.
+
+==================================================
+124. BUILD / VALIDATION
+==================================================
+
+At minimum run and record:
+
+dotnet restore if required
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+If Liens service changed:
+- build Liens API/service project;
+- run Liens tests.
+
+Run full solution build:
+
+dotnet build LegalSynq.sln --no-restore -m:1 /p:BuildInParallel=false
+
+Run any relevant HTTP/client contract tests.
+
+If migration added:
+- dotnet ef dbcontext info
+- dotnet ef migrations list
+- apply to disposable MySQL if environment permits.
+
+Run:
+
+git diff --check
+git status --short
+git diff --stat
+git diff --name-status against B13 baseline
+
+Verify:
+- no bin/obj tracked;
+- no secrets;
+- no uploaded spec assets added;
+- no product-domain persistence shortcuts;
+- no B15 files;
+- no unrelated source changes.
+
+Clearly distinguish:
+Passed
+Partially Completed
+Blocked
+Unavailable
+Failed
+
+==================================================
+125. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B14 is complete only when all are true:
+
+1. SYNQLIEN_V1 exists.
+2. SYNQLIEN_V1 registered in B13 registry.
+3. Supports LIEN_INTAKE_APPROVED_SNAPSHOT_V1.
+4. Supports LIEN_INTAKE_V1.
+5. Receives only B13 snapshot contract/context.
+6. No direct Intake B07-B12 persistence dependency.
+7. No direct SynqLien DB dependency.
+8. Dedicated SynqLien API client exists.
+9. Actual Case/Lien API routes are used.
+10. Existing LegalSynq internal auth is used.
+11. Tenant propagated explicitly.
+12. Liens API independently enforces tenant.
+13. Correlation propagated safely.
+14. Stable downstream idempotency key exists.
+15. Same idempotency key reused on retry.
+16. Snapshot validation occurs before writes.
+17. Routing requirements centralized.
+18. Patient decision consumed.
+19. Provider/Facility decisions consumed.
+20. Case decision consumed.
+21. Candidate ambiguity is not re-resolved.
+22. Existing selected Case is verified.
+23. Cross-tenant Case rejected.
+24. Existing Case path avoids Case creation.
+25. NO_MATCH Case path supported.
+26. New Case created only when allowed.
+27. Missing Case decision fails.
+28. Case mapper exists.
+29. Case mapper uses B13 effective data.
+30. Rejected facts excluded.
+31. Human-corrected facts honored.
+32. Human-added facts supported.
+33. Case creation uses Liens API.
+34. Case creation idempotent.
+35. CASE external reference persisted.
+36. CASE reference persisted before Lien attempt.
+37. Lien mapper exists.
+38. Lien mapper uses B13 effective data.
+39. Lien creation requires resolved Case.
+40. Lien creation uses Liens API.
+41. Lien creation idempotent.
+42. LIEN external reference persisted.
+43. Amount never fabricated.
+44. Dates are not reinterpreted.
+45. Account/reference values are not re-extracted.
+46. Duplicate adjudication respected.
+47. Retry after Case success reuses Case.
+48. Retry after Lien success does not duplicate Lien.
+49. Existing LIEN ref can recover incomplete execution.
+50. Partial success remains recoverable.
+51. Crash after Case create is recoverable.
+52. Crash after Lien create is recoverable.
+53. Response loss is recoverable.
+54. 409 can reconcile prior successful operation.
+55. 400 maps to permanent validation failure.
+56. 401/403 maps to permanent auth/config failure.
+57. selected-resource 404 maps to permanent/stale reference.
+58. 429 maps retryable.
+59. timeout maps retryable.
+60. 5xx maps retryable.
+61. raw destination PHI responses are not persisted.
+62. timeout is bounded.
+63. retry ownership remains with B13.
+64. no uncontrolled nested retries.
+65. dry run exists.
+66. dry run performs no writes.
+67. adapter can be disabled.
+68. disabled adapter does not block Intake startup.
+69. automatic SynqLien routing remains off by default.
+70. CASE/LIEN refs use B13 external-reference model.
+71. references tenant-scoped.
+72. duplicate references prevented.
+73. audit events/actions exist.
+74. audit excludes PHI.
+75. logs exclude snapshot payload/PHI.
+76. metrics exclude PHI.
+77. service secrets are not committed.
+78. registry test passes.
+79. capability test passes.
+80. existing Case test passes.
+81. new Case test passes.
+82. missing Case decision test passes.
+83. cross-tenant Case test passes.
+84. cross-tenant entity test passes.
+85. human-correction mapping test passes.
+86. human-added fact test passes.
+87. rejected fact test passes.
+88. manual match test passes.
+89. NO_MATCH test passes.
+90. required-fact test passes.
+91. amount-validation test passes.
+92. Case idempotency test passes.
+93. Lien idempotency test passes.
+94. partial-success test passes.
+95. existing Lien recovery test passes.
+96. crash-recovery test passes.
+97. timeout test passes.
+98. 400 test passes.
+99. 401/403 test passes.
+100. 404 test passes.
+101. 409 reconciliation test passes.
+102. 429 test passes.
+103. 5xx test passes.
+104. dry-run test passes.
+105. disabled-adapter test passes.
+106. audit/log privacy tests pass.
+107. HTTP integration coverage exists where practical.
+108. Liens API contract tests pass if Liens service changed.
+109. Intake API builds with zero new B14 errors.
+110. Intake tests pass.
+111. Liens service builds/tests pass if modified.
+112. full LegalSynq solution builds with zero new B14 errors.
+113. no direct DB business write introduced.
+114. no B15 workflow introduced.
+115. no Flow/notification integration introduced.
+116. no cloud/deployment work performed.
+117. no secrets/specification/build artifacts introduced.
+118. /analysis/LSI-B14-report.md exists.
+
+==================================================
+126. REQUIRED IMPLEMENTATION REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B14-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree state
+8. B13 adapter framework reviewed
+9. B13 snapshot contract reviewed
+10. Liens service architecture reviewed
+11. actual Liens service project path
+12. actual Case API routes
+13. actual Lien API routes
+14. actual Case DTOs
+15. actual Lien DTOs
+16. destination auth mechanism
+17. tenant propagation mechanism
+18. destination tenant enforcement
+19. current idempotency support
+20. files added
+21. files modified
+22. SYNQLIEN_V1 adapter
+23. adapter capabilities
+24. adapter registration
+25. adapter enablement configuration
+26. SynqLien client
+27. destination BaseUrl/config
+28. timeout
+29. service-token/credential handling
+30. correlation propagation
+31. downstream idempotency strategy
+32. routing validator/profile
+33. required routing data
+34. Patient decision handling
+35. Provider/Facility handling
+36. Attorney/LawFirm handling if applicable
+37. Case decision handling
+38. existing Case verification
+39. cross-tenant Case handling
+40. NO_MATCH Case behavior
+41. missing Case decision behavior
+42. Case mapper
+43. exact Case field mapping
+44. Case create operation
+45. Case idempotency
+46. CASE external-reference persistence
+47. Lien mapper
+48. exact Lien field mapping
+49. amount handling
+50. service-date handling
+51. identifier/reference handling
+52. Lien create operation
+53. Lien idempotency
+54. LIEN external-reference persistence
+55. duplicate-state handling
+56. partial-success behavior
+57. Case-success/Lien-failure behavior
+58. retry resume behavior
+59. existing Lien recovery
+60. crash recovery
+61. ambiguous-write recovery
+62. 409 reconciliation
+63. destination error mapping
+64. timeout behavior
+65. retry ownership
+66. 429 behavior
+67. circuit-breaker/resilience reuse
+68. dry-run behavior
+69. automatic-routing confirmation
+70. audit
+71. logging
+72. metrics
+73. events if implemented
+74. PHI/privacy controls
+75. security assessment
+76. external-reference behavior
+77. any Liens API changes
+78. backward compatibility of Liens changes
+79. database/migration impact
+80. frontend additions if any
+81. registry/capability tests
+82. mapping tests
+83. existing-Case tests
+84. new-Case tests
+85. missing-decision tests
+86. cross-tenant tests
+87. corrected/added/rejected fact tests
+88. manual-match/NO_MATCH tests
+89. required-fact/amount tests
+90. Case idempotency tests
+91. Lien idempotency tests
+92. partial-success tests
+93. existing-Lien recovery tests
+94. crash-recovery tests
+95. timeout tests
+96. 400/401/403/404/409/429/5xx tests
+97. dry-run tests
+98. disabled-adapter tests
+99. audit/log privacy tests
+100. HTTP integration tests
+101. Liens API contract tests if modified
+102. Intake API build result
+103. Intake test result
+104. Liens service build/test result if modified
+105. full solution build result
+106. configuration validation
+107. health/readiness behavior
+108. performance considerations
+109. known gaps
+110. out-of-scope confirmation
+111. git diff summary
+112. final repository validation status
+113. recommended next bundle: LSI-B15
+
+Sanitize:
+- credentials;
+- service tokens;
+- PHI/PII;
+- Case/Lien test values if sensitive;
+- destination response bodies;
+- local connection strings.
+
+==================================================
+127. DEFINITION OF DONE
+==================================================
+
+The implementation is complete when a READY B13 approved snapshot can be explicitly routed through:
+
+SYNQLIEN_V1
+
+and the system can safely:
+
+- validate the reviewed snapshot;
+- preserve tenant context;
+- verify/reuse an approved existing Case;
+- create a new Case only when human review confirmed NO_MATCH and policy permits it;
+- persist a durable CASE external reference;
+- create exactly one Lien through the Liens API;
+- persist a durable LIEN external reference;
+- honor human corrections/additions/rejections;
+- never reinterpret upstream intelligence;
+- retry and recover after partial success, timeouts, response loss, or crashes;
+- reconcile idempotent conflicts;
+- avoid duplicate Case/Lien records;
+- maintain PHI-safe logging/audit;
+- remain completely decoupled from SynqLien persistence internals.
+
+The completed architecture should be:
+
+Source
+-> Classification
+-> Extraction
+-> Normalization
+-> Matching
+-> Policy
+-> Human Review
+-> Approved Snapshot
+-> SYNQLIEN_V1
+-> Liens API
+-> Case / Lien
+
+When complete:
+
+- execute all work now;
+- run all required local validation;
+- create /analysis/LSI-B14-report.md;
+- stop;
+- do not begin LSI-B15;
+- do not deploy;
+- do not push unless explicitly requested.

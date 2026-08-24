@@ -1,0 +1,2 @@
+- [Xenia InMemory fallback](xenia-inmemory-fallback.md) — Xenia uses EF Core InMemory when no ConnectionStrings__XeniaDb is set; MySQL column types make SQLite EnsureCreated fail.
+- [launch_svc exit-1 kills subshell](launch-svc-exit.md) — launch_svc calls exit 1 on missing binary, silently killing the .NET launch subshell; services launched before the missing one survive.

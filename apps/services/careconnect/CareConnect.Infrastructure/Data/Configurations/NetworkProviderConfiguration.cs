@@ -17,12 +17,21 @@ public class NetworkProviderConfiguration : IEntityTypeConfiguration<NetworkProv
         builder.Property(np => np.TenantId).IsRequired();
         builder.Property(np => np.ProviderNetworkId).IsRequired();
         builder.Property(np => np.ProviderId).IsRequired();
+        builder.Property(np => np.FacilityId).IsRequired();
+        builder.Property(np => np.IsActive).IsRequired();
+        builder.Property(np => np.AcceptingReferrals).IsRequired();
         builder.Property(np => np.CreatedAtUtc).IsRequired();
         builder.Property(np => np.UpdatedAtUtc).IsRequired();
         builder.Property(np => np.CreatedByUserId);
         builder.Property(np => np.UpdatedByUserId);
 
-        builder.HasIndex(np => new { np.ProviderNetworkId, np.ProviderId }).IsUnique();
+        builder.HasIndex(np => new { np.ProviderNetworkId, np.ProviderId, np.FacilityId })
+               .IsUnique()
+               .HasDatabaseName("IX_NetworkProviders_ProviderNetworkId_ProviderId_FacilityId");
+        builder.HasIndex(np => new { np.ProviderNetworkId, np.ProviderId })
+               .HasDatabaseName("IX_NetworkProviders_ProviderNetworkId_ProviderId");
+        builder.HasIndex(np => np.FacilityId)
+               .HasDatabaseName("IX_NetworkProviders_FacilityId");
 
         // BLK-PERF-01: GetNetworkProvidersAsync filters on (TenantId, ProviderNetworkId).
         // The existing unique index on (ProviderNetworkId, ProviderId) does not lead on TenantId,
@@ -34,5 +43,10 @@ public class NetworkProviderConfiguration : IEntityTypeConfiguration<NetworkProv
                .WithMany()
                .HasForeignKey(np => np.ProviderId)
                .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(np => np.Facility)
+               .WithMany()
+               .HasForeignKey(np => np.FacilityId)
+               .OnDelete(DeleteBehavior.Restrict);
     }
 }

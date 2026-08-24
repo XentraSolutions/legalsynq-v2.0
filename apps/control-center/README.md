@@ -6,8 +6,8 @@ Internal operator administration portal for LegalSynq platform staff. Requires `
 
 ## Tech
 
-- Next.js 15.2.9 App Router, TypeScript, Tailwind CSS v4, React 18
-- `node_modules` at monorepo root — must NOT have a local `node_modules` (duplicate React causes `useReducer` null errors)
+- Next.js 16.2.6 App Router, TypeScript, Tailwind CSS v4, React 18
+- Local development uses the monorepo/root pnpm install path; do not add a duplicate source-tree `apps/control-center/node_modules` manually because duplicate React can break hooks. Production runtime artifacts are separate and are packaged with `package.json`, `pnpm-lock.yaml`, and `pnpm-workspace.yaml`; the app manifest pins `packageManager: pnpm@10.26.1` so Corepack does not drift during `pnpm install --production`.
 
 ## Auth
 
@@ -22,13 +22,15 @@ BFF — local route handlers for auth and a few specific endpoints; all other `/
 | Route | Purpose |
 |---|---|
 | `/` | Dashboard — system health, KPIs, recent audit events, support cases |
-| `/tenants` | Tenant list and detail — status, entitlements, branding |
+| `/tenants` | Tenant list and detail — status, entitlements, branding, DNS provisioning status/retries |
+| `/tenant-applications` | Review-first self-registration queue with approval, decline, and DNS provisioning progress |
 | `/users` | Cross-tenant user management |
 | `/audit` | SynqAudit investigation — events, integrity checks, exports |
 | `/monitoring` | Service health probes, uptime, alert history |
 | `/notifications` | Notification templates, governance rules, delivery logs |
 | `/reports` | Reports service health, templates, assignments |
 | `/support` | Support case management |
+| `/xenia/settings` | Xenia Assistant Settings — provider, model, reasoning effort, verbosity, output cap, and OpenAI runtime configuration |
 
 ## Key Files
 

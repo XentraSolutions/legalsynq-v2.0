@@ -36,12 +36,18 @@ public static class JwtPrincipalExtractor
             .Distinct()
             .ToList();
 
+        var productRoles = user.FindAll("product_roles")
+            .Select(c => c.Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         return new Principal
         {
             UserId   = userId,
             TenantId = tenantId,
             Email    = email,
             Roles    = roles,
+            ProductRoles = productRoles,
         };
     }
 

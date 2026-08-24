@@ -73,6 +73,7 @@ export const CC_NAV: NavSection[] = [
     heading: 'TENANTS',
     items: [
       { href: '/tenants', label: 'Tenants',       icon: 'ri-building-2-line'                    },
+      { href: '/tenant-applications', label: 'Tenant Applications', icon: 'ri-file-list-3-line' },
       { href: '/domains', label: 'Tenant Domains', icon: 'ri-global-line', badge: 'MOCKUP' },
     ],
   },
@@ -164,6 +165,13 @@ export const CC_NAV: NavSection[] = [
     heading: 'CATALOG',
     items: [
       { href: '/products', label: 'Products', icon: 'ri-apps-line', badge: 'IN PROGRESS' },
+    ],
+  },
+
+  {
+    heading: 'AUTOMATION',
+    items: [
+      { href: '/xenia/settings', label: 'Xenia Assistant Settings', icon: 'ri-settings-3-line' },
     ],
   },
 

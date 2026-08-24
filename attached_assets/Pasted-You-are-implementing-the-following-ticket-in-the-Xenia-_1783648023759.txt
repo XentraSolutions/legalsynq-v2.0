@@ -1,0 +1,1105 @@
+You are implementing the following ticket in the Xenia project.
+
+==================================================
+TICKET
+==================================================
+
+Ticket ID: XENIA-P1-T1
+
+Parent Ticket: XENIA-P1 — Xenia Platform Foundation & Email Automation
+
+Task Type: 🟦 XenIA
+
+Title: Core Service Foundation
+
+==================================================
+MANDATORY EXECUTION RULES
+==================================================
+
+1. Create the implementation report before making any code changes.
+
+Required report path:
+
+/analysis/XENIA-P1-T1-report.md
+
+2. The report must be created first and updated incrementally throughout the implementation.
+
+3. Do not wait until the end to write the report.
+
+4. Record discoveries, architectural decisions, files changed, validation results, failures, limitations, and unresolved issues as work proceeds.
+
+5. Do not fabricate implementation or validation success.
+
+6. Clearly distinguish:
+   - Completed
+   - Partially completed
+   - Failed
+   - Skipped
+   - Blocked
+   - Not applicable
+   - Not independently verified
+
+7. Do not perform GitHub operations.
+
+Do not:
+- Commit
+- Push
+- Create a pull request
+- Merge branches
+- Run or claim GitHub Actions success
+
+8. Do not perform AWS deployment or runtime infrastructure work.
+
+Do not:
+- Deploy to ECS or Fargate
+- Modify Route53
+- Modify Cloud Map
+- Modify an ALB
+- Modify IAM
+- Modify RDS
+- Modify Secrets Manager
+- Claim AWS runtime success
+
+9. Preserve service boundaries.
+
+10. Avoid broad rewrites unrelated to this ticket.
+
+11. Do not implement email functionality in this ticket.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Build the standalone foundation of Xenia as an independent, tenant-aware automation platform.
+
+Xenia must be portable across platforms and must not contain LegalSynq-specific business logic in its core.
+
+This ticket must establish:
+
+- Standalone service structure
+- Tenant-aware execution foundation
+- Module registry
+- Platform-service adapter interfaces
+- Configuration framework
+- Base event framework
+- Health, readiness, and information endpoints
+- Foundational persistence
+- Initial administration UI shell
+- Tests
+- Architecture documentation
+
+Email will be implemented later as the first functional Xenia module under XENIA-P1-T2.
+
+==================================================
+INITIAL CODEBASE ANALYSIS
+==================================================
+
+Before modifying code:
+
+1. Inspect the repository structure.
+
+2. Identify:
+   - Existing framework and language
+   - Package manager
+   - Backend structure
+   - Frontend structure
+   - Database and ORM
+   - Migration system
+   - Existing tenant-context implementation
+   - Existing authentication and authorization patterns
+   - Existing health endpoints
+   - Existing configuration system
+   - Existing event or messaging infrastructure
+   - Existing shared-service clients
+   - Existing test framework
+   - Existing lint, type-check, build, and test commands
+   - Existing documentation conventions
+
+3. Determine whether this repository is:
+   - A new standalone Xenia repository
+   - An existing service being converted into Xenia
+   - A monorepo containing Xenia and other services
+
+4. Record the analysis in:
+
+/analysis/XENIA-P1-T1-report.md
+
+5. Reuse sound existing conventions where possible.
+
+6. If the repository is incomplete or differs significantly from the assumed architecture, adapt the implementation conservatively and document the deviation.
+
+==================================================
+LOCKED ARCHITECTURE RULES
+==================================================
+
+1. Xenia is an independent service.
+
+2. Xenia must be deployable separately from LegalSynq.
+
+3. Xenia core must not directly depend on:
+   - LegalSynq database schemas
+   - LegalSynq case models
+   - LegalSynq lien models
+   - LegalSynq funding models
+   - LegalSynq workflow internals
+   - LegalSynq-specific user models
+   - LegalSynq-specific business rules
+
+4. Platform dependencies must be accessed through replaceable adapter interfaces.
+
+5. Xenia must be tenant-aware.
+
+6. Tenant context must be explicit and must not rely on unrestricted caller-supplied tenant identifiers.
+
+7. Future modules must be registerable without changing core orchestration logic.
+
+8. The module framework must support:
+   - Module identity
+   - Name
+   - Version
+   - Enabled or disabled state
+   - Runtime status
+   - Health status
+   - Configuration namespace
+   - Future lifecycle hooks
+
+9. Xenia must own its internal operational data.
+
+10. Shared platform services remain external capabilities.
+
+11. Do not create direct cross-service database access.
+
+12. Keep interfaces small, typed, documented, and replaceable.
+
+13. Build only the minimum adapter implementations needed for local or development operation.
+
+14. Placeholder adapters must fail safely and report an honest unavailable or unconfigured status.
+
+==================================================
+SERVICE BOUNDARIES
+==================================================
+
+Xenia owns:
+
+- Module lifecycle framework
+- Module registry
+- Tenant-aware execution context
+- Xenia configuration
+- Tenant-specific Xenia settings
+- Adapter registry
+- Internal service health
+- Internal persistence
+- Base event contracts
+- Operational status
+- Xenia administration APIs
+- Xenia administration shell
+
+Xenia does not own:
+
+- User lifecycle management
+- External authentication provider implementation
+- Tenant master-data ownership
+- Document-storage implementation
+- Audit-service implementation
+- Notification delivery
+- Workflow execution
+- AI inference
+- LegalSynq product business rules
+- Email ingestion in this ticket
+
+==================================================
+IMPLEMENTATION SCOPE
+==================================================
+
+Implement the following areas.
+
+--------------------------------------------------
+1. STANDALONE SERVICE FOUNDATION
+--------------------------------------------------
+
+Create or normalize the Xenia service structure.
+
+The service must include:
+
+- Application bootstrap
+- Environment-aware configuration loading
+- Dependency registration
+- Structured logging
+- Error handling
+- Request correlation support
+- Version and build metadata support
+- Graceful startup and shutdown behavior
+- Health and readiness framework
+- Testable dependency boundaries
+
+Do not couple startup to unavailable external platform services unless they are mandatory for local operation.
+
+Readiness should accurately reflect mandatory dependencies.
+
+--------------------------------------------------
+2. TENANT CONTEXT FOUNDATION
+--------------------------------------------------
+
+Implement a reusable tenant-context mechanism.
+
+Requirements:
+
+- Resolve tenant context through a defined resolver abstraction.
+- Store tenant context in request or execution scope.
+- Make tenant context available to:
+  - API handlers
+  - Services
+  - Persistence operations
+  - Module operations
+  - Audit calls
+  - Future jobs and events
+
+- Reject tenant-scoped operations when tenant context is missing or invalid.
+- Do not trust arbitrary tenant IDs without validation.
+- Provide a development or mock tenant resolver where necessary.
+- Document how production platforms should provide verified tenant context.
+- Prevent accidental use of global queries for tenant-scoped data.
+
+Add tests for:
+- Valid tenant context
+- Missing tenant context
+- Invalid tenant context
+- Cross-tenant access attempts where applicable
+
+--------------------------------------------------
+3. MODULE REGISTRY
+--------------------------------------------------
+
+Create a module registry for Xenia automation modules.
+
+The registry must support:
+
+- Registering a module
+- Retrieving registered modules
+- Reading module metadata
+- Enabling a module
+- Disabling a module
+- Reading module status
+- Reading module health
+- Reading module version
+- Associating a configuration namespace
+- Tenant-level enablement where applicable
+- Duplicate module registration protection
+
+Create a base module contract or interface.
+
+The design should be extensible for future lifecycle hooks such as:
+
+- initialize
+- start
+- stop
+- healthCheck
+- validateConfiguration
+
+Do not implement the Email module yet.
+
+A neutral sample or system module may be used only to validate the registry.
+
+--------------------------------------------------
+4. PLATFORM ADAPTER LAYER
+--------------------------------------------------
+
+Create typed interfaces for the following external platform capabilities:
+
+- Tenant service
+- Identity service
+- Document service
+- Audit service
+- Notification service
+- Storage service
+- Workflow service
+- AI service
+
+Each adapter contract must define only the minimum platform-neutral operations needed by Xenia now or in the near future.
+
+At minimum, include concepts such as:
+
+Tenant adapter:
+- Validate tenant
+- Retrieve tenant status
+- Retrieve tenant-scoped Xenia settings where appropriate
+
+Identity adapter:
+- Resolve or validate authenticated actor
+- Check permissions or roles through a platform-neutral contract
+
+Document adapter:
+- Reserve or create a document record
+- Store or link content through an abstract contract
+- Retrieve document metadata
+
+Audit adapter:
+- Record a structured audit event
+- Include tenant, actor, action, resource, result, correlation ID, and timestamp
+
+Notification adapter:
+- Submit a notification request through a platform-neutral contract
+
+Storage adapter:
+- Store, retrieve, and delete an object through an abstract contract
+
+Workflow adapter:
+- Submit a future workflow trigger through an abstract contract
+
+AI adapter:
+- Submit a future AI-processing request through an abstract contract
+
+Requirements:
+
+- No direct LegalSynq imports in Xenia core.
+- No direct cross-service database access.
+- Adapter failures must be handled explicitly.
+- Adapter status must be visible through health or adapter APIs.
+- Development or mock adapters may be created.
+- Unimplemented adapters must report unconfigured or unavailable, not success.
+
+--------------------------------------------------
+5. ADAPTER REGISTRY
+--------------------------------------------------
+
+Implement an adapter registry that exposes:
+
+- Adapter name
+- Adapter type
+- Adapter version
+- Configuration status
+- Availability status
+- Health status
+- Last health-check timestamp
+- Optional diagnostic message safe for administrators
+
+Do not expose credentials or secrets.
+
+--------------------------------------------------
+6. CONFIGURATION FRAMEWORK
+--------------------------------------------------
+
+Implement layered Xenia configuration.
+
+Support:
+
+- Environment configuration
+- Global service configuration
+- Tenant-specific configuration
+- Module-specific configuration
+- Tenant-and-module overrides
+- Future feature flags
+
+Define clear precedence, for example:
+
+1. Application defaults
+2. Environment configuration
+3. Global persisted configuration
+4. Tenant configuration
+5. Module configuration
+6. Tenant-module override
+
+Use the repository’s established configuration framework when appropriate.
+
+Requirements:
+
+- Typed configuration
+- Validation at startup or load time
+- Safe defaults
+- Secret masking
+- Configuration namespaces
+- Audit-ready change model
+- No secrets returned by public APIs
+- Clear distinction between operational configuration and credentials
+
+--------------------------------------------------
+7. BASE EVENT FRAMEWORK
+--------------------------------------------------
+
+Create a platform-neutral internal event foundation.
+
+Include:
+
+- Base event envelope
+- Event ID
+- Event type
+- Event version
+- Occurred-at timestamp
+- Tenant ID where applicable
+- Actor ID where applicable
+- Correlation ID
+- Causation ID where applicable
+- Payload
+- Metadata
+
+Provide interfaces for:
+- Publishing an event
+- Registering a handler
+- Serializing and validating events
+
+A local in-memory implementation may be used for development and tests.
+
+Do not implement email business events.
+
+Do not assume a specific external message broker unless the repository already has a locked standard.
+
+--------------------------------------------------
+8. HEALTH, READINESS, AND INFORMATION APIS
+--------------------------------------------------
+
+Implement or normalize these endpoints:
+
+GET /health
+GET /ready
+GET /info
+GET /modules
+GET /adapters
+GET /configuration
+
+Requirements:
+
+GET /health
+- Report service liveness
+- Avoid leaking secrets
+- Return stable machine-readable output
+
+GET /ready
+- Report whether mandatory dependencies are ready
+- Distinguish optional unavailable adapters from mandatory failures
+
+GET /info
+- Service name
+- Service version
+- Build identifier if available
+- Runtime environment
+- Startup timestamp
+- Uptime
+- Commit identifier only if safely available from build metadata
+
+GET /modules
+- Registered modules
+- Versions
+- Enabled state
+- Runtime status
+- Health state
+- Tenant-specific state where authorized
+
+GET /adapters
+- Configured adapters
+- Versions
+- Availability
+- Health
+- Safe diagnostics
+
+GET /configuration
+- Return only non-secret, authorized configuration
+- Mask or omit sensitive values
+- Apply tenant and role restrictions
+
+Use consistent response envelopes and error structures if the codebase already has a standard.
+
+--------------------------------------------------
+9. PERSISTENCE FOUNDATION
+--------------------------------------------------
+
+Use the repository’s established database and ORM patterns.
+
+Create foundational persistence models or equivalent structures for:
+
+xenia_modules
+- id
+- module_key
+- name
+- version
+- description
+- global_enabled
+- status
+- configuration_namespace
+- created_at
+- updated_at
+
+xenia_configuration
+- id
+- scope_type
+- scope_id where applicable
+- namespace
+- configuration_key
+- configuration_value or structured value
+- value_type where needed
+- is_secret indicator if supported
+- version
+- created_at
+- updated_at
+
+xenia_platform_adapters
+- id
+- adapter_key
+- adapter_type
+- name
+- version
+- configuration_status
+- availability_status
+- health_status
+- last_health_check_at
+- created_at
+- updated_at
+
+xenia_tenant_settings
+- id
+- tenant_id
+- settings or structured configuration
+- enabled
+- created_at
+- updated_at
+
+xenia_tenant_modules
+- id
+- tenant_id
+- module_key or module_id
+- enabled
+- module_configuration
+- created_at
+- updated_at
+
+Requirements:
+
+- Add migrations.
+- Add appropriate unique constraints.
+- Add tenant-aware indexes.
+- Add timestamps.
+- Follow existing naming conventions.
+- Avoid storing raw secrets unless the repository has an approved encryption mechanism.
+- If secret persistence cannot be implemented safely, store only secret references and document the limitation.
+- Prevent cross-tenant queries in repository methods.
+- Do not create email-related tables.
+
+--------------------------------------------------
+10. INITIAL ADMINISTRATION UI SHELL
+--------------------------------------------------
+
+Create the initial Xenia administration shell using the existing frontend framework.
+
+Required screens or sections:
+
+Dashboard:
+- Service status
+- Service version
+- Build information
+- Runtime environment
+- Uptime
+- Registered module summary
+- Adapter status summary
+- Tenant context
+- Health and readiness summary
+
+Modules:
+- List registered modules
+- Show module name
+- Version
+- Enabled state
+- Status
+- Health
+- Configuration namespace
+
+Adapters:
+- List adapters
+- Type
+- Version
+- Configuration status
+- Availability
+- Health
+- Last health check
+- Safe diagnostic message
+
+Settings:
+- Placeholder or read-only views for:
+  - Global configuration
+  - Tenant configuration
+  - Module configuration
+
+Requirements:
+
+- Respect the existing design system.
+- Do not create a disconnected visual style.
+- Use accessible labels and semantic controls.
+- Add loading, empty, and error states.
+- Do not expose secrets.
+- Do not implement email screens.
+- Do not create nonfunctional controls that imply completed behavior.
+- Mark placeholder areas honestly.
+
+--------------------------------------------------
+11. AUTHORIZATION FOUNDATION
+--------------------------------------------------
+
+Use the Identity adapter and existing authentication middleware where available.
+
+Define platform-neutral permissions, such as:
+
+- xenia.read
+- xenia.admin
+- xenia.modules.read
+- xenia.modules.manage
+- xenia.adapters.read
+- xenia.configuration.read
+- xenia.configuration.manage
+
+Requirements:
+
+- Read-only users must not modify configuration.
+- Tenant administrators must be limited to their tenant.
+- Platform administrators may access platform-level status only where explicitly authorized.
+- Do not invent a new identity database.
+- Document any development-only authentication bypass.
+- Development bypasses must not be enabled by default in production.
+
+--------------------------------------------------
+12. AUDIT FOUNDATION
+--------------------------------------------------
+
+Use the Audit adapter to define structured audit events for:
+
+- Service configuration read where required
+- Configuration change
+- Module enablement
+- Module disablement
+- Adapter configuration change
+- Unauthorized access attempt
+- Tenant-context resolution failure
+- Administrative action
+
+If the external Audit service is unavailable, use a local development implementation or durable fallback only if consistent with repository architecture.
+
+Do not silently discard audit events.
+
+Document fallback behavior.
+
+--------------------------------------------------
+13. OBSERVABILITY FOUNDATION
+--------------------------------------------------
+
+Implement:
+
+- Structured logs
+- Correlation IDs
+- Tenant ID in logs where safe
+- Actor ID where safe
+- Module identifiers
+- Adapter identifiers
+- Error categorization
+- Startup and shutdown logs
+- Health-check logs with reasonable noise controls
+
+Add metrics only if the repository has an established metrics framework.
+
+Do not log:
+- OAuth tokens
+- Passwords
+- API keys
+- Raw secrets
+- Sensitive configuration values
+
+--------------------------------------------------
+14. DOCUMENTATION
+--------------------------------------------------
+
+Create or update:
+
+- Root README
+- Xenia architecture documentation
+- Service-boundary documentation
+- Adapter-interface documentation
+- Module-development guide
+- Configuration guide
+- Local-development guide
+- API documentation
+- Database model documentation
+- Testing instructions
+
+Documentation must clearly state:
+
+- Xenia is independent.
+- Email is a future module.
+- LegalSynq is a consuming platform.
+- Platform services are accessed through adapters.
+- GitHub and AWS work are not included in this ticket.
+
+==================================================
+FILES AND AREAS TO INSPECT
+==================================================
+
+Inspect, as applicable:
+
+- Root package manifests
+- Workspace or monorepo configuration
+- Backend application entrypoint
+- Frontend application entrypoint
+- Existing services
+- Existing shared libraries
+- Existing API routing
+- Existing middleware
+- Existing authentication
+- Existing tenant context
+- Existing database models
+- Existing migrations
+- Existing configuration files
+- Existing event infrastructure
+- Existing health endpoints
+- Existing test directories
+- Existing CI configuration for awareness only
+- Existing Docker or deployment files for compatibility only
+- Existing README and architecture documentation
+
+Do not modify unrelated services unless a small shared contract change is necessary and documented.
+
+==================================================
+FILES AND AREAS TO MODIFY
+==================================================
+
+Modify or create only what is required for:
+
+- Xenia service bootstrap
+- Xenia core domain
+- Tenant context
+- Module registry
+- Module contracts
+- Adapter contracts
+- Adapter registry
+- Configuration system
+- Base event framework
+- Health and information APIs
+- Foundational database models
+- Migrations
+- Admin UI shell
+- Tests
+- Documentation
+- Required implementation report
+
+Record every changed file in the report.
+
+==================================================
+VALIDATION REQUIREMENTS
+==================================================
+
+Identify the repository’s real commands before running validation.
+
+Run the applicable commands for:
+
+1. Dependency installation or verification
+2. Formatting
+3. Linting
+4. Type checking
+5. Backend unit tests
+6. Frontend unit tests
+7. Integration tests
+8. Database migration validation
+9. Production build
+10. Local service startup where feasible
+11. Endpoint smoke tests
+12. UI rendering or frontend build validation
+
+At minimum, validate:
+
+- Service starts successfully in the available environment.
+- Database migrations apply or validate successfully.
+- Module registry initializes.
+- Duplicate module registration is rejected.
+- Adapter registry initializes.
+- Unconfigured adapters report unavailable or unconfigured.
+- Tenant context resolves for valid requests.
+- Tenant-scoped endpoints reject missing tenant context.
+- Cross-tenant data access is prevented by repository or service-layer tests.
+- Health endpoint responds.
+- Readiness endpoint responds.
+- Info endpoint returns safe metadata.
+- Modules endpoint returns registry data.
+- Adapters endpoint returns safe status.
+- Configuration endpoint omits secrets.
+- Admin shell builds and renders.
+- Tests pass where executable.
+
+For each command, record:
+
+- Exact command
+- Working directory
+- Exit code
+- Result
+- Relevant output summary
+- Failures
+- Environmental limitations
+
+Do not claim validation that was not executed.
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+The ticket is acceptable only if:
+
+1. Xenia runs as a standalone service.
+
+2. Xenia core contains no LegalSynq-specific business logic.
+
+3. Tenant context is explicitly resolved and available throughout tenant-scoped execution.
+
+4. Missing or invalid tenant context is rejected for tenant-scoped operations.
+
+5. The module registry is operational.
+
+6. Modules expose identity, name, version, enabled state, status, health, and configuration namespace.
+
+7. Duplicate module registration is prevented.
+
+8. Platform adapter interfaces exist for:
+   - Tenant
+   - Identity
+   - Documents
+   - Audit
+   - Notification
+   - Storage
+   - Workflow
+   - AI
+
+9. Adapter status is exposed safely.
+
+10. Unconfigured adapters do not report false success.
+
+11. Configuration supports:
+   - Environment
+   - Global
+   - Tenant
+   - Module
+   - Tenant-module overrides
+
+12. Sensitive configuration is masked or omitted.
+
+13. The base event envelope and publisher interfaces exist.
+
+14. Health, readiness, info, module, adapter, and configuration endpoints are available.
+
+15. Foundational database models and migrations exist.
+
+16. Tenant-aware constraints and indexes are included where appropriate.
+
+17. The administration UI shell displays:
+   - Service status
+   - Modules
+   - Adapters
+   - Tenant context
+   - Safe configuration information
+
+18. Authorization boundaries are enforced.
+
+19. Audit foundations are implemented through an adapter.
+
+20. Structured logging and correlation IDs are implemented.
+
+21. Unit and integration tests cover critical foundation behavior.
+
+22. Documentation explains architecture, service boundaries, adapters, modules, configuration, APIs, and local setup.
+
+23. No email provider, email ingestion, or email-specific persistence is implemented.
+
+24. The report exists at:
+
+/analysis/XENIA-P1-T1-report.md
+
+25. The report was created before implementation and updated incrementally.
+
+==================================================
+OUT OF SCOPE
+==================================================
+
+Do not implement:
+
+- Email module
+- Gmail connector
+- Microsoft Graph or Outlook connector
+- IMAP connector
+- Email webhooks
+- OAuth provider flows for email
+- Email source management
+- Email synchronization
+- Email normalization
+- Email persistence
+- Email attachments
+- Inbox UI
+- AI processing
+- Workflow execution
+- SMS automation
+- Fax automation
+- Chat automation
+- Web-form automation
+- GitHub commit, push, PR, or merge
+- GitHub Actions execution claims
+- AWS deployment
+- ECS or Fargate changes
+- RDS changes
+- Secrets Manager changes
+- Route53 changes
+- Cloud Map changes
+- ALB changes
+- Production runtime claims
+
+==================================================
+KNOWN RESTRICTIONS
+==================================================
+
+- Preserve existing architecture unless a change is required and justified.
+- Avoid broad rewrites.
+- Do not collapse platform-service boundaries.
+- Do not introduce direct cross-service database access.
+- Do not create LegalSynq-specific dependencies in Xenia core.
+- Do not store plaintext secrets.
+- Do not expose secrets through APIs, logs, reports, or UI.
+- Do not mark placeholder integrations healthy.
+- Do not fabricate validation results.
+- Do not close the parent ticket.
+- This subtask ends after repository implementation and local validation.
+
+==================================================
+REQUIRED REPORT STRUCTURE
+==================================================
+
+Create this file before any code changes:
+
+/analysis/XENIA-P1-T1-report.md
+
+Use at least the following sections:
+
+# XENIA-P1-T1 Implementation Report
+
+## 1. Executive Summary
+
+## 2. Ticket Information
+- Ticket ID
+- Parent ticket
+- Task type
+- Objective
+- Status
+
+## 3. Initial Codebase Analysis
+- Repository structure
+- Frameworks and versions
+- Backend architecture
+- Frontend architecture
+- Database and ORM
+- Migration system
+- Tenant patterns
+- Authentication patterns
+- Configuration patterns
+- Event patterns
+- Test frameworks
+- Validation commands discovered
+
+## 4. Architecture Decisions
+- Standalone service boundary
+- Tenant-context model
+- Module-registry design
+- Adapter design
+- Configuration precedence
+- Event model
+- Persistence choices
+- Authorization model
+- Audit model
+- Deviations from requirements
+
+## 5. Implementation Progress
+Maintain an incremental checklist with:
+- Not started
+- In progress
+- Completed
+- Blocked
+- Partially completed
+
+## 6. Files Created
+
+## 7. Files Modified
+
+## 8. Database Changes
+- Models
+- Migrations
+- Constraints
+- Indexes
+- Tenant-isolation controls
+
+## 9. Backend Implementation
+
+## 10. Frontend Implementation
+
+## 11. Platform Adapter Implementation
+
+## 12. Module Framework Implementation
+
+## 13. Tenant Context and Security
+
+## 14. API Endpoints
+
+## 15. Audit and Observability
+
+## 16. Tests Added or Updated
+
+## 17. Validation Commands and Results
+
+For every validation command include:
+- Command
+- Working directory
+- Exit code
+- Result
+- Output summary
+
+## 18. Acceptance Criteria Matrix
+
+For every acceptance criterion record:
+- Criterion
+- Status
+- Evidence
+- Notes
+
+## 19. Known Issues and Gaps
+
+## 20. Risks and Architecture Concerns
+
+## 21. Environmental Limitations
+
+## 22. Out-of-Scope Confirmation
+
+## 23. Follow-Up Recommendations
+
+## 24. Final Status
+Use one:
+- Complete
+- Complete with limitations
+- Partially complete
+- Blocked
+- Failed
+
+## 25. Completion Percentage
+Provide a justified ticket completion percentage.
+
+==================================================
+FINAL RESPONSE REQUIREMENTS
+==================================================
+
+When implementation is complete:
+
+1. Ensure the report is fully updated.
+
+2. Provide a concise completion response containing:
+   - Final status
+   - Ticket completion percentage
+   - Key implementation summary
+   - Validation summary
+   - Known limitations
+   - Exact report path
+
+3. Do not claim:
+   - GitHub success
+   - AWS deployment success
+   - Production runtime success
+
+unless those activities were actually performed, which are outside this ticket.
+
+4. Stop after completing XENIA-P1-T1.
+
+Do not begin XENIA-P1-T2.

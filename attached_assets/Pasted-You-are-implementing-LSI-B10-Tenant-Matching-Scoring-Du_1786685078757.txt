@@ -1,0 +1,2501 @@
+You are implementing LSI-B10 — Tenant Matching, Scoring & Duplicates for Synq Intake in the LegalSynq v3 repository.
+
+EXECUTION DIRECTIVE
+
+Execute this ticket now.
+
+Do not stop after reviewing requirements.
+Do not return a plan for approval.
+Do not ask whether to proceed.
+Implement the full scoped LSI-B10 work in this execution, run the required local validation, and produce /analysis/LSI-B10-report.md when complete.
+
+If a minor implementation decision is needed and the requirements already establish the intended behavior, make the safest architecture-consistent decision and continue.
+
+Only stop for a genuine blocking condition that cannot be resolved from the repository or these requirements.
+
+REPOSITORY
+- Repository: XentraSolutions/legalsynq-v3.0
+- Branch: xenia
+- Synq Intake service root: apps/services/intake/**
+- Required implementation report: /analysis/LSI-B10-report.md
+
+EXECUTION RULES
+1. Work only on LSI-B10 scope.
+2. Do not perform AWS, RDS, ECS, Route53, QA runtime, staging runtime, production deployment, push, PR, or merge work.
+3. Do not implement B11 confidence/policy decisions, automatic acceptance/rejection, human review, Case creation, Lien creation, SynqFund routing, CareConnect routing, Flow, notifications, legal conclusions, clinical interpretation, or downstream write adapters.
+4. Preserve all prior analysis reports as read-only.
+5. Create/update only /analysis/LSI-B10-report.md for this ticket.
+6. Reuse B09 normalized facts, comparison keys, validation statuses, SourceConfidence, evidence lineage, and history/current-result conventions.
+7. Reuse existing LegalSynq service/API boundaries for tenant-owned master data. Do not make Intake the owner of Patient, Provider, Facility, Attorney, Law Firm, Case, Lien, or other master records.
+8. Prefer deterministic matching/scoring. Do not introduce AI-based identity resolution.
+9. Before coding, inspect:
+   - current git branch/status;
+   - HEAD vs origin/xenia;
+   - B02 LIEN_INTAKE_V1 configuration/profile framework;
+   - B08/B09 artifact, extraction, normalization, evidence, current-result, and idempotency models;
+   - B09 FactCode, NormalizedValue, NormalizedJson, ComparisonKey, ValidationStatus, WarningCodes, SourceConfidence;
+   - existing LegalSynq Patient/Case/Provider/Facility/Attorney/Law Firm/Lien service boundaries and contracts;
+   - existing cross-service HTTP/service clients;
+   - existing repository/query conventions;
+   - existing fuzzy/string similarity libraries;
+   - IntakeDbContext and migrations;
+   - API authorization policies;
+   - audit/logging conventions;
+   - Intake tests and HTTP integration-test infrastructure.
+10. Record repository baseline and initial working-tree state in /analysis/LSI-B10-report.md before implementation.
+11. Preserve unrelated pre-existing changes.
+12. Do not commit uploaded specifications, generated binaries, local databases, secrets, or unrelated artifacts.
+13. Local/repository validation is required.
+14. Do not claim GitHub CI, deployed runtime, production service integration, or release validation unless separately proven.
+15. Do not begin LSI-B11 automatically.
+16. Do not push unless explicitly requested.
+
+LOCKED PLATFORM STACK
+Use existing LegalSynq v3 conventions:
+- .NET 10
+- ASP.NET Core Minimal APIs
+- C#
+- EF Core
+- MySQL 8
+- Pomelo.EntityFrameworkCore.MySql
+- existing JWT Bearer/service-token authentication
+- existing ICurrentRequestContext tenant conventions
+- existing YARP gateway conventions
+- LegalSynq.AuditClient where applicable
+- existing service-to-service authentication conventions
+- existing Intake persistence/history/idempotency conventions
+- existing structured logging, configuration, health, event/outbox, and testing conventions
+- no unrelated dependency upgrades
+
+ARCHITECTURAL PRINCIPLE
+
+B10 is tenant-scoped candidate discovery, deterministic scoring, ranking, and duplicate detection.
+
+The intended chain is:
+
+B09 Normalized Facts
+-> candidate discovery
+-> field-level comparison
+-> score calculation
+-> candidate ranking
+-> duplicate signals
+-> B11 Confidence & Policy Engine
+
+B10 answers:
+
+“Which existing tenant-owned records are plausible candidates, how strongly do they match, and does this intake appear to duplicate something already known?”
+
+B10 MUST NOT answer:
+
+“Should this candidate be automatically accepted, rejected, routed, or written downstream?”
+
+==================================================
+1. MATCHING PROFILE
+==================================================
+
+Create a versioned matching profile:
+
+LIEN_INTAKE_MATCHING_V1
+
+The profile should define:
+
+- supported entity types;
+- participating FactCodes;
+- candidate search strategies;
+- comparison methods;
+- field weights;
+- conflict penalties;
+- hard conflict rules;
+- minimum candidate score;
+- maximum candidate count;
+- maximum candidate search pool;
+- SourceConfidence usage;
+- duplicate-detection rules;
+- scoring version.
+
+Conceptual fields:
+
+- Id
+- Code
+- DisplayName
+- Description
+- Version
+- ScoringVersion
+- IsActive
+- IsSystemDefined
+- CreatedAt
+- UpdatedAt
+
+Use existing B07-B09 versioning conventions where practical.
+
+==================================================
+2. B02 MATCHING CONFIGURATION
+==================================================
+
+Extend LIEN_INTAKE_V1 as needed with:
+
+EnableMatching
+MatchingProfileCode
+MaxCandidatesPerEntityType
+MinimumCandidateScore
+EnableDuplicateDetection
+UseSourceConfidenceInScoring
+
+Potential additional control:
+
+MaxCandidateSearchPool
+
+Recommended conservative defaults:
+
+EnableMatching = true
+MatchingProfileCode = LIEN_INTAKE_MATCHING_V1
+MaxCandidatesPerEntityType = 10
+MinimumCandidateScore = 0.20
+EnableDuplicateDetection = true
+UseSourceConfidenceInScoring = true
+MaxCandidateSearchPool = 50
+
+These settings do NOT authorize automatic match acceptance.
+
+==================================================
+3. MATCHING ENTITY TYPES
+==================================================
+
+Initial B10 support should include where clean repository boundaries exist:
+
+PATIENT
+PROVIDER
+FACILITY
+ATTORNEY
+LAW_FIRM
+CASE
+
+Optional:
+
+INSURANCE_CARRIER
+LIEN
+
+Only implement LIEN matching if existing SynqLien boundaries support it cleanly without making Intake directly own or query lien business tables.
+
+If LIEN matching is not architecturally clean, explicitly defer it and document why.
+
+==================================================
+4. SOURCE-OF-TRUTH BOUNDARY
+==================================================
+
+Intake must not own or duplicate business master data.
+
+Candidate discovery must use approved service/client/repository abstractions for existing tenant-owned records.
+
+Prefer:
+
+service contract / API
+over
+direct cross-domain table access.
+
+If no existing service abstraction exists, add the smallest architecture-consistent read-only client boundary.
+
+Do not add write behavior.
+
+==================================================
+5. TENANT ISOLATION
+==================================================
+
+Every candidate search must be tenant-scoped.
+
+Mandatory:
+
+Tenant A normalized facts
+-> Tenant A candidate records only
+
+TenantId must come from:
+- trusted request/service context;
+- persisted Intake lineage.
+
+Do not trust arbitrary TenantId from request payloads.
+
+Candidate providers must enforce tenant scope even if the caller has already scoped the request.
+
+==================================================
+6. MATCH RUN MODEL
+==================================================
+
+Create an Intake-owned aggregate:
+
+ArtifactMatchRun
+
+Conceptual fields:
+
+- Id
+- TenantId
+- ArtifactId
+- ArtifactNormalizationId
+
+- MatchingProfileCode
+- MatchingProfileVersion
+- ScoringVersion
+
+- Status
+- ExecutionKey
+- IsCurrent
+- CurrentMarker if needed
+
+- RequestedAt
+- CompletedAt
+- CreatedAt
+- UpdatedAt
+
+- FailureCode
+- FailureMessage
+
+Use only fields justified by actual implementation.
+
+==================================================
+7. MATCH RUN STATUS
+==================================================
+
+Recommended:
+
+PROCESSING
+COMPLETED
+PARTIAL
+FAILED
+
+PARTIAL means:
+- at least one entity provider/scoring path succeeded;
+- at least one failed.
+
+Do not discard successful match results when another candidate provider fails.
+
+==================================================
+8. ENTITY MATCH MODEL
+==================================================
+
+Create:
+
+ArtifactEntityMatch
+
+Conceptual fields:
+
+- Id
+- TenantId
+- ArtifactMatchRunId
+
+- EntityType
+- CandidateEntityId
+- CandidateDisplayLabel or safe display descriptor
+
+- Score
+- Rank
+- MatchStatus
+- IsTopCandidate
+
+- MatchedFieldCount
+- ConflictingFieldCount
+
+- ScoreBreakdownJson or first-class field records
+- CreatedAt
+
+Do not duplicate full candidate entity payloads into Intake.
+
+==================================================
+9. FIELD-LEVEL MATCH MODEL
+==================================================
+
+Prefer first-class field-level explainability.
+
+Create:
+
+ArtifactMatchField
+
+Conceptual fields:
+
+- Id
+- TenantId
+- ArtifactEntityMatchId
+- SourceNormalizedFactId
+- FactCode
+
+- CandidateFieldName
+- ComparisonMethod
+
+- FieldScore
+- Weight
+- EffectiveWeight
+- WeightedScore
+
+- MatchOutcome
+- ReasonCode
+
+- CreatedAt
+
+Avoid storing raw candidate PHI unless required.
+
+==================================================
+10. MATCH OUTCOMES
+==================================================
+
+Use stable outcomes such as:
+
+EXACT
+NORMALIZED_EXACT
+FUZZY
+PARTIAL
+CONFLICT
+MISSING
+NOT_APPLICABLE
+
+These should be deterministic and explainable.
+
+==================================================
+11. CANDIDATE-LEVEL MATCH STATUS
+==================================================
+
+Recommended descriptive statuses:
+
+STRONG
+POSSIBLE
+WEAK
+CONFLICTED
+INSUFFICIENT_DATA
+
+These are descriptive only.
+
+STRONG != automatically accepted.
+
+==================================================
+12. CANDIDATE DISCOVERY VS SCORING
+==================================================
+
+Separate:
+
+Candidate Discovery
+from
+Candidate Scoring
+
+Discovery:
+- find a bounded plausible candidate set.
+
+Scoring:
+- compare B09 normalized facts against those candidates.
+
+Do not score entire tenant datasets in memory.
+
+==================================================
+13. CANDIDATE PROVIDER ABSTRACTION
+==================================================
+
+Create:
+
+ITenantMatchCandidateProvider
+
+or equivalent.
+
+Responsibilities:
+
+- advertise supported EntityType;
+- perform tenant-scoped lookup;
+- use indexed/bounded search;
+- return minimal comparison projection;
+- map downstream/service failures safely.
+
+==================================================
+14. CANDIDATE PROVIDER REGISTRY
+==================================================
+
+Create:
+
+IMatchCandidateProviderRegistry
+
+mapping:
+
+EntityType
+-> Candidate Provider
+
+Avoid a giant switch in the matching service.
+
+==================================================
+15. CANDIDATE PROJECTION
+==================================================
+
+Candidate providers must return only fields needed for comparison.
+
+Example patient projection:
+
+- EntityId
+- FullName
+- FirstName
+- LastName
+- DateOfBirth
+- Phone
+- Email
+- Address
+- MedicalRecordNumbers
+- AccountNumbers
+
+Do not return unrelated medical/legal fields.
+
+==================================================
+16. PATIENT MATCHING INPUTS
+==================================================
+
+Potential B09 inputs:
+
+PATIENT_FULL_NAME
+PATIENT_FIRST_NAME
+PATIENT_LAST_NAME
+PATIENT_DATE_OF_BIRTH
+PATIENT_ACCOUNT_NUMBER
+MEDICAL_RECORD_NUMBER
+
+Prioritize normalized/comparison-ready B09 fields.
+
+==================================================
+17. PATIENT HARD IDENTIFIERS
+==================================================
+
+Treat where reliable:
+
+MEDICAL_RECORD_NUMBER
+PATIENT_ACCOUNT_NUMBER
+
+as stronger evidence than name similarity.
+
+Do not assume global uniqueness unless the actual source system guarantees it.
+
+Scope identifier semantics appropriately by tenant/provider/facility when required.
+
+==================================================
+18. PATIENT NAME MATCHING
+==================================================
+
+Use B09 normalized values/comparison keys.
+
+Potential methods:
+
+- normalized exact;
+- token equality;
+- order-tolerant equality;
+- bounded fuzzy similarity.
+
+Do not produce STRONG patient match from name alone unless explicit profile rules allow it.
+
+==================================================
+19. PATIENT DOB MATCHING
+==================================================
+
+Recommended semantics:
+
+exact DOB
+-> strong positive
+
+different valid DOB
+-> strong conflict
+
+missing DOB
+-> neutral
+
+Do not invent partial DOB rules.
+
+==================================================
+20. PROVIDER MATCHING
+==================================================
+
+Potential B09 inputs:
+
+PROVIDER_NAME
+PROVIDER_PHONE
+PROVIDER_ADDRESS
+
+Use:
+
+organization name
++
+phone
++
+address
+
+Do not assign overly high score based only on organization name.
+
+==================================================
+21. FACILITY MATCHING
+==================================================
+
+Potential inputs:
+
+FACILITY_NAME
+PROVIDER_ADDRESS
+PROVIDER_PHONE
+
+Keep FACILITY and PROVIDER separate entity types.
+
+Do not automatically treat same organization label as the same domain entity.
+
+==================================================
+22. ATTORNEY MATCHING
+==================================================
+
+Potential inputs:
+
+ATTORNEY_NAME
+ATTORNEY_EMAIL
+ATTORNEY_PHONE
+LAW_FIRM_NAME
+
+Exact normalized email may carry strong weight.
+
+Name + law firm may reinforce identity.
+
+==================================================
+23. LAW FIRM MATCHING
+==================================================
+
+Potential inputs:
+
+LAW_FIRM_NAME
+ATTORNEY_EMAIL
+ATTORNEY_PHONE
+
+Use B09 organization normalization.
+
+Do not infer firm identity solely from email domain unless profile explicitly allows it.
+
+==================================================
+24. CASE MATCHING
+==================================================
+
+Potential inputs:
+
+CASE_NUMBER
+CLAIM_NUMBER
+PATIENT_FULL_NAME
+PATIENT_DATE_OF_BIRTH where relevant
+DATE_OF_ACCIDENT
+ATTORNEY_NAME
+LAW_FIRM_NAME
+
+Prioritize hard identifiers.
+
+Patient-name similarity alone must not be sufficient for a strong case match.
+
+==================================================
+25. CASE NUMBER MATCHING
+==================================================
+
+If CASE_NUMBER corresponds to a known LegalSynq/domain case identifier:
+
+normalized exact equality
+-> high-value evidence
+
+If case numbers originate from multiple systems, preserve/query source context where available.
+
+==================================================
+26. CLAIM NUMBER MATCHING
+==================================================
+
+CLAIM_NUMBER may need insurer context.
+
+Preferred combined signal:
+
+CLAIM_NUMBER
++
+INSURANCE_CARRIER_NAME
+
+Do not assume claim-number global uniqueness.
+
+==================================================
+27. OPTIONAL LIEN MATCHING
+==================================================
+
+If cleanly supported:
+
+Potential signals:
+
+- patient candidate;
+- provider/facility candidate;
+- case candidate;
+- account number;
+- service date;
+- lien amount;
+- outstanding balance.
+
+Do not implement direct lien matching through ad-hoc cross-domain table queries.
+
+If deferred, document the exact architectural reason.
+
+==================================================
+28. EXACT MATCH METHODS
+==================================================
+
+Use exact normalized comparisons where appropriate.
+
+Examples:
+
+- identifier equality;
+- email equality;
+- phone equality;
+- DOB equality;
+- exact comparison-key equality.
+
+Exact behavior must remain FactCode-specific.
+
+==================================================
+29. FUZZY MATCHING
+==================================================
+
+Use bounded deterministic algorithms.
+
+Potential:
+
+- Jaro-Winkler;
+- normalized Levenshtein;
+- token-set similarity.
+
+Prefer existing repository library if available.
+
+Do not add an oversized search dependency unnecessarily.
+
+==================================================
+30. FUZZY MATCHING BOUNDARY
+==================================================
+
+Fuzzy matching is appropriate primarily for:
+
+- person names;
+- organization names;
+- addresses.
+
+Do NOT fuzzy-match identifiers by default:
+
+CASE_NUMBER
+CLAIM_NUMBER
+MEDICAL_RECORD_NUMBER
+ACCOUNT_NUMBER
+PATIENT_ACCOUNT_NUMBER
+
+unless an explicit typo-tolerance rule exists.
+
+==================================================
+31. B09 COMPARISON KEY REUSE
+==================================================
+
+Reuse:
+
+NormalizedValue
+NormalizedJson
+ComparisonKey
+
+from B09.
+
+Do not reimplement:
+- Unicode normalization;
+- punctuation stripping;
+- diacritic normalization;
+- identifier canonicalization.
+
+B09 is the normalization authority.
+
+==================================================
+32. FIELD WEIGHTS
+==================================================
+
+Define versioned weights by entity type and FactCode.
+
+Illustrative patient example:
+
+PATIENT_DATE_OF_BIRTH = 0.30
+PATIENT_FULL_NAME = 0.25
+MEDICAL_RECORD_NUMBER = 0.30
+PATIENT_ACCOUNT_NUMBER = 0.15
+
+These are examples only.
+
+Final profile values must be explicit and covered by tests.
+
+==================================================
+33. SCORE FORMULA
+==================================================
+
+Use a transparent deterministic formula.
+
+Conceptually:
+
+positive weighted contributions
+-
+configured conflict penalties
+=
+raw score
+
+Normalize final score to:
+
+0.00–1.00
+
+Document exact formula in code/report.
+
+Do not use opaque AI scoring.
+
+==================================================
+34. SCORE PRECISION
+==================================================
+
+Persist scores using decimal, not floating-point equality assumptions.
+
+Recommended storage:
+
+decimal(6,5)
+
+or equivalent repository-compatible precision.
+
+==================================================
+35. MISSING DATA
+==================================================
+
+Missing source/candidate values should usually be neutral.
+
+Example:
+
+source DOB missing
+-> DOB contributes neither positive nor negative score
+
+Do not penalize absence unless matching profile explicitly requires it.
+
+==================================================
+36. CONFLICTING DATA
+==================================================
+
+Explicit conflicts should reduce score.
+
+Examples:
+
+DOB mismatch
+case number mismatch
+account number mismatch
+MRN mismatch
+
+Conflict penalties must be FactCode-specific.
+
+==================================================
+37. HARD CONFLICT RULES
+==================================================
+
+Support profile-defined hard conflicts.
+
+Example:
+
+patient name strong match
++
+valid DOB mismatch
+
+may cap candidate below STRONG.
+
+Hard conflict rules must be explicit and testable.
+
+==================================================
+38. VALIDATION STATUS HANDLING
+==================================================
+
+Use B09 structural validation.
+
+Recommended:
+
+VALID
+-> usable
+
+AMBIGUOUS
+-> reduced or excluded per profile
+
+INVALID_FORMAT
+-> excluded
+
+UNSUPPORTED
+-> excluded
+
+Do not score structurally invalid facts.
+
+==================================================
+39. SOURCE CONFIDENCE WEIGHTING
+==================================================
+
+If:
+
+UseSourceConfidenceInScoring = true
+
+allow a transparent formula such as:
+
+EffectiveWeight =
+ConfiguredWeight × SourceConfidence
+
+or bounded equivalent.
+
+If disabled:
+- use full configured field weight.
+
+Document exact formula.
+
+Do not let SourceConfidence silently determine final match truth.
+
+==================================================
+40. FIELD-LEVEL EXPLAINABILITY
+==================================================
+
+Every candidate score must be explainable.
+
+Example:
+
+Name similarity = 0.92
+Weight = 0.25
+EffectiveWeight = 0.23
+WeightedScore = ...
+
+DOB exact = 1.00
+Weight = 0.30
+...
+
+Store safe field-level breakdown.
+
+Do not store chain-of-thought.
+
+==================================================
+41. MATCH EVIDENCE LINEAGE
+==================================================
+
+Every field score should point back to:
+
+ArtifactNormalizedFactId
+-> ArtifactExtractedFactId
+-> B08 evidence
+
+Do not duplicate full evidence blobs into each field result unless needed.
+
+==================================================
+42. MATCH REASON CODES
+==================================================
+
+Use stable reason codes.
+
+Examples:
+
+NAME_EXACT
+NAME_FUZZY
+DOB_EXACT
+DOB_CONFLICT
+IDENTIFIER_EXACT
+IDENTIFIER_CONFLICT
+PHONE_EXACT
+EMAIL_EXACT
+ADDRESS_PARTIAL
+SOURCE_VALUE_INVALID
+SOURCE_VALUE_AMBIGUOUS
+
+Avoid only free-form explanations.
+
+==================================================
+43. CANDIDATE RANKING
+==================================================
+
+Rank within each EntityType.
+
+Sort deterministically.
+
+Recommended tie-break order:
+
+Score DESC
+MatchedFieldCount DESC
+ConflictingFieldCount ASC
+CandidateEntityId ASC
+
+Document exact rule.
+
+==================================================
+44. TOP CANDIDATE
+==================================================
+
+Where candidates exist:
+
+only one candidate per EntityType should be marked:
+
+IsTopCandidate = true
+
+Use deterministic tie-breaking.
+
+Do not imply top candidate is approved.
+
+==================================================
+45. MATCH STATUS THRESHOLDS
+==================================================
+
+B10 may classify scores descriptively.
+
+Example profile-driven thresholds:
+
+STRONG
+POSSIBLE
+WEAK
+
+These labels do not trigger downstream actions.
+
+B11 owns decision policy.
+
+==================================================
+46. CANDIDATE LIMITS
+==================================================
+
+Use B02/profile settings:
+
+MaxCandidatesPerEntityType
+
+Recommended:
+
+10
+
+Do not persist unbounded result sets.
+
+==================================================
+47. MINIMUM CANDIDATE SCORE
+==================================================
+
+Use:
+
+MinimumCandidateScore
+
+Recommended:
+
+0.20
+
+Candidates below this may be omitted from persistence after scoring.
+
+==================================================
+48. CANDIDATE SEARCH POOL
+==================================================
+
+Candidate discovery may use a larger bounded pool before scoring.
+
+Recommended:
+
+MaxCandidateSearchPool = 50
+
+Do not fetch entire tenant datasets.
+
+==================================================
+49. SEARCH PERFORMANCE
+==================================================
+
+Preferred candidate discovery order:
+
+exact identifiers
+-> exact comparison keys
+-> prefix/indexed narrowing
+-> bounded fuzzy scoring
+
+Avoid full table scans.
+
+==================================================
+50. FUZZY SEARCH FALLBACK
+==================================================
+
+If downstream services do not support fuzzy search:
+
+1. narrow with exact/prefix/indexed search;
+2. retrieve bounded minimal projections;
+3. perform fuzzy scoring inside Intake.
+
+Do not download all tenant master data.
+
+==================================================
+51. DUPLICATE DETECTION OBJECTIVE
+==================================================
+
+Detect likely duplicate intake work while keeping duplicate detection separate from entity matching.
+
+Potential signals:
+
+- same artifact hash;
+- same document submitted through email/manual;
+- same normalized business key;
+- same likely patient/provider/account/service-date context.
+
+==================================================
+52. DUPLICATE TYPES
+==================================================
+
+Recommended:
+
+EXACT_ARTIFACT_DUPLICATE
+CONTENT_DUPLICATE
+BUSINESS_KEY_DUPLICATE
+POSSIBLE_DUPLICATE
+
+==================================================
+53. EXACT ARTIFACT DUPLICATE
+==================================================
+
+Use strong deterministic signal:
+
+ArtifactSha256
+
+within TenantId scope.
+
+Same tenant + same hash
+-> exact artifact duplicate signal
+
+Do not search cross-tenant hashes.
+
+==================================================
+54. CROSS-SOURCE DUPLICATE
+==================================================
+
+Same hash submitted through:
+
+EMAIL
+and
+MANUAL
+
+for the same tenant should produce a duplicate signal.
+
+Do not delete either Intake source record.
+
+==================================================
+55. BUSINESS DUPLICATE RULES
+==================================================
+
+Use profile-defined composite rules.
+
+Potential example:
+
+same patient candidate
++
+same provider candidate
++
+same PATIENT_ACCOUNT_NUMBER
++
+same DATE_OF_SERVICE
+
+or:
+
+same case candidate
++
+same CLAIM_NUMBER
++
+same LIEN_AMOUNT
+
+Do not treat these as universally unique.
+
+==================================================
+56. DUPLICATE VS ENTITY MATCH
+==================================================
+
+Keep duplicate detection separate.
+
+same patient
+does NOT mean
+duplicate intake
+
+Same provider
+does NOT mean
+duplicate intake
+
+Do not conflate match score with duplicate score.
+
+==================================================
+57. DUPLICATE SIGNAL MODEL
+==================================================
+
+Create:
+
+ArtifactDuplicateSignal
+
+Conceptual fields:
+
+- Id
+- TenantId
+- ArtifactMatchRunId
+
+- DuplicateType
+- RelatedArtifactId
+- RelatedBusinessEntityType
+- RelatedBusinessEntityId
+
+- Score
+- Status
+- ReasonCode
+- EvidenceJson
+
+- CreatedAt
+
+Only add business entity references where justified.
+
+==================================================
+58. DUPLICATE STATUS
+==================================================
+
+Recommended:
+
+CONFIRMED_SIGNAL
+LIKELY
+POSSIBLE
+WEAK
+
+Use CONFIRMED_SIGNAL only for deterministic evidence such as same hash where terminology is appropriate.
+
+Do not use CONFIRMED to imply business-record truth.
+
+==================================================
+59. DUPLICATE HISTORY
+==================================================
+
+Duplicate signals are immutable historical outputs of a match run.
+
+Do not mutate old signals when later runs produce different conclusions.
+
+==================================================
+60. DUPLICATE SEARCH BOUNDARY
+==================================================
+
+Prefer Intake-owned history first:
+
+- IntakeArtifact
+- ArtifactNormalization
+- match history
+
+Use business-domain services only where needed for business-key duplicate logic.
+
+==================================================
+61. MATCHING SERVICE
+==================================================
+
+Create:
+
+IArtifactMatchingService
+
+or closest repository convention.
+
+Responsibilities:
+
+1. load current tenant-scoped B09 normalization;
+2. validate eligibility;
+3. resolve B02 matching settings;
+4. resolve active matching profile;
+5. create/reuse match run;
+6. group usable normalized facts by target entity;
+7. query candidate providers;
+8. score candidates;
+9. persist field-level breakdown;
+10. rank candidates;
+11. detect duplicate signals;
+12. handle partial provider failure;
+13. finalize current run atomically;
+14. emit safe audit/logging;
+15. return canonical result.
+
+==================================================
+62. MATCHING ELIGIBILITY
+==================================================
+
+Require:
+
+- artifact exists;
+- tenant matches trusted context;
+- current B09 normalization exists;
+- normalization status is COMPLETED or PARTIAL;
+- at least one usable normalized fact exists;
+- B02 EnableMatching = true;
+- matching profile resolves and is active.
+
+Do not require every fact to be valid.
+
+==================================================
+63. NORMALIZATION BINDING
+==================================================
+
+Persist:
+
+ArtifactNormalizationId
+
+and, where useful:
+
+Normalization execution identity/version.
+
+If current normalization changes:
+- prior match run remains historical;
+- it must not silently remain current;
+- new matching run is required.
+
+==================================================
+64. EXECUTION KEY
+==================================================
+
+Create deterministic execution identity using at least:
+
+ArtifactNormalizationId
+Normalization execution identity
+MatchingProfileCode
+MatchingProfileVersion
+ScoringVersion
+
+Use a stable hash if useful.
+
+==================================================
+65. IDEMPOTENCY
+==================================================
+
+Repeated identical matching requests must reuse existing run.
+
+Protect through:
+
+- application lookup/claim;
+- database uniqueness.
+
+Do not duplicate:
+- match run;
+- entity matches;
+- field matches;
+- duplicate signals.
+
+==================================================
+66. MATCH HISTORY
+==================================================
+
+Never overwrite prior match runs.
+
+Create new run when:
+- normalization changes;
+- profile version changes;
+- scoring version changes.
+
+Historical rankings remain auditable.
+
+==================================================
+67. CURRENT MATCH RUN
+==================================================
+
+Only one current match run should be selected for the current normalization context.
+
+Use atomic current-marker finalization consistent with B07-B09.
+
+==================================================
+68. PARTIAL PROVIDER FAILURE
+==================================================
+
+If one candidate provider fails:
+
+Patient matching succeeds
+Provider matching succeeds
+Case provider fails
+
+overall run:
+
+PARTIAL
+
+Persist successful results.
+
+Persist safe per-entity failure state/reason.
+
+Do not discard all candidate work.
+
+==================================================
+69. FAILURE CODES
+==================================================
+
+Suggested stable codes:
+
+MATCH_NORMALIZATION_REQUIRED
+MATCH_PROFILE_UNAVAILABLE
+MATCH_ENTITY_PROVIDER_UNAVAILABLE
+MATCH_CANDIDATE_SEARCH_FAILED
+MATCH_SCORING_FAILED
+MATCH_DUPLICATE_SEARCH_FAILED
+MATCH_TENANT_CONTEXT_INVALID
+MATCH_NO_USABLE_FACTS
+
+Per-entity failure codes may also be stored.
+
+==================================================
+70. PATIENT SCORING PROFILE
+==================================================
+
+Illustrative only:
+
+PATIENT_FULL_NAME = 0.25
+PATIENT_DATE_OF_BIRTH = 0.30
+MEDICAL_RECORD_NUMBER = 0.30
+PATIENT_ACCOUNT_NUMBER = 0.15
+
+Hard conflict example:
+
+valid DOB mismatch
+-> cap candidate below STRONG
+
+Implement final values explicitly and test them.
+
+==================================================
+71. PROVIDER SCORING PROFILE
+==================================================
+
+Illustrative:
+
+PROVIDER_NAME = 0.50
+PROVIDER_PHONE = 0.25
+PROVIDER_ADDRESS = 0.25
+
+Do not rely on name alone for a strong result unless configured.
+
+==================================================
+72. FACILITY SCORING PROFILE
+==================================================
+
+Use:
+
+FACILITY_NAME
+PROVIDER_PHONE
+PROVIDER_ADDRESS
+
+as applicable.
+
+Keep scoring independent from provider entity type.
+
+==================================================
+73. ATTORNEY SCORING PROFILE
+==================================================
+
+Illustrative:
+
+ATTORNEY_EMAIL = 0.45
+ATTORNEY_NAME = 0.30
+LAW_FIRM_NAME = 0.15
+ATTORNEY_PHONE = 0.10
+
+Exact normalized email can be strong evidence.
+
+==================================================
+74. LAW FIRM SCORING PROFILE
+==================================================
+
+Potential:
+
+LAW_FIRM_NAME
+ATTORNEY_EMAIL-derived association only if actual service projection supports it
+ATTORNEY_PHONE association only if supported
+
+Do not infer organization membership from email domain alone.
+
+==================================================
+75. CASE SCORING PROFILE
+==================================================
+
+Illustrative:
+
+CASE_NUMBER = 0.45
+PATIENT = 0.20
+CLAIM_NUMBER = 0.15
+DATE_OF_ACCIDENT = 0.10
+ATTORNEY/LAW_FIRM = 0.10
+
+Hard identifier conflicts must materially reduce score.
+
+==================================================
+76. SCORE STATUS BOUNDARY
+==================================================
+
+B10 can return:
+
+STRONG
+POSSIBLE
+WEAK
+CONFLICTED
+INSUFFICIENT_DATA
+
+B10 must NOT return:
+
+AUTO_ACCEPT
+AUTO_REJECT
+REVIEW_REQUIRED
+CREATE_CASE
+CREATE_LIEN
+
+Those belong to B11/B12+.
+
+==================================================
+77. NO AI SCORING
+==================================================
+
+Do not call Synq AI to answer:
+
+“Are these the same person?”
+
+or:
+
+“Is this probably the same case?”
+
+Use deterministic algorithms only.
+
+B08 SourceConfidence may be an input factor, not the matching decision engine.
+
+==================================================
+78. API
+==================================================
+
+Recommended routes:
+
+GET /artifacts/{artifactId}/matching
+GET /artifacts/{artifactId}/matching/history
+
+POST /artifacts/{artifactId}/matching
+
+Optional:
+
+GET /matching/profiles
+
+Do not create separate matching engines for email/manual artifacts.
+
+==================================================
+79. MATCH READ RESPONSE
+==================================================
+
+Return:
+
+- MatchRunId
+- ArtifactId
+- ArtifactNormalizationId
+- MatchingProfileCode
+- MatchingProfileVersion
+- ScoringVersion
+- Status
+- IsCurrent
+- RequestedAt
+- CompletedAt
+- EntityMatches[]
+- DuplicateSignals[]
+
+==================================================
+80. ENTITY MATCH RESPONSE
+==================================================
+
+Each candidate may expose:
+
+- EntityType
+- CandidateEntityId
+- CandidateDisplayLabel
+- Score
+- Rank
+- MatchStatus
+- IsTopCandidate
+- MatchedFieldCount
+- ConflictingFieldCount
+- FieldBreakdown[]
+
+Return only minimal candidate identity/display data.
+
+==================================================
+81. FIELD BREAKDOWN RESPONSE
+==================================================
+
+Expose safe explainability:
+
+- SourceNormalizedFactId
+- FactCode
+- CandidateFieldName
+- ComparisonMethod
+- Outcome
+- FieldScore
+- Weight
+- EffectiveWeight
+- WeightedScore
+- ReasonCode
+
+Avoid raw candidate values unless necessary and authorized.
+
+==================================================
+82. DUPLICATE RESPONSE
+==================================================
+
+Expose:
+
+- DuplicateType
+- RelatedArtifactId
+- RelatedBusinessEntityType
+- RelatedBusinessEntityId
+- Score
+- Status
+- ReasonCode
+
+Never reveal cross-tenant relationships.
+
+==================================================
+83. AUTHORIZATION
+==================================================
+
+Reuse existing Intake intelligence permissions if appropriate:
+
+intake.ai.read
+intake.ai.manage
+
+or introduce:
+
+intake.matching.read
+intake.matching.manage
+
+only if separate control is materially useful.
+
+Avoid unnecessary permission proliferation.
+
+==================================================
+84. AUDIT
+==================================================
+
+Suggested events:
+
+MATCHING_REQUESTED
+MATCHING_COMPLETED
+MATCHING_FAILED
+MATCHING_RECOMPUTED
+DUPLICATE_SIGNAL_DETECTED
+
+Safe metadata:
+
+- TenantId
+- ArtifactId
+- ArtifactNormalizationId
+- MatchRunId
+- EntityTypesProcessed
+- CandidateCount
+- DuplicateCount
+- Status
+- CorrelationId
+
+Do not put candidate names/DOB/emails/addresses/identifiers into audit metadata.
+
+==================================================
+85. LOGGING
+==================================================
+
+Safe structured logs:
+
+- CorrelationId
+- TenantId
+- ArtifactId
+- MatchRunId
+- EntityType
+- CandidateCount
+- DuplicateCount
+- Status
+- FailureCode
+
+Do not log:
+- candidate names;
+- DOB;
+- email;
+- phone;
+- address;
+- claim number;
+- case number;
+- account number;
+- normalized fact values.
+
+==================================================
+86. PHI/PII HANDLING
+==================================================
+
+B10 processes sensitive candidate data.
+
+Requirements:
+
+- strict tenant scoping;
+- least-data candidate projections;
+- no candidate PHI in general logs;
+- no unbounded candidate dumps;
+- no cross-tenant global matching indexes;
+- no long-lived cross-tenant cache.
+
+==================================================
+87. MATCH EXPLANATION PRIVACY
+==================================================
+
+Prefer explanations like:
+
+DOB exact
+Name fuzzy 0.91
+Identifier conflict
+
+instead of returning full candidate comparison values.
+
+==================================================
+88. CANDIDATE PROVIDER SECURITY
+==================================================
+
+Defense in depth:
+
+trusted TenantId
++
+tenant filter inside candidate provider/downstream request
+
+Do not trust caller scoping alone.
+
+==================================================
+89. OPTIONAL CACHING
+==================================================
+
+Caching is not required.
+
+If introduced:
+- scope by TenantId + EntityType + QueryFingerprint;
+- use bounded TTL;
+- never share across tenants;
+- avoid storing excessive PHI.
+
+==================================================
+90. DATABASE SCHEMA
+==================================================
+
+Expected Intake-owned entities:
+
+MatchingProfileDefinitions
+ArtifactMatchRuns
+ArtifactEntityMatches
+ArtifactMatchFields
+ArtifactDuplicateSignals
+
+Do not create business master-data tables.
+
+==================================================
+91. DATABASE CONSTRAINTS
+==================================================
+
+At minimum consider:
+
+UNIQUE (MatchingProfileCode, Version)
+UNIQUE ArtifactMatchRun.ExecutionKey
+
+Candidate uniqueness:
+
+ArtifactMatchRunId
++ EntityType
++ CandidateEntityId
+
+Field uniqueness where appropriate:
+
+ArtifactEntityMatchId
++ SourceNormalizedFactId
++ CandidateFieldName
+
+Use only constraints consistent with actual data model.
+
+==================================================
+92. INDEXES
+==================================================
+
+ArtifactMatchRuns:
+- TenantId
+- ArtifactId
+- ArtifactNormalizationId
+- Status
+- ExecutionKey UNIQUE
+- current-result lookup
+
+ArtifactEntityMatches:
+- ArtifactMatchRunId
+- EntityType
+- Score
+- Rank
+- CandidateEntityId
+
+ArtifactDuplicateSignals:
+- ArtifactMatchRunId
+- DuplicateType
+- RelatedArtifactId
+
+ArtifactMatchFields:
+- ArtifactEntityMatchId
+- SourceNormalizedFactId
+- FactCode
+
+==================================================
+93. MIGRATION
+==================================================
+
+Create B10 migration.
+
+Suggested:
+
+AddTenantMatchingAndDuplicatesV1
+
+or repository-standard equivalent.
+
+Do not create:
+- B11 policy tables;
+- review tables;
+- approval tables;
+- Case/Lien creation tables.
+
+==================================================
+94. EXACT ARTIFACT DUPLICATE PERFORMANCE
+==================================================
+
+Duplicate hash lookup should use:
+
+TenantId
++
+ArtifactSha256
+
+If an Intake-owned supporting index does not exist and adding one is appropriate, add the smallest safe index.
+
+Do not introduce global hash lookup across tenants.
+
+==================================================
+95. BUSINESS DUPLICATE SCORING
+==================================================
+
+Business duplicate rules should be deterministic and profile-driven.
+
+Example:
+
+patient candidate strong
++
+provider candidate strong
++
+account number exact
++
+service date exact
+
+may produce POSSIBLE_DUPLICATE.
+
+Do not equate high business duplicate score with automatic deletion/merge.
+
+==================================================
+96. TESTS — MATCHING PROFILE
+==================================================
+
+Test:
+
+- valid profile resolves;
+- unknown profile rejected;
+- inactive profile rejected;
+- scoring/profile version participates in execution identity;
+- B02 matching disabled behavior.
+
+==================================================
+97. TESTS — PATIENT MATCHING
+==================================================
+
+Synthetic cases:
+
+- exact name + DOB;
+- fuzzy name + exact DOB;
+- exact name + conflicting DOB;
+- exact MRN;
+- exact account number;
+- missing DOB;
+- multiple candidates.
+
+Verify deterministic scores/ranks.
+
+==================================================
+98. TESTS — PROVIDER MATCHING
+==================================================
+
+Test:
+
+- exact organization comparison key;
+- fuzzy organization name;
+- exact phone;
+- matching address;
+- conflicting phone;
+- name-only candidate remains appropriately bounded.
+
+==================================================
+99. TESTS — FACILITY MATCHING
+==================================================
+
+Test:
+
+- exact facility name;
+- facility vs provider distinction;
+- phone/address support;
+- multiple facilities with similar names.
+
+==================================================
+100. TESTS — ATTORNEY MATCHING
+==================================================
+
+Test:
+
+- exact email;
+- exact/fuzzy name;
+- law-firm support;
+- phone support;
+- conflicting email.
+
+==================================================
+101. TESTS — LAW FIRM MATCHING
+==================================================
+
+Test:
+
+- exact organization comparison key;
+- fuzzy firm name;
+- no unjustified email-domain inference.
+
+==================================================
+102. TESTS — CASE MATCHING
+==================================================
+
+Test:
+
+- exact case number;
+- claim + carrier combination where supported;
+- patient + DOA supporting evidence;
+- hard case-number conflict;
+- insufficient-data outcome.
+
+==================================================
+103. TESTS — FUZZY NAMES
+==================================================
+
+Use synthetic:
+
+John Smith
+Jon Smith
+John A Smith
+Smith, John
+José Garcia
+Jose Garcia
+
+Verify deterministic fuzzy score and B09 comparison-key reuse.
+
+==================================================
+104. TESTS — IDENTIFIERS
+==================================================
+
+Verify exact comparison for:
+
+CASE_NUMBER
+CLAIM_NUMBER
+MEDICAL_RECORD_NUMBER
+PATIENT_ACCOUNT_NUMBER
+
+Do not apply fuzzy comparison unless explicit rule exists.
+
+==================================================
+105. TESTS — MISSING DATA
+==================================================
+
+Verify missing facts are neutral.
+
+Example:
+
+source DOB absent
+
+must not automatically lower candidate score.
+
+==================================================
+106. TESTS — CONFLICTS
+==================================================
+
+Verify:
+
+DOB mismatch
+case number mismatch
+account number mismatch
+MRN mismatch
+
+apply configured penalties/hard caps.
+
+==================================================
+107. TESTS — SOURCE CONFIDENCE
+==================================================
+
+When:
+
+UseSourceConfidenceInScoring = true
+
+verify low-confidence source fact contributes less.
+
+Also verify behavior when disabled.
+
+==================================================
+108. TESTS — VALIDATION STATUS
+==================================================
+
+Verify:
+
+INVALID_FORMAT
+-> excluded
+
+AMBIGUOUS
+-> reduced/excluded per profile
+
+VALID
+-> normal participation
+
+==================================================
+109. TESTS — SCORE EXPLAINABILITY
+==================================================
+
+For each candidate:
+
+final score must reconcile mathematically to persisted field-level breakdown according to the documented formula.
+
+==================================================
+110. TESTS — RANKING
+==================================================
+
+Verify:
+
+- score descending;
+- matched field count tie-break;
+- conflict count tie-break;
+- CandidateEntityId final deterministic tie-break;
+- exactly one IsTopCandidate where candidates exist.
+
+==================================================
+111. TESTS — CANDIDATE LIMITS
+==================================================
+
+Verify:
+
+- MaxCandidateSearchPool enforced;
+- MaxCandidatesPerEntityType enforced;
+- MinimumCandidateScore enforced.
+
+==================================================
+112. TESTS — EXACT ARTIFACT DUPLICATE
+==================================================
+
+Create two same-tenant artifacts with same SHA-256.
+
+Expected:
+
+EXACT_ARTIFACT_DUPLICATE
+
+Do not return cross-tenant duplicates.
+
+==================================================
+113. TESTS — CROSS-SOURCE DUPLICATE
+==================================================
+
+Same artifact content via EMAIL and MANUAL.
+
+Expected duplicate signal.
+
+Both source records remain intact.
+
+==================================================
+114. TESTS — BUSINESS DUPLICATE
+==================================================
+
+Synthetic:
+
+same patient candidate
+same provider candidate
+same account number
+same service date
+
+Expected profile-defined business duplicate signal.
+
+==================================================
+115. TESTS — DUPLICATE SEPARATION
+==================================================
+
+Same patient but:
+- different account;
+- different service date;
+- different case context
+
+must not automatically become duplicate.
+
+==================================================
+116. TESTS — TENANT ISOLATION
+==================================================
+
+Verify:
+
+- Tenant A cannot search Tenant B candidate data;
+- Tenant A cannot read Tenant B match run;
+- Tenant A cannot see Tenant B duplicate artifacts;
+- Tenant A cannot trigger matching for Tenant B artifact;
+- candidate provider queries are tenant-scoped.
+
+==================================================
+117. TESTS — PARTIAL PROVIDER FAILURE
+==================================================
+
+Simulate:
+
+Patient provider succeeds
+Provider provider succeeds
+Case provider fails
+
+Expected:
+
+MatchRun = PARTIAL
+
+Successful matches remain persisted/returned.
+
+==================================================
+118. TESTS — IDEMPOTENCY / HISTORY
+==================================================
+
+Verify:
+
+- same normalization/profile/scoring version reuses run;
+- duplicate POST does not duplicate candidates;
+- new normalization creates new run;
+- new profile version creates new run;
+- new scoring version creates new run;
+- historical runs remain;
+- current run deterministic.
+
+==================================================
+119. CANDIDATE PROVIDER CONTRACT TESTS
+==================================================
+
+For each candidate provider, test:
+
+- tenant scoping;
+- bounded result count;
+- minimal projection;
+- unavailable service handling;
+- malformed response handling where applicable.
+
+Do not require live external business services for unit tests.
+
+==================================================
+120. HTTP INTEGRATION TESTS
+==================================================
+
+Where infrastructure exists, cover:
+
+GET /artifacts/{artifactId}/matching
+GET /artifacts/{artifactId}/matching/history
+POST /artifacts/{artifactId}/matching
+GET /matching/profiles
+
+Test:
+
+- 401;
+- 403;
+- 404;
+- normalization-not-ready;
+- tenant isolation;
+- idempotency;
+- partial provider failure.
+
+If HTTP test infrastructure is still absent, add the smallest maintainable foundation if practical and document the limitation.
+
+==================================================
+121. MYSQL VALIDATION
+==================================================
+
+Apply the full Intake migration chain through B10 against clean disposable/local MySQL 8.
+
+This should close any remaining B04-B09 database-validation debt if the environment permits.
+
+Verify:
+
+- B02-B09 prior schema;
+- B10 matching tables;
+- FKs;
+- matching profile uniqueness;
+- match-run execution uniqueness;
+- candidate uniqueness;
+- field relationship constraints;
+- duplicate-signal relationships;
+- current-result behavior;
+- full migration history.
+
+Use no cloud/shared DB.
+
+Clean up disposable DB/container afterward.
+
+==================================================
+122. PERFORMANCE
+==================================================
+
+B10 should:
+
+- use indexed candidate searches;
+- cap candidate search pool;
+- cap persisted candidates;
+- avoid N+1 downstream calls;
+- batch service lookups where possible;
+- score narrowed candidates in memory;
+- avoid full tenant-table scans;
+- use minimal candidate projections;
+- persist field results in bounded batches;
+- avoid loading historical runs unless requested.
+
+==================================================
+123. SECURITY VALIDATION
+==================================================
+
+Verify:
+
+- no cross-tenant candidate search;
+- no cross-tenant duplicate lookup;
+- no candidate PHI in logs;
+- no unbounded candidate payload storage;
+- no cross-tenant cache;
+- no direct DB bypass where service boundary exists;
+- no AI scoring;
+- no automatic downstream write;
+- no match-as-truth semantics;
+- no uploaded spec assets tracked;
+- no bin/obj artifacts tracked.
+
+==================================================
+124. EXISTING SERVICE IMPACT
+==================================================
+
+Keep B10 within:
+
+- Intake;
+- B02 matching configuration;
+- B09 normalized facts/evidence;
+- approved read-only service boundaries to business domains;
+- existing auth/audit/events.
+
+Do not modify business logic in:
+
+- SynqLien;
+- SynqFund;
+- CareConnect;
+- Flow;
+- Notifications;
+- Identity internals.
+
+Do not write to product-domain master records.
+
+==================================================
+125. OUT OF SCOPE
+==================================================
+
+DO NOT implement:
+
+- automatic match acceptance;
+- automatic match rejection;
+- confidence/policy decision engine;
+- human review;
+- manual correction;
+- review queues;
+- Case creation;
+- Lien creation;
+- product routing;
+- approved snapshots;
+- downstream adapters;
+- Flow tasks;
+- notifications;
+- legal validity;
+- clinical interpretation;
+- payment decisions;
+- cross-tenant matching;
+- AI-based entity resolution;
+- cloud deployment;
+- AWS;
+- RDS;
+- ECS;
+- Route53.
+
+==================================================
+126. BUILD / VALIDATION
+==================================================
+
+At minimum run and record:
+
+dotnet restore if required
+
+dotnet build apps/services/intake/Intake.Api/Intake.Api.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet test apps/services/intake/Intake.Tests/Intake.Tests.csproj --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet build LegalSynq.sln --no-restore -m:1 /p:BuildInParallel=false
+
+dotnet ef dbcontext info using repository-pinned tooling
+
+dotnet ef migrations list using repository-pinned tooling
+
+Apply full B02-B10 migration chain to disposable MySQL 8
+
+Validate B10 schema/indexes/FKs/uniqueness
+
+git diff --check
+
+git status --short
+
+git diff --stat
+
+git diff --name-status against B09 baseline
+
+Verify:
+- no Intake bin/obj tracked;
+- no secrets;
+- no uploaded spec assets added;
+- no unrelated product-domain changes.
+
+Clearly distinguish pre-existing warnings from new B10 errors/warnings.
+
+==================================================
+127. ACCEPTANCE CRITERIA
+==================================================
+
+LSI-B10 is complete only when all are true:
+
+1. LIEN_INTAKE_MATCHING_V1 exists.
+2. Matching profile is versioned.
+3. Scoring version is explicit.
+4. B02 matching configuration exists.
+5. Current B09 normalization is required.
+6. ArtifactMatchRun persistence exists.
+7. ArtifactEntityMatch persistence exists.
+8. ArtifactMatchField persistence exists.
+9. ArtifactDuplicateSignal persistence exists.
+10. Matching binds to exact ArtifactNormalizationId.
+11. ExecutionKey is deterministic.
+12. Matching is idempotent.
+13. Match history is immutable.
+14. Current match run is deterministic.
+15. Patient candidate provider exists.
+16. Provider candidate provider exists.
+17. Facility candidate provider exists where cleanly supported.
+18. Attorney candidate provider exists.
+19. Law-firm candidate provider exists.
+20. Case candidate provider exists.
+21. Lien candidate matching is either cleanly implemented or explicitly deferred with architecture rationale.
+22. Candidate providers are tenant-scoped.
+23. Candidate providers return bounded results.
+24. Candidate projections are minimal.
+25. B09 NormalizedValue/ComparisonKey are reused.
+26. Exact comparison rules exist.
+27. Fuzzy person-name comparison exists.
+28. Fuzzy organization comparison exists.
+29. Address comparison is conservative.
+30. Identifiers are exact-matched by default.
+31. No casual fuzzy identifier matching exists.
+32. Field weights are profile-driven.
+33. Conflict penalties are profile-driven.
+34. Hard conflicts are supported.
+35. Score formula is deterministic.
+36. Score is normalized to 0–1.
+37. Decimal score persistence is used appropriately.
+38. Score breakdown is persisted.
+39. Missing source data is neutral unless explicitly configured.
+40. INVALID_FORMAT B09 facts are excluded.
+41. AMBIGUOUS B09 facts are handled explicitly.
+42. SourceConfidence weighting is configurable.
+43. SourceConfidence weighting behavior is tested.
+44. Candidates are ranked deterministically.
+45. Stable tie-breaking exists.
+46. Exactly one top candidate exists per EntityType when candidates exist.
+47. Candidate result count is capped.
+48. Candidate search pool is capped.
+49. Minimum candidate threshold exists.
+50. MatchStatus labels are descriptive only.
+51. No automatic acceptance/rejection occurs.
+52. Exact artifact duplicate detection exists.
+53. Duplicate lookup is tenant-scoped.
+54. Cross-source duplicate detection exists.
+55. Business duplicate rules are profile-driven.
+56. Same entity match alone does not imply duplicate.
+57. Duplicate signals remain separate from entity matches.
+58. Duplicate history is immutable.
+59. Duplicate records are never auto-deleted.
+60. Provider failures can produce PARTIAL runs.
+61. Successful entity results survive partial provider failure.
+62. Matching APIs exist.
+63. Authorization is enforced.
+64. Tenant A cannot search Tenant B entities.
+65. Tenant A cannot read Tenant B match runs.
+66. Tenant A cannot see Tenant B duplicates.
+67. Candidate PHI is excluded from operational logs.
+68. Audit events exist without raw candidate values.
+69. Candidate-provider contract tests pass.
+70. Patient matching tests pass.
+71. Provider matching tests pass.
+72. Facility tests pass where applicable.
+73. Attorney/law-firm tests pass.
+74. Case matching tests pass.
+75. Fuzzy-name tests pass.
+76. Identifier tests pass.
+77. Missing-data tests pass.
+78. Conflict tests pass.
+79. validation-status tests pass.
+80. SourceConfidence tests pass.
+81. Score explainability tests pass.
+82. ranking/tie-break tests pass.
+83. candidate-limit tests pass.
+84. exact-duplicate tests pass.
+85. cross-source duplicate tests pass.
+86. business-duplicate tests pass.
+87. duplicate-separation tests pass.
+88. tenant-isolation tests pass.
+89. partial-provider-failure tests pass.
+90. idempotency/history tests pass.
+91. HTTP integration tests cover critical paths where practical.
+92. B10 migration exists.
+93. full B02-B10 migration chain applies successfully to MySQL 8.
+94. B10 FK/index/uniqueness constraints are verified.
+95. prior Intake schema remains intact.
+96. Intake API builds with zero new B10 errors.
+97. Intake tests pass.
+98. full LegalSynq solution builds with zero new B10 errors.
+99. no B11 confidence/policy decisions are introduced.
+100. no human review/Case/Lien creation is introduced.
+101. no cloud/deployment work is performed.
+102. no secrets/specification assets/build artifacts are introduced.
+103. /analysis/LSI-B10-report.md exists with complete evidence.
+
+==================================================
+128. REQUIRED IMPLEMENTATION REPORT
+==================================================
+
+Create:
+
+/analysis/LSI-B10-report.md
+
+Do not modify prior reports.
+
+The report must include:
+
+1. Ticket
+2. Objective
+3. Repository baseline
+4. Baseline HEAD
+5. Baseline origin/xenia
+6. Initial branch relationship
+7. Initial working-tree state
+8. B02-B09 architecture reviewed
+9. B09 normalization integration
+10. Existing domain/service boundaries reviewed
+11. Files added
+12. Files modified
+13. matching profile
+14. B02 matching configuration
+15. scoring version
+16. ArtifactMatchRun model
+17. ArtifactEntityMatch model
+18. ArtifactMatchField model
+19. ArtifactDuplicateSignal model
+20. candidate provider abstraction
+21. candidate provider registry
+22. patient candidate provider
+23. provider candidate provider
+24. facility candidate provider
+25. attorney candidate provider
+26. law-firm candidate provider
+27. case candidate provider
+28. lien matching decision/defer rationale
+29. candidate projections
+30. exact comparison rules
+31. fuzzy comparison rules
+32. B09 comparison-key reuse
+33. field weights
+34. conflict penalties
+35. hard-conflict rules
+36. scoring formula
+37. score precision
+38. SourceConfidence weighting
+39. validation-status handling
+40. candidate ranking
+41. tie-breaking
+42. candidate limits
+43. candidate search pool
+44. minimum candidate threshold
+45. field-level explainability
+46. match reason codes
+47. exact artifact duplicate detection
+48. cross-source duplicate detection
+49. business duplicate rules
+50. duplicate-vs-match separation
+51. match run lifecycle
+52. partial-provider failure
+53. failure codes
+54. matching service
+55. eligibility
+56. normalization binding
+57. execution key
+58. idempotency
+59. history/current-result strategy
+60. APIs
+61. authorization
+62. tenant isolation
+63. PHI/PII protections
+64. audit behavior
+65. logging/privacy behavior
+66. migration name
+67. database schema
+68. indexes/constraints
+69. full B02-B10 MySQL migration validation
+70. prior pending DB-validation closure
+71. candidate-provider contract tests
+72. patient matching tests
+73. provider/facility tests
+74. attorney/law-firm tests
+75. case matching tests
+76. fuzzy-name tests
+77. identifier tests
+78. missing-data tests
+79. conflict tests
+80. validation-status tests
+81. SourceConfidence tests
+82. score explainability tests
+83. ranking/tie-break tests
+84. candidate-limit tests
+85. exact duplicate tests
+86. cross-source duplicate tests
+87. business duplicate tests
+88. duplicate-separation tests
+89. tenant-isolation tests
+90. partial-provider-failure tests
+91. idempotency/history tests
+92. HTTP integration tests
+93. Intake API build result
+94. full solution build result
+95. security assessment
+96. performance considerations
+97. known gaps
+98. out-of-scope confirmation
+99. git diff summary
+100. final repository validation status
+101. recommended next bundle: LSI-B11
+
+Sanitize all local credentials, tokens, PHI/PII test values, service secrets, and disposable database connection details from the report.
+
+==================================================
+129. DEFINITION OF DONE
+==================================================
+
+The implementation is done when Synq Intake can take the current B09 normalized candidate set and reliably produce:
+
+- tenant-scoped candidate records;
+- bounded candidate search;
+- deterministic exact/fuzzy comparisons;
+- profile-driven field weights;
+- conflict penalties and hard-conflict handling;
+- transparent field-level scoring;
+- normalized 0–1 candidate scores;
+- deterministic ranking and top-candidate identification;
+- exact artifact duplicate signals;
+- cross-source duplicate signals;
+- profile-driven possible business duplicate signals;
+- immutable match/duplicate history;
+- tenant-safe explainability;
+
+while clearly distinguishing:
+
+normalized candidate
+from
+matched candidate
+from
+ranked candidate
+from
+duplicate signal
+from
+accepted business decision.
+
+When complete:
+
+- execute all required implementation work now;
+- run all required local validation;
+- create /analysis/LSI-B10-report.md;
+- stop;
+- do not begin LSI-B11;
+- do not deploy;
+- do not push unless explicitly requested.

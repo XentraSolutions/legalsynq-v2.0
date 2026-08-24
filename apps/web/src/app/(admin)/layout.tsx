@@ -1,5 +1,7 @@
 import { requireAdmin } from '@/lib/auth-guards';
 import { AppShell } from '@/components/shell/app-shell';
+import { ToastProvider } from '@/lib/toast-context';
+import { ToastContainer } from '@/components/toast-container';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,8 +14,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   await requireAdmin();
 
   return (
-    <AppShell>
-      {children}
-    </AppShell>
+    <ToastProvider>
+      <AppShell>
+        {children}
+      </AppShell>
+      <ToastContainer />
+    </ToastProvider>
   );
 }

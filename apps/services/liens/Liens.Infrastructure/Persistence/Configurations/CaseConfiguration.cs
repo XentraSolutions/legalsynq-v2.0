@@ -77,6 +77,9 @@ public class CaseConfiguration : IEntityTypeConfiguration<Case>
         builder.Property(c => c.Notes)
             .HasMaxLength(4000);
 
+        builder.Property(c => c.HandlingLawFirmCompanyId);
+        builder.Property(c => c.CaseManagerContactPersonId);
+
         builder.Property(c => c.CreatedByUserId).IsRequired();
         builder.Property(c => c.UpdatedByUserId);
         builder.Property(c => c.CreatedAtUtc).IsRequired();
@@ -94,5 +97,8 @@ public class CaseConfiguration : IEntityTypeConfiguration<Case>
 
         builder.HasIndex(c => new { c.TenantId, c.Status })
             .HasDatabaseName("IX_Cases_TenantId_Status");
+
+        builder.HasOne<Company>().WithMany().HasForeignKey(c => c.HandlingLawFirmCompanyId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<CompanyContactPerson>().WithMany().HasForeignKey(c => c.CaseManagerContactPersonId).OnDelete(DeleteBehavior.Restrict);
     }
 }

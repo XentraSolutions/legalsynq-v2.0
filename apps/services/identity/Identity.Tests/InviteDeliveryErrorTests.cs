@@ -5,6 +5,7 @@ using System.Text.Encodings.Web;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
 using Identity.Infrastructure.Services;
+using LegalSynq.AuditClient;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -92,6 +93,8 @@ public class InviteDeliveryErrorTests
                 foreach (var d in existing) services.Remove(d);
                 services.AddScoped<INotificationsEmailClient>(_ =>
                     new StubNotificationsEmailClient(emailResult));
+                services.RemoveAll<IAuditEventClient>();
+                services.AddSingleton<IAuditEventClient, NoOpAuditEventClient>();
             });
         });
     }
@@ -226,6 +229,11 @@ public class InviteDeliveryErrorTests
 
         public Task<(bool EmailConfigured, bool Success, string? Error)> SendInviteEmailAsync(
             string toEmail, string displayName, string activationLink, Guid tenantId,
+            CancellationToken ct = default)
+            => Task.FromResult(_result);
+
+        public Task<(bool EmailConfigured, bool Success, string? Error)> SendTenantRegistrationApprovedEmailAsync(
+            string toEmail, string displayName, string tenantName, string activationLink, int expiryHours, Guid tenantId,
             CancellationToken ct = default)
             => Task.FromResult(_result);
 

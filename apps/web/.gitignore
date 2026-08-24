@@ -19,3 +19,10 @@ Thumbs.db
 # Playwright
 test-results/
 playwright-report/
+
+# Real e2e test data — live tenant credentials, managed outside git.
+# Keep credentials.example.json tracked as the schema template.
+e2e/data/credentials.json
+
+# Saved login sessions from global-setup.ts (contains real session cookies).
+e2e/.auth/

@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/api-client';
+import { normalizeDocumentTimestamps } from './documents-timestamps';
 import type {
   DocumentResponseDto,
   DocumentListResponseDto,
@@ -9,7 +10,7 @@ import type {
   UploadDocumentParams,
 } from './documents.types';
 
-const BASE = '/documents/documents';
+const BASE = '/lien/documents/documents';
 
 function toQs(params: Record<string, unknown>): string {
   const pairs = Object.entries(params)
@@ -19,18 +20,30 @@ function toQs(params: Record<string, unknown>): string {
 }
 
 export const documentsApi = {
-  list(query: DocumentsQuery = {}) {
-    return apiClient.get<DocumentListResponseDto>(
+  async list(query: DocumentsQuery = {}) {
+    const response = await apiClient.get<DocumentListResponseDto>(
       `${BASE}${toQs(query as Record<string, unknown>)}`,
     );
+    return {
+      ...response,
+      data: normalizeDocumentTimestamps(response.data),
+    };
   },
 
-  getById(id: string) {
-    return apiClient.get<{ data: DocumentResponseDto }>(`${BASE}/${id}`);
+  async getById(id: string) {
+    const response = await apiClient.get<{ data: DocumentResponseDto }>(`${BASE}/${id}`);
+    return {
+      ...response,
+      data: normalizeDocumentTimestamps(response.data),
+    };
   },
 
-  update(id: string, request: UpdateDocumentRequestDto) {
-    return apiClient.patch<{ data: DocumentResponseDto }>(`${BASE}/${id}`, request);
+  async update(id: string, request: UpdateDocumentRequestDto) {
+    const response = await apiClient.patch<{ data: DocumentResponseDto }>(`${BASE}/${id}`, request);
+    return {
+      ...response,
+      data: normalizeDocumentTimestamps(response.data),
+    };
   },
 
   delete(id: string) {
@@ -62,12 +75,21 @@ export const documentsApi = {
       let message = `HTTP ${res.status}`;
       try {
         const errBody = await res.json();
-        message = errBody.message ?? errBody.title ?? message;
+        const stringValue = (value: unknown): string | null =>
+          typeof value === 'string' && value.trim() ? value : null;
+        message =
+          stringValue(errBody?.message) ??
+          stringValue(errBody?.detail) ??
+          stringValue(errBody?.error?.message) ??
+          stringValue(errBody?.error) ??
+          stringValue(errBody?.title) ??
+          message;
       } catch { /* non-JSON error body */ }
-      throw new Error(message);
+      const reference = correlationId !== 'unknown' ? ` Reference: ${correlationId}.` : '';
+      throw new Error(`${message}${reference}`);
     }
 
-    const body: { data: DocumentResponseDto } = await res.json();
+    const body: { data: DocumentResponseDto } = normalizeDocumentTimestamps(await res.json());
     return { data: body.data, correlationId };
   },
 
@@ -79,7 +101,11 @@ export const documentsApi = {
     return apiClient.post<{ data: IssuedTokenResponseDto }>(`${BASE}/${id}/download-url`, {});
   },
 
-  listVersions(id: string) {
-    return apiClient.get<{ data: DocumentVersionResponseDto[] }>(`${BASE}/${id}/versions`);
+  async listVersions(id: string) {
+    const response = await apiClient.get<{ data: DocumentVersionResponseDto[] }>(`${BASE}/${id}/versions`);
+    return {
+      ...response,
+      data: normalizeDocumentTimestamps(response.data),
+    };
   },
 };

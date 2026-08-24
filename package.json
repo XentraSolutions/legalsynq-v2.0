@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "dev:be": "bash scripts/run-backend-dev.sh",
+    "stop:be": "bash scripts/stop-backend-dev.sh",
     "dev:web": "cd apps/web && node node_modules/next/dist/bin/next dev -p 3000",
     "dev:control-center": "cd apps/control-center && node node_modules/next/dist/bin/next dev -p 8004"
   },
@@ -15,6 +17,8 @@
   "dependencies": {
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.2.2",
+    "@tanstack/react-query": "^5.101.4",
+    "@tanstack/react-table": "^9.1.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -31,6 +35,7 @@
     "jsdom": "^29.0.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.7.0",
+    "msw": "^2.15.0",
     "mysql2": "^3.22.1",
     "next": "^16.2.6",
     "postcss": "^8.5.10",
@@ -38,6 +43,7 @@
     "react-dom": "^18.3.1",
     "react-leaflet": "^4.2.1",
     "remixicon": "^4.9.1",
+    "sonner": "^2.0.8",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5",

@@ -130,6 +130,16 @@ public static class TenantAdminEndpoints
                 return Results.BadRequest(new { error = "productCode is required." });
 
             var result = await svc.ToggleEntitlementAsync(id, productCode, body.Enabled, ct);
+            if (!result.IdentitySynced)
+            {
+                return Results.Json(new
+                {
+                    error = "Tenant entitlement update could not be synchronized to Identity. No change was applied.",
+                    tenantId = id,
+                    productCode,
+                    enabled = body.Enabled,
+                }, statusCode: StatusCodes.Status502BadGateway);
+            }
             return Results.Ok(result);
         });
 
@@ -161,7 +171,12 @@ public static class TenantAdminEndpoints
                 success            = result.Success,
                 provisioningStatus = result.ProvisioningStatus,
                 hostname           = result.Hostname,
+                failureStage       = result.FailureStage,
                 error              = result.Error,
+                attemptNumber      = result.AttemptNumber,
+                stillRetrying      = result.StillRetrying,
+                exhausted          = result.Exhausted,
+                nextRetryAtUtc     = result.NextRetryAtUtc,
             });
         });
 
@@ -195,6 +210,10 @@ public static class TenantAdminEndpoints
                 hostname           = result.Hostname,
                 failureStage       = result.FailureStage,
                 error              = result.Error,
+                attemptNumber      = result.AttemptNumber,
+                stillRetrying      = result.StillRetrying,
+                exhausted          = result.Exhausted,
+                nextRetryAtUtc     = result.NextRetryAtUtc,
             });
         });
     }

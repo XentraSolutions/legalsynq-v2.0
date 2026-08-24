@@ -50,7 +50,7 @@ export function ProviderMapShell({
     const name             = searchParams?.get('name');
     const city             = searchParams?.get('city');
     const state            = searchParams?.get('state');
-    const categoryCode     = searchParams?.get('categoryCode');
+    const specialtyCode    = searchParams?.get('specialtyCode');
     const accepting        = searchParams?.get('acceptingReferrals');
     const lat              = searchParams?.get('lat');
     const lng              = searchParams?.get('lng');
@@ -63,7 +63,7 @@ export function ProviderMapShell({
     if (name)         p.name               = name;
     if (city)         p.city               = city;
     if (state)        p.state              = state;
-    if (categoryCode) p.categoryCode       = categoryCode;
+    if (specialtyCode) p.specialtyCode     = specialtyCode;
     if (accepting === 'true') p.acceptingReferrals = true;
 
     if (lat && lng && radius) {
@@ -134,7 +134,8 @@ export function ProviderMapShell({
 
   const hasFilters = !!(
     searchParams?.get('name')     || searchParams?.get('city')         ||
-    searchParams?.get('state')    || searchParams?.get('categoryCode') ||
+    searchParams?.get('state')    || searchParams?.get('specialtyCode') ||
+    searchParams?.get('zip')      || searchParams?.get('lat') ||
     searchParams?.get('acceptingReferrals')
   );
 

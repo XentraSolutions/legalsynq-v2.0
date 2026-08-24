@@ -5,8 +5,8 @@ namespace Tenant.Application.DTOs;
 ///
 /// Field names are intentionally camelCase-compatible with the control-center
 /// mapTenantSummary mapper. Identity-owned fields not tracked in Tenant DB are
-/// returned as sensible defaults (type="LawFirm", userCount=0, orgCount=0) so
-/// the mapper handles them without errors.
+/// returned as sensible defaults where the canonical Tenant service does not
+/// own the source data directly.
 /// </summary>
 public record TenantAdminSummaryResponse(
     Guid    Id,
@@ -19,7 +19,9 @@ public record TenantAdminSummaryResponse(
     int     UserCount,
     int     OrgCount,
     string? Subdomain,
-    DateTime CreatedAtUtc);
+    string  Url,
+    DateTime CreatedAtUtc,
+    string? ProvisioningStatus = null);
 
 /// <summary>
 /// TENANT-B11 — Admin detail returned by GET /api/v1/admin/tenants/{id}.
@@ -43,6 +45,7 @@ public record TenantAdminDetailResponse(
     int     LinkedOrgCount,
     string? Email,
     string? Subdomain,
+    string  Url,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc,
     Guid?   LogoDocumentId,
@@ -53,7 +56,16 @@ public record TenantAdminDetailResponse(
     int     DomainCount,
     int     CapabilityCount,
     TenantAdminSettingsSummary? SettingsSummary,
-    TenantAdminBrandingSummary? BrandingSummary);
+    TenantAdminBrandingSummary? BrandingSummary,
+    string? ProvisioningStatus = null,
+    DateTime? LastProvisioningAttemptUtc = null,
+    string? ProvisioningFailureReason = null,
+    string? ProvisioningFailureStage = null,
+    string? Hostname = null,
+    int? VerificationAttemptCount = null,
+    DateTime? LastVerificationAttemptUtc = null,
+    DateTime? NextVerificationRetryAtUtc = null,
+    bool? IsVerificationRetryExhausted = null);
 
 /// <summary>A single entitlement entry compatible with the control-center entitlement mapper.</summary>
 public record AdminEntitlementItem(

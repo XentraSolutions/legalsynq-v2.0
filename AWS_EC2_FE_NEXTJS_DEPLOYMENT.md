@@ -153,6 +153,8 @@ PORT=3000
 GATEWAY_URL=https://api.yourdomain.com
 PublicTrustBoundary__InternalRequestSecret=<same-value-as-backend>
 CC_COMMON_PORTAL_HOSTNAME=app.yourdomain.com
+SYNQLIEN_COMMON_PORTAL_HOSTNAME=synqlien-demo.localhost
+PORTAL_SYNQLIEN_SUBDOMAIN=synqlien-demo
 NEXT_PUBLIC_CC_STANDALONE=true
 NEXT_PUBLIC_CC_ORIGIN=https://controlcenter.yourdomain.com
 NEXT_PUBLIC_CC_LOGIN_URL=https://controlcenter.yourdomain.com/login
@@ -449,6 +451,7 @@ Create `/etc/nginx/sites-available/legalsynq-frontend`:
 server {
     listen 80;
     server_name app.yourdomain.com;
+    client_max_body_size 60m;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
@@ -465,6 +468,7 @@ server {
 server {
     listen 80;
     server_name controlcenter.yourdomain.com;
+    client_max_body_size 60m;
 
     location / {
         proxy_pass http://127.0.0.1:5004;

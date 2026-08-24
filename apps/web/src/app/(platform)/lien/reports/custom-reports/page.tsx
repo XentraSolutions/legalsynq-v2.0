@@ -1,0 +1,124 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { PageHeader } from "@/components/lien/page-header";
+import ReportDisplay from "../components/report-display";
+import { lienReportsService } from "@/lib/liens/lien-reports.service";
+import { ReportListItem } from "@/lib/liens/lien-reports.mapper";
+
+type ShowCreateModalProps = {
+  isOpen: boolean;
+  mode?: "create" | "edit";
+};
+const SAMPLE_REPORTS = [
+  {
+    id: "1",
+    name: "Case Summary Report",
+    type: "cases",
+    createdAt: "2026-05-20",
+    description: "Cases overview report",
+  },
+  {
+    id: "2",
+    name: "Lien Financial Report",
+    type: "liens",
+    createdAt: "2026-05-22",
+    description: "Lien financial breakdown",
+  },
+];
+
+export default function ReportsPage() {
+  const router = useRouter();
+  const [reports, setReports] = useState<Array<ReportListItem>>([]);
+  const [template, setTemplate] = useState<any | null>(null);
+  const [isSettingTemplate, setIsSettingTemplate] = useState<boolean>(false);
+
+  const [showCreate, setShowCreate] = useState<ShowCreateModalProps>({
+    isOpen: false,
+    mode: "create",
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchReports = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await lienReportsService.getReports();
+      setReports(result?.items as ReportListItem[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load tasks");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReports();
+  }, []);
+  useEffect(() => {}, [template]);
+
+  return (
+    <div className="space-y-4">
+      {/* HEADER */}
+      {!isSettingTemplate ? (
+        <>
+          <PageHeader
+            title="Reports"
+            subtitle={`${reports?.length} saved reports`}
+          />
+
+          {/* LIST */}
+          {loading ? (
+            <div className="overflow-hidden">
+              <div className="text-center py-8">
+                <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <p className="text-sm text-gray-400 mt-2">Loading reports...</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {reports &&
+                reports.map((r: ReportListItem) => (
+                  <div
+                    key={r.id}
+                    onClick={() => router.push(`/lien/reports/custom-reports/${r.id}`)}
+                    className="border border-gray-200 rounded-xl p-3 bg-white hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <div className="text-sm font-medium text-gray-900">
+                      {r.name}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {r.description}
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-2">
+                      Created {r.createdAt}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </>
+      ) : (
+        // />
+        <ReportDisplay
+          report={{ ...template }}
+          onBack={() => {
+            setTemplate(null);
+            setIsSettingTemplate(false);
+          }}
+          onEdit={() => setShowCreate({ isOpen: true, mode: "edit" })}
+          onSaved={() => {
+            setIsSettingTemplate(false);
+            setTemplate(null);
+            setTimeout(() => {
+              fetchReports();
+            }, 500);
+          }}
+        />
+      )}
+    </div>
+  );
+}

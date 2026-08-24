@@ -67,6 +67,10 @@ public class IdentityDbContext : DbContext
     // Multi-tenant account linking
     public DbSet<UserTenant>                    UserTenants                     => Set<UserTenant>();
 
+    // BE-BIO: Device sessions / biometric login refresh tokens
+    public DbSet<DeviceSession>                 DeviceSessions                  => Set<DeviceSession>();
+    public DbSet<RefreshTokenLedgerEntry>       RefreshTokenLedgerEntries       => Set<RefreshTokenLedgerEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(IdentityDbContext).Assembly);

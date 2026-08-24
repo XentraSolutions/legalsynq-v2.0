@@ -4,7 +4,14 @@ namespace CareConnect.Application.Interfaces;
 
 public interface IReferralAttachmentService
 {
-    Task<List<AttachmentMetadataResponse>> GetByReferralAsync(Guid tenantId, Guid referralId, Guid? callerOrgId, bool isAdmin, CancellationToken ct = default, string? callerEmail = null);
+    Task<List<AttachmentMetadataResponse>> GetByReferralAsync(
+        Guid tenantId,
+        Guid referralId,
+        Guid? callerOrgId,
+        bool isAdmin,
+        CancellationToken ct = default,
+        string? callerEmail = null,
+        bool useGlobalLookup = false);
 
     Task<AttachmentMetadataResponse> CreateAsync(Guid tenantId, Guid referralId, Guid? userId, CreateAttachmentMetadataRequest request, CancellationToken ct = default);
 
@@ -25,7 +32,8 @@ public interface IReferralAttachmentService
         long              fileSizeBytes,
         UploadAttachmentRequest request,
         CancellationToken ct = default,
-        bool              bypassAccessCheck = false);
+        bool              bypassAccessCheck = false,
+        bool              useGlobalLookup = false);
 
     /// <summary>
     /// CC2-INT-B03: Enforces scope rules then returns a short-lived signed URL for document access.
@@ -39,5 +47,6 @@ public interface IReferralAttachmentService
         string?           callerOrgType,
         bool              isAdmin,
         bool              isDownload,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool              useGlobalLookup = false);
 }

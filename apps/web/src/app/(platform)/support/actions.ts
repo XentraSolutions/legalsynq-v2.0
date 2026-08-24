@@ -17,6 +17,8 @@ export async function createTicketAction(data: {
   description: string;
   priority:    TicketPriority;
   category:    string;
+  caseManagerName?: string;
+  caseManagerEmail?: string;
 }): Promise<CreateTicketResult> {
   const session = await requireSession();
 
@@ -34,6 +36,8 @@ export async function createTicketAction(data: {
       requesterUserId: session.userId,
       requesterName:   session.email,
       requesterEmail:  session.email,
+      caseManagerName: data.caseManagerName?.trim() || undefined,
+      caseManagerEmail: data.caseManagerEmail?.trim() || undefined,
       source:          'Portal',
     });
     revalidatePath('/support');

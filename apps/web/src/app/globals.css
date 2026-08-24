@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "remixicon/fonts/remixicon.css";
+@import "sonner/dist/styles.css";
 
 @theme {
   --color-primary: #2563eb;
@@ -7,4 +8,61 @@
 
 :root {
   --color-primary: #2563eb; /* fallback; overridden by TenantBrandingProvider */
+}
+
+/* Keep the sonner toast close button inline with the header instead of
+   overlapping the card edge (sonner's default badge-style position). */
+[data-sonner-toaster] [data-close-button] {
+  top: 10px !important;
+  right: 10px !important;
+  left: auto !important;
+  transform: none !important;
+}
+
+/* Sonner puts the action button in the same row as the icon/title by
+   default, which crowds it against the close button above. Wrap it onto
+   its own row under the content instead. */
+[data-sonner-toaster] [data-sonner-toast] {
+  flex-wrap: wrap;
+  align-items: center;
+  padding-right: 28px;
+}
+
+[data-sonner-toaster] [data-sonner-toast] [data-button] {
+  flex-basis: 100%;
+  margin-top: 8px;
+}
+
+/* Retry/action button as a clean text-style action instead of sonner's
+   default solid black button. */
+[data-sonner-toaster] [data-sonner-toast] [data-button].sonner-action-button {
+  background: transparent;
+  color: var(--color-primary);
+  box-shadow: none;
+}
+
+[data-sonner-toaster] [data-sonner-toast] [data-button].sonner-action-button:hover {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+@keyframes registration-success-breathe {
+  0%, 100% {
+    transform: scale(1);
+    background-color: rgba(34, 197, 94, 0.15);
+  }
+  50% {
+    transform: scale(1.06);
+    background-color: rgba(34, 197, 94, 0.24);
+  }
+}
+
+.registration-success-breathe {
+  animation: registration-success-breathe 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .registration-success-breathe {
+    animation: none;
+  }
 }

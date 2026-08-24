@@ -27,19 +27,6 @@ public sealed class AccessTokenService
     private readonly DocumentServiceOptions  _docOpts;
     private readonly ILogger<AccessTokenService> _log;
 
-    private static readonly Dictionary<string, string[]> Permissions = new()
-    {
-        ["DocReader"]     = new[] { "read" },
-        ["DocUploader"]   = new[] { "read", "write" },
-        ["DocManager"]    = new[] { "read", "write", "delete" },
-        ["TenantAdmin"]   = new[] { "read", "write", "delete" },
-        ["PlatformAdmin"] = new[] { "read", "write", "delete", "admin" },
-        // Service tokens are tenant-scoped and may issue view/download access
-        // tokens for downstream document access, but they do not gain admin
-        // privileges such as cross-tenant overrides.
-        ["service"]       = new[] { "read", "write", "delete" },
-    };
-
     public AccessTokenService(
         IAccessTokenStore       store,
         IDocumentRepository     docs,
@@ -165,12 +152,9 @@ public sealed class AccessTokenService
 
     private static void AssertPermission(Principal principal, string action)
     {
-        var hasPermission = principal.Roles.Any(role =>
-            Permissions.TryGetValue(role, out var perms) && perms.Contains(action));
-
-        if (!hasPermission)
+        if (!DocumentPermissionEvaluator.HasPermission(principal, action))
             throw new ForbiddenException(
-                $"Role(s) [{string.Join(", ", principal.Roles)}] do not have '{action}' permission");
+                $"The current user does not have permission to {action} documents.");
     }
 
     private async Task AssertDocumentTenantScopeAsync(RequestContext ctx, Domain.Entities.Document doc)

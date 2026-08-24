@@ -52,6 +52,24 @@ public class SettlementPaymentDetail : AuditableEntity
         };
     }
 
+    public void Update(
+        decimal amount,
+        DateOnly paymentDate,
+        string? checkNumber,
+        string? note,
+        Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        Amount          = amount;
+        PaymentDate     = paymentDate;
+        CheckNumber     = string.IsNullOrWhiteSpace(checkNumber) ? null : checkNumber.Trim();
+        Note            = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
+    }
+
     public void SoftDelete(Guid updatedByUserId)
     {
         IsDeleted       = true;

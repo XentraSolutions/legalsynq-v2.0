@@ -4,9 +4,11 @@ using BuildingBlocks.Context;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
+using Liens.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 
 namespace Liens.Api.Endpoints;
 
@@ -55,6 +57,9 @@ public static class SettlementEndpoints
         v2.MapPost("/payments", CreatePayment)
             .RequirePermission(LiensPermissions.LienUpdate);
 
+        v2.MapPut("/payments/{id:guid}", UpdatePayment)
+            .RequirePermission(LiensPermissions.LienUpdate);
+
         v2.MapDelete("/payments/{id:guid}", DeletePayment)
             .RequirePermission(LiensPermissions.LienUpdate);
 
@@ -64,8 +69,8 @@ public static class SettlementEndpoints
             .RequireAuthorization(Policies.AuthenticatedUser)
             .RequireProductAccess(LiensPermissions.ProductCode);
 
-        // /service/liens/update/reduction  (POST, body carries CaseId+LienId)
-        legacy.MapPost("/liens/update/reduction", CreateReduction)
+        // /service/liens/update/reduction  (POST, supports legacy bulk and current single-item bodies)
+        legacy.MapPost("/liens/update/reduction", CreateReductionLegacy)
             .RequirePermission(LiensPermissions.LienUpdate);
 
         // /service/liens/update/settlement  (POST)
@@ -86,6 +91,24 @@ public static class SettlementEndpoints
     }
 
     // ── Handlers ──────────────────────────────────────────────────────────────
+
+    private sealed class LegacyReductionRequest
+    {
+        public Guid? CaseId { get; init; }
+        public Guid? LienId { get; init; }
+        public DateOnly? ReductionDate { get; init; }
+        public decimal? Amount { get; init; }
+        public string? Note { get; init; }
+        public List<LegacyReductionItem> Data { get; init; } = [];
+    }
+
+    private sealed class LegacyReductionItem
+    {
+        public string? LiensId { get; init; }
+        public decimal? ReductionAmount { get; init; }
+        public string? ReductionDate { get; init; }
+        public string? Note { get; init; }
+    }
 
     private static async Task<IResult> GetReductionsByCase(
         Guid caseId,
@@ -119,6 +142,85 @@ public static class SettlementEndpoints
         var userId   = CaseEndpoints.RequireUserId(ctx);
         var result = await svc.CreateReductionAsync(tenantId, userId, request, ct);
         return Results.Created($"/api/liens/settlement/reductions/lien/{request.LienId}", result);
+    }
+
+    private static async Task<IResult> CreateReductionLegacy(
+        LegacyReductionRequest request,
+        ISettlementService svc,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = CaseEndpoints.RequireTenantId(ctx);
+        var userId = CaseEndpoints.RequireUserId(ctx);
+
+        if (request.Data.Count == 0)
+        {
+            if (!request.CaseId.HasValue || !request.LienId.HasValue || !request.Amount.HasValue)
+            {
+                return Results.BadRequest(new
+                {
+                    isSuccess = false,
+                    message = "caseId, lienId, and amount are required.",
+                });
+            }
+
+            var single = new CreateLienReductionRequest
+            {
+                CaseId = request.CaseId.Value,
+                LienId = request.LienId.Value,
+                ReductionDate = request.ReductionDate ?? DateOnly.FromDateTime(DateTime.UtcNow),
+                Amount = request.Amount.Value,
+                Note = request.Note,
+            };
+
+            var result = await svc.CreateReductionAsync(tenantId, userId, single, ct);
+            return Results.Created($"/api/liens/settlement/reductions/lien/{single.LienId}", result);
+        }
+
+        if (!request.CaseId.HasValue)
+        {
+            return Results.BadRequest(new
+            {
+                isSuccess = false,
+                message = "caseId is required.",
+            });
+        }
+
+        var created = new List<LienReductionResponse>();
+        foreach (var item in request.Data)
+        {
+            if (!Guid.TryParse(item.LiensId, out var lienId) || !item.ReductionAmount.HasValue)
+            {
+                return Results.BadRequest(new
+                {
+                    isSuccess = false,
+                    message = "Each data item requires liensId and reductionAmount.",
+                });
+            }
+
+            var reductionDate =
+                DateOnly.TryParse(item.ReductionDate, out var parsedDate)
+                    ? parsedDate
+                    : DateOnly.FromDateTime(DateTime.UtcNow);
+
+            var create = new CreateLienReductionRequest
+            {
+                CaseId = request.CaseId.Value,
+                LienId = lienId,
+                ReductionDate = reductionDate,
+                Amount = item.ReductionAmount.Value,
+                Note = item.Note ?? request.Note,
+            };
+
+            created.Add(await svc.CreateReductionAsync(tenantId, userId, create, ct));
+        }
+
+        return Results.Ok(new
+        {
+            isSuccess = true,
+            message = "Successfully updated reduction.",
+            data = created,
+        });
     }
 
     private static async Task<IResult> UpdateReduction(
@@ -213,6 +315,35 @@ public static class SettlementEndpoints
         var userId   = CaseEndpoints.RequireUserId(ctx);
         var result = await svc.CreatePaymentAsync(tenantId, userId, request, ct);
         return Results.Created($"/api/liens/settlement/payments/lien/{request.LienId}", result);
+    }
+
+    private static async Task<IResult> UpdatePayment(
+        Guid id,
+        UpdateSettlementPaymentDetailRequest request,
+        ISettlementService svc,
+        LiensDbContext db,
+        ICurrentRequestContext ctx,
+        CancellationToken ct = default)
+    {
+        var tenantId = CaseEndpoints.RequireTenantId(ctx);
+        var userId   = CaseEndpoints.RequireUserId(ctx);
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+
+        try
+        {
+            var result = await svc.UpdatePaymentAsync(tenantId, id, userId, request, ct);
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+            return Results.Ok(result);
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     private static async Task<IResult> DeletePayment(

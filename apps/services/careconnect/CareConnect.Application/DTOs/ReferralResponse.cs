@@ -5,7 +5,16 @@ public class ReferralResponse
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid ProviderId { get; set; }
+    public Guid? FacilityId { get; set; }
     public string ProviderName { get; set; } = string.Empty;
+
+    // Referral location — the specific facility this referral was routed to, falling back
+    // to the provider's own address for legacy/single-location referrals. See ReferralLocationResolver.
+    public string? FacilityName { get; set; }
+    public string LocationAddressLine1 { get; set; } = string.Empty;
+    public string LocationCity { get; set; } = string.Empty;
+    public string LocationState { get; set; } = string.Empty;
+    public string LocationPostalCode { get; set; } = string.Empty;
     public string ClientFirstName { get; set; } = string.Empty;
     public string ClientLastName { get; set; } = string.Empty;
     public string? ClientDob { get; set; }
@@ -47,4 +56,7 @@ public class ReferralResponse
     // Type of Treatment — set by Referrer at creation.
     public Guid?   TreatmentTypeId   { get; set; }
     public string? TreatmentTypeName { get; set; }
+
+    // Referral Attribution — who or what originated this referral. Null = "Not specified".
+    public ReferralAttributionSummary? ReferralAttribution { get; set; }
 }

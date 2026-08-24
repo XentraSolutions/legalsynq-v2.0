@@ -35,6 +35,10 @@ echo "[next] Using: $NEXT_BIN"
 #   PROBE_TIMEOUT_DOTNET — seconds to wait for .NET services    (default 90)
 PROBE_TIMEOUT_NODEJS="${PROBE_TIMEOUT_NODEJS:-60}"
 PROBE_TIMEOUT_DOTNET="${PROBE_TIMEOUT_DOTNET:-90}"
+SYNQLIEN_COMMON_PORTAL_HOSTNAME="${SYNQLIEN_COMMON_PORTAL_HOSTNAME:-synqlien-demo.localhost}"
+PORTAL_SYNQLIEN_SUBDOMAIN="${PORTAL_SYNQLIEN_SUBDOMAIN:-synqlien-demo}"
+TENANT_COMMON_PORTAL_HOSTNAME="${TENANT_COMMON_PORTAL_HOSTNAME:-tenant-demo.localhost}"
+Liens__Selling__BuyerPortalBaseUrl="${Liens__Selling__BuyerPortalBaseUrl:-http://${SYNQLIEN_COMMON_PORTAL_HOSTNAME}:5000/selling/public}"
 
 # ── Health-check probe helper ──────────────────────────────────────────────────
 # Polls <scheme>://<host>:<port><path> in the background for up to $deadline
@@ -67,6 +71,9 @@ NEXT_INTERNAL_PORT=3050
 echo "[web] Starting Next.js on :$NEXT_INTERNAL_PORT (internal)"
 (cd "$ROOT/apps/web" && NEXT_PUBLIC_ENV=production NEXT_PUBLIC_TENANT_CODE= GATEWAY_URL=http://127.0.0.1:5010 \
   CC_COMMON_PORTAL_HOSTNAME="${CC_COMMON_PORTAL_HOSTNAME:-careconnect-demo.legalsynq.com}" \
+  SYNQLIEN_COMMON_PORTAL_HOSTNAME="$SYNQLIEN_COMMON_PORTAL_HOSTNAME" \
+  PORTAL_SYNQLIEN_SUBDOMAIN="$PORTAL_SYNQLIEN_SUBDOMAIN" \
+  TENANT_COMMON_PORTAL_HOSTNAME="$TENANT_COMMON_PORTAL_HOSTNAME" \
   node "$NEXT_BIN" start -p "$NEXT_INTERNAL_PORT") &
 PID_WEB=$!
 
@@ -114,6 +121,7 @@ if command -v dotnet &>/dev/null; then
       "$ROOT/apps/services/notifications/Notifications.Api/Notifications.Api.csproj"
       "$ROOT/apps/services/comms/Comms.Api/Comms.Api.csproj"
       "$ROOT/apps/services/support/Support.Api/Support.Api.csproj"
+      "$ROOT/apps/services/xenia/Xenia.Api/Xenia.Api.csproj"
     )
 
     # Derives the expected Release output DLL from a .csproj path.
@@ -176,7 +184,7 @@ if command -v dotnet &>/dev/null; then
     SVC_NAMES=()
     PID_IDENTITY="" PID_FUND="" PID_CARECONNECT="" PID_DOCUMENTS=""
     PID_AUDIT="" PID_NOTIFICATIONS="" PID_LIENS="" PID_GATEWAY="" PID_FLOW="" PID_MONITORING="" PID_TASK=""
-    PID_TENANT="" PID_SUPPORT="" PID_COMMERCE="" PID_BILLING="" PID_REPORTS="" PID_COMMS=""
+    PID_TENANT="" PID_SUPPORT="" PID_COMMERCE="" PID_BILLING="" PID_REPORTS="" PID_COMMS="" PID_XENIA=""
 
     # ── Resolve portal URL / domain once — used by Identity, CareConnect, Support ──
     # PortalBaseUrl → PORTAL_BASE_URL secret/env if set; otherwise derived from
@@ -260,7 +268,10 @@ if command -v dotnet &>/dev/null; then
             "ReferralToken__Secret=${FLOW_SERVICE_TOKEN_SECRET:-}"
           PID_CARECONNECT=$! ;;
         Documents.Api) launch_svc "$_svc_label" "$csproj"; PID_DOCUMENTS=$! ;;
-        Liens.Api)     launch_svc "$_svc_label" "$csproj"; PID_LIENS=$! ;;
+        Liens.Api)
+          launch_svc "$_svc_label" "$csproj" env \
+            "Liens__Selling__BuyerPortalBaseUrl=${Liens__Selling__BuyerPortalBaseUrl}"
+          PID_LIENS=$! ;;
         Commerce.Api)
           launch_svc "$_svc_label" "$csproj" env \
             ASPNETCORE_URLS=http://0.0.0.0:5030 \
@@ -275,6 +286,9 @@ if command -v dotnet &>/dev/null; then
           launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5029
           PID_REPORTS=$! ;;
         Comms.Api)     launch_svc "$_svc_label" "$csproj"; PID_COMMS=$! ;;
+        Xenia.Api)
+          launch_svc "$_svc_label" "$csproj" env ASPNETCORE_URLS=http://0.0.0.0:5035
+          PID_XENIA=$! ;;
         *)             launch_svc "$_svc_label" "$csproj" ;;
       esac
       # $! is the PID of the dotnet process just backgrounded by launch_svc
@@ -320,6 +334,9 @@ if command -v dotnet &>/dev/null; then
     _probe_svc "Liens"         5009 /health            "${PID_LIENS:-}"         "$PROBE_TIMEOUT_DOTNET"
     _probe_svc "Comms"         5011 /health            "${PID_COMMS:-}"         "$PROBE_TIMEOUT_DOTNET"
     _probe_svc "Support"       5017 /support/api/health "${PID_SUPPORT:-}"      "$PROBE_TIMEOUT_DOTNET"
+    if [ -n "${PID_XENIA:-}" ]; then
+      _probe_svc "Xenia"       5035 /health            "$PID_XENIA"             "$PROBE_TIMEOUT_DOTNET"
+    fi
 
     wait
   ) &

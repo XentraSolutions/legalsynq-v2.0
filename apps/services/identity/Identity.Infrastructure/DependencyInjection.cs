@@ -46,6 +46,10 @@ public static class DependencyInjection
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IAuthService, AuthService>();
 
+        // BE-BIO: biometric login device-session/refresh-token subsystem.
+        services.Configure<RefreshTokenPolicyOptions>(configuration.GetSection("RefreshTokenPolicy"));
+        services.AddScoped<IDeviceSessionService, DeviceSessionService>();
+
         services.AddMemoryCache();
         services.AddHttpContextAccessor();
         services.AddScoped<IPermissionService, PermissionService>();

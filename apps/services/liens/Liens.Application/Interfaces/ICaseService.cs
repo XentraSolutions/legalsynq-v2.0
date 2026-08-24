@@ -20,11 +20,15 @@ public interface ICaseService
         Guid? lawFirmOrgId = null,
         string? accidentTypeId = null,
         string? caseManagerId = null,
+        string? lawFirmIds = null,
         CancellationToken ct = default);
 
     Task<CaseResponse?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
 
     Task<CaseResponse?> GetByCaseNumberAsync(Guid tenantId, string caseNumber, CancellationToken ct = default);
+
+    Task<CaseDuplicateCheckResponse> CheckDuplicatesAsync(
+        Guid tenantId, CaseDuplicateCheckRequest request, CancellationToken ct = default);
 
     Task<CaseResponse> CreateAsync(
         Guid tenantId, Guid orgId, Guid actingUserId,

@@ -16,7 +16,9 @@ public interface ISellingPortfolioRepository
         int pageSize,
         CancellationToken ct = default);
     Task<List<SellingPortfolioStatusHistory>> GetStatusHistoryAsync(Guid tenantId, Guid portfolioId, CancellationToken ct = default);
+    Task<List<SellingPortfolioActivity>> GetActivityAsync(Guid tenantId, Guid portfolioId, CancellationToken ct = default);
     Task<bool> IsLienAssignedToPortfolioAsync(Guid tenantId, Guid lienId, CancellationToken ct = default);
     Task AddAsync(SellingPortfolio entity, CancellationToken ct = default);
     Task UpdateAsync(SellingPortfolio entity, CancellationToken ct = default);
+    Task AddActivityAsync(SellingPortfolioActivity activity, CancellationToken ct = default);
 }

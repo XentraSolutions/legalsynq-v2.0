@@ -1,0 +1,1678 @@
+You are implementing the following Xenia validation and remediation ticket.
+
+==================================================
+TICKET
+==================================================
+
+Ticket ID: XENIA-P1-T1-V1
+
+Parent Ticket: XENIA-P1 — Xenia Platform Foundation & Email Automation
+
+Related Ticket: XENIA-P1-T1 — Core Service Foundation
+
+Task Type: 🟦 XenIA
+
+Title: Core Foundation Validation and Remediation
+
+==================================================
+MANDATORY EXECUTION RULES
+==================================================
+
+1. Create the implementation report before making any code changes.
+
+Required report path:
+
+/analysis/XENIA-P1-T1-V1-report.md
+
+2. The report must be created as the first implementation action.
+
+3. Update the report incrementally throughout analysis, validation, remediation, and retesting.
+
+4. Do not write the report only after implementation is complete.
+
+5. Do not fabricate:
+   - Build success
+   - Test success
+   - Migration success
+   - Runtime success
+   - Frontend success
+   - Security validation
+   - Tenant-isolation validation
+
+6. Clearly classify each activity as:
+   - Completed
+   - Partially completed
+   - Failed
+   - Blocked
+   - Skipped
+   - Not applicable
+   - Not independently verified
+
+7. Record the exact commands executed, working directory, exit code, relevant output, failures, remediation, and retest result.
+
+8. Do not perform GitHub operations.
+
+Do not:
+- Run git add
+- Commit
+- Push
+- Create or update pull requests
+- Merge branches
+- Claim GitHub Actions success
+
+9. Do not perform AWS deployment or production infrastructure work.
+
+Do not:
+- Deploy to ECS or Fargate
+- Modify RDS
+- Modify Secrets Manager
+- Modify IAM
+- Modify Cloud Map
+- Modify Route53
+- Modify ALB configuration
+- Claim production deployment or production runtime success
+
+10. Do not begin XENIA-P1-T2.
+
+11. Do not implement email functionality.
+
+12. Keep remediation limited to defects, validation gaps, and architecture concerns within the Xenia core foundation.
+
+13. Avoid broad rewrites.
+
+14. Preserve locked Xenia service boundaries.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Validate and remediate the implementation delivered under XENIA-P1-T1 using a compatible development environment.
+
+The current Xenia foundation was reported as implemented, but the previous environment could not compile or execute the .NET 10 projects.
+
+This ticket must convert Xenia from:
+
+Implemented but largely unverified
+
+to:
+
+Compiled, tested, migration-validated, locally operational, tenant-isolation validated, frontend-validated, and architecturally approved for the next module.
+
+The ticket must determine whether XENIA-P1-T1 can be formally closed.
+
+==================================================
+SOURCE REPORT
+==================================================
+
+Review the previous implementation report before making changes:
+
+/analysis/XENIA-P1-T1-report.md
+
+Treat the report as an implementation claim requiring validation.
+
+Do not assume reported implementation details are correct until confirmed against the repository and actual command execution.
+
+Specifically verify:
+
+- Files reported as created actually exist
+- Files reported as modified contain the described changes
+- Projects are included correctly in the solution
+- Dependencies resolve
+- Tests compile
+- Migrations match the EF model
+- Endpoints are registered
+- Frontend routes compile
+- Tenant boundaries are enforceable
+- Platform-neutral architecture is preserved
+
+==================================================
+INITIAL REPOSITORY AND ENVIRONMENT ANALYSIS
+==================================================
+
+Before modifying source code:
+
+1. Inspect the repository root.
+
+2. Confirm:
+   - Repository structure
+   - Workspace structure
+   - Solution files
+   - Xenia project locations
+   - Backend framework
+   - Frontend framework
+   - Database provider
+   - ORM and migration tooling
+   - Authentication implementation
+   - Authorization implementation
+   - Tenant-context implementation
+   - Shared-library dependencies
+   - Test frameworks
+   - Existing local-development scripts
+   - Existing environment configuration
+   - Existing service startup conventions
+
+3. Inspect all files listed in the XENIA-P1-T1 report.
+
+4. Identify discrepancies between:
+   - The report
+   - Actual repository contents
+   - Locked requirements
+
+5. Inspect installed toolchain versions.
+
+Run and record, as applicable:
+
+dotnet --info
+dotnet --list-sdks
+node --version
+pnpm --version
+mysql --version
+docker --version
+
+6. Determine whether a compatible .NET SDK for net10.0 is available.
+
+7. Determine whether a compatible EF CLI is available.
+
+8. Determine whether MySQL is available locally, through Docker, through an existing development service, or through a safe test connection.
+
+9. Record all findings in:
+
+/analysis/XENIA-P1-T1-V1-report.md
+
+10. Do not modify code before the report exists and the initial analysis section is populated.
+
+==================================================
+LOCKED ARCHITECTURE
+==================================================
+
+The following architectural decisions are locked unless validation reveals a critical defect:
+
+1. Xenia is an independent, separately deployable service.
+
+2. Xenia is a generic automation platform.
+
+3. Email is a future Xenia module, not the service itself.
+
+4. Xenia is tenant-aware.
+
+5. LegalSynq is the first consuming platform, not the owner of Xenia core.
+
+6. Xenia core must not contain LegalSynq product-domain logic.
+
+7. Platform capabilities must be consumed through replaceable adapters.
+
+8. Xenia must not directly access another service's database.
+
+9. Xenia owns:
+   - Module registry
+   - Tenant module configuration
+   - Xenia configuration
+   - Adapter contracts
+   - Adapter status
+   - Internal event contracts
+   - Health/readiness/info APIs
+   - Xenia operational persistence
+
+10. External services own:
+   - Tenant master records
+   - Authentication
+   - User and permission lifecycle
+   - Documents
+   - Enterprise audit storage
+   - Notifications
+   - Workflow execution
+   - AI inference
+   - External object storage
+
+11. LegalSynq-specific host integration must remain outside Xenia core.
+
+12. GitHub and AWS tasks remain separate.
+
+==================================================
+SCOPE
+==================================================
+
+This ticket includes:
+
+- Environment validation
+- Toolchain validation
+- Backend restore and compilation
+- Test compilation and execution
+- EF Core model validation
+- Migration generation or validation
+- Local database migration testing
+- Xenia local startup
+- API smoke and security testing
+- Tenant-isolation testing
+- Module registry testing
+- Adapter registry testing
+- Configuration masking testing
+- Frontend type-checking, linting, testing, and production build
+- Control Center integration validation
+- Shared dependency portability assessment
+- Targeted remediation
+- Documentation corrections
+- Previous report correction
+- Final closure recommendation
+
+==================================================
+FILES AND AREAS TO INSPECT
+==================================================
+
+Inspect at minimum:
+
+/analysis/XENIA-P1-T1-report.md
+
+LegalSynq.sln
+
+apps/services/xenia/
+
+apps/services/xenia/Xenia.Domain/
+apps/services/xenia/Xenia.Application/
+apps/services/xenia/Xenia.Infrastructure/
+apps/services/xenia/Xenia.Api/
+apps/services/xenia/Xenia.Tests/
+
+apps/control-center/
+
+shared/building-blocks/
+shared/contracts/
+
+scripts/run-dev.sh
+scripts/run-prod.sh
+scripts/build-prod.sh
+scripts/_startup-helpers.sh
+
+replit.md
+
+Relevant root files:
+
+global.json
+Directory.Build.props
+Directory.Packages.props
+package.json
+pnpm-workspace.yaml
+pnpm-lock.yaml
+docker-compose files
+environment templates
+README files
+architecture documentation
+
+Inspect any referenced project, package, namespace, middleware, or shared contract that affects Xenia compilation or portability.
+
+==================================================
+IMPLEMENTATION TASKS
+==================================================
+
+--------------------------------------------------
+1. VERIFY REPORTED FILES AND SOLUTION STRUCTURE
+--------------------------------------------------
+
+Verify that:
+
+- All reported Xenia projects exist
+- Project files are valid
+- Project references are correct
+- Package references are compatible
+- Xenia projects are included in the solution
+- Build configurations exist
+- Namespace and assembly names are consistent
+- Test projects reference the intended layers
+- No prohibited circular dependencies exist
+
+Expected dependency direction:
+
+Xenia.Domain
+    ↑
+Xenia.Application
+    ↑
+Xenia.Infrastructure
+    ↑
+Xenia.Api
+
+Xenia.Tests may reference the layers needed for testing.
+
+Do not allow:
+- Domain depending on Infrastructure
+- Application depending on API
+- Xenia core depending on LegalSynq product services
+- Direct database references to external services
+
+Remediate project or solution defects.
+
+--------------------------------------------------
+2. TOOLCHAIN AND PACKAGE VALIDATION
+--------------------------------------------------
+
+Use the repository-required SDK and package versions.
+
+If global.json exists:
+- Follow it unless it is demonstrably incorrect.
+- Document any necessary correction.
+
+Validate:
+
+- .NET SDK compatibility
+- EF Core package compatibility
+- Pomelo MySQL provider compatibility
+- Test package compatibility
+- ASP.NET package compatibility
+- Node and pnpm compatibility
+- Next.js and TypeScript compatibility
+
+Resolve version conflicts conservatively.
+
+Do not broadly upgrade unrelated projects.
+
+--------------------------------------------------
+3. BACKEND RESTORE AND BUILD
+--------------------------------------------------
+
+Run the actual repository-equivalent commands for:
+
+- Restore
+- Build Xenia projects individually
+- Build Xenia solution scope
+- Build the complete solution if practical and relevant
+
+At minimum validate:
+
+Xenia.Domain
+Xenia.Application
+Xenia.Infrastructure
+Xenia.Api
+Xenia.Tests
+
+Resolve all compilation errors caused by Xenia.
+
+Review warnings and remediate warnings with:
+- Security impact
+- Runtime impact
+- Nullability impact
+- Persistence impact
+- Broken async behavior
+- Obsolete APIs affecting correctness
+
+Do not spend this ticket eliminating unrelated repository warnings.
+
+--------------------------------------------------
+4. DEPENDENCY INJECTION VALIDATION
+--------------------------------------------------
+
+Validate all registrations.
+
+Confirm that:
+
+- Xenia API starts building the service provider
+- All required services resolve
+- Scoped services are not injected into singleton services incorrectly
+- DbContext lifetime is correct
+- Tenant context is scoped
+- Adapter implementations resolve
+- Module registry resolves
+- Configuration service resolves
+- Event publisher resolves
+- Health checks resolve
+- Hosted migration service resolves
+- Authorization handlers and policies resolve
+
+Add a DI graph or startup integration test if practical.
+
+Remediate:
+- Missing registrations
+- Duplicate incompatible registrations
+- Lifetime mismatches
+- Incorrect keyed-service usage
+- Startup ordering defects
+
+--------------------------------------------------
+5. TENANT CONTEXT VALIDATION
+--------------------------------------------------
+
+Inspect the complete tenant-context flow.
+
+Validate:
+
+- Tenant context originates from authenticated, verified identity context
+- Tenant ID is not accepted blindly from request body, route, or query string
+- Tenant context is request-scoped
+- Tenant context is available to services and repositories
+- Platform-level endpoints are not incorrectly tenant-scoped
+- Tenant-scoped endpoints reject missing tenant context
+- Invalid tenant identifiers are rejected
+- Cross-tenant access is prevented
+- Platform administrator behavior is explicit
+- Background-job and event-processing extensibility is documented
+
+Add or update executed tests proving:
+
+1. Valid tenant context resolves correctly.
+2. Missing tenant context is rejected.
+3. Invalid tenant context is rejected.
+4. Tenant A cannot read Tenant B settings.
+5. Tenant A cannot modify Tenant B module state.
+6. Request payload tenant ID cannot override verified tenant context.
+7. Route tenant ID cannot override verified tenant context.
+8. Unauthenticated access is rejected where required.
+9. Platform-admin access does not silently bypass tenant isolation.
+
+Do not rely only on unit tests of a claim parser.
+
+Include database-backed or service-level tenant-isolation tests.
+
+--------------------------------------------------
+6. AUTHENTICATION AND AUTHORIZATION VALIDATION
+--------------------------------------------------
+
+Verify authentication configuration and policy registration.
+
+Validate the permissions:
+
+xenia.read
+xenia.admin
+xenia.modules.read
+xenia.modules.manage
+xenia.adapters.read
+xenia.configuration.read
+xenia.configuration.manage
+
+Confirm:
+
+- Anonymous endpoints are limited to intended health/info endpoints
+- Secured endpoints return 401 when unauthenticated
+- Secured endpoints return 403 when permission is missing
+- Module mutation requires management permission
+- Adapter data requires adapter-read permission
+- Configuration data requires configuration-read permission
+- Secret values remain inaccessible
+- Development auth bypass is disabled by default
+- Development bypass requires Development environment and explicit configuration
+- Production cannot enable bypass accidentally
+
+Remediate overly broad `xenia.read` or `xenia.admin` use where more specific permissions are required.
+
+--------------------------------------------------
+7. MODULE REGISTRY VALIDATION
+--------------------------------------------------
+
+Validate the global and tenant module registries.
+
+Required behavior:
+
+- Register module
+- Retrieve module
+- List modules
+- Prevent duplicate module keys
+- Enable module globally
+- Disable module globally
+- Enable module per tenant
+- Disable module per tenant
+- Return module version
+- Return module health
+- Return module status
+- Return configuration namespace
+- Handle unknown module keys
+- Handle concurrent registration attempts
+- Seed neutral system module idempotently
+
+Add or update tests for:
+
+- Duplicate registration
+- Concurrency
+- Global versus tenant state
+- Invalid key
+- Tenant isolation
+- Idempotent seed behavior
+- Persistence round trip
+
+Do not add the Email module.
+
+--------------------------------------------------
+8. ADAPTER CONTRACT AND REGISTRY VALIDATION
+--------------------------------------------------
+
+Validate all eight adapter contracts:
+
+- Tenant
+- Identity
+- Documents
+- Audit
+- Notification
+- Storage
+- Workflow
+- AI
+
+For each adapter confirm:
+
+- Interface is platform-neutral
+- Interface is small and cohesive
+- No LegalSynq domain entity appears in the contract
+- Failure is explicit
+- Availability is explicit
+- Cancellation tokens are supported where appropriate
+- Result objects are typed
+- Secrets cannot be returned through status APIs
+
+Validate registry behavior:
+
+- Exactly the intended adapters register
+- Duplicate adapter seed is idempotent
+- Unconfigured adapters report unavailable or unconfigured
+- Unconfigured adapters do not report healthy
+- Last health-check timestamp is handled correctly
+- Safe diagnostic text is returned
+- No credentials appear in diagnostics
+
+Audit adapter behavior:
+
+- Audit events are not silently discarded
+- Fallback state is visibly degraded
+- Fallback logging is structured
+- Fallback does not claim durable audit persistence
+
+Implement configurable dependency criticality.
+
+At minimum support:
+
+- Mandatory
+- Optional
+- Disabled
+
+Recommended defaults:
+
+Database: Mandatory
+Identity adapter: Mandatory in production
+Tenant adapter: Mandatory in production
+Audit adapter: Configurable
+Documents adapter: Optional until required by an enabled module
+Notification adapter: Optional
+Storage adapter: Optional until required
+Workflow adapter: Optional
+AI adapter: Optional
+
+--------------------------------------------------
+9. CONFIGURATION VALIDATION
+--------------------------------------------------
+
+Validate configuration precedence:
+
+1. Application defaults
+2. Environment configuration
+3. Global persisted configuration
+4. Tenant configuration
+5. Module configuration
+6. Tenant-module override
+
+Confirm:
+
+- Precedence is implemented, not merely documented
+- Configuration is typed where practical
+- Invalid configuration fails clearly
+- Secret values are masked or omitted
+- Secret references are distinct from raw secret values
+- Configuration API returns source/effective scope where required
+- Tenant configuration cannot expose another tenant's values
+- Module namespace handling is correct
+- Environment-only secrets are never returned
+- Configuration writes, if present, are authorized and audited
+
+Add tests for:
+
+- Precedence
+- Tenant override
+- Module override
+- Tenant-module override
+- Secret omission
+- Invalid scope
+- Cross-tenant read prevention
+
+--------------------------------------------------
+10. EVENT FOUNDATION VALIDATION
+--------------------------------------------------
+
+Validate:
+
+- Event envelope serialization
+- Event ID
+- Event type
+- Event version
+- Timestamp
+- Tenant ID
+- Actor ID
+- Correlation ID
+- Causation ID
+- Metadata
+- Payload validation
+
+Validate the in-memory event publisher as development-only.
+
+Confirm:
+
+- Handler registration works
+- Multiple handlers work if supported
+- Handler failure behavior is explicit
+- Cancellation works
+- Exceptions are not silently swallowed
+- Events do not cross tenants improperly
+- Production readiness does not depend on durable delivery yet
+
+Do not implement a production broker in this ticket.
+
+Document that durable event delivery is required before production modules depend on events.
+
+--------------------------------------------------
+11. EF CORE MODEL AND MIGRATION VALIDATION
+--------------------------------------------------
+
+Use compatible EF tooling.
+
+Validate the EF model for:
+
+xn_modules
+xn_configuration
+xn_platform_adapters
+xn_tenant_settings
+xn_tenant_modules
+
+Run:
+
+- Migration list
+- Model inspection
+- Migration generation comparison
+- Migration script generation
+- Clean-database migration apply
+- Snapshot validation
+
+Compare the manually authored migration from XENIA-P1-T1 against an EF-generated migration.
+
+If discrepancies exist:
+
+- Replace or correct the manual migration.
+- Update the model snapshot.
+- Document the differences.
+- Do not preserve an incorrect manual migration merely to minimize changes.
+
+Validate:
+
+xn_modules:
+- Unique module_key
+- Required name
+- Required version
+- Status storage
+- Enabled state
+- Timestamps
+
+xn_configuration:
+- Unique composite scope key
+- Scope nullability
+- Namespace
+- Configuration key
+- Value type
+- Secret indicator
+- Version
+- Timestamps
+
+xn_platform_adapters:
+- Unique adapter_key
+- Adapter type
+- Configuration status
+- Availability
+- Health
+- Last health check
+- Timestamps
+
+xn_tenant_settings:
+- Unique tenant_id
+- Tenant index
+- Enabled state
+- Structured settings
+- Timestamps
+
+xn_tenant_modules:
+- Unique tenant_id + module_key
+- Tenant index
+- Module index
+- Enabled state
+- Structured configuration
+- Timestamps
+
+Confirm:
+
+- No email tables exist
+- No LegalSynq domain foreign keys exist
+- No external-service tables are referenced
+- No plaintext secrets are stored
+- JSON or structured values use supported MySQL mappings
+- Enums have stable storage semantics
+
+Use a local or disposable MySQL database.
+
+Do not modify production RDS.
+
+--------------------------------------------------
+12. DATABASE REPOSITORY VALIDATION
+--------------------------------------------------
+
+Inspect and validate repository methods.
+
+Requirements:
+
+- All tenant-scoped operations require verified tenant context or explicit trusted tenant ID from internal service logic
+- No unfiltered tenant reads
+- No global list method exposing tenant data
+- Cancellation tokens supported
+- Async EF methods used
+- Tracking disabled for read-only queries where appropriate
+- State changes use clear transactions where needed
+- Concurrency conflicts are handled
+- Seeding is idempotent
+- Unique-constraint violations map to correct domain errors
+
+Add database-backed tests for:
+
+- Tenant settings isolation
+- Tenant module isolation
+- Duplicate module handling
+- Duplicate adapter seed handling
+- Configuration scope uniqueness
+- Configuration precedence persistence
+- Transaction behavior where relevant
+
+--------------------------------------------------
+13. RUNTIME STARTUP VALIDATION
+--------------------------------------------------
+
+Start Xenia locally using the repository-standard approach.
+
+Validate:
+
+- Application starts
+- Correct port is used
+- Configuration loads
+- Logging initializes
+- Correlation middleware initializes
+- Authentication initializes
+- Authorization initializes
+- DbContext initializes
+- Migrations execute according to platform standard
+- Adapter registry initializes
+- Module registry initializes
+- Seed operations are idempotent
+- Graceful shutdown works
+
+If startup migrations are unsafe or inconsistent with the platform standard:
+
+- Correct the startup behavior.
+- Prefer explicit migration execution if that is the repository standard.
+- Document the decision.
+
+Record startup logs and failures.
+
+--------------------------------------------------
+14. HEALTH, READINESS, AND INFO VALIDATION
+--------------------------------------------------
+
+Validate:
+
+GET /health
+GET /ready
+GET /info
+
+Expected behavior:
+
+/health:
+- Process liveness only
+- Anonymous if consistent with platform standard
+- No dependency-sensitive false negatives
+- No secrets
+
+/ready:
+- Fails when mandatory dependency unavailable
+- Reports degraded but ready if only optional adapters are unavailable
+- Includes safe dependency status
+- No secrets or stack traces
+
+/info:
+- Service name
+- Version
+- Build identifier if available
+- Runtime environment
+- Startup timestamp
+- Uptime
+- Safe commit identifier only when provided by build metadata
+- No secrets
+
+Add integration tests for:
+- Healthy process
+- Database unavailable
+- Mandatory adapter unavailable
+- Optional adapter unavailable
+- Safe info response
+
+--------------------------------------------------
+15. API CONTRACT VALIDATION
+--------------------------------------------------
+
+Validate these endpoints:
+
+GET /health
+GET /ready
+GET /info
+GET /modules
+GET /modules/{key}
+PUT /modules/{key}/enable
+PUT /modules/{key}/disable
+GET /adapters
+GET /configuration
+GET /secure/ping
+
+For each endpoint validate:
+
+- Route registration
+- HTTP method
+- Authentication requirement
+- Permission requirement
+- Tenant requirement
+- Request schema
+- Response schema
+- Error schema
+- Correlation ID
+- Secret handling
+- Unknown resource handling
+- Invalid state handling
+
+Expected status behavior:
+
+400:
+- Malformed input
+- Invalid tenant context
+- Invalid configuration scope
+
+401:
+- Missing or invalid authentication
+
+403:
+- Missing permission
+
+404:
+- Unknown module or resource
+
+409:
+- Duplicate registration or conflicting state
+
+503:
+- Mandatory dependency unavailable where applicable
+
+Use Problem Details or the platform-standard error envelope consistently.
+
+--------------------------------------------------
+16. FRONTEND VALIDATION
+--------------------------------------------------
+
+Inspect and validate:
+
+apps/control-center/src/lib/xenia-api.ts
+apps/control-center/src/app/api/xenia/[...path]/route.ts
+apps/control-center/src/components/xenia/
+apps/control-center/src/app/xenia/
+apps/control-center/src/lib/nav.ts
+
+Run:
+
+pnpm install or repository-standard dependency command
+pnpm --filter control-center type-check
+pnpm --filter control-center lint
+pnpm --filter control-center test
+pnpm --filter control-center build
+
+Use the actual scripts defined in package.json.
+
+Resolve:
+
+- Type errors
+- Import errors
+- Route handler errors
+- Server/client component errors
+- Environment variable issues
+- Proxy request issues
+- Response-contract mismatches
+- Navigation errors
+- Build-time rendering errors
+
+Validate pages:
+
+/xenia
+/xenia/modules
+/xenia/adapters
+/xenia/settings
+
+Dashboard must display:
+
+- Service name
+- Version
+- Environment
+- Uptime
+- Health
+- Readiness
+- Module count
+- Enabled module count
+- Adapter summary
+- Honest degraded status
+
+Modules page must display:
+
+- Module key
+- Name
+- Version
+- Description
+- Global enabled state
+- Tenant enabled state when applicable
+- Status
+- Health
+- Configuration namespace
+
+Adapters page must display:
+
+- Adapter key
+- Type
+- Name
+- Version
+- Configuration status
+- Availability
+- Health
+- Last health check
+- Safe diagnostic message
+
+Settings page must clearly display:
+
+- Scope
+- Namespace
+- Effective source
+- Inherited status
+- Secret status
+- Read-only state if editing is not implemented
+
+Validate:
+
+- Loading state
+- Empty state
+- Error state
+- Permission denial
+- API unavailable state
+- Degraded state
+- No secret exposure
+- Responsive behavior
+- Accessibility basics
+
+Do not create misleading nonfunctional controls.
+
+--------------------------------------------------
+17. CONTROL CENTER API PROXY VALIDATION
+--------------------------------------------------
+
+Validate the Xenia proxy route.
+
+Confirm:
+
+- Base URL is configurable
+- Default URL is development-safe
+- Authentication headers are forwarded correctly
+- Tenant context is forwarded from trusted identity/session context
+- Arbitrary tenant headers cannot be injected by the browser
+- HTTP methods are forwarded correctly
+- Request body is forwarded safely
+- Response status and content type are preserved
+- Correlation IDs are propagated
+- Errors are not rewritten into false success
+- Secrets are not logged
+
+Add tests if the current frontend test framework supports route-handler testing.
+
+--------------------------------------------------
+18. PORTABILITY ASSESSMENT
+--------------------------------------------------
+
+Assess whether Xenia can be transferred to another platform.
+
+Inspect:
+
+- Project names
+- Namespace names
+- Shared building-block dependencies
+- Shared contracts
+- JWT claim names
+- Permission models
+- Tenant middleware
+- Gateway assumptions
+- Environment variable names
+- Database assumptions
+- Control Center coupling
+- Startup scripts
+- Monitoring assumptions
+- Documentation
+
+Classify every material dependency as:
+
+Core-safe:
+Platform-neutral and acceptable in Xenia core.
+
+Adapter-only:
+Must be accessed only through a Xenia adapter.
+
+Host integration:
+LegalSynq-specific integration that belongs outside Xenia core.
+
+Violation:
+Unacceptable coupling that must be removed.
+
+Required outcomes:
+
+- No LegalSynq case, lien, funding, patient, provider, or product model in Xenia core
+- No direct service database access
+- No hardcoded LegalSynq service URLs in Xenia core
+- No LegalSynq-only authentication assumption without an abstraction
+- No Control Center dependency in backend core
+- Host UI integration clearly separated from portable backend
+
+Clarify UI portability.
+
+The Control Center pages may remain as the LegalSynq host integration, but documentation must state one of the following:
+
+- Xenia is headless and host platforms provide their own UI
+- Xenia has a reusable UI package
+- Xenia has a separately deployable admin UI
+
+Do not falsely characterize a LegalSynq-only Control Center integration as a fully portable Xenia UI.
+
+--------------------------------------------------
+19. DOCUMENTATION REMEDIATION
+--------------------------------------------------
+
+Update:
+
+- Xenia README
+- Local development instructions
+- Toolchain requirements
+- Migration instructions
+- Database setup
+- Startup commands
+- Test commands
+- API documentation
+- Permission documentation
+- Tenant-context documentation
+- Adapter criticality documentation
+- Portability documentation
+- UI ownership documentation
+- Known limitations
+
+Correct the original report status inconsistency.
+
+The new report must explicitly state:
+
+- Whether XENIA-P1-T1 can close
+- Remaining blockers
+- Actual validated completion percentage
+- Whether XENIA-P1-T2 may begin
+
+==================================================
+SHARED AND MOCK SERVICE REQUIREMENTS
+==================================================
+
+Development and test adapters may be used.
+
+Tenant adapter:
+- Validate a known test tenant set
+- Support active/inactive status tests
+- Never accept arbitrary tenants silently
+
+Identity adapter:
+- Provide test actors and permissions in explicit test/development mode
+- Never enable production bypass by default
+
+Documents adapter:
+- May remain unavailable
+- Must report unavailable honestly
+
+Audit adapter:
+- Must not silently discard events
+- Must report degraded fallback state
+- May log structured fallback events for development
+
+Notification adapter:
+- May remain unavailable
+
+Storage adapter:
+- May remain unavailable
+
+Workflow adapter:
+- May remain unavailable
+
+AI adapter:
+- May remain unavailable
+
+Do not implement real production integrations in this ticket unless a minimal correction is required to compile or validate an already existing adapter boundary.
+
+==================================================
+VALIDATION COMMANDS
+==================================================
+
+Discover and use the repository's actual commands.
+
+At minimum attempt and record the equivalent of:
+
+dotnet --info
+dotnet restore
+dotnet build
+dotnet test
+
+dotnet ef migrations list
+dotnet ef migrations script
+dotnet ef database update
+
+dotnet run --project apps/services/xenia/Xenia.Api
+
+pnpm install
+pnpm --filter control-center type-check
+pnpm --filter control-center lint
+pnpm --filter control-center test
+pnpm --filter control-center build
+
+Also execute API smoke tests against the running service.
+
+Use curl, HTTP files, integration tests, or another repository-standard tool.
+
+Record every request:
+
+- Method
+- URL
+- Authentication context
+- Tenant context
+- Expected status
+- Actual status
+- Response summary
+- Correlation ID
+- Result
+
+==================================================
+REQUIRED TEST COVERAGE
+==================================================
+
+Add or update tests for:
+
+Backend:
+- Project startup
+- DI resolution
+- Tenant resolution
+- Missing tenant
+- Invalid tenant
+- Cross-tenant reads
+- Cross-tenant writes
+- Permission enforcement
+- Module registration
+- Duplicate module registration
+- Module global enable/disable
+- Tenant module enable/disable
+- Unknown module
+- Adapter registration
+- Adapter idempotent seed
+- Unavailable adapter status
+- Mandatory versus optional readiness
+- Audit fallback behavior
+- Configuration precedence
+- Secret omission
+- Event envelope serialization
+- Event handler behavior
+- Migration apply
+- Health response
+- Readiness response
+- Info response
+- API error responses
+
+Frontend:
+- API response mapping
+- Loading state
+- Empty state
+- Error state
+- Permission denial
+- Degraded adapter display
+- Secret masking
+- Navigation
+- Proxy behavior where supported
+
+Tests must be executed.
+
+Written-but-unexecuted tests do not satisfy completion criteria unless execution is blocked by a documented environment limitation that cannot reasonably be resolved in this ticket.
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+The ticket is complete only if all applicable criteria are satisfied.
+
+1. A compatible .NET SDK is available and recorded.
+
+2. All Xenia projects restore successfully.
+
+3. All Xenia projects compile successfully.
+
+4. Xenia tests compile.
+
+5. Required tests execute.
+
+6. All critical tests pass.
+
+7. Remaining noncritical test failures are explicitly documented and justified.
+
+8. Dependency injection graph resolves.
+
+9. Xenia starts locally.
+
+10. Xenia shuts down gracefully.
+
+11. EF model compiles.
+
+12. Migration is generated or tool-validated.
+
+13. Migration applies to a clean MySQL database.
+
+14. Migration snapshot matches the model.
+
+15. Required indexes and constraints exist.
+
+16. No email tables exist.
+
+17. No LegalSynq-domain foreign keys exist.
+
+18. No plaintext secrets are persisted.
+
+19. Tenant A cannot read Tenant B data.
+
+20. Tenant A cannot modify Tenant B state.
+
+21. Missing tenant context is rejected where required.
+
+22. Invalid tenant context is rejected.
+
+23. Request-provided tenant IDs cannot override verified tenant context.
+
+24. Authentication returns 401 where required.
+
+25. Authorization returns 403 where required.
+
+26. Development auth bypass is disabled by default.
+
+27. Module registry initializes.
+
+28. Duplicate module registration is prevented.
+
+29. Module seed is idempotent.
+
+30. Global enable/disable works.
+
+31. Tenant enable/disable works.
+
+32. All eight adapter interfaces compile and register.
+
+33. Unconfigured adapters report unavailable.
+
+34. Unconfigured adapters do not report healthy.
+
+35. Adapter seeding is idempotent.
+
+36. Adapter diagnostics expose no secrets.
+
+37. Audit fallback is visibly degraded.
+
+38. Dependency criticality is configurable.
+
+39. `/health` returns correct liveness state.
+
+40. `/ready` fails for mandatory dependency failures.
+
+41. `/ready` remains ready but degraded for optional adapter failures.
+
+42. `/info` returns safe metadata.
+
+43. `/modules` works with required authorization.
+
+44. `/adapters` works with required authorization.
+
+45. `/configuration` omits secrets.
+
+46. Module mutation endpoints enforce management permissions.
+
+47. API errors use consistent status codes and response contracts.
+
+48. Correlation IDs are propagated.
+
+49. Control Center type-check passes.
+
+50. Control Center lint passes, unless no lint script exists and that absence is documented.
+
+51. Control Center tests pass, unless no test script exists and that absence is documented.
+
+52. Control Center production build passes.
+
+53. Xenia dashboard renders.
+
+54. Modules page renders.
+
+55. Adapters page renders.
+
+56. Settings page renders.
+
+57. Loading, empty, error, permission, and degraded states are handled.
+
+58. Xenia backend core contains no LegalSynq product-domain logic.
+
+59. Shared dependencies are classified for portability.
+
+60. LegalSynq host integration is isolated from Xenia core.
+
+61. UI portability status is documented honestly.
+
+62. Documentation reflects actual validated setup.
+
+63. `/analysis/XENIA-P1-T1-V1-report.md` exists.
+
+64. The report was created before code changes.
+
+65. The report was updated incrementally.
+
+66. The report includes actual command evidence.
+
+67. The report corrects the prior status inconsistency.
+
+68. The report states whether XENIA-P1-T1 can close.
+
+69. The report states whether XENIA-P1-T2 may begin.
+
+70. Final completion percentage is evidence-based.
+
+==================================================
+OUT OF SCOPE
+==================================================
+
+Do not implement:
+
+- Email module
+- Email source management
+- Gmail integration
+- Outlook integration
+- Microsoft Graph integration
+- IMAP integration
+- Email OAuth flows
+- Email polling
+- Email webhooks
+- Email synchronization
+- Email normalization
+- Email persistence
+- Email attachments
+- Inbox UI
+- AI functionality
+- Workflow automation
+- SMS automation
+- Fax automation
+- Chat automation
+- Web-form automation
+- Production event broker
+- GitHub operations
+- GitHub Actions execution
+- AWS deployment
+- Production RDS modifications
+- Production Secrets Manager modifications
+- Production Route53 changes
+- Production ALB changes
+- Production ECS/Fargate work
+- Production runtime claims
+
+==================================================
+KNOWN RESTRICTIONS
+==================================================
+
+- Keep remediation incremental.
+- Do not rewrite unrelated services.
+- Do not change platform architecture merely to make tests easier.
+- Do not bypass tenant isolation in tests or development.
+- Do not weaken authorization to make endpoint tests pass.
+- Do not mark unavailable adapters healthy.
+- Do not expose secrets in logs, UI, APIs, tests, fixtures, or reports.
+- Do not apply migrations to production databases.
+- Use disposable or local validation infrastructure.
+- Do not preserve a manually authored migration if EF validation shows it is incorrect.
+- Do not claim portability without examining shared dependencies.
+- Do not begin XENIA-P1-T2.
+
+==================================================
+REQUIRED REPORT STRUCTURE
+==================================================
+
+Create before any code change:
+
+/analysis/XENIA-P1-T1-V1-report.md
+
+Use at least the following sections:
+
+# XENIA-P1-T1-V1 Validation and Remediation Report
+
+## 1. Executive Summary
+
+## 2. Ticket Information
+- Ticket ID
+- Parent ticket
+- Related ticket
+- Task type
+- Objective
+- Current status
+
+## 3. Source Report Review
+- Claims from XENIA-P1-T1
+- Confirmed claims
+- Incorrect claims
+- Unverified claims
+- Missing evidence
+
+## 4. Initial Repository Analysis
+- Repository structure
+- Xenia project structure
+- Backend architecture
+- Frontend architecture
+- Shared dependencies
+- Database and migration setup
+- Authentication
+- Authorization
+- Tenant context
+- Test frameworks
+
+## 5. Toolchain and Environment
+- .NET SDK
+- EF CLI
+- Node
+- pnpm
+- MySQL
+- Docker
+- Environment limitations
+
+## 6. Architecture Validation
+- Service independence
+- Dependency direction
+- Tenant architecture
+- Module architecture
+- Adapter architecture
+- Configuration architecture
+- Event architecture
+- UI ownership
+- Portability classification
+
+## 7. Implementation Progress
+Maintain an incremental checklist:
+- Not started
+- In progress
+- Completed
+- Partially completed
+- Blocked
+- Failed
+
+## 8. Files Inspected
+
+## 9. Files Created
+
+## 10. Files Modified
+
+## 11. Build Validation
+For every command:
+- Command
+- Working directory
+- Exit code
+- Result
+- Output summary
+- Remediation
+- Retest
+
+## 12. Dependency Injection Validation
+
+## 13. Authentication and Authorization Validation
+
+## 14. Tenant Isolation Validation
+Include executed test evidence.
+
+## 15. Module Registry Validation
+
+## 16. Adapter Validation
+
+## 17. Configuration Validation
+
+## 18. Event Framework Validation
+
+## 19. Database Model Validation
+
+## 20. Migration Validation
+- Generated migration comparison
+- Applied migration evidence
+- Snapshot validation
+- Constraints
+- Indexes
+- Rollback or clean-reset behavior
+
+## 21. Runtime Validation
+- Startup
+- Shutdown
+- Logs
+- Dependency state
+- Port
+- Migration behavior
+
+## 22. API Validation
+For each endpoint:
+- Method
+- Path
+- Authentication
+- Tenant context
+- Expected result
+- Actual result
+- Status
+- Evidence
+
+## 23. Frontend Validation
+- Type-check
+- Lint
+- Tests
+- Production build
+- Page validation
+- Proxy validation
+- UI states
+
+## 24. Portability Assessment
+Classify each dependency:
+- Core-safe
+- Adapter-only
+- Host integration
+- Violation
+
+## 25. Tests Added or Updated
+
+## 26. Test Execution Results
+
+## 27. Security Review
+
+## 28. Acceptance Criteria Matrix
+For every criterion:
+- Criterion
+- Status
+- Evidence
+- Notes
+
+## 29. Issues Found
+
+## 30. Remediation Performed
+
+## 31. Remaining Gaps
+
+## 32. Risks and Architecture Concerns
+
+## 33. Environmental Limitations
+
+## 34. Out-of-Scope Confirmation
+
+## 35. Documentation Updated
+
+## 36. XENIA-P1-T1 Closure Recommendation
+Use one:
+- Close
+- Close with accepted limitations
+- Keep open
+- Blocked
+
+## 37. XENIA-P1-T2 Readiness
+Use one:
+- Ready to begin
+- Ready with prerequisites
+- Not ready
+- Blocked
+
+## 38. Final Status
+Use one:
+- Complete
+- Complete with limitations
+- Partially complete
+- Blocked
+- Failed
+
+## 39. Completion Percentage
+Provide an evidence-based percentage.
+
+## 40. Follow-Up Recommendations
+
+==================================================
+FINAL RESPONSE REQUIREMENTS
+==================================================
+
+When work is complete:
+
+1. Ensure the report is fully updated.
+
+2. Provide a concise final response containing:
+   - Ticket ID
+   - Final status
+   - Completion percentage
+   - Build result
+   - Test result
+   - Migration result
+   - Runtime result
+   - Frontend result
+   - Tenant-isolation result
+   - Portability result
+   - XENIA-P1-T1 closure recommendation
+   - XENIA-P1-T2 readiness
+   - Known limitations
+   - Exact report path
+
+3. Do not claim GitHub success.
+
+4. Do not claim AWS success.
+
+5. Do not claim production success.
+
+6. Stop after XENIA-P1-T1-V1.
+
+Do not begin XENIA-P1-T2.

@@ -69,6 +69,7 @@ public class Referral : AuditableEntity
 
     // ── Provider routing ─────────────────────────────────────────────────
     public Guid ProviderId { get; private set; }
+    public Guid? FacilityId { get; private set; }
 
     // Phase 5: explicit relationship context linking referrer ↔ receiver orgs
     public Guid? OrganizationRelationshipId { get; private set; }
@@ -105,8 +106,13 @@ public class Referral : AuditableEntity
     // mismatched version are rejected as revoked.
     public int TokenVersion { get; private set; } = 1;
 
+    // ── Referral Attribution (optional; who/what originated the referral) ─
+    public Guid? ReferralAttributionId { get; private set; }
+
     public Provider? Provider { get; private set; }
+    public Facility? Facility { get; private set; }
     public Party? SubjectParty { get; private set; }
+    public ReferralAttribution? ReferralAttribution { get; private set; }
 
     private Referral() { }
 
@@ -142,7 +148,9 @@ public class Referral : AuditableEntity
         string? referrerFirmName = null,
         string? referrerPhone = null,
         Guid? treatmentTypeId = null,
-        DateOnly? dateOfAccident = null)
+        DateOnly? dateOfAccident = null,
+        Guid? facilityId = null,
+        Guid? referralAttributionId = null)
     {
         var now = DateTime.UtcNow;
 
@@ -163,6 +171,7 @@ public class Referral : AuditableEntity
             ReferringOrganizationId    = referringOrganizationId,
             ReceivingOrganizationId    = receivingOrganizationId,
             ProviderId                 = providerId,
+            FacilityId                 = facilityId,
             OrganizationRelationshipId = organizationRelationshipId,
             SubjectPartyId             = subjectPartyId,
             SubjectNameSnapshot        = subjectNameSnapshot?.Trim(),
@@ -186,6 +195,7 @@ public class Referral : AuditableEntity
             ReferrerFirmName           = referrerFirmName?.Trim(),
             ReferrerPhone              = referrerPhone?.Trim(),
             TokenVersion               = 1,
+            ReferralAttributionId      = referralAttributionId,
             CreatedByUserId            = createdByUserId,
             UpdatedByUserId            = createdByUserId,
             CreatedAtUtc               = now,

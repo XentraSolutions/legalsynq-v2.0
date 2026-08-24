@@ -137,6 +137,23 @@ public sealed class DocumentService
         _log               = log;
     }
 
+    public async Task<InternalDocumentMetadataResponse?> GetInternalMetadataAsync(
+        Guid documentId,
+        Guid tenantId,
+        CancellationToken ct = default)
+    {
+        var document = await _docs.FindByIdAsync(documentId, tenantId, ct);
+        return document is null
+            ? null
+            : new InternalDocumentMetadataResponse(
+                document.Id,
+                document.TenantId,
+                document.Status.ToString(),
+                document.MimeType,
+                document.Checksum,
+                document.IsDeleted);
+    }
+
     // ── Create ───────────────────────────────────────────────────────────────
 
     public async Task<DocumentResponse> CreateAsync(
@@ -547,27 +564,11 @@ public sealed class DocumentService
 
     // ── Private helpers ──────────────────────────────────────────────────────
 
-    private static readonly Dictionary<string, string[]> Permissions = new()
-    {
-        ["DocReader"]    = new[] { "read" },
-        ["DocUploader"]  = new[] { "read", "write" },
-        ["DocManager"]   = new[] { "read", "write", "delete" },
-        ["TenantAdmin"]  = new[] { "read", "write", "delete" },
-        ["PlatformAdmin"] = new[] { "read", "write", "delete", "admin" },
-        // Service tokens are tenant-scoped and must be able to perform normal
-        // document CRUD operations on behalf of their caller, but they do not
-        // receive admin-only capabilities such as cross-tenant overrides.
-        ["service"] = new[] { "read", "write", "delete" },
-    };
-
     private static void AssertPermission(Domain.ValueObjects.Principal principal, string action)
     {
-        var hasPermission = principal.Roles.Any(role =>
-            Permissions.TryGetValue(role, out var perms) && perms.Contains(action));
-
-        if (!hasPermission)
+        if (!DocumentPermissionEvaluator.HasPermission(principal, action))
             throw new ForbiddenException(
-                $"Role(s) [{string.Join(", ", principal.Roles)}] do not have '{action}' permission");
+                $"The current user does not have permission to {action} documents.");
     }
 
     private static void AssertTenantScope(Domain.ValueObjects.Principal principal, Guid bodyTenantId)

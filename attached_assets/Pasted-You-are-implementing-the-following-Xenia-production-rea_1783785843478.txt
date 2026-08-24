@@ -1,0 +1,1775 @@
+You are implementing the following Xenia production-readiness closure subtask.
+
+==================================================
+TICKET
+==================================================
+
+Ticket ID:
+XENIA-P1-PROD-V1-T1-V1
+
+Parent Ticket:
+XENIA-P1-PROD-V1-T1 — Durable Automation Runtime Integration
+
+Parent Production Ticket:
+XENIA-P1-PROD-V1 — Production Readiness and Durable Automation State Closure
+
+Related Tickets:
+- XENIA-P1-T1 — Core Service Foundation
+- XENIA-P1-T2 — Email Module Foundation
+- XENIA-P1-T3 — Email Ingestion Engine
+- XENIA-P1-T4 — Administration and Operations
+- XENIA-P1-T5 — Enterprise Hardening and Automation Framework
+- XENIA-P1-PROD-V1 — Production Readiness and Durable Automation State Closure
+- XENIA-P1-PROD-V1-T1 — Durable Automation Runtime Integration
+
+Task Type:
+🟦 XenIA
+
+Title:
+Durable Runtime Compilation, Concurrency, and Restart Validation Closure
+
+==================================================
+MANDATORY EXECUTION RULES
+==================================================
+
+1. Create the implementation report before making any code changes.
+
+Required report path:
+
+/analysis/XENIA-P1-PROD-V1-T1-V1-report.md
+
+2. The report must be the first implementation artifact created.
+
+3. Before modifying source code, populate the report with:
+
+- Ticket information
+- Prior-report review
+- Initial repository analysis
+- Current build state
+- Current dependency-injection state
+- Current EF implementation inventory
+- Current transaction-boundary inventory
+- Current concurrency-token behavior
+- Current registry-reconciliation behavior
+- Current relational-test coverage
+- Current restart-validation coverage
+- Current multi-instance-test coverage
+- Initial implementation-progress table
+- Confirmed gaps, discrepancies, and blockers
+
+4. Update the report incrementally throughout:
+
+- Compilation remediation
+- Dependency-injection validation
+- Production-store validation
+- Optimistic-concurrency remediation
+- Explicit transaction implementation
+- Registry reconciliation completion
+- Configuration precedence validation
+- Execution acquisition validation
+- Dead-letter replay validation
+- Schedule persistence validation
+- Idempotency validation
+- MySQL relational tests
+- Restart-recovery execution
+- Multi-instance execution
+- Tenant-isolation validation
+- Database runtime-use evidence
+- Build, publish, and test execution
+- Acceptance-matrix completion
+- Final closure recommendation
+
+5. Do not create or populate the report only after implementation is complete.
+
+6. Do not fabricate:
+
+- Build success
+- Publish success
+- Test success
+- Dependency-injection success
+- MySQL behavior
+- Transactional consistency
+- Concurrency conflicts
+- Restart recovery
+- Multi-instance safety
+- Tenant isolation
+- Database row creation
+- Runtime persistence
+- Production readiness
+
+7. Classify every material activity as exactly one of:
+
+- Completed
+- Partially completed
+- Failed
+- Blocked
+- Skipped
+- Not applicable
+- Not independently verified
+- Accepted limitation
+
+8. For every command, build, test, startup, shutdown, database query, restart, concurrency simulation, and validation request, record:
+
+- Exact command or operation
+- Working directory
+- Environment
+- Exit code or result
+- Expected result
+- Actual result
+- Relevant output summary
+- Remediation performed
+- Retest result
+
+9. Do not perform GitHub operations.
+
+Do not:
+
+- Run git add
+- Commit
+- Push
+- Create or update pull requests
+- Merge branches
+- Claim GitHub Actions success
+
+10. Do not perform AWS or production infrastructure work.
+
+Do not:
+
+- Deploy to ECS or Fargate
+- Modify production RDS
+- Modify production Secrets Manager
+- Modify IAM
+- Modify Cloud Map
+- Modify Route53
+- Modify ALB
+- Claim production deployment success
+- Claim production runtime success
+
+11. Do not begin another Phase 1 or Phase 2 ticket.
+
+12. Do not implement:
+
+- AI functionality
+- OCR
+- Case intake
+- Customer-support automation
+- Workflow business logic
+- Outbound email
+- SMS
+- Slack or Teams integration
+- Calendar or contact synchronization
+- Provider webhooks
+- New automation providers
+- Distributed scheduling enhancements
+- LegalSynq lien or funding logic
+
+13. Preserve Xenia as:
+
+- Independent
+- Separately deployable
+- Tenant-aware
+- Provider-neutral
+- Adapter-driven
+- Portable to another host platform
+
+14. Keep remediation incremental.
+
+15. Do not redesign Migration 8 unless an evidenced schema defect prevents correct implementation.
+
+16. Do not weaken:
+
+- Tenant isolation
+- Authorization
+- Optimistic concurrency
+- Idempotency
+- Transactional consistency
+- Secret handling
+- Audit redaction
+- Existing Email behavior
+
+17. Use only local, disposable, or controlled test infrastructure.
+
+18. Do not use production data or production databases.
+
+19. Structural reasoning is not accepted as proof for:
+
+- Compilation
+- Restart recovery
+- Multi-instance safety
+- Tenant isolation
+- Concurrency
+- Transactional consistency
+
+These areas require executed evidence.
+
+==================================================
+OBJECTIVE
+==================================================
+
+Compile, remediate, and behaviorally validate the EF-backed automation runtime implemented in XENIA-P1-PROD-V1-T1.
+
+This ticket must prove that the durable runtime:
+
+- Compiles successfully
+- Publishes successfully
+- Resolves through dependency injection
+- Writes all mutable automation state to MySQL
+- Uses working optimistic concurrency
+- Uses explicit transactions for compound state changes
+- Reconciles discovered and persisted providers completely
+- Detects missing and restored providers
+- Enforces configuration precedence
+- Prevents duplicate execution acquisition
+- Prevents duplicate dead-letter replay
+- Prevents duplicate idempotent execution
+- Survives a real application restart
+- Operates correctly across two independent Xenia instances
+- Enforces tenant isolation using relational tests
+- Preserves existing Email automation behavior
+
+The intended outcome is:
+
+XENIA-P1-PROD-V1-T1 formally closed
+
+and
+
+XENIA-P1-PROD-V1 ready to continue to its remaining production-readiness validation work.
+
+==================================================
+SOURCE MATERIAL
+==================================================
+
+Review before modifying code:
+
+/analysis/XENIA-P1-PROD-V1-report.md
+/analysis/XENIA-P1-PROD-V1-T1-report.md
+
+Treat prior reports as claims requiring repository and runtime verification.
+
+Verify against the actual repository:
+
+- All reported EF service files exist.
+- All reported interfaces exist.
+- All reported dependency-injection registrations compile.
+- Entity property names match implementation code.
+- Enum values match implementation code.
+- DbSet names match implementation code.
+- All referenced methods exist.
+- `row_version` is updated during writes.
+- Transactions are explicit where required.
+- Registry reconciliation handles missing providers.
+- Production-store validation checks every mutable store.
+- MySQL tests exist or must be created.
+- Restart tests exist or must be created.
+- Multi-instance tests exist or must be created.
+- Tenant-isolation tests exist or must be created.
+
+Record all discrepancies in:
+
+/analysis/XENIA-P1-PROD-V1-T1-V1-report.md
+
+==================================================
+LOCKED ARCHITECTURE
+==================================================
+
+1. Provider manifests and provider instances may remain code-defined and process-local.
+
+2. Mutable production state must remain MySQL-backed.
+
+3. MySQL is authoritative for:
+
+- Registry lifecycle state
+- Automation versions
+- Tenant enablement
+- Platform and tenant configuration
+- Runtime state
+- Executions
+- Dead letters
+- Schedule definitions
+- Idempotency records
+
+4. In-memory implementations may remain only for:
+
+- Unit tests
+- Explicit Development scenarios
+- Controlled fixtures
+
+5. Production-like environments must reject every in-memory mutable store.
+
+6. Xenia must not directly access another service’s database.
+
+7. Existing Email APIs and EmailAutomationProvider behavior must remain backward compatible.
+
+8. No process-local cache may determine correctness.
+
+9. No database transaction may remain open during provider or adapter network calls.
+
+10. No raw business payload, message body, attachment binary, credential, secret value, or raw cursor may be added to automation persistence.
+
+==================================================
+INITIAL REPOSITORY ANALYSIS
+==================================================
+
+Before source changes:
+
+1. Inspect:
+
+- Xenia.Domain/Automation
+- Xenia.Application/Automation
+- Xenia.Infrastructure/Automation
+- Xenia.Infrastructure/Persistence
+- Xenia.Infrastructure/Persistence/Configurations
+- XeniaDbContext
+- Migration 8
+- Model snapshot
+- AutomationDependencyInjection.cs
+- Program.cs
+- AutomationRegistrationWorker
+- AutomationStoreValidationService
+- EfAutomationRegistry
+- EfAutomationConfigurationService
+- EfAutomationRuntimeStateStore
+- EfAutomationExecutionService
+- EfAutomationDeadLetterStore
+- EfAutomationScheduleStore
+- EfAutomationIdempotencyService
+- Existing tests
+- Existing MySQL test fixtures
+- Existing WebApplicationFactory or runtime test fixtures
+- Existing EmailAutomationProvider tests
+
+2. Produce an implementation-validation table:
+
+| Component | File | Compiles | Runtime registered | Relationally tested | Restart tested | Multi-instance tested |
+|---|---|---|---|---|---|---|
+
+3. Run and record:
+
+dotnet --info
+dotnet --list-sdks
+dotnet tool list
+docker --version
+docker compose version
+mysql --version
+
+4. Confirm:
+
+- Build environment memory availability
+- Disposable MySQL strategy
+- Test database connection
+- Test authentication strategy
+- Two-instance DI strategy
+- Existing test-project paths
+- Current migration state
+
+==================================================
+PHASE A — BUILD AND COMPILATION CLOSURE
+==================================================
+
+--------------------------------------------------
+1. BUILD ALL MODIFIED XENIA PROJECTS
+--------------------------------------------------
+
+Run project-specific builds for:
+
+- Xenia.Domain
+- Xenia.Application
+- Xenia.Infrastructure
+- Xenia.Api
+- Xenia.Tests
+
+Use actual repository project paths.
+
+Required commands include, as applicable:
+
+dotnet restore
+
+dotnet build <Xenia.Domain.csproj>
+
+dotnet build <Xenia.Application.csproj>
+
+dotnet build <Xenia.Infrastructure.csproj>
+
+dotnet build <Xenia.Api.csproj>
+
+dotnet publish <Xenia.Api.csproj>
+
+dotnet test <Xenia.Tests.csproj>
+
+Requirements:
+
+- Zero compiler errors
+- Zero unresolved interface mismatches
+- Zero missing entity properties
+- Zero invalid enum references
+- Zero invalid LINQ expressions
+- Zero DI lifetime errors
+- Zero publish errors
+
+If the current environment is OOM-constrained:
+
+- Reduce build parallelism where supported.
+- Use targeted project builds.
+- Use a controlled environment with sufficient memory if available.
+- Record the exact OOM evidence.
+- Do not classify the ticket complete until a successful build is obtained.
+
+--------------------------------------------------
+2. RESOLVE COMPILATION AND DI DEFECTS
+--------------------------------------------------
+
+Fix narrowly:
+
+- Interface signature mismatches
+- Incorrect entity property references
+- Missing namespaces
+- Incorrect DbSet names
+- Incorrect enum values
+- Generic constraint issues
+- Invalid async signatures
+- DI lifetime violations
+- Hosted-service resolution issues
+- Factory or scoped-context misuse
+- Nullable contract defects
+- EF query translation defects
+
+Do not perform unrelated refactors.
+
+--------------------------------------------------
+3. VALIDATE DEPENDENCY-INJECTION GRAPH
+--------------------------------------------------
+
+Build a service provider or start the API and resolve:
+
+- IAutomationRegistry
+- IAutomationConfigurationService
+- IAutomationRuntimeStateStore
+- IAutomationExecutionService
+- IAutomationDeadLetterStore
+- IAutomationScheduler
+- IAutomationIdempotencyService
+- Registry reconciliation service
+- AutomationStoreValidationService
+- EmailAutomationProvider
+- AutomationRegistrationWorker dependencies
+
+Validate:
+
+- Production defaults are EF-backed.
+- No mutable in-memory store is authoritative.
+- Singleton services do not capture scoped DbContexts.
+- DbContextFactory usage is valid.
+- Hosted services resolve safely.
+- No duplicate ambiguous registration exists.
+
+==================================================
+PHASE B — PRODUCTION STORE VALIDATION
+==================================================
+
+--------------------------------------------------
+4. EXTEND AUTOMATION STORE VALIDATION
+--------------------------------------------------
+
+Update `AutomationStoreValidationService` or equivalent to validate every mutable automation service:
+
+- Registry
+- Configuration
+- Lifecycle, if separate
+- Runtime state
+- Execution service/store
+- Dead-letter store
+- Schedule store
+- Idempotency service
+
+In Staging and Production-like modes:
+
+- In-memory implementation causes startup failure.
+- Missing implementation causes startup failure.
+- Mixed durable/in-memory configuration causes startup failure.
+- Selected implementation names may be logged safely.
+- No secret values or connection strings are logged.
+
+Development/Test:
+
+- In-memory stores allowed only through an explicit configuration flag.
+- Default remains EF-backed.
+
+Add tests for every store.
+
+==================================================
+PHASE C — OPTIMISTIC CONCURRENCY CLOSURE
+==================================================
+
+--------------------------------------------------
+5. VERIFY ROW-VERSION UPDATE MECHANISM
+--------------------------------------------------
+
+Inspect every mutable automation entity.
+
+Determine whether concurrency uses:
+
+Option A:
+Application-managed integer version
+
+or
+
+Option B:
+Database-managed version
+
+The implementation must ensure:
+
+- `row_version` changes after every successful update.
+- Update predicates include the original version.
+- Stale updates fail.
+- EF maps conflicts to `DbUpdateConcurrencyException` or a stable domain conflict.
+
+If application-managed:
+
+- Increment `row_version` before update.
+- Preserve original value for concurrency matching.
+- Do not reset it accidentally.
+
+If database-managed:
+
+- Confirm actual MySQL mechanism.
+- Confirm EF retrieves the new value.
+
+--------------------------------------------------
+6. ADD RELATIONAL CONCURRENCY TESTS
+--------------------------------------------------
+
+Use two independent DbContexts loading the same row.
+
+Test stale updates for:
+
+- Automation registry lifecycle
+- Tenant automation state
+- Automation configuration
+- Runtime state
+- Dead letter
+- Schedule
+
+Required sequence:
+
+1. Context A loads row.
+2. Context B loads row.
+3. Context A updates and saves.
+4. Confirm `row_version` changed.
+5. Context B updates and saves.
+6. Confirm conflict.
+7. Confirm Context A data remains.
+
+==================================================
+PHASE D — TRANSACTIONAL CONSISTENCY
+==================================================
+
+--------------------------------------------------
+7. IMPLEMENT REGISTRY RECONCILIATION TRANSACTION
+--------------------------------------------------
+
+Atomically handle:
+
+- Registry insert or update
+- Version insert
+- Manifest hash update
+- Last reconciliation timestamp
+- Missing/restored-provider lifecycle state where part of the same operation
+
+Do not reset tenant state or configuration.
+
+--------------------------------------------------
+8. IMPLEMENT EXECUTION QUEUE TRANSACTION
+--------------------------------------------------
+
+Atomically handle:
+
+- Idempotency reservation
+- Execution insertion
+- Runtime-state queued or total counter update
+
+If any operation fails:
+
+- Roll back all changes.
+- Do not leave an orphan idempotency reservation.
+- Do not leave a queued execution without corresponding state.
+
+--------------------------------------------------
+9. IMPLEMENT EXECUTION COMPLETION TRANSACTION
+--------------------------------------------------
+
+After provider invocation completes, atomically handle:
+
+- Execution status update
+- Runtime-state active counter
+- Success/failure counters
+- Last execution time
+- Last successful execution time
+- Safe error state
+- Dead-letter creation where threshold is reached
+- Idempotency completion state
+
+Do not hold this transaction open during provider execution.
+
+--------------------------------------------------
+10. IMPLEMENT DEAD-LETTER RETRY TRANSACTION
+--------------------------------------------------
+
+Atomically handle:
+
+- Acquire open dead letter
+- Change status to Retrying
+- Increment retry/replay count
+- Create linked retry execution
+- Associate execution ID
+- Persist next state
+
+Competing retry attempts must not create two executions.
+
+--------------------------------------------------
+11. IMPLEMENT CONFIGURATION UPDATE TRANSACTION
+--------------------------------------------------
+
+Atomically handle:
+
+- Configuration validation
+- Configuration write
+- Version/concurrency increment
+- Audit or event record where supported by existing consistency architecture
+
+==================================================
+PHASE E — REGISTRY RECONCILIATION COMPLETION
+==================================================
+
+--------------------------------------------------
+12. IMPLEMENT COMPLETE RECONCILIATION SERVICE
+--------------------------------------------------
+
+A registration worker that only upserts discovered providers is insufficient.
+
+Implement or complete:
+
+IAutomationRegistryReconciler
+EfAutomationRegistryReconciler
+
+Required process:
+
+1. Load all discovered providers.
+2. Validate manifests.
+3. Compute deterministic manifest hashes.
+4. Load all persisted registry rows.
+5. Insert newly discovered providers.
+6. Insert newly discovered versions.
+7. Update compatible metadata.
+8. Preserve global enablement.
+9. Preserve tenant enablement.
+10. Preserve configuration.
+11. Preserve runtime state.
+12. Mark persisted-but-undiscovered providers Unavailable.
+13. Restore unavailable providers when rediscovered.
+14. Never auto-delete persisted providers.
+15. Record reconciliation timestamps.
+16. Emit safe lifecycle or audit events.
+17. Handle incompatible version/manifest cases explicitly.
+
+Requirements:
+
+- Idempotent
+- Concurrency safe
+- Transactional per provider or batch according to repository conventions
+- Bounded duplicate-key retry
+- No tenant-state reset
+- No configuration reset
+
+--------------------------------------------------
+13. ADD REGISTRY RECONCILIATION TESTS
+--------------------------------------------------
+
+Test:
+
+- Empty database, first provider startup
+- Repeated startup
+- Concurrent first startup
+- New version discovered
+- Manifest hash changed
+- Persisted provider missing from discovery
+- Missing provider restored
+- Incompatible version
+- Tenant state preserved
+- Configuration preserved
+- Runtime state preserved
+- No duplicate registry/version rows
+
+==================================================
+PHASE F — CONFIGURATION CORRECTNESS
+==================================================
+
+--------------------------------------------------
+14. IMPLEMENT EFFECTIVE CONFIGURATION RESOLUTION
+--------------------------------------------------
+
+Required precedence:
+
+1. Provider defaults
+2. Platform configuration
+3. Tenant configuration
+
+Implement typed or JSON merge behavior consistent with existing architecture.
+
+Requirements:
+
+- Tenant values override platform values.
+- Platform values override provider defaults.
+- Missing values fall back safely.
+- Secret references remain opaque.
+- Resolved secret values are not persisted.
+- Schema version validated.
+- Configuration size limited.
+- Stale updates return conflict.
+- Malformed configuration returns validation error.
+
+--------------------------------------------------
+15. ADD CONFIGURATION TESTS
+--------------------------------------------------
+
+Test:
+
+- Provider defaults only
+- Platform override
+- Tenant override
+- Partial tenant override
+- Secret-reference preservation
+- Invalid schema version
+- Oversized configuration
+- Stale update
+- Tenant A/Tenant B isolation
+- Restart persistence
+
+==================================================
+PHASE G — EXECUTION AND IDEMPOTENCY CLOSURE
+==================================================
+
+--------------------------------------------------
+16. IMPLEMENT ATOMIC EXECUTION ACQUISITION
+--------------------------------------------------
+
+Required transition:
+
+Queued → Running
+
+The acquisition must be conditional on:
+
+- Current status = Queued
+- Expected row version
+- No other worker having acquired it
+
+Use:
+
+- Conditional UPDATE
+- Concurrency token
+- Affected-row count
+- Equivalent atomic MySQL operation
+
+Required outcome:
+
+- One worker acquires.
+- Other workers receive no-work/conflict.
+- Provider invoked once.
+
+--------------------------------------------------
+17. COMPLETE IDEMPOTENCY RACE HANDLING
+--------------------------------------------------
+
+Handle database unique-key races.
+
+Required scenarios:
+
+Same key + same fingerprint:
+- Return existing reservation or execution.
+
+Same key + different fingerprint:
+- Return conflict.
+
+Pending reservation without execution:
+- Recover or return explicit pending state.
+
+Failed reservation:
+- Behavior explicitly documented.
+
+Expired reservation:
+- Safe replacement according to retention policy.
+
+Concurrent same request:
+- One execution only.
+
+Cross-tenant same key:
+- Independent.
+
+--------------------------------------------------
+18. ADD EXECUTION AND IDEMPOTENCY TESTS
+--------------------------------------------------
+
+Use MySQL and independent service instances.
+
+Test:
+
+- Atomic execution acquisition
+- Provider invocation count
+- Same key/same fingerprint
+- Same key/different fingerprint
+- Concurrent reservation
+- Pending reservation
+- Failed reservation
+- Expired reservation
+- Cross-tenant independence
+- Transaction rollback after execution-insert failure
+- Restart persistence
+
+==================================================
+PHASE H — DEAD LETTER AND SCHEDULE CLOSURE
+==================================================
+
+--------------------------------------------------
+19. VALIDATE DEAD-LETTER ACQUISITION
+--------------------------------------------------
+
+Ensure retry acquisition is atomic.
+
+Required:
+
+- Only Open and eligible items can be acquired.
+- Status changes to Retrying.
+- Replay count increments once.
+- One linked execution created.
+- Second contender receives conflict/no work.
+- Resolution and abandonment persist.
+- Tenant isolation enforced.
+
+--------------------------------------------------
+20. VALIDATE SCHEDULE PERSISTENCE
+--------------------------------------------------
+
+Schedule execution remains out of scope unless already implemented.
+
+Validate:
+
+- Create
+- Read
+- Update
+- Enable
+- Disable
+- Time-zone validation
+- Interval validation
+- Cron-expression validation
+- Optimistic concurrency
+- Tenant isolation
+- Restart persistence
+
+Do not claim distributed scheduling execution safety if no active scheduler exists.
+
+==================================================
+PHASE I — MYSQL RELATIONAL TEST SUITE
+==================================================
+
+--------------------------------------------------
+21. PROVISION DISPOSABLE MYSQL
+--------------------------------------------------
+
+Use Docker or an approved local MySQL instance.
+
+Record:
+
+- MySQL version
+- Container/process name
+- Port
+- Database name
+- Migration method
+- Cleanup method
+
+Mask credentials.
+
+--------------------------------------------------
+22. APPLY MIGRATIONS
+--------------------------------------------------
+
+Run:
+
+dotnet ef migrations list
+
+dotnet ef migrations script
+
+If `dotnet ef database update` remains blocked by the documented Pomelo issue:
+
+- Record the exact failure.
+- Use the approved alternative migration runner.
+- Do not modify designer metadata to hide the failure.
+- Confirm all required tables exist.
+- Confirm Migration 8 is recorded.
+
+--------------------------------------------------
+23. ADD MYSQL TEST FIXTURE
+--------------------------------------------------
+
+Create reusable relational test infrastructure that:
+
+- Creates a clean test schema
+- Applies migrations
+- Creates DbContextFactory
+- Supports two independent service providers
+- Cleans data between tests
+- Records instance IDs
+- Does not use EF InMemory provider
+
+--------------------------------------------------
+24. TEST EVERY DURABLE STORE
+--------------------------------------------------
+
+Validate actual runtime-created rows in:
+
+- xn_automation_registry
+- xn_automation_versions
+- xn_tenant_automations
+- xn_automation_configuration
+- xn_automation_runtime_state
+- xn_automation_executions
+- xn_automation_dead_letters
+- xn_automation_schedules
+- xn_automation_idempotency
+
+No manually inserted rows may be the sole proof.
+
+==================================================
+PHASE J — RESTART RECOVERY
+==================================================
+
+--------------------------------------------------
+25. EXECUTE REAL RESTART TEST
+--------------------------------------------------
+
+Before shutdown, create through service operations:
+
+- One registry record
+- One version record
+- One tenant enablement record
+- One platform configuration record
+- One tenant configuration record
+- One runtime-state record
+- One completed execution
+- One failed execution
+- One dead letter
+- One schedule
+- One idempotency record
+
+Record safe row counts and IDs.
+
+Then:
+
+1. Stop instance A.
+2. Dispose all service providers, hosted services, and DbContexts.
+3. Start a new independent instance B.
+4. Use the same database.
+5. Run reconciliation.
+6. Verify all state remains.
+7. Verify no duplicate registry/version rows.
+8. Verify provider runtime instance is rediscovered.
+9. Verify effective configuration remains correct.
+
+Record before/after row counts.
+
+==================================================
+PHASE K — MULTI-INSTANCE VALIDATION
+==================================================
+
+--------------------------------------------------
+26. CREATE TWO INDEPENDENT INSTANCES
+--------------------------------------------------
+
+Instance A and Instance B must have:
+
+- Separate DI containers
+- Separate hosted-service instances
+- Separate worker/instance IDs
+- Shared MySQL database
+- Same provider definitions
+
+Do not use two scopes from one container.
+
+--------------------------------------------------
+27. CONCURRENT REGISTRY RECONCILIATION
+--------------------------------------------------
+
+Run reconciliation simultaneously.
+
+Validate:
+
+- One registry row
+- One row per version
+- No unhandled duplicate-key failure
+- Tenant state preserved
+- Configuration preserved
+- Reconciliation timestamps valid
+
+--------------------------------------------------
+28. CONCURRENT EXECUTION ACQUISITION
+--------------------------------------------------
+
+Queue one execution.
+
+Both instances attempt acquisition.
+
+Validate:
+
+- One acquires
+- One does not
+- Provider invocation count = 1
+- Runtime counters increment once
+- Execution reaches one final state
+
+--------------------------------------------------
+29. CONCURRENT DEAD-LETTER RETRY
+--------------------------------------------------
+
+Both instances retry one dead letter.
+
+Validate:
+
+- One acquisition
+- One linked execution
+- Replay count increments once
+- Second contender receives conflict/no work
+
+--------------------------------------------------
+30. CONCURRENT CONFIGURATION UPDATE
+--------------------------------------------------
+
+Both instances update the same original version.
+
+Validate:
+
+- One succeeds
+- One receives conflict
+- No silent overwrite
+- Row version increments
+
+--------------------------------------------------
+31. CONCURRENT IDEMPOTENCY RESERVATION
+--------------------------------------------------
+
+Both instances submit the same idempotent request.
+
+Validate:
+
+- One execution
+- Same execution returned where contract permits
+- Provider invoked once
+- Different fingerprint conflicts
+
+==================================================
+PHASE L — TENANT ISOLATION
+==================================================
+
+--------------------------------------------------
+32. EXECUTE TENANT A / TENANT B TESTS
+--------------------------------------------------
+
+Use relational MySQL tests.
+
+Prove:
+
+- Tenant A cannot read Tenant B tenant state.
+- Tenant A cannot read Tenant B configuration.
+- Tenant A cannot update Tenant B configuration.
+- Tenant A cannot read Tenant B runtime state.
+- Tenant A cannot read Tenant B execution.
+- Tenant A cannot cancel Tenant B execution.
+- Tenant A cannot read Tenant B dead letter.
+- Tenant A cannot retry Tenant B dead letter.
+- Tenant A cannot resolve or abandon Tenant B dead letter.
+- Tenant A cannot read Tenant B schedule.
+- Tenant A cannot update Tenant B schedule.
+- Tenant A cannot consume Tenant B idempotency reservation.
+
+Use platform-standard 404 or 403 behavior without leaking existence.
+
+==================================================
+PHASE M — EMAIL BACKWARD COMPATIBILITY
+==================================================
+
+--------------------------------------------------
+33. VALIDATE EMAIL AUTOMATION PROVIDER
+--------------------------------------------------
+
+Prove:
+
+- EmailAutomationProvider remains registered.
+- Email appears in registry after reconciliation.
+- Existing Email automation manifest remains valid.
+- Tenant enablement remains functional.
+- Existing Email manual execution path still works.
+- Existing Email-specific APIs remain unchanged.
+- No duplicate Email registration after restart or concurrent startup.
+
+==================================================
+PHASE N — BUILD, TEST, AND REPORT CLOSURE
+==================================================
+
+--------------------------------------------------
+34. RUN COMPLETE VALIDATION
+--------------------------------------------------
+
+Run:
+
+dotnet --info
+
+dotnet restore
+
+dotnet build
+
+dotnet publish
+
+dotnet test
+
+Record:
+
+- Total discovered tests
+- Total executed
+- Passed
+- Failed
+- Skipped
+- Duration
+- Exit code
+
+Clearly separate:
+
+- Unit tests
+- Application tests
+- Infrastructure tests
+- MySQL relational tests
+- Restart tests
+- Multi-instance tests
+
+--------------------------------------------------
+35. RECORD DATABASE RUNTIME USAGE
+--------------------------------------------------
+
+For all nine automation tables record:
+
+- Before count
+- Operation performed
+- After count
+- Safe example identifiers
+- Service responsible
+
+Do not expose sensitive content.
+
+--------------------------------------------------
+36. COMPLETE ACCEPTANCE MATRIX
+--------------------------------------------------
+
+Populate every criterion from this ticket.
+
+For every criterion include:
+
+- Criterion ID
+- Criterion
+- Status
+- Evidence
+- Command/test
+- Notes
+- Remaining limitation
+
+Do not use summary-only reporting.
+
+==================================================
+VALIDATION COMMANDS
+==================================================
+
+Backend:
+
+dotnet --info
+dotnet restore
+dotnet build
+dotnet publish
+dotnet test
+
+Migration inspection:
+
+dotnet ef migrations list
+dotnet ef migrations script
+
+Runtime, where required:
+
+dotnet run --project apps/services/xenia/Xenia.Api
+
+Use repository-equivalent paths where project layout differs.
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+The ticket is complete only when:
+
+1. Xenia.Infrastructure builds successfully.
+
+2. Xenia.Api builds successfully.
+
+3. Xenia.Api publishes successfully.
+
+4. All modified interfaces and implementations compile.
+
+5. Dependency injection resolves successfully.
+
+6. Production DI uses EF-backed registry.
+
+7. Production DI uses EF-backed configuration.
+
+8. Production DI uses EF-backed runtime state.
+
+9. Production DI uses EF-backed execution service.
+
+10. Production DI uses EF-backed dead letters.
+
+11. Production DI uses EF-backed schedules.
+
+12. Production DI uses EF-backed idempotency.
+
+13. Production-store validation checks every mutable store.
+
+14. Production-like startup rejects any in-memory mutable store.
+
+15. Development/Test in-memory use requires explicit configuration.
+
+16. Registry rows are written by service operations.
+
+17. Version rows are written by reconciliation.
+
+18. Tenant state rows are written by service operations.
+
+19. Configuration rows are written by service operations.
+
+20. Runtime-state rows are written by service operations.
+
+21. Execution rows are written by service operations.
+
+22. Dead-letter rows are written by service operations.
+
+23. Schedule rows are written by service operations.
+
+24. Idempotency rows are written by service operations.
+
+25. Row version changes after successful registry updates.
+
+26. Row version changes after successful tenant-state updates.
+
+27. Row version changes after successful configuration updates.
+
+28. Row version changes after successful runtime-state updates.
+
+29. Row version changes after successful dead-letter updates.
+
+30. Row version changes after successful schedule updates.
+
+31. Stale registry update is rejected.
+
+32. Stale tenant-state update is rejected.
+
+33. Stale configuration update is rejected.
+
+34. Stale runtime-state update is rejected.
+
+35. Stale dead-letter update is rejected.
+
+36. Stale schedule update is rejected.
+
+37. Registry reconciliation uses explicit transaction boundaries.
+
+38. Registry and version creation are transactionally consistent.
+
+39. Execution queueing uses explicit transaction boundaries.
+
+40. Idempotency reservation and execution creation are transactionally consistent.
+
+41. Execution completion and runtime-state update are transactionally consistent.
+
+42. Dead-letter creation is transactionally consistent with failure completion.
+
+43. Dead-letter retry and linked execution creation are transactionally consistent.
+
+44. Configuration update is transactionally consistent.
+
+45. Complete registry reconciliation service exists.
+
+46. Reconciliation compares discovered and persisted providers.
+
+47. Newly discovered provider is inserted.
+
+48. New provider version is inserted.
+
+49. Compatible metadata is reconciled.
+
+50. Missing provider is marked unavailable.
+
+51. Restored provider is marked available.
+
+52. Persisted provider is never auto-deleted.
+
+53. Tenant enablement survives reconciliation.
+
+54. Configuration survives reconciliation.
+
+55. Runtime state survives reconciliation.
+
+56. Concurrent reconciliation creates no duplicate registry row.
+
+57. Concurrent reconciliation creates no duplicate version row.
+
+58. Configuration precedence is provider defaults, then platform, then tenant.
+
+59. Tenant configuration overrides platform configuration.
+
+60. Platform configuration overrides provider defaults.
+
+61. Secret references remain opaque.
+
+62. Resolved secrets are not persisted.
+
+63. Invalid configuration schema is rejected.
+
+64. Oversized configuration is rejected.
+
+65. Atomic execution acquisition is implemented.
+
+66. Two instances cannot acquire one execution.
+
+67. Provider is invoked once.
+
+68. Runtime counters increment once.
+
+69. Same idempotency key and fingerprint return one execution.
+
+70. Mismatched idempotency fingerprint returns conflict.
+
+71. Concurrent idempotency reservation creates one execution.
+
+72. Cross-tenant idempotency keys remain independent.
+
+73. Dead-letter retry acquisition is atomic.
+
+74. Competing dead-letter retry creates one linked execution.
+
+75. Dead-letter replay count increments once.
+
+76. Dead-letter resolve persists.
+
+77. Dead-letter abandon persists.
+
+78. Schedule definitions persist.
+
+79. Schedule validation works.
+
+80. Schedule stale update conflicts.
+
+81. Schedule execution is not falsely claimed if disabled.
+
+82. Disposable MySQL relational tests execute.
+
+83. Tests do not rely solely on EF InMemory provider.
+
+84. Restart recovery is executed.
+
+85. Registry state survives restart.
+
+86. Version state survives restart.
+
+87. Tenant enablement survives restart.
+
+88. Platform configuration survives restart.
+
+89. Tenant configuration survives restart.
+
+90. Runtime state survives restart.
+
+91. Completed execution survives restart.
+
+92. Failed execution survives restart.
+
+93. Dead letter survives restart.
+
+94. Schedule survives restart.
+
+95. Idempotency record survives restart.
+
+96. Restart reconciliation creates no duplicate registry rows.
+
+97. Restart reconciliation creates no duplicate version rows.
+
+98. Multi-instance harness uses two independent DI containers.
+
+99. Instance A ID is documented.
+
+100. Instance B ID is documented.
+
+101. Shared database is documented.
+
+102. Concurrent registry reconciliation is validated.
+
+103. Concurrent execution acquisition is validated.
+
+104. Concurrent dead-letter replay is validated.
+
+105. Concurrent configuration conflict is validated.
+
+106. Concurrent idempotency is validated.
+
+107. Tenant A cannot read Tenant B tenant state.
+
+108. Tenant A cannot read Tenant B configuration.
+
+109. Tenant A cannot update Tenant B configuration.
+
+110. Tenant A cannot read Tenant B runtime state.
+
+111. Tenant A cannot read Tenant B execution.
+
+112. Tenant A cannot cancel Tenant B execution.
+
+113. Tenant A cannot read Tenant B dead letter.
+
+114. Tenant A cannot retry Tenant B dead letter.
+
+115. Tenant A cannot update Tenant B schedule.
+
+116. Tenant A cannot interfere with Tenant B idempotency.
+
+117. EmailAutomationProvider remains registered.
+
+118. Email registration remains unique.
+
+119. Existing Email automation APIs remain compatible.
+
+120. Backend restore succeeds.
+
+121. Backend build succeeds.
+
+122. API publish succeeds.
+
+123. Critical unit tests pass.
+
+124. Critical MySQL relational tests pass.
+
+125. Restart tests pass.
+
+126. Multi-instance tests pass.
+
+127. Final test counts are documented.
+
+128. Runtime row counts are documented for all nine automation tables.
+
+129. No new credential columns are introduced.
+
+130. No raw business-payload persistence is introduced.
+
+131. No message-body persistence is introduced into automation tables.
+
+132. No Phase 2 functionality is introduced.
+
+133. `/analysis/XENIA-P1-PROD-V1-T1-V1-report.md` exists.
+
+134. The report was created before code changes.
+
+135. The report was updated incrementally.
+
+136. Every validation command includes an exit code.
+
+137. Acceptance criteria include criterion-level evidence.
+
+138. Completion percentage is evidence-based.
+
+139. The report states whether XENIA-P1-PROD-V1-T1 may close.
+
+140. The report states whether XENIA-P1-PROD-V1 may continue.
+
+==================================================
+OUT OF SCOPE
+==================================================
+
+Do not implement:
+
+- AI functionality
+- OCR
+- Case intake
+- Customer-support workflows
+- Workflow business rules
+- Email sending
+- SMS
+- Slack
+- Teams
+- Calendar synchronization
+- Contact synchronization
+- Provider webhooks
+- New automation providers
+- Distributed schedule execution enhancements
+- LegalSynq lien or funding logic
+- GitHub operations
+- GitHub Actions
+- AWS deployment
+- Production infrastructure changes
+- Production data migration
+- Production runtime claims
+
+==================================================
+KNOWN RESTRICTIONS
+==================================================
+
+- Keep remediation incremental.
+- Do not rewrite the automation framework.
+- Do not rewrite Email ingestion.
+- Do not redesign Migration 8 without an evidenced blocker.
+- Do not use structural reasoning as validation evidence.
+- Do not treat an integer concurrency token as effective unless updates and stale-write conflicts are proven.
+- Do not use one DI container to simulate two instances.
+- Do not hold transactions open during provider calls.
+- Do not make in-memory stores the production fallback.
+- Do not weaken tenant isolation.
+- Do not store resolved secrets.
+- Do not store raw automation payloads.
+- Do not fabricate build, restart, concurrency, or test results.
+- Do not begin another ticket.
+
+==================================================
+REQUIRED REPORT STRUCTURE
+==================================================
+
+Create before any code change:
+
+/analysis/XENIA-P1-PROD-V1-T1-V1-report.md
+
+Use at least:
+
+# XENIA-P1-PROD-V1-T1-V1 Durable Runtime Compilation, Concurrency, and Restart Validation Closure Report
+
+## 1. Executive Summary
+
+## 2. Ticket Information
+- Ticket ID
+- Parent ticket
+- Task type
+- Objective
+- Current status
+
+## 3. Prior Report Review
+- Confirmed claims
+- Incorrect claims
+- Unverified claims
+- Missing evidence
+
+## 4. Initial Repository Analysis
+
+## 5. Toolchain and Environment
+
+## 6. Implementation Progress
+Maintain:
+- Not started
+- In progress
+- Completed
+- Partially completed
+- Failed
+- Blocked
+- Accepted limitation
+
+## 7. Implementation Validation Matrix
+
+## 8. Files Inspected
+
+## 9. Build Remediation
+
+## 10. Dependency-Injection Validation
+
+## 11. Production Store Validation
+
+## 12. Optimistic-Concurrency Design
+
+## 13. Row-Version Validation
+
+## 14. Transaction Boundaries
+
+## 15. Registry Reconciliation
+
+## 16. Missing and Restored Provider Handling
+
+## 17. Configuration Precedence
+
+## 18. Execution Acquisition
+
+## 19. Idempotency
+
+## 20. Dead-Letter Concurrency
+
+## 21. Schedule Persistence
+
+## 22. Disposable MySQL Environment
+
+## 23. Migration Validation
+
+## 24. MySQL Relational Test Infrastructure
+
+## 25. Runtime Database Usage
+Include before/after counts for every automation table.
+
+## 26. Restart-Recovery Test
+Include:
+- Instance A
+- State before shutdown
+- Shutdown result
+- Instance B
+- Startup result
+- State after restart
+- Duplicate checks
+
+## 27. Multi-Instance Harness
+Include:
+- Instance A ID
+- Instance B ID
+- Separate DI containers
+- Shared database
+
+## 28. Concurrent Registry Reconciliation
+
+## 29. Concurrent Execution Acquisition
+
+## 30. Concurrent Dead-Letter Retry
+
+## 31. Concurrent Configuration Update
+
+## 32. Concurrent Idempotency Reservation
+
+## 33. Tenant Isolation
+
+## 34. Email Backward Compatibility
+
+## 35. Tests Added or Updated
+
+## 36. Test Execution Results
+- Total discovered
+- Total executed
+- Passed
+- Failed
+- Skipped
+- Duration
+- Command
+- Exit code
+
+## 37. Build and Publish Results
+For every command:
+- Command
+- Working directory
+- Exit code
+- Duration
+- Output summary
+- Remediation
+- Retest
+
+## 38. Security Review
+
+## 39. Sensitive-Content Review
+
+## 40. Acceptance Criteria Matrix
+For every criterion:
+- Criterion ID
+- Criterion
+- Status
+- Evidence
+- Command/test
+- Notes
+
+## 41. Issues Found
+
+## 42. Remediation Performed
+
+## 43. Remaining Gaps
+
+## 44. Risks and Architecture Concerns
+
+## 45. Environmental Limitations
+
+## 46. Out-of-Scope Confirmation
+
+## 47. XENIA-P1-PROD-V1-T1 Closure Recommendation
+Use one:
+- Close
+- Close with accepted limitations
+- Keep open
+- Blocked
+
+## 48. XENIA-P1-PROD-V1 Continuation Recommendation
+Use one:
+- Ready to continue
+- Ready with prerequisites
+- Not ready
+- Blocked
+
+## 49. Final Status
+Use one:
+- Complete
+- Complete with limitations
+- Partially complete
+- Blocked
+- Failed
+
+## 50. Completion Percentage
+
+## 51. Follow-Up Recommendations
+
+==================================================
+FINAL RESPONSE REQUIREMENTS
+==================================================
+
+When implementation and validation are complete:
+
+1. Fully update the report.
+
+2. Remove or resolve all placeholder content unless an item is genuinely blocked and documented.
+
+3. Provide a concise final response containing:
+
+- Ticket ID
+- Final status
+- Completion percentage
+- Infrastructure build result
+- API build result
+- Publish result
+- Test result
+- Dependency-injection result
+- Production-store validation result
+- Row-version result
+- Transaction result
+- Registry-reconciliation result
+- Missing-provider result
+- Configuration-precedence result
+- Execution-acquisition result
+- Idempotency result
+- Dead-letter result
+- Schedule result
+- MySQL relational-test result
+- Runtime database-use result
+- Restart-recovery result
+- Multi-instance registry result
+- Multi-instance execution result
+- Multi-instance dead-letter result
+- Multi-instance configuration result
+- Multi-instance idempotency result
+- Tenant-isolation result
+- Email backward-compatibility result
+- Known limitations
+- XENIA-P1-PROD-V1-T1 closure recommendation
+- XENIA-P1-PROD-V1 continuation recommendation
+- Exact report path
+
+4. Do not claim GitHub success.
+
+5. Do not claim AWS success.
+
+6. Do not claim production deployment success.
+
+7. Stop after XENIA-P1-PROD-V1-T1-V1.
+
+Do not begin the next subtask.

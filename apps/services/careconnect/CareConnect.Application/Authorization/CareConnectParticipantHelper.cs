@@ -1,6 +1,7 @@
 // LSCC-002: Shared participant-scoping logic for CareConnect records.
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
+using CareConnect.Application.DTOs;
 using CareConnect.Domain;
 
 namespace CareConnect.Application.Authorization;
@@ -77,6 +78,83 @@ public static class CareConnectParticipantHelper
             return (null, ctx.OrgId);
 
         return (ctx.OrgId, null);
+    }
+
+    /// <summary>
+    /// Applies assistant referral search scope using participant identity rather than the
+    /// currently selected tenant alone. This keeps assistant search useful for referrer-side
+    /// orgs whose visible referrals may live in a different tenant than the current portal tenant.
+    /// </summary>
+    public static void ApplyAssistantReferralScope(GetReferralsQuery query, ICurrentRequestContext ctx)
+    {
+        if (IsAdmin(ctx))
+            return;
+
+        if (IsReceiverContext(ctx))
+        {
+            query.CrossTenantReceiver = true;
+            query.ReceivingOrgId = ctx.OrgId;
+            return;
+        }
+
+        if (ctx.OrgId.HasValue || !string.IsNullOrWhiteSpace(ctx.Email))
+        {
+            query.CrossTenantReferrer = true;
+            query.ReferringOrgId = ctx.OrgId;
+            query.ReferrerEmail = ctx.Email;
+        }
+    }
+
+    /// <summary>
+    /// Assistant lookups should use global referral fetches whenever participant identity is
+    /// available, then rely on row-level participant checks to enforce final access.
+    /// </summary>
+    public static bool ShouldUseAssistantGlobalReferralLookup(ICurrentRequestContext ctx)
+    {
+        if (ctx.IsPlatformAdmin)
+            return true;
+
+        if (IsAdmin(ctx))
+            return false;
+
+        if (IsReceiverContext(ctx))
+            return true;
+
+        return ctx.OrgId.HasValue || !string.IsNullOrWhiteSpace(ctx.Email);
+    }
+
+    /// <summary>
+    /// Returns true when an authenticated referral operation may resolve the record outside
+    /// the caller's currently selected tenant. Row-level participant checks must still run
+    /// after the global lookup.
+    /// </summary>
+    public static bool ShouldUseGlobalReferralLookup(ICurrentRequestContext ctx, bool isProviderOrg)
+    {
+        if (ctx.IsPlatformAdmin)
+            return true;
+
+        // TenantAdmin bypass applies only inside the selected tenant. Combining it with
+        // a global lookup would allow an admin from one tenant to bypass participant checks
+        // on another tenant's referral.
+        if (IsAdmin(ctx))
+            return false;
+
+        if (isProviderOrg)
+            return true;
+
+        var tenantIds = ctx.TenantIds
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+
+        if (tenantIds.Count == 0 && ctx.TenantId.HasValue)
+            tenantIds.Add(ctx.TenantId.Value);
+
+        if (tenantIds.Count <= 1)
+            return false;
+
+        return ctx.ProductRoles.Any(role =>
+            role.EndsWith(":CARECONNECT_REFERRER", StringComparison.OrdinalIgnoreCase));
     }
 
     // ── Appointment participant checks ────────────────────────────────────────

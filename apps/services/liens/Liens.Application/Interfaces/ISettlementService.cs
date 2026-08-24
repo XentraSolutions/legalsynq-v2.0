@@ -20,5 +20,6 @@ public interface ISettlementService
     Task<List<SettlementPaymentDetailResponse>> GetPaymentsByCaseAsync(Guid tenantId, Guid caseId, CancellationToken ct = default);
     Task<List<SettlementPaymentDetailResponse>> GetPaymentsByLienAsync(Guid tenantId, Guid lienId, CancellationToken ct = default);
     Task<SettlementPaymentDetailResponse>       CreatePaymentAsync(Guid tenantId, Guid userId, CreateSettlementPaymentDetailRequest request, CancellationToken ct = default);
+    Task<SettlementPaymentDetailResponse>       UpdatePaymentAsync(Guid tenantId, Guid id, Guid userId, UpdateSettlementPaymentDetailRequest request, CancellationToken ct = default);
     Task DeletePaymentAsync(Guid tenantId, Guid id, Guid userId, CancellationToken ct = default);
 }

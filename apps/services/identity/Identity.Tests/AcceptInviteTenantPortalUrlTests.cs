@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using Identity.Domain;
 using Identity.Infrastructure.Data;
+using LegalSynq.AuditClient;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -81,6 +82,9 @@ public class AcceptInviteTenantPortalUrlTests
                     opts.DefaultAuthenticateScheme = "Test";
                     opts.DefaultChallengeScheme    = "Test";
                 });
+
+                services.RemoveAll<IAuditEventClient>();
+                services.AddSingleton<IAuditEventClient, NoOpAuditEventClient>();
             });
         });
     }

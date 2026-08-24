@@ -30,6 +30,7 @@ Support        5017
 Reports        5029
 Commerce       5030
 Billing        5031
+Xenia          5035
 ```
 
 Do not expose service ports publicly. Only expose `80`, `443`, and restricted SSH or AWS SSM access.
@@ -111,6 +112,7 @@ CREATE DATABASE support CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE commerce_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE billing_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE synqcomm_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE xenia_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
 ## 5. Deploy Code
@@ -145,6 +147,7 @@ dotnet publish apps/services/support/Support.Api/Support.Api.csproj -c Release -
 dotnet publish apps/services/commerce/src/Commerce.Api/Commerce.Api.csproj -c Release -o /opt/legalsynq/publish/commerce
 dotnet publish apps/services/tenant-billing/src/Billing.Api/Billing.Api.csproj -c Release -o /opt/legalsynq/publish/billing
 dotnet publish apps/services/comms/Comms.Api/Comms.Api.csproj -c Release -o /opt/legalsynq/publish/comms
+dotnet publish apps/services/xenia/Xenia.Api/Xenia.Api.csproj -c Release -o /opt/legalsynq/publish/xenia
 ```
 
 ## 6. Create Environment Files
@@ -185,6 +188,11 @@ Create service-specific files under `/etc/legalsynq`.
 # required shared boundary
 PublicTrustBoundary__InternalRequestSecret=<secret>
 
+# verified deep-link association artifacts
+# Point this at the generated directory for the deployed environment.
+# It must contain apple-app-site-association and assetlinks.json.
+DeepLinks__AssociationDirectory=/opt/legalsynq/app/apps/gateway/Gateway.Api/DeepLinks/Associations/production
+
 # reverse proxy destination overrides
 ReverseProxy__Clusters__identity_cluster__Destinations__identity_primary__Address=http://127.0.0.1:5001
 ReverseProxy__Clusters__fund_cluster__Destinations__fund_primary__Address=http://127.0.0.1:5002
@@ -202,6 +210,7 @@ ReverseProxy__Clusters__support_cluster__Destinations__support_primary__Address=
 ReverseProxy__Clusters__reports_cluster__Destinations__reports_primary__Address=http://127.0.0.1:5029
 ReverseProxy__Clusters__commerce_cluster__Destinations__commerce_primary__Address=http://127.0.0.1:5030
 ReverseProxy__Clusters__billing_cluster__Destinations__billing_primary__Address=http://127.0.0.1:5031
+ReverseProxy__Clusters__xenia_cluster__Destinations__xenia_primary__Address=http://127.0.0.1:5035
 
 # legacy service clients retained for code paths that read direct clients
 IdentityService__BaseUrl=http://localhost:5001
@@ -1050,6 +1059,37 @@ AuditClient__SourceSystem=legalsynq
 AuditClient__TimeoutSeconds=10
 ```
 
+`/etc/legalsynq/xenia.env`:
+
+```bash
+# required
+ConnectionStrings__XeniaDb=Server=<rds>;Port=3306;Database=xenia_db;User=<user>;Password=<pass>;
+Xenia__SkipDatabaseStartup=false
+
+# cursor protection
+XeniaCursorProtection__Key=<64-hex-char-key>
+
+# assistant runtime
+XeniaAssistant__Provider=OpenAI
+XeniaAssistant__ModelKey=<openai-model-key>
+XeniaAssistant__OpenAI__BaseUrl=https://api.openai.com
+XeniaAssistant__OpenAI__ApiKey=<openai-api-key>
+XeniaAssistant__OpenAI__TimeoutSeconds=60
+XeniaAssistant__OpenAI__ReasoningEffort=medium
+XeniaAssistant__OpenAI__TextVerbosity=medium
+XeniaAssistant__OpenAI__MaxOutputTokens=4096
+XeniaAssistant__CareConnect__BaseUrl=http://localhost:5003
+XeniaAssistant__CareConnect__TimeoutSeconds=20
+XeniaAssistant__CareConnect__MaxHistoryItems=5
+
+# email ingestion and automation workers
+XeniaIngestion__IngestionEnabled=true
+XeniaIngestion__WorkerEnabled=true
+XeniaAutomation__SchedulingEnabled=false
+```
+
+Xenia can boot in a degraded no-database mode when `ConnectionStrings__XeniaDb` is missing or still uses the placeholder value from `appsettings`, but production deploys should point it at a real MySQL 8 database and keep `Xenia__SkipDatabaseStartup=false` so migrations, seeders, and workers run normally.
+
 Only include a key in `shared.env` when every service that loads it legitimately needs the value. Prefer moving ambiguous values into the specific service env file.
 
 For provisioning keys, `ProvisioningToken` is the outbound value sent in the `X-Provisioning-Token` header and `ProvisioningSecret` is the receiver-side expected value. The paired values must match for the relevant service call path. Keep both names where this runbook lists both because the current services read both naming conventions.
@@ -1228,6 +1268,12 @@ create_legalsynq_service comms \
   comms Comms.Api.dll 5011 comms.env \
   "network-online.target legalsynq-documents.service legalsynq-notifications.service legalsynq-audit.service" \
   "network-online.target"
+
+create_legalsynq_service xenia \
+  "LegalSynq Xenia API" \
+  xenia Xenia.Api.dll 5035 xenia.env \
+  "network-online.target legalsynq-careconnect.service" \
+  "network-online.target"
 ```
 
 The generated units correspond to this service map:
@@ -1251,6 +1297,7 @@ legalsynq-support       /opt/legalsynq/publish/support         Support.Api.dll  
 legalsynq-commerce      /opt/legalsynq/publish/commerce        Commerce.Api.dll                 5030  commerce.env
 legalsynq-billing       /opt/legalsynq/publish/billing         Billing.Api.dll                  5031  billing.env
 legalsynq-comms         /opt/legalsynq/publish/comms           Comms.Api.dll                    5011  comms.env
+legalsynq-xenia         /opt/legalsynq/publish/xenia           Xenia.Api.dll                    5035  xenia.env
 ```
 
 If one service fails because a dependency is still migrating on first boot, restart it after the dependency becomes healthy. The `After=` entries order startup; they do not prove that an HTTP dependency is ready.
@@ -1288,6 +1335,7 @@ sudo systemctl enable \
   legalsynq-commerce \
   legalsynq-billing \
   legalsynq-comms \
+  legalsynq-xenia \
   legalsynq-gateway
 ```
 
@@ -1298,7 +1346,7 @@ sudo systemctl start legalsynq-audit legalsynq-notifications legalsynq-monitorin
 sudo systemctl start legalsynq-identity legalsynq-tenant
 sudo systemctl start legalsynq-documents legalsynq-task legalsynq-flow
 sudo systemctl start legalsynq-fund legalsynq-careconnect legalsynq-liens
-sudo systemctl start legalsynq-reports legalsynq-support legalsynq-commerce legalsynq-billing legalsynq-comms
+sudo systemctl start legalsynq-reports legalsynq-support legalsynq-commerce legalsynq-billing legalsynq-comms legalsynq-xenia
 sudo systemctl start legalsynq-gateway
 ```
 
@@ -1310,6 +1358,7 @@ Create `/etc/nginx/sites-available/legalsynq-api`:
 server {
     listen 80;
     server_name api.yourdomain.com;
+    client_max_body_size 60m;
 
     location / {
         proxy_pass http://127.0.0.1:5010;
@@ -1333,6 +1382,41 @@ sudo systemctl reload nginx
 
 Add TLS with Certbot or use an AWS Application Load Balancer with ACM. For a single EC2 Nginx deployment, Certbot is the simplest.
 
+## 8A. Deep-Link Association Files
+
+The gateway serves Apple and Android association files anonymously at these canonical paths:
+
+```text
+/.well-known/apple-app-site-association
+/.well-known/assetlinks.json
+```
+
+Generate the files only after Platform has approved the host and Mobile release owners have provided the Apple Team ID and public Android SHA-256 app signing certificate fingerprint:
+
+```bash
+python3 scripts/deep-links/generate-association-files.py \
+  --config <approved-association-config.json> \
+  --routes shared/contracts/deep-links/routes.json \
+  --output apps/gateway/Gateway.Api/DeepLinks/Associations
+```
+
+Validate before restart:
+
+```bash
+python3 scripts/deep-links/validate-association-files.py \
+  --routes shared/contracts/deep-links/routes.json \
+  --directory apps/gateway/Gateway.Api/DeepLinks/Associations/production \
+  --apple-app-id <APPLE_TEAM_ID>.com.legalsynq \
+  --android-package com.legalsynq
+```
+
+After deployment, verify direct public HTTPS delivery without redirects or authentication:
+
+```bash
+curl -i https://<approved-deep-link-host>/.well-known/apple-app-site-association
+curl -i https://<approved-deep-link-host>/.well-known/assetlinks.json
+```
+
 ## 9. Verify Health
 
 Check local services:
@@ -1341,6 +1425,7 @@ Check local services:
 curl -i http://127.0.0.1:5010/health
 curl -i http://127.0.0.1:5001/health
 curl -i http://127.0.0.1:5003/health
+curl -i http://127.0.0.1:5035/health
 ```
 
 Check through Gateway/Nginx:
@@ -1348,12 +1433,14 @@ Check through Gateway/Nginx:
 ```bash
 curl -i https://api.yourdomain.com/identity/health
 curl -i https://api.yourdomain.com/careconnect/health
+curl -i https://api.yourdomain.com/xenia/health
 ```
 
 Check logs:
 
 ```bash
 sudo journalctl -u legalsynq-identity -n 100 --no-pager
+sudo journalctl -u legalsynq-xenia -n 100 --no-pager
 sudo journalctl -u legalsynq-gateway -n 100 --no-pager
 ```
 
@@ -1389,7 +1476,7 @@ audit/notifications
 tenant/identity
 documents/flow/task
 fund/careconnect/liens
-monitoring/reports/support/commerce/billing/comms
+monitoring/reports/support/commerce/billing/comms/xenia
 gateway
 ```
 

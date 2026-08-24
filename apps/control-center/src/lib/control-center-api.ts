@@ -361,13 +361,24 @@ function mapOutboxDetail(raw: unknown): OutboxDetail {
 // ── Server-side API ───────────────────────────────────────────────────────────
 // Use in Server Components and Server Actions only.
 
+export interface TenantRegistration {
+  id: string; tenantName: string; tenantCode: string; organizationType: string; streetAddress?: string; addressLine1?: string; addressCity?: string; addressState?: string; addressPostalCode?: string;
+  adminFirstName: string; adminLastName: string; adminEmail: string; registrationStatus: string;
+  provisioningStatus: string; tenantId?: string; provisioningHostname?: string; provisioningError?: string;
+  provisioningFailureStage?: string; decisionReason?: string; reviewedByUserId?: string; reviewedAtUtc?: string;
+  provisioningStartedAtUtc?: string; provisionedAtUtc?: string; createdAtUtc: string; updatedAtUtc: string;
+}
+export interface RegistrationDecision { registrationStatus: string; tenantId?: string; tenantStatus?: string;
+  administratorEmail: string; provisioningStatus: string; hostname?: string; provisioningWarnings: string[];
+  provisioningErrors: string[]; nextAction: string; failureStage?: string; }
+
 export const controlCenterServerApi = {
 
   // ── Tenants ──────────────────────────────────────────────────────────────
 
   tenants: {
     /**
-     * GET /identity/api/admin/tenants
+     * GET /tenant/api/v1/admin/tenants
      *
      * Returns a paged list of tenants, optionally filtered by search text
      * and/or scoped to a single tenant (tenantId param).
@@ -377,7 +388,7 @@ export const controlCenterServerApi = {
      *   Tenant roster changes rarely; 60 s balances freshness vs load.
      *   On-demand invalidated by tenants.updateEntitlement mutation.
      *
-     * TODO: enforce tenant scoping server-side
+     * TODO: send and enforce search/tenant scoping server-side
      * TODO: validate tenant context against session
      * TODO: add Redis or edge caching
      */
@@ -576,13 +587,23 @@ export const controlCenterServerApi = {
       success:            boolean;
       provisioningStatus: string;
       hostname?:          string;
+      failureStage?:      string;
       error?:             string;
+      attemptNumber?:     number;
+      stillRetrying?:     boolean;
+      exhausted?:         boolean;
+      nextRetryAtUtc?:    string;
     }> => {
       const raw = await apiClient.post<{
         success:            boolean;
         provisioningStatus: string;
         hostname?:          string;
+        failureStage?:      string;
         error?:             string;
+        attemptNumber?:     number;
+        stillRetrying?:     boolean;
+        exhausted?:         boolean;
+        nextRetryAtUtc?:    string;
       }>(`/tenant/api/v1/admin/tenants/${tenantId}/provisioning/retry`, {});
       safeRevalidateTag(CACHE_TAGS.tenants);
       return raw;
@@ -598,6 +619,10 @@ export const controlCenterServerApi = {
       hostname?:          string;
       error?:             string;
       failureStage?:      string;
+      attemptNumber?:     number;
+      stillRetrying?:     boolean;
+      exhausted?:         boolean;
+      nextRetryAtUtc?:    string;
     }> => {
       const raw = await apiClient.post<{
         success:            boolean;
@@ -605,10 +630,25 @@ export const controlCenterServerApi = {
         hostname?:          string;
         error?:             string;
         failureStage?:      string;
+        attemptNumber?:     number;
+        stillRetrying?:     boolean;
+        exhausted?:         boolean;
+        nextRetryAtUtc?:    string;
       }>(`/tenant/api/v1/admin/tenants/${tenantId}/verification/retry`, {});
       safeRevalidateTag(CACHE_TAGS.tenants);
       return raw;
     },
+  },
+
+  tenantRegistrations: {
+    list: async (params: { page?: number; pageSize?: number; search?: string; registrationStatus?: string; provisioningStatus?: string } = {}) => {
+      const qs = toQs(params);
+      return apiClient.get<{ items: TenantRegistration[]; totalCount: number; page: number; pageSize: number }>(`/tenant/api/v1/admin/tenant-registrations${qs}`);
+    },
+    get: (id: string) => apiClient.get<TenantRegistration>(`/tenant/api/v1/admin/tenant-registrations/${id}`),
+    approve: (id: string) => apiClient.post<RegistrationDecision>(`/tenant/api/v1/admin/tenant-registrations/${id}/approve`, {}),
+    decline: (id: string, reason: string) => apiClient.post<TenantRegistration>(`/tenant/api/v1/admin/tenant-registrations/${id}/decline`, { reason }),
+    retry: (id: string) => apiClient.post<RegistrationDecision>(`/tenant/api/v1/admin/tenant-registrations/${id}/provisioning/retry`, {}),
   },
 
   // ── Users ─────────────────────────────────────────────────────────────────
@@ -1964,6 +2004,9 @@ export const controlCenterServerApi = {
       userName?:  string;
       category:   string;
       priority:   SupportCase['priority'];
+      caseManagerUserId?: string;
+      caseManagerName?: string;
+      caseManagerEmail?: string;
     }): Promise<SupportCaseDetail> => {
       const raw = await apiClient.post<unknown>('/support/api/tickets', data);
       const result = mapSupportCaseDetail(raw);

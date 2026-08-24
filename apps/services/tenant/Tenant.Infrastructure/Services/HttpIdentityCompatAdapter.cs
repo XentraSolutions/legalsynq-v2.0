@@ -32,9 +32,9 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
         _logger            = logger;
     }
 
-    // ── Read: session timeout ─────────────────────────────────────────────────
-
-    public async Task<int?> GetSessionTimeoutMinutesAsync(Guid tenantId, CancellationToken ct = default)
+    public async Task<TenantIdentityCompatSnapshot?> GetTenantAdminSnapshotAsync(
+        Guid tenantId,
+        CancellationToken ct = default)
     {
         try
         {
@@ -58,30 +58,51 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
 
             var body = await response.Content.ReadAsStringAsync(cts.Token);
             using var doc = JsonDocument.Parse(body);
-            var root    = doc.RootElement;
+            var root = doc.RootElement;
 
-            if (root.TryGetProperty("sessionTimeoutMinutes", out var prop) &&
-                prop.ValueKind == JsonValueKind.Number)
+            int? sessionTimeoutMinutes = null;
+            if (root.TryGetProperty("sessionTimeoutMinutes", out var sessionTimeoutProp) &&
+                sessionTimeoutProp.ValueKind == JsonValueKind.Number)
             {
-                return prop.GetInt32();
+                sessionTimeoutMinutes = sessionTimeoutProp.GetInt32();
             }
 
-            return null;
+            return new TenantIdentityCompatSnapshot(
+                Type: GetString(root, "type"),
+                SessionTimeoutMinutes: sessionTimeoutMinutes,
+                Hostname: GetString(root, "hostname"),
+                PrimaryContactName: GetString(root, "primaryContactName", "primary_contact_name"),
+                ProvisioningStatus: GetString(root, "provisioningStatus", "provisioning_status"),
+                LastProvisioningAttemptUtc: GetDateTime(root, "lastProvisioningAttemptUtc", "last_provisioning_attempt_utc"),
+                ProvisioningFailureReason: GetString(root, "provisioningFailureReason", "provisioning_failure_reason"),
+                ProvisioningFailureStage: GetString(root, "provisioningFailureStage", "provisioning_failure_stage"),
+                VerificationAttemptCount: GetInt(root, "verificationAttemptCount", "verification_attempt_count"),
+                LastVerificationAttemptUtc: GetDateTime(root, "lastVerificationAttemptUtc", "last_verification_attempt_utc"),
+                NextVerificationRetryAtUtc: GetDateTime(root, "nextVerificationRetryAtUtc", "next_verification_retry_at_utc"),
+                IsVerificationRetryExhausted: GetBool(root, "isVerificationRetryExhausted", "is_verification_retry_exhausted"));
         }
         catch (OperationCanceledException)
         {
             _logger.LogWarning(
-                "IdentityCompatAdapter: timed out reading sessionTimeoutMinutes for tenant {TenantId}",
+                "IdentityCompatAdapter: timed out reading admin snapshot for tenant {TenantId}",
                 tenantId);
             return null;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
-                "IdentityCompatAdapter: failed reading sessionTimeoutMinutes for tenant {TenantId}",
+                "IdentityCompatAdapter: failed reading admin snapshot for tenant {TenantId}",
                 tenantId);
             return null;
         }
+    }
+
+    // ── Read: session timeout ─────────────────────────────────────────────────
+
+    public async Task<int?> GetSessionTimeoutMinutesAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var snapshot = await GetTenantAdminSnapshotAsync(tenantId, ct);
+        return snapshot?.SessionTimeoutMinutes;
     }
 
     // ── Write: session timeout proxy ──────────────────────────────────────────
@@ -189,5 +210,61 @@ public class HttpIdentityCompatAdapter : IIdentityCompatAdapter
             client.DefaultRequestHeaders.Remove("Authorization");
             client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeader);
         }
+    }
+
+    private static string? GetString(JsonElement root, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (root.TryGetProperty(propertyName, out var prop) &&
+                prop.ValueKind == JsonValueKind.String)
+            {
+                return prop.GetString();
+            }
+        }
+
+        return null;
+    }
+
+    private static int? GetInt(JsonElement root, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (root.TryGetProperty(propertyName, out var prop) &&
+                prop.ValueKind == JsonValueKind.Number &&
+                prop.TryGetInt32(out var value))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool? GetBool(JsonElement root, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!root.TryGetProperty(propertyName, out var prop)) continue;
+            if (prop.ValueKind == JsonValueKind.True) return true;
+            if (prop.ValueKind == JsonValueKind.False) return false;
+        }
+
+        return null;
+    }
+
+    private static DateTime? GetDateTime(JsonElement root, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (root.TryGetProperty(propertyName, out var prop) &&
+                prop.ValueKind == JsonValueKind.String &&
+                prop.TryGetDateTime(out var value))
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 }

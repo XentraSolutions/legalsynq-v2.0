@@ -4,6 +4,7 @@
  * DB storage: digits only, e.g. "3105551234"
  * Display:    (310) 555-1234
  * Input:      auto-formatted as user types
+ * Identity:   E.164, e.g. "+13105551234"
  */
 
 /** Strip everything except digits. */
@@ -19,7 +20,7 @@ export function formatPhoneDisplay(
   value: string | null | undefined,
 ): string | undefined {
   if (!value) return undefined;
-  const digits = stripPhone(value);
+  const digits = normalizeUsDigits(stripPhone(value));
   if (digits.length === 0) return undefined;
   if (digits.length === 10) {
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
@@ -37,7 +38,7 @@ export function formatPhoneDisplay(
  * Trims at 10 digits.
  */
 export function formatPhoneInput(value: string): string {
-  const digits = stripPhone(value).slice(0, 10);
+  const digits = normalizeUsDigits(stripPhone(value)).slice(0, 10);
   if (digits.length === 0) return '';
   if (digits.length <= 3) return `(${digits}`;
   if (digits.length <= 6)
@@ -47,5 +48,22 @@ export function formatPhoneInput(value: string): string {
 
 /** Returns true when value contains exactly 10 digits. */
 export function isValidPhone(value: string): boolean {
-  return stripPhone(value).length === 10;
+  return normalizeUsDigits(stripPhone(value)).length === 10;
+}
+
+/** Convert a US-style 10 digit phone into E.164 for Identity/SMS storage. */
+export function toE164Phone(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith('+')) return `+${stripPhone(trimmed)}`;
+
+  const digits = stripPhone(trimmed);
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return digits || undefined;
+}
+
+function normalizeUsDigits(digits: string): string {
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
+  return digits;
 }

@@ -15,6 +15,7 @@ public class TenantDbContext : DbContext
     public DbSet<TenantSetting>              Settings            => Set<TenantSetting>();
     public DbSet<MigrationRun>               MigrationRuns       => Set<MigrationRun>();
     public DbSet<MigrationRunItem>           MigrationRunItems   => Set<MigrationRunItem>();
+    public DbSet<TenantRegistration>         TenantRegistrations => Set<TenantRegistration>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +61,16 @@ public class TenantDbContext : DbContext
         {
             if (entry.State == EntityState.Modified)
                 entry.Property("UpdatedAtUtc").CurrentValue = now;
+        }
+
+        foreach (var entry in ChangeTracker.Entries<TenantRegistration>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Property(nameof(TenantRegistration.UpdatedAtUtc)).CurrentValue = now;
+                entry.Property(nameof(TenantRegistration.Version)).CurrentValue =
+                    entry.Entity.Version + 1;
+            }
         }
 
         return base.SaveChangesAsync(cancellationToken);

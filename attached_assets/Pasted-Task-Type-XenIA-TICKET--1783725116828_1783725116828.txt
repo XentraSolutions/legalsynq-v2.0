@@ -1,0 +1,581 @@
+Task Type: 🟦 XenIA
+
+=========================================================
+TICKET
+=========================================================
+
+Ticket ID:
+XENIA-P1-T4
+
+Parent:
+XENIA-P1 — Xenia Platform Foundation & Email Automation
+
+Title:
+Email Administration, Monitoring, and Operational Control
+
+Objective:
+
+Complete the operational layer for the Xenia Email module.
+
+This ticket is intended to complete all remaining operational functionality required before Enterprise Hardening (P1-T5).
+
+This includes:
+
+• Operational dashboards
+• Monitoring
+• Provider health
+• Source health
+• Run monitoring
+• Retry
+• Cancellation
+• Operational alerts
+• Retention management
+• Metrics
+• Message search
+• Operational settings
+• Remaining T3 carry-forward work
+• Runtime validation
+• Frontend implementation
+
+=========================================================
+MANDATORY EXECUTION RULES
+=========================================================
+
+1. BEFORE making ANY code changes create:
+
+/analysis/XENIA-P1-T4-report.md
+
+2. The report MUST be created FIRST.
+
+3. Update the report continuously throughout implementation.
+
+4. Never fabricate:
+
+• builds
+• tests
+• runtime validation
+• migrations
+• API validation
+• frontend validation
+• IMAP validation
+• attachment streaming
+• proxy validation
+
+5. Every validation step must include:
+
+• command executed
+• expected result
+• actual result
+• exit code/status
+• remediation
+• retest result
+
+6. Do NOT perform:
+
+• GitHub work
+• git add
+• git commit
+• git push
+• PR creation
+• GitHub Actions
+
+7. Do NOT perform:
+
+• AWS deployment
+• ECS
+• Fargate
+• RDS
+• Route53
+• IAM
+• ALB
+• Cloud Map
+
+8. Do NOT begin XENIA-P1-T5.
+
+=========================================================
+PHASE A
+Close Remaining T3 Prerequisites
+=========================================================
+
+Complete all remaining carried-forward items.
+
+Implement and validate:
+
+✓ Header sanitization
+
+✓ Lease renewal
+
+✓ Lock fencing tokens
+
+✓ Prevent stale worker commits
+
+✓ Production cursor-key enforcement
+
+✓ Complete audit event coverage
+
+✓ Controlled IMAP ingestion proof
+
+✓ Controlled attachment streaming proof
+
+✓ Runtime API validation
+
+✓ Control Center proxy validation
+
+✓ Relational tenant isolation validation
+
+=========================================================
+PHASE B
+Operational Domain
+=========================================================
+
+Implement complete operational domain objects.
+
+Operational Settings
+
+Operational Alerts
+
+Alert Rules
+
+Alert State Management
+
+Retention Settings
+
+Retention Execution History
+
+Operations Summary
+
+Provider Health
+
+Source Health
+
+Run Monitoring
+
+Operational Metrics
+
+Advanced Message Search
+
+Retry Queue
+
+Cancellation Queue
+
+Attachment Retry
+
+Operational Configuration
+
+Update:
+
+• EF models
+
+• configurations
+
+• migrations
+
+• snapshot
+
+=========================================================
+PHASE C
+API
+=========================================================
+
+Implement or complete:
+
+GET /email/operations/summary
+
+GET /email/operations/metrics
+
+GET /email/operations/provider-health
+
+GET /email/operations/source-health
+
+GET /email/runs
+
+GET /email/runs/{id}
+
+POST /email/runs/{id}/retry
+
+POST /email/runs/{id}/cancel
+
+POST /email/messages/{id}/attachments/retry
+
+GET /email/alerts
+
+GET /email/alerts/{id}
+
+POST /email/alerts/{id}/acknowledge
+
+POST /email/alerts/{id}/resolve
+
+POST /email/alerts/{id}/suppress
+
+GET /email/operations/settings
+
+PUT /email/operations/settings
+
+POST /email/retention/dry-run
+
+POST /email/retention/execute
+
+Support:
+
+200
+
+202
+
+400
+
+401
+
+403
+
+404
+
+409
+
+422
+
+503
+
+Maintain tenant isolation.
+
+Maintain permission enforcement.
+
+=========================================================
+PHASE D
+Frontend
+=========================================================
+
+Implement Control Center pages:
+
+/xenia/email/operations
+
+/xenia/email/providers
+
+/xenia/email/runs
+
+/xenia/email/runs/{id}
+
+/xenia/email/alerts
+
+/xenia/email/alerts/{id}
+
+/xenia/email/settings/operations
+
+Enhance:
+
+/xenia/email/messages
+
+/xenia/email/sources
+
+Display:
+
+• Operational dashboard
+
+• Provider health
+
+• Source health
+
+• Active runs
+
+• Historical runs
+
+• Retry
+
+• Cancellation
+
+• Alerts
+
+• Alert actions
+
+• Metrics
+
+• Retention
+
+• Message search
+
+Support UI states:
+
+Loading
+
+Empty
+
+Error
+
+Unauthorized
+
+Forbidden
+
+Conflict
+
+Backend unavailable
+
+Degraded
+
+=========================================================
+PHASE E
+Security
+=========================================================
+
+Do NOT expose:
+
+• credentials
+
+• provider tokens
+
+• raw cursors
+
+• raw headers
+
+• message bodies
+
+• attachment binaries
+
+Maintain:
+
+• tenant isolation
+
+• authorization
+
+• TLS
+
+• SSRF protection
+
+• cursor protection
+
+• lock fencing
+
+• audit safety
+
+=========================================================
+PHASE F
+Validation
+=========================================================
+
+Backend
+
+Run:
+
+dotnet restore
+
+dotnet build
+
+dotnet publish
+
+dotnet test
+
+Database
+
+Run:
+
+dotnet ef migrations list
+
+dotnet ef migrations script
+
+dotnet ef database update
+
+Validate using disposable MySQL.
+
+Runtime
+
+Validate:
+
+• controlled IMAP
+
+• attachment streaming
+
+• runtime APIs
+
+• tenant isolation
+
+• retry
+
+• cancellation
+
+• alerts
+
+• metrics
+
+• retention
+
+Proxy
+
+Validate:
+
+Control Center proxy
+
+Frontend
+
+Run:
+
+type-check
+
+lint
+
+tests
+
+build
+
+=========================================================
+ACCEPTANCE CRITERIA
+=========================================================
+
+Ticket is complete only when ALL of the following are verified with evidence:
+
+✓ Controlled IMAP validation succeeds
+
+✓ Incremental sync validated
+
+✓ Duplicate prevention validated
+
+✓ Attachment streaming validated
+
+✓ Runtime APIs validated
+
+✓ Proxy validated
+
+✓ Lease renewal implemented
+
+✓ Fencing implemented
+
+✓ Production cursor-key enforcement implemented
+
+✓ Header sanitization implemented
+
+✓ Complete audit coverage implemented
+
+✓ Operations dashboard implemented
+
+✓ Source health implemented
+
+✓ Provider health implemented
+
+✓ Run monitoring implemented
+
+✓ Retry implemented
+
+✓ Cancellation implemented
+
+✓ Alerts implemented
+
+✓ Metrics implemented
+
+✓ Operational settings implemented
+
+✓ Retention implemented
+
+✓ Message search implemented
+
+✓ Backend builds successfully
+
+✓ Publish succeeds
+
+✓ Tests pass
+
+✓ Migrations validated
+
+✓ Frontend builds
+
+✓ Tenant isolation validated
+
+✓ Report fully completed
+
+=========================================================
+REPORT REQUIREMENTS
+=========================================================
+
+Create FIRST:
+
+/analysis/XENIA-P1-T4-report.md
+
+Maintain throughout implementation.
+
+Minimum sections:
+
+1. Executive Summary
+
+2. Repository Analysis
+
+3. Architecture Review
+
+4. Files Modified
+
+5. Database Changes
+
+6. API Changes
+
+7. Frontend Changes
+
+8. Runtime Validation
+
+9. IMAP Validation
+
+10. Attachment Validation
+
+11. Security Review
+
+12. Tenant Isolation
+
+13. Build Results
+
+14. Test Results
+
+15. Migration Results
+
+16. Proxy Validation
+
+17. Acceptance Matrix
+
+18. Known Issues
+
+19. Remaining Gaps
+
+20. Risks
+
+21. Completion Percentage
+
+22. XENIA-P1-T5 Readiness
+
+=========================================================
+STOP CONDITIONS
+=========================================================
+
+Stop immediately if:
+
+• GitHub work is required
+
+• AWS deployment is required
+
+• Production validation is required
+
+• External infrastructure changes are required
+
+Document the blocker in:
+
+/analysis/XENIA-P1-T4-report.md
+
+Do not continue beyond XENIA-P1-T4.
+
+Final output must include:
+
+• Final completion percentage
+
+• Build status
+
+• Publish status
+
+• Test status
+
+• Migration status
+
+• Runtime validation summary
+
+• Frontend validation summary
+
+• Remaining issues
+
+• Known limitations
+
+• Recommendation whether XENIA-P1-T5 is ready
+
+• Exact report location:
+
+/analysis/XENIA-P1-T4-report.md

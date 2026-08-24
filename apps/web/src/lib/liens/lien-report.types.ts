@@ -1,0 +1,277 @@
+import { CaseListItem } from "../cases";
+
+export type Columns = {
+  key: string;
+  label: string;
+  isDefault?: boolean;
+  categoryKey?: string;
+};
+
+export type ColumnGroup = {
+  key: string; // category name (liensInfo, etc.)
+  value: ReportColumnOption[]; // list of columns
+};
+
+export interface ReportColumnOption {
+  key: string;
+  label: string;
+  isDefault: boolean;
+  sectionKey?: string;
+  sortOrder?: number;
+}
+
+export type ReportColumnValue = string | ReportColumnOption;
+
+export interface CreateReports {
+  name: string;
+  description: string;
+  config: {
+    columns: Array<ReportColumnValue>;
+  };
+  attorneyIds: Array<string>;
+  caseManagerIds: Array<string>;
+  closedDateFrom?: null;
+  closedDateTo?: null;
+  fundingCompanyIds: Array<string>;
+  isBulk: string;
+  lawFirmIds: Array<string>;
+  lienStatusIds: Array<string>;
+  medicalFacilityIds: Array<string>;
+  medicalProviderIds: Array<string>;
+  plaintiffCaseIds: Array<string>;
+  purchaseDateFrom: string;
+  purchaseDateTo: string;
+  reportType: string;
+  statusView: string;
+}
+
+export interface ReportListResponse {
+  name?: string;
+  description?: string;
+  columns?: Array<string>;
+  data?: CaseListItem[];
+  items: Array<unknown>;
+  page?: number;
+  pageSize?: number;
+  reportId?: string;
+  totalCount?: number;
+  reportName?: string;
+  reportDescription?: string;
+  reportType?: "CASES" | "LIENS";
+  config?: ReportConfig;
+  limit?: number;
+  exportCsv?: false;
+  isBoldReady?: false;
+  program?: null;
+  user?: null;
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  reportConfig: ReportConfig;
+  columnCount?: number;
+  summaryTotals?: ReportTotals;
+  totalPages?: number;
+}
+
+export interface ReportConfigResponse {
+  config: {
+    columns: Array<ReportColumnValue>;
+  };
+
+  createdAt: string;
+  createdAtUtc: string;
+  createdBy: string;
+  id: string;
+  name: string;
+  reportDescription: string | undefined | null;
+  description?: string | null;
+  reportConfig: {
+    columns: Array<ReportColumnValue>;
+  };
+  reportId: string;
+  reportName: string;
+  reportType: string;
+  updatedAt: string;
+  tenantId: string;
+  updatedAtUtc: string;
+  userId: string;
+}
+
+export interface ReportTemplate {
+  name?: string;
+  description?: string;
+  reportType: "CASES" | "LIENS";
+  statusView: string;
+  lienStatusIds: Array<string>;
+  purchaseDateFrom: string | null;
+  purchaseDateTo: string | null;
+  closedDateFrom: string | null;
+  closedDateTo: string | null;
+  isBulk: string;
+  plaintiffCaseIds: Array<string>;
+  lawFirmIds: Array<string>;
+  attorneyIds: Array<string>;
+  fundingCompanyIds: Array<string>;
+  medicalFacilityIds: Array<string>;
+  caseManagerIds: Array<string>;
+  medicalProviderIds: Array<string>;
+  columns: Array<string>;
+  page: number;
+  limit: number;
+}
+export interface ReportsResponse {
+  billing_amt: string;
+  case_id: string;
+  case_manager: string;
+  case_status: string;
+  case_type: string;
+  date_closed: any;
+  date_of_loss: string;
+  id: number;
+  initial_service_date: string;
+  l_id: number;
+  lawfirm: string;
+  lien_id: string;
+  medical_facility: string;
+  plaintiff_first_name: string;
+  plaintiff_last_name: string;
+  purchase_amt: string;
+  purchase_date: string;
+  returned_amt: null;
+  reportConfig?: ReportConfig;
+  summaryTotals?: ReportTotals;
+  reportType: "CASES" | "LIENS";
+  totalCount?: number;
+  totalPages?: number;
+}
+
+interface ReportConfig {
+  reportType: string;
+  viewBy: string;
+  columns: Array<ReportColumnValue>;
+  attorneyIds?: Array<string>;
+  caseManagerIds?: Array<string>;
+  closedDateFrom?: null;
+  closedDateTo?: null;
+  fundingCompanyIds: Array<string>;
+  isBulk: string;
+  lawFirmIds: Array<string>;
+  lienStatusIds: Array<string>;
+  medicalFacilityIds: Array<string>;
+  medicalProviderIds: Array<string>;
+  plaintiffCaseIds: Array<string>;
+  purchaseDateFrom: string;
+  purchaseDateTo: string;
+  statusView: string;
+  page?: number | string;
+  limit?: number | string;
+}
+
+export interface ReportTotals {
+  totalCases: number;
+  totalLiens: number;
+  totalPurchaseAmt: number;
+  totalBillingAmt: number;
+  totalAmtToSettle: number;
+  totalReturnedAmt: number;
+  totalOpenCases: number;
+  totalClosedCases: number;
+  totalOpenLiens: number;
+  totalClosedLiens: number;
+}
+
+export interface ReportColumnReponse extends DynamicColumns {
+  reportType: string;
+  message: string;
+}
+export interface DynamicColumns {
+  [sectionName: string]: string | ColumnGroup[];
+}
+
+export interface UpdateReportConfigRequest {
+  name: string;
+  config: Record<string, unknown>;
+}
+
+export interface ExportReportRequest extends ReportConfig {
+  reportId: string;
+  format: string;
+}
+
+export interface PaginatedResultDto<T> {
+  data: T[];
+  limit?: number;
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages?: number;
+}
+
+export interface ApiResponse {
+  isSuccess: boolean;
+  message: string;
+  data: Array<Record<string, unknown>>;
+}
+export type ViewType = "CASES" | "LIENS" | "COMBINE";
+
+export interface FilterQuery {
+  reportType: ViewType;
+  limit?: number;
+  keyword?: string;
+  filterField?: string;
+  lawFirmId?: string;
+}
+
+export type HistoryNoteType = "TRACKING" | "FEED";
+export interface CaseHistoryParams {
+  noteType: HistoryNoteType;
+  page: number;
+  limit: number;
+  sortBy: string;
+  sortDirection: "asc" | "desc";
+}
+
+export interface CaseHistoryItem {
+  noteId: string;
+  caseRecordId: string;
+  caseId: string;
+  caseName: string;
+  noteType: string;
+  noteTypeLabel: string;
+  noteDate: string;
+  noteAuthor: string;
+  noteContent: string;
+}
+
+export interface AutoGeneratedReportSummaryTotals {
+  totalLiens: number;
+  totalOpenLiens: number;
+  totalClosedLiens: number;
+  totalPurchaseAmt: number;
+  totalReturnedAmt: number;
+  totalBillingAmt: number;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages?: number;
+  limit?: number;
+}
+
+export interface AutoGeneratedReportListResponse extends PaginatedResult<AutoGeneratedReportItem> {
+  summaryTotals?: AutoGeneratedReportSummaryTotals;
+}
+
+export interface AutoGeneratedReportItem {
+  reportId: number;
+  code: string;
+  description: string;
+  date: string;
+  createDate: string;
+  createAt?: string;
+  tenantId: string;
+  apiPath: string;
+}

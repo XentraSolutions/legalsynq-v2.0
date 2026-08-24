@@ -2,6 +2,13 @@
 
 This document explains how tenant subdomain provisioning works in the Identity service and how to configure AWS Route53, application settings, and verification so tenant creation succeeds.
 
+`Route53:EnvironmentLabel` optionally inserts a DNS label between the tenant slug
+and base domain. Empty produces `{tenant}.{baseDomain}`; `nonprod` produces
+`{tenant}.nonprod.{baseDomain}`. Set it with `Route53__EnvironmentLabel=nonprod`.
+The checked-in Development environment override uses `nonprod`.
+The hosted zone remains the base-domain zone. Create, delete, verification, and
+retry paths use the authoritative `IDnsService.BuildHostname` method.
+
 ## Scope
 
 This setup applies to the Identity service subdomain provisioning flow used when Control Center creates a tenant.
@@ -405,6 +412,10 @@ The tenant-facing app behind the ingress must serve:
 /.well-known/tenant-verify
 ```
 
+Do not configure the legacy path `/.well-known/legalsynq-tenant-verification`.
+Identity normalizes that legacy value to `/.well-known/tenant-verify`, because
+the tenant portal only serves the canonical route.
+
 And the response body must include:
 
 ```text
@@ -430,6 +441,9 @@ Create a test tenant in Control Center and verify:
 
 ### `DNS record creation returned failure.`
 
+Identity shows this only when Route53 did not accept the DNS change request.
+If Route53 returns a change ID but the change is still propagating, Identity continues into the verification/retry flow instead of marking DNS creation failed.
+
 Likely causes:
 
 - `Route53__HostedZoneId` is wrong or empty
@@ -438,6 +452,10 @@ Likely causes:
 - the hosted zone does not match `Route53__BaseDomain`
 
 ### `DNS resolution failed`
+
+Identity first checks recursive DNS from the service host. If that resolver is stale
+but Route53 already contains the managed tenant record, Identity accepts DNS
+verification from the authoritative Route53 record instead of exhausting retries.
 
 Likely causes:
 

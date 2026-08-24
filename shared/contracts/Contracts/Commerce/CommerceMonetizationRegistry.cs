@@ -74,6 +74,17 @@ public static class CommerceMonetizationRegistry
                 DefaultAccessMode:      CommerceAccessModeValues.Permissive,
                 OperationalCriticality: CommerceOperationalCriticality.High),
 
+            new(
+                ProductKey:             "SYNQ_AI",
+                DisplayName:            "Xenia",
+                ServiceName:            "Xenia",
+                EntitlementKey:         "xenia.access",
+                SubscriptionRequired:   true,
+                MonetizationEnabled:    false,
+                EnforcementEnabled:     false,
+                DefaultAccessMode:      CommerceAccessModeValues.Permissive,
+                OperationalCriticality: CommerceOperationalCriticality.High),
+
             // ── Platform infrastructure services (not monetized) ─────────────
 
             new(

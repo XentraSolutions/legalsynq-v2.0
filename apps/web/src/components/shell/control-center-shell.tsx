@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import { useState, useEffect, type ReactNode } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useSession } from '@/hooks/use-session';
-import { useTenantBranding } from '@/hooks/use-tenant-branding';
-import { buildControlCenterNav } from '@/lib/control-center-nav';
-import { CCRoutes } from '@/lib/control-center-routes';
-import { CC_LOGIN_URL } from '@/lib/control-center-config';
-import type { NavGroup, NavItem, TenantBranding } from '@/types';
-import { clsx } from 'clsx';
+import { useState, useEffect, type ReactNode } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useSession } from "@/hooks/use-session";
+import { useTenantBranding } from "@/hooks/use-tenant-branding";
+import { buildControlCenterNav } from "@/lib/control-center-nav";
+import { CCRoutes } from "@/lib/control-center-routes";
+import { CC_LOGIN_URL } from "@/lib/control-center-config";
+import type { NavGroup, NavItem, TenantBranding } from "@/types";
+import { clsx } from "clsx";
 
 interface ControlCenterShellProps {
   children: ReactNode;
@@ -32,9 +32,7 @@ export function ControlCenterShell({ children }: ControlCenterShellProps) {
       <ControlCenterTopBar />
       <div className="flex flex-1 overflow-hidden">
         <ControlCenterSidebar />
-        <main className="flex-1 overflow-y-auto p-6">
-          {children}
-        </main>
+        <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>
   );
@@ -43,7 +41,7 @@ export function ControlCenterShell({ children }: ControlCenterShellProps) {
 // ── Top bar ───────────────────────────────────────────────────────────────────
 
 function ControlCenterTopBar() {
-  const { session, clearSession } = useSession();
+  const { session, clearSession, logout } = useSession();
   const branding = useTenantBranding();
 
   async function handleSignOut() {
@@ -51,9 +49,7 @@ function ControlCenterTopBar() {
     // Uses CC_LOGIN_URL for the post-logout redirect so it works in both modes:
     //   embedded:   redirects to /login (operator portal login on same host)
     //   standalone: redirects to CC_LOGIN_URL (configured for the standalone host)
-    await fetch('/api/auth/logout', { method: 'POST' });
-    clearSession();
-    window.location.href = CC_LOGIN_URL;
+    logout(CC_LOGIN_URL);
   }
 
   return (
@@ -95,31 +91,41 @@ function ControlCenterTopBar() {
 
 function ControlCenterSidebar() {
   const { session } = useSession();
-  const pathname    = usePathname();
-  const groups      = session ? buildControlCenterNav(session) : [];
+  const pathname = usePathname();
+  const groups = session ? buildControlCenterNav(session) : [];
 
   if (!session) return null;
 
   return (
     <aside className="w-56 shrink-0 border-r border-gray-200 bg-white flex flex-col h-full overflow-y-auto">
       <nav className="flex-1 py-4 space-y-6 px-2">
-        {groups.map(group => (
-          <SidebarGroup key={group.id} group={group} pathname={pathname ?? ''} />
+        {groups.map((group) => (
+          <SidebarGroup
+            key={group.id}
+            group={group}
+            pathname={pathname ?? ""}
+          />
         ))}
       </nav>
     </aside>
   );
 }
 
-function SidebarGroup({ group, pathname }: { group: NavGroup; pathname: string }) {
+function SidebarGroup({
+  group,
+  pathname,
+}: {
+  group: NavGroup;
+  pathname: string;
+}) {
   return (
     <div>
       <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
         {group.label}
       </p>
       <ul className="space-y-0.5">
-        {group.items.map(item => (
-          <SidebarItem key={item.href} item={item} pathname={pathname ?? ''} />
+        {group.items.map((item) => (
+          <SidebarItem key={item.href} item={item} pathname={pathname ?? ""} />
         ))}
       </ul>
     </div>
@@ -127,16 +133,17 @@ function SidebarGroup({ group, pathname }: { group: NavGroup; pathname: string }
 }
 
 function SidebarItem({ item, pathname }: { item: NavItem; pathname: string }) {
-  const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+  const isActive =
+    pathname === item.href || pathname.startsWith(item.href + "/");
   return (
     <li>
       <Link
-        href={item.href}
+        href={item.href ?? ""}
         className={clsx(
-          'flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+          "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors",
           isActive
-            ? 'bg-indigo-50 text-indigo-700'
-            : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900',
+            ? "bg-indigo-50 text-indigo-700"
+            : "text-gray-700 hover:bg-gray-100 hover:text-gray-900",
         )}
       >
         {item.label}
@@ -149,14 +156,13 @@ function CCTenantLogo({ branding }: { branding: TenantBranding }) {
   const sources: string[] = [];
   if (branding.logoDocumentId)
     sources.push(`/api/branding/logo/${branding.logoDocumentId}`);
-  if (branding.logoUrl)
-    sources.push(branding.logoUrl);
-  sources.push('/api/branding/logo/public');
+  if (branding.logoUrl) sources.push(branding.logoUrl);
+  sources.push("/api/branding/logo/public");
 
   const [srcIndex, setSrcIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
 
-  const sourcesKey = sources.join('|');
+  const sourcesKey = sources.join("|");
   useEffect(() => {
     setSrcIndex(0);
     setExhausted(false);
@@ -173,14 +179,16 @@ function CCTenantLogo({ branding }: { branding: TenantBranding }) {
 
   if (exhausted) {
     return (
-      <span className="font-semibold text-gray-900">{branding.displayName}</span>
+      <span className="font-semibold text-gray-900">
+        {branding.displayName}
+      </span>
     );
   }
 
   return (
     <img
       src={sources[srcIndex]}
-      alt={branding.displayName || 'Tenant logo'}
+      alt={branding.displayName || "Tenant logo"}
       className="h-7 w-auto max-w-[160px] object-contain"
       onError={handleError}
     />

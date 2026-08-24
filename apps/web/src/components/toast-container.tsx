@@ -1,5 +1,10 @@
 'use client';
 
+/**
+ * @deprecated Backs the deprecated `@/lib/toast-context`. Use sonner's
+ * global <Toaster /> (src/app/layout.tsx) with `toast` from "sonner" instead.
+ */
+
 import { useToastState } from '@/lib/toast-context';
 
 const ICON: Record<string, string> = {
@@ -20,6 +25,7 @@ const ICON_COLOR: Record<string, string> = {
   info:    'text-blue-500',
 };
 
+/** @deprecated Use sonner's <Toaster /> instead. */
 export function ToastContainer() {
   const { toasts, dismiss } = useToastState();
 

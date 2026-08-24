@@ -1,0 +1,686 @@
+{
+  "info": {
+    "name": "LegalSynq Selling API",
+    "description": "Focused Postman collection for SynqLien selling portfolio endpoints from apps/services/liens/Liens.Api/Endpoints/SellingEndpoints.cs. Requires an authenticated SYNQLIEN user with sell mode and the required lien permissions.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set token and ID variables before running these requests.",
+          "// Selling endpoints require product access, sell mode, and lien read/offer permissions."
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5009"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "portfolioId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "portfolioNumber",
+      "value": "PORT-POSTMAN-001"
+    },
+    {
+      "key": "lienId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "secondLienId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "lienCode",
+      "value": "LIEN-TEST-001"
+    },
+    {
+      "key": "buyerOrgId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "buyerContactId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "buyerDetailsUrl",
+      "value": "https://app.legalsynq.local/selling/portfolio/{{portfolioId}}/liens/{{lienCode}}"
+    }
+  ],
+  "item": [
+    {
+      "name": "Portfolios",
+      "item": [
+        {
+          "name": "Search Portfolios",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios?search=&status=&buyerOrgId=&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "buyerOrgId",
+                  "value": ""
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "GET /api/liens/selling/portfolios. Query params: search, status, buyerOrgId, page, pageSize."
+          }
+        },
+        {
+          "name": "Get Portfolio By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}"
+              ]
+            },
+            "description": "GET /api/liens/selling/portfolios/{id}."
+          }
+        },
+        {
+          "name": "Create Portfolio",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.id) pm.collectionVariables.set('portfolioId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"portfolioNumber\": \"{{portfolioNumber}}\",\n  \"name\": \"Postman Selling Portfolio\",\n  \"description\": \"Created from LegalSynq Selling API Postman collection\",\n  \"lienIds\": [\n    \"{{lienId}}\"\n  ],\n  \"buyerOrgIds\": [\n    \"{{buyerOrgId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios. Captures response id into {{portfolioId}}."
+          }
+        },
+        {
+          "name": "Update Portfolio",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Postman Selling Portfolio\",\n  \"description\": \"Updated from LegalSynq Selling API Postman collection\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}"
+              ]
+            },
+            "description": "PUT /api/liens/selling/portfolios/{id}."
+          }
+        },
+        {
+          "name": "Get Portfolio Status History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/status-history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "status-history"
+              ]
+            },
+            "description": "GET /api/liens/selling/portfolios/{id}/status-history."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Portfolio Liens",
+      "item": [
+        {
+          "name": "Add Liens",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lienIds\": [\n    \"{{secondLienId}}\"\n  ],\n  \"lienCodes\": [\n    \"{{lienCode}}\"\n  ],\n  \"liens\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/liens",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "liens"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios/{id}/liens. Supports lienIds, lienCodes, and liens mixed input."
+          }
+        },
+        {
+          "name": "Remove Liens",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lienIds\": [\n    \"{{secondLienId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/liens/remove",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "liens",
+                "remove"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios/{id}/liens/remove."
+          }
+        },
+        {
+          "name": "Send Buyer Email For Lien",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerContactId\": \"{{buyerContactId}}\",\n  \"detailsUrl\": \"{{buyerDetailsUrl}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/liens/{{lienCode}}/buyer-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "liens",
+                "{{lienCode}}",
+                "buyer-email"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios/{id}/liens/{lienIdOrCode}/buyer-email. The lien path segment can be a lien GUID or lien code."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Buyers",
+      "item": [
+        {
+          "name": "Add Buyers",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"buyerOrgIds\": [\n    \"{{buyerOrgId}}\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/buyers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "buyers"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios/{id}/buyers."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Status",
+      "item": [
+        {
+          "name": "Transition To Ready For Review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ReadyForReview\",\n  \"notes\": \"Ready for operations review from Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "status"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios/{id}/status. Valid statuses are enforced by the domain transition rules."
+          }
+        },
+        {
+          "name": "Transition To Published",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Published\",\n  \"notes\": \"Published from Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "status"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios/{id}/status."
+          }
+        },
+        {
+          "name": "Transition To Closed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Closed\",\n  \"notes\": \"Closed from Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "status"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios/{id}/status."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Publish and Withdraw",
+      "item": [
+        {
+          "name": "Publish Portfolio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Published from Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/publish",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "publish"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios/{id}/publish. Promotes a draft portfolio through ready-for-review and published when valid."
+          }
+        },
+        {
+          "name": "Publish Portfolio Empty Body",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/publish",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "publish"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios/{id}/publish with no request body."
+          }
+        },
+        {
+          "name": "Withdraw Portfolio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Withdrawn from Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "withdraw"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios/{id}/withdraw."
+          }
+        },
+        {
+          "name": "Withdraw Portfolio Empty Body",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "withdraw"
+              ]
+            },
+            "description": "POST /api/liens/selling/portfolios/{id}/withdraw with no request body."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Activity and Analytics",
+      "item": [
+        {
+          "name": "Get Portfolio Activity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/activity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "activity"
+              ]
+            },
+            "description": "GET /api/liens/selling/portfolios/{id}/activity."
+          }
+        },
+        {
+          "name": "Get Portfolio Analytics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liens/selling/portfolios/{{portfolioId}}/analytics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "liens",
+                "selling",
+                "portfolios",
+                "{{portfolioId}}",
+                "analytics"
+              ]
+            },
+            "description": "GET /api/liens/selling/portfolios/{id}/analytics."
+          }
+        }
+      ]
+    }
+  ]
+}

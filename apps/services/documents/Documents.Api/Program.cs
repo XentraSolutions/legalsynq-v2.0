@@ -9,7 +9,10 @@ using Documents.Domain.Interfaces;
 using Documents.Infrastructure;
 using Documents.Infrastructure.Database;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -18,6 +21,22 @@ using Serilog;
 using Serilog.Formatting.Compact;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Keep the transport and multipart parser above the configured file-size limit.
+// Multipart metadata and boundaries need a small envelope beyond the file itself.
+const int MultipartEnvelopeOverheadMb = 10;
+var maxUploadSizeMb = builder.Configuration.GetValue<int>("Documents:MaxUploadSizeMb", 25);
+var multipartRequestLimitBytes = checked(
+    ((long)maxUploadSizeMb + MultipartEnvelopeOverheadMb) * 1024 * 1024);
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = multipartRequestLimitBytes;
+});
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = multipartRequestLimitBytes;
+});
 
 // ── Serilog structured logging ────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
@@ -198,7 +217,15 @@ builder.Services
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("DocumentsServiceInternal", policy =>
+    {
+        policy.AddAuthenticationSchemes(ServiceTokenAuthenticationDefaults.Scheme);
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole(ServiceTokenAuthenticationDefaults.ServiceRole);
+    });
+});
 
 // ── Rate limiting (ASP.NET Core built-in) ─────────────────────────────────────
 builder.Services.AddRateLimiter(opts =>
@@ -360,8 +387,8 @@ catch (Exception ex)
 
 // ── Middleware pipeline ────────────────────────────────────────────────────────
 app.UseCorrelationId();
-app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseSerilogRequestLogging();
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 // ── Prometheus HTTP metrics (request count, duration, in-flight) ──────────────
 app.UseHttpMetrics(options =>
@@ -410,7 +437,11 @@ app.MapPublicLogoEndpoints();
         var filePath = Path.Combine(basePath, key.Replace('/', Path.DirectorySeparatorChar));
         if (!File.Exists(filePath)) return Results.NotFound();
 
-        var mimeType = "application/octet-stream";
+        var contentTypeProvider = new FileExtensionContentTypeProvider();
+        var mimeType = contentTypeProvider.TryGetContentType(filePath, out var resolvedContentType)
+            ? resolvedContentType
+            : "application/octet-stream";
+
         return Results.File(filePath, mimeType,
             enableRangeProcessing: true,
             fileDownloadName: disposition == "download" ? Path.GetFileName(key) : null);

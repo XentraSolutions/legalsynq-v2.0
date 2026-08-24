@@ -9,14 +9,20 @@ namespace Identity.Infrastructure.Services;
 
 public sealed class TenantVerificationService : ITenantVerificationService
 {
+    private const string CanonicalVerificationEndpointPath = "/.well-known/tenant-verify";
+    private const string LegacyVerificationEndpointPath = "/.well-known/legalsynq-tenant-verification";
+
     private readonly TenantVerificationOptions _opts;
+    private readonly IDnsService _dns;
     private readonly ILogger<TenantVerificationService> _log;
 
     public TenantVerificationService(
         IOptions<TenantVerificationOptions> opts,
+        IDnsService dns,
         ILogger<TenantVerificationService> log)
     {
         _opts = opts.Value;
+        _dns = dns;
         _log = log;
     }
 
@@ -40,7 +46,15 @@ public sealed class TenantVerificationService : ITenantVerificationService
 
         var dnsResult = await VerifyDnsAsync(hostname, ct);
         if (!dnsResult.Success)
+        {
+            var authoritativeDnsResult = await VerifyAuthoritativeDnsAsync(hostname, dnsResult.ErrorMessage, ct);
+            if (authoritativeDnsResult.Success)
+            {
+                return authoritativeDnsResult;
+            }
+
             return dnsResult;
+        }
 
         var httpResult = await VerifyHttpAsync(hostname, tenant.Code, ct);
         return httpResult;
@@ -82,11 +96,27 @@ public sealed class TenantVerificationService : ITenantVerificationService
         }
     }
 
+    private async Task<VerificationResult> VerifyAuthoritativeDnsAsync(
+        string hostname,
+        string? resolverFailureReason,
+        CancellationToken ct)
+    {
+        if (!await _dns.RecordExistsAsync(hostname, ct))
+            return new VerificationResult(false, resolverFailureReason, ProvisioningFailureStage.DnsVerification);
+
+        _log.LogWarning(
+            "Recursive DNS verification failed for {Hostname}, but Route53 authoritative record exists; accepting DNS verification. Resolver reason: {Reason}",
+            hostname, resolverFailureReason);
+
+        return new VerificationResult(true, null);
+    }
+
     private async Task<VerificationResult> VerifyHttpAsync(string hostname, string tenantCode, CancellationToken ct)
     {
         _log.LogInformation("HTTP/app verification started for {Hostname}", hostname);
 
-        var url = $"https://{hostname}{_opts.VerificationEndpointPath}";
+        var verificationEndpointPath = GetVerificationEndpointPath();
+        var url = $"https://{hostname}{verificationEndpointPath}";
 
         try
         {
@@ -134,5 +164,25 @@ public sealed class TenantVerificationService : ITenantVerificationService
             _log.LogWarning(ex, "HTTP verification error for {Hostname}", hostname);
             return new VerificationResult(false, msg.Length > 500 ? msg[..500] : msg, ProvisioningFailureStage.HttpVerification);
         }
+    }
+
+    private string GetVerificationEndpointPath()
+    {
+        var path = string.IsNullOrWhiteSpace(_opts.VerificationEndpointPath)
+            ? CanonicalVerificationEndpointPath
+            : _opts.VerificationEndpointPath.Trim();
+
+        if (!path.StartsWith('/'))
+            path = "/" + path;
+
+        if (string.Equals(path, LegacyVerificationEndpointPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _log.LogWarning(
+                "Tenant verification endpoint path {LegacyPath} is deprecated; using {CanonicalPath}",
+                path, CanonicalVerificationEndpointPath);
+            return CanonicalVerificationEndpointPath;
+        }
+
+        return path;
     }
 }

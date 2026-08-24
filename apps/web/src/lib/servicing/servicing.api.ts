@@ -1,4 +1,4 @@
-import { apiClient } from '@/lib/api-client';
+import { apiClient } from "@/lib/api-client";
 import type {
   ServicingItemResponseDto,
   PaginatedResultDto,
@@ -6,32 +6,91 @@ import type {
   UpdateServicingItemRequestDto,
   UpdateServicingStatusRequestDto,
   ServicingQuery,
-} from './servicing.types';
+  UpdateServicingDetailsRequestDto,
+  UpdateServicingDetailsResponseDto,
+  ServicingListItem,
+  ExportResponse,
+  ServicingListItemResponseDto,
+  ServicingLienItem,
+} from "./servicing.types";
+import {
+  GenericPaginatedResult,
+  GenericPaginationData,
+} from "../lookup/lookup.types";
+import { LienListItem, LienResponseDto } from "../liens/liens.types";
+
+const BASE = "/lien/service";
 
 function toQs(params: Record<string, unknown>): string {
   const pairs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
-  return pairs.length ? `?${pairs.join('&')}` : '';
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(
+      ([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`,
+    );
+  return pairs.length ? `?${pairs.join("&")}` : "";
 }
 
 export const servicingApi = {
-  list(query: ServicingQuery = {}) {
-    return apiClient.get<PaginatedResultDto<ServicingItemResponseDto>>(
-      `/lien/api/liens/servicing${toQs(query as Record<string, unknown>)}`,
+  list(query: GenericPaginationData) {
+    return apiClient.post<GenericPaginatedResult<ServicingListItemResponseDto>>(
+      `${BASE}/case/v3`,
+      query,
     );
   },
 
+  liensList(query: GenericPaginationData) {
+    return apiClient.post<GenericPaginatedResult<ServicingListItemResponseDto>>(
+      `${BASE}/all-liens/v3`,
+      query,
+    );
+  },
+
+  allLiensList(id: string) {
+    return apiClient.get<PaginatedResultDto<ServicingLienItem>>(
+      `${BASE}/all-liens/${id}`,
+    );
+  },
+  closedliensList(id: string) {
+    return apiClient.get<GenericPaginatedResult<ServicingListItemResponseDto>>(
+      `${BASE}/closed-liens/${id}`,
+    );
+  },
+
+  getServiceCase(id: string) {
+    return apiClient.get<GenericPaginatedResult<ServicingListItemResponseDto>>(
+      `${BASE}/case`,
+    );
+  },
+
+  getCase(id: string) {
+    return apiClient.get<any>(`${BASE}/${id}`);
+  },
+
   getById(id: string) {
-    return apiClient.get<ServicingItemResponseDto>(`/lien/api/liens/servicing/${id}`);
+    return apiClient.get<ServicingItemResponseDto>(
+      `/lien/api/liens/servicing/${id}`,
+    );
   },
 
   create(request: CreateServicingItemRequestDto) {
-    return apiClient.post<ServicingItemResponseDto>('/lien/api/liens/servicing', request);
+    return apiClient.post<ServicingItemResponseDto>(
+      "/lien/api/liens/servicing",
+      request,
+    );
   },
 
   update(id: string, request: UpdateServicingItemRequestDto) {
-    return apiClient.put<ServicingItemResponseDto>(`/lien/api/liens/servicing/${id}`, request);
+    return apiClient.patch<ServicingItemResponseDto>(
+      `/lien/api/liens/update/${id}`,
+      request,
+    );
+  },
+
+  updateDetails(request: UpdateServicingDetailsRequestDto) {
+    return apiClient.patch<UpdateServicingDetailsResponseDto>(
+      `${BASE}/update-details`,
+      request,
+    );
   },
 
   updateStatus(id: string, request: UpdateServicingStatusRequestDto) {
@@ -39,5 +98,10 @@ export const servicingApi = {
       `/lien/api/liens/servicing/${id}/status`,
       request,
     );
+  },
+  export(caseId: string = "") {
+    return apiClient.post<ExportResponse>(`${BASE}/generate-csv`, {
+      caseId: caseId,
+    });
   },
 };

@@ -14,6 +14,22 @@ public static class DocumentEndpoints
 {
     public static void MapDocumentEndpoints(this WebApplication app)
     {
+        app.MapGet("/internal/intake/documents/{id:guid}", async (
+                Guid id,
+                HttpContext ctx,
+                DocumentService svc,
+                CancellationToken ct) =>
+        {
+            var tenantId = JwtPrincipalExtractor.Extract(ctx.User).TenantId;
+            if (tenantId == Guid.Empty)
+                return Results.Unauthorized();
+            var result = await svc.GetInternalMetadataAsync(id, tenantId, ct);
+            return result is null ? Results.NotFound() : Results.Ok(new { data = result });
+        })
+        .RequireAuthorization("DocumentsServiceInternal")
+        .WithTags("Internal Documents")
+        .WithSummary("Return tenant-scoped metadata for Intake association integrity checks");
+
         var docs = app.MapGroup("/documents")
             .RequireAuthorization()
             .WithTags("Documents");

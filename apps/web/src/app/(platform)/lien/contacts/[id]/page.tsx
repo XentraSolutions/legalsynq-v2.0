@@ -1,6 +1,10 @@
-import { ContactDetailClient } from './contact-detail-client';
+import { redirect } from "next/navigation";
 
-export default async function ContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ContactDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
-  return <ContactDetailClient id={id} />;
+  redirect(`/lien/contacts/${id}/overview`);
 }

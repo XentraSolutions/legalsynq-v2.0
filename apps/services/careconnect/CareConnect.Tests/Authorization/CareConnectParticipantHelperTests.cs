@@ -2,6 +2,7 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Context;
 using CareConnect.Application.Authorization;
+using CareConnect.Application.DTOs;
 using CareConnect.Domain;
 using Moq;
 using Xunit;
@@ -32,13 +33,18 @@ public class CareConnectParticipantHelperTests
         string? tenantAdminRole = null,
         Guid? orgId = null,
         string? orgType = null,
+        string? email = null,
+        IReadOnlyList<Guid>? tenantIds = null,
         params string[] productRoles)
     {
         var mock = new Mock<ICurrentRequestContext>();
         mock.Setup(c => c.IsPlatformAdmin).Returns(isPlatformAdmin);
         mock.Setup(c => c.OrgId).Returns(orgId);
         mock.Setup(c => c.OrgType).Returns(orgType);
+        mock.Setup(c => c.Email).Returns(email);
         mock.Setup(c => c.ProductRoles).Returns(productRoles);
+        mock.Setup(c => c.TenantId).Returns(tenantIds?.FirstOrDefault() ?? TenantId);
+        mock.Setup(c => c.TenantIds).Returns(tenantIds ?? [TenantId]);
 
         var roles = tenantAdminRole is not null
             ? new[] { tenantAdminRole }
@@ -130,6 +136,51 @@ public class CareConnectParticipantHelperTests
         Assert.False(CareConnectParticipantHelper.IsReceiverContext(ctx));
     }
 
+    [Fact]
+    public void ShouldUseGlobalReferralLookup_MultiTenantReferrer_ReturnsTrue()
+    {
+        var ctx = MakeCtx(
+            orgId: OrgA,
+            orgType: OrgType.LawFirm,
+            tenantIds: [TenantId, Guid.CreateVersion7()],
+            productRoles: ["SYNQ_CARECONNECT:CARECONNECT_REFERRER"]);
+
+        Assert.True(CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(ctx, isProviderOrg: false));
+    }
+
+    [Fact]
+    public void ShouldUseGlobalReferralLookup_SingleTenantReferrer_ReturnsFalse()
+    {
+        var ctx = MakeCtx(
+            orgId: OrgA,
+            orgType: OrgType.LawFirm,
+            tenantIds: [TenantId],
+            productRoles: ["SYNQ_CARECONNECT:CARECONNECT_REFERRER"]);
+
+        Assert.False(CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(ctx, isProviderOrg: false));
+    }
+
+    [Fact]
+    public void ShouldUseGlobalReferralLookup_Receiver_ReturnsTrue()
+    {
+        var ctx = MakeCtx(orgId: OrgA, orgType: OrgType.Provider);
+
+        Assert.True(CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(ctx, isProviderOrg: true));
+    }
+
+    [Fact]
+    public void ShouldUseGlobalReferralLookup_MultiTenantTenantAdmin_ReturnsFalse()
+    {
+        var ctx = MakeCtx(
+            tenantAdminRole: Roles.TenantAdmin,
+            orgId: OrgA,
+            orgType: OrgType.LawFirm,
+            tenantIds: [TenantId, Guid.CreateVersion7()],
+            productRoles: ["SYNQ_CARECONNECT:CARECONNECT_REFERRER"]);
+
+        Assert.False(CareConnectParticipantHelper.ShouldUseGlobalReferralLookup(ctx, isProviderOrg: false));
+    }
+
     // ── IsReferralParticipant ─────────────────────────────────────────────────
 
     [Fact]
@@ -215,6 +266,113 @@ public class CareConnectParticipantHelperTests
         var (referring, receiving) = CareConnectParticipantHelper.GetReferralOrgScope(ctx, callerIsReceiver: false);
         Assert.Null(referring);
         Assert.Null(receiving);
+    }
+
+    [Fact]
+    public void ApplyAssistantReferralScope_ReceiverContext_UsesCrossTenantReceivingOrg()
+    {
+        var ctx = MakeCtx(orgId: OrgA, productRoles: ["SYNQ_CARECONNECT:CARECONNECT_RECEIVER"]);
+        var query = new GetReferralsQuery();
+
+        CareConnectParticipantHelper.ApplyAssistantReferralScope(query, ctx);
+
+        Assert.True(query.CrossTenantReceiver);
+        Assert.Equal(OrgA, query.ReceivingOrgId);
+        Assert.False(query.CrossTenantReferrer);
+        Assert.Null(query.ReferringOrgId);
+    }
+
+    [Fact]
+    public void ApplyAssistantReferralScope_TenantAdminReferrerContext_UsesCrossTenantReferrerIdentity()
+    {
+        var ctx = MakeCtx(
+            tenantAdminRole: Roles.TenantAdmin,
+            orgId: OrgA,
+            orgType: OrgType.LawFirm,
+            email: "admin@acmelaw.com",
+            productRoles: ["SYNQ_CARECONNECT:CARECONNECT_REFERRER"]);
+        var query = new GetReferralsQuery();
+
+        CareConnectParticipantHelper.ApplyAssistantReferralScope(query, ctx);
+
+        Assert.False(query.CrossTenantReferrer);
+        Assert.False(query.CrossTenantReceiver);
+        Assert.Null(query.ReferringOrgId);
+        Assert.Null(query.ReceivingOrgId);
+    }
+
+    [Fact]
+    public void ApplyAssistantReferralScope_TenantAdminWithReceiverRole_LeavesQueryUnscoped()
+    {
+        var ctx = MakeCtx(
+            tenantAdminRole: Roles.TenantAdmin,
+            orgId: OrgA,
+            orgType: OrgType.LienOwner,
+            email: "admin@rl.example",
+            productRoles:
+            [
+                "SYNQ_CARECONNECT:CARECONNECT_RECEIVER",
+                "SYNQ_CARECONNECT:CARECONNECT_REFERRER",
+            ]);
+        var query = new GetReferralsQuery();
+
+        CareConnectParticipantHelper.ApplyAssistantReferralScope(query, ctx);
+
+        Assert.False(query.CrossTenantReferrer);
+        Assert.False(query.CrossTenantReceiver);
+        Assert.Null(query.ReferringOrgId);
+        Assert.Null(query.ReceivingOrgId);
+    }
+
+    [Fact]
+    public void ApplyAssistantReferralScope_PlatformAdmin_LeavesQueryUnscoped()
+    {
+        var ctx = MakeCtx(isPlatformAdmin: true, orgId: OrgA, email: "admin@legalsynq.com");
+        var query = new GetReferralsQuery();
+
+        CareConnectParticipantHelper.ApplyAssistantReferralScope(query, ctx);
+
+        Assert.False(query.CrossTenantReceiver);
+        Assert.False(query.CrossTenantReferrer);
+        Assert.Null(query.ReceivingOrgId);
+        Assert.Null(query.ReferringOrgId);
+    }
+
+    [Fact]
+    public void ShouldUseAssistantGlobalReferralLookup_ReturnsTrue_ForReferrerParticipantContext()
+    {
+        var ctx = MakeCtx(
+            orgId: OrgA,
+            orgType: OrgType.LawFirm,
+            email: "admin@acmelaw.com",
+            productRoles: ["SYNQ_CARECONNECT:CARECONNECT_REFERRER"]);
+
+        Assert.True(CareConnectParticipantHelper.ShouldUseAssistantGlobalReferralLookup(ctx));
+    }
+
+    [Fact]
+    public void ShouldUseAssistantGlobalReferralLookup_ReturnsFalse_ForTenantAdmin()
+    {
+        var ctx = MakeCtx(
+            tenantAdminRole: Roles.TenantAdmin,
+            orgId: OrgA,
+            orgType: OrgType.LienOwner,
+            email: "admin@rl.example",
+            productRoles:
+            [
+                "SYNQ_CARECONNECT:CARECONNECT_RECEIVER",
+                "SYNQ_CARECONNECT:CARECONNECT_REFERRER",
+            ]);
+
+        Assert.False(CareConnectParticipantHelper.ShouldUseAssistantGlobalReferralLookup(ctx));
+    }
+
+    [Fact]
+    public void ShouldUseAssistantGlobalReferralLookup_ReturnsFalse_WhenNoParticipantIdentityExists()
+    {
+        var ctx = MakeCtx(orgType: OrgType.LawFirm);
+
+        Assert.False(CareConnectParticipantHelper.ShouldUseAssistantGlobalReferralLookup(ctx));
     }
 
     [Fact]

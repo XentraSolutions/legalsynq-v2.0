@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Tenant.Application.Interfaces;
@@ -15,25 +16,63 @@ namespace Tenant.Infrastructure.Services;
 ///   - Retry provisioning:   POST /api/admin/tenants/{id}/provisioning/retry
 ///   - Retry verification:   POST /api/admin/tenants/{id}/verification/retry
 ///
-/// Auth:    X-Provisioning-Token header sent to Identity for internal provisioning.
-///          Retry endpoints use the "IdentityInternal" HttpClient (mTLS/trusted network).
+    /// Auth:    X-Provisioning-Token header sent to Identity for internal provisioning.
+    ///          Retry endpoints forward the platform admin Authorization header.
 /// Timeout: 30 s for initial provisioning; 15 s for retries.
 /// Failure: never throws — returns result with Success=false.
 /// </summary>
 public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
 {
     private readonly IHttpClientFactory                          _httpClientFactory;
+    private readonly IHttpContextAccessor                        _httpContextAccessor;
     private readonly IConfiguration                             _configuration;
     private readonly ILogger<HttpIdentityProvisioningAdapter>   _logger;
 
     public HttpIdentityProvisioningAdapter(
         IHttpClientFactory                          httpClientFactory,
+        IHttpContextAccessor                        httpContextAccessor,
         IConfiguration                             configuration,
         ILogger<HttpIdentityProvisioningAdapter>   logger)
     {
         _httpClientFactory = httpClientFactory;
+        _httpContextAccessor = httpContextAccessor;
         _configuration     = configuration;
         _logger            = logger;
+    }
+
+    public async Task<IdentityEmailAvailabilityResult> CheckAdminEmailAsync(
+        string email,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            using var client = _httpClientFactory.CreateClient("IdentityInternal");
+            var secret = _configuration["IdentityService:ProvisioningSecret"];
+            if (!string.IsNullOrWhiteSpace(secret))
+                client.DefaultRequestHeaders.Add("X-Provisioning-Token", secret);
+
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(10));
+            using var response = await client.GetAsync(
+                $"/api/internal/users/account-exists?email={Uri.EscapeDataString(email)}",
+                cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "[IdentityProvisioning] Admin email availability returned {StatusCode}",
+                    (int)response.StatusCode);
+                return new(false, false);
+            }
+
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cts.Token));
+            return new(true, TryGetBool(doc.RootElement, "exists"));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "[IdentityProvisioning] Admin email availability check failed");
+            return new(false, false);
+        }
     }
 
     // ── Initial provisioning ──────────────────────────────────────────────────
@@ -68,6 +107,7 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
                 longitude      = request.Longitude,
                 geoPointSource = request.GeoPointSource,
                 products       = request.Products ?? [],
+                tenantRegistrationApproval = request.TenantRegistrationApproval,
             };
 
             var json    = JsonSerializer.Serialize(payload);
@@ -103,17 +143,20 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
 
             using var doc = JsonDocument.Parse(body);
             var root      = doc.RootElement;
+            var explicitSuccess = !root.TryGetProperty("success", out var successElement) || successElement.GetBoolean();
+            var warnings = ReadStringArray(root, "warnings");
+            var errors = ReadStringArray(root, "errors");
 
             return new IdentityProvisioningResult(
-                Success:           true,
+                Success:           explicitSuccess,
                 AdminUserId:       TryGetString(root, "adminUserId"),
                 AdminEmail:        TryGetString(root, "adminEmail"),
                 TemporaryPassword: TryGetString(root, "temporaryPassword"),
                 ProvisioningStatus: TryGetString(root, "provisioningStatus") ?? "Provisioned",
                 Hostname:          TryGetString(root, "hostname"),
                 Subdomain:         TryGetString(root, "subdomain"),
-                Warnings:          [],
-                Errors:            []);
+                Warnings:          warnings,
+                Errors:            errors);
         }
         catch (OperationCanceledException)
         {
@@ -147,6 +190,13 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
                 Warnings:          [],
                 Errors:            [$"Identity provisioning error: {ex.Message}"]);
         }
+    }
+
+    private static List<string> ReadStringArray(JsonElement root, string property)
+    {
+        if (!root.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.Array) return [];
+        return value.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String)
+            .Select(x => x.GetString()).Where(x => !string.IsNullOrWhiteSpace(x)).Cast<string>().ToList();
     }
 
     // ── Retry provisioning proxy ──────────────────────────────────────────────
@@ -186,6 +236,7 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
         try
         {
             using var client = _httpClientFactory.CreateClient("IdentityInternal");
+            AddAuthorizationHeader(client);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(15));
@@ -216,7 +267,11 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
                 ProvisioningStatus: TryGetString(root, "provisioningStatus") ?? "Unknown",
                 Hostname:           TryGetString(root, "hostname"),
                 FailureStage:       TryGetString(root, "failureStage"),
-                Error:              TryGetString(root, "error"));
+                Error:              TryGetString(root, "error"),
+                AttemptNumber:      TryGetInt(root, "attemptNumber"),
+                StillRetrying:      TryGetNullableBool(root, "stillRetrying"),
+                Exhausted:          TryGetNullableBool(root, "exhausted"),
+                NextRetryAtUtc:     TryGetDateTime(root, "nextRetryAtUtc"));
         }
         catch (OperationCanceledException)
         {
@@ -248,6 +303,16 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
 
     // ── JSON helpers ──────────────────────────────────────────────────────────
 
+    private void AddAuthorizationHeader(HttpClient client)
+    {
+        var authHeader = _httpContextAccessor.HttpContext?.Request.Headers.Authorization.ToString();
+        if (!string.IsNullOrWhiteSpace(authHeader))
+        {
+            client.DefaultRequestHeaders.Remove("Authorization");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", authHeader);
+        }
+    }
+
     private static string? TryGetString(JsonElement root, string prop)
     {
         if (root.TryGetProperty(prop, out var el) && el.ValueKind == JsonValueKind.String)
@@ -263,5 +328,31 @@ public class HttpIdentityProvisioningAdapter : IIdentityProvisioningAdapter
             if (el.ValueKind == JsonValueKind.False) return false;
         }
         return false;
+    }
+
+    private static bool? TryGetNullableBool(JsonElement root, string prop)
+    {
+        if (!root.TryGetProperty(prop, out var el)) return null;
+        if (el.ValueKind == JsonValueKind.True) return true;
+        if (el.ValueKind == JsonValueKind.False) return false;
+        return null;
+    }
+
+    private static int? TryGetInt(JsonElement root, string prop)
+    {
+        if (root.TryGetProperty(prop, out var el) &&
+            el.ValueKind == JsonValueKind.Number &&
+            el.TryGetInt32(out var value))
+            return value;
+        return null;
+    }
+
+    private static DateTime? TryGetDateTime(JsonElement root, string prop)
+    {
+        if (root.TryGetProperty(prop, out var el) &&
+            el.ValueKind == JsonValueKind.String &&
+            el.TryGetDateTime(out var value))
+            return value;
+        return null;
     }
 }

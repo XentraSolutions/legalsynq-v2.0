@@ -29,15 +29,16 @@ public class ReferralAttachmentService : IReferralAttachmentService
         Guid? callerOrgId,
         bool isAdmin,
         CancellationToken ct = default,
-        string? callerEmail = null)
+        string? callerEmail = null,
+        bool useGlobalLookup = false)
     {
-        var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
+        var referral = await LoadReferralAsync(tenantId, referralId, useGlobalLookup, ct)
             ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
 
         if (!CanAccessReferral(referral, callerOrgId, callerEmail, isAdmin))
             throw new NotFoundException($"Referral '{referralId}' was not found.");
 
-        var rows = await _attachments.GetByReferralAsync(tenantId, referralId, ct);
+        var rows = await _attachments.GetByReferralAsync(referral.TenantId, referralId, ct);
         return rows.Select(ToResponse).ToList();
     }
 
@@ -86,9 +87,10 @@ public class ReferralAttachmentService : IReferralAttachmentService
         long              fileSizeBytes,
         UploadAttachmentRequest request,
         CancellationToken ct = default,
-        bool              bypassAccessCheck = false)
+        bool              bypassAccessCheck = false,
+        bool              useGlobalLookup = false)
     {
-        var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
+        var referral = await LoadReferralAsync(tenantId, referralId, useGlobalLookup, ct)
             ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
 
         if (!bypassAccessCheck && !CanAccessReferral(referral, callerOrgId, callerEmail, isAdmin))
@@ -99,7 +101,7 @@ public class ReferralAttachmentService : IReferralAttachmentService
             fileName,
             contentType,
             fileSizeBytes,
-            tenantId,
+            referral.TenantId,
             title:         fileName,
             referenceId:   referralId.ToString(),
             referenceType: "referral",
@@ -112,7 +114,7 @@ public class ReferralAttachmentService : IReferralAttachmentService
         // CC2-INT-B03: ExternalStorageProvider stores the access scope ("shared" or "provider-specific").
         // EnforceScope reads this field to decide who may request a signed URL for this attachment.
         var attachment = ReferralAttachment.Create(
-            tenantId,
+            referral.TenantId,
             referralId,
             fileName,
             contentType,
@@ -140,12 +142,13 @@ public class ReferralAttachmentService : IReferralAttachmentService
         string?           callerOrgType,
         bool              isAdmin,
         bool              isDownload,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool              useGlobalLookup = false)
     {
-        var referral = await _referrals.GetByIdAsync(tenantId, referralId, ct)
+        var referral = await LoadReferralAsync(tenantId, referralId, useGlobalLookup, ct)
             ?? throw new NotFoundException($"Referral '{referralId}' was not found.");
 
-        var attachments = await _attachments.GetByReferralAsync(tenantId, referralId, ct);
+        var attachments = await _attachments.GetByReferralIncludingMessageAttachmentsAsync(referral.TenantId, referralId, ct);
         var attachment  = attachments.FirstOrDefault(a => a.Id == attachmentId)
             ?? throw new NotFoundException($"Attachment '{attachmentId}' was not found.");
 
@@ -154,7 +157,7 @@ public class ReferralAttachmentService : IReferralAttachmentService
 
         EnforceScope(attachment, referral, callerOrgId, callerOrgType, isAdmin);
 
-        var result = await _documents.GetSignedUrlAsync(tenantId, attachment.ExternalDocumentId, isDownload, ct);
+        var result = await _documents.GetSignedUrlAsync(referral.TenantId, attachment.ExternalDocumentId, isDownload, ct);
         if (result is null) return null;
 
         return new SignedUrlResponse
@@ -163,6 +166,15 @@ public class ReferralAttachmentService : IReferralAttachmentService
             ExpiresInSeconds = result.ExpiresInSeconds,
         };
     }
+
+    private Task<Referral?> LoadReferralAsync(
+        Guid tenantId,
+        Guid referralId,
+        bool useGlobalLookup,
+        CancellationToken ct) =>
+        useGlobalLookup
+            ? _referrals.GetByIdGlobalAsync(referralId, ct)
+            : _referrals.GetByIdAsync(tenantId, referralId, ct);
 
     private static bool CanAccessReferral(
         Referral referral,

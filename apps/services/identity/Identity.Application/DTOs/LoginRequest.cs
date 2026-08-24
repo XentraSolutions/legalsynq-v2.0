@@ -14,4 +14,12 @@ public record LoginRequest(
     // AUTH-CC01: Common-portal flag — when true, tenant is resolved from the
     // user's email rather than a tenant code or subdomain.  Used by portals
     // (e.g. careconnect-demo.legalsynq.com) that serve users from multiple tenants.
-    bool     ResolveByEmail = false);
+    bool     ResolveByEmail = false,
+    // Optional canonical product code for common-portal eligibility. Null keeps
+    // the historical CareConnect behavior for older BFF callers.
+    string?  PortalProductCode = null,
+    // BE-BIO: optional opt-in to device-session/refresh-token issuance. Absent
+    // (the default) preserves today's response shape byte-for-byte for existing
+    // web/BFF and older mobile callers (BE-BIO-024). Only mobile clients that
+    // want biometric login send this.
+    DeviceInfo? DeviceInfo = null);

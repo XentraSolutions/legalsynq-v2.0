@@ -26,4 +26,19 @@ public class ReferralCommentRepository : IReferralCommentRepository
         await _db.ReferralComments.AddAsync(comment, ct);
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task AddWithAttachmentsAsync(
+        ReferralComment comment,
+        IReadOnlyCollection<ReferralAttachment> attachments,
+        CancellationToken ct = default)
+    {
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+        await _db.ReferralComments.AddAsync(comment, ct);
+        if (attachments.Count > 0)
+            await _db.ReferralAttachments.AddRangeAsync(attachments, ct);
+
+        await _db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+    }
 }
