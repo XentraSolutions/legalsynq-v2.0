@@ -490,7 +490,7 @@ export function ServicingTab({
           setIsAddPaymentOpen(false);
         }}
         caseId={caseDetail.id}
-        liens={openLiens}
+        liens={selectedPayment != null ? liens : openLiens}
         liensLoadedAt={liensLoadedAt}
         onRefreshLiens={onRefreshLiens}
         isLiensFetching={isLiensFetching}
