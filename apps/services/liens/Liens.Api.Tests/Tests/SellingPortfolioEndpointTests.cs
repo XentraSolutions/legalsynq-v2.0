@@ -1878,6 +1878,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             "buyer-detail",
             lienNumber: "DETAIL-100",
             initialServiceDate: new DateOnly(2026, 7, 1),
+            lienDescription: "Description should not replace lien notes",
+            lienNotes: "Seller-facing lien notes for buyer detail.",
             originalAmount: 6300m,
             buyerOrgId: buyerOrgId,
             documentFileName: "signed-lien-detail.pdf");
@@ -1921,6 +1923,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         detail.GetProperty("billingAmount").GetDecimal().Should().Be(6300m);
         detail.GetProperty("askAmount").GetDecimal().Should().Be(2500m);
         detail.GetProperty("initialServiceDate").GetString().Should().Be("2026-07-01");
+        detail.GetProperty("notes").GetString().Should().Be("Seller-facing lien notes for buyer detail.");
         detail.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())
             .Should().Equal("view");
 
@@ -3786,7 +3789,9 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         decimal originalAmount = 3875m,
         Guid? buyerOrgId = null,
         string? documentFileName = null,
-        string? buyerEmail = null)
+        string? buyerEmail = null,
+        string? lienDescription = null,
+        string? lienNotes = null)
     {
         var buyerContactId = Guid.CreateVersion7();
         var (_, lienId) = await SeedExternalCaseAndLienAsync(
@@ -3794,6 +3799,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             lienExternalId: $"lien-{Guid.NewGuid():N}",
             lienNumber: lienNumber ?? $"LIEN-{Guid.NewGuid():N}",
             initialServiceDate: initialServiceDate ?? new DateOnly(2026, 6, 1),
+            lienDescription: lienDescription,
+            lienNotes: lienNotes,
             originalAmount: originalAmount);
 
         await PrepareConfirmSaleDataAsync(
@@ -4146,6 +4153,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         DateOnly? initialServiceDate = null,
         DateOnly? endServiceDate = null,
         string? caseNotes = null,
+        string? lienDescription = null,
         string? lienNotes = null,
         string? lienType = null,
         string? status = null,
@@ -4182,6 +4190,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             caseId: caseId,
             initialServiceDate: initialServiceDate,
             endServiceDate: endServiceDate,
+            description: lienDescription,
             notes: lienNotes);
 
         if (status == LienStatus.Sold)

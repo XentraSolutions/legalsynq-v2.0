@@ -1232,7 +1232,7 @@ public static class SellingEndpoints
             askAmount,
             lien.HighestBidAmount,
             accessLink.ResponseAmount,
-            FirstNonEmpty(new[] { lien.Description, lien.Notes }),
+            FirstNonEmpty(new[] { lien.Notes, lien.Description }),
             accessLink.ExpiresAtUtc,
             accessLink.ResponseStatus,
             accessLink.ResponseNotes,

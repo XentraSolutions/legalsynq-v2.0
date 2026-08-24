@@ -574,6 +574,8 @@ non-actionable rows expose `view` only.
 Returns the authenticated funding-company detail view for one offered lien. The `{accessLinkId}` is the `id` returned
 by `GET /api/liens/selling/buyer/liens`; access is scoped to the authenticated buyer contact matched by email, using the
 same `BuyerContactId` filtering as the list endpoint.
+The `notes` field returns the persisted lien notes shown in the seller portfolio; lien description is used only when
+those notes are blank.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 

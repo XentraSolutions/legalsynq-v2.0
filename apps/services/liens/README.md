@@ -345,7 +345,8 @@ values point to the authenticated tenant portal route
 `/funding/offered-liens/{accessLinkId}`. The portal backs that route with
 `GET /api/liens/selling/buyer/liens/{accessLinkId}`, which returns persisted seller/lien fields plus real servicing
 documents, portal messages, and response activity for the funding company. Missing documents, messages, or activity are
-returned as empty arrays for the frontend empty states. Detail documents include same-origin tenant-portal `viewUrl` and
+returned as empty arrays for the frontend empty states. Detail `notes` uses the same persisted lien notes shown in the
+seller portfolio, with lien description only as an empty-notes fallback. Detail documents include same-origin tenant-portal `viewUrl` and
 `downloadUrl` BFF paths when a Documents-service id can be resolved; those paths call
 `GET /api/liens/selling/buyer/liens/{accessLinkId}/documents/{documentId}/view` or `/download`, enforce the same buyer
 scope, and redirect to a short-lived Documents access URL. The authenticated detail page posts messages through
