@@ -7,9 +7,19 @@ public interface INetworkRepository
 {
     Task<List<ProviderNetwork>> GetAllByTenantAsync(Guid tenantId, CancellationToken ct = default);
 
+    // Single-tenant-network cutover: resolves the tenant's one canonical network (oldest
+    // non-deleted row, deterministic even if legacy data has more than one).
+    Task<ProviderNetwork?> GetSingleForTenantAsync(Guid tenantId, CancellationToken ct = default);
+
     // BLK-PERF-01: Single-query alternative to GetAllByTenantAsync + N×GetWithProvidersAsync.
     // Returns each network with its provider count without loading full provider entities.
-    Task<List<(Guid Id, string Name, string? Description, int ProviderCount)>> GetAllWithProviderCountAsync(Guid tenantId, CancellationToken ct = default);
+    // organizationId, when provided, scopes the result to tenant-owned networks
+    // (OwningOrganizationId == null) plus the given organization's own network(s).
+    // When omitted, only tenant-owned networks are returned (law-firm-owned networks
+    // are excluded, not merely unscoped) — used by the public referral portal so a
+    // law firm's private network is never exposed before/without that firm being
+    // selected as the referral's law firm.
+    Task<List<(Guid Id, string Name, string? Description, int ProviderCount, Guid? OwningOrganizationId)>> GetAllWithProviderCountAsync(Guid tenantId, Guid? organizationId = null, CancellationToken ct = default);
 
     Task<ProviderNetwork?> GetByIdGlobalAsync(Guid id, CancellationToken ct = default);
     Task<ProviderNetwork?> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default);
@@ -37,6 +47,7 @@ public interface INetworkRepository
     Task<HashSet<Guid>> GetNetworkProviderIdsAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
     Task<HashSet<string>> GetNetworkProviderLocationKeysAsync(Guid tenantId, Guid networkId, CancellationToken ct = default);
     Task<Facility?> GetFacilityByIdAsync(Guid tenantId, Guid facilityId, CancellationToken ct = default);
+    Task<Facility?> GetFacilityByIdGlobalAsync(Guid facilityId, CancellationToken ct = default);
     Task<Facility?> FindFacilityAsync(Guid tenantId, string name, string addressLine1, string city, string state, string? postalCode, CancellationToken ct = default);
     Task AddFacilityAsync(Facility facility, CancellationToken ct = default);
     Task UpdateFacilityAsync(Facility facility, CancellationToken ct = default);

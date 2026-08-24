@@ -34,52 +34,72 @@ public class NetworkService : INetworkService
 
     // ── Network CRUD ─────────────────────────────────────────────────────────
 
-    public async Task<List<NetworkSummaryResponse>> GetAllAsync(Guid tenantId, CancellationToken ct = default)
+    public async Task<List<NetworkSummaryResponse>> GetAllAsync(
+        Guid tenantId, CancellationToken ct = default,
+        Guid? callerOrgId = null, bool isTenantAdmin = false, bool isNetworkManager = false)
     {
         var networks = await _networks.GetAllByTenantAsync(tenantId, ct);
+        var viewerSeesAll = isTenantAdmin || isNetworkManager;
 
-        var tasks = networks.Select(async n =>
+        // Sequential, not Task.WhenAll: all these calls share a single scoped DbContext,
+        // which EF Core does not support running concurrently (throws "A second operation
+        // was started on this context instance before a previous operation completed" as
+        // soon as a tenant has more than one network).
+        var summaries = new List<NetworkSummaryResponse>(networks.Count);
+        foreach (var n in networks)
         {
             var detail = await _networks.GetWithProvidersAsync(tenantId, n.Id, ct);
-            return ToSummary(n, detail?.NetworkProviders.Count ?? 0);
-        });
+            var providerCount = detail?.NetworkProviders
+                .Where(IsActiveMembership)
+                .Count(np => ProviderVisibility.IsVisibleTo(np, callerOrgId, viewerSeesAll)) ?? 0;
+            summaries.Add(ToSummary(n, providerCount));
+        }
 
-        return (await Task.WhenAll(tasks)).ToList();
+        return summaries;
     }
 
-    public async Task<NetworkDetailResponse> GetByIdAsync(Guid tenantId, Guid id, CancellationToken ct = default)
+    public async Task<NetworkDetailResponse> GetByIdAsync(
+        Guid tenantId, Guid id, CancellationToken ct = default,
+        Guid? callerOrgId = null, bool isTenantAdmin = false, bool isNetworkManager = false)
     {
         var network = await _networks.GetWithProvidersAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Network {id} not found.");
 
-        return ToDetail(network);
+        return ToDetail(network, callerOrgId, isTenantAdmin || isNetworkManager);
     }
 
-    public async Task<NetworkSummaryResponse> CreateAsync(
-        Guid tenantId, Guid? userId, CreateNetworkRequest request, CancellationToken ct = default)
+    private const string TenantNetworkDefaultName = "Provider Network";
+
+    // Single-tenant-network cutover: law firms no longer create their own ProviderNetwork
+    // row — everyone adds providers directly into the tenant's one shared network. This
+    // replaces the old public "create a network" flow; callers never choose a name.
+    public async Task<ProviderNetwork> GetOrCreateTenantNetworkAsync(Guid tenantId, CancellationToken ct = default)
     {
-        ValidateName(request.Name);
+        var existing = await _networks.GetSingleForTenantAsync(tenantId, ct);
+        if (existing != null) return existing;
 
-        if (await _networks.NameExistsAsync(tenantId, request.Name.Trim(), ct: ct))
-            throw new ValidationException("Duplicate network name.",
-                new() { ["name"] = [$"A network named '{request.Name.Trim()}' already exists."] });
-
-        var network = ProviderNetwork.Create(tenantId, request.Name, request.Description ?? string.Empty);
+        var network = ProviderNetwork.Create(tenantId, TenantNetworkDefaultName, string.Empty, owningOrganizationId: null);
         await _networks.AddAsync(network, ct);
         await _networks.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Network {NetworkId} created for tenant {TenantId}.", network.Id, tenantId);
+        _logger.LogInformation("Tenant provider network {NetworkId} created for tenant {TenantId}.", network.Id, tenantId);
 
-        return ToSummary(network, 0);
+        return network;
     }
 
     public async Task<NetworkSummaryResponse> UpdateAsync(
-        Guid tenantId, Guid id, Guid? userId, UpdateNetworkRequest request, CancellationToken ct = default)
+        Guid tenantId, Guid id, Guid? userId, UpdateNetworkRequest request, CancellationToken ct = default,
+        bool isTenantAdmin = false, Guid? callerOrgId = null, bool isNetworkManager = false)
     {
         ValidateName(request.Name);
 
         var network = await _networks.GetWithProvidersAsync(tenantId, id, ct)
             ?? throw new NotFoundException($"Network {id} not found.");
+
+        // Single-tenant-network cutover: nobody "owns" the shared network anymore —
+        // only a tenant/platform admin or NetworkManager may rename/describe it.
+        if (!isTenantAdmin && !isNetworkManager)
+            throw new ForbiddenException("Only a tenant administrator or network manager can edit the provider network.");
 
         if (await _networks.NameExistsAsync(tenantId, request.Name.Trim(), excludeId: id, ct: ct))
             throw new ValidationException("Duplicate network name.",
@@ -88,18 +108,7 @@ public class NetworkService : INetworkService
         network.Update(request.Name, request.Description ?? string.Empty);
         await _networks.SaveChangesAsync(ct);
 
-        return ToSummary(network, network.NetworkProviders.Count);
-    }
-
-    public async Task DeleteAsync(Guid tenantId, Guid id, CancellationToken ct = default)
-    {
-        var network = await _networks.GetByIdAsync(tenantId, id, ct)
-            ?? throw new NotFoundException($"Network {id} not found.");
-
-        network.Delete();
-        await _networks.SaveChangesAsync(ct);
-
-        _logger.LogInformation("Network {NetworkId} soft-deleted for tenant {TenantId}.", id, tenantId);
+        return ToSummary(network, network.NetworkProviders.Count(IsActiveMembership));
     }
 
     // ── Shared provider registry — search/import/match-or-create ────────────
@@ -388,7 +397,9 @@ public class NetworkService : INetworkService
         Guid networkId,
         AddProviderToNetworkRequest request,
         Guid? userId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? owningOrganizationId = null,
+        bool isTenantAdmin = false)
     {
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
@@ -478,8 +489,9 @@ public class NetworkService : INetworkService
         await EnsureProviderFacilityAsync(provider.Id, facility.Id, isPrimary: true, ct);
 
         var existing = await _networks.GetMembershipAsync(networkId, provider.Id, facility.Id, ct);
+        var visibility = ResolveVisibility(request.NewProvider?.Visibility, isTenantAdmin);
         if (existing is null)
-            await _networks.AddProviderAsync(NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals), ct);
+            await _networks.AddProviderAsync(NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals, owningOrganizationId, visibility), ct);
         else
             _logger.LogDebug("Provider {ProviderId} facility {FacilityId} already in network {NetworkId} — no-op.", provider.Id, facility.Id, networkId);
 
@@ -491,17 +503,24 @@ public class NetworkService : INetworkService
         // on GetMembershipAsync's include list).
         return loaded is not null
             ? ToProviderItem(loaded)
-            : ToProviderItem(existing ?? NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals), provider, facility);
+            : ToProviderItem(existing ?? NetworkProvider.Create(tenantId, networkId, provider.Id, facility.Id, isActive, acceptingReferrals, owningOrganizationId, visibility), provider, facility);
     }
 
     public async Task RemoveProviderAsync(
-        Guid tenantId, Guid networkId, Guid providerId, bool cascadeFacility, Guid? userId, CancellationToken ct = default)
+        Guid tenantId, Guid networkId, Guid providerId, bool cascadeFacility, Guid? userId, CancellationToken ct = default,
+        bool isTenantAdmin = false, Guid? callerOrgId = null, bool isNetworkManager = false)
     {
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
 
         var entry = await _networks.GetMembershipByIdOrProviderAsync(networkId, providerId, ct)
             ?? throw new NotFoundException($"Provider or network membership {providerId} is not a member of network {networkId}.");
+
+        // LSV3-1084: a CareConnectReferrerAdmin (law-firm-scoped) caller may only remove
+        // providers their own organization added — a NetworkManager or system admin can
+        // remove any provider in the network regardless of who added it.
+        if (!isTenantAdmin && !isNetworkManager && entry.OwningOrganizationId != callerOrgId)
+            throw new ForbiddenException("You can only remove providers your organization added to this network.");
 
         entry.UpdateStatus(isActive: false, acceptingReferrals: false);
 
@@ -532,14 +551,17 @@ public class NetworkService : INetworkService
     }
 
     public async Task<List<NetworkProviderMarker>> GetMarkersAsync(
-        Guid tenantId, Guid networkId, CancellationToken ct = default)
+        Guid tenantId, Guid networkId, CancellationToken ct = default,
+        Guid? callerOrgId = null, bool isTenantAdmin = false, bool isNetworkManager = false)
     {
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
 
         var memberships = await _networks.GetNetworkProviderMembershipsAsync(tenantId, networkId, ct);
+        var viewerSeesAll = isTenantAdmin || isNetworkManager;
 
         return memberships
+            .Where(np => ProviderVisibility.IsVisibleTo(np, callerOrgId, viewerSeesAll))
             .Select(np =>
             {
                 var p = np.Provider;
@@ -563,6 +585,8 @@ public class NetworkService : INetworkService
                     f.Phone ?? p.Phone,
                     np.AcceptingReferrals,
                     np.IsActive,
+                    np.OwningOrganizationId,
+                    np.Visibility,
                     f.Latitude ?? p.Latitude ?? 0.0,
                     f.Longitude ?? p.Longitude ?? 0.0,
                     f.GeoPointSource ?? p.GeoPointSource,
@@ -582,13 +606,22 @@ public class NetworkService : INetworkService
         Guid providerId,
         UpdateNetworkProviderRequest request,
         Guid? userId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool isTenantAdmin = false,
+        Guid? callerOrgId = null,
+        bool isNetworkManager = false)
     {
         _ = await _networks.GetByIdAsync(tenantId, networkId, ct)
             ?? throw new NotFoundException($"Network {networkId} not found.");
 
         var membership = await _networks.GetMembershipByIdOrProviderAsync(networkId, providerId, ct)
             ?? throw new NotFoundException($"Provider or network membership {providerId} is not a member of network {networkId}.");
+
+        // LSV3-1084: a CareConnectReferrerAdmin (law-firm-scoped) caller may only edit
+        // providers their own organization added — a NetworkManager or system admin can
+        // edit any provider in the network regardless of who added it.
+        if (!isTenantAdmin && !isNetworkManager && membership.OwningOrganizationId != callerOrgId)
+            throw new ForbiddenException("You can only edit providers your organization added to this network.");
 
         ValidateNetworkProviderFields(
             request.FirstName,
@@ -652,6 +685,12 @@ public class NetworkService : INetworkService
             isMobile: request.IsMobile,
             serviceRadiusMiles: request.ServiceRadiusMiles);
         membership.UpdateStatus(request.IsActive, request.AcceptingReferrals);
+        if (!string.IsNullOrWhiteSpace(request.Visibility))
+        {
+            if (!isTenantAdmin)
+                throw new ForbiddenException("Only tenant administrators can change provider visibility.");
+            membership.SetVisibility(request.Visibility, userId);
+        }
 
         await _networks.UpdateProviderInRegistryAsync(provider, ct);
         await _networks.UpdateFacilityAsync(facility, ct);
@@ -664,17 +703,29 @@ public class NetworkService : INetworkService
 
     // ── Mapping helpers ───────────────────────────────────────────────────────
 
-    private static NetworkSummaryResponse ToSummary(ProviderNetwork n, int providerCount) =>
-        new(n.Id, n.Name, n.Description, providerCount, n.CreatedAtUtc, n.UpdatedAtUtc);
+    // Matches the active-provider predicate used by the public network surface
+    // (PublicNetworkEndpoints.IsPublicProviderLocationActive) so the authenticated
+    // Networks admin list/detail views show the same providers as the public
+    // network page and the referral portal's submit page.
+    private static bool IsActiveMembership(NetworkProvider np) =>
+        np.IsActive && np.Provider.IsActive && np.Facility.IsActive;
 
-    private static NetworkDetailResponse ToDetail(ProviderNetwork n) =>
+    private static NetworkSummaryResponse ToSummary(ProviderNetwork n, int providerCount) =>
+        new(n.Id, n.Name, n.Description, providerCount, n.CreatedAtUtc, n.UpdatedAtUtc, n.OwningOrganizationId);
+
+    private static NetworkDetailResponse ToDetail(ProviderNetwork n, Guid? viewerOrgId, bool viewerSeesAll) =>
         new(
             n.Id,
             n.Name,
             n.Description,
-            n.NetworkProviders.Select(ToProviderItem).ToList(),
+            n.NetworkProviders
+                .Where(IsActiveMembership)
+                .Where(np => ProviderVisibility.IsVisibleTo(np, viewerOrgId, viewerSeesAll))
+                .Select(ToProviderItem)
+                .ToList(),
             n.CreatedAtUtc,
-            n.UpdatedAtUtc);
+            n.UpdatedAtUtc,
+            n.OwningOrganizationId);
 
     private static NetworkProviderItem ToProviderItem(NetworkProvider np)
         => ToProviderItem(np, np.Provider, np.Facility);
@@ -685,7 +736,7 @@ public class NetworkService : INetworkService
         var primarySpecialty = specialties.FirstOrDefault();
         return new(np.Id, np.Id, p.Id, f.Id, p.Name, p.Title, p.OrganizationName, f.Name,
             f.Email ?? p.Email, f.Phone ?? p.Phone, f.City, f.State,
-            f.AddressLine1, f.PostalCode, np.IsActive, np.AcceptingReferrals, p.AccessStage,
+            f.AddressLine1, f.PostalCode, np.IsActive, np.AcceptingReferrals, np.OwningOrganizationId, np.Visibility, p.AccessStage,
             specialties,
             primarySpecialty?.Id,
             primarySpecialty?.Name,
@@ -730,6 +781,18 @@ public class NetworkService : INetworkService
             facility.ServiceRadiusMiles,
             facility.IsMobile ? facility.AddressLine1 : null);
         }
+    }
+
+    private static string ResolveVisibility(string? requestedVisibility, bool isTenantAdmin)
+    {
+        if (string.IsNullOrWhiteSpace(requestedVisibility))
+            return isTenantAdmin ? ProviderVisibility.Public : ProviderVisibility.Private;
+        if (!ProviderVisibility.All.Contains(requestedVisibility))
+            throw new ValidationException("Validation failed.",
+                new() { ["visibility"] = [$"Visibility must be one of: {string.Join(", ", ProviderVisibility.All)}."] });
+        if (!isTenantAdmin && requestedVisibility != ProviderVisibility.Private)
+            throw new ForbiddenException("Only tenant administrators can make providers public.");
+        return requestedVisibility;
     }
 
     private async Task<Provider> ResolveProviderForAddAsync(

@@ -114,6 +114,8 @@ public static class DependencyInjection
         // Referral Attribution + Referral Representative access
         services.AddScoped<IReferralAttributionRepository, ReferralAttributionRepository>();
         services.AddScoped<IReferralAttributionAccessCodeRepository, ReferralAttributionAccessCodeRepository>();
+        services.AddScoped<IPendingReferralRequestRepository, PendingReferralRequestRepository>();
+        services.AddScoped<IPendingReferralAttachmentRepository, PendingReferralAttachmentRepository>();
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IReferralService, ReferralService>();
@@ -137,6 +139,7 @@ public static class DependencyInjection
         services.AddScoped<IReferralAttributionService, ReferralAttributionService>();
         services.AddScoped<IReferralAttributionAccessCodeService, ReferralAttributionAccessCodeService>();
         services.AddScoped<IRepresentativeReferralService, RepresentativeReferralService>();
+        services.AddScoped<IPendingReferralRequestService, PendingReferralRequestService>();
 
         // LSCC-010: Auto-provisioning — Identity org HTTP client + orchestration service
         services.AddScoped<IIdentityOrganizationService, HttpIdentityOrganizationService>();
@@ -207,6 +210,9 @@ public static class DependencyInjection
         services.AddScoped<INetworkRepository, NetworkRepository>();
         services.AddScoped<IProviderImportParser, CsvProviderImportParser>();
         services.AddScoped<INetworkService, NetworkService>();
+
+        // LSV3-1083: Law Firm Company Super Admin/Manager
+        services.AddScoped<ILawFirmUserService, LawFirmUserService>();
 
         return services;
     }

@@ -10,6 +10,7 @@ export interface SpecialtyOption {
 
 export interface ProviderSummary {
   id:                 string;
+  facilityId?:        string | null;
   name:               string;
   title?:             string | null;
   organizationName?:  string;
@@ -62,6 +63,7 @@ export interface ProviderSearchParams {
 
 export interface ProviderMarker {
   id:                 string;
+  facilityId?:        string | null;
   name:               string;
   title?:             string | null;
   organizationName?:  string;
@@ -178,6 +180,9 @@ export interface ReferralSummary {
   status:            string;
   notes?:            string;
   declineNotes?:     string;
+  origin?:           string;
+  lienCompanyName?:  string | null;
+  lienCompanyEmail?: string | null;
   dateOfAccident?:   string;
   createdAtUtc:      string;
   updatedAtUtc:      string;
@@ -333,6 +338,8 @@ export interface RepresentativeReferralDetail {
 
 export interface RepresentativeReferralMetrics {
   totalAttributedReferrals: number;
+  pendingRequestReferrals:  number;
+  pendingReviewReferrals?:  number;
   pendingReferrals:         number;
   acceptedReferrals:        number;
   declinedReferrals:        number;
@@ -356,6 +363,106 @@ export interface VerifyReferralAttributionAccessCodeResult {
   ok:                            boolean;
   referralAttributionId?:        string | null;
   referralAttributionFullName?:  string | null;
+}
+
+export interface LawFirmOption {
+  id: string;
+  name: string;
+}
+
+export interface TreatmentTypeOption {
+  id: string;
+  name: string;
+}
+
+export interface CreatePendingReferralRequest {
+  lawFirmOrganizationId: string;
+  clientFirstName: string;
+  clientLastName: string;
+  clientDob?: string;
+  clientPhone: string;
+  clientEmail?: string;
+  caseNumber?: string;
+  requestedService?: string;
+  urgency: string;
+  treatmentTypeId?: string;
+  dateOfAccident?: string;
+  recommendedProviderId?: string;
+  recommendedFacilityId?: string;
+  preferredProviders?: PendingReferralProviderPreferenceRequest[];
+  notes?: string;
+  lienCompanyName?: string;
+  lienCompanyEmail?: string;
+}
+
+export interface PendingReferralProviderPreferenceRequest {
+  providerId: string;
+  facilityId?: string | null;
+}
+
+export interface PendingReferralRequest {
+  id: string;
+  tenantId: string;
+  lawFirmOrganizationId: string;
+  lawFirmName?: string | null;
+  referralAttributionId: string;
+  referralAttribution?: ReferralAttributionSummary | null;
+  origin: string;
+  clientFirstName: string;
+  clientLastName: string;
+  clientDob?: string | null;
+  clientPhone: string;
+  clientEmail: string;
+  caseNumber?: string | null;
+  requestedService?: string | null;
+  urgency: string;
+  treatmentTypeId?: string | null;
+  dateOfAccident?: string | null;
+  recommendedProviderId?: string | null;
+  recommendedFacilityId?: string | null;
+  recommendedProviderName?: string | null;
+  recommendedFacilityName?: string | null;
+  preferredProviders: PendingReferralProviderPreference[];
+  attachments?: AttachmentSummary[];
+  notes?: string | null;
+  lienCompanyName?: string | null;
+  lienCompanyEmail?: string | null;
+  status: string;
+  convertedReferralId?: string | null;
+  convertedAtUtc?: string | null;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface ConvertPendingReferralRequest {
+  providerId?: string;
+  networkProviderId?: string;
+  facilityId?: string | null;
+}
+
+export interface UpdatePendingReferralRequest {
+  clientFirstName: string;
+  clientLastName: string;
+  clientDob?: string;
+  clientPhone: string;
+  clientEmail?: string;
+  caseNumber?: string;
+  requestedService?: string;
+  urgency: string;
+  treatmentTypeId?: string;
+  dateOfAccident?: string;
+  notes?: string;
+  lienCompanyName?: string;
+  lienCompanyEmail?: string;
+}
+
+export interface PendingReferralProviderPreference {
+  id: string;
+  providerId: string;
+  facilityId?: string | null;
+  providerName: string;
+  facilityName?: string | null;
+  displayOrder: number;
 }
 
 // LSCC-005-01 / LSCC-005-02: notification delivery record
@@ -420,6 +527,8 @@ export interface CreateReferralRequest {
   treatmentTypeId?:  string;
   dateOfAccident?:   string;
   notes?:            string;
+  lienCompanyName?:  string;
+  lienCompanyEmail?: string;
   referrerScopeSignature?: string;
   /** LSCC-005: referrer identity for the notification email */
   referrerEmail?:    string;
@@ -880,6 +989,7 @@ export interface AddProviderToNetworkRequest {
     postalCode?:         string | null;
     isActive:            boolean;
     acceptingReferrals:  boolean;
+    visibility?:         string | null;
     npi?:                string;
     categoryCodes?:      string[];
     primaryCategoryCode?: string;
@@ -908,6 +1018,7 @@ export interface UpdateNetworkProviderRequest {
   postalCode?:         string | null;
   isActive:            boolean;
   acceptingReferrals:  boolean;
+  visibility?:         string | null;
   specialtyIds:        string[];
   latitude?:           number | null;
   longitude?:          number | null;
@@ -923,6 +1034,8 @@ export interface NetworkSummary {
   providerCount: number;
   createdAtUtc:  string;
   updatedAtUtc:  string;
+  /** LSV3-1084: the organization that created this network; null for pre-existing/tenant-admin-owned networks. */
+  owningOrganizationId?: string | null;
 }
 
 // CC2-INT-B06-02: Provider access-stage constants (mirrors ProviderAccessStage domain constants)
@@ -950,6 +1063,8 @@ export interface NetworkProviderItem {
   postalCode?:       string | null;
   isActive:          boolean;
   acceptingReferrals: boolean;
+  owningOrganizationId?: string | null;
+  visibility:        string;
   /**
    * Whether the underlying cc_Facilities row is active. Distinct from `isActive` above (the
    * NetworkProvider membership's own Active/Accepting-referrals toggle — an existing,
@@ -974,6 +1089,8 @@ export interface NetworkDetail {
   providers:   NetworkProviderItem[];
   createdAtUtc: string;
   updatedAtUtc: string;
+  /** LSV3-1084: the organization that created this network; null for pre-existing/tenant-admin-owned networks. */
+  owningOrganizationId?: string | null;
 }
 
 export interface NetworkProviderMarker {
@@ -1013,4 +1130,36 @@ export interface CreateNetworkRequest {
 export interface UpdateNetworkRequest {
   name:        string;
   description: string;
+}
+
+// ── LSV3-1083: Law Firm Company Super Admin/Manager ──────────────────────────
+
+export interface LawFirmUserRoleAssignment {
+  assignmentId: string;
+  roleCode:     string;
+}
+
+export interface LawFirmUserSummary {
+  userId:    string;
+  email:     string;
+  firstName: string;
+  lastName:  string;
+  isActive:  boolean;
+  status:    string;
+  roles:     LawFirmUserRoleAssignment[];
+}
+
+export interface InviteLawFirmUserRequest {
+  email:     string;
+  firstName: string;
+  lastName:  string;
+  /** Defaults to CARECONNECT_REFERRER when omitted. */
+  roleCode?: string;
+}
+
+export interface LawFirmUserInviteResult {
+  userId:       string;
+  invitationId?: string | null;
+  email:        string;
+  isNew:        boolean;
 }
