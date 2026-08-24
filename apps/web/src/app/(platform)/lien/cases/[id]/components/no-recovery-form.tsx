@@ -183,7 +183,18 @@ export function NoRecoveryForm({
       id: "lienId",
       header: "Lien ID",
       cell: (l) => (
-        <span className="text-xs font-mono text-primary">{l.lienNumber}</span>
+        <span className="text-sm text-primary whitespace-nowrap">
+          {l.lienNumber}
+        </span>
+      ),
+    },
+    {
+      id: "facilityName",
+      header: "Medical Facility",
+      cell: (l) => (
+        <span className="text-sm text-gray-600 whitespace-wrap max-w-40 block">
+          {l.facilityName || ""}
+        </span>
       ),
     },
     {
