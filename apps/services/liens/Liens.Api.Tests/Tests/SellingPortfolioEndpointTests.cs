@@ -1874,7 +1874,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     public async Task BuyerOfferedLien_returns_detail_documents_messages_and_activity_for_authenticated_buyer()
     {
         var buyerOrgId = Guid.CreateVersion7();
-        var (_, token) = await CreatePublicLienOfferAsync(
+        var (lienId, token) = await CreatePublicLienOfferAsync(
             "buyer-detail",
             lienNumber: "DETAIL-100",
             initialServiceDate: new DateOnly(2026, 7, 1),
@@ -1899,6 +1899,26 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         acceptResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await acceptResponse.Content.ReadAsStringAsync()}");
 
+        var lienSubmittedAtUtc = new DateTime(2026, 8, 24, 15, 0, 0, DateTimeKind.Utc);
+        var notificationSubmittedAtUtc = new DateTime(2026, 8, 25, 1, 0, 0, DateTimeKind.Utc);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = db.Liens.Single(item => item.Id == lienId);
+            var accessLink = db.SellingBuyerAccessLinks.Single(link =>
+                link.TokenHash == SellingBuyerAccessLink.ComputeTokenHash(token));
+            SetDateTimeProperty(lien, nameof(Lien.SubmittedForSaleAtUtc), lienSubmittedAtUtc);
+            SetDateTimeProperty(accessLink, nameof(SellingBuyerAccessLink.NotificationSubmittedAtUtc), notificationSubmittedAtUtc);
+            await db.SaveChangesAsync();
+        }
+
+        var publicResponse = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+        publicResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await publicResponse.Content.ReadAsStringAsync()}");
+        var publicJson = await publicResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var publicSubmittedAtUtc = publicJson.GetProperty("lien").GetProperty("submittedAtUtc").GetString();
+        publicSubmittedAtUtc.Should().StartWith("2026-08-24T18:00:00");
+
         using var buyerClient = CreateBuyerClient(buyerOrgId);
         var listResponse = await buyerClient.GetAsync("/api/liens/selling/buyer/liens?search=DETAIL-100");
         listResponse.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -1922,6 +1942,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         detail.GetProperty("status").GetString().Should().Be("Accepted");
         detail.GetProperty("billingAmount").GetDecimal().Should().Be(6300m);
         detail.GetProperty("askAmount").GetDecimal().Should().Be(2500m);
+        detail.GetProperty("submittedAtUtc").GetString().Should().Be(publicSubmittedAtUtc);
         detail.GetProperty("initialServiceDate").GetString().Should().Be("2026-07-01");
         detail.GetProperty("notes").GetString().Should().Be("Seller-facing lien notes for buyer detail.");
         detail.GetProperty("allowedActions").EnumerateArray().Select(item => item.GetString())

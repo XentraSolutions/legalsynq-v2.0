@@ -2382,7 +2382,7 @@ public static class SellingPublicEndpoints
                 ResolveLienCode(view.Lien),
                 view.Lien.Status,
                 view.Lien.SellerStatus,
-                view.Lien.SubmittedForSaleAtUtc ?? view.AccessLink.CreatedAtUtc,
+                view.AccessLink.NotificationSubmittedAtUtc ?? view.Lien.SubmittedForSaleAtUtc ?? view.AccessLink.CreatedAtUtc,
                 view.Lien.ListingVisibility,
                 view.Lien.InitialServiceDate,
                 view.Lien.EndServiceDate,
