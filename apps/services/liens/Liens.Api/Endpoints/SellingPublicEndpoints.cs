@@ -307,6 +307,7 @@ public static class SellingPublicEndpoints
             sellerDisplayResolver,
             accessLink,
             ct,
+            requireActionable: false,
             currentBuyerAccountEmail: currentBuyerAccountEmail);
         if (view is null)
         {
@@ -921,7 +922,12 @@ public static class SellingPublicEndpoints
         if (EnsureBuyerResponseLink(resolved.AccessLink!) is { } readOnlyError)
             return readOnlyError;
 
-        var view = await BuildPublicViewAsync(db, sellerDisplayResolver, resolved.AccessLink!, ct);
+        var view = await BuildPublicViewAsync(
+            db,
+            sellerDisplayResolver,
+            resolved.AccessLink!,
+            ct,
+            requireActionable: false);
         if (view is null)
         {
             return PublicLinkState(

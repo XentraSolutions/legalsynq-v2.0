@@ -3160,6 +3160,41 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerEmail.Options.HtmlBody.Should().Contain("Buyer Reviewer");
         sellerEmail.Options.HtmlBody.Should().Contain("RL Liens1");
         AssertPublicResponseEmailBranding(sellerEmail);
+
+        scope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>()
+            .NextResult = PublicBuyerAccountProvisioningResult.Created(
+                new Guid("20000000-0000-0000-0000-000000000203"),
+                isNew: true);
+
+        var activationResponse = await PostPublicBuyerActivationAsync(
+            token,
+            new
+            {
+                companyName = "Capital Fund LLC",
+                email = "buyer.accept@capital.test",
+                firstName = "Buyer",
+                lastName = "Reviewer",
+                password = "Password123!",
+            });
+
+        activationResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await activationResponse.Content.ReadAsStringAsync()}");
+
+        ClearCapturedEmails();
+        using var anonClient = _factory.CreateClient();
+        var messageResponse = await anonClient.PostAsJsonAsync(
+            $"/api/liens/selling/public/{token}/messages",
+            new { message = "Following up after acceptance." });
+
+        messageResponse.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await messageResponse.Content.ReadAsStringAsync()}");
+
+        var acceptedPublicView = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
+        acceptedPublicView.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await acceptedPublicView.Content.ReadAsStringAsync()}");
+        var acceptedPublicJson = await acceptedPublicView.Content.ReadFromJsonAsync<JsonElement>();
+        acceptedPublicJson.GetProperty("messages").EnumerateArray()
+            .Should().Contain(message => message.GetProperty("message").GetString() == "Following up after acceptance.");
     }
 
     [Fact]
