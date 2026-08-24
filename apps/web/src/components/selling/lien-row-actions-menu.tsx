@@ -119,7 +119,7 @@ export function LienRowActionsMenu({
     try {
       if (confirmAction === "withdraw-sale") {
         await liensService.withdrawSale(lienId);
-        toast.success("Lien withdrawn from sale.");
+        toast.success("Lien withdrawn from sale and returned to Pending.");
       } else if (confirmAction === "archive") {
         await liensService.archiveLien(lienId);
         toast.success("Lien archived.");

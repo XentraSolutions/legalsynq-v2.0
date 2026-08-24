@@ -51,8 +51,13 @@ function formatCurrency(value?: string): string {
 // the backend) can change independently of this component, and dataJson is
 // keyed by those exact column names. Rather than hand-maintain a matching
 // list here (which drifted out of sync before), derive the columns straight
-// from the row data returned by GET /bulk-imports/{id}/rows.
+// from the row data returned by GET /bulk-imports/{id}/rows. Operational
+// defaults can remain in that data without appearing in the user-facing table.
 const CURRENCY_FIELD_PATTERN = /cost|amount/i;
+const HIDDEN_PREVIEW_FIELDS = new Set([
+  "listing visibility",
+  "lien visibility",
+]);
 
 function toHeader(fieldKey: string): string {
   return fieldKey.replace(/\*$/, "");
@@ -63,7 +68,10 @@ function buildColumns(rows: ParsedRow[]): ColumnDef<ParsedRow, any>[] {
   const seen = new Set<string>();
   for (const row of rows) {
     for (const key of Object.keys(row.data)) {
-      if (!seen.has(key)) {
+      if (
+        !HIDDEN_PREVIEW_FIELDS.has(key.trim().toLowerCase()) &&
+        !seen.has(key)
+      ) {
         seen.add(key);
         keys.push(key);
       }

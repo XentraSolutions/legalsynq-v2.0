@@ -2305,7 +2305,10 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var persistedLink = db.SellingBuyerAccessLinks.Single(link => link.Id == accessLinkId);
         persistedLink.ResponseStatus.Should().Be(SellingBuyerResponseStatus.Accepted);
         persistedLink.ResponseIdempotencyKey.Should().BeNull();
-        db.Liens.Single(l => l.Id == lienId).Status.Should().Be(LienStatus.Accepted);
+        var persistedLien = db.Liens.Single(l => l.Id == lienId);
+        persistedLien.Status.Should().Be(LienStatus.Accepted);
+        persistedLien.PurchaseDate.Should().Be(
+            DateOnly.FromDateTime(persistedLink.RespondedAtUtc!.Value));
 
         var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
         publisher.Emails.Should().HaveCount(2);
@@ -2955,12 +2958,24 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         persistedLink.ResponseIdempotencyKey.Should().BeNull();
         persistedLink.RespondedAtUtc.Should().NotBeNull();
         persistedLink.LastAccessedAtUtc.Should().NotBeNull();
+        var expectedPurchaseDate = DateOnly.FromDateTime(persistedLink.RespondedAtUtc!.Value);
 
         var lien = db.Liens.Single(l => l.Id == lienId);
         lien.Status.Should().Be(LienStatus.Accepted);
         lien.SellerStatus.Should().Be(SellingLienStatus.Accepted);
+        lien.PurchaseDate.Should().Be(expectedPurchaseDate);
         lien.SoldAtUtc.Should().BeNull();
         lien.BuyingOrgId.Should().BeNull();
+        db.LienStatusHistories.Should().Contain(item =>
+            item.LienId == lienId &&
+            item.Description == "Lien Status: Accepted. Buyer response recorded as Accepted.");
+
+        var sellerDetailResponse = await _client.GetAsync($"/api/liens/selling/liens/{lienId}");
+        sellerDetailResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await sellerDetailResponse.Content.ReadAsStringAsync()}");
+        var sellerDetail = await sellerDetailResponse.Content.ReadFromJsonAsync<JsonElement>();
+        sellerDetail.GetProperty("lienInformation").GetProperty("purchaseDate").GetString()
+            .Should().Be(expectedPurchaseDate.ToString("yyyy-MM-dd"));
 
         var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
         publisher.Emails.Should().HaveCount(2);

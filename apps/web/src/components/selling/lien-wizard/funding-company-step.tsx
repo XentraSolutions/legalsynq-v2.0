@@ -10,15 +10,15 @@ import { LienWizardShell } from "./shell";
 import { buildFormsFromLien, goToStep } from "./shared";
 import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
 
-// Mirrors FundingCompanyInfo's layout: title + description, then 6 selects
-// (medical provider, facility, funding company, contact, law firm, case
-// manager) across full-width and paired rows.
+// Mirrors FundingCompanyInfo's layout: title + description, then 5 selects
+// (medical provider, funding company, contact, law firm, and case manager)
+// across full-width and paired rows.
 function FundingCompanyStepSkeleton() {
   return (
     <div className="space-y-4 animate-pulse pt-5">
       <div className="h-6 bg-gray-100 rounded w-52" />
       <div className="h-3 bg-gray-100 rounded w-full max-w-md" />
-      <SkeletonFormGrid fields={6} />
+      <SkeletonFormGrid fields={5} />
     </div>
   );
 }
@@ -70,10 +70,9 @@ export default function FundingCompanyStep({
     try {
       await liensService.saveCaseInformation(lienId, {
         medicalProviderId: formData?.medicalProviderId || undefined,
-        fundingCompanyId: formData?.fundingCompanyId || undefined,
+        fundingCompanyId: formData?.fundingCompanyId || null,
         fundingCompanyContactId:
-          formData?.fundingCompanyContactId || undefined,
-        facilityId: formData?.facilityId || undefined,
+          formData?.fundingCompanyContactId || null,
         handlingLawFirmId: formData?.lawfirmId || undefined,
         caseManagerId: formData?.caseManagerId || undefined,
         caseId: caseId || undefined,

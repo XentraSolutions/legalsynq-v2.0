@@ -36,8 +36,6 @@ export function buildFormsFromLien(lien: Lien) {
       fundingCompany: lien.fundingCompany?.name ?? "",
       fundingCompanyContactId: lien.fundingCompany?.contact?.id ?? "",
       fundingCompanyContact: lien.fundingCompany?.contact?.name ?? "",
-      facilityId: lien.facility?.id ?? "",
-      facility: lien.facility?.name ?? "",
       lawfirmId: lien.caseInformation?.lawFirmId ?? "",
       caseManagerId: lien.caseInformation?.caseManagerId ?? "",
     },

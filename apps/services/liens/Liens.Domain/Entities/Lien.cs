@@ -104,6 +104,21 @@ public class Lien : AuditableEntity
         FundingCompanyContactId = legacyFundingCompanyContactId;
         FundingCompanyCompanyId = fundingCompanyCompanyId;
         FundingCompanyContactPersonId = fundingCompanyContactPersonId;
+        if (legacyFundingCompanyId.HasValue || fundingCompanyCompanyId.HasValue)
+            WithdrawnAtUtc = null;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void ClearSellingFundingReferences(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        FundingCompanyId = null;
+        FundingCompanyContactId = null;
+        FundingCompanyCompanyId = null;
+        FundingCompanyContactPersonId = null;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }
@@ -178,6 +193,15 @@ public class Lien : AuditableEntity
             throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
 
         ReceivableDueDate = receivableDueDate;
+        Touch(updatedByUserId);
+    }
+
+    public void SetPurchaseDate(DateOnly purchaseDate, Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        PurchaseDate = purchaseDate;
         Touch(updatedByUserId);
     }
 
@@ -357,6 +381,7 @@ public class Lien : AuditableEntity
         Status          = LienStatus.Offered;
         SellerStatus    = SellingLienStatus.SubmittedForSale;
         SubmittedForSaleAtUtc ??= DateTime.UtcNow;
+        WithdrawnAtUtc  = null;
         Notes           = offerNotes?.Trim() ?? Notes;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
@@ -375,7 +400,7 @@ public class Lien : AuditableEntity
         UpdatedAtUtc    = DateTime.UtcNow;
     }
 
-    public void ReturnToSellingPending(Guid updatedByUserId)
+    public void ReturnToSellingPending(Guid updatedByUserId, bool recordWithdrawal = false)
     {
         if (updatedByUserId == Guid.Empty)
             throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
@@ -386,8 +411,10 @@ public class Lien : AuditableEntity
         Status = LienStatus.Draft;
         SellerStatus = SellingLienStatus.Pending;
         OfferPrice = null;
+        HighestBidAmount = null;
         SubmittedForSaleAtUtc = null;
         ClosedAtUtc = null;
+        WithdrawnAtUtc = recordWithdrawal ? DateTime.UtcNow : null;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }

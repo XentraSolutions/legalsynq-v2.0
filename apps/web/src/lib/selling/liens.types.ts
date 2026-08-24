@@ -168,6 +168,7 @@ export interface LiensQuery {
 export interface LienListItem {
   lienId: string;
   lienNumber: string;
+  createdAtUtc: string;
   fundingCompany: string;
   initialServiceDate: string;
   billingAmount: number;
@@ -265,8 +266,8 @@ export interface SaveSellingLienInformationRequest {
 
 export interface SaveSellingCaseInformationRequest {
   medicalProviderId?: string;
-  fundingCompanyId?: string;
-  fundingCompanyContactId?: string;
+  fundingCompanyId?: string | null;
+  fundingCompanyContactId?: string | null;
   facilityId?: string;
   handlingLawFirmId?: string;
   caseManagerId?: string;

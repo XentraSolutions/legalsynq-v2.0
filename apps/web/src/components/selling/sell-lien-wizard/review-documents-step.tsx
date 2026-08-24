@@ -7,6 +7,7 @@ import { liensService } from "@/lib/selling";
 import { documentsService } from "@/lib/documents";
 import { useSession } from "@/hooks/use-session";
 import { useSessionContext } from "@/providers/session-provider";
+import { ApiError } from "@/lib/api-client";
 import { toast } from "sonner";
 import { ConfirmDialog, Modal } from "@/components/selling/modal";
 import { Button } from "@/components/selling/button";
@@ -254,7 +255,10 @@ export default function ReviewDocumentsStep({
     (type) => !docSlots[type]?.documentId,
   );
 
-  const handleFileSelect = async (documentType: string, file: File) => {
+  const handleFileSelect = async (
+    documentType: string,
+    file: File,
+  ): Promise<boolean> => {
     setDocSlots((prev) => ({
       ...prev,
       [documentType]: {
@@ -263,6 +267,7 @@ export default function ReviewDocumentsStep({
         displayName: file.name,
       },
     }));
+    let uploadedToDocumentService = false;
     try {
       const documentTypeId = resolveDocumentCategory(
         documentType,
@@ -282,6 +287,7 @@ export default function ReviewDocumentsStep({
         documentTypeId,
         title: file.name,
       });
+      uploadedToDocumentService = true;
       const nextSlots = {
         ...docSlots,
         [documentType]: {
@@ -291,13 +297,14 @@ export default function ReviewDocumentsStep({
           createdAt: uploaded.createdAt,
         },
       };
-      setDocSlots(nextSlots);
       // Persist the reference immediately so it survives navigating away —
       // this is the only place documents are saved; "Save for Later" and
       // "Authorize & Send" rely on it already being in sync.
       await liensService.saveDocuments(lienId, {
         documents: uploadedDocumentRefs(nextSlots),
       });
+      setDocSlots(nextSlots);
+      return true;
     } catch (err) {
       setDocSlots((prev) => ({
         ...prev,
@@ -309,7 +316,20 @@ export default function ReviewDocumentsStep({
             : null,
         },
       }));
-      toast.error(err instanceof Error ? err.message : "Document upload failed");
+      const cause =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : "The server did not provide an error reason.";
+      const reference =
+        err instanceof ApiError && err.correlationId !== "unknown"
+          ? ` Reference: ${err.correlationId}.`
+          : "";
+      toast.error(
+        uploadedToDocumentService
+          ? `“${file.name}” uploaded but could not be attached to this lien. ${cause}${reference}`
+          : `Unable to upload “${file.name}”. ${cause}${reference}`,
+      );
+      return false;
     }
   };
 
@@ -585,8 +605,9 @@ export default function ReviewDocumentsStep({
           types={availableOptionalTypes}
           onClose={() => setShowAddSupportingDoc(false)}
           onUpload={async (type, file) => {
-            await handleFileSelect(type, file);
-            setShowAddSupportingDoc(false);
+            if (await handleFileSelect(type, file)) {
+              setShowAddSupportingDoc(false);
+            }
           }}
         />
       )}
@@ -628,7 +649,6 @@ export default function ReviewDocumentsStep({
           lienId={lienId}
           fundingCompany={lien.fundingCompany}
           medicalProvider={lien.medicalProvider}
-          facility={lien.facility}
           caseInformation={lien.caseInformation}
           onClose={() => setEditModal(null)}
           onSaved={() => {

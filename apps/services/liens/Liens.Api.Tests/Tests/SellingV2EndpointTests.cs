@@ -48,6 +48,32 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Activity_history_includes_the_lien_status_at_the_time_of_each_update()
+    {
+        var lienId = await CreateSellingLienAsync();
+        var updateResponse = await _client.PutAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/lien-information",
+            new
+            {
+                sellerStatus = SellingLienStatus.Internal,
+                listingVisibility = SellingListingVisibility.Private,
+                notes = "Status history test",
+            });
+        updateResponse.EnsureSuccessStatusCode();
+
+        var activityResponse = await _client.GetAsync($"/api/liens/selling/liens/{lienId}/activity");
+        activityResponse.EnsureSuccessStatusCode();
+        using var activity = JsonDocument.Parse(await activityResponse.Content.ReadAsStringAsync());
+        var descriptions = activity.RootElement.GetProperty("items")
+            .EnumerateArray()
+            .Select(item => item.GetProperty("description").GetString())
+            .ToList();
+
+        descriptions.Should().Contain("Lien Status: Pending. Selling lien created with status Pending.");
+        descriptions.Should().Contain("Lien Status: Internal. Selling lien information updated.");
+    }
+
+    [Fact]
     public async Task Save_medical_pricing_persists_multiple_rows_with_unique_task_numbers()
     {
         var lienId = await CreateSellingLienAsync();
@@ -153,6 +179,9 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         persisted.FundingCompanyContactId.Should().Be(buyerContactId);
         persisted.OfferPrice.Should().Be(1250m);
         persisted.SoldAtUtc.Should().BeNull();
+        db.LienStatusHistories.Should().Contain(item =>
+            item.LienId == lienId &&
+            item.Description == "Lien Status: SubmittedForSale. Lien submitted for sale.");
     }
 
     [Fact]
@@ -302,6 +331,35 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         persisted.FundingCompanyContactId.Should().BeNull();
         persisted.FundingCompanyCompanyId.Should().BeNull();
         persisted.FundingCompanyContactPersonId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Case_information_creates_case_without_funding_company_references()
+    {
+        var lienId = await CreateSellingLienAsync();
+
+        var response = await _client.PutAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/case-information",
+            new
+            {
+                fundingCompanyId = (Guid?)null,
+                fundingCompanyContactId = (Guid?)null,
+                handlingLawFirmId = SeedHelper.LawFirmId,
+                createCaseIfMissing = true,
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var savedPayload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var caseId = savedPayload.RootElement.GetProperty("caseId").GetGuid();
+        savedPayload.RootElement.GetProperty("fundingCompanyId").ValueKind.Should().Be(JsonValueKind.Null);
+        savedPayload.RootElement.GetProperty("fundingCompanyContactId").ValueKind.Should().Be(JsonValueKind.Null);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persisted = await db.Liens.SingleAsync(item => item.Id == lienId);
+        persisted.CaseId.Should().Be(caseId);
+        persisted.FundingCompanyId.Should().BeNull();
+        persisted.FundingCompanyCompanyId.Should().BeNull();
     }
 
     [Fact]
@@ -821,6 +879,114 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Withdraw_sale_returns_lien_to_pending_and_removes_it_from_the_buyer()
+    {
+        var (_, lienId) = await SeedPublicAccessLinkAsync("Imported Funding Company");
+        Guid accessLinkId;
+        Guid buyerOrgId;
+        Guid offerId;
+        string lienNumber;
+        using (var setupScope = _factory.Services.CreateScope())
+        {
+            var db = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = db.Liens.Single(item => item.Id == lienId);
+            lienNumber = lien.LienNumber;
+            var accessLink = db.SellingBuyerAccessLinks.Single(item => item.LienId == lienId);
+            accessLinkId = accessLink.Id;
+            buyerOrgId = accessLink.BuyerOrgId;
+            lien.SetSellingFundingReferences(
+                accessLink.BuyerOrgId,
+                accessLink.BuyerContactId,
+                null,
+                null,
+                SeedHelper.UserId);
+            lien.UpdateSellingAnalyticsFields(SeedHelper.UserId, highestBidAmount: 425m);
+            var offer = LienOffer.Create(
+                SeedHelper.TenantId,
+                lienId,
+                accessLink.BuyerOrgId,
+                SeedHelper.OrgId,
+                425m,
+                SeedHelper.UserId);
+            offerId = offer.Id;
+            db.LienOffers.Add(offer);
+            await db.SaveChangesAsync();
+        }
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/liens/selling/liens/{lienId}/withdraw-sale")
+        {
+            Content = JsonContent.Create(new { reason = "Seller changed plans" }),
+        };
+        request.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var responseJson = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        responseJson.RootElement.GetProperty("status").GetString().Should().Be(LienStatus.Draft);
+        responseJson.RootElement.GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Pending);
+        responseJson.RootElement.GetProperty("withdrawnAtUtc").GetDateTime().Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
+
+        using (var verifyScope = _factory.Services.CreateScope())
+        {
+            var db = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = db.Liens.Single(item => item.Id == lienId);
+            lien.Status.Should().Be(LienStatus.Draft);
+            lien.SellerStatus.Should().Be(SellingLienStatus.Pending);
+            lien.FundingCompanyId.Should().BeNull();
+            lien.FundingCompanyContactId.Should().BeNull();
+            lien.FundingCompanyCompanyId.Should().BeNull();
+            lien.FundingCompanyContactPersonId.Should().BeNull();
+            lien.ExternalReference.Should().Be("Imported Funding Company");
+            lien.HighestBidAmount.Should().BeNull();
+            lien.SubmittedForSaleAtUtc.Should().BeNull();
+            lien.WithdrawnAtUtc.Should().NotBeNull();
+            db.SellingBuyerAccessLinks.Single(item => item.Id == accessLinkId)
+                .RevokedAtUtc.Should().NotBeNull();
+            db.LienOffers.Single(item => item.Id == offerId)
+                .Status.Should().Be(OfferStatus.Withdrawn);
+            db.SellingIdempotencyRecords.Should().NotContain(item =>
+                item.SubjectType == "LienStateTransition" && item.SubjectId == lienId);
+        }
+
+        var pendingList = await _client.GetAsync(
+            $"/api/liens/selling/liens?tab=pending&search={Uri.EscapeDataString(lienNumber)}&page=1&pageSize=25");
+        pendingList.StatusCode.Should().Be(HttpStatusCode.OK, await pendingList.Content.ReadAsStringAsync());
+        using var pendingJson = JsonDocument.Parse(await pendingList.Content.ReadAsStringAsync());
+        pendingJson.RootElement.GetProperty("items")
+            .EnumerateArray()
+            .Select(item => item.GetProperty("lienId").GetGuid())
+            .Should().Contain(lienId);
+
+        var detail = await _client.GetAsync($"/api/liens/selling/liens/{lienId}");
+        detail.StatusCode.Should().Be(HttpStatusCode.OK, await detail.Content.ReadAsStringAsync());
+        using var detailJson = JsonDocument.Parse(await detail.Content.ReadAsStringAsync());
+        detailJson.RootElement.GetProperty("fundingCompany").ValueKind.Should().Be(JsonValueKind.Null);
+        detailJson.RootElement.GetProperty("availableActions")
+            .EnumerateArray()
+            .Select(action => action.GetString())
+            .Should().Contain("prepare-sale");
+
+        using var buyerClient = _factory.CreateClient();
+        buyerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTokenHelper.CreateFullAccessToken(
+                SeedHelper.TenantId,
+                Guid.CreateVersion7(),
+                buyerOrgId,
+                "public.buyer@test.local"));
+        var buyerList = await buyerClient.GetAsync(
+            $"/api/liens/selling/buyer/liens?search={Uri.EscapeDataString(lienNumber)}");
+        buyerList.StatusCode.Should().Be(HttpStatusCode.OK, await buyerList.Content.ReadAsStringAsync());
+        using var buyerListJson = JsonDocument.Parse(await buyerList.Content.ReadAsStringAsync());
+        buyerListJson.RootElement.GetProperty("total").GetInt32().Should().Be(0);
+
+        var buyerDetail = await buyerClient.GetAsync($"/api/liens/selling/buyer/liens/{accessLinkId}");
+        buyerDetail.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task Contact_case_reassignment_denies_cross_organization_target()
     {
         var sourceId = Guid.CreateVersion7();
@@ -1074,7 +1240,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         return (buyerCompanyId, buyerContactId);
     }
 
-    private async Task<(string Token, Guid LienId)> SeedPublicAccessLinkAsync()
+    private async Task<(string Token, Guid LienId)> SeedPublicAccessLinkAsync(string? externalReference = null)
     {
         var token = Convert.ToHexString(Guid.NewGuid().ToByteArray());
         var buyerOrgId = Guid.CreateVersion7();
@@ -1084,7 +1250,14 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         var buyer = Contact.Create(SeedHelper.TenantId, buyerOrgId, ContactType.FundingCompany, "Public", "Buyer", SeedHelper.UserId, email: "public.buyer@test.local");
         SetId(buyer, buyerContactId);
-        var lien = Lien.Create(SeedHelper.TenantId, SeedHelper.OrgId, $"PUB-{Guid.CreateVersion7():N}"[..15], LienType.MedicalLien, 900m, SeedHelper.UserId);
+        var lien = Lien.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"PUB-{Guid.CreateVersion7():N}"[..15],
+            LienType.MedicalLien,
+            900m,
+            SeedHelper.UserId,
+            externalReference: externalReference);
         SetId(lien, lienId);
         lien.ListForSale(450m, SeedHelper.UserId);
         var accessLink = SellingBuyerAccessLink.Create(

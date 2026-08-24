@@ -20,8 +20,6 @@ const INITIAL_FORM: CaseInformationFieldsValue = {
   fundingCompany: "",
   fundingCompanyContactId: "",
   fundingCompanyContact: "",
-  facilityId: "",
-  facility: "",
   lawfirmId: "",
   caseManagerId: "",
 };
@@ -66,8 +64,8 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
           Case Information
         </span>
         <p className="font-normal text-sm text-gray-600 mb-2 mt-1">
-          Provide the necessary funding company and case information to
-          create and associate this lien.
+          Provide the case information for this lien. Funding company details
+          are optional and can be added later.
         </p>
       </div>
 

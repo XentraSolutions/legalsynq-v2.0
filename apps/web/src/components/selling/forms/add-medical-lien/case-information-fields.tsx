@@ -7,16 +7,14 @@ export interface CaseInformationFieldsValue {
   fundingCompany?: string;
   fundingCompanyContactId: string;
   fundingCompanyContact?: string;
-  facilityId: string;
-  facility?: string;
   lawfirmId: string;
   caseManagerId: string;
 }
 
 // Shared by FundingCompanyInfo (add/edit step-1's "Case Information"
 // section) and EditCaseInformationModal (lien detail page) — both capture
-// the same medical provider / facility / funding company / contact / law
-// firm / case manager selections for a lien's case.
+// the same medical provider / funding company / contact / law firm / case
+// manager selections for a lien's case.
 export function CaseInformationFields({
   value,
   onChange,
@@ -48,25 +46,6 @@ export function CaseInformationFields({
           searchPlaceholder="Search medical providers..."
           allowCreate
           createLabel="Add Medical Provider"
-        />
-      </div>
-      <div className="col-span-2">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Medical Facility
-        </label>
-        <SellingEntitySelect
-          entityType="MedicalFacility"
-          value={value.facilityId}
-          onChange={(v, option) =>
-            onChange({
-              facilityId: v,
-              facility: option?.label ?? "",
-            })
-          }
-          placeholder="Select medical facility..."
-          searchPlaceholder="Search medical facilities..."
-          allowCreate
-          createLabel="Add New Medical Facility"
         />
       </div>
       <div>

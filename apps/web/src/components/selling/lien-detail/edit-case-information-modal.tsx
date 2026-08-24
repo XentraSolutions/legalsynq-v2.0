@@ -6,7 +6,6 @@ import { liensService } from "@/lib/selling";
 import { toast } from "sonner";
 import type {
   LienCaseDetail,
-  LienFacilityDetail,
   LienFundingCompanyDetail,
   LienMedicalProviderDetail,
 } from "@/types/lien-selling";
@@ -19,7 +18,6 @@ interface EditCaseInformationModalProps {
   lienId: string;
   fundingCompany: LienFundingCompanyDetail | null;
   medicalProvider: LienMedicalProviderDetail | null;
-  facility: LienFacilityDetail | null;
   caseInformation: LienCaseDetail | null;
   onClose: () => void;
   onSaved: () => void;
@@ -29,7 +27,6 @@ export function EditCaseInformationModal({
   lienId,
   fundingCompany,
   medicalProvider,
-  facility,
   caseInformation,
   onClose,
   onSaved,
@@ -38,7 +35,6 @@ export function EditCaseInformationModal({
     medicalProviderId: medicalProvider?.id ?? "",
     fundingCompanyId: fundingCompany?.id ?? "",
     fundingCompanyContactId: fundingCompany?.contact?.id ?? "",
-    facilityId: facility?.id ?? "",
     lawfirmId: caseInformation?.lawFirmId ?? "",
     caseManagerId: caseInformation?.caseManagerId ?? "",
   });
@@ -51,7 +47,6 @@ export function EditCaseInformationModal({
         medicalProviderId: form.medicalProviderId || undefined,
         fundingCompanyId: form.fundingCompanyId || undefined,
         fundingCompanyContactId: form.fundingCompanyContactId || undefined,
-        facilityId: form.facilityId || undefined,
         handlingLawFirmId: form.lawfirmId || undefined,
         caseManagerId: form.caseManagerId || undefined,
         caseId: caseInformation?.id,

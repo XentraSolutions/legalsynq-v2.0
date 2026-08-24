@@ -80,6 +80,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
             .Select(l => new DashboardLien(
                 l.Id,
                 l.LienNumber,
+                l.CreatedAtUtc,
                 l.ExternalReference,
                 l.SubjectFirstName,
                 l.SubjectLastName,
@@ -176,7 +177,6 @@ public sealed class SellingDashboardService : ISellingDashboardService
                 .ToListAsync(ct);
 
         var caseById = cases.ToDictionary(c => c.Id);
-        var lawFirmOrgIds = cases.Select(c => c.OrgId).Distinct().ToHashSet();
         var referencedContactIds = liens
             .Where(l => !l.FundingCompanyCompanyId.HasValue && l.FundingCompanyId.HasValue)
             .Select(l => l.FundingCompanyId!.Value)
@@ -202,11 +202,11 @@ public sealed class SellingDashboardService : ISellingDashboardService
                 AddGuid(fields, "caseManagerId", referencedContactIds);
         }
 
-        var contacts = (referencedContactIds.Count == 0 && lawFirmOrgIds.Count == 0)
+        var contacts = referencedContactIds.Count == 0
             ? []
             : await _db.Contacts.AsNoTracking()
                 .Where(c => c.TenantId == tenantId &&
-                    (referencedContactIds.Contains(c.Id) || referencedContactIds.Contains(c.OrgId) || lawFirmOrgIds.Contains(c.OrgId)))
+                    (referencedContactIds.Contains(c.Id) || referencedContactIds.Contains(c.OrgId)))
                 .ToListAsync(ct);
         var companies = referencedCompanyIds.Count == 0
             ? []
@@ -277,8 +277,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : ParseLegacyNoteFields(caseEntity.Notes);
         var lawFirmId = caseEntity?.HandlingLawFirmCompanyId
-            ?? TryGetGuid(caseFields, "lawFirmId")
-            ?? caseEntity?.OrgId;
+            ?? TryGetGuid(caseFields, "lawFirmId");
         var caseManagerId = caseEntity?.CaseManagerContactPersonId
             ?? TryGetGuid(caseFields, "caseManagerId");
         var fundingCompanyId = lien.FundingCompanyCompanyId ?? lien.FundingCompanyId;
@@ -428,6 +427,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
     {
         LienId = row.Lien.Id,
         LienNumber = row.Lien.LienNumber,
+        CreatedAtUtc = row.Lien.CreatedAtUtc,
         CaseId = row.Lien.CaseId,
         CaseNumber = row.CaseNumber,
         FundingCompanyId = row.FundingCompanyId,
@@ -597,6 +597,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
     private sealed record DashboardLien(
         Guid Id,
         string LienNumber,
+        DateTime CreatedAtUtc,
         string? ExternalReference,
         string? SubjectFirstName,
         string? SubjectLastName,

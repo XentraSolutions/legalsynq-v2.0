@@ -69,7 +69,7 @@ export const documentsApi = {
       body: formData,
     });
 
-    const correlationId = res.headers.get('X-Correlation-Id') ?? 'unknown';
+    let correlationId = res.headers.get('X-Correlation-Id') ?? 'unknown';
 
     if (!res.ok) {
       let message = `HTTP ${res.status}`;
@@ -77,6 +77,9 @@ export const documentsApi = {
         const errBody = await res.json();
         const stringValue = (value: unknown): string | null =>
           typeof value === 'string' && value.trim() ? value : null;
+        correlationId =
+          (correlationId !== 'unknown' ? correlationId : stringValue(errBody?.correlationId)) ??
+          'unknown';
         message =
           stringValue(errBody?.message) ??
           stringValue(errBody?.detail) ??
@@ -85,6 +88,9 @@ export const documentsApi = {
           stringValue(errBody?.title) ??
           message;
       } catch { /* non-JSON error body */ }
+      if (/^an unexpected error occurred\.?$/i.test(message) || message === 'HTTP 500') {
+        message = 'The document service could not process the upload. Please try again or contact support.';
+      }
       const reference = correlationId !== 'unknown' ? ` Reference: ${correlationId}.` : '';
       throw new Error(`${message}${reference}`);
     }

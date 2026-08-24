@@ -62,4 +62,17 @@ describe("bulk-imported lien details", () => {
     expect(screen.getByText("$879.00")).toBeInTheDocument();
     expect(screen.getByText("$175.00")).toBeInTheDocument();
   });
+
+  test("omits the medical facility field when no facility is assigned", () => {
+    render(
+      <FundingCompanyAndCaseInformationPanel
+        fundingCompany={null}
+        facility={null}
+        medicalProvider={{ id: "provider-id", name: "City Medical Center" }}
+        caseInformation={null}
+      />,
+    );
+
+    expect(screen.queryByText("Medical Facility")).not.toBeInTheDocument();
+  });
 });

@@ -208,9 +208,7 @@ public static class SellingV2Endpoints
             : null;
         var legacyLawFirm = lawFirmId.HasValue
             ? await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == lawFirmId.Value, ct)
-            : caseEntity is null
-                ? null
-                : await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.ContactType == ContactType.LawFirm && c.OrgId == caseEntity.OrgId, ct);
+            : null;
         var effectiveFundingCompanyId = canonicalFundingCompany?.Id ?? legacyFundingCompany?.Id;
         var effectiveFundingCompanyName = canonicalFundingCompany?.Name ??
             (legacyFundingCompany is null ? lien.ExternalReference : DisplayName(legacyFundingCompany));
@@ -273,7 +271,8 @@ public static class SellingV2Endpoints
                 lawFirmId = effectiveLawFirmId,
                 lawFirm = effectiveLawFirmName,
             },
-            fundingCompany = !effectiveFundingCompanyId.HasValue && string.IsNullOrWhiteSpace(lien.ExternalReference) ? null : new
+            fundingCompany = lien.WithdrawnAtUtc.HasValue ||
+                (!effectiveFundingCompanyId.HasValue && string.IsNullOrWhiteSpace(lien.ExternalReference)) ? null : new
             {
                 id = effectiveFundingCompanyId,
                 name = effectiveFundingCompanyName,
@@ -879,6 +878,7 @@ public static class SellingV2Endpoints
                 BuyerEmail = result.Notification.BuyerEmail,
             },
         };
+        AddActivity(db, lien, userId, "Lien submitted for sale.");
         await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status200OK, replayBody, ct);
         await SellingIdempotency.CompleteAsync(db, transitionGate.Record!, userId, StatusCodes.Status200OK, replayBody, ct);
         return Results.Ok(result);
@@ -914,13 +914,59 @@ public static class SellingV2Endpoints
             await db.SaveChangesAsync(ct);
             return started.Result;
         }
-        lien.Withdraw(userId);
-        AddActivity(db, lien, userId, $"Sale withdrawn. {request.Reason}".Trim());
-        await db.SaveChangesAsync(ct);
-        var response = new { lienId = lien.Id, lien.SellerStatus, lien.Status, lien.WithdrawnAtUtc };
-        var completed = await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status200OK, response, ct);
-        await SellingIdempotency.CompleteAsync(db, lienTransition.Record!, userId, StatusCodes.Status200OK, response, ct);
-        return completed;
+        try
+        {
+            lien.ReturnToSellingPending(userId, recordWithdrawal: true);
+            lien.ClearSellingFundingReferences(userId);
+
+            var accessLinks = await db.SellingBuyerAccessLinks
+                .Where(link =>
+                    link.TenantId == tenantId &&
+                    link.LienId == lienId &&
+                    !link.RevokedAtUtc.HasValue)
+                .ToListAsync(ct);
+            foreach (var accessLink in accessLinks)
+                accessLink.Revoke(userId);
+
+            var pendingOffers = await db.LienOffers
+                .Where(offer =>
+                    offer.TenantId == tenantId &&
+                    offer.LienId == lienId &&
+                    offer.Status == OfferStatus.Pending)
+                .ToListAsync(ct);
+            foreach (var offer in pendingOffers)
+            {
+                if (offer.IsExpired)
+                    offer.Expire(userId);
+                else
+                    offer.Withdraw(userId);
+            }
+
+            AddActivity(db, lien, userId, $"Sale withdrawn; lien returned to Pending. {request.Reason}".Trim());
+            var response = new { lienId = lien.Id, lien.SellerStatus, lien.Status, lien.WithdrawnAtUtc };
+            db.SellingIdempotencyRecords.Remove(lienTransition.Record!);
+            return await SellingIdempotency.CompleteAsync(
+                db,
+                started.Record!,
+                userId,
+                StatusCodes.Status200OK,
+                response,
+                ct);
+        }
+        catch
+        {
+            var failedRecordIds = new[] { started.Record!.Id, lienTransition.Record!.Id };
+            db.ChangeTracker.Clear();
+            var failedRecords = await db.SellingIdempotencyRecords
+                .Where(record =>
+                    record.TenantId == tenantId &&
+                    failedRecordIds.Contains(record.Id) &&
+                    record.ProcessingState != SellingIdempotencyRecord.Completed)
+                .ToListAsync(CancellationToken.None);
+            db.SellingIdempotencyRecords.RemoveRange(failedRecords);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     private static async Task<IResult> ArchiveLien(
@@ -1711,7 +1757,22 @@ public static class SellingV2Endpoints
         return error is null;
     }
     private static bool HasIdempotencyKey(HttpRequest request, out IResult? error) => HasIdempotencyKey(request, out error, out _);
-    private static void AddActivity(LiensDbContext db, Lien lien, Guid userId, string description) => db.LienStatusHistories.Add(LienStatusHistory.Create(lien.TenantId, lien.Id, lien.CaseId, description, userId));
+    private static void AddActivity(LiensDbContext db, Lien lien, Guid userId, string description)
+    {
+        const int maxDescriptionLength = 500;
+        var lienStatus = string.IsNullOrWhiteSpace(lien.SellerStatus) ? lien.Status : lien.SellerStatus;
+        var statusPrefix = $"Lien Status: {lienStatus}. ";
+        var activityDescription = description.Trim();
+        if (activityDescription.Length > maxDescriptionLength - statusPrefix.Length)
+            activityDescription = activityDescription[..(maxDescriptionLength - statusPrefix.Length)].TrimEnd();
+
+        db.LienStatusHistories.Add(LienStatusHistory.Create(
+            lien.TenantId,
+            lien.Id,
+            lien.CaseId,
+            $"{statusPrefix}{activityDescription}",
+            userId));
+    }
     private static string DisplayName(Contact contact) => string.IsNullOrWhiteSpace(contact.Organization) ? contact.DisplayName : contact.Organization;
     private static string DisplayName(CompanyContactPerson contact) => $"{contact.FirstName} {contact.LastName}".Trim();
     private static (bool ready, string[] missing) Readiness(

@@ -1843,6 +1843,7 @@ public static class SellingPublicEndpoints
             return;
 
         var updatedByUserId = ResolvePublicResponseActorId(view.AccessLink);
+        var previousStatus = ResolveActivityLienStatus(lien);
         if (string.Equals(responseStatus, SellingBuyerResponseStatus.Accepted, StringComparison.Ordinal))
         {
             if (IsActionableLienStatus(lien.Status))
@@ -1851,6 +1852,9 @@ public static class SellingPublicEndpoints
             if (IsActionableBuyerOffer(view.Lien.Status, view.Lien.SellerStatus) &&
                 !string.Equals(lien.SellerStatus, SellingLienStatus.Accepted, StringComparison.Ordinal))
                 lien.UpdateSellingAnalyticsFields(updatedByUserId, sellerStatus: SellingLienStatus.Accepted);
+
+            var acceptedAtUtc = view.AccessLink.RespondedAtUtc ?? DateTime.UtcNow;
+            lien.SetPurchaseDate(DateOnly.FromDateTime(acceptedAtUtc), updatedByUserId);
         }
         else if (string.Equals(responseStatus, SellingBuyerResponseStatus.Declined, StringComparison.Ordinal))
         {
@@ -1859,7 +1863,21 @@ public static class SellingPublicEndpoints
                  string.Equals(lien.Status, LienStatus.UnderReview, StringComparison.Ordinal)))
                 lien.ReturnToSellingPending(updatedByUserId);
         }
+
+        var currentStatus = ResolveActivityLienStatus(lien);
+        if (!string.Equals(previousStatus, currentStatus, StringComparison.Ordinal))
+        {
+            db.LienStatusHistories.Add(LienStatusHistory.Create(
+                lien.TenantId,
+                lien.Id,
+                lien.CaseId,
+                $"Lien Status: {currentStatus}. Buyer response recorded as {responseStatus}.",
+                updatedByUserId));
+        }
     }
+
+    private static string ResolveActivityLienStatus(Lien lien)
+        => string.IsNullOrWhiteSpace(lien.SellerStatus) ? lien.Status : lien.SellerStatus;
 
     private static Guid ResolvePublicResponseActorId(SellingBuyerAccessLink accessLink)
         => accessLink.CreatedByUserId.GetValueOrDefault(accessLink.BuyerContactId);
