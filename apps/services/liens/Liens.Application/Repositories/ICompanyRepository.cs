@@ -65,6 +65,8 @@ public interface ICompanyRepository
         Guid actingUserId, CancellationToken ct = default);
     Task<List<CompanyContactPerson>> GetContactPersonsAsync(
         Guid tenantId, Guid companyId, bool? isActive, CancellationToken ct = default);
+    Task<List<CompanyContactPerson>> GetContactPersonsByOrgIdAsync(
+        Guid tenantId, Guid orgId, bool? isActive, CancellationToken ct = default);
     Task<(List<CompanyContactPerson> Items, int TotalCount)> SearchContactPersonsAsync(
         Guid tenantId, Guid orgId, string? search, Guid? companyTypeId,
         Guid? contactPersonTypeId, bool? isActive, int page, int pageSize,

@@ -317,12 +317,12 @@ Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared li
 
 Notification delivery is mandatory and cannot be opted out through request payload. The lien must have real
 `FundingCompanyId`, `FundingCompanyContactId`, `InitialServiceDate`, `AskAmount`, buyer email, seller
-organization display, seller notification email, and handling law firm data. Buyer-facing seller name is the
+organization display, active seller Company Directory contact-person data, seller notification email, and handling law firm data. Buyer-facing seller name is the
 `idt_Users.FirstName` + `LastName` display name for the seller user who confirms/submits the offer
 (`SellingBuyerAccessLinks.CreatedByUserId` / confirm-sale acting user), scoped to the seller organization when Identity
 validates membership. Seller company represents the selling
-organization (`sellerOrgId`) resolved from Identity, with fallback only to
-non-law-firm and non-case-manager contacts in that seller organization. Handling law firm and case manager names stay in
+organization (`sellerOrgId`) resolved from Identity, with fallback to active `liens_CompanyContactPersons` joined through
+active `liens_Companies` in that seller organization. Handling law firm and case manager names stay in
 the asset/case fields and are not used as the seller display. Handling law firm is the selected standalone law-firm
 contact's `liens_Contacts.Organization` value, falling back to `DisplayName` for legacy or incomplete firm records. In
 buyer and seller notification Asset Overview sections, Contact Person, Email Address, and Handling Law Firm all come
