@@ -268,6 +268,7 @@ export function AddPaymentForm({
       l.balance > 0,
   );
 
+  const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
 
   function filterLiensForEditing(l:any){
         const filtered = new Set(openLiens.filter((l)=>l.id == selectedPayment.lienId).map((l) => l.id))
