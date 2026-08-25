@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="EmailAssets/*.png" LogicalName="Liens.Application.EmailAssets.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="EmailAssets/*.svg" LogicalName="Liens.Application.EmailAssets.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <PropertyGroup>
