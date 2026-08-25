@@ -31,6 +31,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private readonly ISellingBuyerAccessLinkService _buyerAccessLinks;
     private readonly ILienEligibilityValidator _eligibilityValidator;
     private readonly ISellerOrganizationDisplayResolver _sellerOrganizationDisplayResolver;
+    private readonly ILookupValueService _lookupValueService;
     private readonly ICurrentRequestContext _currentRequestContext;
     private readonly ILogger<SellingPortfolioService> _logger;
 
@@ -49,6 +50,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         ISellingBuyerAccessLinkService buyerAccessLinks,
         ILienEligibilityValidator eligibilityValidator,
         ISellerOrganizationDisplayResolver sellerOrganizationDisplayResolver,
+        ILookupValueService lookupValueService,
         ICurrentRequestContext currentRequestContext,
         ILogger<SellingPortfolioService> logger)
     {
@@ -66,6 +68,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         _buyerAccessLinks = buyerAccessLinks;
         _eligibilityValidator = eligibilityValidator;
         _sellerOrganizationDisplayResolver = sellerOrganizationDisplayResolver;
+        _lookupValueService = lookupValueService;
         _currentRequestContext = currentRequestContext;
         _logger = logger;
     }
@@ -1854,68 +1857,21 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             page: 1,
             pageSize: 100,
             ct: ct);
+        var documentCategories = await _lookupValueService.GetByCategoryAsync(
+            tenantId,
+            LookupCategory.DocumentCategory,
+            ct);
+        var documentCategoryNames = FundingCompanySaleDocumentMapper.BuildDocumentCategoryNameLookup(
+            documentCategories.Select(category => (category.Id, category.Name)));
 
-        return ExtractDocuments(lienDocs.Items)
+        return lienDocs.Items
+            .Select(item => FundingCompanySaleDocumentMapper.Map(item, documentCategoryNames))
+            .Where(document => document is not null)
+            .Select(document => new ConfirmSaleDocument(document!.FileName, document.Category))
             .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
             .DistinctBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
             .OrderBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
-    }
-
-    private static IEnumerable<ConfirmSaleDocument> ExtractDocuments(IEnumerable<ServicingItem> items)
-    {
-        foreach (var item in items.Where(IsDocumentServicingItem))
-        {
-            var fields = ParseLegacyNoteFields(item.Notes);
-            var fileName = FirstNonEmpty(
-                fields.GetValueOrDefault("originalFileName"),
-                fields.GetValueOrDefault("displayName"),
-                fields.GetValueOrDefault("filename"),
-                item.Description);
-
-            if (string.IsNullOrWhiteSpace(fileName))
-                continue;
-
-            var category = FirstNonEmpty(
-                fields.GetValueOrDefault("documentCategory"),
-                fields.GetValueOrDefault("category"),
-                FormatSellingDocumentType(fields.GetValueOrDefault("documentType")),
-                HumanizeDocumentTaskType(item.TaskType));
-
-            yield return new ConfirmSaleDocument(fileName.Trim(), category);
-        }
-    }
-
-    private static bool IsDocumentServicingItem(ServicingItem item)
-        => string.Equals(item.TaskType, "LegacyCaseDocument", StringComparison.Ordinal) ||
-           string.Equals(item.TaskType, "LegacyLienDocument", StringComparison.Ordinal) ||
-           string.Equals(item.TaskType, "LegacyMedicalDocument", StringComparison.Ordinal) ||
-           string.Equals(item.TaskType, "SellingDocumentReference", StringComparison.Ordinal);
-
-    private static string HumanizeDocumentTaskType(string taskType)
-        => taskType switch
-        {
-            "LegacyCaseDocument" => "Case Document",
-            "LegacyLienDocument" => "Lien Document",
-            "LegacyMedicalDocument" => "Medical Document",
-            "SellingDocumentReference" => "Supporting Document",
-            _ => "Document",
-        };
-
-    private static string? FormatSellingDocumentType(string? documentType)
-    {
-        if (string.IsNullOrWhiteSpace(documentType))
-            return null;
-
-        return documentType.Trim() switch
-        {
-            "LienAgreement" => "Signed Lien / LOP (Letter of Protection)",
-            "MedicalBill" => "Itemized Bill / HCFA-1500 Form",
-            "MedicalRecord" => "Clinical Chart Notes / Medical Records",
-            "SettlementStatement" => "Settlement Statement",
-            "Other" => "Supporting Document",
-            var value => SplitCamelCase(value),
-        };
     }
 
     private static string SplitCamelCase(string value)

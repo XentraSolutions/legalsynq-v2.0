@@ -6,6 +6,7 @@ using System.Text.Json;
 using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Notifications;
 using Liens.Application.Interfaces;
+using Liens.Application.Services;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
@@ -31,14 +32,6 @@ public static class SellingPublicEndpoints
             "legalsynq-brand-icon.png",
             "image/png",
             LegalSynqBrandIconPngBase64),
-    ];
-
-    private static readonly string[] DocumentTaskTypes =
-    [
-        "LegacyCaseDocument",
-        "LegacyLienDocument",
-        "LegacyMedicalDocument",
-        "SellingDocumentReference",
     ];
 
     public static void MapSellingPublicEndpoints(this WebApplication app)
@@ -2180,41 +2173,27 @@ public static class SellingPublicEndpoints
             .ThenBy(item => item.Id)
             .ToListAsync(ct);
 
+        var documentCategories = await db.LookupValues
+            .AsNoTracking()
+            .Where(value =>
+                (value.TenantId == null || value.TenantId == tenantId) &&
+                value.Category == LookupCategory.DocumentCategory &&
+                value.IsActive)
+            .Select(value => new { value.Id, value.Name })
+            .ToListAsync(ct);
+        var documentCategoryNames = FundingCompanySaleDocumentMapper.BuildDocumentCategoryNameLookup(
+            documentCategories.Select(category => (category.Id, category.Name)));
+
         return items
-            .Where(item => DocumentTaskTypes.Contains(item.TaskType, StringComparer.Ordinal))
-            .Select(MapDocument)
-            .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
+            .Select(item => FundingCompanySaleDocumentMapper.Map(item, documentCategoryNames))
+            .Where(document => document is not null)
+            .Select(document => MapDocument(document!))
             .DistinctBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    private static PublicDocumentView MapDocument(ServicingItem item)
-    {
-        var fields = ParseLegacyNoteFields(item.Notes);
-        var fileName = FirstNonEmpty(
-            fields.GetValueOrDefault("originalFileName"),
-            fields.GetValueOrDefault("displayName"),
-            fields.GetValueOrDefault("filename"),
-            item.Description) ?? string.Empty;
-
-        var category = FirstNonEmpty(
-            fields.GetValueOrDefault("documentCategory"),
-            fields.GetValueOrDefault("category"),
-            FormatSellingDocumentType(fields.GetValueOrDefault("documentType")),
-            HumanizeDocumentTaskType(item.TaskType));
-
-        var size = FirstNonEmpty(
-            fields.GetValueOrDefault("size"),
-            fields.GetValueOrDefault("fileSize"),
-            fields.GetValueOrDefault("contentLength"),
-            ResolveFileExtension(fileName));
-
-        var documentId = TryResolveDocumentId(fields, out var resolvedDocumentId)
-            ? resolvedDocumentId
-            : (Guid?)null;
-
-        return new PublicDocumentView(documentId, fileName.Trim(), category, FormatDocumentSize(size));
-    }
+    private static PublicDocumentView MapDocument(FundingCompanySaleDocument document)
+        => new(document.DocumentId, document.FileName, document.Category, document.SizeOrType);
 
     private static async Task<Guid?> ResolvePublicDocumentReferenceAsync(
         LiensDbContext db,
@@ -2228,7 +2207,7 @@ public static class SellingPublicEndpoints
             .Where(item => item.TenantId == tenantId && item.LienId == lienId)
             .ToListAsync(ct);
 
-        foreach (var item in items.Where(item => DocumentTaskTypes.Contains(item.TaskType, StringComparer.Ordinal)))
+        foreach (var item in items.Where(item => FundingCompanySaleDocumentMapper.IsFundingCompanyDocumentTaskType(item.TaskType)))
         {
             var fields = ParseLegacyNoteFields(item.Notes);
             if (TryResolveDocumentId(fields, out var resolvedDocumentId) &&
@@ -2513,37 +2492,6 @@ public static class SellingPublicEndpoints
         return result;
     }
 
-    private static string? FormatSellingDocumentType(string? documentType)
-    {
-        if (string.IsNullOrWhiteSpace(documentType))
-            return null;
-
-        return documentType.Trim() switch
-        {
-            "LienAgreement" => "Signed Lien / LOP (Letter of Protection)",
-            "MedicalBill" => "Itemized Bill / HCFA-1500 Form",
-            "MedicalRecord" => "Clinical Chart Notes / Medical Records",
-            "SettlementStatement" => "Settlement Statement",
-            "Other" => "Supporting Document",
-            var value => SplitCamelCase(value),
-        };
-    }
-
-    private static string SplitCamelCase(string value)
-    {
-        var label = new StringBuilder(value.Length + 8);
-        for (var i = 0; i < value.Length; i++)
-        {
-            var current = value[i];
-            if (i > 0 && char.IsUpper(current) && char.IsLower(value[i - 1]))
-                label.Append(' ');
-
-            label.Append(current);
-        }
-
-        return label.ToString();
-    }
-
     private static string? FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 
@@ -2594,41 +2542,6 @@ public static class SellingPublicEndpoints
 
     private static string ResolveLienCode(Lien lien)
         => string.IsNullOrWhiteSpace(lien.LienNumber) ? lien.Id.ToString() : lien.LienNumber;
-
-    private static string FormatDocumentSize(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return string.Empty;
-
-        var trimmed = value.Trim();
-        if (!long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var bytes))
-            return trimmed;
-
-        if (bytes >= 1024L * 1024L)
-            return $"{bytes / (1024m * 1024m):0.#} MB";
-        if (bytes >= 1024L)
-            return $"{bytes / 1024m:0.#} KB";
-
-        return $"{bytes} B";
-    }
-
-    private static string? ResolveFileExtension(string fileName)
-    {
-        var extension = Path.GetExtension(fileName);
-        return string.IsNullOrWhiteSpace(extension)
-            ? null
-            : extension.TrimStart('.').ToUpperInvariant();
-    }
-
-    private static string HumanizeDocumentTaskType(string taskType)
-        => taskType switch
-        {
-            "LegacyCaseDocument" => "Case Document",
-            "LegacyLienDocument" => "Lien Document",
-            "LegacyMedicalDocument" => "Medical Document",
-            "SellingDocumentReference" => "Supporting Document",
-            _ => "Document",
-        };
 
     private static bool IsActionableLienStatus(string status)
         => string.Equals(status, LienStatus.Offered, StringComparison.Ordinal)

@@ -578,6 +578,28 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         }
 
         var lienId = await PrepareSellingLienAsync(buyerCompanyId, buyerEmployeeId, "Please review this time-sensitive lien.");
+        Guid legacyDocumentId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var medicalDocumentTypeId = db.LookupValues.Single(value =>
+                value.TenantId == SeedHelper.TenantId &&
+                value.Category == LookupCategory.DocumentCategory &&
+                value.Code == "Medical").Id;
+            legacyDocumentId = Guid.CreateVersion7();
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"DOC-{Guid.CreateVersion7():N}"[..36],
+                "LegacyLienDocument",
+                "Lien document uploaded: creation-records",
+                "Seller Operator",
+                SeedHelper.UserId,
+                lienId: lienId,
+                notes:
+                    $"documentId={legacyDocumentId}; url=/documents/{legacyDocumentId:D}; filename=creation-records; originalFileName=creation-records.pdf; documentTypeId={medicalDocumentTypeId:D}"));
+            await db.SaveChangesAsync();
+        }
         var idempotencyKey = Guid.CreateVersion7().ToString();
         using var confirm = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/confirm-sale")
         {
@@ -608,6 +630,9 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         notification.Body.Should().Contain("Itemized Bill / HCFA-1500 Form: bill.pdf");
         notification.Options.HtmlBody.Should().Contain("Itemized Bill / HCFA-1500 Form");
         notification.Options.HtmlBody.Should().Contain("bill.pdf");
+        notification.Body.Should().Contain("Medical Records: creation-records.pdf");
+        notification.Options.HtmlBody.Should().Contain("Medical Records");
+        notification.Options.HtmlBody.Should().Contain("creation-records.pdf");
         notification.Body.Should().NotContain("Please review this time-sensitive lien.");
         notification.Options.HtmlBody.Should().NotContain("Please review this time-sensitive lien.");
         notification.Options.HtmlBody.Should().NotContain("Seller Message");
@@ -618,14 +643,22 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         publicResponse.StatusCode.Should().Be(HttpStatusCode.OK, await publicResponse.Content.ReadAsStringAsync());
         using var publicJson = JsonDocument.Parse(await publicResponse.Content.ReadAsStringAsync());
         var documents = publicJson.RootElement.GetProperty("documents").EnumerateArray().ToList();
-        documents.Should().ContainSingle();
-        documents[0].GetProperty("fileName").GetString().Should().Be("bill.pdf");
-        documents[0].GetProperty("category").GetString().Should().Be("Itemized Bill / HCFA-1500 Form");
-        documents[0].GetProperty("id").GetGuid().Should().NotBeEmpty();
-        documents[0].GetProperty("viewUrl").GetString()
-            .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{documents[0].GetProperty("id").GetGuid():D}/view");
-        documents[0].GetProperty("downloadUrl").GetString()
-            .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{documents[0].GetProperty("id").GetGuid():D}/download");
+        documents.Should().HaveCount(2);
+        var sellerWizardDocument = documents.Single(document => document.GetProperty("fileName").GetString() == "bill.pdf");
+        sellerWizardDocument.GetProperty("category").GetString().Should().Be("Itemized Bill / HCFA-1500 Form");
+        var sellerWizardDocumentId = sellerWizardDocument.GetProperty("id").GetGuid();
+        sellerWizardDocument.GetProperty("viewUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{sellerWizardDocumentId:D}/view");
+        sellerWizardDocument.GetProperty("downloadUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{sellerWizardDocumentId:D}/download");
+
+        var legacyDocument = documents.Single(document => document.GetProperty("fileName").GetString() == "creation-records.pdf");
+        legacyDocument.GetProperty("category").GetString().Should().Be("Medical Records");
+        legacyDocument.GetProperty("id").GetGuid().Should().Be(legacyDocumentId);
+        legacyDocument.GetProperty("viewUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{legacyDocument.GetProperty("id").GetGuid():D}/view");
+        legacyDocument.GetProperty("downloadUrl").GetString()
+            .Should().Be($"/api/lien/api/liens/selling/public/{token}/documents/{legacyDocument.GetProperty("id").GetGuid():D}/download");
     }
 
     [Fact]
