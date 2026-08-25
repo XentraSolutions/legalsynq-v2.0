@@ -46,11 +46,6 @@ public class CaseConfiguration : IEntityTypeConfiguration<Case>
         builder.Property(c => c.ClientAddress)
             .HasMaxLength(500);
 
-        builder.Property(c => c.ClientAddressLine1).HasMaxLength(300);
-        builder.Property(c => c.ClientCity).HasMaxLength(100);
-        builder.Property(c => c.ClientState).HasMaxLength(100);
-        builder.Property(c => c.ClientPostalCode).HasMaxLength(20);
-
         builder.Property(c => c.Status)
             .IsRequired()
             .HasMaxLength(50);
@@ -82,16 +77,8 @@ public class CaseConfiguration : IEntityTypeConfiguration<Case>
         builder.Property(c => c.Notes)
             .HasMaxLength(4000);
 
-        builder.Property(c => c.IncidentState).HasMaxLength(100);
-        builder.Property(c => c.CurrentMedicalStatus).HasMaxLength(50);
-        builder.Property(c => c.TrackingFollowUpDate).HasColumnType("date");
-        builder.Property(c => c.MinorComp);
-        builder.Property(c => c.CaseDropped);
-        builder.Property(c => c.ImportedCreatedByName).HasMaxLength(100);
-
         builder.Property(c => c.HandlingLawFirmCompanyId);
         builder.Property(c => c.CaseManagerContactPersonId);
-        builder.Property(c => c.AttorneyContactPersonId);
 
         builder.Property(c => c.CreatedByUserId).IsRequired();
         builder.Property(c => c.UpdatedByUserId);
@@ -113,10 +100,5 @@ public class CaseConfiguration : IEntityTypeConfiguration<Case>
 
         builder.HasOne<Company>().WithMany().HasForeignKey(c => c.HandlingLawFirmCompanyId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<CompanyContactPerson>().WithMany().HasForeignKey(c => c.CaseManagerContactPersonId).OnDelete(DeleteBehavior.Restrict);
-        builder.HasOne<CompanyContactPerson>()
-            .WithMany()
-            .HasForeignKey(c => c.AttorneyContactPersonId)
-            .OnDelete(DeleteBehavior.Restrict)
-            .HasConstraintName("FK_Cases_AttorneyContactPerson");
     }
 }

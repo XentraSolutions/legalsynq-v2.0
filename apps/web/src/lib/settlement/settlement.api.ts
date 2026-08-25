@@ -1,8 +1,6 @@
 import { apiClient } from "@/lib/api-client";
 import {
   CasePayment,
-  CasePaymentListResponse,
-  CasePaymentQuery,
   CaseReduction,
   CreateLienReductionRequest,
   CreateLienReductionResponse,
@@ -18,8 +16,6 @@ import {
   GetSettlementPaymentDetailsResponse,
   LegacyCasePayment,
   LegacySaveReductionRequest,
-  RecordCasePaymentRequest,
-  RecordCasePaymentResponse,
   SettlementGenericResponse,
   SettlementHistoryV3Query,
   UpdateLienSettlementRequest,
@@ -27,36 +23,11 @@ import {
   UpdateLiensStatusResponse,
   UpdateSettlementRequest,
   UpdateSettlementResponse,
-  VoidCasePaymentResponse,
 } from "./settlement.types";
 
 const BASE = "/lien/service";
 
 export const settlementApi = {
-  getCasePayments(caseId: string, query: CasePaymentQuery = {}) {
-    const params = new URLSearchParams();
-    Object.entries(query).forEach(([key, value]) => {
-      if (value !== undefined && value !== "") params.set(key, String(value));
-    });
-    const suffix = params.size > 0 ? `?${params.toString()}` : "";
-    return apiClient.get<CasePaymentListResponse>(
-      `/lien/api/liens/cases/${caseId}/payments${suffix}`,
-    );
-  },
-  recordCasePayment(caseId: string, form: RecordCasePaymentRequest) {
-    return apiClient.post<RecordCasePaymentResponse>(
-      `/lien/api/liens/cases/${caseId}/payments`,
-      form,
-      { "Idempotency-Key": crypto.randomUUID() },
-    );
-  },
-  voidCasePayment(caseId: string, paymentId: string, reason: string) {
-    return apiClient.post<VoidCasePaymentResponse>(
-      `/lien/api/liens/cases/${caseId}/payments/${paymentId}/void`,
-      { reason },
-      { "Idempotency-Key": crypto.randomUUID() },
-    );
-  },
   deletePayment(id: DeletePaymentRequest["caseId"]) {
     return apiClient.delete<SettlementGenericResponse>(
       `${BASE}/delete-payment/${id}`,

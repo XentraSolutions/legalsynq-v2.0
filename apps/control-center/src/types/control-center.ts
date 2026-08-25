@@ -70,7 +70,6 @@ export type ProductCode =
   | 'SynqBill'
   | 'SynqRx'
   | 'SynqPayout'
-  | 'SynqSelling'
   | 'Xenia'
   | 'SynqAI'
   | 'CareConnect';

@@ -105,23 +105,13 @@ internal static class CaseRelationshipBackfill
                 COALESCE(@apply_permitted, 0) AS ApplyPermitted,
                 COALESCE(@apply_succeeded, 0) AS ApplySucceeded,
                 COALESCE(@case_update_count, 0) AS CaseRowsToUpdate,
-                COALESCE(@law_firm_updates, 0) AS LawFirmRelationsToAdd,
                 COALESCE(@facility_update_count, 0) AS LienFacilityRowsToUpdate,
-                COALESCE(@medical_code_insert_count, 0) AS MedicalCodeRowsToInsert,
-                COALESCE(@provider_change_count, 0) AS MedicalProviderRowsToChange,
-                COALESCE(@activity_insert_count, 0) AS LastActivityRowsToInsert,
                 COALESCE(@case_rows_updated, 0) AS CaseRowsUpdated,
                 COALESCE(@facility_rows_updated, 0) AS LienFacilityRowsUpdated,
                 COALESCE(@case_conflict_count, 0) AS CaseConflicts,
                 COALESCE(@facility_conflict_count, 0) AS FacilityConflicts,
-                COALESCE(@medical_code_conflict_count, 0) AS MedicalCodeConflicts,
-                COALESCE(@provider_conflict_count, 0) AS MedicalProviderConflicts,
-                COALESCE(@activity_conflict_count, 0) AS LastActivityConflicts,
                 COALESCE(@case_postcondition_errors, 0) AS CasePostconditionErrors,
-                COALESCE(@facility_postcondition_errors, 0) AS FacilityPostconditionErrors,
-                COALESCE(@medical_code_postcondition_errors, 0) AS MedicalCodePostconditionErrors,
-                COALESCE(@provider_postcondition_errors, 0) AS MedicalProviderPostconditionErrors,
-                COALESCE(@activity_postcondition_errors, 0) AS LastActivityPostconditionErrors;
+                COALESCE(@facility_postcondition_errors, 0) AS FacilityPostconditionErrors;
             """;
 
         await using var command = new MySqlCommand(sql, connection);
@@ -134,23 +124,13 @@ internal static class CaseRelationshipBackfill
             reader.GetInt32("ApplyPermitted") == 1,
             reader.GetInt32("ApplySucceeded") == 1,
             reader.GetInt32("CaseRowsToUpdate"),
-            reader.GetInt32("LawFirmRelationsToAdd"),
             reader.GetInt32("LienFacilityRowsToUpdate"),
-            reader.GetInt32("MedicalCodeRowsToInsert"),
-            reader.GetInt32("MedicalProviderRowsToChange"),
-            reader.GetInt32("LastActivityRowsToInsert"),
             reader.GetInt32("CaseRowsUpdated"),
             reader.GetInt32("LienFacilityRowsUpdated"),
             reader.GetInt32("CaseConflicts"),
             reader.GetInt32("FacilityConflicts"),
-            reader.GetInt32("MedicalCodeConflicts"),
-            reader.GetInt32("MedicalProviderConflicts"),
-            reader.GetInt32("LastActivityConflicts"),
             reader.GetInt32("CasePostconditionErrors"),
-            reader.GetInt32("FacilityPostconditionErrors"),
-            reader.GetInt32("MedicalCodePostconditionErrors"),
-            reader.GetInt32("MedicalProviderPostconditionErrors"),
-            reader.GetInt32("LastActivityPostconditionErrors"));
+            reader.GetInt32("FacilityPostconditionErrors"));
     }
 
     private static async Task CommitAsync(MySqlConnection connection)
@@ -199,27 +179,18 @@ internal static class CaseRelationshipBackfill
         const string defaultApply = "SET @apply = 0;";
         const string defaultCaseCount = "SET @expected_case_updates = -1;";
         const string defaultFacilityCount = "SET @expected_lien_facility_updates = -1;";
-        const string defaultMedicalCodeCount = "SET @expected_medical_code_inserts = -1;";
-        const string defaultProviderCount = "SET @expected_provider_changes = -1;";
-        const string defaultActivityCount = "SET @expected_activity_inserts = -1;";
 
         if (!script.Contains(defaultTenant, StringComparison.Ordinal)
             || !script.Contains(defaultApply, StringComparison.Ordinal)
             || !script.Contains(defaultCaseCount, StringComparison.Ordinal)
-            || !script.Contains(defaultFacilityCount, StringComparison.Ordinal)
-            || !script.Contains(defaultMedicalCodeCount, StringComparison.Ordinal)
-            || !script.Contains(defaultProviderCount, StringComparison.Ordinal)
-            || !script.Contains(defaultActivityCount, StringComparison.Ordinal))
+            || !script.Contains(defaultFacilityCount, StringComparison.Ordinal))
             throw new InvalidOperationException("The checked-in relationship-backfill SQL template has an unexpected header.");
 
         return script
             .Replace(defaultTenant, $"SET @tenant_id = '{options.TenantId:D}';", StringComparison.Ordinal)
             .Replace(defaultApply, $"SET @apply = {(options.Apply ? 1 : 0)};", StringComparison.Ordinal)
             .Replace(defaultCaseCount, $"SET @expected_case_updates = {options.ExpectedCaseUpdates};", StringComparison.Ordinal)
-            .Replace(defaultFacilityCount, $"SET @expected_lien_facility_updates = {options.ExpectedLienFacilityUpdates};", StringComparison.Ordinal)
-            .Replace(defaultMedicalCodeCount, $"SET @expected_medical_code_inserts = {options.ExpectedMedicalCodeInserts};", StringComparison.Ordinal)
-            .Replace(defaultProviderCount, $"SET @expected_provider_changes = {options.ExpectedProviderChanges};", StringComparison.Ordinal)
-            .Replace(defaultActivityCount, $"SET @expected_activity_inserts = {options.ExpectedActivityInserts};", StringComparison.Ordinal);
+            .Replace(defaultFacilityCount, $"SET @expected_lien_facility_updates = {options.ExpectedLienFacilityUpdates};", StringComparison.Ordinal);
     }
 
     private static string FindScriptPath()
@@ -240,21 +211,11 @@ internal static class CaseRelationshipBackfill
         Console.WriteLine($"Mode: {(options.Apply ? "APPLY" : "DRY RUN")}");
         Console.WriteLine($"Preflight passed: {result.PreflightPassed}");
         Console.WriteLine($"Case rows to update: {result.CaseRowsToUpdate}");
-        Console.WriteLine($"Law firm relationships to add: {result.LawFirmRelationsToAdd}");
         Console.WriteLine($"Lien facility rows to update: {result.LienFacilityRowsToUpdate}");
-        Console.WriteLine($"Medical code rows to insert: {result.MedicalCodeRowsToInsert}");
-        Console.WriteLine($"Medical provider rows to change: {result.MedicalProviderRowsToChange}");
-        Console.WriteLine($"Last activity rows to insert: {result.LastActivityRowsToInsert}");
         Console.WriteLine($"Case conflicts: {result.CaseConflicts}");
         Console.WriteLine($"Facility conflicts: {result.FacilityConflicts}");
-        Console.WriteLine($"Medical code conflicts: {result.MedicalCodeConflicts}");
-        Console.WriteLine($"Medical provider conflicts: {result.MedicalProviderConflicts}");
-        Console.WriteLine($"Last activity conflicts: {result.LastActivityConflicts}");
         Console.WriteLine($"Case postcondition errors: {result.CasePostconditionErrors}");
         Console.WriteLine($"Facility postcondition errors: {result.FacilityPostconditionErrors}");
-        Console.WriteLine($"Medical code postcondition errors: {result.MedicalCodePostconditionErrors}");
-        Console.WriteLine($"Medical provider postcondition errors: {result.MedicalProviderPostconditionErrors}");
-        Console.WriteLine($"Last activity postcondition errors: {result.LastActivityPostconditionErrors}");
         Console.WriteLine($"Transaction committed: {committed}");
 
         if (options.Apply && !result.ApplyPermitted)
@@ -264,13 +225,10 @@ internal static class CaseRelationshipBackfill
     private static void WriteUsage()
     {
         Console.WriteLine("""
-            Backfill the complete SL-CORE Program 1 v3 DIY-report field set:
-            case values and people, law firm, facility/provider, medical codes,
-            and deterministic last activity.
+            Backfill omitted SL-CORE Program 1 case relationships and status labels.
 
             Required:
-              --backfill-v3-report-fields
-                Or use the compatibility alias --backfill-case-relationships.
+              --backfill-case-relationships
               --tenant-id <guid>
               --target-connection <connection-string>
                 Or set ConnectionStrings__LiensDb.
@@ -279,11 +237,8 @@ internal static class CaseRelationshipBackfill
               --apply
               --expected-case-updates <dry-run-count>
               --expected-lien-facility-updates <dry-run-count>
-              --expected-medical-code-inserts <dry-run-count>
-              --expected-provider-changes <dry-run-count>
-              --expected-activity-inserts <dry-run-count>
 
-            Run without --apply first. The apply must use all exact counts
+            Run without --apply first. The apply must use the two exact counts
             reported by that dry run. The target connection's selected database
             must be LS_QA_LIENS or LS_LIENS, and SL-CORE must be on the same server.
             """);
@@ -294,39 +249,26 @@ internal static class CaseRelationshipBackfill
         bool ApplyPermitted,
         bool ApplySucceeded,
         int CaseRowsToUpdate,
-        int LawFirmRelationsToAdd,
         int LienFacilityRowsToUpdate,
-        int MedicalCodeRowsToInsert,
-        int MedicalProviderRowsToChange,
-        int LastActivityRowsToInsert,
         int CaseRowsUpdated,
         int LienFacilityRowsUpdated,
         int CaseConflicts,
         int FacilityConflicts,
-        int MedicalCodeConflicts,
-        int MedicalProviderConflicts,
-        int LastActivityConflicts,
         int CasePostconditionErrors,
-        int FacilityPostconditionErrors,
-        int MedicalCodePostconditionErrors,
-        int MedicalProviderPostconditionErrors,
-        int LastActivityPostconditionErrors);
+        int FacilityPostconditionErrors);
 
     private sealed record Options(
         Guid TenantId,
         string TargetConnectionString,
         bool Apply,
         int ExpectedCaseUpdates,
-        int ExpectedLienFacilityUpdates,
-        int ExpectedMedicalCodeInserts,
-        int ExpectedProviderChanges,
-        int ExpectedActivityInserts)
+        int ExpectedLienFacilityUpdates)
     {
         public static Options Parse(string[] args)
         {
             var values = ParseArguments(args);
-            if (!values.ContainsKey("backfill-v3-report-fields") && !values.ContainsKey("backfill-case-relationships"))
-                throw new ArgumentException("--backfill-v3-report-fields is required.");
+            if (!values.ContainsKey("backfill-case-relationships"))
+                throw new ArgumentException("--backfill-case-relationships is required.");
 
             if (!Guid.TryParse(Require(values, "tenant-id"), out var tenantId) || tenantId == Guid.Empty)
                 throw new ArgumentException("--tenant-id must be a non-empty GUID.");
@@ -338,11 +280,7 @@ internal static class CaseRelationshipBackfill
 
             var expectedCaseUpdates = ParseExpected(Optional(values, "expected-case-updates"), "expected-case-updates", apply);
             var expectedLienFacilityUpdates = ParseExpected(Optional(values, "expected-lien-facility-updates"), "expected-lien-facility-updates", apply);
-            var expectedMedicalCodeInserts = ParseExpected(Optional(values, "expected-medical-code-inserts"), "expected-medical-code-inserts", apply);
-            var expectedProviderChanges = ParseExpected(Optional(values, "expected-provider-changes"), "expected-provider-changes", apply);
-            var expectedActivityInserts = ParseExpected(Optional(values, "expected-activity-inserts"), "expected-activity-inserts", apply);
-            return new Options(tenantId, targetConnection, apply, expectedCaseUpdates, expectedLienFacilityUpdates,
-                expectedMedicalCodeInserts, expectedProviderChanges, expectedActivityInserts);
+            return new Options(tenantId, targetConnection, apply, expectedCaseUpdates, expectedLienFacilityUpdates);
         }
 
         private static int ParseExpected(string? value, string name, bool apply)
@@ -362,7 +300,7 @@ internal static class CaseRelationshipBackfill
             var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
             var flags = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "backfill-v3-report-fields", "backfill-case-relationships", "apply"
+                "backfill-case-relationships", "apply"
             };
 
             for (var index = 0; index < args.Length; index++)

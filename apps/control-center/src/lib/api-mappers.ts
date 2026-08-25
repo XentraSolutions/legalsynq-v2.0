@@ -246,8 +246,6 @@ const PRODUCT_CODE_ALIASES: Record<string, ProductCode> = {
   synq_rx: 'SynqRx',
   synqpayout: 'SynqPayout',
   synq_payout: 'SynqPayout',
-  synqselling: 'SynqSelling',
-  synq_selling: 'SynqSelling',
   careconnect: 'CareConnect',
   synq_careconnect: 'CareConnect',
 };
@@ -282,7 +280,7 @@ export function mapTenantSummary(raw: unknown): TenantSummary {
 function mapEntitlement(raw: unknown): ProductEntitlementSummary {
   const r = asObj(raw);
   const PRODUCT_CODES: readonly ProductCode[] = [
-    'SynqFund', 'SynqLien', 'SynqBill', 'SynqRx', 'SynqPayout', 'SynqSelling', 'CareConnect', 'Xenia', 'SynqAI',
+    'SynqFund', 'SynqLien', 'SynqBill', 'SynqRx', 'SynqPayout', 'CareConnect', 'Xenia', 'SynqAI',
   ];
   const ENTITLEMENT_STATUSES: readonly EntitlementStatus[] = ['Active', 'Disabled'];
   const enabled = bool(r, 'enabled', 'enabled', false);
@@ -292,13 +290,10 @@ function mapEntitlement(raw: unknown): ProductEntitlementSummary {
     ((PRODUCT_CODES as readonly string[]).includes(rawProductCode)
       ? rawProductCode as ProductCode
       : 'SynqFund');
-  const productName = normalizedProductCode === 'SynqSelling'
-    ? 'Synq Selling'
-    : str(r, 'product_name', 'productName', '', 'mapEntitlement.productName');
 
   return {
     productCode:  normalizedProductCode,
-    productName,
+    productName:  str(r,  'product_name',   'productName',  '',                   'mapEntitlement.productName'),
     enabled,
     status:       oneOf(r, 'status',        'status',       ENTITLEMENT_STATUSES, enabled ? 'Active' : 'Disabled'),
     enabledAtUtc: optStr(r, 'enabled_at',   'enabledAtUtc'),

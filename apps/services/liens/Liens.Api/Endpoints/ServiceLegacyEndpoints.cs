@@ -314,7 +314,6 @@ public static class ServiceLegacyEndpoints
             .Where(payment =>
                 payment.TenantId == tenantId &&
                 !payment.IsDeleted &&
-                payment.PostingStatus != SettlementPaymentDetail.VoidedStatus &&
                 distinctCaseIds.Contains(payment.CaseId))
             .Select(payment => new
             {
@@ -1335,11 +1334,9 @@ public static class ServiceLegacyEndpoints
     private static string ResolveUpdatedByName(
         Guid? userId,
         IReadOnlyDictionary<Guid, string> userNames)
-        => !userId.HasValue
-            ? string.Empty
-            : userNames.TryGetValue(userId.Value, out var userName) && !string.IsNullOrWhiteSpace(userName)
-                ? userName
-                : userId.Value.ToString();
+        => userId.HasValue && userNames.TryGetValue(userId.Value, out var userName)
+            ? userName
+            : string.Empty;
 
     private static object MapLegacyServiceCase(CaseResponse item) => new
     {

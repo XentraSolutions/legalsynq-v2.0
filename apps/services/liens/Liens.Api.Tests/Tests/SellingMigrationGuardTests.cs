@@ -82,6 +82,7 @@ public sealed class SellingMigrationGuardTests
         SellingSchemaRepair.CreateRecoveryMigrations()
             .Should().ContainSingle(migration => migration is AddReceivableDueDate);
     }
+<<<<<<< HEAD
 
     [Fact]
     public void Selling_schema_recovery_replays_case_payment_and_legacy_parity_migrations()
@@ -110,4 +111,6 @@ public sealed class SellingMigrationGuardTests
         sql.Should().Contain("IX_Liens_SellingCaseId");
         sql.Should().Contain("FK_liens_Liens_liens_Cases_SellingCaseId");
     }
+=======
+>>>>>>> parent of fcd150d1 (update migration data)
 }

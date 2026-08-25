@@ -36,18 +36,7 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     [Fact] public Task AccidentType_returns200()      => GetOk("/lookup/accident/type");
     [Fact] public Task LiensStatus_returns200()       => GetOk("/lookup/liens/status");
     [Fact] public Task CaseStatus_returns200()        => GetOk("/lookup/case/status");
-    [Fact]
-    public async Task MedicalStatus_returns_active_options()
-    {
-        var response = await _client.GetAsync("/lookup/medical/status");
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var payload = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
-        payload.AsArray().Any(item =>
-            item is JsonObject option &&
-            option["code"]?.GetValue<string>() == "Treating" &&
-            option["name"]?.GetValue<string>() == "Treating").Should().BeTrue();
-    }
+    [Fact] public Task MedicalStatus_returns200()     => GetOk("/lookup/medical/status");
     [Fact] public Task SettlementStatus_returns200()  => GetOk("/lookup/settlement/status");
     [Fact] public Task SettlementType_returns200()    => GetOk("/lookup/settlement/type");
     [Fact] public Task CurrentAttributes_returns200() => GetOk("/lookup/current-attributes");

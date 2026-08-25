@@ -92,35 +92,6 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
-    public async Task Getcaseinfo_returns_the_typed_state_of_incident_when_legacy_metadata_is_absent()
-    {
-        Guid caseId;
-
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-            var caseEntity = Case.Create(
-                SeedHelper.TenantId,
-                SeedHelper.OrgId,
-                $"CASE-INCIDENT-STATE-{Guid.CreateVersion7():N}"[..30],
-                "State",
-                "Fallback",
-                SeedHelper.UserId,
-                incidentState: "NV");
-            caseId = caseEntity.Id;
-            db.Cases.Add(caseEntity);
-            await db.SaveChangesAsync();
-        }
-
-        var response = await _client.GetAsync($"/api/liens/cases/getcaseinfo/{caseId}");
-        response.StatusCode.Should().Be(HttpStatusCode.OK,
-            $"Body: {await response.Content.ReadAsStringAsync()}");
-
-        var body = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
-        body["data"]![0]!["accidentState"]!.GetValue<string>().Should().Be("NV");
-    }
-
-    [Fact]
     public async Task Delete_legacy_case_with_only_rejected_liens_detaches_liens_then_deletes_case()
     {
         Guid caseId;

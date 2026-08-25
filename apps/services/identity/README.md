@@ -59,9 +59,6 @@ Identity.Api.Tests/      Integration and unit tests
 
 `IdentityDb` (MySQL) — all tables prefixed `idt_`.
 
-Run `scripts/add-synq-selling-product.sql` against `IdentityDb` to idempotently
-add or reactivate the `SYNQ_SELLING` catalog product before enabling it for tenants.
-
 Biometric device sessions are installed by EF migration
 `20260810113000_AddBiometricDeviceSessions`; startup does not create these tables manually.
 

@@ -10,10 +10,6 @@ public sealed class UpdateCaseRequest
     public string? ClientPhone { get; init; }
     public string? ClientEmail { get; init; }
     public string? ClientAddress { get; init; }
-    public string? ClientStreetAddress { get; init; }
-    public string? ClientCity { get; init; }
-    public string? ClientState { get; init; }
-    public string? ClientZipcode { get; init; }
     public DateOnly? DateOfIncident { get; init; }
     public string? InsuranceCarrier { get; init; }
     public string? PolicyNumber { get; init; }

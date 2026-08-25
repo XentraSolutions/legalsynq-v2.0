@@ -126,7 +126,7 @@ public static class LienEndpoints
         public string? SortDirection { get; init; }
     }
 
-    internal sealed record AdvancedLienFilterRow(
+    private sealed record AdvancedLienFilterRow(
         Lien Lien,
         string LawFirmId,
         string CaseManagerId,
@@ -452,7 +452,6 @@ public static class LienEndpoints
                 TotalBilling = totalBilling,
                 IsBulk = lien.IsBulk,
                 IsServicing = lien.IsServicing,
-                ImportedCreatedByName = lien.ImportedCreatedByName,
                 Description = lien.Description,
                 OpenedAtUtc = lien.OpenedAtUtc,
                 ClosedAtUtc = lien.ClosedAtUtc,
@@ -673,7 +672,6 @@ public static class LienEndpoints
             TotalBilling = lien.TotalBilling,
             IsBulk = lien.IsBulk,
             IsServicing = lien.IsServicing,
-            ImportedCreatedByName = lien.ImportedCreatedByName,
             Description = lien.Description,
             OpenedAtUtc = lien.OpenedAtUtc,
             ClosedAtUtc = lien.ClosedAtUtc,
@@ -755,7 +753,7 @@ public static class LienEndpoints
             .ToList();
     }
 
-    internal static async Task<List<AdvancedLienFilterRow>> BuildAdvancedLienFilterRowsAsync(
+    private static async Task<List<AdvancedLienFilterRow>> BuildAdvancedLienFilterRowsAsync(
         LiensDbContext db,
         Guid tenantId,
         IReadOnlyCollection<Lien> liens,
@@ -881,7 +879,7 @@ public static class LienEndpoints
         return string.Empty;
     }
 
-    internal static async Task<HashSet<string>> ResolveLienStatusCodesAsync(
+    private static async Task<HashSet<string>> ResolveLienStatusCodesAsync(
         LiensDbContext db,
         Guid tenantId,
         IReadOnlyCollection<string> filterValues,
@@ -1093,7 +1091,7 @@ public static class LienEndpoints
                     endServiceDate = FormatLegacyDate(lien.EndServiceDate),
                     note = lien.Description ?? string.Empty,
                     created = FormatLegacyTimestamp(lien.CreatedAtUtc),
-                    createdBy = lien.ImportedCreatedByName ?? string.Empty,
+                    createdBy = string.Empty,
                     updated = FormatLegacyTimestamp(lien.UpdatedAtUtc),
                     updatedBy = string.Empty,
                     fundingCompanyId = lien.ExternalReference ?? string.Empty,
