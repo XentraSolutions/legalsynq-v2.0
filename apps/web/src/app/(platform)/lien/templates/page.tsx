@@ -66,8 +66,9 @@ export default function TemplatesPage() {
   }, []);
 
   const fetchReport = useCallback(async () => {
-    setLoading(true);
     if (!templateId) return;
+    setLoading(true);
+
     try {
       const result = await lienReportsService.getReportsById(
         templateId?.toString() ?? "",
@@ -80,7 +81,6 @@ export default function TemplatesPage() {
     }
   }, [templateId]);
   useEffect(() => {
-    setLoading(true);
     fetchReport();
   }, [templateId]);
 
@@ -177,11 +177,15 @@ export default function TemplatesPage() {
       {showCreate.isOpen && (
         <CreateUpdateReport
           mode={showCreate.mode}
-          onClose={() => setShowCreate({ isOpen: false })}
+          onClose={() => {
+            setTemplateId(null);
+            setShowCreate({ isOpen: false });
+          }}
           template={template}
           initialData={template}
           onSaved={(data: any) => {
             setTemplate(null);
+
             setShowCreate({ isOpen: false });
             fetchReports();
           }}

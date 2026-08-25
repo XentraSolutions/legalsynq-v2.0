@@ -311,7 +311,9 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
-    onOpen?.();
+    if (next) {
+      onOpen?.();
+    }
 
     if (!next) {
       handleSearchChange("");
@@ -544,17 +546,25 @@ export function BaseSelect<TOption extends BaseSelectOption = BaseSelectOption>(
             ? triggerContent({ selectedLabel, clearable, onClear: handleClear })
             : (triggerContent ?? (
                 <>
-                  <span className={cn("truncate", !selectedLabel && "text-gray-400")}>
+                  <span
+                    className={cn(
+                      "truncate",
+                      !selectedLabel && "text-gray-400",
+                    )}
+                  >
                     {selectedLabel || placeholder}
                   </span>
                   <span className="flex items-center gap-1 shrink-0">
-                    {clearable && !disabled && ((props.multiple && selectedOptions.length > 0) || (!props.multiple && Boolean(selectedLabel))) && (
-                      <X
-                        aria-label="Clear selection"
-                        className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600"
-                        onClick={handleClear}
-                      />
-                    )}
+                    {clearable &&
+                      !disabled &&
+                      ((props.multiple && selectedOptions.length > 0) ||
+                        (!props.multiple && Boolean(selectedLabel))) && (
+                        <X
+                          aria-label="Clear selection"
+                          className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600"
+                          onClick={handleClear}
+                        />
+                      )}
                     <ChevronDown className="h-4 w-4 opacity-50" />
                   </span>
                 </>
