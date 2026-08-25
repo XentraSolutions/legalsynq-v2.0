@@ -205,7 +205,9 @@ export function mapMedicalInfo(
     caseId: result.caseId,
     status: result.status,
     purchaseDate: dateConvertertoIso(formatDateField(result.purchaseDate)),
-    initialServiceDate: dateConvertertoIso(formatDateField(result.initialServiceDate)),
+    initialServiceDate: dateConvertertoIso(
+      formatDateField(result.initialServiceDate),
+    ),
     endServiceDate: result.endServiceDate
       ? dateConvertertoIso(formatDateField(result.endServiceDate))
       : "",
@@ -242,9 +244,10 @@ export function mapDocuments(
   result: any,
   cat: DocumentTypeResponse[],
 ): CaseDocuments {
+  console.log(cat);
+
   let liens: CaseDocument[] = [];
   let cases: CaseDocument[] = [];
-
   (result.data || []).map((data: CaseDocument) => {
     data.documentType = getDocumentTypeById(
       data.documentTypeId || data.typeId || "",
