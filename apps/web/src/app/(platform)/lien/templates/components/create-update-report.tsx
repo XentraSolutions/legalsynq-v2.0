@@ -35,7 +35,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { ColumnGroup, ReportColumnOption } from "@/lib/liens/lien-report.types";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
-import { useDebounce, useReportFilterOptions } from "@/hooks/use-report";
+import { useCachedFilterOptions, useDebounce } from "@/hooks/use-report";
 
 const INITIAL_FORM = {
   name: "",
@@ -80,7 +80,9 @@ export default function CreateUpdateReport({
 
   const [searchInput, setSearchInput] = useState<string>("");
   const [searchInputSelected, setSearchInputSelected] = useState<string>("");
-  const [searchSelectInput, setSearchSelectInput] = useState<string>("");
+  const [searchColumnsInputSelected, setSearchColumnsInputSelected] = useState<
+    Record<string, string>
+  >({});
   const [filterField, setfilterField] = useState<string>("");
 
   const [form, setForm] = useState(
@@ -319,55 +321,64 @@ export default function CreateUpdateReport({
         },
   );
 
-  const debouncedSearch = useDebounce(searchSelectInput, 500);
-
-  const plaintiffFilter = useReportFilterOptions({
+  const currentSearchText = filterField
+    ? searchColumnsInputSelected[filterField] || ""
+    : "";
+  const debouncedSearch = useDebounce(currentSearchText, 500);
+  const plaintiffFilter = useCachedFilterOptions({
     reportType: form.reportType,
     filterField: "plaintiff",
-    keyword: filterField === "plaintiff" ? debouncedSearch : "",
+    keyword: filterField === "plaintiff" ? debouncedSearch || "" : "",
     enabled: filterField === "plaintiff",
+    selectedValues: form.plaintiffCaseIds,
   });
 
-  const medicalProviderFilter = useReportFilterOptions({
+  const medicalProviderFilter = useCachedFilterOptions({
     reportType: form.reportType,
     filterField: "medicalprovider",
     keyword: filterField === "medicalprovider" ? debouncedSearch : "",
     enabled: filterField === "medicalprovider",
+    selectedValues: form.medicalProviderIds,
   });
 
-  const lawFirmFilter = useReportFilterOptions({
+  const lawFirmFilter = useCachedFilterOptions({
     reportType: form.reportType,
     filterField: "lawfirm",
-    keyword: filterField === "lawfirm" ? debouncedSearch : "",
+    keyword: filterField === "lawfirm" ? debouncedSearch || "" : "",
     enabled: filterField === "lawfirm",
+    selectedValues: form.lawFirmIds,
   });
 
-  const fundingCompanyFilter = useReportFilterOptions({
+  const fundingCompanyFilter = useCachedFilterOptions({
     reportType: form.reportType,
     filterField: "fundingcompany",
     keyword: filterField === "fundingcompany" ? debouncedSearch : "",
     enabled: filterField === "fundingcompany",
+    selectedValues: form.fundingCompanyIds,
   });
 
-  const medicalFacilityFilter = useReportFilterOptions({
+  const medicalFacilityFilter = useCachedFilterOptions({
     reportType: form.reportType,
     filterField: "medicalfacility",
     keyword: filterField === "medicalfacility" ? debouncedSearch : "",
     enabled: filterField === "medicalfacility",
+    selectedValues: form.medicalFacilityIds,
   });
 
-  const caseManagerFilter = useReportFilterOptions({
+  const caseManagerFilter = useCachedFilterOptions({
     reportType: form.reportType,
     filterField: "casemanager",
     keyword: filterField === "casemanager" ? debouncedSearch : "",
     enabled: filterField === "casemanager",
+    selectedValues: form.caseManagerIds,
   });
 
-  const attorneyFilter = useReportFilterOptions({
+  const attorneyFilter = useCachedFilterOptions({
     reportType: form.reportType,
     filterField: "attorney",
     keyword: filterField === "attorney" ? debouncedSearch : "",
     enabled: filterField === "attorney",
+    selectedValues: form.attorneyIds,
   });
   const fetchData = useCallback(async () => {
     const [caseStatusRes, liensStatusRes] = await Promise.allSettled([
@@ -854,12 +865,6 @@ export default function CreateUpdateReport({
                   })
                 }
                 type="select"
-                onOpen={() => {
-                  // setfilterField("lienStatus");
-                }}
-                onSearchChange={(e) => {
-                  setSearchSelectInput(e);
-                }}
               />
             )}
 
@@ -881,20 +886,18 @@ export default function CreateUpdateReport({
               value={form.lawFirmIds}
               options={lawFirmFilter.options}
               placeholder="Select law firms"
-              onChange={(values) =>
-                setForm({
-                  ...form,
-                  lawFirmIds: values,
-                })
-              }
+              onChange={(values) => setForm({ ...form, lawFirmIds: values })}
               type="select"
               multiple
               onOpen={() => {
-                setSearchSelectInput("");
                 setfilterField("lawfirm");
-                lawFirmFilter.refetch();
               }}
-              onSearchChange={setSearchSelectInput}
+              onSearchChange={(e) => {
+                setSearchColumnsInputSelected((prev) => ({
+                  ...prev,
+                  lawfirm: e,
+                }));
+              }}
               isLoading={lawFirmFilter.isLoadingFilter}
             />
 
@@ -904,19 +907,19 @@ export default function CreateUpdateReport({
               options={plaintiffFilter.options}
               placeholder="Select one or more plaintiffs"
               onChange={(values) =>
-                setForm({
-                  ...form,
-                  plaintiffCaseIds: values,
-                })
+                setForm({ ...form, plaintiffCaseIds: values })
               }
               type="select"
               multiple
               onOpen={() => {
-                setSearchSelectInput("");
                 setfilterField("plaintiff");
-                plaintiffFilter.refetch();
               }}
-              onSearchChange={setSearchSelectInput}
+              onSearchChange={(e) => {
+                setSearchColumnsInputSelected((prev) => ({
+                  ...prev,
+                  plaintiff: e,
+                }));
+              }}
               isLoading={plaintiffFilter.isLoadingFilter}
             />
 
@@ -934,11 +937,14 @@ export default function CreateUpdateReport({
               type="select"
               multiple
               onOpen={() => {
-                setSearchSelectInput("");
                 setfilterField("attorney");
-                attorneyFilter.refetch();
               }}
-              onSearchChange={setSearchSelectInput}
+              onSearchChange={(e) => {
+                setSearchColumnsInputSelected((prev) => ({
+                  ...prev,
+                  attorney: e,
+                }));
+              }}
               isLoading={attorneyFilter.isLoadingFilter}
             />
 
@@ -956,11 +962,14 @@ export default function CreateUpdateReport({
               type="select"
               multiple
               onOpen={() => {
-                setSearchSelectInput("");
                 setfilterField("fundingcompany");
-                fundingCompanyFilter.refetch();
               }}
-              onSearchChange={setSearchSelectInput}
+              onSearchChange={(e) => {
+                setSearchColumnsInputSelected((prev) => ({
+                  ...prev,
+                  fundingcompany: e,
+                }));
+              }}
               isLoading={fundingCompanyFilter.isLoadingFilter}
             />
             <Field
@@ -968,20 +977,23 @@ export default function CreateUpdateReport({
               value={form.medicalFacilityIds}
               options={medicalFacilityFilter.options}
               placeholder="Select facilities"
-              onChange={(values) =>
+              onChange={(values) => {
                 setForm({
                   ...form,
                   medicalFacilityIds: values,
-                })
-              }
+                });
+              }}
               type="select"
               multiple
               onOpen={() => {
-                setSearchSelectInput("");
                 setfilterField("medicalfacility");
-                medicalFacilityFilter.refetch();
               }}
-              onSearchChange={setSearchSelectInput}
+              onSearchChange={(e) => {
+                setSearchColumnsInputSelected((prev) => ({
+                  ...prev,
+                  medicalfacility: e,
+                }));
+              }}
               isLoading={medicalFacilityFilter.isLoadingFilter}
             />
 
@@ -999,11 +1011,14 @@ export default function CreateUpdateReport({
               type="select"
               multiple
               onOpen={() => {
-                setSearchSelectInput("");
                 setfilterField("casemanager");
-                caseManagerFilter.refetch();
               }}
-              onSearchChange={setSearchSelectInput}
+              onSearchChange={(e) => {
+                setSearchColumnsInputSelected((prev) => ({
+                  ...prev,
+                  casemanager: e,
+                }));
+              }}
               isLoading={caseManagerFilter.isLoadingFilter}
             />
             <Field
@@ -1020,11 +1035,14 @@ export default function CreateUpdateReport({
               type="select"
               multiple
               onOpen={() => {
-                setSearchSelectInput("");
                 setfilterField("medicalprovider");
-                medicalProviderFilter.refetch();
               }}
-              onSearchChange={setSearchSelectInput}
+              onSearchChange={(e) => {
+                setSearchColumnsInputSelected((prev) => ({
+                  ...prev,
+                  medicalprovider: e,
+                }));
+              }}
               isLoading={medicalProviderFilter.isLoadingFilter}
             />
 
