@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLienStore } from "@/stores/lien-store";
 import { casesService } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
@@ -12,7 +12,6 @@ import type {
 } from "@/lib/cases/cases.types";
 import { MedicalLienDetailSection } from "./sections/medical-lien-detail-section";
 import { useCaseDetailContext } from "../../case-detail-context";
-import { formatLegacyDateOnly } from "@/lib/format-date";
 
 export function LienDetailView({
   caseId,
@@ -28,8 +27,6 @@ export function LienDetailView({
   const addToast = useLienStore((s) => s.addToast);
   const { relatedLiens } = useCaseDetailContext();
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [forms, setForms] = useState<Record<number, any>>({
     [0]: undefined,
@@ -41,21 +38,6 @@ export function LienDetailView({
     [1]: undefined,
     [2]: undefined,
   });
-
-  const [valid, setValid] = useState<Record<number, boolean>>({
-    1: false,
-    2: false,
-    3: true, // starts true because it's empty/optional
-    4: true, // starts true because it's empty/optional
-  });
-
-  // 1 and 2 must be true. 3 and 4 must not be false (undefined or true is fine)
-  const isFormReady =
-    valid[1] === true &&
-    valid[2] === true &&
-    valid[3] !== false &&
-    valid[4] !== false;
-  console.log(valid, isFormReady);
 
   const fetchLienDetails = useCallback(async () => {
     try {
@@ -123,19 +105,25 @@ export function LienDetailView({
     fetchLienDetails();
   }, [fetchLienDetails]);
 
-  function onFormValid(isValid: boolean, formData: any, index: number) {
-    setValid((s) => ({ ...s, [index]: !!isValid }));
-
+  function onFormValid(formData: any, index: number) {
     setForms((prev: Record<number, any>) => {
       const copy = prev;
       copy[index] = formData ?? copy[index];
       return copy;
     });
   }
-  const dateConverter = (dateData: string) => {
-    if (!dateData) return "";
 
-    return formatLegacyDateOnly(dateData);
+  const dateConverter = (dateData: string) => {
+    if (!dateData) return;
+
+    const date = new Date(dateData);
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+    });
+
+    return formatter.format(date);
   };
 
   const saveMedicalLien = async (payload: CreateMedicalLiensDto) => {
@@ -279,7 +267,6 @@ export function LienDetailView({
   };
 
   async function save() {
-    setSaving(true);
     Promise.allSettled([
       await saveMedicalLien({
         ...forms[0],
@@ -304,7 +291,6 @@ export function LienDetailView({
       title: "Liens Updated",
       description: `Liens has been updated.`,
     });
-    setSaving(false);
     onUpdate();
   }
 
@@ -318,8 +304,6 @@ export function LienDetailView({
       onDocumentsUploaded={fetchLienDocuments}
       onGoBack={onGoBack}
       onSave={() => save()}
-      invalidForm={!isFormReady}
-      saving={saving}
     />
   );
 }

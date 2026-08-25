@@ -156,9 +156,9 @@ export function ServicingTab({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
 
-  let openLiens = liens.filter((i) => i.status === "Open");
-  let closedLiens = liens.filter((i) => i.status === "Closed");
-  console.log(liens, openLiens, closedLiens);
+  let openLiens = liens.filter((i) => i.closedAtUtc === null);
+  let closedLiens = liens.filter((i) => i.closedAtUtc !== null);
+
   const openLiensTotalBilling = openLiens.reduce(
     (s, l) => s + l.originalAmount,
     0,
@@ -453,7 +453,7 @@ export function ServicingTab({
         open={setupReductionFormShown}
         onClose={() => showSetupReductionForm(false)}
         caseId={caseDetail.id}
-        liens={openLiens}
+        liens={liens}
         liensLoadedAt={liensLoadedAt}
         onRefreshLiens={onRefreshLiens}
         isLiensFetching={isLiensFetching}
@@ -469,7 +469,7 @@ export function ServicingTab({
         open={isNoRecoveryOpen}
         onClose={() => setIsNoRecoveryOpen(false)}
         caseId={caseDetail.id}
-        liens={openLiens}
+        liens={liens}
         liensLoadedAt={liensLoadedAt}
         onRefreshLiens={onRefreshLiens}
         isLiensFetching={isLiensFetching}
@@ -490,7 +490,7 @@ export function ServicingTab({
           setIsAddPaymentOpen(false);
         }}
         caseId={caseDetail.id}
-        liens={selectedPayment != null ? liens : openLiens}
+        liens={liens}
         liensLoadedAt={liensLoadedAt}
         onRefreshLiens={onRefreshLiens}
         isLiensFetching={isLiensFetching}
