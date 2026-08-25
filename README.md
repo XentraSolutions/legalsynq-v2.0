@@ -185,7 +185,7 @@ pnpm --dir apps/web dev
 Run only the control center:
 
 ```bash
-pnpm dev:control-center
+pnpm --dir apps/control-center dev
 ```
 
 Build, type-check, and test the tenant portal:

@@ -83,7 +83,7 @@ export default function PortfolioLienDetailPage() {
     return (
       <div className="space-y-4">
         <Link
-          href="/selling/portfolio/lien"
+          href="/selling/portfolio"
           aria-label="Back to Portfolio"
           className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors"
         >

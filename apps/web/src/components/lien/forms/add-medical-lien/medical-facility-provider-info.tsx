@@ -59,6 +59,8 @@ export default function MedicalFacilityProviderInfo(
   };
 
   useEffect(() => {
+    if (!isDirty) return;
+
     validateForm();
   }, [form, isDirty]);
 

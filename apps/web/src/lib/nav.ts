@@ -6,14 +6,6 @@ import type {
   OrgTypeValue,
 } from "@/types";
 import { ProductRole, OrgType } from "@/types";
-import {
-  FolderClosed,
-  Briefcase,
-  ScrollText,
-  ContactRound,
-  Building2,
-  UserRound,
-} from "lucide-react";
 
 // ── Per-product sidebar navigation (sections) ─────────────────────────────────
 
@@ -287,36 +279,14 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
       heading: "Lien Portfolio",
       items: [
         {
-          heading: "Portfolio",
-          lucideIcon: FolderClosed,
-          children: [
-            {
-              href: "/selling/portfolio/cases",
-              label: "Cases",
-              lucideIcon: Briefcase,
-            },
-            {
-              href: "/selling/portfolio/lien",
-              label: "Liens",
-              lucideIcon: ScrollText,
-            },
-          ],
+          href: "/selling/portfolio",
+          label: "Portfolio",
+          icon: "ri-folder-3-line",
         },
         {
-          heading: "Contacts",
-          lucideIcon: ContactRound,
-          children: [
-            {
-              href: "/selling/contacts/companies",
-              label: "Companies",
-              lucideIcon: Building2,
-            },
-            {
-              href: "/selling/contacts/persons",
-              label: "Contact Persons",
-              lucideIcon: UserRound,
-            },
-          ],
+          href: "/selling/contacts",
+          label: "Contacts",
+          icon: "ri-contacts-book-line",
         },
       ],
     },

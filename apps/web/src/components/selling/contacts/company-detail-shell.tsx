@@ -27,7 +27,6 @@ import { CompanyStatsCards } from "./company-stats-cards";
 const RECENT_CASES_PAGE_SIZE = 4;
 
 const BASE_PATH = "/selling/contacts";
-const LIST_PATH = "/selling/contacts/companies";
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -75,7 +74,7 @@ export function CompanyDetailShell({
       <div className="p-10 text-center space-y-3">
         <CircleAlert className="h-6 w-6 text-gray-300" />
         <p className="text-sm text-gray-500">Company not found.</p>
-        <Link href={LIST_PATH} className="text-sm text-primary hover:underline">
+        <Link href={BASE_PATH} className="text-sm text-primary hover:underline">
           Back to Contacts
         </Link>
       </div>
@@ -112,7 +111,7 @@ export function CompanyDetailShell({
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <Link
-            href={LIST_PATH}
+            href={BASE_PATH}
             aria-label="Back to Contacts"
             className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
           >

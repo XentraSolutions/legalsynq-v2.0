@@ -31,7 +31,6 @@ export function CaseLienDetailPageClient({
           caseId={caseId}
           lienId={lienId}
           onUpdate={handleUpdate}
-          onGoBack={() => router.back()}
         />
       }
       right={

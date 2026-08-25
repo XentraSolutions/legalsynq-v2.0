@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useProduct } from "@/contexts/product-context";
 import { useSettings } from "@/contexts/settings-context";
@@ -29,59 +29,11 @@ function getNavItemKey(item: NavItem, index: number): string {
 
 // Helper: Check if a nav item is currently active
 function isItemActive(item: NavItem, activeNavItem: NavItem | null): boolean {
-  return !!item.href && item.href === activeNavItem?.href;
-}
-
-// Helper: Does this item's href match the current location? Hrefs carrying a
-// query string (e.g. "/selling/contacts?view=contacts") must match pathname
-// AND search exactly, since several sibling items can share the same
-// pathname and differ only by query (a query-less sibling is that route's
-// default view, so it should stop matching once a query'd sibling does).
-function hrefMatchesCurrent(
-  href: string,
-  pathname: string,
-  search: string,
-): boolean {
-  const [hrefPath, hrefQuery] = href.split("?");
-  if (hrefQuery) return pathname === hrefPath && search === hrefQuery;
-  if (pathname === hrefPath) return search === "";
-  return hrefPath !== "/" && pathname.startsWith(hrefPath);
-}
-
-// Renders a nav item's icon — a Lucide component when set, else the legacy
-// Remix Icon font class, else a plain grouping dot.
-function NavIcon({
-  item,
-  isActive,
-  activeColor,
-}: {
-  item: NavItem;
-  isActive: boolean;
-  activeColor: string;
-}) {
-  if (item.lucideIcon) {
-    const Icon = item.lucideIcon;
-    return (
-      <Icon
-        className="w-[16px] h-[16px] shrink-0"
-        style={{ color: isActive ? activeColor : undefined }}
-      />
-    );
-  }
-  if (item.icon) {
-    return (
-      <i
-        className={`${item.icon} text-[16px] leading-none shrink-0`}
-        style={{ color: isActive ? activeColor : undefined }}
-      />
-    );
-  }
-  return <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />;
+  return item.href ? item.href === activeNavItem?.href && activeNavItem?.href?.startsWith(item.href) : false;
 }
 
 export function Sidebar() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { selectedProductId } = useProduct();
   const settings = useSettings();
   const nav = settings.appearance.nav;
@@ -140,7 +92,6 @@ export function Sidebar() {
   const meta = selectedProductId ? PRODUCT_META[selectedProductId] : null;
 
   const currentPathname = pathname ?? "";
-  const currentSearch = searchParams?.toString() ?? "";
 
   const allNavItems = [
     ...sections.flatMap((s) =>
@@ -150,18 +101,11 @@ export function Sidebar() {
     ...GLOBAL_BOTTOM_NAV.items,
   ];
 
-  // Pick the most specific match (longest href) rather than the first one
-  // found, since sibling routes can nest (e.g. "/selling/contacts" is a
-  // prefix of "/selling/contacts/persons") and array order shouldn't decide.
   const activeNavItem =
-    allNavItems
-      .filter(
-        (item) =>
-          !!item.href &&
-          hrefMatchesCurrent(item.href, currentPathname, currentSearch),
-      )
-      .sort((a, b) => (b.href?.length ?? 0) - (a.href?.length ?? 0))[0] ??
-    null;
+    allNavItems.find((item) => {
+  if (!item.href) return false;
+  return currentPathname === item.href || (item.href !== '/' && currentPathname.startsWith(item.href));
+}) ?? null;
   const bottomNavItems = GLOBAL_BOTTOM_NAV.items
     .filter(
       (item) => !(selectedProductId === "lien" && item.href === "/my-work"),
@@ -370,7 +314,14 @@ function SidebarItem({
           style={{ backgroundColor: activeColor }}
         />
       )}
-      <NavIcon item={item} isActive={isActive} activeColor={activeColor} />
+      {item.icon ? (
+        <i
+          className={`${item.icon} text-[16px] leading-none shrink-0`}
+          style={{ color: isActive ? activeColor : undefined }}
+        />
+      ) : (
+        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+      )}
       {!collapsed && <span className="flex-1">{item.label}</span>}
       {showBadge && !collapsed && (
         <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold leading-none">
@@ -541,12 +492,26 @@ function SidebarDropdownItem({
             href={item.href}
             className="flex-1 flex items-center gap-2.5 px-3 py-2.5 min-w-0"
           >
-            <NavIcon item={item} isActive={isSelfActive} activeColor={activeColor} />
+            {item.icon ? (
+              <i
+                className={`${item.icon} text-[16px] leading-none shrink-0`}
+                style={{ color: isSelfActive ? activeColor : undefined }}
+              />
+            ) : (
+              <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+            )}
             <span className="flex-1 truncate">{item.label}</span>
           </Link>
         ) : (
           <div className="flex-1 flex items-center gap-2.5 px-3 py-2.5 min-w-0">
-            <NavIcon item={item} isActive={isSelfActive} activeColor={activeColor} />
+            {item.icon ? (
+              <i
+                className={`${item.icon} text-[16px] leading-none shrink-0`}
+                style={{ color: isSelfActive ? activeColor : undefined }}
+              />
+            ) : (
+              <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+            )}
             <span className="flex-1 truncate font-semibold">
               {item.heading ?? item.label}
             </span>

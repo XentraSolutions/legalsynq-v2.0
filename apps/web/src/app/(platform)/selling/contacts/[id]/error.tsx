@@ -23,7 +23,7 @@ export default function SellingContactDetailError({
       )}
       <div className="flex items-center justify-center gap-3 pt-2">
         <Button variant="primary" onClick={reset}>Try Again</Button>
-        <Link href="/selling/contacts/companies" className={buttonVariants({ variant: 'secondary' })}>
+        <Link href="/selling/contacts" className={buttonVariants({ variant: 'secondary' })}>
           Back to Contacts
         </Link>
       </div>

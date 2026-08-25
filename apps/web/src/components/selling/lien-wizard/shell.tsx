@@ -60,7 +60,7 @@ export function LienWizardShell({
       <div className="flex items-center mb-6 ">
         <nav>
           <Link
-            href="/selling/portfolio/lien"
+            href="/selling/portfolio"
             className="text-sm text-gray-500 hover:text-gray-800"
           >
             <ArrowLeft className="h-5 w-5" />

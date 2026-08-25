@@ -7,7 +7,6 @@ using BuildingBlocks.Notifications;
 using HtmlAgilityPack;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
-using Liens.Application.Services;
 using Liens.Api;
 using Liens.Domain;
 using Liens.Domain.Entities;
@@ -44,6 +43,14 @@ public static class SellingEndpoints
         ".xlsx",
     };
     private const string SellingBulkImportTemplateType = "SellingLienImport";
+    private static readonly string[] SellingDocumentTaskTypes =
+    [
+        "LegacyCaseDocument",
+        "LegacyLienDocument",
+        "LegacyMedicalDocument",
+        "SellingDocumentReference",
+    ];
+
     public static void MapSellingEndpoints(this WebApplication app)
     {
         var group = app.MapGroup("/api/liens/selling")
@@ -973,38 +980,57 @@ public static class SellingEndpoints
             .ThenBy(item => item.Id)
             .ToListAsync(ct);
 
-        var documentCategories = await db.LookupValues
-            .AsNoTracking()
-            .Where(value =>
-                (value.TenantId == null || value.TenantId == tenantId) &&
-                value.Category == LookupCategory.DocumentCategory &&
-                value.IsActive)
-            .Select(value => new { value.Id, value.Name })
-            .ToListAsync(ct);
-        var documentCategoryNames = FundingCompanySaleDocumentMapper.BuildDocumentCategoryNameLookup(
-            documentCategories.Select(category => (category.Id, category.Name)));
-
         return items
-            .Select(item => FundingCompanySaleDocumentMapper.Map(item, documentCategoryNames))
-            .Where(document => document is not null)
-            .Select(document => MapBuyerOfferedLienDocument(document!, accessLinkId))
+            .Where(item => SellingDocumentTaskTypes.Contains(item.TaskType, StringComparer.Ordinal))
+            .Select(item => MapBuyerOfferedLienDocument(item, accessLinkId))
+            .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
             .DistinctBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    private static BuyerOfferedLienDocument MapBuyerOfferedLienDocument(
-        FundingCompanySaleDocument document,
-        Guid accessLinkId)
+    private static BuyerOfferedLienDocument MapBuyerOfferedLienDocument(ServicingItem item, Guid accessLinkId)
     {
+        var fields = ParseLegacyNoteFields(item.Notes);
+        var fileName = FirstNonEmpty(new[]
+        {
+            fields.GetValueOrDefault("originalFileName"),
+            fields.GetValueOrDefault("displayName"),
+            fields.GetValueOrDefault("filename"),
+            item.Description,
+        }) ?? string.Empty;
+
+        var category = FirstNonEmpty(new[]
+        {
+            fields.GetValueOrDefault("documentCategory"),
+            fields.GetValueOrDefault("category"),
+            FormatSellingDocumentType(fields.GetValueOrDefault("documentType")),
+            HumanizeDocumentTaskType(item.TaskType),
+        });
+
+        var sizeOrType = FirstNonEmpty(new[]
+        {
+            fields.GetValueOrDefault("size"),
+            fields.GetValueOrDefault("fileSize"),
+            fields.GetValueOrDefault("contentLength"),
+            ResolveFileExtension(fileName),
+        });
+        var documentId = TryResolveDocumentId(fields, out var resolvedDocumentId)
+            ? resolvedDocumentId
+            : (Guid?)null;
+
         return new BuyerOfferedLienDocument(
-            document.ReferenceId,
-            document.FileName,
-            document.Category,
-            document.SizeOrType,
-            document.DocumentId.HasValue ? $"/documents/{document.DocumentId.Value:D}" : null,
-            BuildBuyerOfferedLienDocumentActionUrl(accessLinkId, document.DocumentId, "view"),
-            BuildBuyerOfferedLienDocumentActionUrl(accessLinkId, document.DocumentId, "download"),
-            document.CreatedAtUtc);
+            item.Id,
+            fileName.Trim(),
+            category,
+            FormatDocumentSize(sizeOrType),
+            FirstNonEmpty(new[]
+            {
+                fields.GetValueOrDefault("url"),
+                documentId.HasValue ? $"/documents/{documentId.Value:D}" : null,
+            }),
+            BuildBuyerOfferedLienDocumentActionUrl(accessLinkId, documentId, "view"),
+            BuildBuyerOfferedLienDocumentActionUrl(accessLinkId, documentId, "download"),
+            item.CreatedAtUtc);
     }
 
     private static async Task<Guid?> ResolveBuyerOfferedLienDocumentReferenceAsync(
@@ -1020,7 +1046,7 @@ public static class SellingEndpoints
             .Select(item => new { item.TaskType, item.Notes })
             .ToListAsync(ct);
 
-        foreach (var item in items.Where(item => FundingCompanySaleDocumentMapper.IsFundingCompanyDocumentTaskType(item.TaskType)))
+        foreach (var item in items.Where(item => SellingDocumentTaskTypes.Contains(item.TaskType, StringComparer.Ordinal)))
         {
             var fields = ParseLegacyNoteFields(item.Notes);
             if (TryResolveDocumentId(fields, out var resolvedDocumentId) &&
@@ -1206,7 +1232,7 @@ public static class SellingEndpoints
             askAmount,
             lien.HighestBidAmount,
             accessLink.ResponseAmount,
-            FirstNonEmpty(new[] { lien.Notes, lien.Description }),
+            FirstNonEmpty(new[] { lien.Description, lien.Notes }),
             accessLink.ExpiresAtUtc,
             accessLink.ResponseStatus,
             accessLink.ResponseNotes,
@@ -1489,6 +1515,71 @@ public static class SellingEndpoints
         var segment = url.Trim().TrimEnd('/').Split('/').LastOrDefault();
         return Guid.TryParse(segment, out documentId);
     }
+
+    private static string? FormatSellingDocumentType(string? documentType)
+    {
+        if (string.IsNullOrWhiteSpace(documentType))
+            return null;
+
+        return documentType.Trim() switch
+        {
+            "LienAgreement" => "Signed Lien / LOP (Letter of Protection)",
+            "MedicalBill" => "Itemized Bill / HCFA-1500 Form",
+            "MedicalRecord" => "Clinical Chart Notes / Medical Records",
+            "SettlementStatement" => "Settlement Statement",
+            "Other" => "Supporting Document",
+            var value => SplitCamelCase(value),
+        };
+    }
+
+    private static string SplitCamelCase(string value)
+    {
+        var label = new StringBuilder(value.Length + 8);
+        for (var i = 0; i < value.Length; i++)
+        {
+            var current = value[i];
+            if (i > 0 && char.IsUpper(current) && char.IsLower(value[i - 1]))
+                label.Append(' ');
+
+            label.Append(current);
+        }
+
+        return label.ToString();
+    }
+
+    private static string FormatDocumentSize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var trimmed = value.Trim();
+        if (!long.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var bytes))
+            return trimmed;
+
+        if (bytes >= 1024L * 1024L)
+            return $"{bytes / (1024m * 1024m):0.#} MB";
+        if (bytes >= 1024L)
+            return $"{bytes / 1024m:0.#} KB";
+
+        return $"{bytes} B";
+    }
+
+    private static string? ResolveFileExtension(string fileName)
+    {
+        var extension = Path.GetExtension(fileName);
+        return string.IsNullOrWhiteSpace(extension)
+            ? null
+            : extension.TrimStart('.').ToUpperInvariant();
+    }
+
+    private static string HumanizeDocumentTaskType(string taskType)
+        => taskType switch
+        {
+            "LegacyCaseDocument" => "Case Document",
+            "LegacyLienDocument" => "Lien Document",
+            "LegacyMedicalDocument" => "Medical Document",
+            _ => "Document",
+        };
 
     private static string BuildInitials(string value)
     {
