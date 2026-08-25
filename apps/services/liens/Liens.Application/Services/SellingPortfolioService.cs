@@ -1041,9 +1041,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         if (string.IsNullOrWhiteSpace(caseParties.HandlingLawFirm))
             errors["handlingLawFirm"] = ["A real handling law firm is required before sending the buyer notification."];
 
-        var sellerContacts = await _contactRepo.GetByOrgIdAsync(tenantId, sellerOrgId, isActive: true, ct);
-        var sellerContact = SelectSellerContact(sellerContacts, caseParties.LegacyHandlingLawFirmContactId)
-            ?? SelectSellerContact(sellerContacts);
+        var sellerContacts = await _companyRepo.GetContactPersonsByOrgIdAsync(tenantId, sellerOrgId, isActive: true, ct);
+        var sellerContact = SelectSellerContact(sellerContacts);
         var sellerDisplay = await _sellerOrganizationDisplayResolver.ResolveAsync(
             tenantId,
             sellerOrgId,
@@ -1109,7 +1108,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             ["lienCode"] = ResolveLienCode(lien),
             ["buyerContactId"] = context.BuyerContact.Id.ToString(),
             ["buyerOrgId"] = context.BuyerContact.OrgId.ToString(),
-            ["sellerOrgId"] = context.SellerContact.OrgId.ToString(),
+            ["sellerOrgId"] = context.SellerContact.Company!.OrgId.ToString(),
             ["buyerAccessLinkId"] = accessLink.Id.ToString(),
             ["buyerAccessExpiresAtUtc"] = accessLink.ExpiresAtUtc.ToString("O", CultureInfo.InvariantCulture),
             ["requestedBy"] = actingUserId.ToString(),
@@ -1213,7 +1212,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 SellerPortalUrl = sellerAccessLink.PublicPortalUrl,
                 ExpiresAtUtc = sellerAccessLink.ExpiresAtUtc,
                 SellerContactId = context.SellerContact.Id,
-                SellerOrgId = context.SellerContact.OrgId,
+                SellerOrgId = context.SellerContact.Company!.OrgId,
                 SellerEmail = context.SellerEmail,
             };
         }
@@ -1227,7 +1226,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             ["buyerContactId"] = context.BuyerContact.Id.ToString(),
             ["buyerOrgId"] = context.BuyerContact.OrgId.ToString(),
             ["sellerContactId"] = context.SellerContact.Id.ToString(),
-            ["sellerOrgId"] = context.SellerContact.OrgId.ToString(),
+            ["sellerOrgId"] = context.SellerContact.Company!.OrgId.ToString(),
             ["buyerAccessLinkId"] = buyerAccessLink.Id.ToString(),
             ["sellerAccessLinkId"] = sellerAccessLink.Id.ToString(),
             ["sellerAccessExpiresAtUtc"] = sellerAccessLink.ExpiresAtUtc.ToString("O", CultureInfo.InvariantCulture),
@@ -1278,7 +1277,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 SellerPortalUrl = sellerAccessLink.PublicPortalUrl,
                 ExpiresAtUtc = sellerAccessLink.ExpiresAtUtc,
                 SellerContactId = context.SellerContact.Id,
-                SellerOrgId = context.SellerContact.OrgId,
+                SellerOrgId = context.SellerContact.Company!.OrgId,
                 SellerEmail = context.SellerEmail,
             };
         }
@@ -1305,7 +1304,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
                 SellerPortalUrl = sellerAccessLink.PublicPortalUrl,
                 ExpiresAtUtc = sellerAccessLink.ExpiresAtUtc,
                 SellerContactId = context.SellerContact.Id,
-                SellerOrgId = context.SellerContact.OrgId,
+                SellerOrgId = context.SellerContact.Company!.OrgId,
                 SellerEmail = context.SellerEmail,
             };
         }
@@ -1889,29 +1888,18 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         return label.ToString();
     }
 
-    private static Contact? SelectSellerContact(IReadOnlyList<Contact> contacts, Guid? excludedContactId = null)
+    private static CompanyContactPerson? SelectSellerContact(IReadOnlyList<CompanyContactPerson> contacts)
     {
         var orderedContacts = OrderSellerContacts(contacts);
-        var preferredContacts = excludedContactId.HasValue
-            ? orderedContacts.Where(contact => contact.Id != excludedContactId.Value).ToList()
-            : orderedContacts;
-
-        return SelectSellerContactWithEmail(preferredContacts)
-           ?? (excludedContactId.HasValue ? SelectSellerContactWithEmail(orderedContacts) : null)
-           ?? preferredContacts.FirstOrDefault()
+        return orderedContacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email))
            ?? orderedContacts.FirstOrDefault();
     }
 
-    private static Contact? SelectSellerContactWithEmail(IReadOnlyList<Contact> contacts)
-        => contacts.FirstOrDefault(c =>
-               string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
-               string.IsNullOrWhiteSpace(c.ContactSubtype) &&
-               !string.IsNullOrWhiteSpace(c.Email))
-           ?? contacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email));
-
-    private static IReadOnlyList<Contact> OrderSellerContacts(IReadOnlyList<Contact> contacts)
+    private static IReadOnlyList<CompanyContactPerson> OrderSellerContacts(IReadOnlyList<CompanyContactPerson> contacts)
         => contacts
-            .OrderBy(c => c.DisplayName)
+            .OrderBy(c => c.Company?.Name ?? string.Empty)
+            .ThenBy(c => c.LastName)
+            .ThenBy(c => c.FirstName)
             .ThenBy(c => c.Email ?? string.Empty)
             .ThenBy(c => c.Id)
             .ToList();
@@ -2038,7 +2026,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
     private sealed record ConfirmSaleNotificationContext(
         BuyerContactSnapshot BuyerContact,
-        Contact SellerContact,
+        CompanyContactPerson SellerContact,
         SellerOrganizationDisplay SellerDisplay,
         string SellerEmail,
         Case? Case,
