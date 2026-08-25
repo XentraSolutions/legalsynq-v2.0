@@ -1423,7 +1423,6 @@ public static class AdminEndpoints
         ["Xenia"]         = "SYNQ_AI",
         ["SynqAI"]        = "SYNQ_AI",
         ["SynqInsights"]  = "SYNQ_INSIGHTS",
-        ["SynqSelling"]   = "SYNQ_SELLING",
     };
 
     // Maps the DB product Code column → the frontend ProductCode (TypeScript).
@@ -1435,7 +1434,6 @@ public static class AdminEndpoints
         ["SYNQ_AI"]          = "Xenia",
         ["XENIA"]           = "Xenia",
         ["SYNQ_INSIGHTS"]    = "SynqInsights",
-        ["SYNQ_SELLING"]     = "SynqSelling",
     };
 
     private static IEnumerable<string> GetDbProductCodeCandidates(string productCode)

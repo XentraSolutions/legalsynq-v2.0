@@ -23,7 +23,6 @@ BFF — local route handlers for auth and a few specific endpoints; all other `/
 |---|---|
 | `/` | Dashboard — system health, KPIs, recent audit events, support cases |
 | `/tenants` | Tenant list and detail — status, entitlements, branding, DNS provisioning status/retries |
-| `/products` | Product catalog and platform URL configuration; tenant enablement remains on tenant detail |
 | `/tenant-applications` | Review-first self-registration queue with approval, decline, and DNS provisioning progress |
 | `/users` | Cross-tenant user management |
 | `/audit` | SynqAudit investigation — events, integrity checks, exports |

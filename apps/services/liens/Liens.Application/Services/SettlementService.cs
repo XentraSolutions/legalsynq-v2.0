@@ -309,10 +309,7 @@ public class SettlementService : ISettlementService
             request.PaymentDate,
             request.Payee,
             FirstNonEmpty(request.CheckNumber, request.ReferenceNumber),
-            BuildPaymentNote(request, settlementType, settlementStatus),
-            paymentMethod: request.PaymentMethod,
-            settlementType: settlementType,
-            settlementStatus: settlementStatus);
+            BuildPaymentNote(request, settlementType, settlementStatus));
         await _paymentRepo.AddAsync(entity, ct);
         return MapPayment(entity);
     }
@@ -338,8 +335,6 @@ public class SettlementService : ISettlementService
             errors["referenceNumber"] = ["referenceNumber is required."];
         else if (request.ReferenceNumber.Trim().Length > 100)
             errors["referenceNumber"] = ["referenceNumber cannot exceed 100 characters."];
-        if (request.DetailsContext?.Trim().Length > 300)
-            errors["detailsContext"] = ["detailsContext cannot exceed 300 characters."];
         if (request.Notes is null)
             errors["notes"] = ["notes is required but may be empty."];
         else if (request.Notes.Contains(LegacyMetadataMarker, StringComparison.Ordinal))
@@ -376,12 +371,6 @@ public class SettlementService : ISettlementService
             request.PaymentDate,
             request.ReferenceNumber,
             updatedNote,
-            userId);
-        entity.UpdateClassification(
-            request.PaymentMethod,
-            request.SettlementType,
-            request.SettlementStatus,
-            request.DetailsContext,
             userId);
         await _paymentRepo.UpdateAsync(entity, ct);
 
@@ -428,14 +417,6 @@ public class SettlementService : ISettlementService
             ?? throw new KeyNotFoundException($"Payment {id} not found.");
         entity.SoftDelete(userId);
         await _paymentRepo.SoftDeleteAsync(entity, ct);
-
-        var remainingPayments = await _paymentRepo.GetByLienIdAsync(tenantId, entity.LienId, ct);
-        var lien = await _lienService.GetByIdAsync(tenantId, entity.LienId, ct);
-        if (remainingPayments.Count == 0 && lien?.Status == LienStatus.Settled)
-        {
-            await _lienService.SetLegacyMedicalStatusAsync(
-                tenantId, entity.LienId, userId, "Open", ct);
-        }
     }
 
     private static SettlementPaymentDetailResponse MapPayment(SettlementPaymentDetail p)
@@ -453,12 +434,9 @@ public class SettlementService : ISettlementService
             Payee         = p.Payee,
             CheckNumber   = p.CheckNumber,
             Note          = ExtractPaymentNote(p.Note),
-            PaymentMethod = FirstNonEmpty(p.PaymentMethod, metadata.GetValueOrDefault("paymentMethod")),
-            ReceiptId     = p.ReceiptId,
-            PostingStatus = p.PostingStatus,
-            DetailsContext = p.DetailsContext,
-            SettlementTypeId = FirstNonEmpty(p.SettlementType, metadata.GetValueOrDefault("type")) ?? "other",
-            SettlementStatusId = FirstNonEmpty(p.SettlementStatus, metadata.GetValueOrDefault("status")),
+            PaymentMethod = metadata.GetValueOrDefault("paymentMethod"),
+            SettlementTypeId = FirstNonEmpty(metadata.GetValueOrDefault("type")) ?? "other",
+            SettlementStatusId = metadata.GetValueOrDefault("status"),
             NetProfit     = ParseLegacyDecimal(metadata.GetValueOrDefault("netProfit")),
             CreatedAtUtc  = p.CreatedAtUtc,
             UpdatedAtUtc  = p.UpdatedAtUtc,

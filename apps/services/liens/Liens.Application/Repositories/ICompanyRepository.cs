@@ -50,8 +50,6 @@ public interface ICompanyRepository
         Guid tenantId, Guid orgId, string? search, Guid? companyTypeId, bool? isActive,
         CancellationToken ct = default);
     Task<Company?> GetCompanyAsync(Guid tenantId, Guid orgId, Guid id, CancellationToken ct = default);
-    Task<List<Company>> GetCompaniesByIdsAsync(
-        Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
     Task<CompanyDetailsSnapshot> GetCompanyDetailsAsync(
         Guid tenantId, Guid orgId, Guid companyId, Guid companyTypeId,
         int page, int pageSize, CancellationToken ct = default);
@@ -78,8 +76,6 @@ public interface ICompanyRepository
         Guid tenantId, Guid companyId, Guid id, CancellationToken ct = default);
     Task<CompanyContactPerson?> GetContactPersonInScopeAsync(
         Guid tenantId, Guid orgId, Guid id, CancellationToken ct = default);
-    Task<List<CompanyContactPerson>> GetContactPersonsByIdsAsync(
-        Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
     Task AddContactPersonAsync(CompanyContactPerson contact, CancellationToken ct = default);
     Task UpdateContactPersonAsync(CompanyContactPerson contact, CancellationToken ct = default);
     Task<CompanyContactPersonReassignmentCounts> ReassignContactPersonAsync(

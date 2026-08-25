@@ -16,7 +16,6 @@ public class DIYReportService : IDIYReportService
     private readonly ICaseRepository            _caseRepo;
     private readonly IServicingItemRepository   _servicingItemRepo;
     private readonly IContactRepository         _contactRepo;
-    private readonly ICompanyRepository         _companyRepo;
     private readonly IFacilityRepository        _facilityRepo;
     private readonly ILookupValueRepository     _lookupRepo;
     private readonly ILienReductionRepository   _reductionRepo;
@@ -30,7 +29,6 @@ public class DIYReportService : IDIYReportService
         ICaseRepository caseRepo,
         IServicingItemRepository servicingItemRepo,
         IContactRepository contactRepo,
-        ICompanyRepository companyRepo,
         IFacilityRepository facilityRepo,
         ILookupValueRepository lookupRepo,
         ILienReductionRepository reductionRepo,
@@ -43,7 +41,6 @@ public class DIYReportService : IDIYReportService
         _caseRepo          = caseRepo;
         _servicingItemRepo = servicingItemRepo;
         _contactRepo       = contactRepo;
-        _companyRepo       = companyRepo;
         _facilityRepo      = facilityRepo;
         _lookupRepo        = lookupRepo;
         _reductionRepo     = reductionRepo;
@@ -460,8 +457,6 @@ public class DIYReportService : IDIYReportService
         var caseDetails = caseEntity is not null && enrichment.CaseDetailsById.TryGetValue(caseEntity.Id, out var details)
             ? details
             : CaseReportDetails.Empty;
-        var medicalDetails = enrichment.MedicalDetailsByLienId.GetValueOrDefault(l.Id, MedicalLienReportDetails.Empty);
-        var address = ResolveClientAddress(caseEntity);
         var billingAmount = ResolveBillingAmount(l, legacyMedicalAmounts);
         var purchaseAmount = ResolvePurchaseAmount(l, legacyMedicalAmounts);
         var returnedAmount = ResolveReturnedAmount(l, enrichment);
@@ -517,40 +512,10 @@ public class DIYReportService : IDIYReportService
             ToSettleAmount = toSettleAmount,
             SettledAmount = returnedAmount,
             DaysSinceReductionApproval = GetDaysSinceReductionApproval(reductionDate, paidDate),
-            MedicalFacility = medicalDetails.FacilityName,
-            MedicalFacilityContact = medicalDetails.FacilityContact,
-            MedicalFacilityAddress = medicalDetails.FacilityAddress,
-            MedicalFacilityCity = medicalDetails.FacilityCity,
-            MedicalFacilityState = medicalDetails.FacilityState,
-            MedicalFacilityZip = medicalDetails.FacilityZip,
-            MedicalProvider = medicalDetails.Provider,
-            MedicalCodes = medicalDetails.Codes,
-            LawFirm = caseDetails.LawFirm.Name,
-            LawFirmAddress = caseDetails.LawFirm.Address,
-            LawFirmCity = caseDetails.LawFirm.City,
-            LawFirmState = caseDetails.LawFirm.State,
-            LawFirmZip = caseDetails.LawFirm.Zip,
-            LawFirmPhone = caseDetails.LawFirm.Phone,
-            LawFirmEmail = caseDetails.LawFirm.Email,
+            MedicalFacility = enrichment.MedicalFacilityByLienId.GetValueOrDefault(l.Id, string.Empty),
+            LawFirm = caseDetails.LawFirm,
             CaseType = caseDetails.CaseType,
-            CaseManager = caseDetails.CaseManager.Name,
-            CaseManagerEmail = caseDetails.CaseManager.Email,
-            Attorney = caseDetails.Attorney.Name,
-            AttorneyPhone = caseDetails.Attorney.Phone,
-            AttorneyEmail = caseDetails.Attorney.Email,
-            StateOfIncident = FirstNonEmpty(caseDetails.StateOfIncident, l.Jurisdiction) ?? string.Empty,
-            MedicalStatus = caseDetails.MedicalStatus,
-            TrackingFollowUpDate = caseDetails.TrackingFollowUpDate,
-            PlaintiffDob = caseEntity?.ClientDob,
-            PlaintiffPhone = caseEntity?.ClientPhone ?? string.Empty,
-            PlaintiffEmail = caseEntity?.ClientEmail ?? string.Empty,
-            PlaintiffAddress = address.Address,
-            PlaintiffCity = address.City,
-            PlaintiffState = address.State,
-            PlaintiffZip = address.Zip,
-            CaseEnteredBy = caseDetails.CaseEnteredBy,
-            CaseDropped = caseDetails.CaseDropped,
-            MinorComp = caseDetails.MinorComp,
+            CaseManager = caseDetails.CaseManager,
             UccFiled = caseDetails.UccFiled,
             FeedNote = enrichment.FeedNotesByCaseId
                 .GetValueOrDefault(l.CaseId ?? Guid.Empty, FeedNoteReportDetails.Empty)
@@ -629,23 +594,10 @@ public class DIYReportService : IDIYReportService
                                 l.ClosedAtUtc.HasValue)
                     .Select(l => l.ClosedAtUtc!.Value)
                     .ToList();
-                var medicalDetails = caseLiens
-                    .Select(l => enrichment.MedicalDetailsByLienId.GetValueOrDefault(l.Id, MedicalLienReportDetails.Empty))
-                    .ToList();
-                var facilities = medicalDetails
-                    .Select(details => details.FacilityName)
+                var facilities = caseLiens
+                    .Select(l => enrichment.MedicalFacilityByLienId.GetValueOrDefault(l.Id, string.Empty))
                     .Where(name => !string.IsNullOrWhiteSpace(name))
                     .Distinct(StringComparer.OrdinalIgnoreCase);
-                var providers = medicalDetails
-                    .Select(details => details.Provider)
-                    .Where(name => !string.IsNullOrWhiteSpace(name))
-                    .Distinct(StringComparer.OrdinalIgnoreCase);
-                var codes = medicalDetails
-                    .SelectMany(details => details.Codes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-                    .Distinct(StringComparer.OrdinalIgnoreCase);
-                var firstMedicalDetails = medicalDetails.FirstOrDefault(details => !string.IsNullOrWhiteSpace(details.FacilityName))
-                    ?? MedicalLienReportDetails.Empty;
-                var address = ResolveClientAddress(caseEntity);
 
                 return new DIYReportRow
                 {
@@ -681,39 +633,9 @@ public class DIYReportService : IDIYReportService
                         reductionDates.Count > 0 ? reductionDates.Max() : null,
                         paidDates.Count > 0 ? paidDates.Max() : null),
                     MedicalFacility = string.Join(", ", facilities),
-                    MedicalFacilityContact = firstMedicalDetails.FacilityContact,
-                    MedicalFacilityAddress = firstMedicalDetails.FacilityAddress,
-                    MedicalFacilityCity = firstMedicalDetails.FacilityCity,
-                    MedicalFacilityState = firstMedicalDetails.FacilityState,
-                    MedicalFacilityZip = firstMedicalDetails.FacilityZip,
-                    MedicalProvider = string.Join(", ", providers),
-                    MedicalCodes = string.Join(", ", codes),
-                    LawFirm = caseDetails.LawFirm.Name,
-                    LawFirmAddress = caseDetails.LawFirm.Address,
-                    LawFirmCity = caseDetails.LawFirm.City,
-                    LawFirmState = caseDetails.LawFirm.State,
-                    LawFirmZip = caseDetails.LawFirm.Zip,
-                    LawFirmPhone = caseDetails.LawFirm.Phone,
-                    LawFirmEmail = caseDetails.LawFirm.Email,
+                    LawFirm = caseDetails.LawFirm,
                     CaseType = caseDetails.CaseType,
-                    CaseManager = caseDetails.CaseManager.Name,
-                    CaseManagerEmail = caseDetails.CaseManager.Email,
-                    Attorney = caseDetails.Attorney.Name,
-                    AttorneyPhone = caseDetails.Attorney.Phone,
-                    AttorneyEmail = caseDetails.Attorney.Email,
-                    StateOfIncident = caseDetails.StateOfIncident,
-                    MedicalStatus = caseDetails.MedicalStatus,
-                    TrackingFollowUpDate = caseDetails.TrackingFollowUpDate,
-                    PlaintiffDob = caseEntity.ClientDob,
-                    PlaintiffPhone = caseEntity.ClientPhone ?? string.Empty,
-                    PlaintiffEmail = caseEntity.ClientEmail ?? string.Empty,
-                    PlaintiffAddress = address.Address,
-                    PlaintiffCity = address.City,
-                    PlaintiffState = address.State,
-                    PlaintiffZip = address.Zip,
-                    CaseEnteredBy = caseDetails.CaseEnteredBy,
-                    CaseDropped = caseDetails.CaseDropped,
-                    MinorComp = caseDetails.MinorComp,
+                    CaseManager = caseDetails.CaseManager,
                     UccFiled = caseDetails.UccFiled,
                     FeedNote = enrichment.FeedNotesByCaseId
                         .GetValueOrDefault(caseEntity.Id, FeedNoteReportDetails.Empty)
@@ -763,37 +685,17 @@ public class DIYReportService : IDIYReportService
             .Where(lien => lien.FacilityId.HasValue)
             .Select(lien => lien.FacilityId!.Value));
         var contactIds = new HashSet<Guid>();
-        var companyIds = new HashSet<Guid>();
-        var companyContactPersonIds = new HashSet<Guid>();
 
-        foreach (var lien in liens)
+        foreach (var fields in caseMetadataById.Values)
         {
-            AddGuidIfValid(companyIds, lien.MedicalProviderCompanyId?.ToString());
-            AddGuidIfValid(companyIds, lien.MedicalFacilityCompanyId?.ToString());
-        }
-
-        foreach (var caseEntity in casesById.Values)
-        {
-            var fields = caseMetadataById[caseEntity.Id];
             AddGuidIfValid(contactIds, fields.GetValueOrDefault("lawFirmId"));
             AddGuidIfValid(contactIds, fields.GetValueOrDefault("caseManagerId"));
-            AddGuidIfValid(contactIds, fields.GetValueOrDefault("attorneyId"));
-            AddGuidIfValid(contactIds, fields.GetValueOrDefault("attorney"));
-            AddGuidIfValid(companyIds, caseEntity.HandlingLawFirmCompanyId?.ToString());
-            AddGuidIfValid(companyContactPersonIds, caseEntity.CaseManagerContactPersonId?.ToString());
-            AddGuidIfValid(companyContactPersonIds, caseEntity.AttorneyContactPersonId?.ToString());
         }
 
         foreach (var lien in liens)
         {
             if (facilityInfoByLienId.TryGetValue(lien.Id, out var facilityInfo))
-            {
-                var fields = ParseLegacyNoteFields(facilityInfo.Notes);
-                AddGuidIfValid(facilityIds, fields.GetValueOrDefault("facilityId"));
-                AddGuidIfValid(contactIds, fields.GetValueOrDefault("medicalProviderId"));
-                AddGuidIfValid(contactIds, fields.GetValueOrDefault("facilityContactPersonId"));
-                AddGuidIfValid(contactIds, fields.GetValueOrDefault("medicalFacilityContactId"));
-            }
+                AddGuidIfValid(facilityIds, ParseLegacyNoteFields(facilityInfo.Notes).GetValueOrDefault("facilityId"));
         }
 
         contactIds.UnionWith(facilityIds);
@@ -802,14 +704,15 @@ public class DIYReportService : IDIYReportService
             .ToDictionary(facility => facility.Id);
         var contactsById = (await _contactRepo.GetByIdsAsync(tenantId, contactIds, ct))
             .ToDictionary(contact => contact.Id);
-        var companiesById = (await _companyRepo.GetCompaniesByIdsAsync(tenantId, companyIds, ct))
-            .ToDictionary(company => company.Id);
-        var companyContactPersonsById = (await _companyRepo.GetContactPersonsByIdsAsync(
+        var lawFirmsByOrgId = (await _contactRepo.GetAllByTypeAsync(
                 tenantId,
-                companyContactPersonIds,
+                ContactType.LawFirm,
+                isActive: null,
                 ct))
-            .ToDictionary(contact => contact.Id);
-        var medicalDetailsByLienId = new Dictionary<Guid, MedicalLienReportDetails>();
+            .GroupBy(contact => contact.OrgId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        var medicalFacilityByLienId = new Dictionary<Guid, string>();
         foreach (var lien in liens)
         {
             var facilityFields = facilityInfoByLienId.TryGetValue(lien.Id, out var facilityInfo)
@@ -818,39 +721,15 @@ public class DIYReportService : IDIYReportService
             var facilityId = FirstGuid(
                 facilityFields.GetValueOrDefault("facilityId"),
                 lien.FacilityId?.ToString());
-            facilitiesById.TryGetValue(facilityId ?? Guid.Empty, out var facility);
-            companiesById.TryGetValue(lien.MedicalFacilityCompanyId ?? Guid.Empty, out var facilityCompany);
-            var facilityContactId = FirstGuid(
-                facilityFields.GetValueOrDefault("facilityContactPersonId"),
-                facilityFields.GetValueOrDefault("medicalFacilityContactId"));
-            contactsById.TryGetValue(facilityContactId ?? Guid.Empty, out var facilityContact);
 
-            var providerId = FirstGuid(facilityFields.GetValueOrDefault("medicalProviderId"));
-            contactsById.TryGetValue(providerId ?? Guid.Empty, out var providerContact);
-            companiesById.TryGetValue(lien.MedicalProviderCompanyId ?? Guid.Empty, out var providerCompany);
-
-            var codes = servicingItems
-                .Where(item => item.LienId == lien.Id &&
-                               string.Equals(item.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
-                .Select(item => ParseLegacyNoteFields(item.Notes))
-                .Select(fields => FirstNonEmpty(
-                    fields.GetValueOrDefault("code"),
-                    fields.GetValueOrDefault("description")))
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .Distinct(StringComparer.OrdinalIgnoreCase);
-
-            medicalDetailsByLienId[lien.Id] = new MedicalLienReportDetails(
-                FirstNonEmpty(facilityCompany?.Name, facility?.Name, facilityFields.GetValueOrDefault("facilityName")) ?? string.Empty,
-                facilityContact is null ? string.Empty : DisplayPersonName(facilityContact),
-                FirstNonEmpty(facilityCompany?.AddressLine1, facility?.AddressLine1) ?? string.Empty,
-                FirstNonEmpty(facilityCompany?.City, facility?.City) ?? string.Empty,
-                FirstNonEmpty(facilityCompany?.State, facility?.State) ?? string.Empty,
-                FirstNonEmpty(facilityCompany?.PostalCode, facility?.PostalCode) ?? string.Empty,
-                FirstNonEmpty(
-                    providerCompany?.Name,
-                    providerContact is null ? null : DisplayContactName(providerContact),
-                    facilityFields.GetValueOrDefault("medicalProvider")) ?? string.Empty,
-                string.Join(", ", codes));
+            medicalFacilityByLienId[lien.Id] = FirstNonEmpty(
+                facilityFields.GetValueOrDefault("facilityName"),
+                facilityId.HasValue && facilitiesById.TryGetValue(facilityId.Value, out var facility)
+                    ? facility.Name
+                    : null,
+                facilityId.HasValue && contactsById.TryGetValue(facilityId.Value, out var facilityContact)
+                    ? DisplayContactName(facilityContact)
+                    : null) ?? string.Empty;
         }
 
         var caseDetailsById = new Dictionary<Guid, CaseReportDetails>();
@@ -859,36 +738,27 @@ public class DIYReportService : IDIYReportService
             var fields = caseMetadataById[caseEntity.Id];
             var lawFirmId = FirstGuid(fields.GetValueOrDefault("lawFirmId"));
             var caseManagerId = FirstGuid(fields.GetValueOrDefault("caseManagerId"));
-            var attorneyId = FirstGuid(fields.GetValueOrDefault("attorneyId"), fields.GetValueOrDefault("attorney"));
-            contactsById.TryGetValue(lawFirmId ?? Guid.Empty, out var legacyLawFirm);
-            contactsById.TryGetValue(caseManagerId ?? Guid.Empty, out var legacyCaseManager);
-            contactsById.TryGetValue(attorneyId ?? Guid.Empty, out var legacyAttorney);
-            companiesById.TryGetValue(caseEntity.HandlingLawFirmCompanyId ?? Guid.Empty, out var canonicalLawFirm);
-            companyContactPersonsById.TryGetValue(caseEntity.CaseManagerContactPersonId ?? Guid.Empty, out var canonicalCaseManager);
-            companyContactPersonsById.TryGetValue(caseEntity.AttorneyContactPersonId ?? Guid.Empty, out var canonicalAttorney);
 
             caseDetailsById[caseEntity.Id] = new CaseReportDetails(
-                BuildPartyDetails(canonicalLawFirm, legacyLawFirm, fields.GetValueOrDefault("lawFirm")),
-                BuildPersonDetails(canonicalCaseManager, legacyCaseManager, fields.GetValueOrDefault("caseManager")),
-                BuildPersonDetails(canonicalAttorney, legacyAttorney, fields.GetValueOrDefault("attorneyName")),
+                FirstNonEmpty(
+                    lawFirmId.HasValue && contactsById.TryGetValue(lawFirmId.Value, out var lawFirm)
+                        ? DisplayContactName(lawFirm)
+                        : null,
+                    fields.GetValueOrDefault("lawFirm"),
+                    lawFirmsByOrgId.TryGetValue(caseEntity.OrgId, out var organizationLawFirm)
+                        ? DisplayContactName(organizationLawFirm)
+                        : null) ?? string.Empty,
+                FirstNonEmpty(
+                    caseManagerId.HasValue && contactsById.TryGetValue(caseManagerId.Value, out var caseManager)
+                        ? DisplayPersonName(caseManager)
+                        : null,
+                    fields.GetValueOrDefault("caseManager")) ?? string.Empty,
                 FirstNonEmpty(
                     fields.GetValueOrDefault("accidentType"),
                     fields.GetValueOrDefault("caseType")) ?? string.Empty,
                 NormalizeYesNoFlag(
                     fields.GetValueOrDefault("isUccFiled"),
-                    fields.GetValueOrDefault("isUCCFiled")),
-                FirstNonEmpty(
-                    caseEntity.IncidentState,
-                    fields.GetValueOrDefault("stateOfIncident"),
-                    fields.GetValueOrDefault("accidentState")) ?? string.Empty,
-                FirstNonEmpty(caseEntity.CurrentMedicalStatus, fields.GetValueOrDefault("currentMedicalStatus")) ?? string.Empty,
-                caseEntity.TrackingFollowUpDate ?? ParseLegacyDate(fields.GetValueOrDefault("trackingFollowUpDate")),
-                FirstNonEmpty(
-                    caseEntity.ImportedCreatedByName,
-                    fields.GetValueOrDefault("caseEnteredBy"),
-                    fields.GetValueOrDefault("createdBy")) ?? string.Empty,
-                FormatNullableFlag(caseEntity.CaseDropped, fields.GetValueOrDefault("caseDropped")),
-                FormatNullableFlag(caseEntity.MinorComp, fields.GetValueOrDefault("minorComp")));
+                    fields.GetValueOrDefault("isUCCFiled")));
         }
 
         var reductions = await _reductionRepo.GetByLienIdsAsync(tenantId, lienIds, ct);
@@ -966,7 +836,7 @@ public class DIYReportService : IDIYReportService
         }
 
         return new ReportRowEnrichment(
-            medicalDetailsByLienId,
+            medicalFacilityByLienId,
             caseDetailsById,
             reductionAmountsByLienId,
             settlementAmountsByLienId,
@@ -1048,9 +918,7 @@ public class DIYReportService : IDIYReportService
                 _ => null,
             };
             return string.Equals(key, "last_case_tracking_note", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(key, "last_case_tracking_date", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(key, "last_activity", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(key, "last_activity_date", StringComparison.OrdinalIgnoreCase);
+                   string.Equals(key, "last_case_tracking_date", StringComparison.OrdinalIgnoreCase);
         });
     }
 
@@ -1113,80 +981,6 @@ public class DIYReportService : IDIYReportService
 
     private static string DisplayPersonName(Contact contact)
         => FirstNonEmpty(contact.DisplayName, contact.Organization) ?? string.Empty;
-
-    private static string DisplayPersonName(CompanyContactPerson contact)
-        => string.Join(" ", new[] { contact.FirstName, contact.LastName }
-            .Where(value => !string.IsNullOrWhiteSpace(value)));
-
-    private static PartyReportDetails BuildPartyDetails(
-        Company? company,
-        Contact? contact,
-        string? fallbackName) => new(
-        FirstNonEmpty(company?.Name, contact is null ? null : DisplayContactName(contact), fallbackName) ?? string.Empty,
-        FirstNonEmpty(company?.AddressLine1, contact?.AddressLine1) ?? string.Empty,
-        FirstNonEmpty(company?.City, contact?.City) ?? string.Empty,
-        FirstNonEmpty(company?.State, contact?.State) ?? string.Empty,
-        FirstNonEmpty(company?.PostalCode, contact?.PostalCode) ?? string.Empty,
-        FirstNonEmpty(company?.Phone, contact?.Phone) ?? string.Empty,
-        FirstNonEmpty(company?.Email, contact?.Email) ?? string.Empty);
-
-    private static PersonReportDetails BuildPersonDetails(
-        CompanyContactPerson? canonical,
-        Contact? legacy,
-        string? fallbackName) => new(
-        FirstNonEmpty(
-            canonical is null ? null : DisplayPersonName(canonical),
-            legacy is null ? null : DisplayPersonName(legacy),
-            fallbackName) ?? string.Empty,
-        FirstNonEmpty(canonical?.Phone, legacy?.Phone) ?? string.Empty,
-        FirstNonEmpty(canonical?.Email, legacy?.Email) ?? string.Empty);
-
-    private static AddressParts ResolveClientAddress(Case? caseEntity)
-    {
-        if (caseEntity is null)
-            return new AddressParts();
-
-        var fallback = SplitAddress(caseEntity.ClientAddress);
-        return new AddressParts(
-            FirstNonEmpty(caseEntity.ClientAddressLine1, fallback.Address) ?? string.Empty,
-            FirstNonEmpty(caseEntity.ClientCity, fallback.City) ?? string.Empty,
-            FirstNonEmpty(caseEntity.ClientState, fallback.State) ?? string.Empty,
-            FirstNonEmpty(caseEntity.ClientPostalCode, fallback.Zip) ?? string.Empty);
-    }
-
-    private static AddressParts SplitAddress(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return new AddressParts();
-
-        var parts = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return parts.Length switch
-        {
-            >= 4 => new AddressParts(string.Join(", ", parts.Take(parts.Length - 3)), parts[^3], parts[^2], parts[^1]),
-            3 => new AddressParts(parts[0], parts[1], parts[2], string.Empty),
-            2 => new AddressParts(parts[0], parts[1], string.Empty, string.Empty),
-            _ => new AddressParts(value.Trim(), string.Empty, string.Empty, string.Empty),
-        };
-    }
-
-    private static DateOnly? ParseLegacyDate(string? value)
-        => TryParseLegacyDate(value, out var date) ? date : null;
-
-    private static string FormatNullableFlag(bool? typedValue, string? compatibilityValue)
-    {
-        if (typedValue.HasValue)
-            return typedValue.Value ? "Yes" : "No";
-
-        if (string.IsNullOrWhiteSpace(compatibilityValue))
-            return string.Empty;
-
-        return compatibilityValue.Trim().ToUpperInvariant() switch
-        {
-            "TRUE" or "YES" or "Y" or "1" => "Yes",
-            "FALSE" or "NO" or "N" or "0" => "No",
-            _ => compatibilityValue.Trim(),
-        };
-    }
 
     private static SettlementReportAmounts BuildSettlementReportAmounts(
         IGrouping<Guid, LienSettlement> settlements)
@@ -1324,71 +1118,10 @@ public class DIYReportService : IDIYReportService
             ? Math.Max(paidDate.Value.DayNumber - reductionDate.Value.DayNumber, 0)
             : null;
 
-    private sealed record PartyReportDetails(
-        string Name,
-        string Address,
-        string City,
-        string State,
-        string Zip,
-        string Phone,
-        string Email)
+    private sealed record CaseReportDetails(string LawFirm, string CaseManager, string CaseType, string UccFiled)
     {
-        public static readonly PartyReportDetails Empty = new(
-            string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+        public static readonly CaseReportDetails Empty = new(string.Empty, string.Empty, string.Empty, "No");
     }
-
-    private sealed record PersonReportDetails(string Name, string Phone, string Email)
-    {
-        public static readonly PersonReportDetails Empty = new(string.Empty, string.Empty, string.Empty);
-    }
-
-    private sealed record CaseReportDetails(
-        PartyReportDetails LawFirm,
-        PersonReportDetails CaseManager,
-        PersonReportDetails Attorney,
-        string CaseType,
-        string UccFiled,
-        string StateOfIncident,
-        string MedicalStatus,
-        DateOnly? TrackingFollowUpDate,
-        string CaseEnteredBy,
-        string CaseDropped,
-        string MinorComp)
-    {
-        public static readonly CaseReportDetails Empty = new(
-            PartyReportDetails.Empty,
-            PersonReportDetails.Empty,
-            PersonReportDetails.Empty,
-            string.Empty,
-            "No",
-            string.Empty,
-            string.Empty,
-            null,
-            string.Empty,
-            string.Empty,
-            string.Empty);
-    }
-
-    private sealed record MedicalLienReportDetails(
-        string FacilityName,
-        string FacilityContact,
-        string FacilityAddress,
-        string FacilityCity,
-        string FacilityState,
-        string FacilityZip,
-        string Provider,
-        string Codes)
-    {
-        public static readonly MedicalLienReportDetails Empty = new(
-            string.Empty, string.Empty, string.Empty, string.Empty,
-            string.Empty, string.Empty, string.Empty, string.Empty);
-    }
-
-    private sealed record AddressParts(
-        string Address = "",
-        string City = "",
-        string State = "",
-        string Zip = "");
 
     private sealed record TrackingNoteReportDetails(string Notes, DateOnly? LastDate)
     {
@@ -1406,7 +1139,7 @@ public class DIYReportService : IDIYReportService
     }
 
     private sealed record ReportRowEnrichment(
-        IReadOnlyDictionary<Guid, MedicalLienReportDetails> MedicalDetailsByLienId,
+        IReadOnlyDictionary<Guid, string> MedicalFacilityByLienId,
         IReadOnlyDictionary<Guid, CaseReportDetails> CaseDetailsById,
         IReadOnlyDictionary<Guid, ReductionReportAmounts> ReductionAmountsByLienId,
         IReadOnlyDictionary<Guid, SettlementReportAmounts> SettlementAmountsByLienId,

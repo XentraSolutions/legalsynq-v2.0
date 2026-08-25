@@ -18,7 +18,7 @@ internal static class LegacyLiensImportProgram
 
     public static async Task<int> RunAsync(string[] args)
     {
-        if (args.Any(arg => arg is "--backfill-case-relationships" or "--backfill-v3-report-fields"))
+        if (args.Any(arg => arg == "--backfill-case-relationships"))
             return await CaseRelationshipBackfill.RunAsync(args);
 
         if (args.Any(arg => arg is "--help" or "-h"))
@@ -158,11 +158,7 @@ crosswalks, and reserves non-sensitive exception storage. It does not migrate do
 charges/facility links, payments/settlements, contacts, or workflow state.
 
 Relationship repair:
-  --backfill-v3-report-fields    Preferred all-fields v3 repair entry point.
-                                  Migrates case parity values and relationships,
-                                  medical codes/providers, facilities, and last activity.
-  --backfill-case-relationships  Runs the guarded Program 1 law-firm,
-                                  case-manager, attorney, typed report-parity,
+  --backfill-case-relationships  Runs the guarded Program 1 case-manager,
                                   accident-type, case-status-label, and
                                   lien-facility repair.
                                   Use --backfill-case-relationships --help for

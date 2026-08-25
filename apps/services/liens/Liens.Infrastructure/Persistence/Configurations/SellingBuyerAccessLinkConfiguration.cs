@@ -94,17 +94,6 @@ public class SellingBuyerAccessLinkConfiguration : IEntityTypeConfiguration<Sell
         builder.HasIndex(l => new { l.TenantId, l.LienId, l.BuyerContactId })
             .HasDatabaseName("IX_SellingBuyerAccessLinks_Tenant_Lien_BuyerContact");
 
-        builder.HasIndex(l => new
-            {
-                l.TenantId,
-                l.SellerOrgId,
-                l.Purpose,
-                l.ResponseStatus,
-                l.RespondedAtUtc,
-                l.LienId,
-            })
-            .HasDatabaseName("IX_SellingBuyerAccessLinks_WeeklyAging");
-
         builder.HasOne<Lien>()
             .WithMany()
             .HasForeignKey(l => l.LienId)

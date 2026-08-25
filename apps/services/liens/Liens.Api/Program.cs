@@ -272,7 +272,6 @@ app.MapServicingEndpoints();
 app.MapContactEndpoints();
 app.MapFacilityEndpoints();
 app.MapSettlementEndpoints();
-app.MapCasePaymentEndpoints();
 app.MapServiceLegacyEndpoints();
 app.MapReportEndpoints();
 app.MapCaseNotesHistoryReportEndpoints();

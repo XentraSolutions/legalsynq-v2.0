@@ -33,18 +33,6 @@ public static class ReportEndpoints
         reports.MapPost("/weekly-bcc", GetWeeklyBccReport)
             .RequirePermission(LiensPermissions.CaseRead);
 
-        reports.MapGet("/weekly-aging", GetWeeklyAgingReport)
-            .RequireSellMode()
-            .RequirePermission(LiensPermissions.LienSaleViewAnalytics);
-
-        reports.MapGet("/monthly-aging", GetMonthlyAgingReport)
-            .RequireSellMode()
-            .RequirePermission(LiensPermissions.LienSaleViewAnalytics);
-
-        reports.MapGet("/weekly-aging-detail", GetWeeklyAgingDetailReport)
-            .RequireSellMode()
-            .RequirePermission(LiensPermissions.LienSaleViewAnalytics);
-
         // ── v2 routes ─────────────────────────────────────────────────────────
         var v2 = app.MapGroup("/api/liens/reports/diy")
             .RequireAuthorization(Policies.AuthenticatedUser)
@@ -171,191 +159,6 @@ public static class ReportEndpoints
             CultureInfo.InvariantCulture,
             DateTimeStyles.None,
             out asOfDate);
-    }
-
-    private static async Task<IResult> GetWeeklyAgingReport(
-        IWeeklyAgingReportService service,
-        ICurrentRequestContext context,
-        TimeProvider timeProvider,
-        HttpContext httpContext,
-        string? asOfDate = null,
-        int page = 1,
-        int pageSize = 50,
-        CancellationToken ct = default)
-    {
-        httpContext.Response.Headers.CacheControl = "no-store";
-        var reportDate = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
-        if (!string.IsNullOrWhiteSpace(asOfDate) &&
-            !DateOnly.TryParseExact(
-                asOfDate.Trim(),
-                "yyyy-MM-dd",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.None,
-                out reportDate))
-        {
-            return Results.BadRequest(new
-            {
-                isSuccess = false,
-                message = "asOfDate must use yyyy-MM-dd.",
-            });
-        }
-
-        if (page < 1 ||
-            pageSize is < 1 or > 100 ||
-            (long)(page - 1) * pageSize > int.MaxValue)
-        {
-            return Results.BadRequest(new
-            {
-                isSuccess = false,
-                message = "page must be positive and pageSize must be between 1 and 100.",
-            });
-        }
-
-        var tenantId = CaseEndpoints.RequireTenantId(context);
-        var sellerOrgId = context.OrgId
-            ?? throw new UnauthorizedAccessException("Organization context is required.");
-        var result = await service.GetAsync(tenantId, sellerOrgId, reportDate, page, pageSize, ct);
-
-        return Results.Ok(new
-        {
-            isSuccess = true,
-            message = "Weekly aging report generated.",
-            result.AsOfDate,
-            result.Currency,
-            result.Page,
-            result.PageSize,
-            result.TotalCount,
-            result.TotalPages,
-            result.SummaryTotals,
-            data = result.Items,
-        });
-    }
-
-    private static async Task<IResult> GetWeeklyAgingDetailReport(
-        IWeeklyAgingReportService service,
-        ICurrentRequestContext context,
-        TimeProvider timeProvider,
-        HttpContext httpContext,
-        string? asOfDate = null,
-        int page = 1,
-        int pageSize = 50,
-        CancellationToken ct = default)
-    {
-        httpContext.Response.Headers.CacheControl = "no-store";
-        var reportDate = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
-        if (!string.IsNullOrWhiteSpace(asOfDate) &&
-            !DateOnly.TryParseExact(
-                asOfDate.Trim(),
-                "yyyy-MM-dd",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.None,
-                out reportDate))
-        {
-            return Results.BadRequest(new
-            {
-                isSuccess = false,
-                message = "asOfDate must use yyyy-MM-dd.",
-            });
-        }
-
-        if (page < 1 ||
-            pageSize is < 1 or > 100 ||
-            (long)(page - 1) * pageSize > int.MaxValue)
-        {
-            return Results.BadRequest(new
-            {
-                isSuccess = false,
-                message = "page must be positive and pageSize must be between 1 and 100.",
-            });
-        }
-
-        var tenantId = CaseEndpoints.RequireTenantId(context);
-        var sellerOrgId = context.OrgId
-            ?? throw new UnauthorizedAccessException("Organization context is required.");
-        var result = await service.GetDetailAsync(
-            tenantId,
-            sellerOrgId,
-            reportDate,
-            page,
-            pageSize,
-            ct);
-
-        return Results.Ok(new
-        {
-            isSuccess = true,
-            message = "Weekly aging detail report generated.",
-            result.AsOfDate,
-            result.Currency,
-            result.Page,
-            result.PageSize,
-            result.TotalCount,
-            result.TotalPages,
-            data = result.Items,
-        });
-    }
-
-    private static async Task<IResult> GetMonthlyAgingReport(
-        IWeeklyAgingReportService service,
-        ICurrentRequestContext context,
-        TimeProvider timeProvider,
-        HttpContext httpContext,
-        string? asOfDate = null,
-        int page = 1,
-        int pageSize = 50,
-        CancellationToken ct = default)
-    {
-        httpContext.Response.Headers.CacheControl = "no-store";
-        var reportDate = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
-        if (!string.IsNullOrWhiteSpace(asOfDate) &&
-            !DateOnly.TryParseExact(
-                asOfDate.Trim(),
-                "yyyy-MM-dd",
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.None,
-                out reportDate))
-        {
-            return Results.BadRequest(new
-            {
-                isSuccess = false,
-                message = "asOfDate must use yyyy-MM-dd.",
-            });
-        }
-
-        if (page < 1 ||
-            pageSize is < 1 or > 100 ||
-            (long)(page - 1) * pageSize > int.MaxValue)
-        {
-            return Results.BadRequest(new
-            {
-                isSuccess = false,
-                message = "page must be positive and pageSize must be between 1 and 100.",
-            });
-        }
-
-        var tenantId = CaseEndpoints.RequireTenantId(context);
-        var sellerOrgId = context.OrgId
-            ?? throw new UnauthorizedAccessException("Organization context is required.");
-        var result = await service.GetMonthlyAsync(
-            tenantId,
-            sellerOrgId,
-            reportDate,
-            page,
-            pageSize,
-            ct);
-
-        return Results.Ok(new
-        {
-            isSuccess = true,
-            message = "Monthly aging report generated.",
-            result.AsOfDate,
-            result.Currency,
-            result.Page,
-            result.PageSize,
-            result.TotalCount,
-            result.TotalPages,
-            result.SummaryTotals,
-            data = result.Items,
-        });
     }
 
     private static async Task<IResult> GetSavedReports(
@@ -742,66 +545,62 @@ public static class ReportEndpoints
             ["returned_amt"] = FormatLegacyMoney(r.ReturnedAmount),
             ["initial_service_date"] = FormatLegacyDate(r.InitialServiceDate),
             ["end_service_date"] = FormatLegacyDate(r.EndServiceDate),
-            ["medical_provider"] = r.MedicalProvider,
-            ["medical_facility_contact"] = r.MedicalFacilityContact,
+            ["medical_provider"] = string.Empty,
+            ["medical_facility_contact"] = string.Empty,
             ["medical_facility"] = r.MedicalFacility,
-            ["medical_facility_address"] = r.MedicalFacilityAddress,
-            ["medical_facility_city"] = r.MedicalFacilityCity,
-            ["medical_facility_state"] = r.MedicalFacilityState,
-            ["medical_facility_zip_code"] = r.MedicalFacilityZip,
-            ["medical_codes"] = r.MedicalCodes,
+            ["medical_facility_address"] = string.Empty,
+            ["medical_facility_city"] = string.Empty,
+            ["medical_facility_state"] = string.Empty,
+            ["medical_facility_zip_code"] = string.Empty,
+            ["medical_codes"] = string.Empty,
             ["notes"] = r.FeedNote,
             ["notes_date"] = FormatLegacyDate(r.FeedNoteDate),
             ["lien_status"] = r.Status ?? string.Empty,
-            ["attorney"] = r.Attorney,
-            ["attorney_phone"] = r.AttorneyPhone,
-            ["attorney_email"] = r.AttorneyEmail,
+            ["attorney"] = string.Empty,
+            ["attorney_phone"] = string.Empty,
+            ["attorney_email"] = string.Empty,
             ["lawfirm"] = r.LawFirm,
-            ["law_firm_address"] = r.LawFirmAddress,
-            ["law_firm_city"] = r.LawFirmCity,
-            ["law_firm_state"] = r.LawFirmState,
-            ["law_firm_zip_code"] = r.LawFirmZip,
-            ["law_firm_phone"] = r.LawFirmPhone,
+            ["law_firm_address"] = string.Empty,
+            ["law_firm_city"] = string.Empty,
+            ["law_firm_state"] = string.Empty,
+            ["law_firm_zip_code"] = string.Empty,
+            ["law_firm_phone"] = string.Empty,
             ["case_type"] = r.CaseType,
             ["case_manager"] = r.CaseManager,
-            ["case_manager_email"] = r.CaseManagerEmail,
-            ["state_of_incident"] = r.StateOfIncident,
+            ["case_manager_email"] = string.Empty,
+            ["state_of_incident"] = string.Empty,
             ["settlement_date"] = FormatLegacyDate(r.SettlementDate),
             ["settle_date"] = FormatLegacyDate(r.SettlementDate),
             ["returned_date"] = FormatLegacyDate(r.DateClosed),
             ["reduction_date"] = FormatLegacyDate(r.ReductionDate),
             ["days_since_reduction_approval"] = r.DaysSinceReductionApproval?.ToString(CultureInfo.InvariantCulture),
             ["days_to_return"] = GetLegacyDaysBetween(r.PurchaseDate, r.DateClosed),
-            ["lawfirm_email"] = r.LawFirmEmail,
+            ["lawfirm_email"] = string.Empty,
             ["number_of_liens"] = r.NumberOfLiens,
             ["case_status"] = FormatLegacyStatus(r.CaseStatus),
-            ["medical_status"] = r.MedicalStatus,
+            ["medical_status"] = string.Empty,
             ["last_case_tracking_date"] = r.LastActivityAtUtc.HasValue
                 ? PacificTimeHelper.FormatTimestamp(r.LastActivityAtUtc.Value)
                 : string.Empty,
             ["last_case_tracking_note"] = r.LastActivity,
-            ["last_activity_date"] = r.LastActivityAtUtc.HasValue
-                ? PacificTimeHelper.FormatTimestamp(r.LastActivityAtUtc.Value)
-                : string.Empty,
-            ["last_activity"] = r.LastActivity,
-            ["case_tracking_follow_up_date"] = FormatLegacyDate(r.TrackingFollowUpDate),
-            ["case_tracking_contact"] = r.CaseManager,
-            ["case_tracking_contact_email"] = r.CaseManagerEmail,
+            ["case_tracking_follow_up_date"] = string.Empty,
+            ["case_tracking_contact"] = string.Empty,
+            ["case_tracking_contact_email"] = string.Empty,
             ["last_case_note"] = r.TrackingNotes,
             ["last_case_note_date"] = FormatLegacyDate(r.LastTrackingNoteDate),
             ["date_of_loss"] = FormatLegacyDate(r.DateOfLoss),
-            ["plaintiff_date_of_birth"] = FormatLegacyDate(r.PlaintiffDob),
-            ["plaintiff_phone"] = r.PlaintiffPhone,
-            ["plaintiff_email"] = r.PlaintiffEmail,
-            ["plaintiff_address"] = r.PlaintiffAddress,
-            ["plaintiff_city"] = r.PlaintiffCity,
-            ["plaintiff_state"] = r.PlaintiffState,
-            ["plaintiff_zip_code"] = r.PlaintiffZip,
-            ["case_entered_by"] = r.CaseEnteredBy,
+            ["plaintiff_date_of_birth"] = string.Empty,
+            ["plaintiff_phone"] = string.Empty,
+            ["plaintiff_email"] = string.Empty,
+            ["plaintiff_address"] = string.Empty,
+            ["plaintiff_city"] = string.Empty,
+            ["plaintiff_state"] = string.Empty,
+            ["plaintiff_zip_code"] = string.Empty,
+            ["case_entered_by"] = string.Empty,
             ["lead_source"] = string.Empty,
-            ["case_dropped"] = r.CaseDropped,
+            ["case_dropped"] = string.Empty,
             ["ucc_filed"] = r.UccFiled,
-            ["minor_comp"] = r.MinorComp,
+            ["minor_comp"] = string.Empty,
             ["id"] = r.CaseId?.ToString() ?? string.Empty,
             ["l_id"] = r.LienId?.ToString() ?? string.Empty,
             ["to_settle_amt"] = FormatLegacyMoney(r.ToSettleAmount),

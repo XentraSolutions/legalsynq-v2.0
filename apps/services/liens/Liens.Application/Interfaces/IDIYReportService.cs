@@ -53,39 +53,9 @@ public sealed class DIYReportRow
     public decimal? SettledAmount { get; init; }
     public int? DaysSinceReductionApproval { get; init; }
     public string MedicalFacility { get; init; } = string.Empty;
-    public string MedicalFacilityContact { get; init; } = string.Empty;
-    public string MedicalFacilityAddress { get; init; } = string.Empty;
-    public string MedicalFacilityCity { get; init; } = string.Empty;
-    public string MedicalFacilityState { get; init; } = string.Empty;
-    public string MedicalFacilityZip { get; init; } = string.Empty;
-    public string MedicalProvider { get; init; } = string.Empty;
-    public string MedicalCodes { get; init; } = string.Empty;
     public string LawFirm { get; init; } = string.Empty;
-    public string LawFirmAddress { get; init; } = string.Empty;
-    public string LawFirmCity { get; init; } = string.Empty;
-    public string LawFirmState { get; init; } = string.Empty;
-    public string LawFirmZip { get; init; } = string.Empty;
-    public string LawFirmPhone { get; init; } = string.Empty;
-    public string LawFirmEmail { get; init; } = string.Empty;
     public string CaseType { get; init; } = string.Empty;
     public string CaseManager { get; init; } = string.Empty;
-    public string CaseManagerEmail { get; init; } = string.Empty;
-    public string Attorney { get; init; } = string.Empty;
-    public string AttorneyPhone { get; init; } = string.Empty;
-    public string AttorneyEmail { get; init; } = string.Empty;
-    public string StateOfIncident { get; init; } = string.Empty;
-    public string MedicalStatus { get; init; } = string.Empty;
-    public DateOnly? TrackingFollowUpDate { get; init; }
-    public DateOnly? PlaintiffDob { get; init; }
-    public string PlaintiffPhone { get; init; } = string.Empty;
-    public string PlaintiffEmail { get; init; } = string.Empty;
-    public string PlaintiffAddress { get; init; } = string.Empty;
-    public string PlaintiffCity { get; init; } = string.Empty;
-    public string PlaintiffState { get; init; } = string.Empty;
-    public string PlaintiffZip { get; init; } = string.Empty;
-    public string CaseEnteredBy { get; init; } = string.Empty;
-    public string CaseDropped { get; init; } = string.Empty;
-    public string MinorComp { get; init; } = string.Empty;
     public string UccFiled { get; init; } = "No";
     public string FeedNote { get; init; } = string.Empty;
     public DateOnly? FeedNoteDate { get; init; }

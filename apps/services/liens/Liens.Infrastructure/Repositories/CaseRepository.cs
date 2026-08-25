@@ -200,7 +200,7 @@ public class CaseRepository : ICaseRepository
             "dateofloss" => descending ? q.OrderByDescending(c => c.DateOfIncident) : q.OrderBy(c => c.DateOfIncident),
             "dateofbirth" => descending ? q.OrderByDescending(c => c.ClientDob) : q.OrderBy(c => c.ClientDob),
             "status" => descending ? q.OrderByDescending(c => c.Status) : q.OrderBy(c => c.Status),
-            _ => q.OrderByDescending(c => c.CreatedAtUtc).ThenByDescending(c => c.Id),
+            _ => q.OrderByDescending(c => c.CreatedAtUtc),
         };
 
         var items = await q

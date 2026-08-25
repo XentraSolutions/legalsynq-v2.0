@@ -169,14 +169,7 @@ export const lienHandlers = [
       DocumentCategory: [],
       LienStatus: [{ id: "status-active", code: "Active", name: "Active", ...emptyLookup }],
       LienType: [],
-      MedicalStatus: [
-        {
-          id: "medical-status-treating",
-          code: "Treating",
-          name: "Treating",
-          ...emptyLookup,
-        },
-      ],
+      MedicalStatus: [],
       ProcedureCode: [],
       ServicingPriority: [],
       ServicingStatus: [],

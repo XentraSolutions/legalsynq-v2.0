@@ -43,7 +43,6 @@ public sealed class LienResponse
     public decimal? TotalBilling { get; init; }
     public string? IsBulk { get; init; }
     public string? IsServicing { get; init; }
-    public string? ImportedCreatedByName { get; init; }
     public string? Description { get; init; }
     public DateTime? OpenedAtUtc { get; init; }
     public DateTime? ClosedAtUtc { get; init; }
