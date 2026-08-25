@@ -15,11 +15,11 @@ const lienDisplayColumns: LienColumnDef[] = [
     ),
   },
   {
-    id: "medicalFacility",
+    id: "facilityName",
     header: "Medical Facility",
     cell: (l) => (
       <span className="text-sm text-gray-600 truncate max-w-40 block">
-        {l.medicalFacility || ""}
+        {l.facilityName || ""}
       </span>
     ),
   },
