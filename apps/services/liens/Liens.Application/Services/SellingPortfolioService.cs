@@ -1866,9 +1866,9 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         return lienDocs.Items
             .Select(item => FundingCompanySaleDocumentMapper.Map(item, documentCategoryNames))
             .Where(document => document is not null)
-            .Select(document => new ConfirmSaleDocument(document!.FileName, document.Category))
+            .Select(document => new ConfirmSaleDocument(document!.ReferenceId, document.DocumentId, document.FileName, document.Category))
             .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
-            .DistinctBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
+            .DistinctBy(document => document.DocumentId ?? document.ReferenceId)
             .OrderBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -2050,7 +2050,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         string FirstName,
         string LastName);
 
-    private sealed record ConfirmSaleDocument(string FileName, string? Category);
+    private sealed record ConfirmSaleDocument(Guid ReferenceId, Guid? DocumentId, string FileName, string? Category);
 
     private sealed record ConfirmSaleEmail(
         string Subject,
