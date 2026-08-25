@@ -1,5 +1,9 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useQuery,
+} from "@tanstack/react-query";
 import { lienReportsService } from "@/lib/liens/lien-reports.service";
 import {
   ColumnGroup,
@@ -10,6 +14,14 @@ import {
   CreateReports,
   ReportTotals,
 } from "@/lib/liens/lien-report.types";
+
+interface ReportQuery {
+  reportType: "CASES" | "LIENS" | "COMBINE";
+  filterField: string;
+  keyword?: string;
+  enabled?: boolean;
+  value?: string;
+}
 
 interface UseLienReportProps {
   id: string | number | undefined;
@@ -202,17 +214,51 @@ export function useFetchReportColumns(
   };
 }
 
+export function useCachedFilterOptions({
+  reportType,
+  filterField,
+  keyword,
+  enabled,
+  fieldKey,
+}: any) {
+  const queryResult = useReportFilterOptions({
+    reportType,
+    filterField,
+    keyword,
+    enabled,
+  });
+
+  // 2. Keep a ref or state of all options ever seen for this specific hook instance
+  const [cachedOptions, setCachedOptions] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (queryResult.options && queryResult.options.length > 0) {
+      setCachedOptions((prev) => {
+        const map = new Map(
+          [...prev, ...queryResult.options].map((opt) => [
+            opt.key || opt.value,
+            opt,
+          ]),
+        );
+        return Array.from(map.values());
+      });
+    }
+  }, [queryResult.options]);
+
+  // 3. Return cached options so they never disappear when search clears or dropdown closes
+  return {
+    ...queryResult,
+    options: cachedOptions, // Return the persistent cache instead of raw query options
+  };
+}
+
 export function useReportFilterOptions({
   reportType,
   filterField,
   keyword = "",
   enabled,
-}: {
-  reportType: "CASES" | "LIENS" | "COMBINE";
-  filterField: string;
-  keyword?: string;
-  enabled?: boolean;
-}) {
+  value,
+}: ReportQuery) {
   const query = useQuery({
     queryKey: [
       "report-filter-options",
