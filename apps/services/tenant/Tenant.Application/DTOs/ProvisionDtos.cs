@@ -25,4 +25,5 @@ public record ProvisionRequest(
 public record ProvisionResponse(
     Guid   TenantId,
     string TenantCode,
-    string Subdomain);
+    string Subdomain,
+    string? Hostname = null);

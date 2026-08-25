@@ -18,6 +18,7 @@ namespace Tenant.Application.Services;
 public class TenantService : ITenantService
 {
     private readonly ITenantRepository           _repository;
+    private readonly IDomainRepository           _domains;
     private readonly ISettingRepository          _settings;
     private readonly ICommerceLifecycleNotifier  _commerceNotifier;
     private readonly ILogger<TenantService>      _logger;
@@ -29,11 +30,13 @@ public class TenantService : ITenantService
 
     public TenantService(
         ITenantRepository          repository,
+        IDomainRepository          domains,
         ISettingRepository         settings,
         ICommerceLifecycleNotifier commerceNotifier,
         ILogger<TenantService>     logger)
     {
         _repository       = repository;
+        _domains          = domains;
         _settings         = settings;
         _commerceNotifier = commerceNotifier;
         _logger           = logger;
@@ -423,6 +426,7 @@ public class TenantService : ITenantService
                     updatedAtUtc:       request.SourceUpdatedAtUtc);
 
                 await _repository.AddAsync(created, ct);
+                await UpsertPrimaryPlatformDomainAsync(created.Id, request.Hostname, ct);
             }
         }
         else
@@ -450,7 +454,55 @@ public class TenantService : ITenantService
                 existing.SetLogoWhite(request.LogoWhiteDocumentId);
 
             await _repository.UpdateAsync(existing, ct);
+            await UpsertPrimaryPlatformDomainAsync(existing.Id, request.Hostname, ct);
         }
+    }
+
+    private async Task UpsertPrimaryPlatformDomainAsync(Guid tenantId, string? hostname, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(hostname))
+            return;
+
+        var normalized = TenantDomain.NormalizeHost(hostname);
+        if (!TenantDomain.IsValidHost(normalized))
+        {
+            _logger.LogWarning(
+                "Ignoring invalid tenant platform hostname '{Hostname}' for tenant {TenantId}.",
+                hostname, tenantId);
+            return;
+        }
+
+        var current = await _domains.GetActivePrimarySubdomainByTenantAsync(tenantId, ct);
+        if (current is not null)
+        {
+            if (!string.Equals(current.Host, normalized, StringComparison.OrdinalIgnoreCase))
+                current.Update(normalized, TenantDomainType.Subdomain, isPrimary: true);
+            await _domains.UpdateAsync(current, ct);
+            return;
+        }
+
+        var existingHost = await _domains.GetActiveByHostAsync(normalized, ct);
+        if (existingHost is not null)
+        {
+            if (existingHost.TenantId != tenantId)
+            {
+                _logger.LogWarning(
+                    "Ignoring tenant platform hostname '{Hostname}' for tenant {TenantId}; host already belongs to tenant {ExistingTenantId}.",
+                    normalized, tenantId, existingHost.TenantId);
+                return;
+            }
+
+            existingHost.Update(normalized, TenantDomainType.Subdomain, isPrimary: true);
+            await _domains.UpdateAsync(existingHost, ct);
+            return;
+        }
+
+        await _domains.AddAsync(TenantDomain.Create(
+            tenantId,
+            normalized,
+            TenantDomainType.Subdomain,
+            isPrimary: true,
+            status: TenantDomainStatus.Active), ct);
     }
 
     private static TenantStatus ParseStatus(string? status) =>

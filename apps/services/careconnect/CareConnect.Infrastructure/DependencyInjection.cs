@@ -181,7 +181,7 @@ public static class DependencyInjection
         services.AddHttpClient("NotificationsService")
             .AddHttpMessageHandler<NotificationsAuthDelegatingHandler>();
         services.AddScoped<INotificationsProducer, NotificationsProducerClient>();
-        // Singleton: subdomain slugs never change after provisioning; cache must outlive Scoped email service.
+        // Singleton: tenant platform host details never change after provisioning; cache must outlive Scoped email service.
         services.AddSingleton<ITenantSubdomainCache, TenantSubdomainCache>();
         services.AddScoped<IReferralEmailService, ReferralEmailService>();
 

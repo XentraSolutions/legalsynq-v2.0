@@ -430,7 +430,9 @@ public static class AuthEndpoints
 
             // LS-ID-TNT-016-01: Build tenant portal base URL so the frontend can redirect
             // the user to the correct subdomain login page after accepting the invite.
-            var inviteTenant      = await db.Tenants.FindAsync([invitation.TenantId], ct);
+            var inviteTenant = await db.Tenants
+                .Include(t => t.Domains)
+                .FirstOrDefaultAsync(t => t.Id == invitation.TenantId, ct);
             var tenantPortalUrl   = TenantPortalUrlHelper.BuildBaseUrl(inviteTenant, notifOptions.Value);
 
             return Results.Ok(new
@@ -860,7 +862,7 @@ public static class AuthEndpoints
                                      && a.ProductCode  == CcProductPrefix
                                      && a.AccessStatus == AccessStatus.Granted)
                             .Join(
-                                db.Tenants.Where(t => t.IsActive),
+                                db.Tenants.Include(t => t.Domains).Where(t => t.IsActive),
                                 a => a.TenantId,
                                 t => t.Id,
                                 (a, t) => new { Tenant = t, a.GrantedAtUtc })
@@ -879,7 +881,7 @@ public static class AuthEndpoints
                                 .AsNoTracking()
                                 .Where(ut => ut.UserId == ccUser.Id && ut.IsActive)
                                 .Join(
-                                    db.Tenants.Where(t => t.IsActive),
+                                    db.Tenants.Include(t => t.Domains).Where(t => t.IsActive),
                                     ut => ut.TenantId,
                                     t  => t.Id,
                                     (ut, t) => new { Tenant = t, ut.JoinedAtUtc })
@@ -1024,6 +1026,7 @@ public static class AuthEndpoints
                 body.TenantCode, body.Email);
 
             var tenant = await db.Tenants
+                .Include(t => t.Domains)
                 .FirstOrDefaultAsync(t => t.Code == body.TenantCode && t.IsActive, ct);
 
             if (tenant is null && !string.IsNullOrWhiteSpace(body.Subdomain))
@@ -1031,6 +1034,7 @@ public static class AuthEndpoints
                 var subNorm = body.Subdomain.ToLowerInvariant().Trim();
                 logger.LogInformation("[forgot-password] Code lookup missed for {Code}, trying subdomain {Subdomain}", body.TenantCode, subNorm);
                 tenant = await db.Tenants
+                    .Include(t => t.Domains)
                     .FirstOrDefaultAsync(t => t.Subdomain == subNorm && t.IsActive, ct);
             }
 
@@ -1041,6 +1045,7 @@ public static class AuthEndpoints
             {
                 logger.LogInformation("[forgot-password] Code+subdomain lookup missed, trying TenantId={TenantId}", body.TenantId.Value);
                 tenant = await db.Tenants
+                    .Include(t => t.Domains)
                     .FirstOrDefaultAsync(t => t.Id == body.TenantId.Value && t.IsActive, ct);
             }
 
