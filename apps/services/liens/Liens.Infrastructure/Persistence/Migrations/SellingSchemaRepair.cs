@@ -9,17 +9,10 @@ namespace Liens.Infrastructure.Persistence.Migrations;
 public static class SellingSchemaRepair
 {
     private const string RepairLockName = "legalsynq-liens-selling-schema-repair";
-<<<<<<< HEAD
-    private const int ExpectedTableCount = 8;
-    private const int ExpectedColumnCount = 36;
-    private const int ExpectedIndexCount = 38;
-    private const int ExpectedForeignKeyCount = 18;
-=======
     private const int ExpectedTableCount = 7;
     private const int ExpectedColumnCount = 13;
     private const int ExpectedIndexCount = 31;
     private const int ExpectedForeignKeyCount = 16;
->>>>>>> parent of fcd150d1 (update migration data)
     private const int ExpectedCheckConstraintCount = 1;
     private const int ExpectedCompanyTypeSeedCount = 4;
     private const int ExpectedContactTypeSeedCount = 28;
@@ -124,14 +117,6 @@ public static class SellingSchemaRepair
         new AddSellingPartyCompatibility(),
         new AddScopedContactPersonTypes(),
         new AddReceivableDueDate(),
-<<<<<<< HEAD
-        new AddCasePaymentLedgerFields(),
-        new AddWeeklyAgingReportIndex(),
-        new AddLegacyReportParityFields(),
-        new AddLienImportedCreatedByName(),
-        new AddLienSellingCaseReference(),
-=======
->>>>>>> parent of fcd150d1 (update migration data)
     ];
 
     private static async Task<bool> AcquireRepairLockAsync(
@@ -170,7 +155,7 @@ public static class SellingSchemaRepair
                       'liens_CompanyContactPersons',
                       'liens_SellingPartyAliases',
                       'liens_SellingPartyBackfillCheckpoints',
-                      'liens_SellingPartyBackfillQuarantines')
+                       'liens_SellingPartyBackfillQuarantines')
                 """;
 
             var tableCount = Convert.ToInt32(await tableCommand.ExecuteScalarAsync(cancellationToken));
@@ -248,13 +233,7 @@ public static class SellingSchemaRepair
                        'FK_liens_SellingBuyerAccessLinks_liens_CompanyContactPersons_Bu~',
                        'FK_liens_SellingPortfolioBuyers_liens_Companies_BuyerCompanyId',
                        'FK_liens_SellingPartyAliases_liens_Companies_CompanyId',
-<<<<<<< HEAD
-                       'FK_liens_SellingPartyAliases_liens_CompanyContactPersons_Compan~',
-                       'FK_Cases_AttorneyContactPerson',
-                       'FK_liens_Liens_liens_Cases_SellingCaseId')) AS ForeignKeyCount,
-=======
                        'FK_liens_SellingPartyAliases_liens_CompanyContactPersons_Compan~')) AS ForeignKeyCount,
->>>>>>> parent of fcd150d1 (update migration data)
                 (SELECT COUNT(*)
                  FROM information_schema.TABLE_CONSTRAINTS
                  WHERE CONSTRAINT_SCHEMA = DATABASE()
