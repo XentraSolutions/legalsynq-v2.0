@@ -342,7 +342,7 @@ such as `localhost` or `127.0.0.1` are rejected because the email CTA must work 
 `New Lien Offer` copy with a response CTA. The seller receives the same branded format with buyer/funding-company
 information and a `View Lien Details` CTA. Neither email inserts sample
 document data; both include only real supporting document names found in lien/case document metadata. The LegalSynq mark
-and section icons are sent as inline CID image attachments; no remote placeholder assets are required.
+and Figma-matched section icons are sent as inline CID image attachments; no remote placeholder assets are required.
 For a CTA hosted by the tenant portal, use
 `Liens__Selling__BuyerPortalBaseUrl=http://<portal-host>:<web-port>/selling/public` for local demo runs, or
 `https://<portal-host>/selling/public` behind a real portal domain; that public browser route renders in `apps/web`,
@@ -574,6 +574,10 @@ non-actionable rows expose `view` only.
 Returns the authenticated funding-company detail view for one offered lien. The `{accessLinkId}` is the `id` returned
 by `GET /api/liens/selling/buyer/liens`; access is scoped to the authenticated buyer contact matched by email, using the
 same `BuyerContactId` filtering as the list endpoint.
+The `submittedAtUtc` field uses the buyer access-link notification timestamp when present so it matches the public
+offer page's Lien Information section.
+The `notes` field returns the persisted lien notes shown in the seller portfolio; lien description is used only when
+those notes are blank.
 
 **Permission:** `SYNQ_LIENS.lien:browse` or the `SYNQLIEN_BUYER` product role when role fallback is enabled.
 
@@ -647,8 +651,12 @@ same `BuyerContactId` filtering as the list endpoint.
 }
 ```
 
-`documents`, `messages`, and `activity` are returned only from persisted records. They are empty arrays when no matching
-servicing documents, portal messages, or buyer response activity exist. `allowedActions` exposes `accept` and `decline`
+`documents`, `messages`, and `activity` are returned only from persisted records. Funding-company document rows include
+uploaded document servicing metadata attached to the offered lien: `LegacyCaseDocument`, `LegacyLienDocument`,
+`LegacyMedicalDocument`, and seller-wizard `SellingDocumentReference` rows. Document categories resolve from canonical
+`documentTypeId` metadata through the tenant's active `DocumentCategory` lookup when available, then fall back to
+document metadata such as `documentType`. These arrays are empty when no matching servicing documents, portal messages,
+or buyer response activity exist. `allowedActions` exposes `accept` and `decline`
 only when the access link has not recorded a response and the lien itself is still actionable. `viewUrl` and
 `downloadUrl` are same-origin tenant-portal BFF paths for authenticated funding-portal document access. They are `null`
 when the servicing item does not contain a resolvable Documents-service id.
@@ -839,11 +847,13 @@ For seller-view links, `audience` is `seller`; the same JSON includes buyer/fund
 can post messages, but response and activation endpoints reject that token with `403 read-only-link`. Seller-view JSON
 does not include an account-action requirement; `account` may be `null`.
 
-The `documents` array is limited to servicing document records attached to the offered lien. Selling v2 document
-references (`SellingDocumentReference`) are read from their JSON metadata, while legacy lien document records still use
-the existing semicolon metadata. Case-level documents that are not attached to the lien are excluded. `viewUrl` and
-`downloadUrl` are same-origin tenant-portal BFF paths that preserve the public offer token and redirect through Liens to
-the anonymous Documents access-token route.
+The `documents` array includes uploaded document servicing metadata attached to the offered lien:
+`LegacyCaseDocument`, `LegacyLienDocument`, `LegacyMedicalDocument`, and seller-wizard `SellingDocumentReference` rows.
+Document categories resolve from canonical `documentTypeId` metadata through the tenant's active `DocumentCategory`
+lookup when available, with legacy semicolon metadata and seller-wizard `documentType` metadata still supported.
+Case-level documents that are not attached to the lien are excluded.
+`viewUrl` and `downloadUrl` are same-origin tenant-portal BFF paths that preserve the public offer token and redirect
+through Liens to the anonymous Documents access-token route.
 
 ### GET `/api/liens/selling/public/{token}/documents/{documentId}/view`
 

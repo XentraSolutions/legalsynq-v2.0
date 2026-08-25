@@ -12,6 +12,13 @@ import { Tabs } from "./tabs";
 import { PortfolioTable } from "./portfolio-table";
 import { Card } from "../ui/dashboard-card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import {
   LiensFilter,
   LiensFilterValues,
 } from "@/app/(platform)/selling/liens/components/liens-filter";
@@ -214,27 +221,17 @@ export default function PortfolioClient() {
           title="Portfolio"
           subtitle="Manage, monitor, and bundle multiple liens into structured portfolios for sale."
           card={false}
-          actions={
-            <ActionMenu
-              trigger={
-                <Button variant="primary" rightIcon="chevronDown">
-                  Add New Lien
-                </Button>
-              }
-              items={[
-                {
-                  label: "Add Single Lien",
-                  icon: File,
-                  onClick: () => router.push("/selling/portfolio/lien/add"),
-                },
-                {
-                  label: "Bulk Upload",
-                  icon: CloudUpload,
-                  onClick: () => setbulkUpload(true),
-                },
-              ]}
-            />
-          }
+        />
+        <Tabs
+          bordered={false}
+          defaultTab="liens"
+          tabs={[
+            { key: "cases", label: "Cases" },
+            { key: "liens", label: "Liens" },
+          ]}
+          onChange={(tab) => {
+            if (tab === "cases") router.push("/selling/portfolio/cases");
+          }}
         />
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <MetricCard
@@ -264,41 +261,66 @@ export default function PortfolioClient() {
           />
         </div>
 
-        <div className="basis-2/4">
-          <Tabs
-            bordered={false}
-            defaultTab={selectedStatus}
-            onChange={(e) => setSelectedStatus(e)}
-            tabs={PORTFOLIO_STATUSES}
-          ></Tabs>
-        </div>
-        <Card title={`${selectedStatus} Liens`}>
-          <div className="bg-white rounded-xl py-3 flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[300px] max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
+        <Card title="All Liens">
+          <div className="bg-white rounded-xl py-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative flex-1 min-w-[300px] max-w-md">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                />
+              </div>
+              <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PORTFOLIO_STATUSES.map((status) => (
+                    <SelectItem key={status.key} value={status.key}>
+                      {status.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="secondary"
+                className="border-gray-300"
+                leftIcon="settings2"
+                onClick={() => setShowFilter(true)}
+              >
+                Filter
+                {activeFilterCount > 0 && (
+                  <span className="ml-0.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </Button>
             </div>
-            <Button
-              variant="secondary"
-              className="border-gray-300"
-              leftIcon="settings2"
-              onClick={() => setShowFilter(true)}
-            >
-              Filter
-              {activeFilterCount > 0 && (
-                <span className="ml-0.5 inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold">
-                  {activeFilterCount}
-                </span>
-              )}
-            </Button>
+            <ActionMenu
+              trigger={
+                <Button variant="primary" rightIcon="chevronDown">
+                  Add New Lien
+                </Button>
+              }
+              items={[
+                {
+                  label: "Add Single Lien",
+                  icon: File,
+                  onClick: () => router.push("/selling/portfolio/lien/add"),
+                },
+                {
+                  label: "Bulk Upload",
+                  icon: CloudUpload,
+                  onClick: () => setbulkUpload(true),
+                },
+              ]}
+            />
           </div>
           <LiensFilter
             open={showFilter}

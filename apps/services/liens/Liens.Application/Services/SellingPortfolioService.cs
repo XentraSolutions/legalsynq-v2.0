@@ -31,6 +31,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private readonly ISellingBuyerAccessLinkService _buyerAccessLinks;
     private readonly ILienEligibilityValidator _eligibilityValidator;
     private readonly ISellerOrganizationDisplayResolver _sellerOrganizationDisplayResolver;
+    private readonly ILookupValueService _lookupValueService;
     private readonly ICurrentRequestContext _currentRequestContext;
     private readonly ILogger<SellingPortfolioService> _logger;
 
@@ -49,6 +50,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         ISellingBuyerAccessLinkService buyerAccessLinks,
         ILienEligibilityValidator eligibilityValidator,
         ISellerOrganizationDisplayResolver sellerOrganizationDisplayResolver,
+        ILookupValueService lookupValueService,
         ICurrentRequestContext currentRequestContext,
         ILogger<SellingPortfolioService> logger)
     {
@@ -66,6 +68,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         _buyerAccessLinks = buyerAccessLinks;
         _eligibilityValidator = eligibilityValidator;
         _sellerOrganizationDisplayResolver = sellerOrganizationDisplayResolver;
+        _lookupValueService = lookupValueService;
         _currentRequestContext = currentRequestContext;
         _logger = logger;
     }
@@ -1034,13 +1037,12 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         var caseEntity = lien.CaseId.HasValue
             ? await _caseRepo.GetByIdAsync(tenantId, lien.CaseId.Value, ct)
             : null;
-        var handlingLawFirmContact = await ResolveHandlingLawFirmContactAsync(tenantId, caseEntity, ct);
-        var handlingLawFirm = ResolveHandlingLawFirmName(handlingLawFirmContact);
-        if (string.IsNullOrWhiteSpace(handlingLawFirm))
+        var caseParties = await ResolveConfirmSaleCasePartiesAsync(tenantId, caseEntity, ct);
+        if (string.IsNullOrWhiteSpace(caseParties.HandlingLawFirm))
             errors["handlingLawFirm"] = ["A real handling law firm is required before sending the buyer notification."];
 
         var sellerContacts = await _contactRepo.GetByOrgIdAsync(tenantId, sellerOrgId, isActive: true, ct);
-        var sellerContact = SelectSellerContact(sellerContacts, handlingLawFirmContact?.Id)
+        var sellerContact = SelectSellerContact(sellerContacts, caseParties.LegacyHandlingLawFirmContactId)
             ?? SelectSellerContact(sellerContacts);
         var sellerDisplay = await _sellerOrganizationDisplayResolver.ResolveAsync(
             tenantId,
@@ -1061,7 +1063,6 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         if (errors.Count > 0)
             throw new ValidationException("One or more required fields are missing or invalid.", errors);
 
-        var caseManager = await ResolveCaseManagerAsync(tenantId, caseEntity, ct);
         var documents = await GetSupportingDocumentsAsync(tenantId, lien, ct);
 
         return new ConfirmSaleNotificationContext(
@@ -1070,8 +1071,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             sellerDisplay,
             sellerEmail!,
             caseEntity,
-            handlingLawFirmContact!,
-            caseManager,
+            caseParties,
             documents);
     }
 
@@ -1332,6 +1332,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         const string subject = "New Lien Offer";
         var isSellerView = audience == ConfirmSaleEmailAudience.Seller;
         var lienCode = ResolveLienCode(lien);
+        var lienType = FormatLienType(lien.LienType);
         var billingAmount = lien.OriginalAmount.ToString("C", CultureInfo.GetCultureInfo("en-US"));
         var initialServiceDate = lien.InitialServiceDate!.Value.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);
         var sellerName = context.SellerDisplay.Name.Trim();
@@ -1341,10 +1342,10 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         var buyerCompany = context.BuyerContact.Organization?.Trim();
         var buyerEmail = context.BuyerContact.Email!.Trim();
         var buyerPhone = context.BuyerContact.Phone?.Trim();
-        var handlingLawFirm = ResolveHandlingLawFirmName(context.HandlingLawFirmContact)!.Trim();
-        var handlingLawFirmContactName = ResolveContactPersonName(context.HandlingLawFirmContact);
-        var handlingLawFirmContactEmail = context.HandlingLawFirmContact.Email?.Trim() ?? string.Empty;
-        var caseManager = context.CaseManager?.Trim();
+        var handlingLawFirm = context.CaseParties.HandlingLawFirm!.Trim();
+        var caseManager = context.CaseParties.CaseManager?.Trim();
+        var lienTypePhrase = lienType.ToLowerInvariant();
+        var lienTypeArticle = ResolveIndefiniteArticle(lienTypePhrase);
         var documents = context.Documents
             .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
             .Select(document => document with
@@ -1355,11 +1356,11 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             .ToList();
         var status = isSellerView ? FormatStatusLabel(lien.Status) : "Awaiting Your Response";
         var intro = isSellerView
-            ? "A medical lien has been sent to the funding company for review. Review the buyer and asset details below."
-            : "A medical lien has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.";
+            ? $"{lienTypeArticle} {lienTypePhrase} has been sent to the funding company for review. Review the buyer and asset details below."
+            : $"{lienTypeArticle} {lienTypePhrase} has been submitted to your company for review and potential purchase. Review the asset overview below to proceed.";
         var informationSectionTitle = isSellerView ? "Buyer Information" : "Seller Information";
-        var contactPerson = handlingLawFirmContactName;
-        var contactEmail = handlingLawFirmContactEmail;
+        var contactPerson = buyerName;
+        var contactEmail = buyerEmail;
         var ctaLabel = isSellerView ? "View Lien Details" : "View Lien for Sale";
         var footerCompany = isSellerView
             ? FirstNonEmpty(buyerCompany, buyerName, "the funding company")!
@@ -1442,8 +1443,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         htmlBody.AppendLine("<body class=\"email-bg\" bgcolor=\"#f4f5f7\" style=\"margin:0;padding:0;background-color:#f4f5f7 !important;font-family:'Plus Jakarta Sans',Arial,'Helvetica Neue',Helvetica,sans-serif;color:#111827 !important;color-scheme:light only;supported-color-schemes:light only;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;\">");
         htmlBody.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#f4f5f7\" class=\"email-bg\" style=\"width:100%;border-collapse:collapse;background-color:#f4f5f7 !important;\">");
         htmlBody.AppendLine("<tr><td align=\"center\" bgcolor=\"#f4f5f7\" class=\"email-bg\" style=\"padding:28px 14px;background-color:#f4f5f7 !important;\">");
-        htmlBody.AppendLine("<table role=\"presentation\" width=\"560\" cellspacing=\"0\" cellpadding=\"0\" class=\"email-shell\" bgcolor=\"#ffffff\" style=\"width:100%;max-width:560px;border-collapse:separate;border-spacing:0;background-color:#ffffff !important;border-radius:10px;overflow:hidden;\">");
-        htmlBody.AppendLine("<tr><td bgcolor=\"#071b31\" style=\"background-color:#071b31 !important;border-radius:10px 10px 0 0;padding:28px 30px 28px;\">");
+        htmlBody.AppendLine("<table role=\"presentation\" width=\"600\" cellspacing=\"0\" cellpadding=\"0\" class=\"email-shell\" bgcolor=\"#ffffff\" style=\"width:100%;max-width:600px;border-collapse:separate;border-spacing:0;background-color:#ffffff !important;border-radius:20px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.10);\">");
+        htmlBody.AppendLine("<tr><td bgcolor=\"#0d1e34\" style=\"background-color:#0d1e34 !important;border-radius:20px 20px 0 0;padding:32px;\">");
         htmlBody.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"width:100%;border-collapse:collapse;margin:0 0 28px 0;\"><tr>");
         htmlBody.AppendLine("<td align=\"left\" style=\"vertical-align:middle;padding:0;\">");
         AppendLegalSynqEmailBrand(htmlBody);
@@ -1459,7 +1460,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             .Append(Html(intro))
             .AppendLine("</p>");
         htmlBody.AppendLine("</td></tr>");
-        htmlBody.AppendLine("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"background-color:#ffffff !important;color:#111827 !important;border:1px solid #e5e5e5;border-top:0;border-radius:0 0 10px 10px;padding:24px 24px 28px;\">");
+        htmlBody.AppendLine("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"background-color:#ffffff !important;color:#111827 !important;border-radius:0 0 20px 20px;padding:24px 24px 40px;\">");
         AppendEmailSection(htmlBody, informationSectionTitle, informationRows);
         AppendEmailSection(htmlBody, "Asset Overview", assetRows);
 
@@ -1521,7 +1522,7 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         if (visibleRows.Count == 0)
             return;
 
-        body.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" class=\"email-card\" style=\"width:100%;border-collapse:collapse;margin:0 0 28px 0;background-color:#ffffff !important;\">");
+        body.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" class=\"email-card\" style=\"width:100%;border-collapse:collapse;margin:0 0 16px 0;background-color:#ffffff !important;\">");
         AppendEmailSectionHeading(body, title);
         body.AppendLine("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"padding:0;background-color:#ffffff !important;\">");
         body.AppendLine("<table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" bgcolor=\"#ffffff\" class=\"email-card email-rule\" style=\"width:100%;border-collapse:separate;border-spacing:0;background-color:#ffffff !important;\">");
@@ -1534,11 +1535,11 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             var labelBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: true, rightEdge: false);
             var valueBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: false, rightEdge: true);
 
-            body.Append("<tr><td bgcolor=\"#ffffff\" class=\"email-card email-label\" style=\"width:44%;padding:15px 14px;color:#6f6f6f !important;background-color:#ffffff !important;font-size:13px;line-height:1.45;")
+            body.Append("<tr><td bgcolor=\"#ffffff\" class=\"email-card email-label\" style=\"width:50%;padding:16px;color:#737373 !important;background-color:#ffffff !important;font-size:14px;line-height:1.6;font-weight:500;")
                 .Append(labelBorder)
                 .Append("\">")
                 .Append(Html(label))
-                .Append("</td><td align=\"right\" bgcolor=\"#ffffff\" class=\"email-card email-value\" style=\"width:56%;padding:15px 14px;color:#111111 !important;background-color:#ffffff !important;font-size:15px;line-height:1.45;font-weight:500;")
+                .Append("</td><td align=\"right\" bgcolor=\"#ffffff\" class=\"email-card email-value\" style=\"width:50%;padding:16px;color:#0a0a0a !important;background-color:#ffffff !important;font-size:16px;line-height:1.6;font-weight:500;")
                 .Append(valueBorder)
                 .Append("\">");
             AppendEmailValue(body, label, value!.Trim());
@@ -1574,9 +1575,9 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
     private static void AppendEmailSectionHeading(StringBuilder body, string title)
     {
-        body.Append("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"padding:0 0 13px 0;background-color:#ffffff !important;\"><img src=\"cid:")
+        body.Append("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"padding:0 0 16px 0;background-color:#ffffff !important;\"><img src=\"cid:")
             .Append(EmailSectionIconContentId(title))
-            .Append("\" width=\"22\" height=\"22\" alt=\"\" role=\"presentation\" style=\"display:inline-block;width:22px;height:22px;border:0;outline:none;text-decoration:none;vertical-align:middle;\"><span style=\"display:inline-block;margin-left:8px;color:#111111 !important;-webkit-text-fill-color:#111111;font-size:16px;font-weight:600;line-height:22px;letter-spacing:0;vertical-align:middle;\">")
+            .Append("\" width=\"24\" height=\"24\" alt=\"\" role=\"presentation\" style=\"display:inline-block;width:24px;height:24px;border:0;outline:none;text-decoration:none;vertical-align:middle;\"><span style=\"display:inline-block;margin-left:8px;color:#0a0a0a !important;-webkit-text-fill-color:#0a0a0a;font-size:16px;font-weight:500;line-height:25.6px;letter-spacing:0;vertical-align:middle;\">")
             .Append(Html(title))
             .AppendLine("</span></td></tr>");
     }
@@ -1608,13 +1609,13 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             var iconBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: true, rightEdge: false);
             var labelBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: false, rightEdge: false);
             var valueBorder = EmailTableCellBorder(isFirstRow, isLastRow, leftEdge: false, rightEdge: true);
-            body.Append("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"width:32px;padding:15px 0 15px 14px;background-color:#ffffff !important;")
+            body.Append("<tr><td bgcolor=\"#ffffff\" class=\"email-card\" style=\"width:36px;padding:16px 0 16px 16px;background-color:#ffffff !important;")
                 .Append(iconBorder)
-                .Append("\"><span style=\"display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;border-radius:5px;background-color:#f26a2e !important;color:#ffffff !important;font-size:12px;font-weight:700;\">&#10003;</span></td><td align=\"left\" bgcolor=\"#ffffff\" class=\"email-card email-label\" style=\"padding:15px 10px 15px 8px;color:#6f6f6f !important;background-color:#ffffff !important;font-size:14px;line-height:1.45;font-weight:500;")
+                .Append("\"><span style=\"display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:6px;background-color:#ee7132 !important;color:#ffffff !important;font-size:12px;font-weight:700;\">&#10003;</span></td><td align=\"left\" bgcolor=\"#ffffff\" class=\"email-card email-label\" style=\"padding:16px 12px;color:#737373 !important;background-color:#ffffff !important;font-size:14px;line-height:1.6;font-weight:500;")
                 .Append(labelBorder)
                 .Append("\">")
                 .Append(Html(FirstNonEmpty(document.Category, "Document")!))
-                .Append("</td><td align=\"right\" bgcolor=\"#ffffff\" class=\"email-card email-value\" style=\"padding:15px 14px 15px 10px;color:#111111 !important;background-color:#ffffff !important;font-size:15px;line-height:1.45;font-weight:500;")
+                .Append("</td><td align=\"right\" bgcolor=\"#ffffff\" class=\"email-card email-value\" style=\"padding:16px;color:#0a0a0a !important;background-color:#ffffff !important;font-size:16px;line-height:1.6;font-weight:500;")
                 .Append(valueBorder)
                 .Append("\">")
                 .Append(Html(document.FileName))
@@ -1639,18 +1640,18 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         {
             border.Append("border-left:1px solid #e5e5e5;");
             if (isFirstRow)
-                border.Append("border-top-left-radius:10px;");
+                border.Append("border-top-left-radius:12px;");
             if (isLastRow)
-                border.Append("border-bottom-left-radius:10px;");
+                border.Append("border-bottom-left-radius:12px;");
         }
 
         if (rightEdge)
         {
             border.Append("border-right:1px solid #e5e5e5;");
             if (isFirstRow)
-                border.Append("border-top-right-radius:10px;");
+                border.Append("border-top-right-radius:12px;");
             if (isLastRow)
-                border.Append("border-bottom-right-radius:10px;");
+                border.Append("border-bottom-right-radius:12px;");
         }
 
         return border.ToString();
@@ -1678,6 +1679,15 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
 
         return label.ToString();
     }
+
+    private static string FormatLienType(string? lienType)
+        => SplitCamelCase(FirstNonEmpty(lienType, Liens.Domain.Enums.LienType.MedicalLien)!);
+
+    private static string ResolveIndefiniteArticle(string value)
+        => !string.IsNullOrWhiteSpace(value) &&
+           "aeiou".Contains(char.ToLowerInvariant(value.TrimStart()[0]))
+            ? "An"
+            : "A";
 
     private static string BuildConfirmSaleTextBody(
         string status,
@@ -1766,6 +1776,46 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             !c.LawFirmId.HasValue);
     }
 
+    private async Task<ConfirmSaleCaseParties> ResolveConfirmSaleCasePartiesAsync(
+        Guid tenantId,
+        Case? caseEntity,
+        CancellationToken ct)
+    {
+        if (caseEntity is null)
+            return new ConfirmSaleCaseParties(null, null, null);
+
+        var canonicalLawFirm = caseEntity.HandlingLawFirmCompanyId.HasValue
+            ? await _companyRepo.GetCompanyAsync(
+                tenantId,
+                caseEntity.OrgId,
+                caseEntity.HandlingLawFirmCompanyId.Value,
+                ct)
+            : null;
+        if (canonicalLawFirm is { IsActive: false })
+            canonicalLawFirm = null;
+
+        var canonicalCaseManager = caseEntity.CaseManagerContactPersonId.HasValue
+            ? await _companyRepo.GetContactPersonInScopeAsync(
+                tenantId,
+                caseEntity.OrgId,
+                caseEntity.CaseManagerContactPersonId.Value,
+                ct)
+            : null;
+        if (canonicalCaseManager is { IsActive: false })
+            canonicalCaseManager = null;
+
+        var legacyHandlingLawFirmContact = await ResolveHandlingLawFirmContactAsync(tenantId, caseEntity, ct);
+        var legacyCaseManager = await ResolveCaseManagerAsync(tenantId, caseEntity, ct);
+
+        return new ConfirmSaleCaseParties(
+            FirstNonEmpty(
+                canonicalLawFirm?.Name,
+                legacyHandlingLawFirmContact?.Organization,
+                legacyHandlingLawFirmContact?.DisplayName),
+            FirstNonEmpty(DisplayName(canonicalCaseManager), legacyCaseManager),
+            legacyHandlingLawFirmContact?.Id);
+    }
+
     private static bool IsActiveStandaloneLawFirm(Contact? contact)
         => contact is { IsActive: true } &&
            string.Equals(contact.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
@@ -1807,68 +1857,21 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
             page: 1,
             pageSize: 100,
             ct: ct);
+        var documentCategories = await _lookupValueService.GetByCategoryAsync(
+            tenantId,
+            LookupCategory.DocumentCategory,
+            ct);
+        var documentCategoryNames = FundingCompanySaleDocumentMapper.BuildDocumentCategoryNameLookup(
+            documentCategories.Select(category => (category.Id, category.Name)));
 
-        return ExtractDocuments(lienDocs.Items)
+        return lienDocs.Items
+            .Select(item => FundingCompanySaleDocumentMapper.Map(item, documentCategoryNames))
+            .Where(document => document is not null)
+            .Select(document => new ConfirmSaleDocument(document!.FileName, document.Category))
             .Where(document => !string.IsNullOrWhiteSpace(document.FileName))
             .DistinctBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
             .OrderBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
             .ToList();
-    }
-
-    private static IEnumerable<ConfirmSaleDocument> ExtractDocuments(IEnumerable<ServicingItem> items)
-    {
-        foreach (var item in items.Where(IsDocumentServicingItem))
-        {
-            var fields = ParseLegacyNoteFields(item.Notes);
-            var fileName = FirstNonEmpty(
-                fields.GetValueOrDefault("originalFileName"),
-                fields.GetValueOrDefault("displayName"),
-                fields.GetValueOrDefault("filename"),
-                item.Description);
-
-            if (string.IsNullOrWhiteSpace(fileName))
-                continue;
-
-            var category = FirstNonEmpty(
-                fields.GetValueOrDefault("documentCategory"),
-                fields.GetValueOrDefault("category"),
-                FormatSellingDocumentType(fields.GetValueOrDefault("documentType")),
-                HumanizeDocumentTaskType(item.TaskType));
-
-            yield return new ConfirmSaleDocument(fileName.Trim(), category);
-        }
-    }
-
-    private static bool IsDocumentServicingItem(ServicingItem item)
-        => string.Equals(item.TaskType, "LegacyCaseDocument", StringComparison.Ordinal) ||
-           string.Equals(item.TaskType, "LegacyLienDocument", StringComparison.Ordinal) ||
-           string.Equals(item.TaskType, "LegacyMedicalDocument", StringComparison.Ordinal) ||
-           string.Equals(item.TaskType, "SellingDocumentReference", StringComparison.Ordinal);
-
-    private static string HumanizeDocumentTaskType(string taskType)
-        => taskType switch
-        {
-            "LegacyCaseDocument" => "Case Document",
-            "LegacyLienDocument" => "Lien Document",
-            "LegacyMedicalDocument" => "Medical Document",
-            "SellingDocumentReference" => "Supporting Document",
-            _ => "Document",
-        };
-
-    private static string? FormatSellingDocumentType(string? documentType)
-    {
-        if (string.IsNullOrWhiteSpace(documentType))
-            return null;
-
-        return documentType.Trim() switch
-        {
-            "LienAgreement" => "Signed Lien / LOP (Letter of Protection)",
-            "MedicalBill" => "Itemized Bill / HCFA-1500 Form",
-            "MedicalRecord" => "Clinical Chart Notes / Medical Records",
-            "SettlementStatement" => "Settlement Statement",
-            "Other" => "Supporting Document",
-            var value => SplitCamelCase(value),
-        };
     }
 
     private static string SplitCamelCase(string value)
@@ -2025,10 +2028,10 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
     private static string? FirstNonEmpty(params string?[] values)
         => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
 
-    private static string ResolveContactPersonName(Contact contact)
-        => string.Join(' ', new[] { contact.FirstName, contact.LastName }
-            .Where(part => !string.IsNullOrWhiteSpace(part)))
-            .Trim();
+    private static string? DisplayName(CompanyContactPerson? contact)
+        => contact is null
+            ? null
+            : FirstNonEmpty($"{contact.FirstName} {contact.LastName}");
 
     private static string Html(string value)
         => WebUtility.HtmlEncode(value);
@@ -2039,9 +2042,13 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         SellerOrganizationDisplay SellerDisplay,
         string SellerEmail,
         Case? Case,
-        Contact HandlingLawFirmContact,
-        string? CaseManager,
+        ConfirmSaleCaseParties CaseParties,
         IReadOnlyList<ConfirmSaleDocument> Documents);
+
+    private sealed record ConfirmSaleCaseParties(
+        string? HandlingLawFirm,
+        string? CaseManager,
+        Guid? LegacyHandlingLawFirmContactId);
 
     private sealed record BuyerContactSnapshot(
         Guid Id,
