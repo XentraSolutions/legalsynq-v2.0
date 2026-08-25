@@ -8,6 +8,7 @@ using BuildingBlocks.Notifications;
 using Liens.Api.Tests.Helpers;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
+using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;

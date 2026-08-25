@@ -30,6 +30,10 @@ For migrated SL-CORE object keys, the BFF resolves a tenant-scoped legacy link
 through Liens and redirects only to the exact HTTPS
 `legal-dmm-prod.legalsynq.com` host; no browser code handles legacy URLs.
 
+SynqLien case-payment saves create a settlement payment and linked settlement
+record for each selected lien through the settlement service; payment updates
+use the supported update request fields only.
+
 ## E2E Tests
 
 See [`e2e/README.md`](e2e/README.md) for how to run them day to day (`--ui`, `--debug`,

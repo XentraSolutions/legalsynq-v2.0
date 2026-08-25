@@ -1039,14 +1039,8 @@ public sealed class SellingPortfolioService : ISellingPortfolioService
         if (string.IsNullOrWhiteSpace(handlingLawFirm))
             errors["handlingLawFirm"] = ["A real handling law firm is required before sending the buyer notification."];
 
-<<<<<<< HEAD
         var sellerContacts = await _companyRepo.GetContactPersonsByOrgIdAsync(tenantId, sellerOrgId, isActive: true, ct);
         var sellerContact = SelectSellerContact(sellerContacts);
-=======
-        var sellerContacts = await _contactRepo.GetByOrgIdAsync(tenantId, sellerOrgId, isActive: true, ct);
-        var sellerContact = SelectSellerContact(sellerContacts, handlingLawFirmContact?.Id)
-            ?? SelectSellerContact(sellerContacts);
->>>>>>> parent of 4b4d0af9 (Merge branch 'dev2' of https://github.com/XentraSolutions/legalsynq-v3.0 into dev2)
         var sellerDisplay = await _sellerOrganizationDisplayResolver.ResolveAsync(
             tenantId,
             sellerOrgId,
