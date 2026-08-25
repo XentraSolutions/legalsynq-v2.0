@@ -25,6 +25,7 @@ export function buildFormsFromLien(lien: Lien) {
     lienInfo: {
       status: lien.lienInformation.sellerStatus,
       listingVisibility: lien.lienInformation.listingVisibility,
+      caseId: lien.caseInformation?.id ?? "",
       initialServiceDate: lien.lienInformation.initialServiceDate ?? "",
       endServiceDate: lien.lienInformation.endServiceDate ?? "",
       notes: lien.lienInformation.notes ?? "",
@@ -32,6 +33,8 @@ export function buildFormsFromLien(lien: Lien) {
     caseInformation: {
       medicalProviderId: lien.medicalProvider?.id ?? "",
       medicalProvider: lien.medicalProvider?.name ?? "",
+      facilityId: lien.facility?.id ?? "",
+      facility: lien.facility?.name ?? "",
       fundingCompanyId: lien.fundingCompany?.id ?? "",
       fundingCompany: lien.fundingCompany?.name ?? "",
       fundingCompanyContactId: lien.fundingCompany?.contact?.id ?? "",
