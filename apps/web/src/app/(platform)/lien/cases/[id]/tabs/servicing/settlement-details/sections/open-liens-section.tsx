@@ -9,17 +9,15 @@ const lienDisplayColumns: LienColumnDef[] = [
     id: "lienId",
     header: "Lien ID",
     cell: (l) => (
-      <span className="text-sm text-gray-600 whitespace-nowrap">
-        {l.lienNumber}
-      </span>
+      <span className="text-sm text-gray-600 whitespace-nowrap">{l.lienNumber}</span>
     ),
   },
   {
-    id: "medicalFacility",
+    id: "facilityName",
     header: "Medical Facility",
     cell: (l) => (
       <span className="text-sm text-gray-600 truncate max-w-40 block">
-        {l.medicalFacility || ""}
+        {l.facilityName || ""}
       </span>
     ),
   },
@@ -167,11 +165,11 @@ export function OpenLiensSection({
                 ),
               },
               {
-                align: "right",
-                content: (
-                  <span className="text-sm font-semibold text-gray-700 tabular-nums">
-                    ---
-                  </span>
+              align: "right",
+              content: (
+                <span className="text-sm font-semibold text-gray-700 tabular-nums">
+                  ---
+                </span>
                 ),
               },
               {

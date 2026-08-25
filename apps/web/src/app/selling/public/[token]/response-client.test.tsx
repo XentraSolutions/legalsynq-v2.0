@@ -98,14 +98,14 @@ describe("PublicBuyerPortalInteractiveContent", () => {
     );
   });
 
-  test("renders funding contact details on the buyer-facing funding case information", () => {
+  test("renders law firm contact details on the buyer-facing funding case information", () => {
     render(<PublicBuyerPortalInteractiveContent token="token-abc" data={basePortalData()} />);
 
     expect(screen.getByText("Funding Company & Case Information")).toBeInTheDocument();
-    expect(screen.getByText("Ralph Buyer")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "buyer@example.test" })).toHaveAttribute(
+    expect(screen.getByText("Anderson Contact")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "anderson.contact@ashworthlaw.test" })).toHaveAttribute(
       "href",
-      "mailto:buyer@example.test",
+      "mailto:anderson.contact@ashworthlaw.test",
     );
   });
 

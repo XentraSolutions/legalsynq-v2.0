@@ -26,7 +26,8 @@ The Control Center starts on port 5004 automatically alongside `apps/web` (5000)
 ### Option B — standalone (Control Center only)
 
 ```bash
-pnpm dev:control-center
+cd apps/control-center
+npm run dev
 ```
 
 This starts only the Control Center on port 5004.

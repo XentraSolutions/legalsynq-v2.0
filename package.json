@@ -8,7 +8,7 @@
     "dev:be": "bash scripts/run-backend-dev.sh",
     "stop:be": "bash scripts/stop-backend-dev.sh",
     "dev:web": "cd apps/web && node node_modules/next/dist/bin/next dev -p 3000",
-    "dev:control-center": "bash scripts/run-control-center-dev.sh"
+    "dev:control-center": "cd apps/control-center && node node_modules/next/dist/bin/next dev -p 8004"
   },
   "keywords": [],
   "author": "",
