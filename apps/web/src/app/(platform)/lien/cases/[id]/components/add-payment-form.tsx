@@ -611,8 +611,6 @@ const handleDistributePayment = () => {
     (!isEditing  && !hasDistributedPayment) ||
     (!isEditing && checkedIds.size === 0);
 
-  const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
-
   const totalAmountToSettle = openLiens.reduce(
     (s, l) => s + (l.balance ?? 0),
     0,
