@@ -310,11 +310,15 @@ case-level Company Directory references first, with legacy standalone handling l
 fallbacks for older case records. The notification intro uses the persisted lien type from the lien record instead of
 hardcoded medical-lien copy, but the Asset Overview does not render a separate Lien Type row. Creating a standalone law firm without a separate organization value persists its display
 name as the organization. The seller notification's Buyer Information section omits buyer phone number.
-Supporting document names are pulled from existing legacy
-lien/case document servicing metadata; both emails omit the document section when no real document names exist. The
-email header uses the existing LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark
-text, and the section icons use the Figma-matched contact, clipboard-list, and folder-open SVGs as inline CID image
-attachments. No remote placeholder assets are required.
+Supporting document names for funding-company-facing emails, public links, and authenticated offer detail are pulled
+from uploaded document servicing metadata attached to the offered lien, including legacy lien/case documents and
+seller-wizard `SellingDocumentReference` rows.
+When legacy upload metadata includes a canonical `documentTypeId`, the displayed category resolves through the tenant's
+active `DocumentCategory` lookup so the funding company sees the same document categories uploaded during lien creation.
+Emails omit the document section when no real uploaded document names exist. The email header uses the existing
+LegalSynq mark as an inline CID image attachment with HTML-rendered white/orange wordmark text, and the section icons use
+the Figma-matched contact, clipboard-list, and folder-open SVGs as inline CID image attachments. No remote placeholder
+assets are required.
 Configure the buyer portal URL with `Liens:Selling:BuyerPortalBaseUrl` or the environment variable
 `Liens__Selling__BuyerPortalBaseUrl`. If that value is absent, the API derives it from
 `SYNQLIEN_COMMON_PORTAL_HOSTNAME`; `synqlien-demo.localhost` resolves to
@@ -343,8 +347,8 @@ link has already completed the lien workflow, the terminal lien state is project
 link labeled as pending; accepted, declined, or otherwise non-actionable rows return `view` only. Row `detailHref`
 values point to the authenticated tenant portal route
 `/funding/offered-liens/{accessLinkId}`. The portal backs that route with
-`GET /api/liens/selling/buyer/liens/{accessLinkId}`, which returns persisted seller/lien fields plus real servicing
-documents, portal messages, and response activity for the funding company. Missing documents, messages, or activity are
+`GET /api/liens/selling/buyer/liens/{accessLinkId}`, which returns persisted seller/lien fields plus uploaded document
+servicing metadata, portal messages, and response activity for the funding company. Missing documents, messages, or activity are
 returned as empty arrays for the frontend empty states. Detail `submittedAtUtc` uses the buyer access-link notification
 timestamp when present so it matches the public offer page's Lien Information section, and detail `notes` uses the same
 persisted lien notes shown in the seller portfolio, with lien description only as an empty-notes fallback. Detail documents include same-origin tenant-portal `viewUrl` and
