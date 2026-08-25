@@ -1917,6 +1917,12 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CaseId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("SellingCaseId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("MovedToManagementAtUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<DateTime?>("ClosedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -2080,6 +2086,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CaseId")
                         .HasDatabaseName("IX_Liens_CaseId");
+
+                    b.HasIndex("SellingCaseId")
+                        .HasDatabaseName("IX_Liens_SellingCaseId");
 
                     b.HasIndex("FacilityId")
                         .HasDatabaseName("IX_Liens_FacilityId");
@@ -4341,6 +4350,11 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.HasOne("Liens.Domain.Entities.Case", null)
                         .WithMany()
                         .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Liens.Domain.Entities.Case", null)
+                        .WithMany()
+                        .HasForeignKey("SellingCaseId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Liens.Domain.Entities.Facility", null)

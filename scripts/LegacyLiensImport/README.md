@@ -67,6 +67,85 @@ Review `ChangesToApply` and `Conflicts`. Apply only with that exact count:
 CALL liens_backfill_sl_core_imported_creators('<tenant-guid>', <ChangesToApply>, '1');
 ```
 
+## Restore state of incident
+
+For an SL-CORE core import completed before `SL_CASE.CASE_ACCIDENT_STATE` was
+copied to the typed V2 case field, run
+[`backfill-sl-core-incident-state.sql`](backfill-sl-core-incident-state.sql).
+It updates only blank `liens_Cases.IncidentState` values. A populated different
+V2 value is a conflict and blocks the complete apply; it is never overwritten.
+Legacy rows without a core-import case crosswalk were never migrated into V2 and
+are outside this backfill's scope.
+
+Run the complete file in DBeaver first, then dry-run:
+
+```sql
+CALL liens_backfill_sl_core_incident_state('<tenant-guid>', -1, '0');
+```
+
+Resolve any conflicts. Re-run the dry run immediately before applying, then
+copy its exact `ChangesToApply` count into:
+
+```sql
+CALL liens_backfill_sl_core_incident_state('<tenant-guid>', <ChangesToApply>, '1');
+```
+
+## Restore plaintiff address and law-firm email
+
+[`backfill-sl-core-plaintiff-address-and-lawfirm-email.sql`](backfill-sl-core-plaintiff-address-and-lawfirm-email.sql)
+maps legacy plaintiff address, city, state, and ZIP values to both the typed
+V3 case columns and the legacy-compatible full case-address field, and
+law-firm email to the linked canonical contact. It fills blank values only and
+blocks a conflicting existing V3 value.
+
+```sql
+CALL liens_backfill_sl_core_plaintiff_address_and_lawfirm_email('<tenant-guid>', -1, '0');
+CALL liens_backfill_sl_core_plaintiff_address_and_lawfirm_email('<tenant-guid>', <ChangesToApply>, '1');
+```
+
+## Restore case phone, email, and sex
+
+[`backfill-sl-core-case-contact-and-sex.sql`](backfill-sl-core-case-contact-and-sex.sql)
+maps legacy case phone and email to their V3 case columns and maps legacy gender
+to the case's `gender` metadata. It fills blank values only and blocks conflicts.
+
+```sql
+CALL liens_backfill_sl_core_case_contact_and_sex('<tenant-guid>', -1, '0');
+CALL liens_backfill_sl_core_case_contact_and_sex('<tenant-guid>', <ChangesToApply>, '1');
+```
+
+## Restore report party and medical-facility details
+
+[`backfill-sl-core-report-party-and-facility-details.sql`](backfill-sl-core-report-party-and-facility-details.sql)
+restores the crosswalk-bound case-manager, law-firm, and lien-facility details
+used by reports. It fills only blank V3 fields and refuses conflicting values.
+
+```sql
+CALL liens_backfill_sl_core_report_party_and_facility_details('<tenant-guid>', -1, '0');
+CALL liens_backfill_sl_core_report_party_and_facility_details('<tenant-guid>', <ChangesToApply>, '1');
+```
+
+## Restore legacy manual medical-code entries
+
+[`backfill-sl-core-medical-code-amounts.sql`](backfill-sl-core-medical-code-amounts.sql)
+transfers each active `SL_LEINS_MEDICAL_CODE` row into its linked V3 lien as a
+deterministic `LegacyMedicalCode` servicing item. This preserves each code and
+its Medicare, billing, and purchase amounts; it does not populate the separate
+tenant-wide manual-code catalogue. It only inserts missing source-bound rows and
+blocks conflicting or manually-created legacy-code tasks.
+
+Run the complete file in DBeaver, then dry-run:
+
+```sql
+CALL liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', -1, '0');
+```
+
+Apply only when `Conflicts = 0`, using the exact `TasksToInsert` count:
+
+```sql
+CALL liens_backfill_sl_core_medical_code_amounts('<tenant-guid>', <TasksToInsert>, '1');
+```
+
 The restore receipt table is intentionally in the staging database, outside the
 legacy dump. It binds the approved snapshot to the database that the importer
 will query:

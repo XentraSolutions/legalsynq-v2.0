@@ -16,6 +16,8 @@ public class Lien : AuditableEntity
     public string Status         { get; private set; } = LienStatus.Draft;
 
     public Guid? CaseId          { get; private set; }
+    public Guid? SellingCaseId   { get; private set; }
+    public DateTime? MovedToManagementAtUtc { get; private set; }
     public Guid? FacilityId      { get; private set; }
     public Guid? SubjectPartyId  { get; private set; }
 
@@ -419,6 +421,28 @@ public class Lien : AuditableEntity
         SubmittedForSaleAtUtc = null;
         ClosedAtUtc = null;
         WithdrawnAtUtc = recordWithdrawal ? DateTime.UtcNow : null;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void MoveToInternalManagement(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+        if (!CaseId.HasValue)
+            throw new InvalidOperationException("A lien must be linked to a case before it can be moved to management.");
+        if (SellerStatus is SellingLienStatus.Sold or SellingLienStatus.Archived ||
+            Status is LienStatus.Sold or LienStatus.Settled)
+            throw new InvalidOperationException("Sold, settled, or archived liens cannot be moved to management.");
+
+        if (Status != LienStatus.Draft)
+            throw new InvalidOperationException($"Lien status '{Status}' cannot be moved to management.");
+        if (SellerStatus is not (SellingLienStatus.Pending or SellingLienStatus.Internal))
+            throw new InvalidOperationException($"Seller status '{SellerStatus}' cannot be moved to management.");
+
+        SellingCaseId ??= CaseId;
+        SellerStatus = SellingLienStatus.Internal;
+        MovedToManagementAtUtc ??= DateTime.UtcNow;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc = DateTime.UtcNow;
     }

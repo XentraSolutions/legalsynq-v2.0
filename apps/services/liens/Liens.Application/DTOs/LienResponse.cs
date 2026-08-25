@@ -13,6 +13,7 @@ public sealed class LienResponse
     public string Status { get; init; } = string.Empty;
     public string StatusLabel { get; init; } = string.Empty;
     public Guid? CaseId { get; init; }
+    public Guid? SellingCaseId { get; init; }
     public Guid? FacilityId { get; init; }
     public decimal OriginalAmount { get; init; }
     public decimal? CurrentBalance { get; init; }
@@ -32,6 +33,7 @@ public sealed class LienResponse
     public Guid? SellingOrgId { get; init; }
     public Guid? BuyingOrgId { get; init; }
     public Guid? HoldingOrgId { get; init; }
+    public string? SellerStatus { get; init; }
     public DateOnly? IncidentDate { get; init; }
     public string? PurchaseDate { get; init; }
     [JsonConverter(typeof(NullableUsDateOnlyJsonConverter))]

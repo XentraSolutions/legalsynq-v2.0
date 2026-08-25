@@ -71,6 +71,11 @@ public sealed class WithdrawSellingLienRequest
     public string? Reason { get; init; }
 }
 
+public sealed class MoveSellingLienToManagementRequest
+{
+    public string? Reason { get; init; }
+}
+
 public sealed class ArchiveSellingLienRequest
 {
     public string? Reason { get; init; }
