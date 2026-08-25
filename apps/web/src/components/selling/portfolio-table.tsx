@@ -147,6 +147,16 @@ export function PortfolioTable({
   const columns = useMemo<ColumnDef<LienListItem, any>[]>(
     () => [
       {
+        id: "createdAtUtc",
+        accessorKey: "createdAtUtc",
+        header: "Date Created",
+        cell: ({ row }) => (
+          <span className={TABLE_CELL_CLASSNAME}>
+            <DateDisplay value={row.original.createdAtUtc} format="date" />
+          </span>
+        ),
+      },
+      {
         id: "lienId",
         accessorKey: "lienId",
         header: "Lien ID",
