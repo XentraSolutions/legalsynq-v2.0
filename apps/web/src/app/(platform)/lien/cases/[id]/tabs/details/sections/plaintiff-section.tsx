@@ -35,6 +35,15 @@ export function PlaintiffSection({
   onSave: () => void;
   onCancel: () => void;
 }) {
+  const clientAddress = [
+    d.clientStreetAddress,
+    d.clientCity,
+    d.clientState,
+    d.clientZipcode,
+  ]
+    .filter(Boolean)
+    .join(", ") || d.clientAddress;
+
   return (
     <CollapsibleSection
       title="Plaintiff"
@@ -207,7 +216,7 @@ export function PlaintiffSection({
           <FieldItem label="Email" value={d.clientEmail} />
           <FieldItem label="Date of Birth" value={d.clientDob} />
           <FieldItem label="Sex" value={d.sex} />
-          <FieldItem label="Address" value={d.clientAddress} />
+          <FieldItem label="Address" value={clientAddress} />
         </FieldGrid>
       )}
     </CollapsibleSection>

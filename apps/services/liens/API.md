@@ -266,6 +266,7 @@ Update an existing lien.
 | `lienType` | `string` | No | Type of lien |
 | `status` | `string` | No | Current status. Buying list endpoints exclude `Rejected`, `Declined`, and `Cancelled` liens and normalize remaining values to `Open` or `Closed`; direct lien detail responses may still return workflow statuses used by selling flows. |
 | `caseId` | `guid` | Yes | Associated case ID |
+| `sellingCaseId` | `guid` | Yes | Original Selling case ID when moved to Liens Management |
 | `facilityId` | `guid` | Yes | Associated facility ID |
 | `originalAmount` | `decimal` | No | Original lien amount |
 | `currentBalance` | `decimal` | Yes | Current balance |
@@ -281,6 +282,7 @@ Update an existing lien.
 | `sellingOrgId` | `guid` | Yes | Selling organization ID |
 | `buyingOrgId` | `guid` | Yes | Buying organization ID |
 | `holdingOrgId` | `guid` | Yes | Holding organization ID |
+| `sellerStatus` | `string` | Yes | Selling workflow status, including `Internal` |
 | `incidentDate` | `date` | Yes | Date of incident |
 | `description` | `string` | Yes | Description |
 | `openedAtUtc` | `datetime` | Yes | When the lien was opened |
@@ -293,6 +295,25 @@ Update an existing lien.
 ## Selling Endpoints
 
 Base path: `/api/liens/selling`
+
+### POST `/api/liens/selling/liens/{lienId}/move-to-management`
+
+Moves a draft Selling lien into Liens Management without creating a second lien record. The lien must already
+be linked to an existing same-tenant, same-organization case. That `caseId` remains unchanged and is preserved
+in `sellingCaseId`; `sellerStatus` becomes `Internal`.
+
+**Permission:** `SYNQ_LIENS.lien_sale:update`
+
+**Header:** `Idempotency-Key` is required.
+
+```json
+{
+  "reason": "Retained internally"
+}
+```
+
+Only draft liens with Selling `Pending` or `Internal` status are eligible. A lien already submitted for sale
+must first be withdrawn through `withdraw-sale`, which revokes buyer access and pending offers.
 
 ### POST `/api/liens/selling/liens/{lienId}/confirm-sale`
 

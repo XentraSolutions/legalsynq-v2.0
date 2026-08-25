@@ -58,6 +58,8 @@ public static class SellingV2Endpoints
             .RequirePermission(LiensPermissions.LienSalePublish);
         seller.MapPost("/liens/{lienId:guid}/withdraw-sale", WithdrawSale)
             .RequirePermission(LiensPermissions.LienSaleWithdraw);
+        seller.MapPost("/liens/{lienId:guid}/move-to-management", MoveToManagement)
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
         seller.MapPost("/liens/{lienId:guid}/archive", ArchiveLien)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
         seller.MapPost("/liens/{lienId:guid}/restore", RestoreLien)
@@ -154,8 +156,9 @@ public static class SellingV2Endpoints
         var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
 
-        var caseEntity = lien.CaseId.HasValue
-            ? await db.Cases.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == lien.CaseId.Value, ct)
+        var sellingCaseId = lien.SellingCaseId ?? lien.CaseId;
+        var caseEntity = sellingCaseId.HasValue
+            ? await db.Cases.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == sellingCaseId.Value, ct)
             : null;
         var caseMetadata = ParseCaseMetadata(caseEntity?.Notes);
         var caseManagerId = ParseMetadataGuid(caseMetadata, "caseManagerId");
@@ -361,6 +364,8 @@ public static class SellingV2Endpoints
         var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
         var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
+        if (lien.MovedToManagementAtUtc.HasValue)
+            return Results.Conflict(new { error = new { code = "lien_moved_to_management", message = "This lien is managed through Liens Management and can no longer be changed through Selling intake." } });
         if (IntakeMutationBlocked(lien) is { } intakeError) return intakeError;
 
         var sellerStatus = NormalizeIntakeStatus(request.SellerStatus);
@@ -698,6 +703,7 @@ public static class SellingV2Endpoints
         if (replay is not null) return replay;
         var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
+        if (SellingMutationBlocked(lien) is { } movedError) return movedError;
         if (!IntakeStatuses.Contains(lien.SellerStatus ?? string.Empty))
             return ValidationError("sellerStatus", "Only Pending or Internal liens can be prepared for sale.");
 
@@ -796,6 +802,7 @@ public static class SellingV2Endpoints
         if (replay is not null) return replay;
         var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
+        if (SellingMutationBlocked(lien) is { } movedError) return movedError;
         if (!request.ConfirmationAccepted)
             return ValidationError("confirmationAccepted", "Confirm the sale before submitting it.");
         var canConfirm = IntakeStatuses.Contains(lien.SellerStatus ?? string.Empty) ||
@@ -884,6 +891,84 @@ public static class SellingV2Endpoints
         return Results.Ok(result);
     }
 
+    private static async Task<IResult> MoveToManagement(
+        Guid lienId,
+        MoveSellingLienToManagementRequest request,
+        HttpRequest httpRequest,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        const string route = "/api/liens/selling/liens/{lienId}/move-to-management";
+        var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
+        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError)) return idempotencyError!;
+        var replay = await SellingIdempotency.GetReplayAsync(
+            db, tenantId, "User", userId, route, "Lien", lienId.ToString(), idempotencyKey!, request, ct);
+        if (replay is not null) return replay;
+
+        var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
+        if (lien is null) return NotFoundLien(lienId);
+        if (lien.SellerStatus is SellingLienStatus.Sold or SellingLienStatus.Archived ||
+            lien.Status is not LienStatus.Draft ||
+            lien.SellerStatus is not (SellingLienStatus.Pending or SellingLienStatus.Internal))
+            return Results.Conflict(new { error = new { code = "lien_not_eligible_for_management", message = "Only draft Pending or Internal liens can be moved to management. Withdraw submitted liens before moving them." } });
+        if (lien.MovedToManagementAtUtc.HasValue)
+            return Results.Conflict(new { error = new { code = "lien_already_moved_to_management", message = "This lien has already been moved to management." } });
+        if (!lien.CaseId.HasValue)
+            return ValidationError("caseId", "The lien must be linked to an existing case before it can be moved to management.");
+
+        var existingCase = await db.Cases.AnyAsync(item =>
+            item.Id == lien.CaseId.Value && item.TenantId == tenantId && item.OrgId == sellerOrgId, ct);
+        if (!existingCase)
+            return ValidationError("caseId", "The lien case was not found in this tenant and seller organization.");
+
+        var lienTransition = await SellingIdempotency.TryBeginAsync(
+            db, tenantId, "LienStateTransition", lienId, "/api/liens/selling/liens/{lienId}/state-transition", "Lien", lienId.ToString(),
+            "lien-state-transition-v1", request: null, ct: ct);
+        if (lienTransition.Result is not null)
+            return Results.Conflict(new { error = new { code = "lien_transition_in_progress", message = "This lien is changing state and cannot be moved to management." } });
+        var started = await SellingIdempotency.TryBeginAsync(
+            db, tenantId, "User", userId, route, "Lien", lienId.ToString(), idempotencyKey!, request, ct);
+        if (started.Result is not null)
+        {
+            db.SellingIdempotencyRecords.Remove(lienTransition.Record!);
+            await db.SaveChangesAsync(ct);
+            return started.Result;
+        }
+
+        try
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            lien.MoveToInternalManagement(userId);
+
+            AddActivity(db, lien, userId,
+                $"Lien moved to management case {lien.CaseId}; seller status set to Internal. {request.Reason}".Trim());
+            var response = new
+            {
+                lienId = lien.Id,
+                sellerStatus = lien.SellerStatus,
+                status = lien.Status,
+                caseId = lien.CaseId,
+                sellingCaseId = lien.SellingCaseId,
+            };
+            db.SellingIdempotencyRecords.Remove(lienTransition.Record!);
+            var completed = await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status200OK, response, ct);
+            await transaction.CommitAsync(ct);
+            return completed;
+        }
+        catch
+        {
+            var failedRecordIds = new[] { started.Record!.Id, lienTransition.Record!.Id };
+            db.ChangeTracker.Clear();
+            var failedRecords = await db.SellingIdempotencyRecords.Where(record =>
+                record.TenantId == tenantId && failedRecordIds.Contains(record.Id) &&
+                record.ProcessingState != SellingIdempotencyRecord.Completed).ToListAsync(CancellationToken.None);
+            db.SellingIdempotencyRecords.RemoveRange(failedRecords);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
     private static async Task<IResult> WithdrawSale(
         Guid lienId,
         WithdrawSellingLienRequest request,
@@ -899,6 +984,7 @@ public static class SellingV2Endpoints
         if (replay is not null) return replay;
         var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
+        if (SellingMutationBlocked(lien) is { } movedError) return movedError;
         if (lien.SellerStatus != SellingLienStatus.SubmittedForSale || lien.Status != LienStatus.Offered)
             return ValidationError("sellerStatus", "Only SubmittedForSale liens can be withdrawn.");
         var lienTransition = await SellingIdempotency.TryBeginAsync(
@@ -984,6 +1070,7 @@ public static class SellingV2Endpoints
         if (replay is not null) return replay;
         var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
+        if (SellingMutationBlocked(lien) is { } movedError) return movedError;
         if (lien.SellerStatus is SellingLienStatus.Sold or SellingLienStatus.Archived)
             return ValidationError("sellerStatus", "Sold or already archived liens cannot be archived through this workflow.");
         var lienTransition = await SellingIdempotency.TryBeginAsync(
@@ -1026,6 +1113,7 @@ public static class SellingV2Endpoints
         if (replay is not null) return replay;
         var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
+        if (SellingMutationBlocked(lien) is { } movedError) return movedError;
         if (lien.ArchivedAtUtc is null && lien.SellerStatus != SellingLienStatus.Archived)
             return ValidationError("sellerStatus", "Only archived liens can be restored.");
         var started = await SellingIdempotency.TryBeginAsync(
@@ -1054,6 +1142,7 @@ public static class SellingV2Endpoints
         if (replay is not null) return replay;
         var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
         if (lien is null) return NotFoundLien(lienId);
+        if (SellingMutationBlocked(lien) is { } movedError) return movedError;
         if (!IsSubmittedLien(lien)) return ValidationError("sellerStatus", "Buyer access links require a submitted-for-sale lien.");
         var buyerCompany = await GetFundingCompanyAsync(db, tenantId, request.BuyerFundingCompanyId, ct);
         var buyerContact = await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c =>
@@ -1722,8 +1811,11 @@ public static class SellingV2Endpoints
     private static (Guid TenantId, Guid OrgId, Guid UserId) RequireSellerContext(ICurrentRequestContext context) => (context.TenantId ?? throw new UnauthorizedAccessException("Tenant context is required."), context.OrgId ?? throw new UnauthorizedAccessException("Organization context is required."), context.UserId ?? throw new UnauthorizedAccessException("User context is required."));
     private static (Guid TenantId, Guid OrgId, Guid UserId) RequireBuyerContext(ICurrentRequestContext context) => RequireSellerContext(context);
     private static string? NormalizeIntakeStatus(string? status) => IntakeStatuses.FirstOrDefault(candidate => string.Equals(candidate, status?.Trim(), StringComparison.OrdinalIgnoreCase));
+    private static IResult? SellingMutationBlocked(Lien lien) => lien.MovedToManagementAtUtc.HasValue
+        ? Results.Conflict(new { error = new { code = "lien_moved_to_management", message = "This lien is managed through Liens Management and can no longer be changed through Selling." } })
+        : null;
     private static IResult? IntakeMutationBlocked(Lien lien) => IntakeStatuses.Contains(lien.SellerStatus ?? string.Empty)
-        ? null
+        ? SellingMutationBlocked(lien)
         : Results.Conflict(new { error = new { code = "intake_locked", message = "Lien intake can be changed only while sellerStatus is Pending or Internal." } });
     private static string? NormalizeVisibility(string? visibility) => SellingListingVisibility.All.FirstOrDefault(candidate => string.Equals(candidate, visibility?.Trim(), StringComparison.OrdinalIgnoreCase));
     private static bool TryParseOptionalDate(

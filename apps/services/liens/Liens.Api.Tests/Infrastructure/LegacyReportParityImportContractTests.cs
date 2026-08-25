@@ -82,6 +82,95 @@ public sealed class LegacyReportParityImportContractTests
     }
 
     [Fact]
+    public void Incident_state_backfill_is_crosswalk_bound_and_conflict_guarded()
+    {
+        var sql = ReadImportScript("backfill-sl-core-incident-state.sql");
+
+        sql.Should().Contain("CASE_ACCIDENT_STATE");
+        sql.Should().Contain("target.IncidentState IS NULL OR TRIM(target.IncidentState) = ''");
+        sql.Should().Contain("SL_CASE' AND x.TargetEntity = 'Case'");
+        sql.Should().Contain("INNER JOIN liens_LegacyIdCrosswalks x ON x.TenantId = v_tenant_id");
+        sql.Should().Contain("HEX(x.LegacyId) = HEX(CAST(source.CASE_ID AS CHAR))");
+        sql.Should().Contain("HEX(target.IncidentState) = HEX(LEFT(NULLIF(TRIM(source.CASE_ACCIDENT_STATE), ''), 100))");
+        sql.Should().Contain("incident-state backfill has conflicts; no rows were changed");
+        sql.Should().Contain("expected change count does not match dry run");
+        sql.Should().Contain("apply 20260825160000_AddLegacyReportParityFields before this backfill");
+    }
+
+    [Fact]
+    public void Medical_code_backfill_is_tenant_bound_and_requires_a_dry_run_count()
+    {
+        var sql = ReadImportScript("backfill-sl-core-medical-code-amounts.sql");
+
+        sql.Should().Contain("DATABASE() NOT IN ('LS_QA_LIENS', 'LS_LIENS')");
+        sql.Should().NotContain("USE LS_LIENS;");
+        sql.Should().Contain("IN p_expected_changes INT");
+        sql.Should().Contain("HEX(x.LegacyId) = HEX(CAST(mc.LMC_LM_ID AS CHAR))");
+        sql.Should().Contain("HEX(LOWER(SOURCE_FINGERPRINT)) = HEX(v_source_fingerprint)");
+        sql.Should().Contain("expected change count does not match dry run");
+        sql.Should().Contain("medical-code backfill has conflicts; no rows were changed");
+        sql.Should().Contain("TaskNumber, 'LegacyMedicalCode'");
+        sql.Should().Contain("COALESCE(CAST(BillingText AS DECIMAL(20,2)), 0)");
+    }
+
+    [Fact]
+    public void Plaintiff_address_and_lawfirm_email_backfill_is_crosswalk_bound_and_conflict_guarded()
+    {
+        var sql = ReadImportScript("backfill-sl-core-plaintiff-address-and-lawfirm-email.sql");
+
+        sql.Should().Contain("CASE_ADDRESS");
+        sql.Should().Contain("CASE_CITY");
+        sql.Should().Contain("CASE_STATE");
+        sql.Should().Contain("CASE_ZIPCODE");
+        sql.Should().Contain("CONTACT_EMAIL");
+        sql.Should().Contain("SourceTable='SL_CONTACT'");
+        sql.Should().Contain("law-firm contact crosswalks disagree across completed imports");
+        sql.Should().Contain("SELECT DISTINCT c.Id TargetId");
+        sql.Should().Contain("sl-core-contact-facility-v1','sl-core-contact-facility-v2','sl-core-contact-facility-v3");
+        sql.Should().Contain("ClientPostalCode");
+        sql.Should().Contain("NULLIF(CONCAT_WS(', ', NULLIF(TRIM(s.CASE_ADDRESS),'')");
+        sql.Should().Contain("c.ClientAddress=COALESCE(NULLIF(TRIM(c.ClientAddress),''),s.FullAddress)");
+        sql.Should().Contain("NULLIF(TRIM(c.ClientAddressLine1),'')");
+        sql.Should().Contain("plaintiff-address/law-firm-email backfill has conflicts");
+        sql.Should().Contain("expected change count does not match dry run");
+    }
+
+    [Fact]
+    public void Case_contact_and_sex_backfill_is_crosswalk_bound_and_conflict_guarded()
+    {
+        var sql = ReadImportScript("backfill-sl-core-case-contact-and-sex.sql");
+
+        sql.Should().Contain("CASE_PHONE");
+        sql.Should().Contain("CASE_EMAIL");
+        sql.Should().Contain("CASE_GENDER");
+        sql.Should().Contain("ClientPhone=COALESCE(NULLIF(TRIM(c.ClientPhone),'')");
+        sql.Should().Contain("ClientEmail=COALESCE(NULLIF(TRIM(c.ClientEmail),'')");
+        sql.Should().Contain("gender=");
+        sql.Should().Contain("PhoneConflict");
+        sql.Should().Contain("EmailConflict");
+        sql.Should().Contain("SexConflict");
+        sql.Should().Contain("NoSourceContactOrSex");
+        sql.Should().Contain("case contact/sex backfill has conflicts");
+    }
+
+    [Fact]
+    public void Report_party_and_facility_backfill_restores_crosswalk_bound_report_details()
+    {
+        var sql = ReadImportScript("backfill-sl-core-report-party-and-facility-details.sql");
+
+        sql.Should().Contain("SL_CASE_MANAGER");
+        sql.Should().Contain("CM_EMAIL");
+        sql.Should().Contain("SL_CONTACT");
+        sql.Should().Contain("CONTACT_PHONE");
+        sql.Should().Contain("SL_LEINS_MEDICAL_INFORMATION_FACILITY");
+        sql.Should().Contain("SL_FACILITY");
+        sql.Should().Contain("FACILITY_ADDRESS");
+        sql.Should().Contain("caseManagerId=");
+        sql.Should().Contain("LienFacilityConflict");
+        sql.Should().Contain("report-party/facility backfill has conflicts");
+    }
+
+    [Fact]
     public void Relationship_backfill_is_conflict_guarded_and_records_hashed_parity_evidence()
     {
         var sql = ReadImportScript("backfill-sl-core-case-relationships.sql");

@@ -10,9 +10,9 @@ public static class SellingSchemaRepair
 {
     private const string RepairLockName = "legalsynq-liens-selling-schema-repair";
     private const int ExpectedTableCount = 8;
-    private const int ExpectedColumnCount = 34;
-    private const int ExpectedIndexCount = 37;
-    private const int ExpectedForeignKeyCount = 17;
+    private const int ExpectedColumnCount = 36;
+    private const int ExpectedIndexCount = 38;
+    private const int ExpectedForeignKeyCount = 18;
     private const int ExpectedCheckConstraintCount = 1;
     private const int ExpectedCompanyTypeSeedCount = 4;
     private const int ExpectedContactTypeSeedCount = 28;
@@ -121,6 +121,7 @@ public static class SellingSchemaRepair
         new AddWeeklyAgingReportIndex(),
         new AddLegacyReportParityFields(),
         new AddLienImportedCreatedByName(),
+        new AddLienSellingCaseReference(),
     ];
 
     private static async Task<bool> AcquireRepairLockAsync(
@@ -178,7 +179,7 @@ public static class SellingSchemaRepair
                  WHERE TABLE_SCHEMA = DATABASE()
                    AND ((TABLE_NAME = 'liens_SellingPortfolioBuyers' AND COLUMN_NAME = 'BuyerCompanyId')
                      OR (TABLE_NAME = 'liens_SellingBuyerAccessLinks' AND COLUMN_NAME IN ('BuyerCompanyContactPersonId', 'BuyerCompanyId'))
-                     OR (TABLE_NAME = 'liens_Liens' AND COLUMN_NAME IN ('FundingCompanyCompanyId', 'FundingCompanyContactPersonId', 'MedicalFacilityCompanyId', 'MedicalProviderCompanyId', 'ReceivableDueDate'))
+                     OR (TABLE_NAME = 'liens_Liens' AND COLUMN_NAME IN ('FundingCompanyCompanyId', 'FundingCompanyContactPersonId', 'MedicalFacilityCompanyId', 'MedicalProviderCompanyId', 'ReceivableDueDate', 'SellingCaseId', 'MovedToManagementAtUtc'))
                      OR (TABLE_NAME = 'liens_LienOffers' AND COLUMN_NAME = 'BuyerCompanyId')
                      OR (TABLE_NAME = 'liens_Cases' AND COLUMN_NAME IN ('CaseManagerContactPersonId', 'HandlingLawFirmCompanyId', 'AttorneyContactPersonId', 'CaseDropped', 'ClientAddressLine1', 'ClientCity', 'ClientPostalCode', 'ClientState', 'CurrentMedicalStatus', 'ImportedCreatedByName', 'IncidentState', 'MinorComp', 'TrackingFollowUpDate'))
                      OR (TABLE_NAME = 'liens_ContactPersonTypes' AND COLUMN_NAME IN ('TenantId', 'OrgId'))
@@ -224,7 +225,8 @@ public static class SellingSchemaRepair
                        'IX_LegacyFieldMigrationStates_ImportRunId',
                        'UX_LegacyFieldMigrationStates_Source_FieldGroup',
                        'IX_Liens_Tenant_Seller_FundingCompanyCompanyId',
-                       'IX_Liens_Tenant_Seller_ReceivableDueDate')) AS IndexCount,
+                       'IX_Liens_Tenant_Seller_ReceivableDueDate',
+                       'IX_Liens_SellingCaseId')) AS IndexCount,
                 (SELECT COUNT(*)
                  FROM information_schema.TABLE_CONSTRAINTS
                  WHERE CONSTRAINT_SCHEMA = DATABASE()
@@ -246,7 +248,8 @@ public static class SellingSchemaRepair
                        'FK_liens_SellingPortfolioBuyers_liens_Companies_BuyerCompanyId',
                        'FK_liens_SellingPartyAliases_liens_Companies_CompanyId',
                        'FK_liens_SellingPartyAliases_liens_CompanyContactPersons_Compan~',
-                       'FK_Cases_AttorneyContactPerson')) AS ForeignKeyCount,
+                       'FK_Cases_AttorneyContactPerson',
+                       'FK_liens_Liens_liens_Cases_SellingCaseId')) AS ForeignKeyCount,
                 (SELECT COUNT(*)
                  FROM information_schema.TABLE_CONSTRAINTS
                  WHERE CONSTRAINT_SCHEMA = DATABASE()

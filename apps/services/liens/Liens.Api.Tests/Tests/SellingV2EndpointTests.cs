@@ -1223,6 +1223,166 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
             .Should().Be("Buyer-only review message");
     }
 
+    [Fact]
+    public async Task Move_to_management_preserves_the_existing_case_and_sets_the_lien_internal()
+    {
+        var lienId = await CreateSellingLienAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await db.Liens.FindAsync(lienId);
+            lien!.AttachCase(SeedHelper.CaseId, SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management")
+        {
+            Content = JsonContent.Create(new { reason = "Retained internally" }),
+        };
+        request.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await db.Liens.FindAsync(lienId);
+            lien!.CaseId.Should().Be(SeedHelper.CaseId);
+            lien.SellingCaseId.Should().Be(SeedHelper.CaseId);
+            lien.MovedToManagementAtUtc.Should().NotBeNull();
+            lien.SellerStatus.Should().Be(SellingLienStatus.Internal);
+            lien.Status.Should().Be(LienStatus.Draft);
+            db.LienStatusHistories.Should().Contain(item => item.LienId == lienId && item.Description!.Contains("moved to management", StringComparison.OrdinalIgnoreCase));
+        }
+
+        var managementResponse = await _client.GetAsync($"/api/liens/liens/{lienId}");
+        managementResponse.EnsureSuccessStatusCode();
+        using var managementJson = JsonDocument.Parse(await managementResponse.Content.ReadAsStringAsync());
+        managementJson.RootElement.GetProperty("caseId").GetGuid().Should().Be(SeedHelper.CaseId);
+        managementJson.RootElement.GetProperty("sellingCaseId").GetGuid().Should().Be(SeedHelper.CaseId);
+        managementJson.RootElement.GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Internal);
+    }
+
+    [Fact]
+    public async Task Move_to_management_rejects_a_submitted_lien_until_it_is_withdrawn()
+    {
+        var lienId = await CreateSellingLienAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await db.Liens.FindAsync(lienId);
+            lien!.ListForSale(1000m, SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management")
+        {
+            Content = JsonContent.Create(new { reason = "Must withdraw first" }),
+        };
+        request.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict, await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Move_to_management_rejects_a_lien_without_a_case()
+    {
+        var lienId = await CreateSellingLienAsync();
+        using var move = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management")
+        {
+            Content = JsonContent.Create(new { reason = "No case" }),
+        };
+        move.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        (await _client.SendAsync(move)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await db.Liens.FindAsync(lienId);
+            lien!.SellingCaseId.Should().BeNull();
+            lien.MovedToManagementAtUtc.Should().BeNull();
+        }
+    }
+
+    [Fact]
+    public async Task Move_to_management_rejects_draft_liens_with_non_intake_seller_statuses()
+    {
+        var lienId = await CreateSellingLienAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await db.Liens.FindAsync(lienId);
+            lien!.AttachCase(SeedHelper.CaseId, SeedHelper.UserId);
+            lien!.UpdateSellingAnalyticsFields(SeedHelper.UserId, sellerStatus: SellingLienStatus.PreparedForSale);
+            await db.SaveChangesAsync();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management")
+        {
+            Content = JsonContent.Create(new { reason = "Invalid seller status" }),
+        };
+        request.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+
+        (await _client.SendAsync(request)).StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task Move_to_management_replays_the_same_idempotent_request()
+    {
+        var lienId = await CreateSellingLienAsync();
+        var key = Guid.CreateVersion7().ToString();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await db.Liens.FindAsync(lienId);
+            lien!.AttachCase(SeedHelper.CaseId, SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+        var payload = new { reason = "Retained internally" };
+
+        foreach (var _ in Enumerable.Range(0, 2))
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management")
+            {
+                Content = JsonContent.Create(payload),
+            };
+            request.Headers.Add("Idempotency-Key", key);
+            (await _client.SendAsync(request)).EnsureSuccessStatusCode();
+        }
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var reloadedLien = await verificationDb.Liens.FindAsync(lienId);
+        reloadedLien!.CaseId.Should().Be(SeedHelper.CaseId);
+        reloadedLien.SellingCaseId.Should().Be(SeedHelper.CaseId);
+        verificationDb.LienStatusHistories.Count(item => item.LienId == lienId && item.Description!.Contains("moved to management", StringComparison.OrdinalIgnoreCase)).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Move_to_management_rejects_a_lien_case_owned_by_another_organization()
+    {
+        var lienId = await CreateSellingLienAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var externalCase = Case.Create(
+                SeedHelper.TenantId, Guid.CreateVersion7(), "OTHER-1001", "Other", "Client", SeedHelper.UserId);
+            db.Cases.Add(externalCase);
+            var lien = await db.Liens.FindAsync(lienId);
+            lien!.AttachCase(externalCase.Id, SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management")
+        {
+            Content = JsonContent.Create(new { reason = "Invalid case organization" }),
+        };
+        request.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+
+        (await _client.SendAsync(request)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     private async Task<Guid> PrepareSellingLienAsync(Guid buyerCompanyId, Guid buyerContactId, string? messageToBuyer = null)
     {
         var lienId = await CreateSellingLienAsync();

@@ -633,6 +633,33 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task AddLiens_rejects_a_lien_moved_to_management()
+    {
+        var portfolio = await CreatePortfolioAsync();
+        var (caseId, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await db.Liens.FindAsync(lienId);
+            lien!.MoveToInternalManagement(SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/portfolios/{portfolio.Id}/liens",
+            new AddSellingPortfolioLiensRequest { LienIds = [lienId] });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<AddSellingPortfolioLiensResponse>();
+        body!.AddedCount.Should().Be(0);
+        body.Results.Should().ContainSingle(result =>
+            result.LienId == lienId && !result.Success && result.ReasonCode == "LIEN_MOVED_TO_MANAGEMENT");
+    }
+
+    [Fact]
     public async Task AddLiens_returns_specific_messages_for_balance_and_written_off_rules()
     {
         var portfolio = await CreatePortfolioAsync();

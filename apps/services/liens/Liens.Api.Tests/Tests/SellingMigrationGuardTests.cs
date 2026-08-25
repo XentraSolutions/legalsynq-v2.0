@@ -93,6 +93,21 @@ public sealed class SellingMigrationGuardTests
                 typeof(AddCasePaymentLedgerFields),
                 typeof(AddWeeklyAgingReportIndex),
                 typeof(AddLegacyReportParityFields),
-                typeof(AddLienImportedCreatedByName));
+                typeof(AddLienImportedCreatedByName),
+                typeof(AddLienSellingCaseReference));
+    }
+
+    [Fact]
+    public void Selling_case_reference_migration_uses_restart_safe_mysql_guards()
+    {
+        var migration = new AddLienSellingCaseReference();
+
+        migration.UpOperations.Should().OnlyContain(operation => operation is SqlOperation);
+        var sql = string.Join(Environment.NewLine, migration.UpOperations.Cast<SqlOperation>().Select(operation => operation.Sql));
+
+        sql.Should().Contain("COLUMN_NAME = 'SellingCaseId'");
+        sql.Should().Contain("COLUMN_NAME = 'MovedToManagementAtUtc'");
+        sql.Should().Contain("IX_Liens_SellingCaseId");
+        sql.Should().Contain("FK_liens_Liens_liens_Cases_SellingCaseId");
     }
 }
