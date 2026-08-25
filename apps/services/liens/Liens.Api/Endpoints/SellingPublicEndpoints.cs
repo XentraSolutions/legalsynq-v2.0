@@ -1953,9 +1953,16 @@ public static class SellingPublicEndpoints
                     legacyContact.LastName);
         }
 
-        var sellerContacts = await db.Contacts
+        var sellerContacts = await db.CompanyContactPersons
             .AsNoTracking()
-            .Where(c => c.TenantId == accessLink.TenantId && c.OrgId == accessLink.SellerOrgId && c.IsActive)
+            .Include(c => c.Company)
+                .ThenInclude(c => c!.CompanyType)
+            .Include(c => c.ContactPersonType)
+            .Where(c => c.TenantId == accessLink.TenantId &&
+                c.Company!.TenantId == accessLink.TenantId &&
+                c.Company.OrgId == accessLink.SellerOrgId &&
+                c.Company.IsActive &&
+                c.IsActive)
             .ToListAsync(ct);
 
         var sellerContact = SelectSellerContact(sellerContacts);
@@ -2407,20 +2414,18 @@ public static class SellingPublicEndpoints
             new PublicBuyerPortalErrorResponse(new PublicBuyerPortalError(code, title, message)),
             statusCode: statusCode);
 
-    private static Contact? SelectSellerContact(IReadOnlyList<Contact> contacts)
+    private static CompanyContactPerson? SelectSellerContact(IReadOnlyList<CompanyContactPerson> contacts)
     {
         var orderedContacts = OrderSellerContacts(contacts);
-        return orderedContacts.FirstOrDefault(c =>
-               string.Equals(c.ContactType, ContactType.LawFirm, StringComparison.Ordinal) &&
-               string.IsNullOrWhiteSpace(c.ContactSubtype) &&
-               !string.IsNullOrWhiteSpace(c.Email))
-           ?? orderedContacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email))
+        return orderedContacts.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c.Email))
            ?? orderedContacts.FirstOrDefault();
     }
 
-    private static IReadOnlyList<Contact> OrderSellerContacts(IReadOnlyList<Contact> contacts)
+    private static IReadOnlyList<CompanyContactPerson> OrderSellerContacts(IReadOnlyList<CompanyContactPerson> contacts)
         => contacts
-            .OrderBy(c => c.DisplayName)
+            .OrderBy(c => c.Company?.Name ?? string.Empty)
+            .ThenBy(c => c.LastName)
+            .ThenBy(c => c.FirstName)
             .ThenBy(c => c.Email ?? string.Empty)
             .ThenBy(c => c.Id)
             .ToList();
@@ -2632,7 +2637,7 @@ public static class SellingPublicEndpoints
         Lien Lien,
         Case? Case,
         PublicBuyerContact? BuyerContact,
-        Contact? SellerContact,
+        CompanyContactPerson? SellerContact,
         SellerOrganizationDisplay SellerDisplay,
         Contact? HandlingLawFirmContact,
         string? CaseManager,

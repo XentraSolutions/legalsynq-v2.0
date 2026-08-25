@@ -3899,18 +3899,17 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         var effectiveBuyerOrgId = buyerOrgId ?? SeedHelper.FundingCompanyId;
 
-        if (sellerEmail is null)
+        foreach (var contact in db.CompanyContactPersons.Where(c =>
+                     c.TenantId == SeedHelper.TenantId &&
+                     c.Company != null &&
+                     c.Company.OrgId == SeedHelper.OrgId &&
+                     c.Company.IsActive &&
+                     c.IsActive))
         {
-            foreach (var contact in db.Contacts.Where(c =>
-                         c.TenantId == SeedHelper.TenantId &&
-                         c.OrgId == SeedHelper.OrgId &&
-                         c.Email != null &&
-                         c.IsActive))
-            {
-                contact.Deactivate(SeedHelper.UserId);
-            }
+            contact.Deactivate(SeedHelper.UserId);
         }
-        else
+
+        if (sellerEmail is not null)
         {
             foreach (var contact in db.Contacts.Where(c =>
                          c.TenantId == SeedHelper.TenantId &&
@@ -3946,6 +3945,38 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
                     organization: fallbackSellerOrganization));
             }
         }
+
+        var sellerCompanyName = new[] { sellerOrganization, fallbackSellerOrganization, "Seller Company" }
+            .First(value => !string.IsNullOrWhiteSpace(value))!
+            .Trim();
+        var normalizedSellerCompanyName = Company.NormalizeName(sellerCompanyName);
+        var sellerCompany = db.Companies.FirstOrDefault(company =>
+            company.TenantId == SeedHelper.TenantId &&
+            company.OrgId == SeedHelper.OrgId &&
+            company.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId &&
+            company.NormalizedName == normalizedSellerCompanyName);
+        if (sellerCompany is null)
+        {
+            sellerCompany = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.LawFirmId,
+                sellerCompanyName,
+                SeedHelper.UserId);
+            db.Companies.Add(sellerCompany);
+        }
+
+        var sellerCompanyContact = CompanyContactPerson.Create(
+            SeedHelper.TenantId,
+            sellerCompany.Id,
+            Guid.Parse("20000000-0000-0000-0000-000000000007"),
+            sellerFirstName,
+            sellerLastName,
+            SeedHelper.UserId,
+            email: sellerEmail);
+        if (sellerContactId.HasValue)
+            SetId(sellerCompanyContact, sellerContactId.Value);
+        db.CompanyContactPersons.Add(sellerCompanyContact);
 
         if (handlingLawFirmContactId.HasValue)
         {

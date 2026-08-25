@@ -60,6 +60,42 @@ public sealed class SellerOrganizationDisplayResolver : ISellerOrganizationDispl
         return new SellerOrganizationDisplay(name, company, email);
     }
 
+    public async Task<SellerOrganizationDisplay> ResolveAsync(
+        Guid tenantId,
+        Guid sellerOrgId,
+        IReadOnlyList<CompanyContactPerson> sellerContacts,
+        Guid? sellerUserId = null,
+        string? fallbackEmail = null,
+        bool includeIdentityOwnerEmailFallback = false,
+        CancellationToken ct = default)
+    {
+        var identityUserDisplay = await ResolveIdentityUserDisplayAsync(tenantId, sellerOrgId, sellerUserId, ct);
+        var identityOwnerDisplay = await ResolveIdentityTenantOwnerDisplayAsync(tenantId, sellerOrgId, ct);
+        var identityOrganizationName = FirstNonEmpty(
+            identityOwnerDisplay?.OrganizationDisplayName,
+            identityOwnerDisplay?.OrganizationName)
+            ?? await ResolveIdentityOrganizationNameAsync(sellerOrgId, ct);
+        var localOrganizationName = ResolveLocalSellerOrganizationName(sellerContacts);
+        var company = FirstNonEmpty(
+            identityOrganizationName,
+            localOrganizationName,
+            "Seller company unavailable")!;
+        var name = FirstNonEmpty(
+            ResolvePersonName(identityUserDisplay?.FirstName, identityUserDisplay?.LastName),
+            identityUserDisplay?.DisplayName,
+            ResolvePersonName(identityOwnerDisplay?.FirstName, identityOwnerDisplay?.LastName),
+            identityOwnerDisplay?.DisplayName,
+            identityOrganizationName,
+            localOrganizationName,
+            "Seller unavailable")!;
+        var email = FirstNonEmpty(
+            fallbackEmail,
+            identityUserDisplay?.Email,
+            includeIdentityOwnerEmailFallback ? identityOwnerDisplay?.Email : null);
+
+        return new SellerOrganizationDisplay(name, company, email);
+    }
+
     private async Task<IdentityUserDisplayResponse?> ResolveIdentityUserDisplayAsync(
         Guid tenantId,
         Guid sellerOrgId,
@@ -238,6 +274,17 @@ public sealed class SellerOrganizationDisplayResolver : ISellerOrganizationDispl
                 !string.IsNullOrWhiteSpace(contact.DisplayName))?.DisplayName);
     }
 
+    private static string? ResolveLocalSellerOrganizationName(IReadOnlyList<CompanyContactPerson> contacts)
+    {
+        var orderedContacts = OrderSellerContacts(contacts);
+        return FirstNonEmpty(
+            orderedContacts.FirstOrDefault(contact =>
+                !string.IsNullOrWhiteSpace(contact.Company?.Name))?.Company?.Name,
+            orderedContacts.FirstOrDefault(contact =>
+                !string.IsNullOrWhiteSpace(contact.Email))?.Company?.Name,
+            orderedContacts.FirstOrDefault()?.Company?.Name);
+    }
+
     private static bool IsPreferredSellerOrganizationContact(Contact contact)
         => !IsExcludedSellerDisplayContact(contact) &&
            !string.IsNullOrWhiteSpace(contact.Organization) &&
@@ -256,6 +303,15 @@ public sealed class SellerOrganizationDisplayResolver : ISellerOrganizationDispl
             .OrderBy(contact => SellerOrganizationContactRank(contact))
             .ThenBy(contact => contact.Organization ?? string.Empty)
             .ThenBy(contact => contact.DisplayName)
+            .ThenBy(contact => contact.Email ?? string.Empty)
+            .ThenBy(contact => contact.Id)
+            .ToList();
+
+    private static IReadOnlyList<CompanyContactPerson> OrderSellerContacts(IReadOnlyList<CompanyContactPerson> contacts)
+        => contacts
+            .OrderBy(contact => contact.Company?.Name ?? string.Empty)
+            .ThenBy(contact => contact.LastName)
+            .ThenBy(contact => contact.FirstName)
             .ThenBy(contact => contact.Email ?? string.Empty)
             .ThenBy(contact => contact.Id)
             .ToList();

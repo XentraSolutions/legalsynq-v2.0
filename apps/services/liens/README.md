@@ -315,8 +315,9 @@ seller email uses matching branded copy with buyer/funding-company information a
 buyer-facing seller name is resolved from the Identity user who confirmed/submitted the offer
 (`SellingBuyerAccessLinks.CreatedByUserId` / confirm-sale acting user -> `idt_Users.FirstName` + `LastName`), scoped to
 the seller organization when Identity validates membership. Seller
-company is resolved from the selling organization (`sellerOrgId`) through Identity, with fallback only to non-law-firm
-and non-case-manager contacts in that seller organization. Handling law firm and case manager remain case/asset details.
+company is resolved from the selling organization (`sellerOrgId`) through Identity, with fallback to active
+`liens_CompanyContactPersons` joined through active `liens_Companies` in that seller organization. Confirm-sale requires
+at least one active seller Company Directory contact person before notification links and emails are created. Handling law firm and case manager remain case/asset details.
 The public-link JSON and authenticated funding-company dashboard, offered-liens list, and detail views use the same
 seller-user and seller-organization resolver, so the email CTA and logged-in views do not select different seller
 information for the same offer. In buyer and seller notification Asset Overview sections, Contact Person, Email Address,

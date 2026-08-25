@@ -277,6 +277,29 @@ public sealed class CompanyRepository : ICompanyRepository
         return query.OrderBy(value => value.LastName).ThenBy(value => value.FirstName).ToListAsync(ct);
     }
 
+    public Task<List<CompanyContactPerson>> GetContactPersonsByOrgIdAsync(
+        Guid tenantId, Guid orgId, bool? isActive, CancellationToken ct = default)
+    {
+        var query = _db.CompanyContactPersons.AsNoTracking()
+            .Include(value => value.Company)
+                .ThenInclude(value => value!.CompanyType)
+            .Include(value => value.ContactPersonType)
+            .Where(value => value.TenantId == tenantId &&
+                value.Company!.TenantId == tenantId &&
+                value.Company.OrgId == orgId &&
+                value.Company.IsActive);
+
+        if (isActive.HasValue)
+            query = query.Where(value => value.IsActive == isActive.Value);
+
+        return query
+            .OrderBy(value => value.Company!.Name)
+            .ThenBy(value => value.LastName)
+            .ThenBy(value => value.FirstName)
+            .ThenBy(value => value.Id)
+            .ToListAsync(ct);
+    }
+
     public async Task<(List<CompanyContactPerson> Items, int TotalCount)> SearchContactPersonsAsync(
         Guid tenantId, Guid orgId, string? search, Guid? companyTypeId,
         Guid? contactPersonTypeId, bool? isActive, int page, int pageSize,
