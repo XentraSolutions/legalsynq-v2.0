@@ -19,6 +19,7 @@ import {
 } from "@/lib/selling/selling-detail.mapper";
 import { useLienDocuments, useSaveLienDocuments } from "@/lib/selling/use-lien-documents";
 import { useLienActivity } from "@/lib/selling/use-lien-activity";
+import { PaymentTab } from "./lien-detail/payment-tab";
 import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
 import { toast } from "sonner";
 import { Tabs } from "@/components/selling/tabs";
@@ -36,6 +37,7 @@ const BASE_PATH = "/selling/portfolio";
 const TABS = [
   { key: "details", label: "Details" },
   { key: "documents", label: "Documents" },
+  { key: "payment", label: "Payment" },
   { key: "activity", label: "Activity" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
@@ -170,6 +172,7 @@ export function PortfolioDetailPanel({
         </>
       )}
       {activeTab === "documents" && <DocumentsTab lien={lien} />}
+      {activeTab === "payment" && <PaymentTab lien={lien} />}
       {activeTab === "activity" && <ActivityTab lienId={lien.lienId} />}
 
       {editModal === "medical-pricing" && (
