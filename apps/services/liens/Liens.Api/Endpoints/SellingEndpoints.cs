@@ -988,7 +988,7 @@ public static class SellingEndpoints
             .Select(item => FundingCompanySaleDocumentMapper.Map(item, documentCategoryNames))
             .Where(document => document is not null)
             .Select(document => MapBuyerOfferedLienDocument(document!, accessLinkId))
-            .DistinctBy(document => document.FileName, StringComparer.OrdinalIgnoreCase)
+            .DistinctBy(document => document.Id)
             .ToList();
     }
 
