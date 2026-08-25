@@ -52,6 +52,9 @@ public sealed class SettlementPaymentDetailResponse
     public string?  CheckNumber   { get; init; }
     public string?  Note          { get; init; }
     public string?  PaymentMethod { get; init; }
+    public Guid?    ReceiptId     { get; init; }
+    public string   PostingStatus { get; init; } = "Posted";
+    public string?  DetailsContext { get; init; }
     public string?  SettlementTypeId { get; init; }
     public string?  SettlementStatusId { get; init; }
     public decimal? NetProfit     { get; init; }
@@ -91,6 +94,7 @@ public sealed class UpdateSettlementPaymentDetailRequest
     public required DateOnly PaymentDate      { get; init; }
     public string? PaymentMethod    { get; init; }
     public string? ReferenceNumber  { get; init; }
+    public string? DetailsContext   { get; init; }
     public string? Notes            { get; init; }
     public string? SettlementType   { get; init; }
     public string? SettlementStatus { get; init; }

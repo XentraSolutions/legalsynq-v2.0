@@ -231,6 +231,7 @@ Canonical product codes are defined in `shared/building-blocks/BuildingBlocks/Au
 | `SYNQ_PAY` | SynqPay |
 | `SYNQ_INSIGHTS` | SynqInsights |
 | `SYNQ_COMMS` | SynqComms |
+| `SYNQ_SELLING` | Synq Selling |
 | `SYNQ_AI` | Xenia / SynqAI |
 | `SYNQ_PLATFORM` | Platform pseudo-product for tenant permissions |
 

@@ -506,6 +506,7 @@ public sealed class LienService : ILienService
             TotalBilling = null,
             IsBulk = entity.IsBulk,
             IsServicing = entity.IsServicing,
+            ImportedCreatedByName = entity.ImportedCreatedByName,
             Description = entity.Description,
             OpenedAtUtc = entity.OpenedAtUtc,
             ClosedAtUtc = entity.ClosedAtUtc,

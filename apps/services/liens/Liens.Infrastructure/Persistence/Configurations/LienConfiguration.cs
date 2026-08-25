@@ -95,6 +95,9 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
         builder.Property(l => l.IsServicing)
             .HasMaxLength(10);
 
+        builder.Property(l => l.ImportedCreatedByName)
+            .HasMaxLength(100);
+
         builder.Property(l => l.OpenedAtUtc);
         builder.Property(l => l.ClosedAtUtc);
 

@@ -2028,6 +2028,36 @@ same lien.
 
 Base path: `/api/liens/settlement/payments`
 
+### Canonical case payment ledger
+
+The tenant portal Payments tab uses `GET` and `POST /api/liens/cases/{caseId}/payments` and
+`POST /api/liens/cases/{caseId}/payments/{paymentId}/void`.
+
+- `GET` requires `SYNQ_LIENS.lien:read`. Query parameters are `search`, `paymentMethod`,
+  `postingStatus`, `sortBy` (`paymentDate`, `paymentMethod`, or `amount`), `sortDirection`,
+  `page`, and `pageSize` (maximum 100). The response contains `summary`, `items`, `page`,
+  `pageSize`, and `totalCount`. Summary totals are calculated independently of the page and
+  include posted rows only. Lien selling amount uses `PurchasePrice`, then `AskAmount`, then
+  `OriginalAmount`; lien aging uses the earliest persisted `ReceivableDueDate` and is null when
+  no linked lien has one.
+- `POST /api/liens/cases/{caseId}/payments` requires `SYNQ_LIENS.lien:settle` and an
+  `Idempotency-Key` header. The body requires positive `amount`, `paymentDate`,
+  `paymentMethod`, `referenceNumber`, and one or more unique `allocations` containing `lienId`
+  and positive `amount`. Allocation totals must equal the payment amount and cannot exceed any
+  lien's outstanding selling balance. `detailsContext`, `notes`, `settlementType`,
+  `settlementStatus`, and `lienStatus` are optional. All allocation rows share one `receiptId`
+  and payment number and are written in one transaction with any requested lien-status changes
+  and audit event.
+- `POST /api/liens/cases/{caseId}/payments/{paymentId}/void` requires
+  `SYNQ_LIENS.lien:settle`, `Idempotency-Key`, and `{ "reason": "..." }`. It marks every
+  allocation sharing the selected payment's receipt as `Voided`; the original rows remain in
+  history and no longer contribute to posted totals. Repeating a completed request with the same
+  key and body replays its response; reusing a key with a different body returns `409`.
+
+The older settlement payment routes remain available for compatibility. New case-payment UI
+writes must use the canonical case-scoped route so multi-lien allocation and status changes are
+atomic.
+
 ### POST `/service/update-liens-status`
 
 Legacy servicing endpoint for closing one or more selected liens and declaring No Recovery. `caseId`,
@@ -2063,6 +2093,7 @@ All fields are required. Unknown JSON fields are rejected with `400 Bad Request`
 | `paymentDate` | `date` | Payment date in `YYYY-MM-DD` format |
 | `paymentMethod` | `string` | Nonblank payment method, such as `Check` |
 | `referenceNumber` | `string` | Nonblank check or external payment reference number; maximum 100 characters |
+| `detailsContext` | `string` | Optional payment context; maximum 300 characters |
 | `notes` | `string` | User-visible payment note; must be present and non-null but may be empty |
 | `settlementType` | `string` | Nonblank settlement source, such as `by_funding_company` |
 | `settlementStatus` | `string` | Nonblank payment outcome, such as `full_payment` |
@@ -2083,7 +2114,7 @@ All fields are required. Unknown JSON fields are rejected with `400 Bad Request`
 
 **Response:** `200 OK` — `SettlementPaymentDetailResponse`
 
-The response returns the immutable payment identity and linkage, the updated amount/date/reference/note, `paymentMethod`, `settlementTypeId`, `settlementStatusId`, and audit fields. Settlement classification remains stored in the existing payment metadata representation; unrelated metadata is preserved. The payment update and linked-lien status change commit atomically.
+The response returns the immutable payment identity and linkage, the updated amount/date/reference/note, `paymentMethod`, `settlementTypeId`, `settlementStatusId`, and audit fields. Current rows use first-class classification columns while preserved legacy metadata remains readable; unrelated legacy metadata is preserved. The payment update and linked-lien status change commit atomically.
 
 Because payment method and settlement classifications use the legacy metadata representation, `paymentMethod`, `settlementType`, and `settlementStatus` reject `;`, `=`, CR/LF, and the `[legacy-meta]` marker. `notes` rejects the exact `[legacy-meta]` marker but otherwise permits normal punctuation, including semicolons and equals signs.
 
@@ -2336,6 +2367,119 @@ Exports all rows matching `noteType` and the requested ordering; `page` and `lim
 
 CSV generation stops at 10 MiB and returns `400 validation_error` rather than materializing an unbounded export. Export uses the same tenant-scoped unreconciled-target exclusion and additive completeness fields as preview, so eligible native and reconciled rows are exported without silently including stale legacy classifications.
 
+### GET `/api/liens/reports/weekly-aging`
+
+Returns a paged weekly aging report for liens accepted by a buyer. The report is tenant-safe and restricted to buyer access links whose `SellerOrgId` matches the authenticated organization. It requires authenticated SynqLien product access, sell mode, and `SYNQ_LIENS.lien_sale:view_analytics`. Responses use `Cache-Control: no-store`.
+
+Query parameters:
+
+- `asOfDate`: optional ISO `yyyy-MM-dd`; defaults to the current UTC date.
+- `page`: optional, defaults to `1`, and must be at least `1`.
+- `pageSize`: optional, defaults to `50`, and must be between `1` and `100`.
+
+The earliest accepted `SellingBuyerAccessLink.RespondedAtUtc` anchors each lien's age. Acceptance day is day 1. The weekly columns are inclusive days 1-7, 8-14, 15-21, 22-28, and more than 28. Future and declined responses are excluded. The amount is the accepted buyer response amount, and each row places that amount in exactly one aging column. `summaryTotals` contains totals for the full matching result set, independent of pagination. Rows are ordered oldest acceptance first, then by lien code and lien ID.
+
+```json
+{
+  "isSuccess": true,
+  "message": "Weekly aging report generated.",
+  "asOfDate": "2026-08-25",
+  "currency": "USD",
+  "page": 1,
+  "pageSize": 50,
+  "totalCount": 1,
+  "totalPages": 1,
+  "summaryTotals": {
+    "totalLiens": 1,
+    "days1To7": 7500.00,
+    "days8To14": 0.00,
+    "days15To21": 0.00,
+    "days22To28": 0.00,
+    "moreThan28": 0.00,
+    "totalAmount": 7500.00
+  },
+  "data": [
+    {
+      "lienCode": "LIEN-2026-001",
+      "fundingCompany": "Atlas Funding",
+      "days1To7": 7500.00,
+      "days8To14": 0.00,
+      "days15To21": 0.00,
+      "days22To28": 0.00,
+      "moreThan28": 0.00,
+      "totalAmount": 7500.00
+    }
+  ]
+}
+```
+
+`summaryTotals` always covers the complete matching result set, including when a later page is empty. Invalid dates or pagination return `400`; missing authentication or required access returns `401` or `403`.
+
+### GET `/api/liens/reports/monthly-aging`
+
+Returns the same buyer-accepted lien population, funding-company resolution, ordering, authorization, query parameters, pagination metadata, and `Cache-Control: no-store` behavior as the weekly aging endpoint. The monthly columns are inclusive days 1-30, 31-60, 61-90, 91-120, and more than 120. Each row contains `lienCode`, `fundingCompany`, the five monthly amount columns, and `totalAmount`; `summaryTotals` contains the full-result total for every column.
+
+```json
+{
+  "isSuccess": true,
+  "message": "Monthly aging report generated.",
+  "asOfDate": "2026-08-25",
+  "currency": "USD",
+  "page": 1,
+  "pageSize": 50,
+  "totalCount": 1,
+  "totalPages": 1,
+  "summaryTotals": {
+    "totalLiens": 1,
+    "days1To30": 7500.00,
+    "days31To60": 0.00,
+    "days61To90": 0.00,
+    "days91To120": 0.00,
+    "moreThan120": 0.00,
+    "totalAmount": 7500.00
+  },
+  "data": [
+    {
+      "lienCode": "LIEN-2026-001",
+      "fundingCompany": "Atlas Funding",
+      "days1To30": 7500.00,
+      "days31To60": 0.00,
+      "days61To90": 0.00,
+      "days91To120": 0.00,
+      "moreThan120": 0.00,
+      "totalAmount": 7500.00
+    }
+  ]
+}
+```
+
+### GET `/api/liens/reports/weekly-aging-detail`
+
+Returns the same seller-scoped accepted-lien population, authorization behavior, ordering, and pagination metadata as `GET /api/liens/reports/weekly-aging`. Each item contains only the report's requested detail columns. `fundingCompany` uses the canonical buyer company name when available and otherwise falls back to the legacy buyer contact's organization or display name. `amount` is the accepted buyer response amount. `agingBucket` is the lien's exact age in days, where acceptance day is day 1.
+
+```json
+{
+  "isSuccess": true,
+  "message": "Weekly aging detail report generated.",
+  "asOfDate": "2026-08-25",
+  "currency": "USD",
+  "page": 1,
+  "pageSize": 50,
+  "totalCount": 1,
+  "totalPages": 1,
+  "data": [
+    {
+      "lienCode": "LIEN-2026-001",
+      "fundingCompany": "Atlas Funding",
+      "amount": 7500.00,
+      "agingBucket": 4
+    }
+  ]
+}
+```
+
+The endpoint accepts the same optional `asOfDate`, `page`, and `pageSize` query parameters as the weekly aging report and returns `Cache-Control: no-store`.
+
 ### POST `/api/liens/reports/auto-generated/{reportId}/execute`
 
 Executes the tenant-scoped stored report using its saved report date. The compatibility alias is `POST /report/auto-generated/{reportId}/execute`. No request body is required.
@@ -2435,3 +2579,5 @@ The existing compatibility keys have these Tracking Notes definitions:
 Feed, internal, system/history, deleted, blank, and cross-tenant notes are excluded. `POST /report/diy` and its canonical `/api/liens/reports/diy/run` route return the same aggregated value. Both DIY export routes quote the multiline field in the Base64-encoded CSV, so every Tracking Note is retained.
 
 The distinct Case Update fields use the newest active Case Activity row for the tenant. `last_case_tracking_note` is exposed as `Last Activity` and contains its normalized Description; `last_case_tracking_date` is exposed as `Last Activity Date` and contains its Pacific-time Timestamp in `MM/dd/yyyy hh:mm tt` format. Eligible rows match the Case Activity table (`Case Created` and internal Case Details Update entries), equal timestamps use descending activity ID, and preview and CSV export use the same mapping.
+
+Legacy parity values are populated canonical-first. Typed case fields supply plaintiff address components, state of incident, medical status, tracking follow-up date, minor-comp and dropped-case flags, and imported creator. A canonical attorney contact-person link is used when present; migrated legacy attorney IDs are resolved from guarded `SL_CASE_MANAGER` crosswalk metadata. Tenant-scoped canonical company/contact/facility data supplies law-firm, case-manager, attorney, provider, and facility values; preserved legacy note metadata is only a fallback for older rows. `last_activity` and `last_activity_date` are compatibility aliases for `last_case_tracking_note` and `last_case_tracking_date`.

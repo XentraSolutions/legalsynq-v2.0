@@ -7,6 +7,7 @@ using Liens.Application.Repositories;
 using Liens.Application.Services;
 using Liens.Api;
 using Liens.Domain;
+using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Api.Serialization;
 using Liens.Infrastructure.Persistence;
@@ -43,6 +44,7 @@ public static class CaseEndpoints
     private sealed record LegacyCaseCsvSource(
         Guid OrgId,
         string? Notes,
+        string? ImportedCreatedByName,
         Guid? CreatedByUserId,
         Guid? UpdatedByUserId);
 
@@ -1117,7 +1119,7 @@ public static class CaseEndpoints
             phone = infoFields.GetValueOrDefault("phone", string.Empty),
             medicalProviderId = infoFields.GetValueOrDefault("medicalProviderId", string.Empty),
             created = FormatLegacyTimestamp(lien.CreatedAtUtc),
-            createdBy = string.Empty,
+            createdBy = lien.ImportedCreatedByName ?? string.Empty,
             updated = FormatLegacyTimestamp(lien.UpdatedAtUtc),
             updatedBy = string.Empty,
         };
@@ -4086,6 +4088,7 @@ public static class CaseEndpoints
                     Source = new LegacyCaseCsvSource(
                         item.OrgId,
                         item.Notes,
+                        item.ImportedCreatedByName,
                         item.CreatedByUserId,
                         item.UpdatedByUserId),
                 })
@@ -4152,7 +4155,9 @@ public static class CaseEndpoints
                     fields,
                     lawFirm,
                     caseManager,
-                    ResolveLegacyCsvUser(source?.CreatedByUserId, contactsById),
+                    FirstNonEmpty(
+                        ResolveLegacyCsvUser(source?.CreatedByUserId, contactsById),
+                        source?.ImportedCreatedByName) ?? string.Empty,
                     ResolveLegacyCsvUser(source?.UpdatedByUserId, contactsById));
             });
 
@@ -4325,6 +4330,7 @@ public static class CaseEndpoints
         ILienService lienService,
         ICaseService caseService,
         IServicingItemService servicingItemService,
+        LiensDbContext db,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -4334,11 +4340,17 @@ public static class CaseEndpoints
         {
             var caseIdFilter = ParseGuidCsvValues(request.caseId);
             var lienIdFilter = ParseGuidCsvValues(request.liensId);
-            var facilityIdFilter = ParseGuidCsvValues(request.medicalFacilityId);
+            var lawFirmIdFilter = ParseStringCsvValues(request.lawFirmId);
+            var facilityIdFilter = ParseStringCsvValues(request.medicalFacilityId);
+            var caseManagerIdFilter = ParseStringCsvValues(request.caseManagerId);
             var lienStatusFilter = (request.lienStatusId ?? string.Empty)
                 .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var expandedLienStatusFilter = LienStatus.ExpandFilterValues(lienStatusFilter);
+            var expandedLienStatusFilter = await LienEndpoints.ResolveLienStatusCodesAsync(
+                db,
+                tenantId,
+                lienStatusFilter,
+                ct);
 
             var allLiens = new List<LienResponse>();
             const int pageSize = 200;
@@ -4347,15 +4359,14 @@ public static class CaseEndpoints
             while (true)
             {
                 var seededCaseId = caseIdFilter.Count == 1 ? caseIdFilter.First() : (Guid?)null;
-                var seededFacilityId = facilityIdFilter.Count == 1 ? facilityIdFilter.First() : (Guid?)null;
 
                 var result = await lienService.SearchAsync(
                     tenantId,
                     search: request.keyword,
-                    status: request.lienStatusId,
+                    status: null,
                     lienType: null,
                     caseId: seededCaseId,
-                    facilityId: seededFacilityId,
+                    facilityId: null,
                     page: page,
                     pageSize: pageSize,
                     ct);
@@ -4370,46 +4381,31 @@ public static class CaseEndpoints
                 page++;
             }
 
-            var caseFilterRequested = !string.IsNullOrWhiteSpace(request.lawFirmId) ||
-                                      !string.IsNullOrWhiteSpace(request.caseManagerId);
-            var matchingCaseIds = new HashSet<Guid>();
-            if (caseFilterRequested)
+            var advancedFilterRowsByLienId = new Dictionary<Guid, LienEndpoints.AdvancedLienFilterRow>();
+            if (lawFirmIdFilter.Count > 0 || facilityIdFilter.Count > 0 || caseManagerIdFilter.Count > 0)
             {
-                var casePage = 1;
-                while (true)
-                {
-                    var result = await caseService.SearchV3Async(
-                        tenantId: tenantId,
-                        keyword: null,
-                        statusId: null,
-                        page: casePage,
-                        limit: 100,
-                        sortBy: null,
-                        sortDirection: null,
-                        caseManagerId: request.caseManagerId,
-                        lawFirmIds: request.lawFirmId,
-                        ct: ct);
-
-                    if (result.Items.Count == 0)
-                        break;
-
-                    foreach (var item in result.Items)
-                        matchingCaseIds.Add(item.Id);
-
-                    if (matchingCaseIds.Count >= result.TotalCount)
-                        break;
-
-                    casePage++;
-                }
+                var candidateLienIds = allLiens.Select(lien => lien.Id).ToList();
+                var candidateLiens = await db.Liens
+                    .AsNoTracking()
+                    .Where(lien => lien.TenantId == tenantId && candidateLienIds.Contains(lien.Id))
+                    .ToListAsync(ct);
+                var advancedFilterRows = await LienEndpoints.BuildAdvancedLienFilterRowsAsync(
+                    db,
+                    tenantId,
+                    candidateLiens,
+                    ct);
+                advancedFilterRowsByLienId = advancedFilterRows.ToDictionary(row => row.Lien.Id);
             }
 
             var filteredLiens = allLiens
                 .Where(l => string.IsNullOrWhiteSpace(request.caseId) ||
                             (l.CaseId.HasValue && caseIdFilter.Contains(l.CaseId.Value)))
                 .Where(l => string.IsNullOrWhiteSpace(request.liensId) || lienIdFilter.Contains(l.Id))
-                .Where(l => string.IsNullOrWhiteSpace(request.medicalFacilityId) ||
-                            (l.FacilityId.HasValue && facilityIdFilter.Contains(l.FacilityId.Value)))
-                .Where(l => !caseFilterRequested || (l.CaseId.HasValue && matchingCaseIds.Contains(l.CaseId.Value)))
+                .Where(l => MatchesAdvancedLienExportFilters(
+                    advancedFilterRowsByLienId.GetValueOrDefault(l.Id),
+                    lawFirmIdFilter,
+                    facilityIdFilter,
+                    caseManagerIdFilter))
                 .Where(l => expandedLienStatusFilter.Count == 0 || expandedLienStatusFilter.Contains(l.Status))
                 .Where(l => MatchesLegacyPurchaseDateFilter(ParseLegacyDate(l.PurchaseDate), request.purchaseDate))
                 .Where(l => MatchesLegacyDateFilter(
@@ -4650,6 +4646,31 @@ public static class CaseEndpoints
         }
 
         return set;
+    }
+
+    private static HashSet<string> ParseStringCsvValues(string? raw)
+        => string.IsNullOrWhiteSpace(raw)
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static bool MatchesAdvancedLienExportFilters(
+        LienEndpoints.AdvancedLienFilterRow? row,
+        HashSet<string> lawFirmIds,
+        HashSet<string> facilityIds,
+        HashSet<string> caseManagerIds)
+    {
+        if (lawFirmIds.Count == 0 && facilityIds.Count == 0 && caseManagerIds.Count == 0)
+            return true;
+
+        return row is not null &&
+               (lawFirmIds.Count == 0 ||
+                lawFirmIds.Contains(row.LawFirmId) ||
+                lawFirmIds.Contains(row.Lien.OrgId.ToString())) &&
+               (facilityIds.Count == 0 ||
+                facilityIds.Contains(row.FacilityFilterId) ||
+                (row.Lien.FacilityId.HasValue && facilityIds.Contains(row.Lien.FacilityId.Value.ToString()))) &&
+               (caseManagerIds.Count == 0 || caseManagerIds.Contains(row.CaseManagerId));
     }
 
     private static bool MatchesLegacyPurchaseDateFilter(DateOnly? value, string? rawFilter)
@@ -4896,7 +4917,9 @@ public static class CaseEndpoints
             isUccFiled = string.Empty,
             isBulk = string.Empty,
             accidentType = caseMetadata.GetValueOrDefault("accidentType", string.Empty),
-            accidentState = caseMetadata.GetValueOrDefault("accidentState", string.Empty),
+            accidentState = FirstNonEmpty(
+                item.StateOfIncident,
+                caseMetadata.GetValueOrDefault("accidentState", string.Empty)) ?? string.Empty,
             dateOfLoss = FormatLegacyDate(item.DateOfIncident),
             lawFirm = string.Empty,
             caseManager = string.Empty,
@@ -6296,6 +6319,7 @@ public static class CaseEndpoints
             TotalBilling = lien.TotalBilling,
             IsBulk = lien.IsBulk,
             IsServicing = lien.IsServicing,
+            ImportedCreatedByName = lien.ImportedCreatedByName,
             Description = lien.Description,
             OpenedAtUtc = lien.OpenedAtUtc,
             ClosedAtUtc = lien.ClosedAtUtc,
@@ -6840,7 +6864,8 @@ public static class CaseEndpoints
 
             var paymentAmountsByLienId = await db.SettlementPaymentDetails
                 .AsNoTracking()
-                .Where(payment => payment.TenantId == tenantId && !payment.IsDeleted)
+                .Where(payment => payment.TenantId == tenantId && !payment.IsDeleted &&
+                                  payment.PostingStatus != SettlementPaymentDetail.VoidedStatus)
                 .GroupBy(payment => payment.LienId)
                 .Select(group => new
                 {

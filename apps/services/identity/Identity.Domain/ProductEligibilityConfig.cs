@@ -6,6 +6,7 @@ public static class ProductCodes
     public const string SynqLiens = "SYNQ_LIENS";
     public const string SynqCareConnect = "SYNQ_CARECONNECT";
     public const string SynqPay = "SYNQ_PAY";
+    public const string SynqSelling = "SYNQ_SELLING";
     public const string SynqAI = "SYNQ_AI";
 }
 
@@ -14,11 +15,11 @@ public static class ProductEligibilityConfig
     private static readonly Dictionary<string, HashSet<string>> _orgTypeToProducts =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            [OrgType.LawFirm] = [ProductCodes.SynqCareConnect, ProductCodes.SynqFund, ProductCodes.SynqLiens, ProductCodes.SynqAI],
+            [OrgType.LawFirm] = [ProductCodes.SynqCareConnect, ProductCodes.SynqFund, ProductCodes.SynqLiens, ProductCodes.SynqSelling, ProductCodes.SynqAI],
             [OrgType.Provider] = [ProductCodes.SynqCareConnect, ProductCodes.SynqAI],
             [OrgType.Funder] = [ProductCodes.SynqFund, ProductCodes.SynqAI],
-            [OrgType.LienOwner] = [ProductCodes.SynqLiens, ProductCodes.SynqAI],
-            [OrgType.Internal] = [ProductCodes.SynqCareConnect, ProductCodes.SynqFund, ProductCodes.SynqLiens, ProductCodes.SynqPay, ProductCodes.SynqAI],
+            [OrgType.LienOwner] = [ProductCodes.SynqLiens, ProductCodes.SynqSelling, ProductCodes.SynqAI],
+            [OrgType.Internal] = [ProductCodes.SynqCareConnect, ProductCodes.SynqFund, ProductCodes.SynqLiens, ProductCodes.SynqPay, ProductCodes.SynqSelling, ProductCodes.SynqAI],
         };
 
     public static bool IsEligible(string orgType, string productCode)

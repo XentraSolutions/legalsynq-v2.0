@@ -107,6 +107,14 @@ public sealed class CompanyRepository : ICompanyRepository
         => _db.Companies.Include(value => value.CompanyType)
             .FirstOrDefaultAsync(value => value.TenantId == tenantId && value.OrgId == orgId && value.Id == id, ct);
 
+    public Task<List<Company>> GetCompaniesByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+        => ids.Count == 0
+            ? Task.FromResult(new List<Company>())
+            : _db.Companies.AsNoTracking()
+                .Where(value => value.TenantId == tenantId && ids.Contains(value.Id))
+                .ToListAsync(ct);
+
     public async Task<CompanyDetailsSnapshot> GetCompanyDetailsAsync(
         Guid tenantId, Guid orgId, Guid companyId, Guid companyTypeId,
         int page, int pageSize, CancellationToken ct = default)
@@ -381,6 +389,14 @@ public sealed class CompanyRepository : ICompanyRepository
             .Include(value => value.ContactPersonType)
             .FirstOrDefaultAsync(value => value.TenantId == tenantId && value.Id == id &&
                 value.Company!.OrgId == orgId, ct);
+
+    public Task<List<CompanyContactPerson>> GetContactPersonsByIdsAsync(
+        Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+        => ids.Count == 0
+            ? Task.FromResult(new List<CompanyContactPerson>())
+            : _db.CompanyContactPersons.AsNoTracking()
+                .Where(value => value.TenantId == tenantId && ids.Contains(value.Id))
+                .ToListAsync(ct);
 
     public async Task AddContactPersonAsync(CompanyContactPerson contact, CancellationToken ct = default)
     {

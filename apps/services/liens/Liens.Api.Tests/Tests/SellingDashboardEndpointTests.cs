@@ -133,8 +133,9 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
             SellingLienStatus.Approval,
             SellingLienStatus.SubmittedForSale,
             SellingLienStatus.PreparedForSale);
-        body.Items.Single(item => item.LienId == approval.Id).CreatedAtUtc
-            .Should().NotBe(default);
+        var approvalItem = body.Items.Single(item => item.LienId == approval.Id);
+        approvalItem.CreatedAtUtc.Should().NotBe(default);
+        approvalItem.CreateDate.Should().Be(approvalItem.CreatedAtUtc);
     }
 
     [Fact]
