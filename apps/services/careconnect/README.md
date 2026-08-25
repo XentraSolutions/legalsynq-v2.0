@@ -118,6 +118,11 @@ whether a code was ever verified — referral data is PII (client name, DOB, pho
 representative read re-verifies the caller's code server-side on every single call. Nothing is cached
 and nothing is trusted from a prior request.
 
+Referral email public links resolve the tenant's persisted platform hostname
+from the Tenant service before falling back to `{subdomain}.{AppBaseDomain}`.
+This preserves legacy QA tenant links while allowing newly-created QA tenants
+to use `.nonprod` hostnames.
+
 The frontend lives at `apps/web/src/app/careconnect/referral/` (`/careconnect/referral/*`;
 `/careconnect/representative/*` redirects to it temporarily) — a top-level sibling of
 `apps/web/src/app/careconnect/network/`, not under `app/(platform)/careconnect/`,

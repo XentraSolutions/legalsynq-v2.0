@@ -65,8 +65,9 @@ public class ReferralEmailService : IReferralEmailService
     // ── Tenant URL helper ─────────────────────────────────────────────────────
     //
     // Builds a tenant-branded URL:
+    //   Tenant hostname available → https://{hostname}{path}
     //   AppBaseDomain configured → https://{subdomain}.{AppBaseDomain}{path}
-    //   AppBaseDomain empty / subdomain unavailable → {AppBaseUrl}{path}
+    //   AppBaseDomain empty / tenant host unavailable → {AppBaseUrl}{path}
     //
     // Subdomain is sourced from ITenantSubdomainCache (Singleton), so the result
     // survives across DI scopes and request lifetimes.
@@ -74,25 +75,30 @@ public class ReferralEmailService : IReferralEmailService
     private async Task<string> BuildTenantUrlAsync(
         Guid tenantId, string path, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(_options.AppBaseDomain))
-            return _options.AppBaseUrl + path;
-
-        if (!_subdomainCache.TryGetValue(tenantId, out var subdomain))
+        if (!_subdomainCache.TryGetValue(tenantId, out var tenantHost))
         {
-            subdomain = await _tenantClient.GetSubdomainAsync(tenantId, ct);
-            if (!string.IsNullOrWhiteSpace(subdomain))
-                _subdomainCache.TryAdd(tenantId, subdomain!);
+            tenantHost = await _tenantClient.GetTenantHostAsync(tenantId, ct);
+            if (tenantHost is not null)
+                _subdomainCache.TryAdd(tenantId, tenantHost);
         }
 
-        if (string.IsNullOrWhiteSpace(subdomain))
+        if (!string.IsNullOrWhiteSpace(tenantHost?.Hostname))
+            return $"https://{tenantHost.Hostname}{path}";
+
+        if (!string.IsNullOrEmpty(_options.AppBaseDomain) &&
+            !string.IsNullOrWhiteSpace(tenantHost?.Subdomain))
+        {
+            return $"https://{tenantHost.Subdomain}.{_options.AppBaseDomain}{path}";
+        }
+
+        if (tenantHost is null)
         {
             _logger.LogDebug(
-                "ReferralEmailService: subdomain not found for tenant {TenantId} — using AppBaseUrl fallback.",
+                "ReferralEmailService: tenant host not found for tenant {TenantId} — using AppBaseUrl fallback.",
                 tenantId);
-            return _options.AppBaseUrl + path;
         }
 
-        return $"https://{subdomain}.{_options.AppBaseDomain}{path}";
+        return _options.AppBaseUrl + path;
     }
 
     // ── Token helpers ─────────────────────────────────────────────────────────

@@ -53,6 +53,7 @@ public sealed class HttpTenantSyncAdapter : ITenantSyncAdapter
                 displayName         = request.DisplayName,
                 status              = request.Status,
                 subdomain           = request.Subdomain,
+                hostname            = request.Hostname,
                 logoDocumentId      = request.LogoDocumentId,
                 logoWhiteDocumentId = request.LogoWhiteDocumentId,
                 sourceCreatedAtUtc  = request.SourceCreatedAtUtc,

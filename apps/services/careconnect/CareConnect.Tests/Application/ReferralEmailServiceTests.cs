@@ -316,6 +316,13 @@ public class ReferralEmailServiceTests
         var producer = new Mock<INotificationsProducer>(MockBehavior.Strict);
         var tenantClient = new Mock<ITenantServiceClient>(MockBehavior.Strict);
         var subdomainCache = new Mock<ITenantSubdomainCache>(MockBehavior.Strict);
+        TenantHostResult? cachedHost = null;
+        subdomainCache
+            .Setup(c => c.TryGetValue(It.IsAny<Guid>(), out cachedHost))
+            .Returns(false);
+        tenantClient
+            .Setup(c => c.GetTenantHostAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((TenantHostResult?)null);
 
         var submitCount = 0;
         var allSubmissionsStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
