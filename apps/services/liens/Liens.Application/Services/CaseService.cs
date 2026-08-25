@@ -127,12 +127,36 @@ public sealed class CaseService : ICaseService
             hasKeyword ? 1 : page,
             hasKeyword ? FuzzySearchScorer.CandidateLimit : limit,
             lawFirmOrgId,
-            sortBy,
-            sortDirection,
+            hasKeyword ? null : sortBy,
+            hasKeyword ? null : sortDirection,
             accidentTypeId,
             caseManagerId,
             lawFirmIds,
             ct);
+
+        if (hasKeyword)
+        {
+            for (var candidatePage = 2; items.Count < totalCount; candidatePage++)
+            {
+                var (nextPage, _) = await _caseRepo.SearchAsync(
+                    tenantId,
+                    null,
+                    statusId,
+                    candidatePage,
+                    FuzzySearchScorer.CandidateLimit,
+                    lawFirmOrgId,
+                    null,
+                    null,
+                    accidentTypeId,
+                    caseManagerId,
+                    lawFirmIds,
+                    ct);
+                if (nextPage.Count == 0)
+                    break;
+
+                items.AddRange(nextPage);
+            }
+        }
 
         var lawFirmContacts = await _contactRepo.GetAllByTypeAsync(
             tenantId,
@@ -316,7 +340,16 @@ public sealed class CaseService : ICaseService
                     lawFirmId: request.LawFirmId,
                     accidentTypeId: request.AccidentTypeId,
                     caseManagerId: request.CaseManagerId,
-                    statusLabel: request.StatusLabel)));
+                    statusLabel: request.StatusLabel)),
+            clientAddressLine1: request.ClientStreetAddress,
+            clientCity: request.ClientCity,
+            clientState: request.ClientState,
+            clientPostalCode: request.ClientZipcode,
+            incidentState: request.StateOfIncident,
+            currentMedicalStatus: request.CurrentMedicalStatus,
+            trackingFollowUpDate: request.TrackingFollowUpDate,
+            minorComp: ParseNullableCaseFlag(request.MinorComp),
+            caseDropped: ParseNullableCaseFlag(request.CaseDropped));
 
         await _caseRepo.AddAsync(entity, ct);
 
@@ -550,7 +583,17 @@ public sealed class CaseService : ICaseService
             policyNumber: request.PolicyNumber,
             claimNumber: request.ClaimNumber,
             description: request.Description,
-            notes: SerializeCaseNotes(request.Notes ?? noteBody, mergedMetadata));
+            notes: SerializeCaseNotes(request.Notes ?? noteBody, mergedMetadata),
+            clientAddressLine1: request.ClientStreetAddress ?? entity.ClientAddressLine1,
+            clientCity: request.ClientCity ?? entity.ClientCity,
+            clientState: request.ClientState ?? entity.ClientState,
+            clientPostalCode: request.ClientZipcode ?? entity.ClientPostalCode,
+            incidentState: request.StateOfIncident ?? entity.IncidentState,
+            currentMedicalStatus: request.CurrentMedicalStatus ?? entity.CurrentMedicalStatus,
+            trackingFollowUpDate: request.TrackingFollowUpDate ?? entity.TrackingFollowUpDate,
+            minorComp: request.MinorComp is null ? entity.MinorComp : ParseNullableCaseFlag(request.MinorComp),
+            caseDropped: request.CaseDropped is null ? entity.CaseDropped : ParseNullableCaseFlag(request.CaseDropped),
+            attorneyContactPersonId: entity.AttorneyContactPersonId);
 
         if (request.Status is not null && request.Status != entity.Status)
             entity.TransitionStatus(request.Status, actingUserId);
@@ -747,10 +790,10 @@ public sealed class CaseService : ICaseService
             ClientPhone = entity.ClientPhone,
             ClientEmail = entity.ClientEmail,
             ClientAddress = entity.ClientAddress,
-            ClientStreetAddress = address.Address,
-            ClientCity = address.City,
-            ClientState = address.State,
-            ClientZipcode = address.Zipcode,
+            ClientStreetAddress = FirstNonEmpty(entity.ClientAddressLine1, address.Address),
+            ClientCity = FirstNonEmpty(entity.ClientCity, address.City),
+            ClientState = FirstNonEmpty(entity.ClientState, address.State),
+            ClientZipcode = FirstNonEmpty(entity.ClientPostalCode, address.Zipcode),
             InsuranceCarrier = entity.InsuranceCarrier,
             PolicyNumber = entity.PolicyNumber,
             ClaimNumber = entity.ClaimNumber,
@@ -764,13 +807,22 @@ public sealed class CaseService : ICaseService
             Notes = noteBody,
             Sex = GetMetadataValue(metadata, "gender"),
             CaseType = GetMetadataValue(metadata, "accidentType"),
-            CurrentMedicalStatus = GetMetadataValue(metadata, "currentMedicalStatus"),
-            StateOfIncident = GetMetadataValue(metadata, "stateOfIncident", "accidentState", "state"),
-            TrackingFollowUpDate = ParseMetadataDate(GetMetadataValue(metadata, "trackingFollowUpDate")),
+            CurrentMedicalStatus = FirstNonEmpty(
+                entity.CurrentMedicalStatus,
+                GetMetadataValue(metadata, "currentMedicalStatus")),
+            StateOfIncident = FirstNonEmpty(
+                entity.IncidentState,
+                GetMetadataValue(metadata, "stateOfIncident", "accidentState", "state")),
+            TrackingFollowUpDate = entity.TrackingFollowUpDate ??
+                ParseMetadataDate(GetMetadataValue(metadata, "trackingFollowUpDate")),
             LeadId = GetMetadataValue(metadata, "leadId"),
             ShareCase = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "shareCase")),
-            MinorComp = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "minorComp")),
-            CaseDropped = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "caseDropped")),
+            MinorComp = entity.MinorComp.HasValue
+                ? NormalizeCaseFlagForResponse(entity.MinorComp.Value)
+                : NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "minorComp")),
+            CaseDropped = entity.CaseDropped.HasValue
+                ? NormalizeCaseFlagForResponse(entity.CaseDropped.Value)
+                : NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "caseDropped")),
             ChildSupportLiens = NormalizeCaseFlagForResponseOrDefaultFalse(GetMetadataValue(metadata, "childSupportLiens")),
             IsUccFiled = NormalizeCaseFlagForResponseOrDefaultFalse(
                 FirstNonEmpty(
@@ -782,6 +834,7 @@ public sealed class CaseService : ICaseService
             CaseManagerId = caseManagerId,
             CaseManager = caseManagerName,
             AttorneyId = FirstNonEmpty(
+                entity.AttorneyContactPersonId?.ToString(),
                 GetMetadataValue(metadata, "attorneyId"),
                 GetMetadataValue(metadata, "attorney")),
             SwitchedDate = GetMetadataValue(metadata, "switchedDate"),
@@ -1244,6 +1297,21 @@ public sealed class CaseService : ICaseService
             "TRUE" or "YES" or "Y" => "Yes",
             "FALSE" or "NO" or "N" => "No",
             _ => value.Trim(),
+        };
+    }
+
+    private static string NormalizeCaseFlagForResponse(bool value) => value ? "Yes" : "No";
+
+    private static bool? ParseNullableCaseFlag(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return value.Trim().ToUpperInvariant() switch
+        {
+            "TRUE" or "YES" or "Y" or "1" => true,
+            "FALSE" or "NO" or "N" or "0" => false,
+            _ => null,
         };
     }
 

@@ -106,13 +106,15 @@ public class SettlementPaymentDetailRepository : ISettlementPaymentDetailReposit
 
     public Task<List<SettlementPaymentDetail>> GetByCaseIdAsync(Guid tenantId, Guid caseId, CancellationToken ct = default) =>
         _db.SettlementPaymentDetails
-            .Where(p => p.TenantId == tenantId && p.CaseId == caseId && !p.IsDeleted)
+            .Where(p => p.TenantId == tenantId && p.CaseId == caseId && !p.IsDeleted &&
+                        p.PostingStatus != SettlementPaymentDetail.VoidedStatus)
             .OrderByDescending(p => p.PaymentDate)
             .ToListAsync(ct);
 
     public Task<List<SettlementPaymentDetail>> GetByLienIdAsync(Guid tenantId, Guid lienId, CancellationToken ct = default) =>
         _db.SettlementPaymentDetails
-            .Where(p => p.TenantId == tenantId && p.LienId == lienId && !p.IsDeleted)
+            .Where(p => p.TenantId == tenantId && p.LienId == lienId && !p.IsDeleted &&
+                        p.PostingStatus != SettlementPaymentDetail.VoidedStatus)
             .OrderByDescending(p => p.PaymentDate)
             .ToListAsync(ct);
 
@@ -122,7 +124,8 @@ public class SettlementPaymentDetailRepository : ISettlementPaymentDetailReposit
             return Task.FromResult(new List<SettlementPaymentDetail>());
 
         return _db.SettlementPaymentDetails
-            .Where(p => p.TenantId == tenantId && lienIds.Contains(p.LienId) && !p.IsDeleted)
+            .Where(p => p.TenantId == tenantId && lienIds.Contains(p.LienId) && !p.IsDeleted &&
+                        p.PostingStatus != SettlementPaymentDetail.VoidedStatus)
             .OrderByDescending(p => p.PaymentDate)
             .ToListAsync(ct);
     }

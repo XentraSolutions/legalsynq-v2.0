@@ -57,6 +57,8 @@ public class TenantAdminService : ITenantAdminService
         ["synq_rx"] = "SynqRx",
         ["synqpayout"] = "SynqPayout",
         ["synq_payout"] = "SynqPayout",
+        ["synqselling"] = "SynqSelling",
+        ["synq_selling"] = "SynqSelling",
     };
 
     public TenantAdminService(

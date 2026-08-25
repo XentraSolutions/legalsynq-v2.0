@@ -669,6 +669,47 @@ public class LegacyServiceCompatibilityTests : IClassFixture<LiensApiFactory>, I
     }
 
     [Fact]
+    public async Task ServiceSettlementHistory_v3_preserves_payment_note_and_updater_when_identity_does_not_return_the_user()
+    {
+        var updatingUserId = Guid.CreateVersion7();
+        SettlementPaymentDetail payment;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            payment = SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                SeedHelper.CaseId,
+                SeedHelper.LienId,
+                3626,
+                100m,
+                updatingUserId,
+                checkNumber: "3626",
+                note: "Paid with CK#3626");
+
+            db.SettlementPaymentDetails.Add(payment);
+            await db.SaveChangesAsync();
+        }
+
+        var historyResponse = await _client.PostAsJsonAsync("/service/settlement/history/v3", new
+        {
+            caseId = SeedHelper.CaseId,
+            page = 1,
+            limit = 100,
+        });
+        historyResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await historyResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await historyResponse.Content.ReadAsStringAsync())!;
+        var item = body["data"]!.AsArray().Single(historyItem =>
+            historyItem!["id"]!.GetValue<string>() == payment.Id.ToString())!;
+
+        item["note"]!.GetValue<string>().Should().Be("Paid with CK#3626");
+        item["checkNumber"]!.GetValue<string>().Should().Be("3626");
+        item["updatedBy"]!.GetValue<string>().Should().Be(updatingUserId.ToString());
+    }
+
+    [Fact]
     public async Task ServiceSettlementHistory_v3_returns_legacy_law_firm_change_history_without_duplicates()
     {
         var oldLawFirmId = Guid.CreateVersion7();

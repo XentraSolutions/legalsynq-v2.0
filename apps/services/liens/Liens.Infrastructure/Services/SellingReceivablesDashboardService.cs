@@ -1,6 +1,7 @@
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
+using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -78,7 +79,8 @@ public sealed class SellingReceivablesDashboardService : ISellingReceivablesDash
         var monthStart = new DateOnly(request.AsOfDate.Year, request.AsOfDate.Month, 1);
         var payments = _db.SettlementPaymentDetails.AsNoTracking()
             .Join(liens, payment => payment.LienId, lien => lien.Id, (payment, _) => payment)
-            .Where(payment => payment.TenantId == tenantId && !payment.IsDeleted);
+            .Where(payment => payment.TenantId == tenantId && !payment.IsDeleted &&
+                              payment.PostingStatus != SettlementPaymentDetail.VoidedStatus);
         var paymentsReceived = await payments
             .Where(payment => payment.PaymentDate.HasValue &&
                               payment.PaymentDate.Value >= monthStart &&
@@ -111,7 +113,8 @@ public sealed class SellingReceivablesDashboardService : ISellingReceivablesDash
             .GroupBy(settlement => settlement.LienId)
             .Select(group => new { LienId = group.Key, Amount = group.Sum(item => item.Amount) });
         var paymentTotals = _db.SettlementPaymentDetails.AsNoTracking()
-            .Where(payment => payment.TenantId == tenantId && !payment.IsDeleted)
+            .Where(payment => payment.TenantId == tenantId && !payment.IsDeleted &&
+                              payment.PostingStatus != SettlementPaymentDetail.VoidedStatus)
             .GroupBy(payment => payment.LienId)
             .Select(group => new { LienId = group.Key, Amount = group.Sum(item => item.Amount) });
         var reductionFlags = _db.LienReductions.AsNoTracking()

@@ -428,6 +428,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         LienId = row.Lien.Id,
         LienNumber = row.Lien.LienNumber,
         CreatedAtUtc = row.Lien.CreatedAtUtc,
+        CreateDate = row.Lien.CreatedAtUtc,
         CaseId = row.Lien.CaseId,
         CaseNumber = row.CaseNumber,
         FundingCompanyId = row.FundingCompanyId,

@@ -30,6 +30,7 @@ const TABS = [
   { key: "details", label: "Details" },
   { key: "liens", label: "Liens" },
   { key: "documents", label: "Documents" },
+  { key: "payments", label: "Payments" },
   { key: "servicing", label: "Servicing" },
   { key: "notes", label: "Case Tracking Notes" },
   { key: "taskmanager", label: "Task Manager" },

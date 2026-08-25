@@ -192,7 +192,9 @@ public sealed class WeeklyBccReportService : IWeeklyBccReportService
             .ToDictionary(group => group.Key, group => group.ToList());
         var paymentsByLienId = (await _db.SettlementPaymentDetails
                 .AsNoTracking()
-                .Where(item => item.TenantId == tenantId && !item.IsDeleted && lienIds.Contains(item.LienId))
+                .Where(item => item.TenantId == tenantId && !item.IsDeleted &&
+                               item.PostingStatus != SettlementPaymentDetail.VoidedStatus &&
+                               lienIds.Contains(item.LienId))
                 .ToListAsync(ct))
             .GroupBy(item => item.LienId)
             .ToDictionary(group => group.Key, group => group.ToList());
@@ -250,6 +252,7 @@ public sealed class WeeklyBccReportService : IWeeklyBccReportService
         var payments = await _db.SettlementPaymentDetails
             .AsNoTracking()
             .Where(item => item.TenantId == tenantId && !item.IsDeleted &&
+                           item.PostingStatus != SettlementPaymentDetail.VoidedStatus &&
                            lienIds.Contains(item.LienId))
             .ToListAsync(ct);
         var caseNotes = await _db.LienCaseNotes

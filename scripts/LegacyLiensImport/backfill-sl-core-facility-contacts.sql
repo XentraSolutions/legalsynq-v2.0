@@ -62,7 +62,7 @@ BEGIN
     SELECT COUNT(*) INTO v_contact_run_count
     FROM liens_LegacyImportRuns r
     WHERE r.TenantId = v_tenant_id AND r.SourceSystem = 'SL-CORE' AND r.LegacyProgram = '1'
-      AND r.MappingVersion = 'sl-core-contact-facility-v1' AND r.Status = 'Completed'
+      AND r.MappingVersion IN ('sl-core-contact-facility-v1', 'sl-core-contact-facility-v2') AND r.Status = 'Completed'
       AND EXISTS (SELECT 1 FROM liens_LegacyIdCrosswalks x WHERE x.TenantId = r.TenantId
                   AND x.ImportRunId = r.Id AND x.SourceSystem = 'SL-CORE'
                   AND x.SourceTable = 'SL_FACILITY' AND x.TargetEntity = 'Facility');
@@ -71,7 +71,7 @@ BEGIN
     SELECT r.Id, r.OrgId, r.CreatedByUserId INTO v_contact_run_id, v_org_id, v_user_id
     FROM liens_LegacyImportRuns r
     WHERE r.TenantId = v_tenant_id AND r.SourceSystem = 'SL-CORE' AND r.LegacyProgram = '1'
-      AND r.MappingVersion = 'sl-core-contact-facility-v1' AND r.Status = 'Completed'
+      AND r.MappingVersion IN ('sl-core-contact-facility-v1', 'sl-core-contact-facility-v2') AND r.Status = 'Completed'
       AND EXISTS (SELECT 1 FROM liens_LegacyIdCrosswalks x WHERE x.TenantId = r.TenantId
                   AND x.ImportRunId = r.Id AND x.SourceSystem = 'SL-CORE'
                   AND x.SourceTable = 'SL_FACILITY' AND x.TargetEntity = 'Facility');

@@ -7,10 +7,15 @@
 -- overwrite an existing FacilityId/contact record.  Run only in LS_QA_LIENS.
 --
 -- Deploy in DBeaver with Execute SQL Script (Alt+X), then run:
---   CALL liens_import_sl_core_contacts_facilities_tenant_only('<tenant-guid>', '0');
---   CALL liens_import_sl_core_contacts_facilities_tenant_only('<tenant-guid>', '1');
+--   CALL liens_import_sl_core_contacts_facilities_tenant_only('<tenant-guid>', '<approved-manifest-sha256>', '0');
+--   CALL liens_import_sl_core_contacts_facilities_tenant_only('<tenant-guid>', '<approved-manifest-sha256>', '1');
 
 USE `LS_QA_LIENS`;
+
+-- Pin literals, parameters, and temporary expressions to the target schema's
+-- collation. Legacy SL-CORE text is collated explicitly whenever it is
+-- compared with target data below.
+SET NAMES utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 
 DROP PROCEDURE IF EXISTS liens_import_sl_core_contacts_facilities_tenant_only;
 
@@ -18,6 +23,7 @@ DELIMITER $$
 
 CREATE PROCEDURE liens_import_sl_core_contacts_facilities_tenant_only(
     IN p_tenant_id VARCHAR(64),
+    IN p_mapping_manifest_hash VARCHAR(128),
     IN p_apply VARCHAR(16)
 )
 SQL SECURITY DEFINER
@@ -35,13 +41,17 @@ BEGIN
     DECLARE v_contact_run_count INT DEFAULT 0;
     DECLARE v_other_contact_run_count INT DEFAULT 0;
     DECLARE v_source_contact_count INT DEFAULT 0;
+    DECLARE v_contact_identity_count INT DEFAULT 0;
+    DECLARE v_merged_contact_alias_count INT DEFAULT 0;
     DECLARE v_source_law_firm_count INT DEFAULT 0;
     DECLARE v_source_provider_count INT DEFAULT 0;
     DECLARE v_facility_contacts_to_insert INT DEFAULT 0;
     DECLARE v_contact_crosswalks_to_repair INT DEFAULT 0;
+    DECLARE v_contact_crosswalks_to_insert INT DEFAULT 0;
     DECLARE v_source_facility_count INT DEFAULT 0;
     DECLARE v_source_person_count INT DEFAULT 0;
     DECLARE v_source_link_count INT DEFAULT 0;
+    DECLARE v_legacy_link_hash_match_count INT DEFAULT 0;
     DECLARE v_contacts_to_insert INT DEFAULT 0;
     DECLARE v_facilities_to_insert INT DEFAULT 0;
     DECLARE v_people_to_insert INT DEFAULT 0;
@@ -56,8 +66,12 @@ BEGIN
     DECLARE v_org_id CHAR(36);
     DECLARE v_migration_user_id CHAR(36);
     DECLARE v_source_fingerprint VARCHAR(128);
-    DECLARE v_mapping_version VARCHAR(100) DEFAULT 'sl-core-contact-facility-v1';
-    DECLARE v_mapping_manifest_hash CHAR(64) DEFAULT '94fe9f0822713a646e7c54b07242eaaf10945e5c88e5105a4d754e29af949fe2';
+    DECLARE v_core_mapping_manifest_hash VARCHAR(128);
+    DECLARE v_contact_source_fingerprint VARCHAR(128);
+    DECLARE v_contact_mapping_manifest_hash VARCHAR(128);
+    DECLARE v_contact_org_id CHAR(36);
+    DECLARE v_mapping_version VARCHAR(100) DEFAULT 'sl-core-contact-facility-v3';
+    DECLARE v_mapping_manifest_hash CHAR(64);
     DECLARE v_created_new_run BOOLEAN DEFAULT FALSE;
 
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -66,6 +80,10 @@ BEGIN
         DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_lien_facility_links;
         DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_facility_people;
         DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_facilities;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_approved_contact_aliases;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_alias_contact_candidate;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_canonical_contact_candidate;
+        DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_case_person_case_law_firms;
         DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_law_firm_parents;
         DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_contacts;
         IF v_time_zone_changed THEN SET @@session.time_zone = v_original_time_zone; END IF;
@@ -80,6 +98,11 @@ BEGIN
     END IF;
     IF p_apply IS NULL OR p_apply NOT IN ('0', '1') THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-002 apply must be exactly 0 or 1';
+    END IF;
+    SET v_mapping_manifest_hash = LOWER(TRIM(p_mapping_manifest_hash));
+    IF v_mapping_manifest_hash IS NULL
+       OR v_mapping_manifest_hash NOT REGEXP '^[0-9a-f]{64}$' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-002 mapping manifest hash must be a SHA-256 value';
     END IF;
     SET v_apply = p_apply = '1';
 
@@ -107,10 +130,10 @@ BEGIN
     FROM information_schema.tables
     WHERE table_schema = 'SL-CORE' AND table_type = 'BASE TABLE'
       AND table_name IN (
-          'SL_CONTACT', 'SL_CONTACT_TYPE', 'SL_FACILITY',
+          'SL_CONTACT', 'SL_CONTACT_TYPE', 'SL_CASE', 'SL_CASE_MANAGER', 'SL_FACILITY',
           'SL_FACILITY_CONTACT_PERSON', 'SL_LEINS_MEDICAL',
           'SL_LEINS_MEDICAL_INFORMATION_FACILITY', 'SL_MIGRATION_SOURCE_PROVENANCE');
-    IF v_table_count <> 7 THEN
+    IF v_table_count <> 9 THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-004 controlled SL-CORE contact source tables are unavailable';
     END IF;
 
@@ -138,8 +161,10 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-005 exactly one completed Program 1 core import with case and lien crosswalks is required';
     END IF;
 
-    SELECT r.Id, r.OrgId, r.CreatedByUserId, LOWER(r.SourceFingerprint)
-      INTO v_core_run_id, v_org_id, v_migration_user_id, v_source_fingerprint
+    SELECT r.Id, r.OrgId, r.CreatedByUserId, LOWER(r.SourceFingerprint),
+           LOWER(r.MappingManifestHash)
+      INTO v_core_run_id, v_org_id, v_migration_user_id, v_source_fingerprint,
+           v_core_mapping_manifest_hash
     FROM liens_LegacyImportRuns r
     WHERE r.TenantId = v_tenant_id
       AND r.SourceSystem = 'SL-CORE'
@@ -156,10 +181,15 @@ BEGIN
             AND x.SourceSystem = 'SL-CORE' AND x.SourceTable = 'SL_LEINS_MEDICAL'
             AND x.TargetEntity = 'Lien');
 
+    IF v_core_mapping_manifest_hash IS NULL
+       OR v_core_mapping_manifest_hash <> v_mapping_manifest_hash THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-006 mapping manifest hash does not match the completed core import';
+    END IF;
+
     SELECT COUNT(*) INTO v_provenance_count
     FROM `SL-CORE`.`SL_MIGRATION_SOURCE_PROVENANCE`
     WHERE PROVENANCE_KEY = 'sl-core-current'
-      AND LOWER(SOURCE_FINGERPRINT) = v_source_fingerprint
+      AND BINARY LOWER(SOURCE_FINGERPRINT) = BINARY v_source_fingerprint
       AND IMPORT_SCOPE = 'sl-core-core-liens-v1';
     IF v_provenance_count <> 1 THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-006 source provenance does not match the completed core import';
@@ -184,13 +214,23 @@ BEGIN
     END IF;
 
     IF v_contact_run_count = 1 THEN
-        SELECT Id INTO v_contact_run_id
+        SELECT Id, LOWER(SourceFingerprint), LOWER(MappingManifestHash), OrgId
+          INTO v_contact_run_id, v_contact_source_fingerprint,
+               v_contact_mapping_manifest_hash, v_contact_org_id
         FROM liens_LegacyImportRuns
         WHERE TenantId = v_tenant_id
           AND SourceSystem = 'SL-CORE'
           AND LegacyProgram = '1'
           AND MappingVersion = v_mapping_version
           AND Status = 'Completed';
+        IF v_contact_source_fingerprint IS NULL
+           OR v_contact_mapping_manifest_hash IS NULL
+           OR v_contact_org_id IS NULL
+           OR v_contact_source_fingerprint <> v_source_fingerprint
+           OR v_contact_mapping_manifest_hash <> v_mapping_manifest_hash
+           OR v_contact_org_id <> v_org_id THEN
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-007 completed contact migration does not match the approved source, manifest, or organization';
+        END IF;
     ELSE
         SET v_contact_run_id = UUID();
     END IF;
@@ -222,14 +262,98 @@ BEGIN
       ON parent_x.TenantId = v_tenant_id
      AND parent_x.SourceSystem = 'SL-CORE'
      AND parent_x.SourceTable = 'SL_CONTACT'
-     AND parent_x.LegacyId = CAST(parent_contact.CONTACT_ID AS CHAR)
+     AND BINARY parent_x.LegacyId = BINARY CAST(parent_contact.CONTACT_ID AS CHAR)
     WHERE parent_contact.CONTACT_PROGRAM = 1
       AND COALESCE(parent_contact.CONTACT_STATUS, 'A') = 'A'
       AND parent_contact.CONTACT_TYPE = 1;
 
-    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_contacts;
-    CREATE TEMPORARY TABLE tmp_sl_core_contacts AS
+    -- A small number of legacy case people have a stale cross-program
+    -- CM_LAWFIRM. Derive a fallback only when every active Program 1 case that
+    -- references the person agrees on one eligible Program 1 law firm.
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_case_person_case_law_firms;
+    CREATE TEMPORARY TABLE tmp_sl_core_case_person_case_law_firms (
+        LegacyContactId BIGINT NOT NULL PRIMARY KEY,
+        LegacyLawFirmId BIGINT NOT NULL,
+        TargetContactId CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL
+    ) ENGINE=InnoDB;
+
+    INSERT INTO tmp_sl_core_case_person_case_law_firms (
+        LegacyContactId, LegacyLawFirmId, TargetContactId
+    )
     SELECT
+        refs.LegacyContactId,
+        MIN(refs.LegacyLawFirmId),
+        MIN(case_law_firm_parent.TargetContactId)
+    FROM (
+        SELECT
+            source_case.CASE_MANAGER AS LegacyContactId,
+            source_case.CASE_LAW_FIRM AS LegacyLawFirmId
+        FROM `SL-CORE`.`SL_CASE` source_case
+        WHERE source_case.CASE_PROGRAM = 1
+          AND COALESCE(source_case.CASE_IS_DELETED, 'N') <> 'Y'
+          AND source_case.CASE_MANAGER IS NOT NULL
+
+        UNION ALL
+
+        SELECT
+            CAST(source_case.CASE_ATTORNEY AS UNSIGNED) AS LegacyContactId,
+            source_case.CASE_LAW_FIRM AS LegacyLawFirmId
+        FROM `SL-CORE`.`SL_CASE` source_case
+        WHERE source_case.CASE_PROGRAM = 1
+          AND COALESCE(source_case.CASE_IS_DELETED, 'N') <> 'Y'
+          AND source_case.CASE_ATTORNEY REGEXP '^[0-9]+$'
+    ) refs
+    LEFT JOIN tmp_sl_core_law_firm_parents case_law_firm_parent
+      ON case_law_firm_parent.LegacyContactId = refs.LegacyLawFirmId
+    GROUP BY refs.LegacyContactId
+    HAVING COUNT(DISTINCT refs.LegacyLawFirmId) = 1
+       AND SUM(CASE
+                 WHEN refs.LegacyLawFirmId IS NULL
+                   OR case_law_firm_parent.TargetContactId IS NULL
+                 THEN 1 ELSE 0
+               END) = 0;
+
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_contacts;
+    CREATE TEMPORARY TABLE tmp_sl_core_contacts (
+        LegacySourceTable VARCHAR(32) NOT NULL,
+        LegacyContactId BIGINT NOT NULL,
+        TargetContactType VARCHAR(50) NOT NULL,
+        TargetContactSubtype VARCHAR(50) NULL,
+        ParentLegacyContactId VARCHAR(64) NULL,
+        DisplayName VARCHAR(250) NOT NULL,
+        FirstName VARCHAR(100) NOT NULL,
+        LastName VARCHAR(100) NOT NULL,
+        Organization VARCHAR(200) NULL,
+        Email VARCHAR(320) NULL,
+        Phone VARCHAR(100) NULL,
+        AddressLine1 VARCHAR(500) NULL,
+        City VARCHAR(100) NULL,
+        State VARCHAR(100) NULL,
+        PostalCode VARCHAR(100) NULL,
+        CreatedAtUtc DATETIME(6) NOT NULL,
+        UpdatedAtUtc DATETIME(6) NOT NULL,
+        SourceHash CHAR(64) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+        ExistingCrosswalkId CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+        ExistingTargetId CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+        ExistingTargetEntity VARCHAR(100) NULL,
+        ExistingSourceHash CHAR(64) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+        ExistingImportRunId CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+        TargetContactId CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+        TargetLawFirmId CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+        IsCanonical BOOLEAN NOT NULL DEFAULT TRUE,
+        TargetContactExists BOOLEAN NOT NULL DEFAULT FALSE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+    INSERT INTO tmp_sl_core_contacts (
+        LegacySourceTable, LegacyContactId, TargetContactType, TargetContactSubtype,
+        ParentLegacyContactId, DisplayName, FirstName, LastName, Organization,
+        Email, Phone, AddressLine1, City, State, PostalCode, CreatedAtUtc,
+        UpdatedAtUtc, SourceHash, ExistingCrosswalkId, ExistingTargetId,
+        ExistingTargetEntity, ExistingSourceHash, ExistingImportRunId,
+        TargetContactId, TargetLawFirmId
+    )
+    SELECT
+        'SL_CONTACT' AS LegacySourceTable,
         c.CONTACT_ID AS LegacyContactId,
         CASE c.CONTACT_TYPE
           WHEN 1 THEN 'LawFirm'
@@ -305,7 +429,7 @@ BEGIN
       ON x.TenantId = v_tenant_id
      AND x.SourceSystem = 'SL-CORE'
      AND x.SourceTable = 'SL_CONTACT'
-     AND x.LegacyId = CAST(c.CONTACT_ID AS CHAR)
+     AND BINARY x.LegacyId = BINARY CAST(c.CONTACT_ID AS CHAR)
     LEFT JOIN tmp_sl_core_law_firm_parents law_firm_parent
       ON law_firm_parent.LegacyContactId = CASE
             WHEN c.CONTACT_TYPE = 1 THEN c.CONTACT_ID
@@ -316,9 +440,223 @@ BEGIN
       AND COALESCE(c.CONTACT_STATUS, 'A') = 'A'
       AND c.CONTACT_TYPE IN (1,2,3,4,5,6,7,8);
 
+    -- Populate case managers and attorneys separately. MySQL cannot reopen
+    -- tmp_sl_core_law_firm_parents from two branches of one UNION statement.
+    INSERT INTO tmp_sl_core_contacts (
+        LegacySourceTable, LegacyContactId, TargetContactType, TargetContactSubtype,
+        ParentLegacyContactId, DisplayName, FirstName, LastName, Organization,
+        Email, Phone, AddressLine1, City, State, PostalCode, CreatedAtUtc,
+        UpdatedAtUtc, SourceHash, ExistingCrosswalkId, ExistingTargetId,
+        ExistingTargetEntity, ExistingSourceHash, ExistingImportRunId,
+        TargetContactId, TargetLawFirmId
+    )
+    SELECT
+        'SL_CASE_MANAGER' AS LegacySourceTable,
+        cm.CM_ID AS LegacyContactId,
+        'LawFirm' AS TargetContactType,
+        CASE
+          WHEN EXISTS (
+              SELECT 1 FROM `SL-CORE`.`SL_CASE` attorney_case
+              WHERE attorney_case.CASE_PROGRAM = 1
+                AND COALESCE(attorney_case.CASE_IS_DELETED, 'N') <> 'Y'
+                AND attorney_case.CASE_ATTORNEY REGEXP '^[0-9]+$'
+                AND CAST(attorney_case.CASE_ATTORNEY AS UNSIGNED) = cm.CM_ID
+          ) AND NOT EXISTS (
+              SELECT 1 FROM `SL-CORE`.`SL_CASE` manager_case
+              WHERE manager_case.CASE_PROGRAM = 1
+                AND COALESCE(manager_case.CASE_IS_DELETED, 'N') <> 'Y'
+                AND manager_case.CASE_MANAGER = cm.CM_ID
+          ) THEN 'Attorney'
+          ELSE 'CaseManager'
+        END AS TargetContactSubtype,
+        CAST(COALESCE(law_firm_parent.LegacyContactId,
+                      case_law_firm_parent.LegacyLawFirmId) AS CHAR) AS ParentLegacyContactId,
+        LEFT(COALESCE(NULLIF(TRIM(cm.CM_NAME), ''),
+                      NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(cm.CM_FIRSTNAME), ''), NULLIF(TRIM(cm.CM_LASTNAME), ''))), ''),
+                      CONCAT('Legacy Case Person ', cm.CM_ID)), 250) AS DisplayName,
+        LEFT(COALESCE(NULLIF(TRIM(cm.CM_FIRSTNAME), ''), 'Legacy'), 100) AS FirstName,
+        LEFT(COALESCE(NULLIF(TRIM(cm.CM_LASTNAME), ''), 'Contact'), 100) AS LastName,
+        NULL AS Organization,
+        NULLIF(TRIM(cm.CM_EMAIL), '') AS Email,
+        NULLIF(TRIM(cm.CM_PHONE), '') AS Phone,
+        NULL AS AddressLine1,
+        NULL AS City,
+        NULL AS State,
+        NULL AS PostalCode,
+        COALESCE(cm.CM_CREATED, UTC_TIMESTAMP(6)) AS CreatedAtUtc,
+        COALESCE(cm.CM_UPDATED, cm.CM_CREATED, UTC_TIMESTAMP(6)) AS UpdatedAtUtc,
+        SHA2(CONCAT_WS('|', cm.CM_ID, cm.CM_NAME, cm.CM_EMAIL, cm.CM_PHONE,
+                       cm.CM_STATUS, cm.CM_PROGRAM, cm.CM_LAWFIRM,
+                       COALESCE(law_firm_parent.LegacyContactId,
+                                case_law_firm_parent.LegacyLawFirmId),
+                       cm.CM_FIRSTNAME, cm.CM_LASTNAME, cm.CM_TYPE,
+                       cm.CM_CREATED, cm.CM_UPDATED), 256) AS SourceHash,
+        x.Id AS ExistingCrosswalkId,
+        CASE
+          WHEN CHAR_LENGTH(TRIM(x.TargetId)) = 36
+           AND SUBSTRING(TRIM(x.TargetId), 9, 1) = '-'
+           AND SUBSTRING(TRIM(x.TargetId), 14, 1) = '-'
+           AND SUBSTRING(TRIM(x.TargetId), 19, 1) = '-'
+           AND SUBSTRING(TRIM(x.TargetId), 24, 1) = '-'
+           AND REPLACE(TRIM(x.TargetId), '-', '') NOT REGEXP '[^0-9A-Fa-f]'
+            THEN TRIM(x.TargetId)
+          ELSE NULL
+        END AS ExistingTargetId,
+        x.TargetEntity AS ExistingTargetEntity,
+        x.SourceHash AS ExistingSourceHash,
+        x.ImportRunId AS ExistingImportRunId,
+        CAST(CASE
+               WHEN CHAR_LENGTH(TRIM(x.TargetId)) = 36
+                AND SUBSTRING(TRIM(x.TargetId), 9, 1) = '-'
+                AND SUBSTRING(TRIM(x.TargetId), 14, 1) = '-'
+                AND SUBSTRING(TRIM(x.TargetId), 19, 1) = '-'
+                AND SUBSTRING(TRIM(x.TargetId), 24, 1) = '-'
+                AND REPLACE(TRIM(x.TargetId), '-', '') NOT REGEXP '[^0-9A-Fa-f]'
+                 THEN TRIM(x.TargetId)
+               ELSE UUID()
+             END AS CHAR(36)) AS TargetContactId,
+        COALESCE(law_firm_parent.TargetContactId,
+                 case_law_firm_parent.TargetContactId) AS TargetLawFirmId
+    FROM `SL-CORE`.`SL_CASE_MANAGER` cm
+    LEFT JOIN liens_LegacyIdCrosswalks x
+      ON x.TenantId = v_tenant_id
+     AND x.SourceSystem = 'SL-CORE'
+     AND x.SourceTable = 'SL_CASE_MANAGER'
+     AND BINARY x.LegacyId = BINARY CAST(cm.CM_ID AS CHAR)
+    LEFT JOIN tmp_sl_core_law_firm_parents law_firm_parent
+      ON law_firm_parent.LegacyContactId = cm.CM_LAWFIRM
+    LEFT JOIN tmp_sl_core_case_person_case_law_firms case_law_firm_parent
+      ON case_law_firm_parent.LegacyContactId = cm.CM_ID
+    WHERE cm.CM_PROGRAM = 1
+      AND COALESCE(cm.CM_STATUS, 'A') = 'A'
+      AND (
+          EXISTS (
+              SELECT 1 FROM `SL-CORE`.`SL_CASE` manager_case
+              WHERE manager_case.CASE_PROGRAM = 1
+                AND COALESCE(manager_case.CASE_IS_DELETED, 'N') <> 'Y'
+                AND manager_case.CASE_MANAGER = cm.CM_ID
+          ) OR EXISTS (
+              SELECT 1 FROM `SL-CORE`.`SL_CASE` attorney_case
+              WHERE attorney_case.CASE_PROGRAM = 1
+                AND COALESCE(attorney_case.CASE_IS_DELETED, 'N') <> 'Y'
+                AND attorney_case.CASE_ATTORNEY REGEXP '^[0-9]+$'
+                AND CAST(attorney_case.CASE_ATTORNEY AS UNSIGNED) = cm.CM_ID
+          )
+      );
+
+    -- Approved duplicate resolution for the immutable source snapshot:
+    -- SL_CASE_MANAGER:792 is an incomplete duplicate of :602. Preserve both
+    -- source IDs and hashes, but create/reuse one target contact from :602.
+    -- The source fingerprint and staged identity fields make this an explicit
+    -- source-ID decision; no other name-based duplicate is merged.
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_canonical_contact_candidate;
+    CREATE TEMPORARY TABLE tmp_sl_core_canonical_contact_candidate AS
+    SELECT *
+    FROM tmp_sl_core_contacts
+    WHERE LegacySourceTable = 'SL_CASE_MANAGER'
+      AND LegacyContactId = 602;
+
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_alias_contact_candidate;
+    CREATE TEMPORARY TABLE tmp_sl_core_alias_contact_candidate AS
+    SELECT *
+    FROM tmp_sl_core_contacts
+    WHERE LegacySourceTable = 'SL_CASE_MANAGER'
+      AND LegacyContactId = 792;
+
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_approved_contact_aliases;
+    CREATE TEMPORARY TABLE tmp_sl_core_approved_contact_aliases (
+        CanonicalSourceTable VARCHAR(32) NOT NULL,
+        CanonicalLegacyContactId BIGINT NOT NULL,
+        AliasSourceTable VARCHAR(32) NOT NULL,
+        AliasLegacyContactId BIGINT NOT NULL,
+        CanonicalTargetContactId CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+        CanonicalExistingTargetId CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+        AliasExistingTargetId CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+        CanonicalExistingImportRunId CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+        AliasExistingImportRunId CHAR(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+        PRIMARY KEY (AliasSourceTable, AliasLegacyContactId)
+    ) ENGINE=InnoDB;
+
+    INSERT INTO tmp_sl_core_approved_contact_aliases (
+        CanonicalSourceTable, CanonicalLegacyContactId,
+        AliasSourceTable, AliasLegacyContactId,
+        CanonicalTargetContactId, CanonicalExistingTargetId, AliasExistingTargetId,
+        CanonicalExistingImportRunId, AliasExistingImportRunId
+    )
+    SELECT
+        canonical.LegacySourceTable,
+        canonical.LegacyContactId,
+        alias_candidate.LegacySourceTable,
+        alias_candidate.LegacyContactId,
+        COALESCE(canonical.ExistingTargetId, alias_candidate.ExistingTargetId,
+                 canonical.TargetContactId),
+        canonical.ExistingTargetId,
+        alias_candidate.ExistingTargetId,
+        canonical.ExistingImportRunId,
+        alias_candidate.ExistingImportRunId
+    FROM tmp_sl_core_canonical_contact_candidate canonical
+    CROSS JOIN tmp_sl_core_alias_contact_candidate alias_candidate
+    WHERE v_source_fingerprint = '3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe'
+      AND canonical.TargetContactType = 'LawFirm'
+      AND canonical.TargetContactSubtype = 'CaseManager'
+      AND canonical.ParentLegacyContactId = '1277'
+      AND canonical.DisplayName COLLATE utf8mb4_0900_ai_ci = 'Yesenia Guevara' COLLATE utf8mb4_0900_ai_ci
+      AND alias_candidate.TargetContactType = canonical.TargetContactType
+      AND alias_candidate.TargetContactSubtype = canonical.TargetContactSubtype
+      AND alias_candidate.ParentLegacyContactId = canonical.ParentLegacyContactId
+      AND alias_candidate.DisplayName COLLATE utf8mb4_0900_ai_ci = canonical.DisplayName COLLATE utf8mb4_0900_ai_ci
+      AND alias_candidate.FirstName COLLATE utf8mb4_0900_ai_ci = canonical.FirstName COLLATE utf8mb4_0900_ai_ci
+      AND alias_candidate.LastName COLLATE utf8mb4_0900_ai_ci = canonical.LastName COLLATE utf8mb4_0900_ai_ci
+      AND alias_candidate.TargetLawFirmId = canonical.TargetLawFirmId
+      AND (alias_candidate.Email IS NULL OR canonical.Email IS NULL
+           OR LOWER(alias_candidate.Email) COLLATE utf8mb4_0900_ai_ci = LOWER(canonical.Email) COLLATE utf8mb4_0900_ai_ci)
+      AND (alias_candidate.Phone IS NULL OR canonical.Phone IS NULL
+           OR alias_candidate.Phone COLLATE utf8mb4_0900_ai_ci = canonical.Phone COLLATE utf8mb4_0900_ai_ci);
+
+    IF EXISTS (
+        SELECT 1 FROM tmp_sl_core_approved_contact_aliases
+        WHERE CanonicalExistingTargetId IS NOT NULL
+          AND AliasExistingTargetId IS NOT NULL
+          AND CanonicalExistingTargetId <> AliasExistingTargetId
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-031 approved contact aliases map to different target contacts';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM tmp_sl_core_approved_contact_aliases
+        WHERE (CanonicalExistingTargetId IS NOT NULL
+               AND CanonicalExistingImportRunId <> v_contact_run_id)
+           OR (AliasExistingTargetId IS NOT NULL
+               AND AliasExistingImportRunId <> v_contact_run_id)
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-032 approved contact aliases must belong to the same v3 import run';
+    END IF;
+
+    UPDATE tmp_sl_core_contacts staged
+    INNER JOIN tmp_sl_core_approved_contact_aliases approved
+      ON approved.CanonicalSourceTable = staged.LegacySourceTable
+     AND approved.CanonicalLegacyContactId = staged.LegacyContactId
+    SET staged.TargetContactId = approved.CanonicalTargetContactId;
+
+    UPDATE tmp_sl_core_contacts staged
+    INNER JOIN tmp_sl_core_approved_contact_aliases approved
+      ON approved.AliasSourceTable = staged.LegacySourceTable
+     AND approved.AliasLegacyContactId = staged.LegacyContactId
+    SET staged.TargetContactId = approved.CanonicalTargetContactId,
+        staged.IsCanonical = FALSE;
+
+    UPDATE tmp_sl_core_contacts staged
+    INNER JOIN liens_Contacts target ON target.Id = staged.TargetContactId
+    SET staged.TargetContactExists = TRUE;
+
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_alias_contact_candidate;
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_canonical_contact_candidate;
+
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_case_person_case_law_firms;
     DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_law_firm_parents;
 
     SELECT COUNT(*) INTO v_source_contact_count FROM tmp_sl_core_contacts;
+    SELECT COUNT(*) INTO v_contact_identity_count FROM tmp_sl_core_contacts WHERE IsCanonical;
+    SELECT COUNT(*) INTO v_merged_contact_alias_count FROM tmp_sl_core_contacts WHERE NOT IsCanonical;
     IF v_source_contact_count = 0 THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-008 no active Program 1 contacts were found';
     END IF;
@@ -348,11 +686,15 @@ BEGIN
     SELECT COUNT(*) INTO v_contact_crosswalks_to_repair
     FROM tmp_sl_core_contacts
     WHERE ExistingCrosswalkId IS NOT NULL AND ExistingTargetId IS NULL;
+    SELECT COUNT(*) INTO v_contact_crosswalks_to_insert
+    FROM tmp_sl_core_contacts
+    WHERE ExistingCrosswalkId IS NULL;
     IF EXISTS (SELECT 1 FROM tmp_sl_core_contacts WHERE CHAR_LENGTH(COALESCE(Phone, '')) > 30) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-010 legacy contact phone exceeds the target limit';
     END IF;
     IF EXISTS (
         SELECT 1 FROM tmp_sl_core_contacts
+        WHERE IsCanonical
         GROUP BY TargetContactType, COALESCE(TargetContactSubtype, ''), COALESCE(ParentLegacyContactId, ''), DisplayName
         HAVING COUNT(*) > 1
     ) THEN
@@ -361,21 +703,48 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM tmp_sl_core_contacts s
         WHERE s.ExistingTargetId IS NOT NULL
-          AND (s.ExistingTargetEntity <> 'Contact' OR s.ExistingSourceHash <> s.SourceHash OR s.ExistingImportRunId <> v_contact_run_id
+          AND (s.ExistingTargetEntity <> 'Contact'
+               OR BINARY s.ExistingSourceHash <> BINARY s.SourceHash
+               OR s.ExistingTargetId <> s.TargetContactId
                OR NOT EXISTS (
-                   SELECT 1 FROM liens_Contacts t
-                   WHERE t.Id = s.ExistingTargetId AND t.TenantId = v_tenant_id AND t.OrgId = v_org_id
-                     AND t.ContactType = s.TargetContactType
-                     AND t.ContactSubtype <=> s.TargetContactSubtype
-                     AND t.LawFirmId <=> s.TargetLawFirmId
-                     AND t.FirstName = s.FirstName AND t.LastName = s.LastName
-                     AND t.DisplayName = s.DisplayName AND t.Organization <=> s.Organization
-                     AND t.Email <=> s.Email AND t.Phone <=> s.Phone
-                     AND t.AddressLine1 <=> s.AddressLine1 AND t.City <=> s.City
-                     AND t.State <=> s.State AND t.PostalCode <=> s.PostalCode
-                     AND t.IsActive = 1))
+                   SELECT 1 FROM liens_Contacts mapped_target
+                   WHERE mapped_target.Id = s.ExistingTargetId
+                     AND mapped_target.TenantId = v_tenant_id
+                     AND mapped_target.OrgId = v_org_id)
+               OR NOT EXISTS (
+                   SELECT 1 FROM liens_LegacyImportRuns prior_run
+                   WHERE prior_run.Id = s.ExistingImportRunId
+                     AND prior_run.TenantId = v_tenant_id
+                     AND prior_run.OrgId = v_org_id
+                     AND prior_run.SourceSystem = 'SL-CORE'
+                     AND prior_run.LegacyProgram = '1'
+                     AND LOWER(prior_run.SourceFingerprint) = v_source_fingerprint
+                     AND prior_run.MappingVersion IN ('sl-core-contact-facility-v1', 'sl-core-contact-facility-v2', 'sl-core-contact-facility-v3')
+                     AND prior_run.Status = 'Completed'))
     ) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-012 existing contact crosswalks conflict with source or target data';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM tmp_sl_core_contacts s
+        INNER JOIN liens_Contacts t ON t.Id = s.TargetContactId
+        WHERE s.IsCanonical
+          AND (t.TenantId <> v_tenant_id OR t.OrgId <> v_org_id
+               OR t.ContactType <> s.TargetContactType
+               OR NOT (t.ContactSubtype <=> s.TargetContactSubtype)
+               OR NOT (t.LawFirmId <=> s.TargetLawFirmId)
+               OR t.FirstName COLLATE utf8mb4_0900_ai_ci <> s.FirstName COLLATE utf8mb4_0900_ai_ci
+               OR t.LastName COLLATE utf8mb4_0900_ai_ci <> s.LastName COLLATE utf8mb4_0900_ai_ci
+               OR t.DisplayName COLLATE utf8mb4_0900_ai_ci <> s.DisplayName COLLATE utf8mb4_0900_ai_ci
+               OR NOT (t.Organization COLLATE utf8mb4_0900_ai_ci <=> s.Organization COLLATE utf8mb4_0900_ai_ci)
+               OR NOT (t.Email COLLATE utf8mb4_0900_ai_ci <=> s.Email COLLATE utf8mb4_0900_ai_ci)
+               OR NOT (t.Phone COLLATE utf8mb4_0900_ai_ci <=> s.Phone COLLATE utf8mb4_0900_ai_ci)
+               OR NOT (t.AddressLine1 COLLATE utf8mb4_0900_ai_ci <=> s.AddressLine1 COLLATE utf8mb4_0900_ai_ci)
+               OR NOT (t.City COLLATE utf8mb4_0900_ai_ci <=> s.City COLLATE utf8mb4_0900_ai_ci)
+               OR NOT (t.State COLLATE utf8mb4_0900_ai_ci <=> s.State COLLATE utf8mb4_0900_ai_ci)
+               OR NOT (t.PostalCode COLLATE utf8mb4_0900_ai_ci <=> s.PostalCode COLLATE utf8mb4_0900_ai_ci)
+               OR t.IsActive <> 1)
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-012 existing contact target conflicts with canonical source data';
     END IF;
     IF EXISTS (
         SELECT 1 FROM tmp_sl_core_contacts s
@@ -384,8 +753,11 @@ BEGIN
          AND t.ContactType = s.TargetContactType
          AND t.ContactSubtype <=> s.TargetContactSubtype
          AND t.LawFirmId <=> s.TargetLawFirmId
-         AND LOWER(t.DisplayName) = LOWER(s.DisplayName)
-        WHERE s.ExistingTargetId IS NULL
+         AND LOWER(t.DisplayName) COLLATE utf8mb4_0900_ai_ci
+             = LOWER(s.DisplayName) COLLATE utf8mb4_0900_ai_ci
+        WHERE s.IsCanonical
+          AND s.ExistingTargetId IS NULL
+          AND t.Id <> s.TargetContactId
     ) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-013 existing target contact collides with a legacy contact';
     END IF;
@@ -417,7 +789,7 @@ BEGIN
       ON x.TenantId = v_tenant_id
      AND x.SourceSystem = 'SL-CORE'
      AND x.SourceTable = 'SL_FACILITY'
-     AND x.LegacyId = CAST(f.FACILITY_ID AS CHAR)
+     AND BINARY x.LegacyId = BINARY CAST(f.FACILITY_ID AS CHAR)
     WHERE f.FACILITY_PROGRAM = '1'
       AND COALESCE(f.FACILITY_STATUS, 'A') = 'A';
 
@@ -446,21 +818,40 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM tmp_sl_core_facilities s
         WHERE s.ExistingTargetId IS NOT NULL
-          AND (s.ExistingTargetEntity <> 'Facility' OR s.ExistingSourceHash <> s.SourceHash OR s.ExistingImportRunId <> v_contact_run_id
+          AND (s.ExistingTargetEntity <> 'Facility'
+               OR BINARY s.ExistingSourceHash <> BINARY s.SourceHash
+               OR NOT EXISTS (
+                   SELECT 1 FROM liens_LegacyImportRuns prior_run
+                   WHERE prior_run.Id = s.ExistingImportRunId
+                     AND prior_run.TenantId = v_tenant_id
+                     AND prior_run.OrgId = v_org_id
+                     AND prior_run.SourceSystem = 'SL-CORE'
+                     AND prior_run.LegacyProgram = '1'
+                     AND LOWER(prior_run.SourceFingerprint) = v_source_fingerprint
+                     AND prior_run.MappingVersion IN ('sl-core-contact-facility-v1', 'sl-core-contact-facility-v2', 'sl-core-contact-facility-v3')
+                     AND prior_run.Status = 'Completed')
                OR NOT EXISTS (
                    SELECT 1 FROM liens_Facilities t
                    WHERE t.Id = s.ExistingTargetId AND t.TenantId = v_tenant_id AND t.OrgId = v_org_id
-                     AND t.Name = s.Name AND t.ExternalReference = s.ExternalReference
-                     AND t.AddressLine1 <=> s.AddressLine1 AND t.City <=> s.City
-                     AND t.State <=> s.State AND t.PostalCode <=> s.PostalCode
-                     AND t.Phone <=> s.Phone AND t.Email <=> s.Email AND t.IsActive = 1))
+                     AND t.Name COLLATE utf8mb4_0900_ai_ci = s.Name COLLATE utf8mb4_0900_ai_ci
+                     AND BINARY t.ExternalReference = BINARY s.ExternalReference
+                     AND t.AddressLine1 COLLATE utf8mb4_0900_ai_ci <=> s.AddressLine1 COLLATE utf8mb4_0900_ai_ci
+                     AND t.City COLLATE utf8mb4_0900_ai_ci <=> s.City COLLATE utf8mb4_0900_ai_ci
+                     AND t.State COLLATE utf8mb4_0900_ai_ci <=> s.State COLLATE utf8mb4_0900_ai_ci
+                     AND t.PostalCode COLLATE utf8mb4_0900_ai_ci <=> s.PostalCode COLLATE utf8mb4_0900_ai_ci
+                     AND t.Phone COLLATE utf8mb4_0900_ai_ci <=> s.Phone COLLATE utf8mb4_0900_ai_ci
+                     AND t.Email COLLATE utf8mb4_0900_ai_ci <=> s.Email COLLATE utf8mb4_0900_ai_ci
+                     AND t.IsActive = 1))
     ) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-017 existing facility crosswalks conflict with source or target data';
     END IF;
     IF EXISTS (
         SELECT 1 FROM tmp_sl_core_facilities s
         INNER JOIN liens_Facilities t
-          ON t.TenantId = v_tenant_id AND t.OrgId = v_org_id AND LOWER(t.Name) = LOWER(s.Name)
+          ON t.TenantId = v_tenant_id
+         AND t.OrgId = v_org_id
+         AND LOWER(t.Name) COLLATE utf8mb4_0900_ai_ci
+             = LOWER(s.Name) COLLATE utf8mb4_0900_ai_ci
         WHERE s.ExistingTargetId IS NULL
     ) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-018 existing target facility collides with a legacy facility';
@@ -490,7 +881,7 @@ BEGIN
       ON x.TenantId = v_tenant_id
      AND x.SourceSystem = 'SL-CORE'
      AND x.SourceTable = 'SL_FACILITY_CONTACT_PERSON'
-     AND x.LegacyId = CAST(p.FCP_ID AS CHAR)
+     AND BINARY x.LegacyId = BINARY CAST(p.FCP_ID AS CHAR)
     WHERE p.FCP_PROGRAM = 1 AND COALESCE(p.FCP_STATUS, 'A') = 'A';
 
     SELECT COUNT(*) INTO v_source_person_count FROM tmp_sl_core_facility_people;
@@ -519,13 +910,27 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM tmp_sl_core_facility_people s
         WHERE s.ExistingTargetId IS NOT NULL
-          AND (s.ExistingTargetEntity <> 'FacilityContactPerson' OR s.ExistingSourceHash <> s.SourceHash OR s.ExistingImportRunId <> v_contact_run_id
+          AND (s.ExistingTargetEntity <> 'FacilityContactPerson'
+               OR BINARY s.ExistingSourceHash <> BINARY s.SourceHash
+               OR NOT EXISTS (
+                   SELECT 1 FROM liens_LegacyImportRuns prior_run
+                   WHERE prior_run.Id = s.ExistingImportRunId
+                     AND prior_run.TenantId = v_tenant_id
+                     AND prior_run.OrgId = v_org_id
+                     AND prior_run.SourceSystem = 'SL-CORE'
+                     AND prior_run.LegacyProgram = '1'
+                     AND LOWER(prior_run.SourceFingerprint) = v_source_fingerprint
+                     AND prior_run.MappingVersion IN ('sl-core-contact-facility-v1', 'sl-core-contact-facility-v2', 'sl-core-contact-facility-v3')
+                     AND prior_run.Status = 'Completed')
                OR NOT EXISTS (
                    SELECT 1 FROM liens_FacilityContactPersons t
                    WHERE t.Id = s.ExistingTargetId AND t.TenantId = v_tenant_id
                      AND t.FacilityId = s.TargetFacilityId
-                     AND t.FirstName = s.FirstName AND t.LastName = s.LastName
-                     AND t.Email <=> s.Email AND t.Phone <=> s.Phone AND t.IsActive = 1))
+                     AND t.FirstName COLLATE utf8mb4_0900_ai_ci = s.FirstName COLLATE utf8mb4_0900_ai_ci
+                     AND t.LastName COLLATE utf8mb4_0900_ai_ci = s.LastName COLLATE utf8mb4_0900_ai_ci
+                     AND t.Email COLLATE utf8mb4_0900_ai_ci <=> s.Email COLLATE utf8mb4_0900_ai_ci
+                     AND t.Phone COLLATE utf8mb4_0900_ai_ci <=> s.Phone COLLATE utf8mb4_0900_ai_ci
+                     AND t.IsActive = 1))
     ) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-021 existing facility-contact crosswalks conflict with source or target data';
     END IF;
@@ -533,8 +938,12 @@ BEGIN
         SELECT 1 FROM tmp_sl_core_facility_people s
         INNER JOIN liens_FacilityContactPersons t
           ON t.TenantId = v_tenant_id AND t.FacilityId = s.TargetFacilityId
-         AND LOWER(t.FirstName) = LOWER(s.FirstName) AND LOWER(t.LastName) = LOWER(s.LastName)
-         AND COALESCE(LOWER(t.Email), '') = COALESCE(LOWER(s.Email), '')
+         AND LOWER(t.FirstName) COLLATE utf8mb4_0900_ai_ci
+             = LOWER(s.FirstName) COLLATE utf8mb4_0900_ai_ci
+         AND LOWER(t.LastName) COLLATE utf8mb4_0900_ai_ci
+             = LOWER(s.LastName) COLLATE utf8mb4_0900_ai_ci
+         AND COALESCE(LOWER(t.Email), '') COLLATE utf8mb4_0900_ai_ci
+             = COALESCE(LOWER(s.Email), '') COLLATE utf8mb4_0900_ai_ci
         WHERE s.ExistingTargetId IS NULL
     ) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-022 existing target facility contact collides with a legacy contact';
@@ -548,20 +957,23 @@ BEGIN
         facility.TargetFacilityId,
         SHA2(CONCAT_WS('|', i.LMI_ID, i.LMI_LM_ID, i.LMI_FACILITY_ID, i.LMI_FACILITY_CONTACT_ID,
                        i.LMI_EMAIL, i.LMI_PHONE, i.LMI_MEDICAL_PROVIDER, i.LMI_CREATED, i.LMI_UPDATED), 256) AS SourceHash,
+        SHA2(CONCAT_WS('|', i.LMI_ID, i.LMI_LM_ID, i.LMI_FACILITY_ID,
+                       i.LMI_CREATED, i.LMI_UPDATED), 256) AS LegacySourceHash,
         link_x.TargetId AS ExistingTargetId,
         link_x.TargetEntity AS ExistingTargetEntity,
         link_x.SourceHash AS ExistingSourceHash,
         link_x.ImportRunId AS ExistingImportRunId
     FROM `SL-CORE`.`SL_LEINS_MEDICAL_INFORMATION_FACILITY` i
     INNER JOIN liens_LegacyIdCrosswalks lien_x
-      ON lien_x.TenantId = v_tenant_id AND lien_x.SourceSystem = 'SL-CORE'
+     ON lien_x.TenantId = v_tenant_id AND lien_x.SourceSystem = 'SL-CORE'
      AND lien_x.SourceTable = 'SL_LEINS_MEDICAL' AND lien_x.TargetEntity = 'Lien'
-     AND lien_x.ImportRunId = v_core_run_id AND lien_x.LegacyId = CAST(i.LMI_LM_ID AS CHAR)
+     AND lien_x.ImportRunId = v_core_run_id
+     AND BINARY lien_x.LegacyId = BINARY CAST(i.LMI_LM_ID AS CHAR)
     INNER JOIN tmp_sl_core_facilities facility ON facility.LegacyFacilityId = i.LMI_FACILITY_ID
     LEFT JOIN liens_LegacyIdCrosswalks link_x
-      ON link_x.TenantId = v_tenant_id AND link_x.SourceSystem = 'SL-CORE'
+     ON link_x.TenantId = v_tenant_id AND link_x.SourceSystem = 'SL-CORE'
      AND link_x.SourceTable = 'SL_LEINS_MEDICAL_INFORMATION_FACILITY'
-     AND link_x.LegacyId = CAST(i.LMI_ID AS CHAR)
+     AND BINARY link_x.LegacyId = BINARY CAST(i.LMI_ID AS CHAR)
     WHERE i.LMI_FACILITY_ID IS NOT NULL;
 
     SELECT COUNT(*) INTO v_source_link_count FROM tmp_sl_core_lien_facility_links;
@@ -574,11 +986,37 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM tmp_sl_core_lien_facility_links s
         WHERE s.ExistingTargetId IS NOT NULL
-          AND (s.ExistingTargetEntity <> 'LienFacilityLink' OR s.ExistingTargetId <> s.TargetLienId OR s.ExistingSourceHash <> s.SourceHash
-               OR s.ExistingImportRunId <> v_contact_run_id)
+          AND (s.ExistingTargetEntity <> 'LienFacilityLink'
+               OR s.ExistingTargetId <> s.TargetLienId
+               OR NOT (
+                   BINARY s.ExistingSourceHash = BINARY s.SourceHash
+                   OR (BINARY s.ExistingSourceHash = BINARY s.LegacySourceHash
+                       AND EXISTS (
+                           SELECT 1 FROM liens_LegacyImportRuns hash_run
+                           WHERE hash_run.Id = s.ExistingImportRunId
+                             AND hash_run.MappingVersion IN ('sl-core-contact-facility-v1', 'sl-core-contact-facility-v2'))))
+               OR NOT EXISTS (
+                   SELECT 1 FROM liens_LegacyImportRuns prior_run
+                   WHERE prior_run.Id = s.ExistingImportRunId
+                     AND prior_run.TenantId = v_tenant_id
+                     AND prior_run.OrgId = v_org_id
+                     AND prior_run.SourceSystem = 'SL-CORE'
+                     AND prior_run.LegacyProgram = '1'
+                     AND LOWER(prior_run.SourceFingerprint) = v_source_fingerprint
+                     AND prior_run.MappingVersion IN ('sl-core-contact-facility-v1', 'sl-core-contact-facility-v2', 'sl-core-contact-facility-v3')
+                     AND prior_run.Status = 'Completed'))
     ) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-024 existing lien-facility crosswalks conflict with source data';
     END IF;
+    SELECT COUNT(*) INTO v_legacy_link_hash_match_count
+    FROM tmp_sl_core_lien_facility_links staged
+    WHERE staged.ExistingTargetId IS NOT NULL
+      AND BINARY staged.ExistingSourceHash = BINARY staged.LegacySourceHash
+      AND BINARY staged.ExistingSourceHash <> BINARY staged.SourceHash
+      AND EXISTS (
+          SELECT 1 FROM liens_LegacyImportRuns hash_run
+          WHERE hash_run.Id = staged.ExistingImportRunId
+            AND hash_run.MappingVersion IN ('sl-core-contact-facility-v1', 'sl-core-contact-facility-v2'));
     IF EXISTS (
         SELECT 1 FROM tmp_sl_core_lien_facility_links s
         INNER JOIN liens_Liens l ON l.Id = s.TargetLienId
@@ -589,7 +1027,11 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-025 migrated lien ownership or FacilityId conflicts with the legacy link';
     END IF;
 
-    SELECT COUNT(*) INTO v_contacts_to_insert FROM tmp_sl_core_contacts WHERE ExistingTargetId IS NULL;
+    SELECT COUNT(*) INTO v_contacts_to_insert
+    FROM tmp_sl_core_contacts staged
+    WHERE staged.IsCanonical
+      AND staged.ExistingTargetId IS NULL
+      AND NOT staged.TargetContactExists;
     SELECT COUNT(*) INTO v_facility_contacts_to_insert
     FROM tmp_sl_core_facilities facility
     LEFT JOIN liens_Contacts contact
@@ -618,6 +1060,8 @@ BEGIN
 
     IF v_contact_run_count = 1
        AND (v_contacts_to_insert <> 0 OR v_facility_contacts_to_insert <> 0 OR v_facilities_to_insert <> 0 OR v_people_to_insert <> 0
+            OR v_contact_crosswalks_to_insert <> 0
+            OR v_contact_crosswalks_to_repair <> 0
             OR EXISTS (SELECT 1 FROM tmp_sl_core_lien_facility_links WHERE ExistingTargetId IS NULL)) THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'LSLTC-026 completed contact migration is incomplete and requires reconciliation';
     END IF;
@@ -628,13 +1072,17 @@ BEGIN
             v_core_run_id AS CoreImportRunId,
             v_contact_run_id AS ContactImportRunId,
             v_source_contact_count AS SourceContacts,
+            v_contact_identity_count AS ContactIdentityGroups,
+            v_merged_contact_alias_count AS MergedContactAliasRows,
             v_source_law_firm_count AS SourceLawFirms,
             v_source_provider_count AS SourceProviders,
             v_facility_contacts_to_insert AS FacilityContactsToInsert,
+            v_contact_crosswalks_to_insert AS ContactCrosswalksToInsert,
             v_contact_crosswalks_to_repair AS ContactCrosswalksToRepair,
             v_source_facility_count AS SourceFacilities,
             v_source_person_count AS SourceFacilityContactPeople,
             v_source_link_count AS SourceLienFacilityLinks,
+            v_legacy_link_hash_match_count AS LegacyLienFacilityHashMatches,
             v_contacts_to_insert AS ContactsToInsert,
             v_facilities_to_insert AS FacilitiesToInsert,
             v_people_to_insert AS FacilityContactPeopleToInsert,
@@ -653,7 +1101,9 @@ BEGIN
             VALUES (
                 v_contact_run_id, v_tenant_id, v_org_id, 'SL-CORE', v_source_fingerprint, '1',
                 v_mapping_version, v_mapping_manifest_hash,
-                CONCAT('Completed core import ', v_core_run_id), 'Running', UTC_TIMESTAMP(6),
+                CONCAT('Completed core import ', v_core_run_id,
+                       '; approved alias SL_CASE_MANAGER:792->602'),
+                'Running', UTC_TIMESTAMP(6),
                 v_migration_user_id, NULL);
             SET v_created_new_run = TRUE;
 
@@ -668,6 +1118,8 @@ BEGIN
                    v_migration_user_id, TargetContactSubtype, NULL, TargetLawFirmId
             FROM tmp_sl_core_contacts
             WHERE ExistingTargetId IS NULL
+              AND IsCanonical
+              AND NOT TargetContactExists
               AND TargetContactSubtype IS NULL;
             SET v_contacts_inserted = ROW_COUNT();
 
@@ -682,6 +1134,8 @@ BEGIN
                    v_migration_user_id, TargetContactSubtype, NULL, TargetLawFirmId
             FROM tmp_sl_core_contacts
             WHERE ExistingTargetId IS NULL
+              AND IsCanonical
+              AND NOT TargetContactExists
               AND TargetContactSubtype IS NOT NULL;
             SET v_contacts_inserted = v_contacts_inserted + ROW_COUNT();
 
@@ -702,13 +1156,15 @@ BEGIN
                 PostalCode, Notes, IsActive, CreatedAtUtc, UpdatedAtUtc, CreatedByUserId,
                 UpdatedByUserId, ContactSubtype, FacilityId, LawFirmId)
             SELECT UUID(), v_tenant_id, v_org_id, 'MedicalFacility',
-                   LEFT(COALESCE(NULLIF(TRIM(SUBSTRING_INDEX(Name, ' ', 1)), ''), 'Legacy'), 100),
-                   LEFT(COALESCE(NULLIF(TRIM(SUBSTRING(Name, CHAR_LENGTH(SUBSTRING_INDEX(Name, ' ', 1)) + 1)), ''), 'Facility'), 100),
-                   LEFT(Name, 250),
-                   NULL, LEFT(Name, 200), Email, Phone, NULL, NULL, AddressLine1, City, State,
-                   PostalCode, CONCAT('legacySource=SL-CORE:SL_FACILITY:FacilityId=', TargetFacilityId),
-                   1, CreatedAtUtc, UTC_TIMESTAMP(6), v_migration_user_id, v_migration_user_id,
-                   NULL, TargetFacilityId, NULL
+                   LEFT(COALESCE(NULLIF(TRIM(SUBSTRING_INDEX(facility.Name, ' ', 1)), ''), 'Legacy'), 100),
+                   LEFT(COALESCE(NULLIF(TRIM(SUBSTRING(facility.Name, CHAR_LENGTH(SUBSTRING_INDEX(facility.Name, ' ', 1)) + 1)), ''), 'Facility'), 100),
+                   LEFT(facility.Name, 250),
+                   NULL, LEFT(facility.Name, 200), facility.Email, facility.Phone, NULL, NULL,
+                   facility.AddressLine1, facility.City, facility.State,
+                   facility.PostalCode,
+                   CONCAT('legacySource=SL-CORE:SL_FACILITY:FacilityId=', facility.TargetFacilityId),
+                   1, facility.CreatedAtUtc, UTC_TIMESTAMP(6), v_migration_user_id, v_migration_user_id,
+                   NULL, facility.TargetFacilityId, NULL
             FROM tmp_sl_core_facilities facility
             LEFT JOIN liens_Contacts contact
               ON contact.TenantId = v_tenant_id
@@ -743,7 +1199,7 @@ BEGIN
             INSERT INTO liens_LegacyIdCrosswalks (
                 Id, TenantId, SourceSystem, SourceTable, LegacyId, TargetEntity,
                 TargetId, SourceHash, ImportRunId, CreatedAtUtc)
-            SELECT UUID(), v_tenant_id, 'SL-CORE', 'SL_CONTACT', CAST(LegacyContactId AS CHAR),
+            SELECT UUID(), v_tenant_id, 'SL-CORE', LegacySourceTable, CAST(LegacyContactId AS CHAR),
                    'Contact', TargetContactId, SourceHash, v_contact_run_id, UTC_TIMESTAMP(6)
             FROM tmp_sl_core_contacts
             WHERE ExistingTargetId IS NULL
@@ -792,10 +1248,13 @@ BEGIN
             SET Status = 'Completed', CompletedAtUtc = UTC_TIMESTAMP(6),
                 SummaryJson = JSON_OBJECT(
                     'SourceContacts', v_source_contact_count,
+                    'ContactIdentityGroups', v_contact_identity_count,
+                    'MergedContactAliasRows', v_merged_contact_alias_count,
                     'FacilityContactsInserted', v_facility_contacts_inserted,
                     'SourceFacilities', v_source_facility_count,
                     'SourceFacilityContactPeople', v_source_person_count,
                     'SourceLienFacilityLinks', v_source_link_count,
+                    'LegacyLienFacilityHashMatches', v_legacy_link_hash_match_count,
                     'ContactsInserted', v_contacts_inserted,
                     'FacilitiesInserted', v_facilities_inserted,
                     'FacilityContactPeopleInserted', v_people_inserted,
@@ -822,6 +1281,10 @@ BEGIN
     DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_lien_facility_links;
     DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_facility_people;
     DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_facilities;
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_approved_contact_aliases;
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_alias_contact_candidate;
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_canonical_contact_candidate;
+    DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_case_person_case_law_firms;
     DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_law_firm_parents;
     DROP TEMPORARY TABLE IF EXISTS tmp_sl_core_contacts;
     IF v_time_zone_changed THEN SET @@session.time_zone = v_original_time_zone; END IF;

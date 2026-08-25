@@ -369,6 +369,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("AttorneyContactPersonId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid?>("CaseManagerContactPersonId")
                         .HasColumnType("char(36)");
 
@@ -384,6 +387,14 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<string>("ClientAddress")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
+
+                    b.Property<string>("ClientAddressLine1")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
+                    b.Property<string>("ClientCity")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.Property<DateOnly?>("ClientDob")
                         .HasColumnType("date");
@@ -406,8 +417,19 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
 
+                    b.Property<string>("ClientPostalCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("ClientState")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
                     b.Property<DateTime?>("ClosedAtUtc")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<bool?>("CaseDropped")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -433,6 +455,18 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("HandlingLawFirmCompanyId")
                         .HasColumnType("char(36)");
 
+                    b.Property<string>("CurrentMedicalStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<string>("ImportedCreatedByName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("IncidentState")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
                     b.Property<string>("InsuranceCarrier")
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
@@ -440,6 +474,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<string>("Notes")
                         .HasMaxLength(4000)
                         .HasColumnType("varchar(4000)");
+
+                    b.Property<bool?>("MinorComp")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<DateTime?>("OpenedAtUtc")
                         .HasColumnType("datetime(6)");
@@ -466,6 +503,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("varchar(300)");
 
+                    b.Property<DateOnly?>("TrackingFollowUpDate")
+                        .HasColumnType("date");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -473,6 +513,8 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasColumnType("char(36)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AttorneyContactPersonId");
 
                     b.HasIndex("CaseManagerContactPersonId");
 
@@ -1491,6 +1533,87 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.ToTable("liens_FacilityContactPersons", (string)null);
                 });
 
+            modelBuilder.Entity("Liens.Domain.Entities.LegacyFieldMigrationState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("AppliedValueHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTime?>("AppliedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("FieldGroup")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid>("ImportRunId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("LegacyId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("MappingVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("SourceHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("SourceSystem")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("SourceTable")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("varchar(30)");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("TargetEntity")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("TargetPreimageHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImportRunId")
+                        .HasDatabaseName("IX_LegacyFieldMigrationStates_ImportRunId");
+
+                    b.HasIndex("TenantId", "SourceSystem", "SourceTable", "LegacyId", "MappingVersion", "FieldGroup")
+                        .IsUnique()
+                        .HasDatabaseName("UX_LegacyFieldMigrationStates_Source_FieldGroup");
+
+                    b.ToTable("liens_LegacyFieldMigrationStates", (string)null);
+                });
+
             modelBuilder.Entity("Liens.Domain.Entities.LegacyIdCrosswalk", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1855,6 +1978,10 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<string>("IsServicing")
                         .HasMaxLength(10)
                         .HasColumnType("varchar(10)");
+
+                    b.Property<string>("ImportedCreatedByName")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("Jurisdiction")
                         .HasMaxLength(100)
@@ -3080,6 +3207,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "LienId", "BuyerContactId")
                         .HasDatabaseName("IX_SellingBuyerAccessLinks_Tenant_Lien_BuyerContact");
 
+                    b.HasIndex("TenantId", "SellerOrgId", "Purpose", "ResponseStatus", "RespondedAtUtc", "LienId")
+                        .HasDatabaseName("IX_SellingBuyerAccessLinks_WeeklyAging");
+
                     b.HasIndex("TenantId", "SellerOrgId", "LienId", "BuyerOrgId", "BuyerContactId", "CreatedByUserId", "Route", "IdempotencyKey")
                         .IsUnique()
                         .HasDatabaseName("UX_SellingBuyerAccessLinks_Tenant_Scope_IdempotencyKey");
@@ -3926,6 +4056,10 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<string>("DetailsContext")
+                        .HasMaxLength(300)
+                        .HasColumnType("varchar(300)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -3950,8 +4084,30 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly?>("PaymentDate")
                         .HasColumnType("date");
 
+                    b.Property<string>("PaymentMethod")
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
                     b.Property<int>("PaymentNumber")
                         .HasColumnType("int");
+
+                    b.Property<string>("PostingStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("Posted");
+
+                    b.Property<Guid?>("ReceiptId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("SettlementStatus")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string>("SettlementType")
+                        .HasMaxLength(80)
+                        .HasColumnType("varchar(80)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("char(36)");
@@ -3962,9 +4118,22 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("UpdatedByUserId")
                         .HasColumnType("char(36)");
 
+                    b.Property<DateTime?>("VoidedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("VoidedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "CaseId");
+
+                    b.HasIndex("TenantId", "CaseId", "PostingStatus", "PaymentDate")
+                        .HasDatabaseName("IX_SettlementPayments_Tenant_Case_Status_Date");
 
                     b.HasIndex("TenantId", "LienId");
 
@@ -3973,6 +4142,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "PaymentDate", "IsDeleted")
                         .HasDatabaseName("IX_SettlementPayments_Tenant_Date_Deleted");
+
+                    b.HasIndex("TenantId", "ReceiptId")
+                        .HasDatabaseName("IX_SettlementPayments_Tenant_Receipt");
 
                     b.ToTable("liens_SettlementPaymentDetails", (string)null);
                 });
@@ -4061,6 +4233,12 @@ namespace Liens.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("Liens.Domain.Entities.CompanyContactPerson", null)
                         .WithMany()
+                        .HasForeignKey("AttorneyContactPersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_Cases_AttorneyContactPerson");
+
+                    b.HasOne("Liens.Domain.Entities.CompanyContactPerson", null)
+                        .WithMany()
                         .HasForeignKey("CaseManagerContactPersonId")
                         .OnDelete(DeleteBehavior.Restrict);
 
@@ -4120,6 +4298,16 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Facility");
+                });
+
+            modelBuilder.Entity("Liens.Domain.Entities.LegacyFieldMigrationState", b =>
+                {
+                    b.HasOne("Liens.Domain.Entities.LegacyImportRun", null)
+                        .WithMany()
+                        .HasForeignKey("ImportRunId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_LegacyFieldMigrationStates_ImportRun");
                 });
 
             modelBuilder.Entity("Liens.Domain.Entities.LegacyIdCrosswalk", b =>

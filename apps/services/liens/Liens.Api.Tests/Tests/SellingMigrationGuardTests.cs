@@ -82,4 +82,17 @@ public sealed class SellingMigrationGuardTests
         SellingSchemaRepair.CreateRecoveryMigrations()
             .Should().ContainSingle(migration => migration is AddReceivableDueDate);
     }
+
+    [Fact]
+    public void Selling_schema_recovery_replays_case_payment_and_legacy_parity_migrations()
+    {
+        SellingSchemaRepair.CreateRecoveryMigrations()
+            .Select(migration => migration.GetType())
+            .Should()
+            .ContainInOrder(
+                typeof(AddCasePaymentLedgerFields),
+                typeof(AddWeeklyAgingReportIndex),
+                typeof(AddLegacyReportParityFields),
+                typeof(AddLienImportedCreatedByName));
+    }
 }

@@ -508,6 +508,48 @@ public class CaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
         caseNumbers.Should().NotContain(openCode);
     }
 
+    [Fact]
+    public async Task CaseSearch_returns_a_keyword_match_beyond_the_initial_fuzzy_candidate_page()
+    {
+        var targetCaseNumber = $"SEARCH-PAGE-{Guid.CreateVersion7():N}"[..30];
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Cases.Add(Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                targetCaseNumber,
+                "Search",
+                "Target",
+                SeedHelper.UserId));
+
+            var newerCases = Enumerable.Range(0, 5_000)
+                .Select(index => Case.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    $"CANDIDATE-{index:D5}-{Guid.CreateVersion7():N}"[..30],
+                    "Candidate",
+                    index.ToString("D5"),
+                    SeedHelper.UserId));
+            db.Cases.AddRange(newerCases);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/api/liens/cases/v3", new
+        {
+            keyword = targetCaseNumber,
+            page = 1,
+            limit = 10,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        body!.RootElement.GetProperty("data").EnumerateArray()
+            .Select(item => item.GetProperty("caseNumber").GetString())
+            .Should().Contain(targetCaseNumber);
+    }
+
     [Theory]
     [InlineData(CaseStatus.LitigationPending)]
     [InlineData(CaseStatus.LitigationOpen)]

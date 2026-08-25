@@ -41,6 +41,8 @@ public class Lien : AuditableEntity
     public DateOnly? EndServiceDate { get; private set; }
     public string? IsBulk { get; private set; }
     public string? IsServicing { get; private set; }
+    // Preserves a legacy text value that cannot be safely resolved to a V2 user.
+    public string? ImportedCreatedByName { get; private set; }
     public DateTime? OpenedAtUtc  { get; private set; }
     public DateTime? ClosedAtUtc  { get; private set; }
 
@@ -353,6 +355,8 @@ public class Lien : AuditableEntity
 
         if (LienStatus.Terminal.Contains(newStatus))
             ClosedAtUtc = DateTime.UtcNow;
+        else
+            ClosedAtUtc = null;
     }
 
     private static string NormalizeLegacyMedicalStatus(string newStatus)

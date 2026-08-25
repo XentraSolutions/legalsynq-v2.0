@@ -5,7 +5,6 @@ import { FormModal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { settlementService } from "@/lib/settlement";
-import { buildSettlementPaymentRequest } from "@/lib/settlement/payment-request";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 import { lookupService } from "@/lib/lookup";
 import type {
@@ -63,15 +62,19 @@ interface AddPaymentFormProps {
 }
 
 const INITIAL_FORM = {
-  id:"",
+  id: "",
   lienStatus: "",
   checkAmount: "",
   checkDate: "",
   checkNumber: "",
+  paymentMethod: "Check",
+  detailsContext: "",
   type: "",
   status: "",
   note: "",
 };
+
+const PAYMENT_METHODS = ["Check", "ACH", "Wire", "Cash", "Other"];
 
 export function AddPaymentForm({
   open,
@@ -101,8 +104,6 @@ export function AddPaymentForm({
   const [typeError, setTypeError] = useState(false);
   const [statusError, setStatusError] = useState(false);
   const [hasDistributedPayment, setDistributedPayment] = useState(false);
-
-  const PAYMENT_METHOD_CHECK = "Check";
 
   // TEMP: hardcoded until API endpoint is ready
   const TEMP_SETTLEMENT_STATUSES: LookupData[] = [
@@ -192,7 +193,6 @@ export function AddPaymentForm({
     },
   ];
 
-
   function isEditingLien(l: CaseLienItem & CaseLienItemMetadata):boolean {
     const filtered = [...checkedIds].filter(item => item == l.id)
     return filtered.length > 0 ? true : false
@@ -249,7 +249,7 @@ export function AddPaymentForm({
         ...selectedPayment,
         lienStatus: isEditing
           ? selectedPayment.lienStatus
-          : (active ?? lienStatusOptions[1]?.code ?? ""),
+          : (active?.code ?? lienStatusOptions[0]?.code ?? ""),
       }));
       if(isEditing) {
        const filtered = new Set(openLiens.filter((l)=>l.id == selectedPayment.lienId).map((l) => l.id))
@@ -273,6 +273,7 @@ export function AddPaymentForm({
         const filtered = new Set(openLiens.filter((l)=>l.id == selectedPayment.lienId).map((l) => l.id))
         setCheckedIds(filtered) 
   }
+
 
   const allChecked =
     openLiens.length > 0 && checkedIds.size === openLiens.length;
@@ -373,6 +374,14 @@ export function AddPaymentForm({
       0,
     );
     if (totalBalance === 0) return;
+    if (val > totalBalance) {
+      addToast({
+        type: "error",
+        title: "Amount Exceeds Balance",
+        description: "The payment cannot exceed the selected liens' outstanding balance.",
+      });
+      return;
+    }
 
     // Convert check amount and balances to cents (integers) to avoid float drift
     const totalCents = Math.round(val * 100);
@@ -479,6 +488,15 @@ export function AddPaymentForm({
 const handleDistributePayment = () => {
     const val = parseFloat(form.checkAmount);
     if (isNaN(val) || val <= 0 || checkedIds.size === 0) return;
+    const selectedBalance = selectedLiens.reduce((sum, lien) => sum + (lien.balance ?? 0), 0);
+    if (val > selectedBalance) {
+      addToast({
+        type: "error",
+        title: "Amount Exceeds Balance",
+        description: "The payment cannot exceed the selected liens' outstanding balance.",
+      });
+      return;
+    }
     const updates: Record<string, string> = { ...lienPayments };
 
     // Convert total check amount to total cents to avoid floating-point math issues
@@ -507,14 +525,6 @@ const handleDistributePayment = () => {
         current.allocatedCents += equalShareCents;
         remainingCents -= equalShareCents;
       }
-    }
-
-    // If check amount STILL exceeds total balances, 
-    // dump all remaining cents into the highest/last lien in the sorted array
-    if (remainingCents > 0 && activeLiens.length > 0) {
-      const highestLien = activeLiens[activeLiens.length - 1];
-      highestLien.allocatedCents += remainingCents;
-      remainingCents = 0;
     }
 
     // Format back to standard two-decimal currency strings
@@ -546,40 +556,33 @@ const handleDistributePayment = () => {
       const paymentDate = form.checkDate ? formatDate(form.checkDate) : "";
 
       if (isEditing) {
-        settlementService.updateSettlementPayment(form.id, {
+        await settlementService.updateSettlementPayment(form.id, {
           lienStatus: form.lienStatus,
           amount: parseFloat(form.checkAmount || "0"),
           paymentDate,
-          paymentMethod: PAYMENT_METHOD_CHECK,
+          paymentMethod: form.paymentMethod,
           referenceNumber: form.checkNumber,
+          detailsContext: form.detailsContext,
           notes: form.note,
           settlementType: form.type,
           settlementStatus: form.status,
         });
       } else {
-        await Promise.all(
-          lienIds.flatMap((id) => [
-            settlementService.createSettlementPayment({
-              lienId: id,
-              lienStatus: form.lienStatus,
-              caseId,
-              amount: parseFloat(lienPayments[id] || "0"),
-              paymentDate,
-              paymentMethod: PAYMENT_METHOD_CHECK,
-              referenceNumber: form.checkNumber,
-              notes: form.note,
-              settlementType: form.type,
-              settlementStatus: form.status,
-            }),
-            settlementService.createLienSettlement({
-              lienId: id,
-              caseId,
-              settlementAmount: parseFloat(lienPayments[id] || "0"),
-              settlementDate: paymentDate,
-              notes: form.note,
-            }),
-          ]),
-        );
+        await settlementService.recordCasePayment(caseId, {
+          amount: parseFloat(form.checkAmount),
+          paymentDate,
+          paymentMethod: form.paymentMethod,
+          referenceNumber: form.checkNumber,
+          detailsContext: form.detailsContext,
+          notes: form.note,
+          settlementType: form.type,
+          settlementStatus: form.status,
+          lienStatus: form.lienStatus,
+          allocations: lienIds.map((lienId) => ({
+            lienId,
+            amount: parseFloat(lienPayments[lienId] || "0"),
+          })),
+        });
       }
 
       addToast({
@@ -601,17 +604,28 @@ const handleDistributePayment = () => {
     }
   };
 
+  const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
+  const allocatedAmount = selectedLiens.reduce(
+    (sum, lien) => sum + (parseFloat(lienPayments[lien.id] || "0") || 0),
+    0,
+  );
+  const paymentAmount = parseFloat(form.checkAmount) || 0;
+  const hasInvalidAllocation = selectedLiens.some((lien) => {
+    const allocated = parseFloat(lienPayments[lien.id] || "0") || 0;
+    return allocated <= 0 || allocated > (lien.balance ?? 0);
+  });
+
   const isFormInvalid =
     form.lienStatus.trim() === "" ||
     form.checkAmount.trim() === "" ||
     form.checkDate.trim() ==="" ||
     form.checkNumber.trim() ==="" || 
+    form.paymentMethod.trim() === "" ||
     form.type.trim() ==="" || 
     form.status.trim() ==="" ||
     (!isEditing  && !hasDistributedPayment) ||
-    (!isEditing && checkedIds.size === 0);
-
-  const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
+    (!isEditing && checkedIds.size === 0) ||
+    (!isEditing && (hasInvalidAllocation || Math.abs(allocatedAmount - paymentAmount) > 0.001));
 
   const totalAmountToSettle = openLiens.reduce(
     (s, l) => s + (l.balance ?? 0),
@@ -798,7 +812,7 @@ const handleDistributePayment = () => {
       open={open}
       onClose={handleResetClose}
       onSubmit={handleSave}
-      title="Add Payment"
+      title={isEditing ? "Edit Payment" : "Add Payment"}
       submitLabel={saving ? "Saving..." : "Save Payment"}
       submitDisabled={saving || isFormInvalid}
       size="xl"
@@ -851,7 +865,7 @@ const handleDistributePayment = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Check Amount <span className="text-red-500">*</span>
+                Payment Amount <span className="text-red-500">*</span>
               </label>
               <NumberInput
                 value={form.checkAmount}
@@ -870,7 +884,7 @@ const handleDistributePayment = () => {
             </div>
 
             <Field
-              label="Check Received"
+              label="Payment Date"
               required
               type="date"
               value={form.checkDate}
@@ -878,11 +892,37 @@ const handleDistributePayment = () => {
             />
 
             <Field
-              label="Check Number"
+              label="Reference / ID"
               required
-              placeholder="Enter check number"
+              placeholder="Enter reference or confirmation number"
               value={form.checkNumber}
               onChange={(v) => updateForm({ ...form, checkNumber: v })}
+            />
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Payment Method <span className="text-red-500">*</span>
+              </label>
+              <Select
+                value={form.paymentMethod}
+                onValueChange={(value) => updateForm({ paymentMethod: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((method) => (
+                    <SelectItem key={method} value={method}>{method}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Field
+              label="Details / Context"
+              placeholder="Optional payment context"
+              value={form.detailsContext}
+              onChange={(value) => updateForm({ detailsContext: value })}
             />
 
             <div>

@@ -1833,6 +1833,22 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             row.GetProperty("last_case_tracking_note").GetString().Should().Be(expectedActivity);
             row.GetProperty("last_case_tracking_date").GetString().Should().Be(expectedTimestamp);
 
+            var aliasResponse = await _client.PostAsJsonAsync("/report/diy", new
+            {
+                reportType,
+                search,
+                isBulk = "N",
+                columns = new[] { "case_id", "last_activity", "last_activity_date" },
+                page = 1,
+                limit = 10,
+            });
+            aliasResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Body: {await aliasResponse.Content.ReadAsStringAsync()}");
+            using var aliasPayload = JsonDocument.Parse(await aliasResponse.Content.ReadAsStringAsync());
+            var aliasRow = aliasPayload.RootElement.GetProperty("data").EnumerateArray().Single();
+            aliasRow.GetProperty("last_activity").GetString().Should().Be(expectedActivity);
+            aliasRow.GetProperty("last_activity_date").GetString().Should().Be(expectedTimestamp);
+
             var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", request);
             exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
                 $"Body: {await exportResponse.Content.ReadAsStringAsync()}");
@@ -2236,6 +2252,81 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         rows[0].TryGetProperty("medical_provider", out _).Should().BeTrue();
         rows[0].TryGetProperty("lawfirm_email", out _).Should().BeTrue();
         rows[0].TryGetProperty("plaintiff_date_of_birth", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RunReport_populates_canonical_case_parity_fields()
+    {
+        var caseNumber = $"CASE-DIY-PARITY-{Guid.CreateVersion7():N}"[..30];
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                caseNumber,
+                "Parity",
+                "Plaintiff",
+                SeedHelper.UserId,
+                clientDob: new DateOnly(1990, 3, 4),
+                clientPhone: "555-0100",
+                clientEmail: "parity@example.test",
+                clientAddress: "123 Main St, Austin, TX 78701",
+                clientAddressLine1: "123 Main St",
+                clientCity: "Austin",
+                clientState: "TX",
+                clientPostalCode: "78701",
+                incidentState: "Texas",
+                currentMedicalStatus: "Treating",
+                trackingFollowUpDate: new DateOnly(2026, 9, 15),
+                minorComp: true,
+                caseDropped: false);
+
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "CASES",
+            search = caseNumber,
+            columns = new[]
+            {
+                "case_id",
+                "state_of_incident",
+                "medical_status",
+                "case_tracking_follow_up_date",
+                "plaintiff_date_of_birth",
+                "plaintiff_phone",
+                "plaintiff_email",
+                "plaintiff_address",
+                "plaintiff_city",
+                "plaintiff_state",
+                "plaintiff_zip_code",
+                "case_dropped",
+                "minor_comp",
+            },
+            page = 1,
+            limit = 10,
+        });
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = payload.RootElement.GetProperty("data").EnumerateArray().Single();
+        row.GetProperty("state_of_incident").GetString().Should().Be("Texas");
+        row.GetProperty("medical_status").GetString().Should().Be("Treating");
+        row.GetProperty("case_tracking_follow_up_date").GetString().Should().Be("09/15/2026");
+        row.GetProperty("plaintiff_date_of_birth").GetString().Should().Be("03/04/1990");
+        row.GetProperty("plaintiff_phone").GetString().Should().Be("555-0100");
+        row.GetProperty("plaintiff_email").GetString().Should().Be("parity@example.test");
+        row.GetProperty("plaintiff_address").GetString().Should().Be("123 Main St");
+        row.GetProperty("plaintiff_city").GetString().Should().Be("Austin");
+        row.GetProperty("plaintiff_state").GetString().Should().Be("TX");
+        row.GetProperty("plaintiff_zip_code").GetString().Should().Be("78701");
+        row.GetProperty("case_dropped").GetString().Should().Be("No");
+        row.GetProperty("minor_comp").GetString().Should().Be("Yes");
     }
 
     [Fact]

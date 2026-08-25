@@ -139,6 +139,7 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
         var row = await _db.SettlementPaymentDetails.AsNoTracking()
             .Where(payment => payment.TenantId == tenantId
                 && !payment.IsDeleted
+                && payment.PostingStatus != SettlementPaymentDetail.VoidedStatus
                 && payment.PaymentDate.HasValue
                 && payment.PaymentDate.Value >= period.DateFrom
                 && payment.PaymentDate.Value <= period.DateTo)

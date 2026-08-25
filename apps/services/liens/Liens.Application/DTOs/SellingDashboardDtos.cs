@@ -49,6 +49,7 @@ public sealed class SellingDashboardLienItem
     public Guid LienId { get; init; }
     public string LienNumber { get; init; } = string.Empty;
     public DateTime CreatedAtUtc { get; init; }
+    public DateTime CreateDate { get; init; }
     public Guid? CaseId { get; init; }
     public string? CaseNumber { get; init; }
     public Guid? FundingCompanyId { get; init; }

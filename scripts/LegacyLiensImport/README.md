@@ -27,12 +27,44 @@ target mappings and service-owned import paths.
    manifest hash to the import run.
 3. Apply Liens migrations, including `20260726000001_AddLegacyImportControlPlane`,
    `20260727000001_AddLegacyImportApprovals`, and
-   `20260731000001_AddLienPurchaseAndSettlementDates`.
+   `20260731000001_AddLienPurchaseAndSettlementDates`. For the report-parity
+   import and repair described below, also apply
+   `20260825160000_AddLegacyReportParityFields`.
+   `20260825180000_AddLienImportedCreatedByName` is also required to retain
+   `SL_LEINS_MEDICAL.LM_CREATE_BY` as legacy text. Legacy creator text is never
+   treated as a V2 user ID.
+   When the normal EF migration path is unavailable, run the idempotent
+   [`apply-v3-report-parity-schema.sql`](apply-v3-report-parity-schema.sql)
+   against the selected `LS_QA_LIENS` or `LS_LIENS` schema first. It applies
+   the schema only and intentionally leaves EF migration history for the normal
+   application deployment to record.
 4. Set connection strings outside source control:
 
 ```powershell
 $env:LegacySlCoreConnectionString = 'Server=localhost;Database=sl_core_staging;User ID=...;Password=...'
 $env:ConnectionStrings__LiensDb = 'Server=localhost;Database=liens_db;User ID=...;Password=...'
+```
+
+## Restore legacy case and lien creators
+
+For an SL-CORE core import completed before creator names were retained, run
+[`backfill-sl-core-imported-creators.sql`](backfill-sl-core-imported-creators.sql)
+after applying `20260825180000_AddLienImportedCreatedByName`. It maps only
+through the completed core-import crosswalks, fills blank target values only,
+and stops if an existing nonblank target value conflicts with the source.
+Legacy rows without a core-import crosswalk were never migrated to V2 and are
+outside this backfill's scope.
+
+Run the file with **Execute SQL Script** in DBeaver, then dry run:
+
+```sql
+CALL liens_backfill_sl_core_imported_creators('<tenant-guid>', -1, '0');
+```
+
+Review `ChangesToApply` and `Conflicts`. Apply only with that exact count:
+
+```sql
+CALL liens_backfill_sl_core_imported_creators('<tenant-guid>', <ChangesToApply>, '1');
 ```
 
 The restore receipt table is intentionally in the staging database, outside the
@@ -58,6 +90,66 @@ VALUES
 The restore process must replace this one current row only as part of an
 approved restore workflow. The tool checks its fingerprint and scope before it
 reads source business rows.
+
+Never reuse a receipt after the dump file changes. Recompute the dump SHA-256,
+restore that exact file into controlled staging, and atomically replace the
+receipt through the approved restore process before preflight. A dump whose
+current hash differs from its recorded receipt is not eligible for apply.
+
+## Program 1 contacts and facilities import
+
+[`import-sl-core-contacts-facilities-tenant-only.sql`](import-sl-core-contacts-facilities-tenant-only.sql)
+uses mapping version `sl-core-contact-facility-v3`. Its procedure requires the
+tenant, the lowercase SHA-256 of the approved signed mapping manifest, and the
+apply flag:
+
+```sql
+CALL liens_import_sl_core_contacts_facilities_tenant_only(
+  '<tenant-guid>', '<approved-manifest-sha256>', '0');
+```
+
+Version 3 maps law firms, providers, and other organizations from `SL_CONTACT`,
+but maps the people referenced by `SL_CASE.CASE_MANAGER` and
+`SL_CASE.CASE_ATTORNEY` from `SL_CASE_MANAGER`. Their owning law firm comes from
+`SL_CASE_MANAGER.CM_LAWFIRM`. When that reference is not an eligible Program 1
+law firm, version 3 may fall back to `SL_CASE.CASE_LAW_FIRM` only if every
+active Program 1 case referencing that person agrees on exactly one eligible
+law firm. Missing, invalid, or ambiguous case-derived parents still block the
+wave. The case person's crosswalk source table is `SL_CASE_MANAGER`; do not
+substitute an `SL_CONTACT` crosswalk for these people. Review the dry-run counts
+and conflicts before repeating the exact call with `p_apply = '1'` under the
+approved change record.
+
+Version 3 also contains one source-fingerprint-bound identity resolution:
+`SL_CASE_MANAGER:792` is an approved alias of canonical record
+`SL_CASE_MANAGER:602`. The importer creates or reuses one V3 contact using
+record 602's populated values, while retaining separate crosswalks and source
+hashes for both legacy IDs so all six case-manager relationships remain
+traceable. The preflight must report exactly one `MergedContactAliasRows` for
+this source snapshot. Every other duplicate natural key still blocks with
+`LSLTC-011`, and existing crosswalks for 602 and 792 must not point to different
+target contacts.
+If either approved alias already has a crosswalk from an older contact-import
+run, v3 blocks with `LSLTC-032`; do not repoint it automatically. A completed
+v3 run must retain both alias crosswalks, and every existing crosswalk must
+resolve to a real contact owned by the same tenant and organization.
+
+For a tenant that already completed an earlier contact wave, v3 revalidates and
+reuses its immutable `SL_CONTACT`, facility, facility-person, and lien-facility
+crosswalks only when their completed run has the same tenant, organization, and
+source fingerprint. The new `SL_CASE_MANAGER` rows and crosswalks belong to the
+v3 run. The supplied manifest hash must exactly match the completed core import;
+an arbitrary well-formed SHA-256 is rejected.
+
+Lien-facility crosswalks have two reviewed historical hash contracts. The
+complete v2 importer hashed the five fields that define the lien/facility
+relationship, while the tenant-only importer also included facility-contact,
+email, phone, and provider evidence. Version 3 accepts either exact hash only
+for completed v1/v2 contact runs; a v3 crosswalk must match the expanded current
+hash. The target lien, facility assignment, tenant, organization, source
+fingerprint, entity type, and completed-run checks remain mandatory. Existing
+crosswalk hashes and run IDs are never rewritten. Review
+`LegacyLienFacilityHashMatches` in the preflight and summary before apply.
 
 ## Program 1 law-firm repair
 
@@ -113,28 +205,45 @@ Resolve any returned conflicts, then rerun it with the exact `ContactsToInsert`
 value and `p_apply = '1'.` Production execution requires explicit approval and
 an intentionally selected `LS_LIENS` connection.
 
-## Program 1 case-manager, accident-type, status-label, and facility repair
+## Program 1 case relationship and report-parity repair
 
 Use [`backfill-sl-core-case-relationships.sql`](backfill-sl-core-case-relationships.sql)
 after both the Program 1 core import and the Program 1 contacts/facilities
-import have completed for the same source fingerprint. It repairs only omitted
-relationships and legacy case-status metadata:
+import have completed for the same source fingerprint. It repairs only blank
+canonical fields, omitted relationships, and legacy case-status metadata:
 
-- `SL_CASE.CASE_MANAGER` through its `SL_CONTACT` crosswalk to `caseManagerId`
-  metadata on the target case.
+The repair accepts the completed v2 or v3 contact run that owns the required
+`SL_CASE_MANAGER` crosswalks; facility and lien-facility mappings may come from
+an approved completed v1, v2, or v3 run for the same tenant, organization, and
+source fingerprint.
+
+- `SL_CASE.CASE_MANAGER` and `SL_CASE.CASE_ATTORNEY` through their
+  `SL_CASE_MANAGER` crosswalks to compatibility case-manager and attorney IDs
+  in the target case metadata.
+- `SL_CASE.CASE_LAW_FIRM` through its approved `SL_CONTACT` crosswalk to the
+  compatibility law-firm ID in the target case metadata. The crosswalk may be
+  owned by the completed v1, v2, or v3 contact wave for the same immutable
+  source fingerprint; the case-person crosswalks still require v2 or v3.
 - `SL_CASE.CASE_ACCIDENT_TYPE` through `SL_ACCIDENT_TYPE` to the matching
   system `liens_LookupValues` UUID plus the target `accidentType` name.
 - `SL_CASE.CASE_STATUS` to `statusLabel` metadata for `New`, `Processing`, and
   `Litigation` rows whose target case remains in the corresponding collapsed
   canonical status (`PreDemand` or `InNegotiation`).
 - `SL_LEINS_MEDICAL_INFORMATION_FACILITY` to a blank target lien `FacilityId`.
+- The source address components, incident state, medical status, tracking
+  follow-up date, minor-comp flag, dropped-case flag, and imported creator name
+  to their typed `liens_Cases` fields.
 
 The facility relationship is lien-level, not a column on `liens_Cases`. The
-script never creates contacts, facilities, lookups, or crosswalks; a missing or
-ambiguous mapping blocks the entire apply. It also refuses to overwrite an
-existing different case-manager, accident-type, case-status label, or facility
-assignment. Cases whose status changed after import retain their current status
-and are not given the historical label.
+script never creates contacts, facilities, or lookups. It creates only its
+dedicated `SL_CASE_NOTES_LAST_ACTIVITY` crosswalks; a missing or ambiguous
+prerequisite mapping blocks the entire apply. It also refuses to overwrite an
+existing different case-manager, attorney, typed parity value, accident-type,
+case-status label, or facility assignment. Cases whose status changed after
+import retain their current status and are not given the historical label.
+Every applied parity group records source, preimage, and applied-value hashes
+in `liens_LegacyFieldMigrationStates` so reruns and rollback investigation are
+auditable without retaining sensitive plaintext in the control ledger.
 
 You may use DBeaver to inspect the SQL file in dry-run mode (`@apply = 0`),
 but use the checked-in .NET runner for every apply. It owns the transaction and
@@ -148,28 +257,50 @@ Run the dry run from the repository root:
 
 ```powershell
 dotnet run --project scripts/LegacyLiensImport -- `
-  --backfill-case-relationships `
+  --backfill-v3-report-fields `
   --tenant-id 019f6ae6-4348-784a-aae0-f4d636f843ad `
   --target-connection '<LS_QA_LIENS connection string>'
 ```
 
-Copy the exact `Case rows to update` and `Lien facility rows to update` output,
-then run the apply:
+Copy all five exact dry-run counts, then run the apply:
 
 ```powershell
 dotnet run --project scripts/LegacyLiensImport -- `
-  --backfill-case-relationships `
+  --backfill-v3-report-fields `
   --tenant-id 019f6ae6-4348-784a-aae0-f4d636f843ad `
   --target-connection '<LS_QA_LIENS connection string>' `
   --expected-case-updates <dry-run-case-count> `
   --expected-lien-facility-updates <dry-run-lien-facility-count> `
+  --expected-medical-code-inserts <dry-run-medical-code-count> `
+  --expected-provider-changes <dry-run-provider-count> `
+  --expected-activity-inserts <dry-run-activity-count> `
   --apply
 ```
 
 The target connection must select `LS_QA_LIENS` (or the explicitly approved
 `LS_LIENS` production schema), and `SL-CORE` must be on the same MySQL server.
-The runner refuses an apply when the counts differ or any preflight/conflict
-check fails.
+The runner refuses an apply when any count differs or any preflight/conflict
+check fails. The compatibility option `--backfill-case-relationships` executes
+the same complete v3 repair, but new operations should use
+`--backfill-v3-report-fields`.
+
+For the complete v3 DIY-report data set, run the repairs in dependency order:
+
+1. Apply `20260825160000_AddLegacyReportParityFields` and complete
+   `sl-core-contact-facility-v3`.
+2. Run this guarded all-fields repair. It now includes medical-code servicing
+   rows, medical-provider metadata, and deterministic last-activity records in
+   the same assertion-bound transaction as the case and facility updates.
+3. If the completed core import predates case-note v2, run
+   `reconcile-sl-core-case-note-categories.sql` separately when you also need
+   the legacy tracking/feed categories corrected. The all-fields repair itself
+   creates the deterministic internal row used by `last_activity` and
+   `last_activity_date`.
+
+The repair also fills a blank plaintiff date of birth from `SL_CASE.CASE_DOB`;
+an existing different value is treated as a blocking conflict.
+Law-firm and medical-facility address/phone/email fields are read from the v3
+contact/facility targets after the relationships above make them reachable.
 
 ## Litigation case-status repair
 
