@@ -7,7 +7,7 @@ Internal operator administration portal for LegalSynq platform staff. Requires `
 ## Tech
 
 - Next.js 16.2.6 App Router, TypeScript, Tailwind CSS v4, React 18
-- Local development uses the monorepo/root pnpm install path; do not add a duplicate source-tree `apps/control-center/node_modules` manually because duplicate React can break hooks. Production runtime artifacts are separate and are packaged with `package.json`, `pnpm-lock.yaml`, and `pnpm-workspace.yaml`; the app manifest pins `packageManager: pnpm@10.26.1` so Corepack does not drift during `pnpm install --production`.
+- Local development uses the monorepo/root pnpm install path. Use `pnpm dev:control-center` from the repository root; it creates only the app-local `next` symlinks needed for `pnpm --dir apps/control-center exec next ...`. Do not manually install a duplicate source-tree `apps/control-center/node_modules` because duplicate React can break hooks. Production runtime artifacts are separate and are packaged with `package.json`, `pnpm-lock.yaml`, and `pnpm-workspace.yaml`; the app manifest pins `packageManager: pnpm@10.26.1` so Corepack does not drift during `pnpm install --production`.
 
 ## Auth
 
@@ -23,6 +23,7 @@ BFF — local route handlers for auth and a few specific endpoints; all other `/
 |---|---|
 | `/` | Dashboard — system health, KPIs, recent audit events, support cases |
 | `/tenants` | Tenant list and detail — status, entitlements, branding, DNS provisioning status/retries |
+| `/products` | Product catalog and platform URL configuration; tenant enablement remains on tenant detail |
 | `/tenant-applications` | Review-first self-registration queue with approval, decline, and DNS provisioning progress |
 | `/users` | Cross-tenant user management |
 | `/audit` | SynqAudit investigation — events, integrity checks, exports |

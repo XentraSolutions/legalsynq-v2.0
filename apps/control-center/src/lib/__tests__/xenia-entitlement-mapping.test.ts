@@ -50,3 +50,19 @@ test('mapTenantDetail normalizes legacy SYNQ_AI entitlements to a single Xenia c
   assert.equal(xeniaItems[0].enabled, true);
   assert.equal(synqFundNamedXenia, undefined);
 });
+
+test('maps and displays the SYNQ_SELLING tenant entitlement as Synq Selling', () => {
+  const mapped = mapEntitlementResponse({
+    productCode: 'SYNQ_SELLING',
+    productName: 'SynqSelling',
+    enabled: true,
+    status: 'Active',
+  });
+
+  const selling = mergeTenantEntitlements([mapped]).find(
+    item => item.productCode === 'SynqSelling',
+  );
+
+  assert.equal(selling?.productName, 'Synq Selling');
+  assert.equal(selling?.enabled, true);
+});
