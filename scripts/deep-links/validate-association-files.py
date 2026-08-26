@@ -27,7 +27,7 @@ def extract_route_paths(registry):
         if isinstance(item, str):
             paths.append(item)
         elif isinstance(item, dict):
-            paths.append(item.get("path") or item.get("route") or item.get("pattern"))
+            paths.append(item.get("pathTemplate") or item.get("path") or item.get("route") or item.get("pattern"))
         else:
             paths.append(None)
     return paths
