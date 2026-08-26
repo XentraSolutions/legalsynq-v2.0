@@ -4,18 +4,13 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/selling/button";
 import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
+import { TOTAL_STEPS } from "./shared";
 
-function ProgressBar({
-  currentStep,
-  totalSteps,
-}: {
-  currentStep: number;
-  totalSteps: number;
-}) {
+function ProgressBar({ currentStep }: { currentStep: number }) {
   return (
     <div className="w-full mx-auto p-4">
       <div className="flex w-full gap-2">
-        {Array.from({ length: totalSteps }, (_, index) => {
+        {Array.from({ length: TOTAL_STEPS }, (_, index) => {
           const isFilled = index < currentStep;
           return (
             <div
@@ -33,7 +28,6 @@ function ProgressBar({
 
 export interface CaseWizardShellProps {
   step: number;
-  totalSteps: number;
   hydrating?: boolean;
   skeleton?: React.ReactNode;
   submitting?: boolean;
@@ -42,15 +36,20 @@ export interface CaseWizardShellProps {
   onBack: () => void;
   onContinue: () => void;
   children: React.ReactNode;
+  // When set, this step is being opened as a standalone edit from the case
+  // detail page (via a "returnTo=detail" query param) rather than as part of
+  // the create wizard: hides the step progress bar, and the footer reads
+  // Cancel/Save instead of Back/Continue. The top-left arrow returns here
+  // directly instead of going to the cases list. Mirrors LienWizardShell's
+  // detailEditReturnHref (@/components/selling/lien-wizard/shell).
+  detailEditReturnHref?: string;
 }
 
-// Shared chrome for the case-wizard steps — same shape as
-// LienWizardShell (@/components/selling/lien-wizard/shell), but takes
-// totalSteps as a prop instead of a module constant since this wizard's step
-// count (2) is independent of the lien wizard's (4).
+// Shared chrome for every case-wizard step page — same shape as
+// LienWizardShell (@/components/selling/lien-wizard/shell), but with a fixed
+// TOTAL_STEPS (2) since the case wizard's step count doesn't vary by caller.
 export function CaseWizardShell({
   step,
-  totalSteps,
   hydrating,
   skeleton,
   submitting,
@@ -59,22 +58,27 @@ export function CaseWizardShell({
   onBack,
   onContinue,
   children,
+  detailEditReturnHref,
 }: CaseWizardShellProps) {
+  const isDetailEdit = !!detailEditReturnHref;
   return (
     <div className="max-w-[700px] m-auto">
       <div className="flex items-center mb-6 ">
-        <Link
-          href="/selling/portfolio/cases"
-          aria-label="Back"
-          className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <ProgressBar currentStep={step} totalSteps={totalSteps} />
+        <nav>
+          <Link
+            href={detailEditReturnHref ?? "/selling/portfolio/cases"}
+            className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+        </nav>
+        {!isDetailEdit && <ProgressBar currentStep={step} />}
       </div>
-      <p className={`mt-2 text-xs text-gray-600`}>
-        Step {step}/ {totalSteps}
-      </p>
+      {!isDetailEdit && (
+        <p className={`mt-2 text-xs text-gray-600`}>
+          Step {step}/ {TOTAL_STEPS}
+        </p>
+      )}
       <div className="mt-5 position-relative ">
         {hydrating ? (
           skeleton ?? (
@@ -89,7 +93,7 @@ export function CaseWizardShell({
 
             <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-end gap-2">
               <Button variant="secondary" onClick={onBack}>
-                Back
+                {isDetailEdit ? "Cancel" : "Back"}
               </Button>
               <Button
                 variant="primary"
@@ -97,7 +101,11 @@ export function CaseWizardShell({
                 loading={submitting}
                 disabled={!!continueDisabled || !!submitting}
               >
-                {continueLabel}
+                {isDetailEdit
+                  ? submitting
+                    ? "Saving..."
+                    : "Save"
+                  : continueLabel}
               </Button>
             </div>
           </>

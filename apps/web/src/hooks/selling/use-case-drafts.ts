@@ -28,6 +28,23 @@ export function useUpdateCaseDraft() {
   });
 }
 
+export const CASE_DRAFT_QUERY_KEY = (draftId: string) =>
+  ["selling-case-draft", draftId] as const;
+
+export function useCaseDraft(
+  draftId: string | null | undefined,
+  options?: { enabled?: boolean },
+) {
+  const enabled = (options?.enabled ?? true) && Boolean(draftId);
+  return useQuery({
+    queryKey: CASE_DRAFT_QUERY_KEY(draftId ?? ""),
+    queryFn: () => liensService.getCaseDraftById(draftId as string),
+    enabled,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
 export function useFinalizeCaseDraft() {
   return useMutation({
     mutationFn: ({

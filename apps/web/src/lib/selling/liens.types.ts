@@ -295,6 +295,9 @@ export interface CaseDraftResult {
   handlingLawFirmId?: string | null;
   caseManagerId?: string | null;
   caseTrackingNotes?: string | null;
+  // Only set once GET is called after the draft has been finalized into a
+  // real case (POST .../plaintiff) — a draft in progress has this as null.
+  caseId?: string | null;
 }
 
 // POST /case-drafts/{draftId}/plaintiff — attaches the plaintiff, finalizing

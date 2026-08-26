@@ -156,6 +156,10 @@ export const liensApi = {
     );
   },
 
+  getCaseDraftById(draftId: string) {
+    return apiClient.get<CaseDraftResult>(`${BASE}/case-drafts/${draftId}`);
+  },
+
   finalizeCaseDraft(draftId: string, request: FinalizeCaseDraftRequest) {
     return apiClient.post<FinalizeCaseDraftResult>(
       `${BASE}/case-drafts/${draftId}/plaintiff`,
