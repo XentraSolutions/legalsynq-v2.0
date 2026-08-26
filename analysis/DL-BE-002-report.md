@@ -749,3 +749,20 @@ Rationale: Current Gateway restore/build passes, focused association tooling pas
 Complete — DL-BE-001 Resume Ready, External Inputs Only
 
 Gateway restore/build validation succeeded on a compatible .NET 10 environment. One genuine `pathTemplate` tooling defect was found and corrected. The missing authoritative shared registry was restored from historical source without route semantic changes, and registry wiring now reaches expected external-input blockers. Remaining work is limited to external Platform/release/deployment inputs and live verification.
+
+### Re-verification on 2026-08-26
+
+Reran validation after reviewing `/Users/ralphlopez/Downloads/DL-BE-002.md`, which is the DL-BE-002 ticket prompt. Results:
+
+- Branch/HEAD: `feature-deeplink-verification` at `cef0c65e757d6c0e61b358b093a807df92d4833c`.
+- .NET SDK: `10.0.203`; installed SDKs include `8.0.420` and `10.0.203`.
+- Gateway restore: passed; warning `NU1510` in `BuildingBlocks` remains pre-existing/unrelated.
+- Gateway build: passed with constrained command; `1 Warning(s), 0 Error(s)`.
+- Association tooling test: passed.
+- Python syntax validation: passed.
+- Registry wiring: passed to expected external-input validation; output was `ERROR: development: missing required values: host, appleTeamId`.
+- Documentation sync: passed; docs detected were `apps/gateway/README.md` and `shared/contracts/deep-links/README.md`.
+- `git diff --check`: passed.
+- Mobile/Web/services boundary check: passed with no status output.
+- Restored registry checksum: `745fb44451f954bdb85ca84c747ebdd6be7512c184354b0b3e6a0f554f835237`, matching historical source commit `771f620727759f75c1d6d0ad11d370d279d0cf38`.
+- Re-verification conclusion: DL-BE-002 remains `Complete — DL-BE-001 Resume Ready, External Inputs Only`.
