@@ -19,5 +19,11 @@ export type {
   CaseDetailResult,
   UpdateCasePlaintiffRequest,
   UpdateCasePlaintiffResult,
+  CaseSearchQuery,
+  CaseSearchItem,
 } from "./liens.types";
-export type { LienListResult, LienOffersResult } from "./selling-liens.service";
+export type {
+  LienListResult,
+  LienOffersResult,
+  CaseSearchResult,
+} from "./selling-liens.service";

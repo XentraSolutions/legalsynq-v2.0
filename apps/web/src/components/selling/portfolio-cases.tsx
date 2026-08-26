@@ -1,19 +1,80 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
+import { SortingState } from "@tanstack/react-table";
 import { PageHeader } from "@/components/lien/page-header";
 import { Card } from "../ui/dashboard-card";
 import { MetricCard } from "./dashboard/metric-card";
 import { Tabs } from "./tabs";
 import { Button } from "@/components/selling/button";
 import { CasesTable } from "./cases-table";
+import { CaseSearchQuery, liensService, PaginationMeta } from "@/lib/selling";
 
 export default function PortfolioCasesClient() {
   const router = useRouter();
   const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    pageSize: 10,
+    totalCount: 0,
+    totalPages: 0,
+  });
+
+  const currentQuery = useMemo(
+    (): CaseSearchQuery => ({
+      search: search || undefined,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+    }),
+    [search, pagination],
+  );
+
+  const {
+    data: cases,
+    isPending: isCasesPending,
+    refetch: refetchCases,
+  } = useQuery({
+    queryKey: ["selling-cases", currentQuery],
+    queryFn: () => liensService.searchCases(currentQuery),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const paginationData = useMemo(
+    () => ({
+      ...pagination,
+      totalPages: cases?.pagination.totalPages ?? 1,
+      totalCount: cases?.pagination.totalCount ?? 0,
+    }),
+    [pagination, cases],
+  );
+
+  const handlePageChange = (newPage: number) => {
+    setPagination((prev) => ({ ...prev, page: newPage }));
+  };
+
+  const handlePageSizeChange = (newPageSize: number) => {
+    setPagination((prev) => ({ ...prev, page: 1, pageSize: newPageSize }));
+  };
+
+  useEffect(() => {
+    refetchCases();
+  }, [currentQuery, refetchCases]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setSearch(searchInput), 350);
+    return () => clearTimeout(timeout);
+  }, [searchInput]);
+
+  useEffect(() => {
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  }, [search]);
 
   return (
     <div className="space-y-4">
@@ -91,7 +152,15 @@ export default function PortfolioCasesClient() {
           </Button>
         </div>
 
-        <CasesTable />
+        <CasesTable
+          cases={cases?.items ?? []}
+          sorting={sorting}
+          onSortingChange={setSorting}
+          pagination={paginationData}
+          handlePageChange={handlePageChange}
+          onPageSizeChange={handlePageSizeChange}
+          isLoading={isCasesPending}
+        />
       </Card>
     </div>
   );
