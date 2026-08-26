@@ -2182,6 +2182,8 @@ public static class SellingV2Endpoints
             return (null, ValidationError("caseStatus", "caseStatus must be a valid case status."));
         if (dateOfLoss > DateOnly.FromDateTime(DateTime.UtcNow))
             return (null, ValidationError("dateOfLoss", "dateOfLoss cannot be in the future."));
+        if (accidentTypeId?.Trim().Length > 100)
+            return (null, ValidationError("accidentTypeId", "accidentTypeId cannot exceed 100 characters."));
         if (accidentState?.Trim().Length > 100)
             return (null, ValidationError("accidentState", "accidentState cannot exceed 100 characters."));
         if (caseTrackingNotes?.Trim().Length > MaxSellingCaseTrackingNotesLength)
@@ -2191,11 +2193,14 @@ public static class SellingV2Endpoints
         string? accidentTypeName = null;
         if (normalizedAccidentTypeId is not null)
         {
-            var accidentType = await db.LookupValues.AsNoTracking().FirstOrDefaultAsync(value =>
+            var accidentTypeQuery = db.LookupValues.AsNoTracking().Where(value =>
                 value.Category == LookupCategory.AccidentType &&
                 value.IsActive &&
-                (value.TenantId == null || value.TenantId == tenantId) &&
-                (value.Code == normalizedAccidentTypeId || value.Id.ToString() == normalizedAccidentTypeId), ct);
+                (value.TenantId == null || value.TenantId == tenantId));
+            var accidentType = Guid.TryParse(normalizedAccidentTypeId, out var accidentTypeGuid)
+                ? await accidentTypeQuery.FirstOrDefaultAsync(value =>
+                    value.Code == normalizedAccidentTypeId || value.Id == accidentTypeGuid, ct)
+                : await accidentTypeQuery.FirstOrDefaultAsync(value => value.Code == normalizedAccidentTypeId, ct);
             if (accidentType is null)
                 return (null, ValidationError("accidentTypeId", "accidentTypeId must identify an active accident type."));
             accidentTypeName = accidentType.Name;
@@ -2358,12 +2363,19 @@ public static class SellingV2Endpoints
     {
         if (string.IsNullOrWhiteSpace(accidentTypeId))
             return null;
-        return await db.LookupValues.AsNoTracking()
-            .Where(value => value.Category == LookupCategory.AccidentType &&
-                            (value.TenantId == null || value.TenantId == tenantId) &&
-                            (value.Code == accidentTypeId || value.Id.ToString() == accidentTypeId))
-            .Select(value => value.Name)
-            .FirstOrDefaultAsync(ct);
+        var normalizedAccidentTypeId = accidentTypeId.Trim();
+        var accidentTypeQuery = db.LookupValues.AsNoTracking().Where(value =>
+            value.Category == LookupCategory.AccidentType &&
+            (value.TenantId == null || value.TenantId == tenantId));
+        return Guid.TryParse(normalizedAccidentTypeId, out var accidentTypeGuid)
+            ? await accidentTypeQuery
+                .Where(value => value.Code == normalizedAccidentTypeId || value.Id == accidentTypeGuid)
+                .Select(value => value.Name)
+                .FirstOrDefaultAsync(ct)
+            : await accidentTypeQuery
+                .Where(value => value.Code == normalizedAccidentTypeId)
+                .Select(value => value.Name)
+                .FirstOrDefaultAsync(ct);
     }
 
     private static string? NormalizeCaseStatus(string? value)

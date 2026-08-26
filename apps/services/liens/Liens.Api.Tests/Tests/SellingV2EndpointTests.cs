@@ -48,11 +48,21 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     [Fact]
     public async Task Case_draft_finalization_creates_a_complete_case_that_can_be_attached_to_a_lien()
     {
+        Guid accidentTypeId;
+        using (var lookupScope = _factory.Services.CreateScope())
+        {
+            var lookupDb = lookupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            accidentTypeId = await lookupDb.LookupValues
+                .Where(value => value.Category == LookupCategory.AccidentType && value.Code == "MVA")
+                .Select(value => value.Id)
+                .SingleAsync();
+        }
+
         using var createDraft = new HttpRequestMessage(HttpMethod.Post, "/api/liens/selling/case-drafts")
         {
             Content = JsonContent.Create(new
             {
-                accidentTypeId = "MVA",
+                accidentTypeId = accidentTypeId.ToString(),
                 accidentState = "CA",
                 dateOfLoss = "2026-07-19",
                 caseTrackingNotes = "Plaintiff intake completed.",
@@ -103,6 +113,32 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         persisted.IncidentState.Should().Be("CA");
         persisted.Notes.Should().Contain("gender=Nonbinary");
         (await db.Liens.SingleAsync(item => item.Id == lienId)).CaseId.Should().Be(caseId);
+    }
+
+    [Fact]
+    public async Task Case_draft_returns_field_validation_errors_for_invalid_case_information()
+    {
+        var invalidRequests = new (object Payload, string Field)[]
+        {
+            (new { accidentTypeId = new string('A', 101) }, "accidentTypeId"),
+            (new { accidentTypeId = Guid.CreateVersion7() }, "accidentTypeId"),
+            (new { accidentState = new string('A', 101) }, "accidentState"),
+            (new { dateOfLoss = "9999-12-31" }, "dateOfLoss"),
+            (new { handlingLawFirmId = Guid.CreateVersion7() }, "handlingLawFirmId"),
+            (new { caseManagerId = Guid.CreateVersion7() }, "caseManagerId"),
+            (new { caseTrackingNotes = new string('N', 3_501) }, "caseTrackingNotes"),
+        };
+
+        foreach (var (payload, field) in invalidRequests)
+        {
+            var response = await _client.PostAsJsonAsync("/api/liens/selling/case-drafts", payload);
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var error = json.RootElement.GetProperty("error");
+            error.GetProperty("code").GetString().Should().Be("validation_error");
+            error.GetProperty("errors").TryGetProperty(field, out _).Should().BeTrue();
+        }
     }
 
     [Fact]
