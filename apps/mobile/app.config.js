@@ -1,10 +1,9 @@
-const { createNativeDeepLinkConfig } = require('./app.config.helpers');
-
-const nativeDeepLinkConfig = createNativeDeepLinkConfig();
+const isProduction = process.env.EXPO_PUBLIC_APP_ENV === 'production';
+const nativeDeepLinkConfig = [isProduction ? "applinks:links.legalsynq.net" : "applinks:links-qa.legalsynq.net"];
 
 module.exports = {
   "expo": {
-    "name": process.env.EXPO_PUBLIC_APP_ENV === 'production' ? "LegalSynq" : "LegalSynq QA",
+    "name": isProduction ? "LegalSynq" : "LegalSynq QA",
     "slug": "legalsynq",
     "version": "3.0.0",
     "orientation": "portrait",
@@ -12,8 +11,8 @@ module.exports = {
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": process.env.EXPO_PUBLIC_APP_ENV === 'production' ? "com.legalsynq" : "com.legalsynq.qa",
-      "associatedDomains": nativeDeepLinkConfig.iosAssociatedDomains,
+      "bundleIdentifier": isProduction ? "com.legalsynq" : "com.legalsynq.qa",
+      "associatedDomains": nativeDeepLinkConfig,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "Allow $(PRODUCT_NAME) to use Face ID to securely access your saved login."
@@ -24,8 +23,8 @@ module.exports = {
         "foregroundImage": "./src/assets/images/adaptive-icon.png",
         "backgroundColor": "#0d1f35"
       },
-      "package": process.env.EXPO_PUBLIC_APP_ENV === 'production' ? "com.legalsynq" : "com.legalsynq.qa",
-      "intentFilters": nativeDeepLinkConfig.androidIntentFilters,
+      "package": isProduction ? "com.legalsynq" : "com.legalsynq.qa",
+      "intentFilters": nativeDeepLinkConfig,
       "permissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"
