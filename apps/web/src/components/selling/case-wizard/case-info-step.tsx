@@ -11,17 +11,18 @@ import { TOTAL_STEPS } from "./shared";
 
 export interface CaseInfoStepProps {
   data: CaseInfoFieldsValue;
+  submitting?: boolean;
   onContinue: (data: CaseInfoFieldsValue) => void;
   onBack: () => void;
 }
 
 // Step 1 of the case-creation wizard. Mirrors LienInfoStep's shape
-// (@/components/selling/lien-wizard/lien-info-step) but the whole wizard is
-// client-state-only — there's no draft-id route to resume from, since case
-// creation isn't wired to a real endpoint yet (stub submit in
-// plaintiff-info-step.tsx).
+// (@/components/selling/lien-wizard/lien-info-step). onContinue creates the
+// case draft (POST /case-drafts) before advancing to step 2 — submitting
+// reflects that request's pending state.
 export default function CaseInfoStep({
   data,
+  submitting,
   onContinue,
   onBack,
 }: CaseInfoStepProps) {
@@ -42,6 +43,7 @@ export default function CaseInfoStep({
       step={1}
       totalSteps={TOTAL_STEPS}
       continueDisabled={!valid}
+      submitting={submitting}
       onBack={onBack}
       onContinue={() => onContinue(form)}
     >
