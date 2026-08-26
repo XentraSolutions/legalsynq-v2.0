@@ -36,6 +36,10 @@ import {
 } from "../liens/liens.types";
 import { LienDetailsResult } from "@/types/lien-selling";
 import { LienListResult } from "./selling-liens.service";
+import type {
+  MonthlyAgingReport,
+  MonthlyAgingReportQuery,
+} from "./aging-report.types";
 
 const BASE = "/selling/api/liens/selling";
 
@@ -87,6 +91,12 @@ export const liensApi = {
   getDashboard(query: DashboardQuery = {}) {
     return apiClient.get<LienResponseDto>(
       `${BASE}/dashboard${toQs(query as Record<string, unknown>)}`,
+    );
+  },
+
+  getMonthlyAgingReport(query: MonthlyAgingReportQuery) {
+    return apiClient.get<MonthlyAgingReport>(
+      `/selling/api/liens/reports/monthly-aging${toQs(query as unknown as Record<string, unknown>)}`,
     );
   },
 

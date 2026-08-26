@@ -12,3 +12,9 @@ export type {
   LienArchivedStatusResult,
 } from "./liens.types";
 export type { LienListResult, LienOffersResult } from "./selling-liens.service";
+export type {
+  MonthlyAgingReport,
+  MonthlyAgingReportQuery,
+  MonthlyAgingReportRow,
+  MonthlyAgingSummaryTotals,
+} from "./aging-report.types";

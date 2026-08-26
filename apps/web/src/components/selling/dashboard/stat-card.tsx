@@ -17,6 +17,7 @@ export function StatCard({
   centerValue,
   centerLabel,
   valueFormat = "currency",
+  detailsHref,
 }: {
   title: string;
   total: number;
@@ -33,6 +34,8 @@ export function StatCard({
   centerLabel?: string;
   /** How to format each legend row's value. */
   valueFormat?: "currency" | "number";
+  /** Optional in-page or route link to the data behind the summary. */
+  detailsHref?: string;
 }) {
   const filteredSegments = segments.filter((s) => s.value > 0);
   const segmentTotal = filteredSegments.reduce((sum, s) => sum + s.value, 0);
@@ -44,11 +47,22 @@ export function StatCard({
     <div className="bg-white rounded-xl border border-gray-200 flex flex-col gap-4">
       <div className="flex items-center justify-between border-b border-gray-100 p-5">
         <h2 className="text-sm font-semibold text-gray-800">{title}</h2>
-        {showHeaderStat && (
-          <p className="text-sm font-semibold text-gray-800">
-            Total {statsType} <span className="text-gray-600 font-normal">{displayValue}</span>
-          </p>
-        )}
+        <div className="flex items-center gap-4">
+          {showHeaderStat && (
+            <p className="text-sm font-semibold text-gray-800">
+              Total {statsType}{" "}
+              <span className="text-gray-600 font-normal">{displayValue}</span>
+            </p>
+          )}
+          {detailsHref && (
+            <Link
+              href={detailsHref}
+              className="text-xs font-medium text-blue-600 hover:text-blue-700"
+            >
+              View details
+            </Link>
+          )}
+        </div>
       </div>
       <div className="flex items-start gap-4 p-5">
         <div className="shrink-0">

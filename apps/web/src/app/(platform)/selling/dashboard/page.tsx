@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSession } from "@/hooks/use-session";
 import { formatDateOnly } from "@/lib/format-date";
 import {
@@ -15,18 +16,36 @@ import {
 } from "@/components/selling/dashboard/liens-over-time-chart";
 import { Card } from "@/components/ui/dashboard-card";
 import { BaseTable } from "@/components/ui/base-table";
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, PaginationState } from "@tanstack/react-table";
 import type { Segment } from "@/components/lien/dashboard/types";
 import {
   TABLE_CELL_CLASSNAME,
   TABLE_HEADER_CLASSNAME,
   TABLE_HEADER_CELL_CLASSNAME,
 } from "@/components/selling/table-cell-styles";
+import { liensService, type MonthlyAgingReportRow } from "@/lib/selling";
 
 export const dynamic = "force-dynamic";
 
 function formatUsd(value: number): string {
   return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatCompactUsd(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function todayDateOnly(): string {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 // The dollar figures below are static mock data, but the picker should still visibly
@@ -47,17 +66,6 @@ function formatPeriodLabel(range: DateRangeValue): string | null {
 
 // Shared blue/orange/green/yellow/red palette used across both summary donuts on this page.
 const SUMMARY_COLORS = ["#3b82f6", "#f97316", "#22c55e", "#eab308", "#ef4444"];
-
-// Dollar amounts are derived from the displayed percentages of the $3,842,196.18
-// total (rather than typed in independently) so the pie wedges, legend
-// percentages, and "Total A/R" header can't drift out of sync with each other.
-const arAgingSegments: Segment[] = [
-  { label: "0-30 Days", value: 1256398.15, color: SUMMARY_COLORS[0] },
-  { label: "31-60 Days", value: 987444.42, color: SUMMARY_COLORS[1] },
-  { label: "61-90 Days", value: 753070.45, color: SUMMARY_COLORS[2] },
-  { label: "91-120 Days", value: 430325.97, color: SUMMARY_COLORS[3] },
-  { label: "120+ Days", value: 414957.19, color: SUMMARY_COLORS[4] },
-];
 
 const lienStatusSegments: Segment[] = [
   { label: "Active", value: 842, color: SUMMARY_COLORS[0] },
@@ -186,102 +194,15 @@ const topBuyersColumns: ColumnDef<TopBuyerRow, any>[] = [
   },
 ];
 
-type AgingStatus = "High" | "Medium" | "Low";
-
-interface AgingByBuyerRow {
-  id: string;
-  fundingCompany: string;
-  d0_30: number;
-  d31_60: number;
-  d61_90: number;
-  d91_120: number;
-  d120Plus: number;
-  total: number;
-  pastDuePercent: number;
-  status: AgingStatus;
-}
-
-// d0_30 is set so each row's five buckets sum exactly to `total` (which is kept in
-// sync with the matching company's `lienBalance` in topBuyers above) — the source
-// figures were off by anywhere from $0.31 to ~$1,000 depending on the row.
-const agingByBuyer: AgingByBuyerRow[] = [
-  {
-    id: "apex-mutual",
-    fundingCompany: "Apex Mutual",
-    d0_30: 412512.31,
-    d31_60: 298451.23,
-    d61_90: 221114.55,
-    d91_120: 112662.11,
-    d120Plus: 81102.3,
-    total: 1125842.5,
-    pastDuePercent: 17.1,
-    status: "High",
-  },
-  {
-    id: "nova-care",
-    fundingCompany: "Nova Care",
-    d0_30: 211541.23,
-    d31_60: 156882.21,
-    d61_90: 118442.33,
-    d91_120: 74551.12,
-    d120Plus: 126004.99,
-    total: 687421.88,
-    pastDuePercent: 29.1,
-    status: "High",
-  },
-  {
-    id: "summit-ins",
-    fundingCompany: "Summit Ins.",
-    d0_30: 166331.14,
-    d31_60: 108992.77,
-    d61_90: 76551.88,
-    d91_120: 53221.99,
-    d120Plus: 51120.55,
-    total: 456218.33,
-    pastDuePercent: 22.8,
-    status: "Medium",
-  },
-  {
-    id: "beacon-life",
-    fundingCompany: "Beacon Life",
-    d0_30: 99772.33,
-    d31_60: 72441.11,
-    d61_90: 54002.19,
-    d91_120: 38441.77,
-    d120Plus: 57117.79,
-    total: 321775.19,
-    pastDuePercent: 29.7,
-    status: "High",
-  },
-  {
-    id: "vanguard",
-    fundingCompany: "Vanguard",
-    d0_30: 76221.31,
-    d31_60: 54883.12,
-    d61_90: 41667.22,
-    d91_120: 29561.88,
-    d120Plus: 86780.69,
-    total: 289114.22,
-    pastDuePercent: 40.3,
-    status: "High",
-  },
-];
-
-const AGING_STATUS_STYLES: Record<AgingStatus, string> = {
-  High: "bg-red-100 text-red-600",
-  Medium: "bg-amber-100 text-amber-700",
-  Low: "bg-green-100 text-green-600",
-};
-
-// Tight padding — 9 columns of currency data need to fit without triggering
+// Tight padding — the report's currency columns need to fit without triggering
 // horizontal scroll at the card's normal width, unlike the default px-4 cells.
 const DENSE_CELL_META = { headerClassName: "px-2", cellClassName: "px-2" };
 
 function agingCurrencyColumn(
   id: string,
   header: string,
-  accessor: (row: AgingByBuyerRow) => number,
-): ColumnDef<AgingByBuyerRow, any> {
+  accessor: (row: MonthlyAgingReportRow) => number,
+): ColumnDef<MonthlyAgingReportRow, any> {
   return {
     id,
     header,
@@ -294,7 +215,15 @@ function agingCurrencyColumn(
   };
 }
 
-const agingColumns: ColumnDef<AgingByBuyerRow, any>[] = [
+const agingColumns: ColumnDef<MonthlyAgingReportRow, any>[] = [
+  {
+    id: "lienCode",
+    header: "Lien Code",
+    meta: DENSE_CELL_META,
+    cell: ({ row }) => (
+      <span className={TABLE_CELL_CLASSNAME}>{row.original.lienCode}</span>
+    ),
+  },
   {
     id: "fundingCompany",
     header: "Funding Company",
@@ -305,50 +234,70 @@ const agingColumns: ColumnDef<AgingByBuyerRow, any>[] = [
       </span>
     ),
   },
-  agingCurrencyColumn("0-30", "0 - 30 Days", (r) => r.d0_30),
-  agingCurrencyColumn("31-60", "31 - 60 Days", (r) => r.d31_60),
-  agingCurrencyColumn("61-90", "61 - 90 Days", (r) => r.d61_90),
-  agingCurrencyColumn("91-120", "91 - 120 Days", (r) => r.d91_120),
-  agingCurrencyColumn("120+", "120+ Days", (r) => r.d120Plus),
-  {
-    id: "total",
-    header: "Total",
-    meta: DENSE_CELL_META,
-    cell: ({ row }) => (
-      <span className={TABLE_CELL_CLASSNAME}>
-        {formatUsd(row.original.total)}
-      </span>
-    ),
-  },
-  {
-    id: "pastDue",
-    header: "Past Due %",
-    meta: DENSE_CELL_META,
-    cell: ({ row }) => (
-      <span className={TABLE_CELL_CLASSNAME}>
-        {row.original.pastDuePercent.toFixed(1)}%
-      </span>
-    ),
-  },
-  {
-    id: "status",
-    header: "Status",
-    meta: DENSE_CELL_META,
-    cell: ({ row }) => (
-      <span
-        className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${AGING_STATUS_STYLES[row.original.status]}`}
-      >
-        {row.original.status}
-      </span>
-    ),
-  },
+  agingCurrencyColumn("1-30", "1 - 30 Days", (r) => r.days1To30),
+  agingCurrencyColumn("31-60", "31 - 60 Days", (r) => r.days31To60),
+  agingCurrencyColumn("61-90", "61 - 90 Days", (r) => r.days61To90),
+  agingCurrencyColumn("91-120", "91 - 120 Days", (r) => r.days91To120),
+  agingCurrencyColumn("120+", "120+ Days", (r) => r.moreThan120),
+  agingCurrencyColumn("total", "Total", (r) => r.totalAmount),
 ];
 
 export default function SellingDashboardPage() {
   const { session } = useSession();
   const displayName = session?.orgName || session?.email?.split("@")[0] || "";
   const [dashboardRange, setDashboardRange] = useState<DateRangeValue>({});
+  const [agingPagination, setAgingPagination] = useState<PaginationState>({
+    pageIndex: 0,
+    pageSize: 10,
+  });
   const periodLabel = formatPeriodLabel(dashboardRange) ?? "Apr 1 – Apr 30";
+  const agingAsOfDate = dashboardRange.to ?? todayDateOnly();
+  const {
+    data: monthlyAging,
+    isPending: isAgingPending,
+    error: agingError,
+  } = useQuery({
+    queryKey: ["selling-monthly-aging", agingAsOfDate, agingPagination],
+    queryFn: () =>
+      liensService.getMonthlyAgingReport({
+        asOfDate: agingAsOfDate,
+        page: agingPagination.pageIndex + 1,
+        pageSize: agingPagination.pageSize,
+      }),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+  const arAgingSegments = useMemo<Segment[]>(() => {
+    const totals = monthlyAging?.summaryTotals;
+    return [
+      {
+        label: "1-30 Days",
+        value: totals?.days1To30 ?? 0,
+        color: SUMMARY_COLORS[0],
+      },
+      {
+        label: "31-60 Days",
+        value: totals?.days31To60 ?? 0,
+        color: SUMMARY_COLORS[1],
+      },
+      {
+        label: "61-90 Days",
+        value: totals?.days61To90 ?? 0,
+        color: SUMMARY_COLORS[2],
+      },
+      {
+        label: "91-120 Days",
+        value: totals?.days91To120 ?? 0,
+        color: SUMMARY_COLORS[3],
+      },
+      {
+        label: "120+ Days",
+        value: totals?.moreThan120 ?? 0,
+        color: SUMMARY_COLORS[4],
+      },
+    ];
+  }, [monthlyAging]);
+  const totalAr = monthlyAging?.summaryTotals.totalAmount ?? 0;
 
   return (
     <div className="space-y-6">
@@ -365,7 +314,13 @@ export default function SellingDashboardPage() {
         <div className="w-72 shrink-0">
           <DateRangePicker
             value={dashboardRange}
-            onChange={setDashboardRange}
+            onChange={(range) => {
+              setDashboardRange(range);
+              setAgingPagination((current) => ({
+                ...current,
+                pageIndex: 0,
+              }));
+            }}
             placeholder="Select date range"
             presets
           />
@@ -414,12 +369,19 @@ export default function SellingDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <StatCard
           title="A/R Aging Summary"
-          total={arAgingSegments.reduce((sum, s) => sum + s.value, 0)}
+          total={totalAr}
           segments={arAgingSegments}
           statsType="A/R:"
-          totalStats={3842196.18}
-          centerValue="$3.8M"
+          totalStats={totalAr}
+          centerValue={
+            isAgingPending
+              ? "..."
+              : agingError
+                ? "—"
+                : formatCompactUsd(totalAr)
+          }
           centerLabel="Total A/R"
+          detailsHref="#aging-details"
         />
 
         <StatCard
@@ -459,15 +421,25 @@ export default function SellingDashboardPage() {
         </Card>
       </div>
 
-      <div>
-        <Card title="Aging by Lien Buyer" icon="ri-draggable" className="px-3">
+      <div id="aging-details" className="scroll-mt-6">
+        <Card title="A/R Aging Details" icon="ri-draggable" className="px-3">
           <BaseTable
-            data={agingByBuyer}
+            data={monthlyAging?.data ?? []}
             columns={agingColumns}
-            getRowId={(r) => r.id}
+            getRowId={(r) => r.lienCode}
             enableSorting={false}
-            enablePagination={false}
-            emptyMessage="No aging data to show."
+            manualPagination
+            pageCount={monthlyAging?.totalPages ?? 0}
+            pagination={agingPagination}
+            onPaginationChange={setAgingPagination}
+            totalCount={monthlyAging?.totalCount ?? 0}
+            pageSizeOptions={[10, 25, 50]}
+            isLoading={isAgingPending}
+            emptyMessage={
+              agingError
+                ? "Unable to load aging details."
+                : "No aging data to show."
+            }
             className="bg-white border-none w-full p-0"
             headerClassName={TABLE_HEADER_CLASSNAME}
             headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
