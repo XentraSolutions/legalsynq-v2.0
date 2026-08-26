@@ -14,6 +14,18 @@ import { Button } from "@/components/selling/button";
 import { CasesTable } from "./cases-table";
 import { CaseSearchQuery, liensService, PaginationMeta } from "@/lib/selling";
 
+const SORT_BY_MAP: Record<string, string> = {
+  caseNumber: "caseNumber",
+  firstName: "firstName",
+  lastName: "lastName",
+  handlingLawFirm: "handlingLawFirmName",
+  caseManager: "caseManagerName",
+  accidentType: "accidentTypeName",
+  dateOfLoss: "dateOfLoss",
+  birthdate: "birthdate",
+  caseStatus: "caseStatus",
+};
+
 export default function PortfolioCasesClient() {
   const router = useRouter();
   const [searchInput, setSearchInput] = useState("");
@@ -31,8 +43,10 @@ export default function PortfolioCasesClient() {
       search: search || undefined,
       page: pagination.page,
       pageSize: pagination.pageSize,
+      sortBy: sorting[0] ? SORT_BY_MAP[sorting[0].id] : undefined,
+      sortDirection: sorting[0] ? (sorting[0].desc ? "desc" : "asc") : undefined,
     }),
-    [search, pagination],
+    [search, pagination, sorting],
   );
 
   const {

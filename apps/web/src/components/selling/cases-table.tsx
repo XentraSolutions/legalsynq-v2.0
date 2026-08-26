@@ -30,10 +30,6 @@ interface CasesTableProps {
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
-function clientName(c: CaseSearchItem): string {
-  return [c.firstName, c.lastName].filter(Boolean).join(" ") || "—";
-}
-
 export function CasesTable({
   cases,
   sorting,
@@ -62,41 +58,52 @@ export function CasesTable({
         ),
       },
       {
-        id: "clientName",
-        header: "Plaintiff Name",
+        id: "firstName",
+        accessorKey: "firstName",
+        header: "First Name",
         cell: ({ row }) => (
           <span className={TABLE_CELL_CLASSNAME}>
-            {clientName(row.original)}
+            {row.original.firstName || "—"}
+          </span>
+        ),
+      },
+      {
+        id: "lastName",
+        accessorKey: "lastName",
+        header: "Last Name",
+        cell: ({ row }) => (
+          <span className={TABLE_CELL_CLASSNAME}>
+            {row.original.lastName || "—"}
           </span>
         ),
       },
       {
         id: "handlingLawFirm",
-        accessorKey: "handlingLawFirm",
+        accessorKey: "handlingLawFirmName",
         header: "Law Firm",
         cell: ({ row }) => (
           <span className={TABLE_CELL_CLASSNAME}>
-            {row.original.handlingLawFirm || "—"}
+            {row.original.handlingLawFirmName || "—"}
           </span>
         ),
       },
       {
         id: "caseManager",
-        accessorKey: "caseManager",
+        accessorKey: "caseManagerName",
         header: "Case Manager",
         cell: ({ row }) => (
           <span className={TABLE_CELL_CLASSNAME}>
-            {row.original.caseManager || "—"}
+            {row.original.caseManagerName || "—"}
           </span>
         ),
       },
       {
         id: "accidentType",
-        accessorKey: "accidentType",
+        accessorKey: "accidentTypeName",
         header: "Accident Type",
         cell: ({ row }) => (
           <span className={TABLE_CELL_CLASSNAME}>
-            {row.original.accidentType || "—"}
+            {row.original.accidentTypeName || "—"}
           </span>
         ),
       },

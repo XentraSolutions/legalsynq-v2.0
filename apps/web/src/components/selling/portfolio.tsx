@@ -44,17 +44,19 @@ const PORTFOLIO_STATUSES = [
   // { key: "all", label: "all" },
 ];
 
+// Keys must match PortfolioTable's column ids (portfolio-table.tsx). Values
+// mirror the sortBy convention SellingDashboardService.Sort already accepts
+// (lienId, fundingCompany, initialServiceDate, billingAmount, askAmount,
+// highestBid, status) — createdAtUtc isn't handled there yet, sent anyway on
+// the assumption the backend will add support for it.
 const SORT_BY_MAP: Record<string, string> = {
-  lienNumber: "lienNumber",
-  plaintiffName: "plaintiff",
-  lawFirm: "lawFirm",
-  facilityName: "medicalFacility",
-  purchaseDate: "purchaseDate",
-  purchaseAmount: "totalPurchase",
-  totalBilling: "totalBilling",
-  status: "status",
+  createdAtUtc: "createdAtUtc",
+  lienId: "lienId",
+  fundingCompany: "fundingCompany",
   initialServiceDate: "initialServiceDate",
-  caseManager: "caseManager",
+  billingAmount: "billingAmount",
+  askAmount: "askAmount",
+  status: "status",
 };
 
 const INITIAL_QUERY: Record<string, unknown> = {

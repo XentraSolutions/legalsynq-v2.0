@@ -356,13 +356,15 @@ export interface CaseDetailResult {
 // which only reads caseId/caseNumber/firstName/lastName) and the Cases
 // portfolio list (@/components/selling/cases-table). Response items carry the
 // same raw fields as CaseDetailResult, plus each *Id field's resolved display
-// name under the same name without the "Id" suffix (accidentTypeId ->
-// accidentType, handlingLawFirmId -> handlingLawFirm, caseManagerId ->
-// caseManager) when the referenced lookup value is populated.
+// name under a "Name" suffix (accidentTypeId -> accidentTypeName,
+// handlingLawFirmId -> handlingLawFirmName, caseManagerId ->
+// caseManagerName) when the referenced lookup value is populated.
 export interface CaseSearchQuery {
   search?: string;
   page?: number;
   pageSize?: number;
+  sortBy?: string;
+  sortDirection?: "asc" | "desc";
 }
 
 export interface CaseSearchItem {
@@ -375,11 +377,11 @@ export interface CaseSearchItem {
   dateOfLoss?: string | null;
   accidentState?: string | null;
   accidentTypeId?: string | null;
-  accidentType?: string | null;
+  accidentTypeName?: string | null;
   handlingLawFirmId?: string | null;
-  handlingLawFirm?: string | null;
+  handlingLawFirmName?: string | null;
   caseManagerId?: string | null;
-  caseManager?: string | null;
+  caseManagerName?: string | null;
 }
 
 // The endpoint doesn't echo back `page`/`pageSize` — only `items` and
