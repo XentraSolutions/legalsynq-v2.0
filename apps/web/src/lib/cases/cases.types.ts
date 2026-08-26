@@ -25,7 +25,7 @@ export interface CaseResponseDto {
   trackingFollowUpDate: string;
   leadId: string;
   lienStatus?: string;
-  lienStatusId?:string;
+  lienStatusId?: string;
   lawFirmId?: string | null;
   lawFirm?: string | null;
   caseManagerId?: string | null;
@@ -616,6 +616,7 @@ export interface CreateMedicalCodeLiensDto {
   purchaseAmount: string;
   payee: string;
   outboundCheckNumber: string;
+  codeRows?: any;
 }
 
 export interface CreateMedicalPaymentDto {
