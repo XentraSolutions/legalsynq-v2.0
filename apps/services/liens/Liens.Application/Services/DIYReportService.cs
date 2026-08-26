@@ -141,11 +141,15 @@ public class DIYReportService : IDIYReportService
         var isBulk = GetReportString(request, "isBulk");
         var normalizedBulkFilter = NormalizeDIYBulkFilter(isBulk);
         var filterCaseIds = GetReportGuidList(request, "plaintiffCaseIds");
+        var medicalFacilityIds = await ResolveLienFacilityIdsAsync(
+            tenantId,
+            GetReportGuidList(request, "medicalFacilityIds"),
+            ct);
         var relationshipFilters = new ReportRelationshipFilters(
             GetReportGuidList(request, "lawFirmIds").ToHashSet(),
             GetReportGuidList(request, "attorneyIds").ToHashSet(),
             GetReportGuidList(request, "fundingCompanyIds").ToHashSet(),
-            GetReportGuidList(request, "medicalFacilityIds").ToHashSet(),
+            medicalFacilityIds.ToHashSet(),
             GetReportGuidList(request, "caseManagerIds").ToHashSet(),
             GetReportGuidList(request, "medicalProviderIds").ToHashSet());
 
@@ -294,6 +298,25 @@ public class DIYReportService : IDIYReportService
                 ? code
                 : value)
             .ToList();
+    }
+
+    private async Task<IReadOnlyCollection<Guid>> ResolveLienFacilityIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> requestedIds,
+        CancellationToken ct)
+    {
+        if (requestedIds.Count == 0)
+            return [];
+
+        var facilityIds = requestedIds.ToHashSet();
+        var contacts = await _contactRepo.GetByIdsAsync(tenantId, requestedIds, ct);
+        foreach (var contact in contacts)
+        {
+            if (contact.FacilityId.HasValue)
+                facilityIds.Add(contact.FacilityId.Value);
+        }
+
+        return facilityIds;
     }
 
     private static List<Lien> ApplyRelationshipFilters(

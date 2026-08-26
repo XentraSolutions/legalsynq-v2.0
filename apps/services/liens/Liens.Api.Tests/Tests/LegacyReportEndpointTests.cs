@@ -187,6 +187,99 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
+    public async Task RunReport_filters_by_the_facility_id_returned_by_the_diy_picker()
+    {
+        var lienNumber = $"LIEN-DIY-FACILITY-{Guid.CreateVersion7():N}"[..36];
+        Guid legacyPickerContactId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-FACILITY-{Guid.CreateVersion7():N}"[..30],
+                "Facility",
+                "Plaintiff",
+                SeedHelper.UserId);
+            var lien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                lienNumber,
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id,
+                facilityId: SeedHelper.FacilityId,
+                purchaseDate: new DateOnly(2026, 8, 14));
+            var legacyPickerContact = Contact.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                ContactType.MedicalFacility,
+                "Sunrise",
+                "Clinic",
+                SeedHelper.UserId,
+                facilityId: SeedHelper.FacilityId,
+                organization: "Sunrise Clinic");
+            legacyPickerContactId = legacyPickerContact.Id;
+
+            db.Cases.Add(caseEntity);
+            db.Liens.Add(lien);
+            db.Contacts.Add(legacyPickerContact);
+            await db.SaveChangesAsync();
+        }
+
+        var filterOptionsResponse = await _client.PostAsJsonAsync("/report/diy/filter-options", new
+        {
+            filterField = "medicalfacility",
+            keyword = "Sunrise Clinic",
+            limit = 20,
+        });
+        filterOptionsResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await filterOptionsResponse.Content.ReadAsStringAsync()}");
+
+        using var filterOptions = JsonDocument.Parse(await filterOptionsResponse.Content.ReadAsStringAsync());
+        filterOptions.RootElement.GetProperty("data").EnumerateArray().Should().Contain(option =>
+            option.GetProperty("id").GetString() == SeedHelper.FacilityId.ToString());
+
+        var reportResponse = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            purchaseDateFrom = "2026-08-14",
+            purchaseDateTo = "2026-08-14",
+            medicalFacilityIds = new[] { SeedHelper.FacilityId },
+            columns = new[] { "lien_id" },
+            page = 1,
+            limit = 10,
+        });
+        reportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await reportResponse.Content.ReadAsStringAsync()}");
+
+        using var report = JsonDocument.Parse(await reportResponse.Content.ReadAsStringAsync());
+        report.RootElement.GetProperty("data").EnumerateArray()
+            .Select(row => row.GetProperty("lien_id").GetString())
+            .Should().Contain(lienNumber);
+
+        var savedReportResponse = await _client.PostAsJsonAsync("/report/diy", new
+        {
+            reportType = "LIENS",
+            purchaseDateFrom = "2026-08-14",
+            purchaseDateTo = "2026-08-14",
+            medicalFacilityIds = new[] { legacyPickerContactId },
+            columns = new[] { "lien_id" },
+            page = 1,
+            limit = 10,
+        });
+        savedReportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await savedReportResponse.Content.ReadAsStringAsync()}");
+
+        using var savedReport = JsonDocument.Parse(await savedReportResponse.Content.ReadAsStringAsync());
+        savedReport.RootElement.GetProperty("data").EnumerateArray()
+            .Select(row => row.GetProperty("lien_id").GetString())
+            .Should().Contain(lienNumber);
+    }
+
+    [Fact]
     public async Task RunReport_returns_null_days_since_reduction_approval_when_no_reduction_exists()
     {
         string lienNumber;
