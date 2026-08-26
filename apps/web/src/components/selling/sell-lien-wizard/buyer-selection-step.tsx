@@ -7,7 +7,7 @@ import { ArrowLeft, Plus, Search, UserPlus } from "lucide-react";
 import { liensService } from "@/lib/selling";
 import { toast } from "sonner";
 import { Button } from "@/components/selling/button";
-import { useCompanyTypes, useCompanies, useContactPersons } from "@/hooks/use-selling-companies";
+import { useCompanyTypes, useCompanies, useContactPersons } from "@/hooks/selling/use-selling-companies";
 import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
 import Field from "@/components/lien/field";
