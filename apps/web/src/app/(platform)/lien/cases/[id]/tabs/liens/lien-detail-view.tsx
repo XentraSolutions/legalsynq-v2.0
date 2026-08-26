@@ -55,7 +55,6 @@ export function LienDetailView({
     valid[2] === true &&
     valid[3] !== false &&
     valid[4] !== false;
-  console.log(valid, isFormReady);
 
   const fetchLienDetails = useCallback(async () => {
     try {
