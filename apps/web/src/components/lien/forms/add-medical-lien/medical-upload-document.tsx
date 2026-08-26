@@ -227,7 +227,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     } else {
       fetchDocument();
     }
-  }, [data, onUploaded]);
+  }, [data]);
 
   return (
     <div className="container-fluid">
