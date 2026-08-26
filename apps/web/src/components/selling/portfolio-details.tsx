@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Clipboard, Copy } from "lucide-react";
 import { LienDetailsResult } from "@/types/lien-selling";
 import { LienInformationPanel } from "./lien-detail/lien-information-panel";
-import { FundingCompanyAndCaseInformationPanel } from "./lien-detail/funding-company-information-panel";
+import { ProviderFundingDetailsPanel } from "./lien-detail/provider-funding-details-panel";
 import { MedicalCodesInformationPanel } from "./lien-detail/medical-codes-information-panel";
-import { EditLienInformationModal } from "./lien-detail/edit-lien-information-modal";
-import { EditCaseInformationModal } from "./lien-detail/edit-case-information-modal";
 import { EditMedicalPricingModal } from "./lien-detail/edit-medical-pricing-modal";
+import { detailEditHref } from "./lien-wizard/shared";
 import { ConfirmDialog, Modal } from "@/components/selling/modal";
 import UploadDocuments from "./forms/add-medical-lien/medical-upload-document";
 import { fileIconFor, UploadedFileRow } from "./uploaded-file-row";
@@ -40,7 +40,7 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
-type EditModalKey = "lien-information" | "case-information" | "medical-pricing";
+type EditModalKey = "medical-pricing";
 
 export function PortfolioDetailSkeleton() {
   return (
@@ -85,6 +85,7 @@ export function PortfolioDetailPanel({
   lien,
   onRefresh,
 }: LienDetailPanelProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabKey>("details");
   const [editModal, setEditModal] = useState<EditModalKey | null>(null);
   const { data: docs = [] } = useLienDocuments(lien.lienId);
@@ -145,17 +146,21 @@ export function PortfolioDetailPanel({
         <>
           <LienInformationPanel
             lien={lien.lienInformation}
+            caseInformation={lien.caseInformation}
             onEdit={
-              canEdit ? () => setEditModal("lien-information") : undefined
+              canEdit
+                ? () => router.push(detailEditHref(lien.lienId, 1))
+                : undefined
             }
           />
-          <FundingCompanyAndCaseInformationPanel
+          <ProviderFundingDetailsPanel
             fundingCompany={lien.fundingCompany}
             facility={lien.facility}
             medicalProvider={lien.medicalProvider}
-            caseInformation={lien.caseInformation}
             onEdit={
-              canEdit ? () => setEditModal("case-information") : undefined
+              canEdit
+                ? () => router.push(detailEditHref(lien.lienId, 2))
+                : undefined
             }
           />
           <MedicalCodesInformationPanel
@@ -167,29 +172,6 @@ export function PortfolioDetailPanel({
       {activeTab === "documents" && <DocumentsTab lien={lien} />}
       {activeTab === "activity" && <ActivityTab lienId={lien.lienId} />}
 
-      {editModal === "lien-information" && (
-        <EditLienInformationModal
-          lienId={lien.lienId}
-          lien={lien.lienInformation}
-          onClose={() => setEditModal(null)}
-          onSaved={() => {
-            setEditModal(null);
-            onRefresh();
-          }}
-        />
-      )}
-      {editModal === "case-information" && (
-        <EditCaseInformationModal
-          lienId={lien.lienId}
-          fundingCompany={lien.fundingCompany}
-          medicalProvider={lien.medicalProvider}
-          onClose={() => setEditModal(null)}
-          onSaved={() => {
-            setEditModal(null);
-            onRefresh();
-          }}
-        />
-      )}
       {editModal === "medical-pricing" && (
         <EditMedicalPricingModal
           lienId={lien.lienId}

@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import { liensService } from "@/lib/selling";
 import { LienInfoParams } from "@/lib/liens/liens.types";
 import { toast } from "sonner";
 import LienInfo from "../forms/add-medical-lien/lien-info";
 import { LienWizardShell } from "./shell";
-import { buildFormsFromLien } from "./shared";
+import {
+  buildFormsFromLien,
+  detailHref,
+  DETAIL_EDIT_PARAM,
+  DETAIL_EDIT_VALUE,
+} from "./shared";
 import { SkeletonField, SkeletonFormGrid } from "@/components/lien/skeleton-loader";
 
 // Mirrors LienInfo's layout: title, a 2x2 field grid (status/date,
@@ -36,6 +41,9 @@ export interface LienInfoStepProps {
 // edit an existing one's info (/edit/step-1, lienId from the route).
 export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDetailEdit =
+    !!lienId && searchParams.get(DETAIL_EDIT_PARAM) === DETAIL_EDIT_VALUE;
   const [hydrating, setHydrating] = useState(!!lienId);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState<any>(null);
@@ -87,6 +95,11 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
       // read-only once the lien exists.
       if (lienId) {
         await liensService.createLienInfo(lienId, request);
+        if (isDetailEdit) {
+          toast.success("Lien information updated.");
+          router.push(detailHref(lienId));
+          return;
+        }
         router.push(`/selling/portfolio/lien/${lienId}/edit/step-2`);
         return;
       }
@@ -122,8 +135,15 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
       skeleton={<LienInfoSkeleton />}
       submitting={submitting}
       continueDisabled={!formValid}
-      onBack={() => router.back()}
+      onBack={
+        isDetailEdit && lienId
+          ? () => router.push(detailHref(lienId))
+          : () => router.back()
+      }
       onContinue={handleContinue}
+      detailEditReturnHref={
+        isDetailEdit && lienId ? detailHref(lienId) : undefined
+      }
     >
       <LienInfo
         caseId={caseId}

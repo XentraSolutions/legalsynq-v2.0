@@ -1,27 +1,29 @@
 import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
 
-export interface CaseInformationFieldsValue {
+export interface ProviderFundingFieldsValue {
   medicalProviderId: string;
   medicalProvider?: string;
+  facilityId?: string;
+  facility?: string;
   fundingCompanyId: string;
   fundingCompany?: string;
   fundingCompanyContactId: string;
   fundingCompanyContact?: string;
 }
 
-// Shared by the lien-associations wizard step and detail-page modal. Case
+// Shared by the provider-funding wizard step and detail-page modal. Case
 // ownership belongs to the case-first intake flow; this endpoint only saves
 // associations owned by the lien itself.
-export function CaseInformationFields({
+export function ProviderFundingFields({
   value,
   onChange,
 }: {
-  value: CaseInformationFieldsValue;
-  onChange: (patch: Partial<CaseInformationFieldsValue>) => void;
+  value: ProviderFundingFieldsValue;
+  onChange: (patch: Partial<ProviderFundingFieldsValue>) => void;
 }) {
   return (
     <div className="grid grid-cols-2 gap-4">
-      <div className="col-span-2">
+      <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
           Medical Provider
         </label>
@@ -38,6 +40,25 @@ export function CaseInformationFields({
           searchPlaceholder="Search medical providers..."
           allowCreate
           createLabel="Add Medical Provider"
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Medical Facility
+        </label>
+        <SellingEntitySelect
+          entityType="MedicalFacility"
+          value={value.facilityId ?? ""}
+          onChange={(v, option) =>
+            onChange({
+              facilityId: v,
+              facility: option?.label ?? "",
+            })
+          }
+          placeholder="Select medical facility..."
+          searchPlaceholder="Search medical facilities..."
+          allowCreate
+          createLabel="Add Medical Facility"
         />
       </div>
       <div>

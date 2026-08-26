@@ -143,7 +143,7 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
     }
     setSavingBuyerSelection(true);
     try {
-      await liensService.saveCaseInformation(lienId, {
+      await liensService.saveProviderFundingDetails(lienId, {
         fundingCompanyId: companyId,
         fundingCompanyContactId: contactId || undefined,
       });

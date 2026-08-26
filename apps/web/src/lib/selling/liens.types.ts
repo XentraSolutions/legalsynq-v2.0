@@ -264,14 +264,17 @@ export interface SaveSellingLienInformationRequest {
   notes?: string;
 }
 
-export interface SaveSellingCaseInformationRequest {
+// A lien's funding-company/facility/medical-provider links.
+export interface SaveSellingProviderFundingRequest {
   medicalProviderId?: string;
   fundingCompanyId?: string | null;
   fundingCompanyContactId?: string | null;
   facilityId?: string;
 }
 
-export interface CreateSellingCaseDraftRequest {
+// Case-info fields shared by the case-draft create/update step (POST/PUT
+// /case-drafts) and by updating an existing case's info (PUT /cases/{caseId}).
+export interface CaseDraftRequest {
   caseStatus: string;
   accidentTypeId?: string;
   accidentState?: string;
@@ -281,7 +284,7 @@ export interface CreateSellingCaseDraftRequest {
   caseTrackingNotes?: string;
 }
 
-export interface SellingCaseDraftResult {
+export interface CaseDraftResult {
   draftId: string;
   caseStatus: string;
   accidentTypeId?: string | null;
@@ -292,7 +295,9 @@ export interface SellingCaseDraftResult {
   caseTrackingNotes?: string | null;
 }
 
-export interface FinalizeSellingCaseDraftPlaintiffRequest {
+// POST /case-drafts/{draftId}/plaintiff — attaches the plaintiff, finalizing
+// the draft into a real Case.
+export interface FinalizeCaseDraftRequest {
   firstName: string;
   lastName: string;
   birthdate?: string;
@@ -305,21 +310,51 @@ export interface FinalizeSellingCaseDraftPlaintiffRequest {
   zipcode?: string;
 }
 
-export interface FinalizeSellingCaseDraftResult {
+export interface FinalizeCaseDraftResult {
   draftId: string;
   caseId: string;
   caseNumber: string;
   finalizedAtUtc: string;
 }
 
-export interface UpdateSellingCaseRequest
-  extends CreateSellingCaseDraftRequest,
-    FinalizeSellingCaseDraftPlaintiffRequest {}
+// PUT /cases/{caseId} — case-info-only update; the plaintiff is always
+// updated separately via UpdateCasePlaintiffRequest (PUT /cases/{caseId}/plaintiff).
+export type UpdateCaseRequest = CaseDraftRequest;
 
-export interface UpdateSellingCaseResult {
+export interface UpdateCaseResult {
   caseId: string;
   caseNumber: string;
   caseStatus: string;
+}
+
+export interface CaseDetailResult {
+  caseId: string;
+  caseNumber: string;
+  caseStatus: string;
+  accidentTypeId?: string | null;
+  accidentState?: string | null;
+  dateOfLoss?: string | null;
+  handlingLawFirmId?: string | null;
+  caseManagerId?: string | null;
+  caseTrackingNotes?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  birthdate?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  gender?: string | null;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zipcode?: string | null;
+}
+
+export type UpdateCasePlaintiffRequest = FinalizeCaseDraftRequest;
+
+export interface UpdateCasePlaintiffResult {
+  caseId: string;
+  caseNumber: string;
+  updatedAtUtc: string;
 }
 
 export interface SellingMedicalPricingRowRequest {
@@ -434,47 +469,3 @@ export interface BulkImportRowsResult {
   items: BulkImportRowItem[];
 }
 
-// POST /case-drafts (SellingV2Endpoints) — starts a two-step case creation:
-// this call creates the draft/case-information half, attachPlaintiff finalizes it.
-export interface CreateCaseDraftRequest {
-  caseStatus: string;
-  accidentTypeId: string;
-  accidentState: string;
-  dateOfLoss?: string;
-  handlingLawFirmId: string;
-  caseManagerId?: string;
-  caseTrackingNotes?: string;
-}
-
-export interface CreateCaseDraftResult {
-  draftId: string;
-  caseStatus: string;
-  accidentTypeId: string;
-  accidentState: string;
-  dateOfLoss?: string | null;
-  handlingLawFirmId: string;
-  caseManagerId?: string | null;
-  caseTrackingNotes?: string;
-}
-
-// POST /case-drafts/{draftId}/plaintiff — attaches the plaintiff and finalizes
-// the draft into a real Case (returns the resulting caseId/caseNumber).
-export interface AttachPlaintiffRequest {
-  firstName: string;
-  lastName: string;
-  birthdate: string;
-  email?: string;
-  phone?: string;
-  gender?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  zipcode?: string;
-}
-
-export interface AttachPlaintiffResult {
-  draftId: string;
-  caseId: string;
-  caseNumber: string;
-  finalizedAtUtc: string;
-}
