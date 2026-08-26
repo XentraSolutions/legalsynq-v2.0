@@ -39,6 +39,12 @@ export interface LienWizardShellProps {
   onBack: () => void;
   onContinue: () => void;
   children: React.ReactNode;
+  // When set, this step is being opened as a standalone edit from the lien
+  // detail page (via a "returnTo=detail" query param) rather than as part of
+  // the create/edit wizard: hides the step progress bar, and the footer
+  // reads Cancel/Save instead of Back/Continue. The top-left arrow returns
+  // here directly instead of going to the lien list.
+  detailEditReturnHref?: string;
 }
 
 // Shared chrome for every lien-wizard step page: back link, progress bar,
@@ -54,23 +60,27 @@ export function LienWizardShell({
   onBack,
   onContinue,
   children,
+  detailEditReturnHref,
 }: LienWizardShellProps) {
+  const isDetailEdit = !!detailEditReturnHref;
   return (
     <div className="max-w-[700px] m-auto">
       <div className="flex items-center mb-6 ">
         <nav>
           <Link
-            href="/selling/portfolio"
-            className="text-sm text-gray-500 hover:text-gray-800"
+            href={detailEditReturnHref ?? "/selling/portfolio/lien"}
+            className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
         </nav>
-        <ProgressBar currentStep={step} />
+        {!isDetailEdit && <ProgressBar currentStep={step} />}
       </div>
-      <p className={`mt-2 text-xs text-gray-600`}>
-        Step {step}/ {TOTAL_STEPS}
-      </p>
+      {!isDetailEdit && (
+        <p className={`mt-2 text-xs text-gray-600`}>
+          Step {step}/ {TOTAL_STEPS}
+        </p>
+      )}
       <div className="mt-5 position-relative ">
         {hydrating ? (
           skeleton ?? (
@@ -85,7 +95,7 @@ export function LienWizardShell({
 
             <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-end gap-2">
               <Button variant="secondary" onClick={onBack}>
-                Back
+                {isDetailEdit ? "Cancel" : "Back"}
               </Button>
               <Button
                 variant="primary"
@@ -93,7 +103,11 @@ export function LienWizardShell({
                 loading={submitting}
                 disabled={!!continueDisabled || !!submitting}
               >
-                {continueLabel}
+                {isDetailEdit
+                  ? submitting
+                    ? "Saving..."
+                    : "Save"
+                  : continueLabel}
               </Button>
             </div>
           </>

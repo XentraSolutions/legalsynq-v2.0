@@ -37,7 +37,7 @@ const STATUSES = [
 ];
 
 export default function LienInfo(props: LienInfoProps) {
-  const { data, caseId, onFormValid } = props;
+  const { data, caseId, lienId, onFormValid } = props;
   const [form, setForm] = useState(
     !data ? { ...INITIAL_FORM, caseId: caseId ?? "" } : data,
   );
@@ -84,7 +84,14 @@ export default function LienInfo(props: LienInfoProps) {
             <CaseSelect
               value={form.caseId}
               onChange={(v) => setForm({ ...form, caseId: v })}
+              disabled={!!lienId}
             />
+            {lienId && (
+              <p className="mt-1 text-xs text-gray-500">
+                A lien's case can only be set when it's created — it can't be
+                reassigned afterward.
+              </p>
+            )}
           </div>
         </div>
         <LienScheduleFields

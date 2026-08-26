@@ -21,10 +21,10 @@ import {
   UploadedFileRow,
 } from "@/components/selling/uploaded-file-row";
 import { LienInformationPanel } from "@/components/selling/lien-detail/lien-information-panel";
-import { FundingCompanyAndCaseInformationPanel } from "@/components/selling/lien-detail/funding-company-information-panel";
+import { ProviderFundingDetailsPanel } from "@/components/selling/lien-detail/provider-funding-details-panel";
 import { MedicalCodesInformationPanel } from "@/components/selling/lien-detail/medical-codes-information-panel";
 import { EditLienInformationModal } from "@/components/selling/lien-detail/edit-lien-information-modal";
-import { EditCaseInformationModal } from "@/components/selling/lien-detail/edit-case-information-modal";
+import { EditProviderFundingModal } from "@/components/selling/lien-detail/edit-provider-funding-modal";
 import { EditMedicalPricingModal } from "@/components/selling/lien-detail/edit-medical-pricing-modal";
 import { sellingLookupsApi } from "@/lib/selling/lookup.api";
 import { SkeletonFileRow } from "@/components/lien/skeleton-loader";
@@ -190,7 +190,7 @@ export default function ReviewDocumentsStep({
   const [showSuccess, setShowSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [editModal, setEditModal] = useState<
-    "lien-information" | "case-information" | "medical-pricing" | null
+    "lien-information" | "provider-funding" | "medical-pricing" | null
   >(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -469,9 +469,10 @@ export default function ReviewDocumentsStep({
           <div className="space-y-4">
             <LienInformationPanel
               lien={lien.lienInformation}
+              caseInformation={lien.caseInformation}
               onEdit={() => setEditModal("lien-information")}
             />
-            <FundingCompanyAndCaseInformationPanel
+            <ProviderFundingDetailsPanel
               fundingCompany={
                 companyId
                   ? {
@@ -486,9 +487,8 @@ export default function ReviewDocumentsStep({
                   : null
               }
               facility={lien.facility}
-              caseInformation={lien.caseInformation}
               medicalProvider={lien.medicalProvider}
-              onEdit={() => setEditModal("case-information")}
+              onEdit={() => setEditModal("provider-funding")}
             />
             <MedicalCodesInformationPanel
               lien={lien.medicalPricing.rows}
@@ -644,11 +644,12 @@ export default function ReviewDocumentsStep({
           }}
         />
       )}
-      {editModal === "case-information" && (
-        <EditCaseInformationModal
+      {editModal === "provider-funding" && (
+        <EditProviderFundingModal
           lienId={lienId}
           fundingCompany={lien.fundingCompany}
           medicalProvider={lien.medicalProvider}
+          facility={lien.facility}
           onClose={() => setEditModal(null)}
           onSaved={() => {
             setEditModal(null);

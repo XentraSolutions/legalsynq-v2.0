@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import { liensService } from "@/lib/selling";
 import { toast } from "sonner";
 import FundingCompanyInfo from "../forms/add-medical-lien/funding-company-info";
 import { LienWizardShell } from "./shell";
-import { buildFormsFromLien, goToStep } from "./shared";
+import {
+  buildFormsFromLien,
+  goToStep,
+  detailHref,
+  DETAIL_EDIT_PARAM,
+  DETAIL_EDIT_VALUE,
+} from "./shared";
 import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
 
 // Mirrors FundingCompanyInfo's layout: title + description and the lien-owned
@@ -32,6 +38,8 @@ export default function FundingCompanyStep({
   lienId,
 }: FundingCompanyStepProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDetailEdit = searchParams.get(DETAIL_EDIT_PARAM) === DETAIL_EDIT_VALUE;
   const [hydrating, setHydrating] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState<any>(null);
@@ -43,7 +51,7 @@ export default function FundingCompanyStep({
       try {
         const lien = await liensService.getLienById(lienId);
         if (cancelled) return;
-        setFormData(buildFormsFromLien(lien).caseInformation);
+        setFormData(buildFormsFromLien(lien).providerFunding);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to load lien");
       } finally {
@@ -65,11 +73,17 @@ export default function FundingCompanyStep({
   const handleContinue = async () => {
     setSubmitting(true);
     try {
-      await liensService.saveCaseInformation(lienId, {
+      await liensService.saveProviderFundingDetails(lienId, {
         medicalProviderId: formData?.medicalProviderId || undefined,
+        facilityId: formData?.facilityId || undefined,
         fundingCompanyId: formData?.fundingCompanyId || null,
         fundingCompanyContactId: formData?.fundingCompanyContactId || null,
       });
+      if (isDetailEdit) {
+        toast.success("Provider & funding details updated.");
+        router.push(detailHref(lienId));
+        return;
+      }
       goToStep(router, lienId, 3);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -89,8 +103,13 @@ export default function FundingCompanyStep({
       skeleton={<FundingCompanyStepSkeleton />}
       submitting={submitting}
       continueDisabled={!formValid}
-      onBack={() => goToStep(router, lienId, 1)}
+      onBack={
+        isDetailEdit
+          ? () => router.push(detailHref(lienId))
+          : () => goToStep(router, lienId, 1)
+      }
       onContinue={handleContinue}
+      detailEditReturnHref={isDetailEdit ? detailHref(lienId) : undefined}
     >
       <FundingCompanyInfo
         lienId={lienId}

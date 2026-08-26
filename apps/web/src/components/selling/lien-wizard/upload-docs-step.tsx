@@ -20,7 +20,7 @@ export default function UploadDocsStep({ lienId, caseId }: UploadDocsStepProps) 
 
   const handleContinue = () => {
     toast.success("Lien added successfully.");
-    router.push("/selling/portfolio");
+    router.push("/selling/portfolio/lien");
   };
 
   return (
