@@ -34,12 +34,17 @@ export function CaseInfoFields({
 }) {
   const { lookup } = useSessionContext();
 
+  // POST /case-drafts expects caseStatus/accidentState as lookup `code`
+  // (e.g. "PreDemand", "CA") but accidentTypeId as the lookup `id` GUID —
+  // confirmed against the live endpoint's validation errors, which reject a
+  // code for accidentTypeId ("must identify an active accident type") and
+  // reject a GUID for handlingLawFirmId's sibling status/state fields.
   const statusList =
-    lookup?.CaseStatus.map((c) => ({ key: c.id, value: c.id, label: c.name })) ?? [];
+    lookup?.CaseStatus.map((c) => ({ key: c.id, value: c.code, label: c.name })) ?? [];
   const accidentTypeList =
     lookup?.AccidentType.map((c) => ({ key: c.id, value: c.id, label: c.name })) ?? [];
   const stateList =
-    lookup?.State.map((c) => ({ key: c.id, value: c.id, label: c.name })) ?? [];
+    lookup?.State.map((c) => ({ key: c.id, value: c.code, label: c.name })) ?? [];
 
   return (
     <div className="grid grid-cols-2 gap-4">

@@ -433,3 +433,48 @@ export interface BulkImportRowsResult {
   totalCount: number;
   items: BulkImportRowItem[];
 }
+
+// POST /case-drafts (SellingV2Endpoints) — starts a two-step case creation:
+// this call creates the draft/case-information half, attachPlaintiff finalizes it.
+export interface CreateCaseDraftRequest {
+  caseStatus: string;
+  accidentTypeId: string;
+  accidentState: string;
+  dateOfLoss?: string;
+  handlingLawFirmId: string;
+  caseManagerId?: string;
+  caseTrackingNotes?: string;
+}
+
+export interface CreateCaseDraftResult {
+  draftId: string;
+  caseStatus: string;
+  accidentTypeId: string;
+  accidentState: string;
+  dateOfLoss?: string | null;
+  handlingLawFirmId: string;
+  caseManagerId?: string | null;
+  caseTrackingNotes?: string;
+}
+
+// POST /case-drafts/{draftId}/plaintiff — attaches the plaintiff and finalizes
+// the draft into a real Case (returns the resulting caseId/caseNumber).
+export interface AttachPlaintiffRequest {
+  firstName: string;
+  lastName: string;
+  birthdate: string;
+  email?: string;
+  phone?: string;
+  gender?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipcode?: string;
+}
+
+export interface AttachPlaintiffResult {
+  draftId: string;
+  caseId: string;
+  caseNumber: string;
+  finalizedAtUtc: string;
+}
