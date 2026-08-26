@@ -33,6 +33,11 @@ import type {
   BulkImportSummary,
   BulkImportRowsResult,
   BulkImportRowStatus,
+  MoveToManagementRequest,
+  CreateCaseDraftRequest,
+  CreateCaseDraftResult,
+  AttachPlaintiffRequest,
+  AttachPlaintiffResult,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
@@ -255,6 +260,30 @@ export const liensApi = {
   submitLien(lienId: string, request: SubmitSellingLienRequest) {
     return apiClient.put<any>(
       `${BASE}/liens/${lienId}/lien-information`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  moveToManagement(lienId: string, request: MoveToManagementRequest = {}) {
+    return apiClient.post<any>(
+      `${BASE}/liens/${lienId}/move-to-management`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  createCaseDraft(request: CreateCaseDraftRequest) {
+    return apiClient.post<CreateCaseDraftResult>(
+      `${BASE}/case-drafts`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  attachPlaintiff(draftId: string, request: AttachPlaintiffRequest) {
+    return apiClient.post<AttachPlaintiffResult>(
+      `${BASE}/case-drafts/${draftId}/plaintiff`,
       request,
       idempotencyHeaders(),
     );

@@ -10,23 +10,7 @@ import PlaintiffInfoStep, {
 import { NewCaseAddedModal } from "./new-case-added-modal";
 import type { CaseInfoFieldsValue } from "../forms/add-case/case-info-fields";
 import type { PlaintiffInfoFieldsValue } from "../forms/add-case/plaintiff-info-fields";
-
-// Case creation isn't wired to a real endpoint yet — there's no
-// selling-scoped case-create API today (the legacy casesApi.create /
-// CreateCaseRequestDto in @/lib/cases is a different, non-selling surface
-// and is intentionally left unwired here). Both steps collect real state and
-// validate normally; "Add Case" below just fakes a short delay and a local
-// id so the "New Case Added" hand-off into Add Lien has something to pass
-// along. Swap this for a real casesService.createCase(...) call once a
-// selling case-create endpoint exists — the field names already line up
-// almost 1:1 with CreateCaseRequestDto.
-async function stubCreateCase(
-  _caseInfo: CaseInfoFieldsValue,
-  _plaintiffInfo: PlaintiffInfoFieldsValue,
-): Promise<{ id: string }> {
-  await new Promise((resolve) => setTimeout(resolve, 400));
-  return { id: `draft-${Date.now()}` };
-}
+import { useCreateCaseDraft, useAttachPlaintiff } from "@/hooks/use-case-drafts";
 
 export function CaseWizard() {
   const router = useRouter();
@@ -37,24 +21,55 @@ export function CaseWizard() {
   const [plaintiffInfo, setPlaintiffInfo] = useState<PlaintiffInfoFieldsValue>(
     PLAINTIFF_INFO_INITIAL_FORM,
   );
-  const [submitting, setSubmitting] = useState(false);
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [createdCaseId, setCreatedCaseId] = useState<string | null>(null);
+  const createCaseDraft = useCreateCaseDraft();
+  const attachPlaintiff = useAttachPlaintiff();
 
-  const handleStep1Continue = (data: CaseInfoFieldsValue) => {
+  const handleStep1Continue = async (data: CaseInfoFieldsValue) => {
     setCaseInfo(data);
-    setStep(2);
+    try {
+      const draft = await createCaseDraft.mutateAsync({
+        caseStatus: data.caseStatusId,
+        accidentTypeId: data.accidentTypeId,
+        accidentState: data.accidentStateId,
+        handlingLawFirmId: data.lawfirmId,
+        // Omit rather than send "" for these optional fields — the backend's
+        // GUID/date model binders 400 on an empty string instead of treating
+        // it as absent.
+        ...(data.dateOfLoss && { dateOfLoss: data.dateOfLoss }),
+        ...(data.caseManagerId && { caseManagerId: data.caseManagerId }),
+        ...(data.notes && { caseTrackingNotes: data.notes }),
+      });
+      setDraftId(draft.draftId);
+      setStep(2);
+    } catch {
+      toast.error("Failed to save case information");
+    }
   };
 
   const handleStep2Continue = async (data: PlaintiffInfoFieldsValue) => {
     setPlaintiffInfo(data);
-    setSubmitting(true);
+    if (!draftId) return;
     try {
-      const created = await stubCreateCase(caseInfo, data);
-      setCreatedCaseId(created.id);
+      const finalized = await attachPlaintiff.mutateAsync({
+        draftId,
+        request: {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          birthdate: data.birthdate,
+          email: data.email,
+          phone: data.phone,
+          gender: data.sex,
+          address: data.address,
+          city: data.city,
+          state: data.state,
+          zipcode: data.zipcode,
+        },
+      });
+      setCreatedCaseId(finalized.caseId);
     } catch {
       toast.error("Failed to create case");
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -62,6 +77,7 @@ export function CaseWizard() {
     return (
       <CaseInfoStep
         data={caseInfo}
+        submitting={createCaseDraft.isPending}
         onBack={() => router.back()}
         onContinue={handleStep1Continue}
       />
@@ -72,7 +88,7 @@ export function CaseWizard() {
     <>
       <PlaintiffInfoStep
         data={plaintiffInfo}
-        submitting={submitting}
+        submitting={attachPlaintiff.isPending}
         onBack={() => setStep(1)}
         onContinue={handleStep2Continue}
       />

@@ -27,6 +27,7 @@ import type {
   ArchiveSellingLienRequest,
   LienArchivedStatusResult,
   SubmitSellingLienRequest,
+  MoveToManagementRequest,
   CreateSellingCaseDraftRequest,
   SellingCaseDraftResult,
   FinalizeSellingCaseDraftPlaintiffRequest,
@@ -246,6 +247,14 @@ export const liensService = {
     request: SubmitSellingLienRequest,
   ): Promise<any> {
     const { data } = await liensApi.submitLien(lienId, request);
+    return data;
+  },
+
+  async moveToManagement(
+    lienId: string,
+    request: MoveToManagementRequest = {},
+  ): Promise<any> {
+    const { data } = await liensApi.moveToManagement(lienId, request);
     return data;
   },
 
