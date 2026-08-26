@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { FormModal } from "@/components/selling/modal";
 import { BaseSelect } from "@/components/ui/base-select";
-import { useContactPersons, useReassignContactPerson } from "@/hooks/use-selling-companies";
+import { useContactPersons, useReassignContactPerson } from "@/hooks/selling/use-selling-companies";
 import type { ContactPerson } from "@/lib/selling/companies.types";
 
 interface ReassignContactPersonModalProps {

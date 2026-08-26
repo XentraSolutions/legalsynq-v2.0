@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { FormModal } from "@/components/selling/modal";
 import { BaseSelect, type BaseSelectOption } from "@/components/ui/base-select";
-import { useInfiniteCompanies, useReassignCompany } from "@/hooks/use-selling-companies";
+import { useInfiniteCompanies, useReassignCompany } from "@/hooks/selling/use-selling-companies";
 import type { Company } from "@/lib/selling/companies.types";
 
 interface ReassignCompanyModalProps {

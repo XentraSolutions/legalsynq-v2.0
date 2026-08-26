@@ -3,6 +3,20 @@ import { parsePricingRow } from "@/lib/selling/selling-detail.mapper";
 
 export const TOTAL_STEPS = 4;
 
+// Query param a wizard step reads to tell "opened as a standalone edit from
+// the lien detail page" apart from "opened as part of the create/edit
+// wizard" — same route and component either way.
+export const DETAIL_EDIT_PARAM = "returnTo";
+export const DETAIL_EDIT_VALUE = "detail";
+
+export function detailHref(lienId: string) {
+  return `/selling/portfolio/lien/${lienId}`;
+}
+
+export function detailEditHref(lienId: string, step: number) {
+  return `${detailHref(lienId)}/edit/step-${step}?${DETAIL_EDIT_PARAM}=${DETAIL_EDIT_VALUE}`;
+}
+
 type Lien = Awaited<ReturnType<typeof liensService.getLienById>>;
 
 // Per-step form payloads, parsed from a fetched lien. Each step component
@@ -25,13 +39,16 @@ export function buildFormsFromLien(lien: Lien) {
     lienInfo: {
       status: lien.lienInformation.sellerStatus,
       listingVisibility: lien.lienInformation.listingVisibility,
+      caseId: lien.caseInformation?.id ?? "",
       initialServiceDate: lien.lienInformation.initialServiceDate ?? "",
       endServiceDate: lien.lienInformation.endServiceDate ?? "",
       notes: lien.lienInformation.notes ?? "",
     },
-    caseInformation: {
+    providerFunding: {
       medicalProviderId: lien.medicalProvider?.id ?? "",
       medicalProvider: lien.medicalProvider?.name ?? "",
+      facilityId: lien.facility?.id ?? "",
+      facility: lien.facility?.name ?? "",
       fundingCompanyId: lien.fundingCompany?.id ?? "",
       fundingCompany: lien.fundingCompany?.name ?? "",
       fundingCompanyContactId: lien.fundingCompany?.contact?.id ?? "",

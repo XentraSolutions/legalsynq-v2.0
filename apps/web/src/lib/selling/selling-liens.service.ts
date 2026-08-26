@@ -18,7 +18,7 @@ import type {
   CreateLienOfferRequestDto,
   SaleFinalizationResultDto,
   SaveSellingLienInformationRequest,
-  SaveSellingCaseInformationRequest,
+  SaveSellingProviderFundingRequest,
   SaveSellingMedicalPricingRequest,
   SaveSellingDocumentsRequest,
   PrepareSellingLienRequest,
@@ -27,12 +27,18 @@ import type {
   ArchiveSellingLienRequest,
   LienArchivedStatusResult,
   SubmitSellingLienRequest,
-  CreateSellingCaseDraftRequest,
-  SellingCaseDraftResult,
-  FinalizeSellingCaseDraftPlaintiffRequest,
-  FinalizeSellingCaseDraftResult,
-  UpdateSellingCaseRequest,
-  UpdateSellingCaseResult,
+  MoveToManagementRequest,
+  CaseDraftRequest,
+  CaseDraftResult,
+  FinalizeCaseDraftRequest,
+  FinalizeCaseDraftResult,
+  UpdateCaseRequest,
+  UpdateCaseResult,
+  CaseDetailResult,
+  UpdateCasePlaintiffRequest,
+  UpdateCasePlaintiffResult,
+  CaseSearchQuery,
+  CaseSearchItem,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
@@ -54,6 +60,11 @@ export interface LienListResult {
 
 export interface LienOffersResult {
   items: LienOfferItem[];
+}
+
+export interface CaseSearchResult {
+  items: CaseSearchItem[];
+  pagination: PaginationMeta;
 }
 
 async function readJson(response: Response): Promise<string | null> {
@@ -141,34 +152,63 @@ export const liensService = {
     return data;
   },
 
-  async createCaseDraft(
-    request: CreateSellingCaseDraftRequest,
-  ): Promise<SellingCaseDraftResult> {
+  async createCaseDraft(request: CaseDraftRequest): Promise<CaseDraftResult> {
     const { data } = await liensApi.createCaseDraft(request);
     return data;
   },
 
   async updateCaseDraft(
     draftId: string,
-    request: CreateSellingCaseDraftRequest,
-  ): Promise<SellingCaseDraftResult> {
+    request: CaseDraftRequest,
+  ): Promise<CaseDraftResult> {
     const { data } = await liensApi.updateCaseDraft(draftId, request);
     return data;
   },
 
   async finalizeCaseDraft(
     draftId: string,
-    request: FinalizeSellingCaseDraftPlaintiffRequest,
-  ): Promise<FinalizeSellingCaseDraftResult> {
+    request: FinalizeCaseDraftRequest,
+  ): Promise<FinalizeCaseDraftResult> {
     const { data } = await liensApi.finalizeCaseDraft(draftId, request);
     return data;
   },
 
-  async updateSellingCase(
+  async updateCase(
     caseId: string,
-    request: UpdateSellingCaseRequest,
-  ): Promise<UpdateSellingCaseResult> {
-    const { data } = await liensApi.updateSellingCase(caseId, request);
+    request: UpdateCaseRequest,
+  ): Promise<UpdateCaseResult> {
+    const { data } = await liensApi.updateCase(caseId, request);
+    return data;
+  },
+
+  async getCaseById(caseId: string): Promise<CaseDetailResult> {
+    const { data } = await liensApi.getCaseById(caseId);
+    return data;
+  },
+
+  async searchCases(query: CaseSearchQuery = {}): Promise<CaseSearchResult> {
+    const { data } = await liensApi.searchCases(query);
+    // The endpoint only returns `items`/`totalCount` — page/pageSize aren't
+    // echoed back, unlike PaginatedResultDto<T>, so pagination is built from
+    // what was requested rather than mapPagination().
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? (data.items.length || 1);
+    return {
+      items: data.items,
+      pagination: {
+        page,
+        pageSize,
+        totalCount: data.totalCount,
+        totalPages: Math.ceil(data.totalCount / Math.max(pageSize, 1)),
+      },
+    };
+  },
+
+  async updateCasePlaintiff(
+    caseId: string,
+    request: UpdateCasePlaintiffRequest,
+  ): Promise<UpdateCasePlaintiffResult> {
+    const { data } = await liensApi.updateCasePlaintiff(caseId, request);
     return data;
   },
 
@@ -180,11 +220,11 @@ export const liensService = {
     return data;
   },
 
-  async saveCaseInformation(
+  async saveProviderFundingDetails(
     lienId: string,
-    request: SaveSellingCaseInformationRequest,
+    request: SaveSellingProviderFundingRequest,
   ): Promise<any> {
-    const { data } = await liensApi.saveCaseInformation(lienId, request);
+    const { data } = await liensApi.saveProviderFundingDetails(lienId, request);
     return data;
   },
 
@@ -246,6 +286,14 @@ export const liensService = {
     request: SubmitSellingLienRequest,
   ): Promise<any> {
     const { data } = await liensApi.submitLien(lienId, request);
+    return data;
+  },
+
+  async moveToManagement(
+    lienId: string,
+    request: MoveToManagementRequest = {},
+  ): Promise<any> {
+    const { data } = await liensApi.moveToManagement(lienId, request);
     return data;
   },
 

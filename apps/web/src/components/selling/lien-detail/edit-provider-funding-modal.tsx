@@ -5,31 +5,35 @@ import { FormModal } from "@/components/selling/modal";
 import { liensService } from "@/lib/selling";
 import { toast } from "sonner";
 import type {
+  LienFacilityDetail,
   LienFundingCompanyDetail,
   LienMedicalProviderDetail,
 } from "@/types/lien-selling";
 import {
-  CaseInformationFields,
-  type CaseInformationFieldsValue,
-} from "@/components/selling/forms/add-medical-lien/case-information-fields";
+  ProviderFundingFields,
+  type ProviderFundingFieldsValue,
+} from "@/components/selling/forms/add-medical-lien/provider-funding-fields";
 
-interface EditCaseInformationModalProps {
+interface EditProviderFundingModalProps {
   lienId: string;
   fundingCompany: LienFundingCompanyDetail | null;
   medicalProvider: LienMedicalProviderDetail | null;
+  facility?: LienFacilityDetail | null;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function EditCaseInformationModal({
+export function EditProviderFundingModal({
   lienId,
   fundingCompany,
   medicalProvider,
+  facility,
   onClose,
   onSaved,
-}: EditCaseInformationModalProps) {
-  const [form, setForm] = useState<CaseInformationFieldsValue>({
+}: EditProviderFundingModalProps) {
+  const [form, setForm] = useState<ProviderFundingFieldsValue>({
     medicalProviderId: medicalProvider?.id ?? "",
+    facilityId: facility?.id ?? "",
     fundingCompanyId: fundingCompany?.id ?? "",
     fundingCompanyContactId: fundingCompany?.contact?.id ?? "",
   });
@@ -38,15 +42,16 @@ export function EditCaseInformationModal({
   const handleSubmit = async () => {
     setSaving(true);
     try {
-      await liensService.saveCaseInformation(lienId, {
+      await liensService.saveProviderFundingDetails(lienId, {
         medicalProviderId: form.medicalProviderId || undefined,
+        facilityId: form.facilityId || undefined,
         fundingCompanyId: form.fundingCompanyId || undefined,
         fundingCompanyContactId: form.fundingCompanyContactId || undefined,
       });
       toast.success("Lien associations updated.");
       onSaved();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save case information");
+      toast.error(err instanceof Error ? err.message : "Failed to save provider & funding details");
     } finally {
       setSaving(false);
     }
@@ -61,7 +66,7 @@ export function EditCaseInformationModal({
       submitLabel={saving ? "Saving..." : "Save"}
       loading={saving}
     >
-      <CaseInformationFields
+      <ProviderFundingFields
         value={form}
         onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
       />

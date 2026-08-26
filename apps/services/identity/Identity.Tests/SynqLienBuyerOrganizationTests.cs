@@ -102,6 +102,57 @@ public sealed class SynqLienBuyerOrganizationTests
         Assert.Empty(await db.UserRoleAssignments.ToListAsync());
     }
 
+    [Fact]
+    public async Task SelfRegisterSynqLienBuyer_rejects_when_organization_already_has_active_member()
+    {
+        await using var db = CreateDbContext();
+        var tenantId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        var tenant = Tenant.Rehydrate(tenantId, "synqlien-test", status: "Active");
+        var org = Organization.Create(
+            tenantId,
+            "Capital Fund LLC [synqlien:40000000-0000-0000-0000-000000000012]",
+            OrgType.LienOwner,
+            "Capital Fund LLC");
+        var existingMember = User.Create(
+            tenantId,
+            "existing-member@capital.test",
+            "hashed-existing-password",
+            "Existing",
+            "Member");
+
+        db.Tenants.Add(tenant);
+        db.Organizations.Add(org);
+        db.Users.Add(existingMember);
+        db.UserTenants.Add(UserTenant.Create(existingMember.Id, tenantId));
+        db.UserOrganizationMemberships.Add(
+            UserOrganizationMembership.Create(existingMember.Id, org.Id, MemberRole.Member));
+        await db.SaveChangesAsync();
+
+        var result = await AdminEndpointsLscc010.SelfRegisterSynqLienBuyer(
+            org.Id,
+            new AdminEndpointsLscc010.SelfRegisterUserRequest(
+                tenantId,
+                "new-buyer@capital.test",
+                "Password123!",
+                "New",
+                "Buyer",
+                "+13105551212"),
+            db,
+            new TestPasswordHasher(),
+            new ThrowingProductProvisioningService(),
+            new ThrowingUserProductAccessService(),
+            new NoOpAuditEventClient(),
+            NullLoggerFactory.Instance,
+            CancellationToken.None);
+
+        var status = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, status.StatusCode);
+        Assert.False(await db.Users.AnyAsync(u => u.Email == "new-buyer@capital.test"));
+        Assert.Single(await db.UserOrganizationMemberships.ToListAsync());
+        Assert.Empty(await db.UserProductAccessRecords.ToListAsync());
+        Assert.Empty(await db.UserRoleAssignments.ToListAsync());
+    }
+
     private static IdentityDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<IdentityDbContext>()

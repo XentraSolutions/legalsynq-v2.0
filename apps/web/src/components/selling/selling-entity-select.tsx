@@ -10,7 +10,7 @@ import {
   useCompany,
   useContactPerson,
   useContactPersons,
-} from "@/hooks/use-selling-companies";
+} from "@/hooks/selling/use-selling-companies";
 
 /**
  * Prepends `resolved` (a single record fetched by id because it wasn't in
