@@ -10,11 +10,11 @@ GENERATOR_STDERR="$TMP_DIR/generator.err"
 cat > "$TMP_DIR/routes.json" <<'JSON'
 {
   "routes": [
-    { "path": "/dashboard" },
-    { "path": "/deals/:dealId" },
-    { "path": "/contacts/:contactId" },
-    { "path": "/applications/:applicationId" },
-    { "path": "/reports/:reportId" }
+    { "pathTemplate": "/dashboard" },
+    { "pathTemplate": "/deals/:dealId" },
+    { "pathTemplate": "/contacts/:contactId" },
+    { "pathTemplate": "/applications/:applicationId" },
+    { "pathTemplate": "/reports/:reportId" }
   ]
 }
 JSON
