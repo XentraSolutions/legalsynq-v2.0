@@ -2571,6 +2571,8 @@ Returns the legacy DIY-report column metadata and the ordered default selection 
 
 DIY lien reports use canonical lien reductions before preserved SL-CORE settlement metadata. When a legacy reduction has no explicit source reduction date, `reduction_date` and `days_since_reduction_approval` are null; a settlement date is never substituted for a reduction approval date.
 
+`POST /report/diy/filter-options` returns medical-facility option IDs from the canonical facility records referenced by `Lien.FacilityId`. Supplying those IDs in `medicalFacilityIds` therefore uses the same facility relationship as DIY execution and export.
+
 The optional `notes` column returns the latest active, nonblank Feed note for the row's case. `notes_date` returns that exact note's creation date in `MM/dd/yyyy` format. Both columns are grouped under `procedureInfo`, are not selected by default, and use one tenant-scoped batch lookup for CASES, LIENS, and COMBINED reports. Deleted, blank, non-Feed, and cross-tenant notes are excluded. When no eligible Feed note exists, `notes` is empty and `notes_date` is null in preview responses and blank in CSV exports. Equal creation timestamps are resolved by descending note ID. Saved report preview and export use the same mapping.
 
 The existing compatibility keys have these Tracking Notes definitions:

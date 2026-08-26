@@ -973,7 +973,7 @@ public static class ReportEndpoints
                 contactService, tenantId, search, normalizedLimit, ct),
             "medicalprovider" => await GetLegacyContactFilterOptionsAsync(
                 contactService, tenantId, ContactType.Provider, search, normalizedLimit, ct),
-            "medicalfacility" => (await facilityService.SearchAsync(
+            "medicalfacility" => (await facilityService.SearchLienFacilitiesAsync(
                     tenantId,
                     search,
                     isActive: true,
