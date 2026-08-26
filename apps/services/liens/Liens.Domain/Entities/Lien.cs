@@ -437,7 +437,11 @@ public class Lien : AuditableEntity
 
         if (Status != LienStatus.Draft)
             throw new InvalidOperationException($"Lien status '{Status}' cannot be moved to management.");
-        if (SellerStatus is not (SellingLienStatus.Pending or SellingLienStatus.Internal))
+        if (SellerStatus is not null && SellerStatus is not (
+                SellingLienStatus.Pending or
+                SellingLienStatus.Internal or
+                SellingLienStatus.Approval or
+                SellingLienStatus.PreparedForSale))
             throw new InvalidOperationException($"Seller status '{SellerStatus}' cannot be moved to management.");
 
         SellingCaseId ??= CaseId;

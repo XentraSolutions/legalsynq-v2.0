@@ -298,9 +298,10 @@ Base path: `/api/liens/selling`
 
 ### POST `/api/liens/selling/liens/{lienId}/move-to-management`
 
-Moves a draft Selling lien into Liens Management without creating a second lien record. The lien must already
-be linked to an existing same-tenant, same-organization case. That `caseId` remains unchanged and is preserved
-in `sellingCaseId`; `sellerStatus` becomes `Internal`.
+Moves a Selling lien into Liens Management without creating a second lien record. Existing same-tenant,
+same-organization case and lien data remain on the same records; the `caseId` is preserved in `sellingCaseId`
+and `sellerStatus` becomes `Internal`. When no case exists, the API creates a same-tenant, same-organization
+management case from the lien information, falling back to `Jane Doe` when no plaintiff/client name is present.
 
 **Permission:** `SYNQ_LIENS.lien_sale:update`
 
@@ -312,8 +313,11 @@ in `sellingCaseId`; `sellerStatus` becomes `Internal`.
 }
 ```
 
-Only draft liens with Selling `Pending` or `Internal` status are eligible. A lien already submitted for sale
-must first be withdrawn through `withdraw-sale`, which revokes buyer access and pending offers.
+Every lien shown on the Selling **Pending** tab is eligible, including `Pending`, `Approval`, `PreparedForSale`,
+and `SubmittedForSale`. Submitted liens are atomically withdrawn, buyer access revoked, and pending offers
+withdrawn before they become internal. Management receives the Selling billing amount as its billing total and
+the Selling ask amount as its purchase total. Existing `Internal` liens and legacy draft liens with no seller status
+remain eligible for backward compatibility.
 
 ### POST `/api/liens/selling/liens/{lienId}/confirm-sale`
 
