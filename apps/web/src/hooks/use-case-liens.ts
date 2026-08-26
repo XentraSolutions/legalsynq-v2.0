@@ -31,6 +31,7 @@ import {
   type UpdateServicingDetailsRequestDto,
 } from "@/lib/servicing";
 import { dateConverter } from "@/lib/cases/cases.mapper";
+import { CreateMedicalCodeLiensDto } from "@/lib/cases/cases.types";
 
 export type CaseLienRow = CaseLienItem & CaseLienItemMetadata;
 
@@ -340,6 +341,67 @@ export function useMedicareCosts(id: string) {
     queryKey: ["medicareCosts", id],
     queryFn: () => findMedicareCost(id),
     refetchOnWindowFocus: false,
+  });
+}
+
+export function useCreateMedicalCode() {
+  const queryClient = useQueryClient();
+
+  // 1. Get your codes and lookup function here (from the previous step)
+  const { data: medicalCodes } = useMedicareProcedureCodes();
+
+  const findCodeByDescription = (description: string) => {
+    if (!medicalCodes) return "";
+    return medicalCodes.find((c) => c.value === description)?.key ?? "";
+  };
+
+  // 2. Define the execution logic inside the hook
+  const createMedicalCodeLiens = async (
+    payload: CreateMedicalCodeLiensDto,
+    isEditing: boolean,
+    lienId: string,
+  ) => {
+    const selectedCode =
+      payload.code ||
+      (typeof (payload as any).procedureCode === "string"
+        ? (payload as any).procedureCode
+        : "");
+
+    const request: CreateMedicalCodeLiensDto = {
+      id: payload.id,
+      liensId: lienId,
+      code: findCodeByDescription(selectedCode),
+      medicareCost: parseFloat(payload.medicareCost).toFixed(2),
+      billingAmount: parseFloat(payload.billingAmount).toFixed(2),
+      purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),
+      payee: payload.payee,
+      outboundCheckNumber: payload.outboundCheckNumber,
+    };
+
+    const res = isEditing
+      ? await casesService.updateMedicalCodeLiens(request)
+      : await casesService.createMedicalCodeLiens(request);
+
+    return res;
+  };
+
+  // 3. Return the mutation using TanStack Query
+  return useMutation({
+    mutationFn: ({
+      payload,
+      isEditing,
+      lienId,
+    }: {
+      payload: CreateMedicalCodeLiensDto;
+      isEditing: boolean;
+      lienId: string;
+    }) => createMedicalCodeLiens(payload, isEditing, lienId),
+
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["cases"],
+      });
+    },
   });
 }
 

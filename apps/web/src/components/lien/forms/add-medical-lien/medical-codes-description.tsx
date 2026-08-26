@@ -176,34 +176,52 @@ export default function MedicalCodesDescription(
     );
 
     setTimeout(async () => {
-      const response = await createMedicalCodeLiens(
-        {
-          ...form,
-          id: form.id,
+      if (props.lienId) {
+        const response = await createMedicalCodeLiens(
+          {
+            ...form,
+            id: form.id,
+            code: form.procedureCode,
+            description: selectedOption?.label ?? "",
+            medicareCost: parseNumber(form.medicareCost),
+            billingAmount: parseNumber(currentBilling),
+            purchaseAmount: getCurrentValue(),
+          },
+          editingId != "",
+        );
+
+        const nextRow = {
+          id: editingId || response.data,
           code: form.procedureCode,
           description: selectedOption?.label ?? "",
           medicareCost: parseNumber(form.medicareCost),
           billingAmount: parseNumber(currentBilling),
           purchaseAmount: getCurrentValue(),
-        },
-        editingId != "",
-      );
+        };
 
-      const nextRow = {
-        id: editingId || response.data,
-        code: form.procedureCode,
-        description: selectedOption?.label ?? "",
-        medicareCost: parseNumber(form.medicareCost),
-        billingAmount: parseNumber(currentBilling),
-        purchaseAmount: getCurrentValue(),
-      };
+        setRows((current) => {
+          if (editingId) {
+            return current.map((row) => (row.id === editingId ? nextRow : row));
+          }
+          return [...current, nextRow];
+        });
+      } else {
+        const nextRow = {
+          id: rows.length.toString(),
+          code: form.procedureCode,
+          description: selectedOption?.label ?? "",
+          medicareCost: parseNumber(form.medicareCost),
+          billingAmount: parseNumber(currentBilling),
+          purchaseAmount: getCurrentValue(),
+        };
 
-      setRows((current) => {
-        if (editingId) {
-          return current.map((row) => (row.id === editingId ? nextRow : row));
-        }
-        return [...current, nextRow];
-      });
+        setRows((current) => {
+          if (editingId) {
+            return current.map((row) => (row.id === editingId ? nextRow : row));
+          }
+          return [...current, nextRow];
+        });
+      }
       validateForm();
     }, 100);
     resetLine();
