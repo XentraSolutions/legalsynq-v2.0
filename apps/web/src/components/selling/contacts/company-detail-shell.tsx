@@ -15,7 +15,7 @@ import {
   useCompanyTypes,
   useDeactivateCompany,
   useReactivateCompany,
-} from "@/hooks/use-selling-companies";
+} from "@/hooks/selling/use-selling-companies";
 import { ArrowLeft, CircleAlert, Mail, Repeat, SquarePen, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";

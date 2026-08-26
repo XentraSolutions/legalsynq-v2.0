@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { FormModal } from "@/components/selling/modal";
-import { useCreateContactPersonType } from "@/hooks/use-selling-companies";
+import { useCreateContactPersonType } from "@/hooks/selling/use-selling-companies";
 import type { ContactPersonTypeLookupItem } from "@/lib/selling/companies.types";
 
 interface AddContactPersonRoleModalProps {

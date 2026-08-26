@@ -32,7 +32,7 @@ import {
   useContactPersonTypes,
   useDeactivateContactPerson,
   useExportCompanyContacts,
-} from "@/hooks/use-selling-companies";
+} from "@/hooks/selling/use-selling-companies";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
 import { ReassignContactPersonModal } from "@/components/selling/forms/reassign-contact-person-modal";
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";

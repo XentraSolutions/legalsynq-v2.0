@@ -6,10 +6,12 @@ import { Button } from "@/components/selling/button";
 
 export function NewCaseAddedModal({
   open,
+  caseNumber,
   onClose,
   onAddLien,
 }: {
   open: boolean;
+  caseNumber?: string;
   onClose: () => void;
   onAddLien: () => void;
 }) {
@@ -36,8 +38,15 @@ export function NewCaseAddedModal({
       }
     >
       <p className="text-sm text-gray-600">
-        The new case has been added. Would you like to add lien to this case?
-        You can always do this later.
+        {caseNumber ? (
+          <>
+            Case <span className="font-medium text-gray-900">{caseNumber}</span> has
+            been added.
+          </>
+        ) : (
+          "The new case has been added."
+        )}{" "}
+        Would you like to add lien to this case? You can always do this later.
       </p>
     </Modal>
   );

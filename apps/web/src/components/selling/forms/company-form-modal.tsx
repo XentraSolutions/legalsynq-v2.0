@@ -7,7 +7,7 @@ import { BaseSelect } from "@/components/ui/base-select";
 import { useSessionContext } from "@/providers/session-provider";
 import { formatPhoneInput, isValidPhone } from "@/lib/phone";
 import { formatZipInput, isValidUsZipCode } from "@/lib/address";
-import { useCompanyTypes, useCreateCompany, useUpdateCompany } from "@/hooks/use-selling-companies";
+import { useCompanyTypes, useCreateCompany, useUpdateCompany } from "@/hooks/selling/use-selling-companies";
 import type { Company } from "@/lib/selling/companies.types";
 
 interface CompanyFormModalProps {
