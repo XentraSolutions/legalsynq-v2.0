@@ -84,6 +84,7 @@ export default function PortfolioCasesClient() {
           </div>
           <Button
             variant="primary"
+            rightIcon="plus"
             onClick={() => router.push("/selling/portfolio/cases/add")}
           >
             Add New Case
