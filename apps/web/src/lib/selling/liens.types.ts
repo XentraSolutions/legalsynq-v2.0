@@ -275,7 +275,9 @@ export interface SaveSellingProviderFundingRequest {
 // Case-info fields shared by the case-draft create/update step (POST/PUT
 // /case-drafts) and by updating an existing case's info (PUT /cases/{caseId}).
 export interface CaseDraftRequest {
-  caseStatus: string;
+  // No longer user-editable — the backend defaults new cases to PreDemand
+  // and updates leave the existing status unchanged when this is omitted.
+  caseStatus?: string;
   accidentTypeId?: string;
   accidentState?: string;
   dateOfLoss?: string;
