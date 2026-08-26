@@ -327,7 +327,7 @@ export function AddPaymentForm({
       // Check if current lien ID is in the checked list
       if (checkedSet.has(l.id)) {
         if (l.balance != null) {
-          balances += l.balance;
+          balances += Math.round(l.balance * 100) / 100;
         }
 
         // If you also need to populate initialPayments for checked items:
@@ -567,7 +567,7 @@ export function AddPaymentForm({
       const paymentDate = form.checkDate ? formatDate(form.checkDate) : "";
 
       if (isEditing) {
-        settlementService.updateSettlementPayment(form.id, {
+        await settlementService.updateSettlementPayment(form.id, {
           lienStatus: form.lienStatus,
           amount: parseFloat(form.checkAmount || "0"),
           paymentDate,
