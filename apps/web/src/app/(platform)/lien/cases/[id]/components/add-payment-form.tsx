@@ -87,7 +87,6 @@ export function AddPaymentForm({
 }: AddPaymentFormProps) {
   const addToast = useLienStore((s) => s.addToast);
   const [form, setForm] = useState({ ...INITIAL_FORM, ...selectedPayment });
-  console.log(liens);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [lienPayments, setLienPayments] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -198,12 +197,13 @@ export function AddPaymentForm({
   }
 
   function isLienPayable(l: CaseLienItem & CaseLienItemMetadata): boolean {
-    return isEditing
-      ? l.status !== "Withdrawn" && l.status !== "Sold" && l.balance > 0
-      : l.status !== "Closed" &&
-          l.status !== "Withdrawn" &&
-          l.status !== "Sold" &&
-          l.balance > 0;
+    return l.status !== "Closed" &&
+      l.status !== "Withdrawn" &&
+      l.status !== "Sold" &&
+      l.balance > 0 &&
+      isEditing
+      ? isEditingLien(l)
+      : true;
   }
 
   useEffect(() => {
@@ -250,7 +250,9 @@ export function AddPaymentForm({
       }));
       if (isEditing) {
         const filtered = new Set(
-          liens.filter((l) => l.id == selectedPayment.lienId).map((l) => l.id),
+          openLiens
+            .filter((l) => l.id == selectedPayment.lienId)
+            .map((l) => l.id),
         );
         setCheckedIds(filtered);
       }
@@ -259,7 +261,20 @@ export function AddPaymentForm({
     });
   }, [open]);
 
-  const openLiens = liens.filter((l) => l.balance > 0);
+  const openLiens = liens.filter(
+    (l) =>
+      l.status !== "Closed" &&
+      l.status !== "Withdrawn" &&
+      l.status !== "Sold" &&
+      l.balance > 0,
+  );
+
+  function filterLiensForEditing(l: any) {
+    const filtered = new Set(
+      openLiens.filter((l) => l.id == selectedPayment.lienId).map((l) => l.id),
+    );
+    setCheckedIds(filtered);
+  }
 
   const allChecked =
     openLiens.length > 0 && checkedIds.size === openLiens.length;
@@ -617,15 +632,15 @@ export function AddPaymentForm({
   const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
 
   const totalAmountToSettle = openLiens.reduce(
-    (s, l) => s + (l.balance ?? 0),
+    (s, l) => s + Math.round((l.balance ?? 0) * 100),
     0,
   );
   const totalBilling = openLiens.reduce(
-    (s, l) => s + (l.originalAmount ?? 0),
+    (s, l) => s + Math.round((l.originalAmount ?? 0) * 100),
     0,
   );
   const totalPurchase = openLiens.reduce(
-    (s, l) => s + (l.purchaseAmount ?? 0),
+    (s, l) => s + Math.round((l.purchaseAmount ?? 0) * 100),
     0,
   );
   // 1. Computes the overall total for all open liens
@@ -656,15 +671,6 @@ export function AddPaymentForm({
       cell: (l) => (
         <span className="text-sm text-primary whitespace-nowrap">
           {l.lienNumber}
-        </span>
-      ),
-    },
-    {
-      id: "facilityName",
-      header: "Medical Facility",
-      cell: (l) => (
-        <span className="text-sm text-gray-600 whitespace-wrap max-w-40 block">
-          {l.facilityName || ""}
         </span>
       ),
     },
