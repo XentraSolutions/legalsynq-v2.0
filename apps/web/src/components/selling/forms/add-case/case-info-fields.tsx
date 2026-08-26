@@ -3,7 +3,6 @@ import { SellingEntitySelect } from "@/components/selling/selling-entity-select"
 import { useSessionContext } from "@/providers/session-provider";
 
 export interface CaseInfoFieldsValue {
-  caseStatusId: string;
   accidentTypeId: string;
   accidentStateId: string;
   dateOfLoss: string;
@@ -13,7 +12,6 @@ export interface CaseInfoFieldsValue {
 }
 
 export const CASE_INFO_INITIAL_FORM: CaseInfoFieldsValue = {
-  caseStatusId: "",
   accidentTypeId: "",
   accidentStateId: "",
   dateOfLoss: "",
@@ -34,13 +32,12 @@ export function CaseInfoFields({
 }) {
   const { lookup } = useSessionContext();
 
-  // POST /case-drafts expects caseStatus/accidentState as lookup `code`
-  // (e.g. "PreDemand", "CA") but accidentTypeId as the lookup `id` GUID —
-  // confirmed against the live endpoint's validation errors, which reject a
-  // code for accidentTypeId ("must identify an active accident type") and
-  // reject a GUID for handlingLawFirmId's sibling status/state fields.
-  const statusList =
-    lookup?.CaseStatus.map((c) => ({ key: c.id, value: c.code, label: c.name })) ?? [];
+  // POST /case-drafts expects accidentState as lookup `code` (e.g. "CA")
+  // but accidentTypeId as the lookup `id` GUID — confirmed against the live
+  // endpoint's validation errors, which reject a code for accidentTypeId
+  // ("must identify an active accident type") and reject a GUID for
+  // handlingLawFirmId's sibling state field. Case status is no longer
+  // user-editable here — the backend defaults new cases to PreDemand.
   const accidentTypeList =
     lookup?.AccidentType.map((c) => ({ key: c.id, value: c.id, label: c.name })) ?? [];
   const stateList =
@@ -48,24 +45,17 @@ export function CaseInfoFields({
 
   return (
     <div className="grid grid-cols-2 gap-4">
-      <Field
-        required
-        label="Status"
-        type="select"
-        value={value.caseStatusId}
-        options={statusList}
-        placeholder="Select case status"
-        onChange={(v: string) => onChange({ caseStatusId: v.toString() })}
-      />
-      <Field
-        required
-        label="Accident Type"
-        type="select"
-        value={value.accidentTypeId}
-        options={accidentTypeList}
-        placeholder="Select accident type"
-        onChange={(v: string) => onChange({ accidentTypeId: v.toString() })}
-      />
+      <div className="col-span-2">
+        <Field
+          required
+          label="Accident Type"
+          type="select"
+          value={value.accidentTypeId}
+          options={accidentTypeList}
+          placeholder="Select accident type"
+          onChange={(v: string) => onChange({ accidentTypeId: v.toString() })}
+        />
+      </div>
       <Field
         required
         label="Accident State"
