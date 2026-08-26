@@ -36,6 +36,7 @@ import { ColumnGroup, ReportColumnOption } from "@/lib/liens/lien-report.types";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { useCachedFilterOptions, useDebounce } from "@/hooks/use-report";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 
 const INITIAL_FORM = {
   name: "",
@@ -610,7 +611,7 @@ export default function CreateUpdateReport({
         reportType: form.reportType,
         statusView: form.statusView ?? "",
         lienStatusIds: form.lienStatusIds ?? "",
-        purchaseDateFrom: form.purchaseDateFrom ?? [],
+        purchaseDateFrom: form.purchaseDateFrom ?? null,
         purchaseDateTo: form.purchaseDateTo ?? null,
         closedDateFrom: form.closedDateFrom ?? null,
         closedDateTo: form.closedDateTo ?? null,
@@ -647,8 +648,8 @@ export default function CreateUpdateReport({
         config: { columns: cols },
         attorneyIds: form.attorneyIds,
         caseManagerIds: form.caseManagerIds,
-        closedDateFrom: null,
-        closedDateTo: null,
+        closedDateFrom: form.closedDateFrom,
+        closedDateTo: form.closedDateTo,
         fundingCompanyIds: form.fundingCompanyIds,
         isBulk: form.isBulk,
         lawFirmIds: form.lawFirmIds,
@@ -868,18 +869,54 @@ export default function CreateUpdateReport({
               />
             )}
 
-            <Field
-              type="date"
-              label="Closed Date"
-              value={form.closedDateFrom}
-              onChange={(v) => setForm({ ...form, closedDateFrom: v })}
-            />
-            <Field
-              type="date"
-              label="Purchase Date"
-              value={form.purchaseDateFrom}
-              onChange={(v) => setForm({ ...form, purchaseDateFrom: v })}
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Closed Date
+              </label>
+              <DateRangePicker
+                value={{ from: form.closedDateFrom, to: form.closedDateTo }}
+                onChange={(e) => {
+                  setForm({
+                    ...form,
+                    closedDateFrom: e.from,
+                    closedDateTo: e.to,
+                  });
+                }}
+                placeholder="MM/DD/YYYY-MM/DD/YYYY"
+                onClear={() => {
+                  setForm({
+                    ...form,
+                    closedDateFrom: {},
+                    closedDateTo: {},
+                  });
+                }}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Purchase Date
+              </label>
+
+              <DateRangePicker
+                value={{ from: form.purchaseDateFrom, to: form.purchaseDateTo }}
+                onChange={(e) => {
+                  setForm({
+                    ...form,
+                    purchaseDateFrom: e.from,
+                    purchaseDateTo: e.to,
+                  });
+                }}
+                placeholder="MM/DD/YYYY-MM/DD/YYYY"
+                onClear={() => {
+                  setForm({
+                    ...form,
+                    purchaseDateFrom: {},
+                    purchaseDateTo: {},
+                  });
+                }}
+              />
+            </div>
 
             <Field
               label="Law Firm"
