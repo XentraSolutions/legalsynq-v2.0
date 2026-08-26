@@ -69,7 +69,7 @@ const lienDisplayColumns: LienColumnDef[] = [
     align: "right",
     cell: (l) => (
       <span className="text-sm text-gray-700 font-medium tabular-nums">
-        {formatCurrency(l.balance)}
+        {formatCurrency(l.balance ?? 0)}
       </span>
     ),
   },
@@ -79,7 +79,7 @@ const lienDisplayColumns: LienColumnDef[] = [
     align: "right",
     cell: (l) => (
       <span className="text-sm text-gray-700 font-medium tabular-nums">
-        {formatCurrency(l.paymentAmount)}
+        {formatCurrency(l.paymentAmount ?? 0)}
       </span>
     ),
   },
