@@ -1481,6 +1481,180 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         (await _client.SendAsync(request)).StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Fact]
+    public async Task Move_to_management_v2_creates_case_from_case_info_and_moves_lien_internal()
+    {
+        var lienId = await CreateSellingLienAsync();
+        (await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/medical-pricing", new
+        {
+            askAmount = 1250m,
+            billingAmount = 1800m,
+            rows = new[] { new { medicalCode = "99213", description = "Office visit", billingAmount = 1800m, medicareCost = 180m, targetSaleAmount = 1250m } },
+        })).EnsureSuccessStatusCode();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management-v2")
+        {
+            Content = JsonContent.Create(new
+            {
+                reason = "Keep internally",
+                caseInfo = new
+                {
+                    clientFirstName = "Maria",
+                    clientLastName = "Santos",
+                    clientDob = "1990-01-15",
+                    clientAddress = "123 Main St",
+                    clientCity = "Los Angeles",
+                    clientState = "CA",
+                    clientZipCode = "90001",
+                    isServicing = true,
+                    statusLabel = "Pre-demand",
+                    accidentTypeId = "MVA",
+                    stateOfIncident = "CA",
+                    dateOfIncident = "2026-08-01",
+                    lawFirmId = SeedHelper.LawFirmId.ToString(),
+                    caseManagerId = SeedHelper.LeadContactId.ToString(),
+                    notes = "Brief case notes",
+                },
+            }),
+        };
+        request.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("caseCreated").GetBoolean().Should().BeTrue();
+        var caseId = payload.RootElement.GetProperty("caseId").GetGuid();
+        payload.RootElement.GetProperty("sellingCaseId").GetGuid().Should().Be(caseId);
+        payload.RootElement.GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Internal);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var lien = await db.Liens.FindAsync(lienId);
+        var createdCase = await db.Cases.FindAsync(caseId);
+        lien!.CaseId.Should().Be(caseId);
+        lien.SellingCaseId.Should().Be(caseId);
+        lien.MovedToManagementAtUtc.Should().NotBeNull();
+        lien.SellerStatus.Should().Be(SellingLienStatus.Internal);
+        lien.Status.Should().Be(LienStatus.Draft);
+        lien.IsServicing.Should().Be("true");
+        createdCase!.ClientFirstName.Should().Be("Maria");
+        createdCase.ClientLastName.Should().Be("Santos");
+        createdCase.ClientDob.Should().Be(new DateOnly(1990, 1, 15));
+        createdCase.ClientAddress.Should().Be("123 Main St, Los Angeles, CA, 90001");
+        createdCase.DateOfIncident.Should().Be(new DateOnly(2026, 8, 1));
+        createdCase.Notes.Should().Contain("[legacy-meta]");
+        createdCase.Notes.Should().Contain("accidentState=CA");
+        db.ServicingItems.Should().Contain(item =>
+            item.LienId == lienId &&
+            item.CaseId == caseId &&
+            item.TaskType == "LegacyMedicalCode" &&
+            item.Notes!.Contains("billingAmount=1800") &&
+            item.Notes.Contains("purchaseAmount=1250"));
+
+        var managementCaseResponse = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        managementCaseResponse.StatusCode.Should().Be(HttpStatusCode.OK, await managementCaseResponse.Content.ReadAsStringAsync());
+        using var managementCaseJson = JsonDocument.Parse(await managementCaseResponse.Content.ReadAsStringAsync());
+        managementCaseJson.RootElement.GetProperty("clientCity").GetString().Should().Be("Los Angeles");
+        managementCaseJson.RootElement.GetProperty("clientState").GetString().Should().Be("CA");
+        managementCaseJson.RootElement.GetProperty("clientZipcode").GetString().Should().Be("90001");
+        managementCaseJson.RootElement.GetProperty("statusLabel").GetString().Should().Be("Pre-demand");
+        managementCaseJson.RootElement.GetProperty("stateOfIncident").GetString().Should().Be("CA");
+        managementCaseJson.RootElement.GetProperty("lawFirmId").GetString().Should().Be(SeedHelper.LawFirmId.ToString());
+        managementCaseJson.RootElement.GetProperty("accidentTypeId").GetString().Should().Be("MVA");
+    }
+
+    [Fact]
+    public async Task Move_to_management_v2_reuses_duplicate_case_and_still_processes_lien()
+    {
+        var lienId = await CreateSellingLienAsync();
+        var existingCase = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
+            "Maria",
+            "Santos",
+            SeedHelper.UserId,
+            clientDob: new DateOnly(1990, 1, 15),
+            dateOfIncident: new DateOnly(2026, 8, 1));
+
+        using (var setupScope = _factory.Services.CreateScope())
+        {
+            var setupDb = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            setupDb.Cases.Add(existingCase);
+            await setupDb.SaveChangesAsync();
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management-v2")
+        {
+            Content = JsonContent.Create(new
+            {
+                caseInfo = new
+                {
+                    clientFirstName = "maria",
+                    clientLastName = "santos",
+                    clientDob = "1990-01-15",
+                    dateOfIncident = "2026-08-01",
+                    statusLabel = "Pre-demand",
+                    accidentTypeId = "MVA",
+                    stateOfIncident = "CA",
+                    lawFirmId = SeedHelper.LawFirmId.ToString(),
+                },
+            }),
+        };
+        request.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("caseCreated").GetBoolean().Should().BeFalse();
+        payload.RootElement.GetProperty("caseId").GetGuid().Should().Be(existingCase.Id);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var lien = await db.Liens.FindAsync(lienId);
+        lien!.CaseId.Should().Be(existingCase.Id);
+        lien.SellingCaseId.Should().Be(existingCase.Id);
+        lien.MovedToManagementAtUtc.Should().NotBeNull();
+        lien.SellerStatus.Should().Be(SellingLienStatus.Internal);
+        var duplicateCount = await db.Cases.CountAsync(c =>
+            c.TenantId == SeedHelper.TenantId &&
+            c.OrgId == SeedHelper.OrgId &&
+            c.ClientDob == new DateOnly(1990, 1, 15) &&
+            c.DateOfIncident == new DateOnly(2026, 8, 1) &&
+            c.ClientFirstName.ToLower() == "maria" &&
+            c.ClientLastName.ToLower() == "santos");
+        duplicateCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Move_to_management_v2_requires_case_info_required_fields_when_case_info_is_present()
+    {
+        var lienId = await CreateSellingLienAsync();
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management-v2")
+        {
+            Content = JsonContent.Create(new
+            {
+                caseInfo = new
+                {
+                    clientFirstName = "Maria",
+                    clientLastName = "Santos",
+                },
+            }),
+        };
+        request.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+
+        var response = await _client.SendAsync(request);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var lien = await db.Liens.FindAsync(lienId);
+        lien!.CaseId.Should().BeNull();
+        lien.SellerStatus.Should().Be(SellingLienStatus.Pending);
+    }
+
     private async Task<Guid> PrepareSellingLienAsync(Guid buyerCompanyId, Guid buyerContactId, string? messageToBuyer = null)
     {
         var lienId = await CreateSellingLienAsync();

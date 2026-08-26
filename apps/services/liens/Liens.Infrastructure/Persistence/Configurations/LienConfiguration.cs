@@ -156,6 +156,9 @@ public class LienConfiguration : IEntityTypeConfiguration<Lien>
         builder.HasIndex(l => l.SellingCaseId)
             .HasDatabaseName("IX_Liens_SellingCaseId");
 
+        builder.HasIndex(l => new { l.TenantId, l.SellingCaseId })
+            .HasDatabaseName("IX_Liens_TenantId_SellingCaseId");
+
         builder.HasIndex(l => l.FacilityId)
             .HasDatabaseName("IX_Liens_FacilityId");
 

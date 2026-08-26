@@ -319,6 +319,72 @@ withdrawn before they become internal. Management receives the Selling billing a
 the Selling ask amount as its purchase total. Existing `Internal` liens and legacy draft liens with no seller status
 remain eligible for backward compatibility.
 
+### POST `/api/liens/selling/liens/{lienId}/move-to-management-v2`
+
+Moves a seller-scoped lien into Liens Management by setting `SellerStatus=Internal` and linking the lien to a
+tenant/seller-owned case. The same canonical case link is used by Selling and Liens Management, and the chosen case is
+also persisted on the lien's `sellingCaseId` reference. If the lien already has a valid case, that case is reused. Otherwise, when
+`caseInfo` is provided, the API first searches the same tenant and seller organization for an existing case with the
+same first name, last name, DOB, and date of loss. Matching an existing case is not an error: the lien is added to that
+case and processing continues. If no match exists, a new case is created from `caseInfo`; if `caseInfo` is omitted, a
+generic `Jane Doe` case is created.
+
+Submitted-for-sale liens are first returned to draft Selling state, active buyer links are revoked, pending buyer offers
+are expired, and then the lien is moved to Internal. Selling medical-pricing rows are copied into Management
+`LegacyMedicalCode` rows so Management billing and purchase totals match Selling billing and target-sale amounts.
+
+**Permission:** `SYNQ_LIENS.lien_sale:update`
+
+**Headers:**
+
+| Header | Required | Description |
+|---|---|---|
+| `Idempotency-Key` | Yes | Suppresses duplicate move processing for the same caller/lien |
+
+**Request:**
+
+```json
+{
+  "reason": "Keep internally",
+  "caseInfo": {
+    "clientFirstName": "Jane",
+    "clientLastName": "Doe",
+    "clientDob": "1990-01-15",
+    "clientAddress": "123 Main St",
+    "clientCity": "Los Angeles",
+    "clientState": "CA",
+    "clientZipCode": "90001",
+    "isServicing": true,
+    "statusLabel": "Pre-demand",
+    "accidentTypeId": "MVA",
+    "stateOfIncident": "CA",
+    "dateOfIncident": "2026-08-01",
+    "lawFirmId": "guid-or-code",
+    "caseManagerId": "guid-or-code",
+    "notes": "Brief case notes"
+  }
+}
+```
+
+`caseInfo` is optional. When supplied, `clientFirstName`, `clientLastName`, `clientDob`, `statusLabel`,
+`accidentTypeId`, `stateOfIncident`, and `lawFirmId` are required. Duplicate matching only runs when first name,
+last name, DOB, and date of loss are all supplied.
+
+**Response:** `200 OK`
+
+```json
+{
+  "lienId": "guid",
+  "caseId": "guid",
+  "sellingCaseId": "guid",
+  "caseCreated": false,
+  "caseNumber": "SC-01A03CDAC567",
+  "sellerStatus": "Internal",
+  "status": "Draft",
+  "message": "Lien moved to management and added to an existing case."
+}
+```
+
 ### POST `/api/liens/selling/liens/{lienId}/confirm-sale`
 
 Confirms a prepared seller lien for sale. The endpoint moves a draft/prepared lien to `Offered` with

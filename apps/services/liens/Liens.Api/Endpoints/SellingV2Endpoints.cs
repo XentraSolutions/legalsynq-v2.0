@@ -23,6 +23,8 @@ public static class SellingV2Endpoints
 {
     private const string SellingMedicalPricingTaskType = "SellingMedicalPricing";
     private const string SellingDocumentTaskType = "SellingDocumentReference";
+    private const string LegacyCaseMetadataMarker = "[legacy-meta]";
+    private static readonly JsonSerializerOptions SellingPricingJsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly HashSet<string> IntakeStatuses =
     [
         SellingLienStatus.Pending,
@@ -59,6 +61,8 @@ public static class SellingV2Endpoints
         seller.MapPost("/liens/{lienId:guid}/withdraw-sale", WithdrawSale)
             .RequirePermission(LiensPermissions.LienSaleWithdraw);
         seller.MapPost("/liens/{lienId:guid}/move-to-management", MoveToManagement)
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
+        seller.MapPost("/liens/{lienId:guid}/move-to-management-v2", MoveToManagementV2)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
         seller.MapPost("/liens/{lienId:guid}/archive", ArchiveLien)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
@@ -1081,6 +1085,150 @@ public static class SellingV2Endpoints
         }
     }
 
+    private static async Task<IResult> MoveToManagementV2(
+        Guid lienId,
+        MoveSellingLienToManagementV2Request request,
+        HttpRequest httpRequest,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
+        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError)) return idempotencyError!;
+
+        const string route = "/api/liens/selling/liens/{lienId}/move-to-management-v2";
+        var replay = await SellingIdempotency.GetReplayAsync(
+            db, tenantId, "User", userId, route, "Lien", lienId.ToString(), idempotencyKey!, request, ct);
+        if (replay is not null) return replay;
+
+        var lien = await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct);
+        if (lien is null) return NotFoundLien(lienId);
+        if (!IsMoveToManagementEligible(lien))
+            return ValidationError("sellerStatus", "Only Selling Pending-tab or existing Internal liens can be moved to management.");
+
+        var transitionGate = await SellingIdempotency.TryBeginAsync(
+            db, tenantId, "LienStateTransition", lienId, route, "Lien", lienId.ToString(),
+            $"move-to-management-v2-transition:{lien.UpdatedAtUtc.Ticks.ToString(CultureInfo.InvariantCulture)}", request: null, ct: ct);
+        if (transitionGate.Result is not null)
+            return Results.Conflict(new { error = new { code = "lien_transition_in_progress", message = "This lien is already being moved to management. Retry with the original idempotency key." } });
+
+        SellingIdempotency.IdempotencyStart? started = null;
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        try
+        {
+            started = await SellingIdempotency.TryBeginAsync(
+                db, tenantId, "User", userId, route, "Lien", lienId.ToString(), idempotencyKey!, request, ct);
+            if (started.Result is not null)
+            {
+                db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return started.Result;
+            }
+
+            await db.Entry(lien).ReloadAsync(ct);
+            if (!IsMoveToManagementEligible(lien))
+            {
+                db.SellingIdempotencyRecords.Remove(started.Record!);
+                db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return ValidationError("sellerStatus", "Only Selling Pending-tab or existing Internal liens can be moved to management.");
+            }
+            if (ValidateMoveToManagementCaseInfo(request.CaseInfo) is { } caseInfoError)
+            {
+                db.SellingIdempotencyRecords.Remove(started.Record!);
+                db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return caseInfoError;
+            }
+            if (await ValidateExistingMoveToManagementCaseAsync(db, tenantId, sellerOrgId, lien, ct) is { } caseError)
+            {
+                db.SellingIdempotencyRecords.Remove(started.Record!);
+                db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+                return caseError;
+            }
+
+            var caseResolution = await ResolveMoveToManagementCaseAsync(db, tenantId, sellerOrgId, userId, lien, request.CaseInfo, ct);
+            if (request.CaseInfo?.IsServicing is { } isServicing)
+            {
+                lien.Update(
+                    lien.LienType,
+                    lien.OriginalAmount,
+                    userId,
+                    lien.ExternalReference,
+                    lien.SubjectFirstName,
+                    lien.SubjectLastName,
+                    lien.IsConfidential,
+                    lien.Jurisdiction,
+                    lien.IncidentDate,
+                    lien.InitialServiceDate,
+                    lien.EndServiceDate,
+                    lien.IsBulk,
+                    isServicing ? "true" : "false",
+                    lien.Description,
+                    lien.Notes,
+                    lien.PurchaseDate);
+            }
+
+            if (IsSubmittedLien(lien))
+            {
+                lien.ReturnToSellingPending(userId);
+                var links = await db.SellingBuyerAccessLinks
+                    .Where(link => link.TenantId == tenantId && link.LienId == lien.Id && !link.RevokedAtUtc.HasValue)
+                    .ToListAsync(ct);
+                foreach (var link in links)
+                    link.Revoke(userId);
+
+                var activeOffers = await db.LienOffers
+                    .Where(offer => offer.TenantId == tenantId && offer.LienId == lien.Id)
+                    .ToListAsync(ct);
+                foreach (var offer in activeOffers.Where(IsActiveOffer))
+                    offer.Expire(userId);
+            }
+
+            await EnsureManagementAmountsAsync(db, tenantId, sellerOrgId, lien, caseResolution.Case.Id, userId, ct);
+            lien.AttachCase(caseResolution.Case.Id, userId);
+            lien.MoveToInternalManagement(userId);
+            AddActivity(db, lien, userId, caseResolution.CaseCreated
+                ? "Lien moved to management and linked to a new case."
+                : "Lien moved to management and added to an existing case.");
+
+            var response = new
+            {
+                lienId = lien.Id,
+                caseId = lien.CaseId,
+                sellingCaseId = lien.SellingCaseId,
+                caseCreated = caseResolution.CaseCreated,
+                caseNumber = caseResolution.Case.CaseNumber,
+                sellerStatus = lien.SellerStatus,
+                status = lien.Status,
+                message = caseResolution.CaseCreated
+                    ? "Lien moved to management and linked to a new case."
+                    : "Lien moved to management and added to an existing case.",
+            };
+
+            await db.SaveChangesAsync(ct);
+            var completed = await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status200OK, response, ct);
+            await SellingIdempotency.CompleteAsync(db, transitionGate.Record!, userId, StatusCodes.Status200OK, response, ct);
+            await transaction.CommitAsync(ct);
+            return completed;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            db.ChangeTracker.Clear();
+            if (started?.Record is not null && started.Record.ProcessingState != SellingIdempotencyRecord.Completed)
+                db.SellingIdempotencyRecords.Remove(started.Record);
+            db.SellingIdempotencyRecords.Remove(transitionGate.Record!);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
     private static async Task<IResult> ArchiveLien(
         Guid lienId,
         ArchiveSellingLienRequest request,
@@ -1798,14 +1946,17 @@ public static class SellingV2Endpoints
 
     private static bool IsMoveToManagementEligible(Lien lien)
     {
-        if (IsSubmittedLien(lien)) return true;
-        if (lien.Status != LienStatus.Draft) return false;
-
-        return string.IsNullOrWhiteSpace(lien.SellerStatus) || lien.SellerStatus is
-            SellingLienStatus.Pending or
-            SellingLienStatus.Internal or
-            SellingLienStatus.Approval or
-            SellingLienStatus.PreparedForSale;
+        if (lien.ArchivedAtUtc.HasValue || lien.SoldAtUtc.HasValue || lien.WithdrawnAtUtc.HasValue)
+            return false;
+        if (IsSubmittedLien(lien))
+            return true;
+        if (lien.Status != LienStatus.Draft)
+            return false;
+        return lien.SellerStatus is null or "" ||
+            lien.SellerStatus == SellingLienStatus.Pending ||
+            lien.SellerStatus == SellingLienStatus.Internal ||
+            lien.SellerStatus == SellingLienStatus.Approval ||
+            lien.SellerStatus == SellingLienStatus.PreparedForSale;
     }
 
     private static Case CreateManagementCase(Lien lien, Guid tenantId, Guid sellerOrgId, Guid userId) =>
@@ -1904,14 +2055,44 @@ public static class SellingV2Endpoints
             notes: notes));
     }
 
-    private sealed class SellingMedicalPricingEntry
+    private static IResult? ValidateMoveToManagementCaseInfo(MoveSellingLienToManagementCaseInfoRequest? caseInfo)
     {
-        public string? MedicalCode { get; init; }
-        public string? Description { get; init; }
-        public decimal BillingAmount { get; init; }
-        public decimal? MedicareCost { get; init; }
-        public decimal TargetSaleAmount { get; init; }
+        if (caseInfo is null)
+            return null;
+        if (string.IsNullOrWhiteSpace(caseInfo.ClientFirstName))
+            return ValidationError("caseInfo.clientFirstName", "First name is required when caseInfo is provided.");
+        if (string.IsNullOrWhiteSpace(caseInfo.ClientLastName))
+            return ValidationError("caseInfo.clientLastName", "Last name is required when caseInfo is provided.");
+        if (caseInfo.ClientDob is null)
+            return ValidationError("caseInfo.clientDob", "Date of birth is required when caseInfo is provided.");
+        if (string.IsNullOrWhiteSpace(caseInfo.StatusLabel))
+            return ValidationError("caseInfo.statusLabel", "Status is required when caseInfo is provided.");
+        if (string.IsNullOrWhiteSpace(caseInfo.AccidentTypeId))
+            return ValidationError("caseInfo.accidentTypeId", "Accident type is required when caseInfo is provided.");
+        if (string.IsNullOrWhiteSpace(caseInfo.StateOfIncident))
+            return ValidationError("caseInfo.stateOfIncident", "Accident state is required when caseInfo is provided.");
+        if (string.IsNullOrWhiteSpace(caseInfo.LawFirmId))
+            return ValidationError("caseInfo.lawFirmId", "Law firm is required when caseInfo is provided.");
+        return null;
     }
+
+    private static async Task<IResult?> ValidateExistingMoveToManagementCaseAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        Lien lien,
+        CancellationToken ct)
+    {
+        if (lien.CaseId is not { } caseId || caseId == Guid.Empty)
+            return null;
+        var existing = await db.Cases.AsNoTracking().FirstOrDefaultAsync(item => item.Id == caseId && item.TenantId == tenantId, ct);
+        if (existing is null)
+            return ValidationError("caseId", "Linked case was not found in this tenant.");
+        if (existing.OrgId != sellerOrgId)
+            return ValidationError("caseId", "Linked case is not owned by the seller organization.");
+        return null;
+    }
+
     private static string BuildSubmitForSaleTransitionKey(Lien lien) => $"submit-for-sale-transition-v1:{lien.UpdatedAtUtc.Ticks.ToString(CultureInfo.InvariantCulture)}";
     private static bool IsActiveOffer(LienOffer offer) => offer.Status is not OfferStatus.Rejected and not OfferStatus.Withdrawn and not OfferStatus.Expired && !offer.IsExpired;
     private static async Task<Contact?> GetFundingCompanyAsync(LiensDbContext db, Guid tenantId, Guid id, CancellationToken ct) => await db.Contacts.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == id && c.IsActive && (c.ContactType == ContactType.FundingCompany || c.ContactType == ContactType.LienHolder), ct);
@@ -1951,12 +2132,236 @@ public static class SellingV2Endpoints
         (c.ContactSubtype == null || c.ContactSubtype == string.Empty) &&
         !c.LawFirmId.HasValue,
         ct);
+    private static async Task<MoveToManagementCaseResolution> ResolveMoveToManagementCaseAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        Guid userId,
+        Lien lien,
+        MoveSellingLienToManagementCaseInfoRequest? caseInfo,
+        CancellationToken ct)
+    {
+        if (lien.CaseId is { } existingCaseId && existingCaseId != Guid.Empty)
+        {
+            var existing = await db.Cases.FirstOrDefaultAsync(item =>
+                item.TenantId == tenantId &&
+                item.OrgId == sellerOrgId &&
+                item.Id == existingCaseId, ct);
+            if (existing is not null)
+                return new MoveToManagementCaseResolution(existing, false);
+        }
+
+        var duplicate = await FindMoveToManagementDuplicateCaseAsync(db, tenantId, sellerOrgId, caseInfo, ct);
+        if (duplicate is not null)
+            return new MoveToManagementCaseResolution(duplicate, false);
+
+        var created = CreateMoveToManagementCase(tenantId, sellerOrgId, userId, lien, caseInfo);
+        db.Cases.Add(created);
+        return new MoveToManagementCaseResolution(created, true);
+    }
+
+    private static async Task<Case?> FindMoveToManagementDuplicateCaseAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        MoveSellingLienToManagementCaseInfoRequest? caseInfo,
+        CancellationToken ct)
+    {
+        if (caseInfo is null ||
+            string.IsNullOrWhiteSpace(caseInfo.ClientFirstName) ||
+            string.IsNullOrWhiteSpace(caseInfo.ClientLastName) ||
+            caseInfo.ClientDob is null ||
+            caseInfo.DateOfIncident is null)
+        {
+            return null;
+        }
+
+        var firstName = caseInfo.ClientFirstName.Trim();
+        var lastName = caseInfo.ClientLastName.Trim();
+        return await db.Cases
+            .Where(item =>
+                item.TenantId == tenantId &&
+                item.OrgId == sellerOrgId &&
+                item.ClientDob == caseInfo.ClientDob &&
+                item.DateOfIncident == caseInfo.DateOfIncident)
+            .OrderByDescending(item => item.CreatedAtUtc)
+            .FirstOrDefaultAsync(item =>
+                item.ClientFirstName.ToLower() == firstName.ToLower() &&
+                item.ClientLastName.ToLower() == lastName.ToLower(), ct);
+    }
+
+    private static Case CreateMoveToManagementCase(
+        Guid tenantId,
+        Guid sellerOrgId,
+        Guid userId,
+        Lien lien,
+        MoveSellingLienToManagementCaseInfoRequest? caseInfo)
+    {
+        var firstName = FirstNonEmpty(caseInfo?.ClientFirstName, lien.SubjectFirstName, "Jane")!;
+        var lastName = FirstNonEmpty(caseInfo?.ClientLastName, lien.SubjectLastName, "Doe")!;
+        var title = FirstNonEmpty($"{firstName} {lastName}".Trim(), lien.LienNumber);
+        var notes = BuildMoveToManagementCaseNotes(caseInfo);
+        var address = BuildMoveToManagementCaseAddress(caseInfo);
+        var created = Case.Create(
+            tenantId,
+            sellerOrgId,
+            $"SC-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
+            firstName,
+            lastName,
+            userId,
+            externalReference: lien.ExternalReference,
+            title: title,
+            clientDob: caseInfo?.ClientDob,
+            clientAddress: address,
+            dateOfIncident: caseInfo?.DateOfIncident ?? lien.IncidentDate,
+            description: lien.Description,
+            notes: notes);
+
+        return created;
+    }
+
+    private static string? BuildMoveToManagementCaseNotes(MoveSellingLienToManagementCaseInfoRequest? caseInfo)
+    {
+        if (caseInfo is null)
+            return null;
+
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(caseInfo.Notes))
+            parts.Add(caseInfo.Notes.Trim());
+
+        AddMetadata(parts, "isServicing", caseInfo.IsServicing?.ToString(CultureInfo.InvariantCulture));
+        AddMetadata(parts, "statusLabel", caseInfo.StatusLabel);
+        AddMetadata(parts, "accidentTypeId", caseInfo.AccidentTypeId);
+        AddMetadata(parts, "accidentState", caseInfo.StateOfIncident);
+        AddMetadata(parts, "lawFirmId", caseInfo.LawFirmId);
+        AddMetadata(parts, "caseManagerId", caseInfo.CaseManagerId);
+        if (parts.Count == 0)
+            return null;
+
+        var metadataStart = parts.FindIndex(part => part.Contains('='));
+        if (metadataStart < 0)
+            return string.Join("; ", parts);
+
+        var userNotes = metadataStart == 0 ? null : string.Join("; ", parts.Take(metadataStart));
+        var metadata = string.Join("; ", parts.Skip(metadataStart));
+        return string.IsNullOrWhiteSpace(userNotes)
+            ? $"{LegacyCaseMetadataMarker}{Environment.NewLine}{metadata}"
+            : $"{userNotes}{Environment.NewLine}{Environment.NewLine}{LegacyCaseMetadataMarker}{Environment.NewLine}{metadata}";
+    }
+
+    private static string? BuildMoveToManagementCaseAddress(MoveSellingLienToManagementCaseInfoRequest? caseInfo)
+    {
+        if (caseInfo is null)
+            return null;
+
+        var parts = new[]
+        {
+            caseInfo.ClientAddress,
+            caseInfo.ClientCity,
+            caseInfo.ClientState,
+            caseInfo.ClientZipCode,
+        }
+        .Select(part => part?.Trim())
+        .Where(part => !string.IsNullOrWhiteSpace(part))
+        .ToList();
+
+        return parts.Count == 0 ? null : string.Join(", ", parts);
+    }
+
+    private static void AddMetadata(List<string> parts, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            parts.Add($"{key}={value.Trim()}");
+    }
+
+    private static async Task EnsureManagementAmountsAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        Lien lien,
+        Guid caseId,
+        Guid userId,
+        CancellationToken ct)
+    {
+        var staleRows = await db.ServicingItems
+            .Where(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == "LegacyMedicalCode")
+            .ToListAsync(ct);
+        db.ServicingItems.RemoveRange(staleRows);
+
+        var sellingRows = await db.ServicingItems.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingMedicalPricingTaskType)
+            .OrderBy(item => item.CreatedAtUtc)
+            .ToListAsync(ct);
+
+        if (sellingRows.Count == 0)
+        {
+            AddManagementPricingRow(db, tenantId, sellerOrgId, caseId, lien.Id, userId, "SellingLien", lien.Description, lien.OriginalAmount, lien.AskAmount ?? 0m, null);
+            return;
+        }
+
+        foreach (var row in sellingRows)
+        {
+            SellingMedicalPricingEntry? pricing = null;
+            if (!string.IsNullOrWhiteSpace(row.Notes))
+            {
+                try
+                {
+                    pricing = JsonSerializer.Deserialize<SellingMedicalPricingEntry>(row.Notes, SellingPricingJsonOptions);
+                }
+                catch (JsonException)
+                {
+                    pricing = null;
+                }
+            }
+
+            AddManagementPricingRow(
+                db,
+                tenantId,
+                sellerOrgId,
+                caseId,
+                lien.Id,
+                userId,
+                FirstNonEmpty(pricing?.MedicalCode, row.Description, "SellingLien")!,
+                pricing?.Description,
+                pricing?.BillingAmount ?? 0m,
+                pricing?.TargetSaleAmount ?? 0m,
+                pricing?.MedicareCost);
+        }
+    }
+
+    private static void AddManagementPricingRow(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        Guid caseId,
+        Guid lienId,
+        Guid userId,
+        string medicalCode,
+        string? description,
+        decimal billingAmount,
+        decimal purchaseAmount,
+        decimal? medicareCost)
+    {
+        db.ServicingItems.Add(ServicingItem.Create(
+            tenantId,
+            sellerOrgId,
+            $"LMC-{Guid.CreateVersion7():N}".ToUpperInvariant(),
+            "LegacyMedicalCode",
+            $"Medical code {medicalCode}",
+            "system",
+            userId,
+            caseId: caseId,
+            lienId: lienId,
+            notes: $"code={medicalCode}; description={description ?? string.Empty}; medicareCost={medicareCost?.ToString(CultureInfo.InvariantCulture) ?? string.Empty}; billingAmount={billingAmount.ToString(CultureInfo.InvariantCulture)}; purchaseAmount={purchaseAmount.ToString(CultureInfo.InvariantCulture)}"));
+    }
+
     private static (Guid TenantId, Guid OrgId, Guid UserId) RequireSellerContext(ICurrentRequestContext context) => (context.TenantId ?? throw new UnauthorizedAccessException("Tenant context is required."), context.OrgId ?? throw new UnauthorizedAccessException("Organization context is required."), context.UserId ?? throw new UnauthorizedAccessException("User context is required."));
     private static (Guid TenantId, Guid OrgId, Guid UserId) RequireBuyerContext(ICurrentRequestContext context) => RequireSellerContext(context);
     private static string? NormalizeIntakeStatus(string? status) => IntakeStatuses.FirstOrDefault(candidate => string.Equals(candidate, status?.Trim(), StringComparison.OrdinalIgnoreCase));
     private static IResult? SellingMutationBlocked(Lien lien) => lien.MovedToManagementAtUtc.HasValue
         ? Results.Conflict(new { error = new { code = "lien_moved_to_management", message = "This lien is managed through Liens Management and can no longer be changed through Selling." } })
         : null;
+    private static string? FirstNonEmpty(params string?[] values) => values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
     private static IResult? IntakeMutationBlocked(Lien lien) => IntakeStatuses.Contains(lien.SellerStatus ?? string.Empty)
         ? SellingMutationBlocked(lien)
         : Results.Conflict(new { error = new { code = "intake_locked", message = "Lien intake can be changed only while sellerStatus is Pending or Internal." } });
@@ -2050,6 +2455,16 @@ public static class SellingV2Endpoints
         }
 
         return metadata;
+    }
+    private sealed record MoveToManagementCaseResolution(Case Case, bool CaseCreated);
+    private sealed class SellingMedicalPricingEntry
+    {
+        public string? MedicalCode { get; init; }
+        public string? Description { get; init; }
+        public DateOnly? ServiceDate { get; init; }
+        public decimal BillingAmount { get; init; }
+        public decimal? MedicareCost { get; init; }
+        public decimal TargetSaleAmount { get; init; }
     }
     private static Guid? ParseMetadataGuid(IReadOnlyDictionary<string, string> metadata, string key)
         => metadata.TryGetValue(key, out var value) && Guid.TryParse(value, out var id) ? id : null;

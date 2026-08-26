@@ -2048,6 +2048,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("SellingOrgId")
                         .HasColumnType("char(36)");
 
+                    b.Property<Guid?>("SellingCaseId")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateTime?>("SoldAtUtc")
                         .HasColumnType("datetime(6)");
 
@@ -2152,6 +2155,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "SellingOrgId", "SellerStatus", "SubmittedForSaleAtUtc")
                         .HasDatabaseName("IX_Liens_Tenant_Seller_Status_Submitted");
+
+                    b.HasIndex("TenantId", "SellingCaseId")
+                        .HasDatabaseName("IX_Liens_TenantId_SellingCaseId");
 
                     b.ToTable("liens_Liens", (string)null);
                 });

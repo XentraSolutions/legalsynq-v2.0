@@ -76,6 +76,31 @@ public sealed class MoveSellingLienToManagementRequest
     public string? Reason { get; init; }
 }
 
+public sealed class MoveSellingLienToManagementV2Request
+{
+    public string? Reason { get; init; }
+    public MoveSellingLienToManagementCaseInfoRequest? CaseInfo { get; init; }
+}
+
+public sealed class MoveSellingLienToManagementCaseInfoRequest
+{
+    public string? ClientFirstName { get; init; }
+    public string? ClientLastName { get; init; }
+    public DateOnly? ClientDob { get; init; }
+    public string? ClientAddress { get; init; }
+    public string? ClientCity { get; init; }
+    public string? ClientState { get; init; }
+    public string? ClientZipCode { get; init; }
+    public bool? IsServicing { get; init; }
+    public string? StatusLabel { get; init; }
+    public string? AccidentTypeId { get; init; }
+    public string? StateOfIncident { get; init; }
+    public DateOnly? DateOfIncident { get; init; }
+    public string? LawFirmId { get; init; }
+    public string? CaseManagerId { get; init; }
+    public string? Notes { get; init; }
+}
+
 public sealed class ArchiveSellingLienRequest
 {
     public string? Reason { get; init; }

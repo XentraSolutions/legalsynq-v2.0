@@ -30,6 +30,12 @@ public partial class AddLienSellingCaseReference : Migration
             "IX_Liens_SellingCaseId",
             "(`SellingCaseId`)");
 
+        SellingSchemaMigrationGuards.CreateIndexIfMissing(
+            migrationBuilder,
+            "liens_Liens",
+            "IX_Liens_TenantId_SellingCaseId",
+            "(`TenantId`, `SellingCaseId`)");
+
         SellingSchemaMigrationGuards.AddForeignKeyIfMissing(
             migrationBuilder,
             "liens_Liens",
@@ -45,6 +51,10 @@ public partial class AddLienSellingCaseReference : Migration
 
         migrationBuilder.DropIndex(
             name: "IX_Liens_SellingCaseId",
+            table: "liens_Liens");
+
+        migrationBuilder.DropIndex(
+            name: "IX_Liens_TenantId_SellingCaseId",
             table: "liens_Liens");
 
         migrationBuilder.DropColumn(
