@@ -11,6 +11,7 @@ import { StatusBadge } from "@/components/lien/status-badge";
 import { DateDisplay } from "@/components/ui/date-display";
 import { ApiError } from "@/lib/api-client";
 import { useSellingCaseDetail } from "@/hooks/selling/use-case-drafts";
+import { detailEditHref } from "@/components/selling/case-wizard/shared";
 
 const LIST_PATH = "/selling/portfolio/cases";
 
@@ -110,7 +111,7 @@ export default function CaseDetailPage() {
             {
               label: "Edit Case",
               icon: SquarePen,
-              onClick: () => router.push(`${LIST_PATH}/${caseId}/edit/case-info`),
+              onClick: () => router.push(detailEditHref(caseId, 1)),
             } satisfies ActionMenuItem,
             {
               label: "Delete Case",
@@ -156,7 +157,7 @@ export default function CaseDetailPage() {
               <Button
                 variant="secondary"
                 leftIcon="squarePen"
-                onClick={() => router.push(`${LIST_PATH}/${caseId}/edit/case-info`)}
+                onClick={() => router.push(detailEditHref(caseId, 1))}
               >
                 Edit
               </Button>
@@ -204,7 +205,7 @@ export default function CaseDetailPage() {
               <Button
                 variant="secondary"
                 leftIcon="squarePen"
-                onClick={() => router.push(`${LIST_PATH}/${caseId}/edit/plaintiff`)}
+                onClick={() => router.push(detailEditHref(caseId, 2))}
               >
                 Edit
               </Button>

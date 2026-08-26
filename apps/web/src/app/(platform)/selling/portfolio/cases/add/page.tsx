@@ -1,7 +1,7 @@
 "use client";
 
-import { CaseWizard } from "@/components/selling/case-wizard/case-wizard";
+import CaseInfoStep from "@/components/selling/case-wizard/case-info-step";
 
 export default function AddCasePage() {
-  return <CaseWizard />;
+  return <CaseInfoStep />;
 }

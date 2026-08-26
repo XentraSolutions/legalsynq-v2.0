@@ -112,10 +112,17 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
       });
       await liensService.createLienInfo(created.lienId, request);
       toast.success("Liens Created");
-      // Move the URL onto the resumable draft route so a refresh (or the
-      // back button) continues editing this lien instead of creating another
-      // bare one. The backend has no draft-listing endpoint yet, so this URL
-      // is the only way progress survives a refresh.
+      // Swap /add's history entry for the resumable edit/step-1 URL
+      // *without* triggering a Next navigation (router.replace immediately
+      // followed by router.push collapses into a single transition — the
+      // replace never lands), then router.push step 2 as a normal
+      // navigation on top of it. Back from step 2 now lands on step 1 with
+      // this lien's id, not a blank /add that would create a second lien.
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `/selling/portfolio/lien/${created.lienId}/edit/step-1`,
+      );
       router.push(`/selling/portfolio/lien/${created.lienId}/edit/step-2`);
     } catch (err) {
       if (err instanceof ApiError) {

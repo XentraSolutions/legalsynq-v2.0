@@ -165,6 +165,11 @@ export const liensService = {
     return data;
   },
 
+  async getCaseDraftById(draftId: string): Promise<CaseDraftResult> {
+    const { data } = await liensApi.getCaseDraftById(draftId);
+    return data;
+  },
+
   async finalizeCaseDraft(
     draftId: string,
     request: FinalizeCaseDraftRequest,
