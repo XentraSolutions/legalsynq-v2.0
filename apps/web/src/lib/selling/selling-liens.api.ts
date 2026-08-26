@@ -29,6 +29,8 @@ import type {
   UpdateCaseRequest,
   UpdateCaseResult,
   CaseDetailResult,
+  CaseSearchQuery,
+  CaseSearchResultDto,
   UpdateCasePlaintiffRequest,
   UpdateCasePlaintiffResult,
   MoveToManagementRequest,
@@ -164,6 +166,12 @@ export const liensApi = {
 
   updateCase(caseId: string, request: UpdateCaseRequest) {
     return apiClient.put<UpdateCaseResult>(`${BASE}/cases/${caseId}`, request);
+  },
+
+  searchCases(query: CaseSearchQuery = {}) {
+    return apiClient.get<CaseSearchResultDto>(
+      `${BASE}/cases${toQs(query as Record<string, unknown>)}`,
+    );
   },
 
   getCaseById(caseId: string) {

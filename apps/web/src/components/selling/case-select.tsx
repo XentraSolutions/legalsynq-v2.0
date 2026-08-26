@@ -20,12 +20,18 @@ export interface CaseSelectProps {
   disabled?: boolean;
 }
 
-function toOption(c: { id: string; caseNumber: string; clientName: string }): CaseOption {
+function toOption(c: {
+  caseId: string;
+  caseNumber: string;
+  firstName?: string | null;
+  lastName?: string | null;
+}): CaseOption {
+  const clientName = [c.firstName, c.lastName].filter(Boolean).join(" ");
   return {
-    value: c.id,
-    label: `${c.caseNumber} ${c.clientName}`,
+    value: c.caseId,
+    label: `${c.caseNumber} ${clientName}`,
     caseNumber: c.caseNumber,
-    clientName: c.clientName,
+    clientName,
   };
 }
 
@@ -39,17 +45,9 @@ function mergeSelected(base: CaseOption[], resolved: CaseOption | undefined): Ca
   return [resolved, ...base.filter((o) => o.value !== resolved.value)];
 }
 
-// Case picker for the lien wizard's step 1.
-//
-// TODO(backend): there is no lien-selling-specific case list/search API yet.
-// This borrows the general (non-selling) Cases module's search endpoint
-// (casesService.getCases / casesApi.listBySearch, via
-// @/hooks/selling/use-cases-search) as a stand-in — an assumption, not a confirmed
-// selling data contract. Swap to a real Selling case-search endpoint (and
-// @/lib/selling's own types/api/service, per this repo's Selling-has-its-own-
-// data-layer rule) once one exists; case *creation* is separately stubbed
-// too (see @/components/selling/case-wizard). Scroll-paginated +
-// debounced-search + resolve-missing-selection-by-id, same shape as
+// Case picker for the lien wizard's step 1. Backed by the selling module's
+// own case-search endpoint (@/hooks/selling/use-cases-search). Scroll-paginated
+// + debounced-search + resolve-missing-selection-by-id, same shape as
 // ContactEntitySelect / SellingEntitySelect.
 export function CaseSelect({
   value,
@@ -90,7 +88,7 @@ export function CaseSelect({
 
   const options = useMemo(() => {
     const resolved =
-      selectedMissing && selectedCaseQuery.data && selectedCaseQuery.data.id === value
+      selectedMissing && selectedCaseQuery.data && selectedCaseQuery.data.caseId === value
         ? toOption(selectedCaseQuery.data)
         : undefined;
     return mergeSelected(fetched, resolved);
