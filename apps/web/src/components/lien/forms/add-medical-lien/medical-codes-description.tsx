@@ -54,6 +54,7 @@ function roundToTwo(value: number) {
 }
 
 function parseNumber(value: string) {
+  if (!value) return;
   const parsed = Number(value.replace(/,/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -218,9 +219,11 @@ export default function MedicalCodesDescription(
           purchaseAmount: getCurrentValue(),
         };
 
-        setRows((current) => {
+        setRows((current: any) => {
           if (editingId) {
-            return current.map((row) => (row.id === editingId ? nextRow : row));
+            return current.map((row: any) =>
+              row.id === editingId ? nextRow : row,
+            );
           }
           return [...current, nextRow];
         });
@@ -234,9 +237,11 @@ export default function MedicalCodesDescription(
           purchaseAmount: getCurrentValue(),
         };
 
-        setRows((current) => {
+        setRows((current: any) => {
           if (editingId) {
-            return current.map((row) => (row.id === editingId ? nextRow : row));
+            return current.map((row: any) =>
+              row.id === editingId ? nextRow : row,
+            );
           }
           return [...current, nextRow];
         });
@@ -349,7 +354,7 @@ export default function MedicalCodesDescription(
   const isLineValid =
     currentBilling > 0 &&
     !!form.procedureCode &&
-    parseNumber(form.medicareCost) > 0;
+    parseFloat(form.medicareCost ?? 0) > 0;
 
   return (
     <div className="container-fluid">
