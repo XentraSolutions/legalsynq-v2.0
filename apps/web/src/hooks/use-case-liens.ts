@@ -186,11 +186,13 @@ async function enrichLiens(
     const paymentAmount = paymentsByLien.get(lien.id) ?? null;
     const reductionAmount = latestReductionByLien.get(lien.id) ?? null;
     const reductionDate = latestReductionDateByLien.get(lien.id) ?? null;
+    const originalAmount = lien.totalBilling ?? 0;
+    const totalBalance =
+      originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0);
     // A lien can bundle multiple medical billing line items; totalBilling is
     // the server-aggregated sum across those. The DTO also has a legacy
     // single-value originalAmount field, but we don't consume it on the
     // client — the aggregate is the only "billing amount" this view needs.
-    const originalAmount = lien.totalBilling ?? 0;
     return {
       ...lien,
       facility: lien.facility ?? "",
@@ -204,7 +206,7 @@ async function enrichLiens(
       purchaseAmount: lien.purchaseAmount ?? 0,
       isServicing: lien.isServicing ?? false,
       paymentAmount,
-      balance: originalAmount - (reductionAmount ?? 0) - (paymentAmount ?? 0),
+      balance: totalBalance > 0 ? totalBalance : 0,
       closedAtUtc: lien.closedAtUtc ?? null,
     };
   });

@@ -158,7 +158,7 @@ export function ServicingTab({
 
   let openLiens = liens.filter((i) => i.status === "Open");
   let closedLiens = liens.filter((i) => i.status === "Closed");
-  console.log(liens, openLiens, closedLiens);
+
   const openLiensTotalBilling = openLiens.reduce(
     (s, l) => s + l.originalAmount,
     0,

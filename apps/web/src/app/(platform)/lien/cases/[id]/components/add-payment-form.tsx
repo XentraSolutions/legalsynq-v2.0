@@ -631,18 +631,18 @@ export function AddPaymentForm({
 
   const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
 
-  const totalAmountToSettle = openLiens.reduce(
-    (s, l) => s + Math.round((l.balance ?? 0) * 100),
-    0,
-  );
-  const totalBilling = openLiens.reduce(
-    (s, l) => s + Math.round((l.originalAmount ?? 0) * 100),
-    0,
-  );
-  const totalPurchase = openLiens.reduce(
-    (s, l) => s + Math.round((l.purchaseAmount ?? 0) * 100),
-    0,
-  );
+  const totalAmountToSettle =
+    openLiens.reduce((s, l) => s + Math.round((l.balance ?? 0) * 100), 0) / 100;
+  const totalBilling =
+    openLiens.reduce(
+      (s, l) => s + Math.round((l.originalAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const totalPurchase =
+    openLiens.reduce(
+      (s, l) => s + Math.round((l.purchaseAmount ?? 0) * 100),
+      0,
+    ) / 100;
   // 1. Computes the overall total for all open liens
   const totalReceivedPayment = openLiens.reduce((s, l) => {
     const val = parseFloat(lienPayments[l.id] ?? l.paymentAmount ?? "0") || 0;
