@@ -52,14 +52,12 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         {
             Content = JsonContent.Create(new
             {
-                caseStatus = CaseStatus.PreDemand,
                 accidentTypeId = "MVA",
                 accidentState = "CA",
                 dateOfLoss = "2026-07-19",
                 caseTrackingNotes = "Plaintiff intake completed.",
             }),
         };
-        createDraft.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
         var draftResponse = await _client.SendAsync(createDraft);
         draftResponse.StatusCode.Should().Be(HttpStatusCode.Created, await draftResponse.Content.ReadAsStringAsync());
         using var draftJson = JsonDocument.Parse(await draftResponse.Content.ReadAsStringAsync());
@@ -81,7 +79,6 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
                 zipcode = "90001",
             }),
         };
-        finalize.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
         var finalizedResponse = await _client.SendAsync(finalize);
         finalizedResponse.StatusCode.Should().Be(HttpStatusCode.Created, await finalizedResponse.Content.ReadAsStringAsync());
         using var finalizedJson = JsonDocument.Parse(await finalizedResponse.Content.ReadAsStringAsync());
@@ -102,9 +99,131 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         var persisted = await db.Cases.SingleAsync(item => item.Id == caseId);
         persisted.ClientFirstName.Should().Be("Pat");
         persisted.ClientEmail.Should().Be("pat@example.test");
+        persisted.Status.Should().Be(CaseStatus.PreDemand);
         persisted.IncidentState.Should().Be("CA");
         persisted.Notes.Should().Contain("gender=Nonbinary");
         (await db.Liens.SingleAsync(item => item.Id == lienId)).CaseId.Should().Be(caseId);
+    }
+
+    [Fact]
+    public async Task Case_draft_can_be_updated_before_plaintiff_finalization()
+    {
+        using var createDraft = new HttpRequestMessage(HttpMethod.Post, "/api/liens/selling/case-drafts")
+        {
+            Content = JsonContent.Create(new
+            {
+                accidentTypeId = "MVA",
+                accidentState = "CA",
+                dateOfLoss = "2026-07-19",
+                caseTrackingNotes = "Original intake notes.",
+            }),
+        };
+        var createResponse = await _client.SendAsync(createDraft);
+        createResponse.EnsureSuccessStatusCode();
+        using var createJson = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var draftId = createJson.RootElement.GetProperty("draftId").GetGuid();
+
+        var updateResponse = await _client.PutAsJsonAsync($"/api/liens/selling/case-drafts/{draftId}", new
+        {
+            accidentTypeId = "MVA",
+            accidentState = "NV",
+            dateOfLoss = "2026-07-20",
+            caseTrackingNotes = "Updated intake notes.",
+        });
+
+        updateResponse.StatusCode.Should().Be(HttpStatusCode.OK, await updateResponse.Content.ReadAsStringAsync());
+        using var updateJson = JsonDocument.Parse(await updateResponse.Content.ReadAsStringAsync());
+        var result = updateJson.RootElement;
+        result.GetProperty("draftId").GetGuid().Should().Be(draftId);
+        result.GetProperty("accidentState").GetString().Should().Be("NV");
+        result.GetProperty("dateOfLoss").GetString().Should().Be("2026-07-20");
+        result.GetProperty("caseTrackingNotes").GetString().Should().Be("Updated intake notes.");
+    }
+
+    [Fact]
+    public async Task Finalized_selling_case_can_be_retrieved_and_updated_in_two_steps()
+    {
+        using var createDraft = new HttpRequestMessage(HttpMethod.Post, "/api/liens/selling/case-drafts")
+        {
+            Content = JsonContent.Create(new
+            {
+                accidentTypeId = "MVA",
+                accidentState = "CA",
+                dateOfLoss = "2026-07-19",
+                caseTrackingNotes = "Plaintiff intake completed.",
+            }),
+        };
+        var draftResponse = await _client.SendAsync(createDraft);
+        draftResponse.EnsureSuccessStatusCode();
+        using var draftJson = JsonDocument.Parse(await draftResponse.Content.ReadAsStringAsync());
+        var draftId = draftJson.RootElement.GetProperty("draftId").GetGuid();
+
+        using var finalize = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/case-drafts/{draftId}/plaintiff")
+        {
+            Content = JsonContent.Create(new
+            {
+                firstName = "Pat",
+                lastName = "Plaintiff",
+                birthdate = "1985-02-12",
+                email = "pat@example.test",
+                phone = "555-100-2000",
+                gender = "Nonbinary",
+                address = "100 Main Street",
+                city = "Los Angeles",
+                state = "CA",
+                zipcode = "90001",
+            }),
+        };
+        var finalizedResponse = await _client.SendAsync(finalize);
+        finalizedResponse.EnsureSuccessStatusCode();
+        using var finalizedJson = JsonDocument.Parse(await finalizedResponse.Content.ReadAsStringAsync());
+        var caseId = finalizedJson.RootElement.GetProperty("caseId").GetGuid();
+
+        var caseUpdateResponse = await _client.PutAsJsonAsync($"/api/liens/selling/cases/{caseId}", new
+        {
+            accidentTypeId = "MVA",
+            accidentState = "NV",
+            dateOfLoss = "2026-07-20",
+            caseTrackingNotes = "Case information updated.",
+        });
+        caseUpdateResponse.StatusCode.Should().Be(HttpStatusCode.OK, await caseUpdateResponse.Content.ReadAsStringAsync());
+
+        var plaintiffUpdateResponse = await _client.PutAsJsonAsync($"/api/liens/selling/cases/{caseId}/plaintiff", new
+        {
+            firstName = "Updated",
+            lastName = "Plaintiff",
+            birthdate = "1986-03-13",
+            email = "updated@example.test",
+            phone = "555-200-3000",
+            gender = "Female",
+            address = "200 Main Street",
+            city = "Las Vegas",
+            state = "NV",
+            zipcode = "89101",
+        });
+        plaintiffUpdateResponse.StatusCode.Should().Be(HttpStatusCode.OK, await plaintiffUpdateResponse.Content.ReadAsStringAsync());
+
+        var response = await _client.GetAsync($"/api/liens/selling/cases/{caseId}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var result = json.RootElement;
+        result.GetProperty("draftId").GetGuid().Should().Be(draftId);
+        result.GetProperty("caseId").GetGuid().Should().Be(caseId);
+        result.GetProperty("caseStatus").GetString().Should().Be(CaseStatus.PreDemand);
+        result.GetProperty("accidentTypeId").GetString().Should().Be("MVA");
+        result.GetProperty("accidentState").GetString().Should().Be("NV");
+        result.GetProperty("dateOfLoss").GetString().Should().Be("2026-07-20");
+        result.GetProperty("caseTrackingNotes").GetString().Should().Be("Case information updated.");
+        result.GetProperty("firstName").GetString().Should().Be("Updated");
+        result.GetProperty("lastName").GetString().Should().Be("Plaintiff");
+        result.GetProperty("birthdate").GetString().Should().Be("1986-03-13");
+        result.GetProperty("email").GetString().Should().Be("updated@example.test");
+        result.GetProperty("phone").GetString().Should().Be("555-200-3000");
+        result.GetProperty("gender").GetString().Should().Be("Female");
+        result.GetProperty("address").GetString().Should().Be("200 Main Street");
+        result.GetProperty("city").GetString().Should().Be("Las Vegas");
+        result.GetProperty("state").GetString().Should().Be("NV");
+        result.GetProperty("zipcode").GetString().Should().Be("89101");
     }
 
     [Fact]
@@ -112,9 +231,8 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     {
         using var createDraft = new HttpRequestMessage(HttpMethod.Post, "/api/liens/selling/case-drafts")
         {
-            Content = JsonContent.Create(new { caseStatus = CaseStatus.PreDemand }),
+            Content = JsonContent.Create(new { }),
         };
-        createDraft.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
         var draftResponse = await _client.SendAsync(createDraft);
         draftResponse.EnsureSuccessStatusCode();
         using var draftJson = JsonDocument.Parse(await draftResponse.Content.ReadAsStringAsync());
@@ -130,7 +248,6 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
                 lastName = "Plaintiff",
                 birthdate = "1985-02-12",
             }),
-            Headers = { { "Idempotency-Key", Guid.CreateVersion7().ToString() } },
         });
 
         var responses = await Task.WhenAll(FinalizeAsync(), FinalizeAsync());

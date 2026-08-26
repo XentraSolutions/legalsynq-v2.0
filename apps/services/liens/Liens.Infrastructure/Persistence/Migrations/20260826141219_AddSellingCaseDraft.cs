@@ -11,80 +11,57 @@ namespace Liens.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.CreateTable(
-                name: "liens_SellingCaseDrafts",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    TenantId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    OrgId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    CaseStatus = table.Column<string>(type: "varchar(50)", maxLength: 50, nullable: false)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    AccidentTypeId = table.Column<string>(type: "varchar(100)", maxLength: 100, nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    AccidentState = table.Column<string>(type: "varchar(100)", maxLength: 100, nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    DateOfLoss = table.Column<DateOnly>(type: "date", nullable: true),
-                    HandlingLawFirmCompanyId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci"),
-                    CaseManagerContactPersonId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci"),
-                    CaseTrackingNotes = table.Column<string>(type: "varchar(4000)", maxLength: 4000, nullable: true)
-                        .Annotation("MySql:CharSet", "utf8mb4"),
-                    CaseId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci"),
-                    FinalizedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: true),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: false),
-                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime(6)", nullable: false),
-                    CreatedByUserId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
-                    UpdatedByUserId = table.Column<Guid>(type: "char(36)", nullable: true, collation: "ascii_general_ci")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_liens_SellingCaseDrafts", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_liens_SellingCaseDrafts_liens_Cases_CaseId",
-                        column: x => x.CaseId,
-                        principalTable: "liens_Cases",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_liens_SellingCaseDrafts_liens_Companies_HandlingLawFirmCompa~",
-                        column: x => x.HandlingLawFirmCompanyId,
-                        principalTable: "liens_Companies",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_liens_SellingCaseDrafts_liens_CompanyContactPersons_CaseMana~",
-                        column: x => x.CaseManagerContactPersonId,
-                        principalTable: "liens_CompanyContactPersons",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                })
-                .Annotation("MySql:CharSet", "utf8mb4");
+            // MySQL auto-commits DDL. Creating the table separately from its
+            // foreign keys makes this migration retryable if a prior startup
+            // failed while the Selling schema was being introduced.
+            SellingSchemaMigrationGuards.CreateTableIfMissing(
+                migrationBuilder,
+                """
+                CREATE TABLE IF NOT EXISTS `liens_SellingCaseDrafts` (
+                    `Id` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `TenantId` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `OrgId` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `CaseStatus` varchar(50) NOT NULL,
+                    `AccidentTypeId` varchar(100) NULL,
+                    `AccidentState` varchar(100) NULL,
+                    `DateOfLoss` date NULL,
+                    `HandlingLawFirmCompanyId` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `CaseManagerContactPersonId` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `CaseTrackingNotes` varchar(4000) NULL,
+                    `CaseId` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    `FinalizedAtUtc` datetime(6) NULL,
+                    `CreatedAtUtc` datetime(6) NOT NULL,
+                    `UpdatedAtUtc` datetime(6) NOT NULL,
+                    `CreatedByUserId` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NOT NULL,
+                    `UpdatedByUserId` char(36) CHARACTER SET ascii COLLATE ascii_general_ci NULL,
+                    CONSTRAINT `PK_liens_SellingCaseDrafts` PRIMARY KEY (`Id`)
+                ) CHARACTER SET=utf8mb4
+                """);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_liens_SellingCaseDrafts_CaseManagerContactPersonId",
-                table: "liens_SellingCaseDrafts",
-                column: "CaseManagerContactPersonId");
+            SellingSchemaMigrationGuards.CreateIndexIfMissing(
+                migrationBuilder, "liens_SellingCaseDrafts", "IX_liens_SellingCaseDrafts_CaseManagerContactPersonId",
+                "(`CaseManagerContactPersonId`)");
+            SellingSchemaMigrationGuards.CreateIndexIfMissing(
+                migrationBuilder, "liens_SellingCaseDrafts", "IX_liens_SellingCaseDrafts_HandlingLawFirmCompanyId",
+                "(`HandlingLawFirmCompanyId`)");
+            SellingSchemaMigrationGuards.CreateIndexIfMissing(
+                migrationBuilder, "liens_SellingCaseDrafts", "IX_SellingCaseDrafts_Tenant_Org_CreatedAtUtc",
+                "(`TenantId`, `OrgId`, `CreatedAtUtc`)");
+            SellingSchemaMigrationGuards.CreateIndexIfMissing(
+                migrationBuilder, "liens_SellingCaseDrafts", "IX_SellingCaseDrafts_Tenant_Org_FinalizedAtUtc",
+                "(`TenantId`, `OrgId`, `FinalizedAtUtc`)");
+            SellingSchemaMigrationGuards.CreateIndexIfMissing(
+                migrationBuilder, "liens_SellingCaseDrafts", "UX_SellingCaseDrafts_CaseId", "(`CaseId`)", unique: true);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_liens_SellingCaseDrafts_HandlingLawFirmCompanyId",
-                table: "liens_SellingCaseDrafts",
-                column: "HandlingLawFirmCompanyId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_SellingCaseDrafts_Tenant_Org_CreatedAtUtc",
-                table: "liens_SellingCaseDrafts",
-                columns: new[] { "TenantId", "OrgId", "CreatedAtUtc" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_SellingCaseDrafts_Tenant_Org_FinalizedAtUtc",
-                table: "liens_SellingCaseDrafts",
-                columns: new[] { "TenantId", "OrgId", "FinalizedAtUtc" });
-
-            migrationBuilder.CreateIndex(
-                name: "UX_SellingCaseDrafts_CaseId",
-                table: "liens_SellingCaseDrafts",
-                column: "CaseId",
-                unique: true);
+            SellingSchemaMigrationGuards.AddForeignKeyIfMissing(
+                migrationBuilder, "liens_SellingCaseDrafts", "FK_liens_SellingCaseDrafts_liens_Cases_CaseId",
+                "FOREIGN KEY (`CaseId`) REFERENCES `liens_Cases` (`Id`) ON DELETE RESTRICT");
+            SellingSchemaMigrationGuards.AddForeignKeyIfMissing(
+                migrationBuilder, "liens_SellingCaseDrafts", "FK_liens_SellingCaseDrafts_liens_Companies_HandlingLawFirmCompa~",
+                "FOREIGN KEY (`HandlingLawFirmCompanyId`) REFERENCES `liens_Companies` (`Id`) ON DELETE RESTRICT");
+            SellingSchemaMigrationGuards.AddForeignKeyIfMissing(
+                migrationBuilder, "liens_SellingCaseDrafts", "FK_liens_SellingCaseDrafts_liens_CompanyContactPersons_CaseMana~",
+                "FOREIGN KEY (`CaseManagerContactPersonId`) REFERENCES `liens_CompanyContactPersons` (`Id`) ON DELETE RESTRICT");
         }
 
         /// <inheritdoc />

@@ -9,7 +9,6 @@ public sealed class CreateSellingLienRequest
 
 public sealed class CreateSellingCaseDraftRequest
 {
-    public string CaseStatus { get; init; } = string.Empty;
     public string? AccidentTypeId { get; init; }
     public string? AccidentState { get; init; }
     public DateOnly? DateOfLoss { get; init; }
@@ -20,27 +19,6 @@ public sealed class CreateSellingCaseDraftRequest
 
 public sealed class FinalizeSellingCaseDraftPlaintiffRequest
 {
-    public string FirstName { get; init; } = string.Empty;
-    public string LastName { get; init; } = string.Empty;
-    public DateOnly? Birthdate { get; init; }
-    public string? Email { get; init; }
-    public string? Phone { get; init; }
-    public string? Gender { get; init; }
-    public string? Address { get; init; }
-    public string? City { get; init; }
-    public string? State { get; init; }
-    public string? Zipcode { get; init; }
-}
-
-public sealed class UpdateSellingCaseRequest
-{
-    public string CaseStatus { get; init; } = string.Empty;
-    public string? AccidentTypeId { get; init; }
-    public string? AccidentState { get; init; }
-    public DateOnly? DateOfLoss { get; init; }
-    public Guid? HandlingLawFirmId { get; init; }
-    public Guid? CaseManagerId { get; init; }
-    public string? CaseTrackingNotes { get; init; }
     public string FirstName { get; init; } = string.Empty;
     public string LastName { get; init; } = string.Empty;
     public DateOnly? Birthdate { get; init; }

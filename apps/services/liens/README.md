@@ -167,13 +167,15 @@ lien-first lifecycle is `Pending`/`Internal` → `SubmittedForSale` → `Sold`; 
 remains accepted only as a legacy transition state for records created by earlier deployments.
 When a buyer declines a submitted lien offer, the buyer access-link response remains `Declined`, but the seller-facing lien
 automatically returns to `Pending` so it stays searchable in the Pending list and can be submitted for sale again.
-Intake writes are permitted only while the lien is `Pending` or `Internal`. State-changing V2 routes require an
-`Idempotency-Key`; a retry with the same payload replays its stored response, while reusing the key with a different payload
-returns `409 Conflict`.
+Intake writes are permitted only while the lien is `Pending` or `Internal`. State-changing V2 routes, except
+`POST /case-drafts` and `POST /case-drafts/{draftId}/plaintiff`, require an `Idempotency-Key`; a retry with the same
+payload replays its stored response, while reusing the key with a different payload returns `409 Conflict`.
 
 Import [`LegalSynq Selling V2 API.postman_collection.json`](LegalSynq%20Selling%20V2%20API.postman_collection.json) into
 Postman, set the collection variables for the appropriate seller or buyer token, and use a fresh `idempotencyKey` for each
-new mutation (reuse it only to retry that exact request).
+mutation that requires it (reuse it only to retry that exact request). The two case-workflow POST requests do not use this
+header. The dedicated case-workflow collection is
+[`LegalSynq Selling Case API.postman_collection.json`](LegalSynq%20Selling%20Case%20API.postman_collection.json).
 
 Import [`LegalSynq Selling Payments and Aging API.postman_collection.json`](LegalSynq%20Selling%20Payments%20and%20Aging%20API.postman_collection.json) for the canonical case-payment list/create/void requests and the weekly, monthly, and exact-day buyer-acceptance aging reports. Every request includes a saved successful response example. Set `sellerToken`, `caseId`, `lienId`, `paymentDate`, and `asOfDate` before running it; the payment create request stores its first allocation ID in `paymentId` for the void request.
 
@@ -236,10 +238,12 @@ balances without a due date are excluded from the five aged buckets and reported
 all summary metrics return `trendAvailable: false` with `trendPercent: null`; historical chart positions return
 `dataAvailable: false`. Only the current month position is populated, and only when `asOfDate` is the current UTC date.
 
-| `POST` | `/api/liens/selling/case-drafts` | Starts a seller-scoped case intake with case status, accident type/state, date of loss, canonical law-firm/case-manager references, and tracking notes. It requires an idempotency key and does not create a canonical case until plaintiff information is supplied. |
+| `POST` | `/api/liens/selling/case-drafts` | Starts a seller-scoped case intake with accident type/state, date of loss, canonical law-firm/case-manager references, and tracking notes. It defaults the case status to `PreDemand` and does not create a canonical case until plaintiff information is supplied. |
 | `PUT` | `/api/liens/selling/case-drafts/{draftId}` | Replaces the unfinalized case-information step of a seller case intake. |
-| `POST` | `/api/liens/selling/case-drafts/{draftId}/plaintiff` | Validates plaintiff identity/contact/address information, creates the canonical seller case, and returns its `caseId`. It requires an idempotency key and is safe to retry after finalization. |
-| `PUT` | `/api/liens/selling/cases/{caseId}` | Updates the same case-information and plaintiff fields used during intake for a finalized Selling case. |
+| `POST` | `/api/liens/selling/case-drafts/{draftId}/plaintiff` | Validates plaintiff identity/contact/address information, creates the canonical seller case, and returns its `caseId`. It does not require an idempotency key and is safe to retry after finalization. |
+| `GET` | `/api/liens/selling/cases/{caseId}` | Returns the full case-information and plaintiff fields, including `draftId`, for a finalized Selling case owned by the authenticated tenant and seller organization. |
+| `PUT` | `/api/liens/selling/cases/{caseId}` | Updates the case-information fields used by the first intake step for a finalized Selling case. |
+| `PUT` | `/api/liens/selling/cases/{caseId}/plaintiff` | Updates the plaintiff fields used by the second intake step for a finalized Selling case. |
 | `POST` | `/api/liens/selling/liens` | Creates a lien in `Pending` or `Internal` attached to a required, finalized case owned by the authenticated tenant and seller organization. |
 | `GET` | `/api/liens/selling/liens/{lienId}` | Returns seller-scoped lien detail for the intake wizard, including funding-company contact person/email and case-manager/law-firm details when available. |
 | `GET` | `/api/liens/selling/liens/{lienId}/activity` | Returns the seller-scoped activity history. New records include the lien status snapshot that applied when each activity occurred so later status changes do not rewrite earlier history. |
@@ -312,6 +316,14 @@ MySqlConnector user variables for this guarded DDL; callers do not need to appen
 The same startup recovery verifies the case-payment ledger and legacy report-parity columns, including
 `liens_SettlementPaymentDetails.PostingStatus`. This prevents case-detail and cash-received endpoints from serving
 against a partially applied MySQL schema; after repair, EF reruns migrations to record any missing history entries.
+
+If the Selling case-draft migration is absent in an environment where the Liens API cannot complete startup migration,
+run [`scripts/apply-selling-case-draft-migration.sql`](../../../scripts/apply-selling-case-draft-migration.sql) against
+that environment's Liens database. The script is idempotent and records `20260826141219_AddSellingCaseDraft` only after
+the case-draft table, indexes, and foreign keys are present.
+
+For API testing, import [`LegalSynq Selling Case API.postman_collection.json`](LegalSynq%20Selling%20Case%20API.postman_collection.json).
+It contains the full draft, plaintiff-finalization, finalized-case read, and two-step finalized-case update workflow.
 
 Confirm-sale uses the persisted `AskAmount` as the offer price and leaves `SoldAtUtc` empty. The request only confirms
 seller acceptance; notification delivery is mandatory and cannot be opted out through request payload. On every

@@ -298,15 +298,21 @@ Base path: `/api/liens/selling`
 
 ### Case-first Selling intake
 
-Selling lien creation is a two-step case workflow. First call `POST /case-drafts` with `caseStatus`,
+Selling lien creation is a two-step case workflow. First call `POST /case-drafts` with
 `accidentTypeId`, `accidentState`, `dateOfLoss`, `handlingLawFirmId`, `caseManagerId`, and
-`caseTrackingNotes`. Update an unfinalized draft with `PUT /case-drafts/{draftId}`. Then call
+`caseTrackingNotes`; Selling defaults the case status to `PreDemand`. Update an unfinalized draft with
+`PUT /case-drafts/{draftId}`. Then call
 `POST /case-drafts/{draftId}/plaintiff` with `firstName`, `lastName`, `birthdate`, `email`, `phone`,
 `gender`, `address`, `city`, `state`, and `zipcode`; this atomically creates the canonical case and
-returns `caseId`. Draft creation and plaintiff finalization require `Idempotency-Key`.
+returns `caseId`. Draft creation and plaintiff finalization do not require `Idempotency-Key`.
 
-`PUT /cases/{caseId}` accepts the same case-information and plaintiff fields after finalization. It only
-updates finalized Selling cases owned by the authenticated tenant and seller organization.
+After finalization, the update workflow uses the same two steps: `PUT /cases/{caseId}` accepts the
+case-information fields from `POST /case-drafts`, then `PUT /cases/{caseId}/plaintiff` accepts the plaintiff
+fields from `POST /case-drafts/{draftId}/plaintiff`. Both routes only update finalized Selling cases owned by the
+authenticated tenant and seller organization.
+
+`GET /cases/{caseId}` returns those same case-information and plaintiff fields for a finalized Selling case,
+including `draftId`, `caseId`, and `caseNumber`. It is limited to the authenticated tenant and seller organization.
 
 `POST /liens` now requires that returned `caseId`, plus `sellerStatus` (`Pending` or `Internal`) and an
 optional `source`. The route rejects cases outside the authenticated tenant/seller organization.

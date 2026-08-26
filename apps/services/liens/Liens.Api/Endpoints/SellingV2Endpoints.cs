@@ -47,7 +47,11 @@ public static class SellingV2Endpoints
             .RequirePermission(LiensPermissions.LienSaleUpdate);
         seller.MapPost("/case-drafts/{draftId:guid}/plaintiff", FinalizeCaseDraft)
             .RequirePermission(LiensPermissions.LienSaleCreate);
-        seller.MapPut("/cases/{caseId:guid}", UpdateSellingCase)
+        seller.MapGet("/cases/{caseId:guid}", GetSellingCase)
+            .RequirePermission(LiensPermissions.LienSaleRead);
+        seller.MapPut("/cases/{caseId:guid}", UpdateSellingCaseInformation)
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
+        seller.MapPut("/cases/{caseId:guid}/plaintiff", UpdateSellingCasePlaintiff)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
         seller.MapPost("/liens", CreateLien)
             .RequirePermission(LiensPermissions.LienSaleCreate);
@@ -173,25 +177,15 @@ public static class SellingV2Endpoints
 
     private static async Task<IResult> CreateCaseDraft(
         CreateSellingCaseDraftRequest request,
-        HttpRequest httpRequest,
         LiensDbContext db,
         ICurrentRequestContext context,
         CancellationToken ct)
     {
         var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
-        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError)) return idempotencyError!;
-        var replay = await SellingIdempotency.GetReplayAsync(
-            db, tenantId, "User", userId, "/api/liens/selling/case-drafts", "SellerOrganization", sellerOrgId.ToString(), idempotencyKey!, request, ct);
-        if (replay is not null) return replay;
-
         var validation = await ValidateSellingCaseInformationAsync(
-            db, tenantId, sellerOrgId, request.CaseStatus, request.AccidentTypeId, request.AccidentState,
+            db, tenantId, sellerOrgId, CaseStatus.PreDemand, request.AccidentTypeId, request.AccidentState,
             request.DateOfLoss, request.HandlingLawFirmId, request.CaseManagerId, request.CaseTrackingNotes, ct);
         if (validation.Error is not null) return validation.Error;
-
-        var started = await SellingIdempotency.TryBeginAsync(
-            db, tenantId, "User", userId, "/api/liens/selling/case-drafts", "SellerOrganization", sellerOrgId.ToString(), idempotencyKey!, request, ct);
-        if (started.Result is not null) return started.Result;
 
         var intake = validation.Value!;
         var draft = SellingCaseDraft.Create(
@@ -201,7 +195,7 @@ public static class SellingV2Endpoints
         db.SellingCaseDrafts.Add(draft);
         await db.SaveChangesAsync(ct);
 
-        return await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status201Created, new
+        return Results.Created($"/api/liens/selling/case-drafts/{draft.Id}", new
         {
             draftId = draft.Id,
             draft.CaseStatus,
@@ -211,7 +205,7 @@ public static class SellingV2Endpoints
             handlingLawFirmId = draft.HandlingLawFirmCompanyId,
             caseManagerId = draft.CaseManagerContactPersonId,
             draft.CaseTrackingNotes,
-        }, ct);
+        });
     }
 
     private static async Task<IResult> UpdateCaseDraft(
@@ -229,7 +223,7 @@ public static class SellingV2Endpoints
             return ValidationError("draftId", "A finalized selling case draft cannot be updated.");
 
         var validation = await ValidateSellingCaseInformationAsync(
-            db, tenantId, sellerOrgId, request.CaseStatus, request.AccidentTypeId, request.AccidentState,
+            db, tenantId, sellerOrgId, CaseStatus.PreDemand, request.AccidentTypeId, request.AccidentState,
             request.DateOfLoss, request.HandlingLawFirmId, request.CaseManagerId, request.CaseTrackingNotes, ct);
         if (validation.Error is not null) return validation.Error;
 
@@ -255,7 +249,6 @@ public static class SellingV2Endpoints
     private static async Task<IResult> FinalizeCaseDraft(
         Guid draftId,
         FinalizeSellingCaseDraftPlaintiffRequest request,
-        HttpRequest httpRequest,
         LiensDbContext db,
         ICurrentRequestContext context,
         CancellationToken ct)
@@ -265,73 +258,61 @@ public static class SellingV2Endpoints
         await finalizationLock.WaitAsync(ct);
         try
         {
-        var draft = await db.SellingCaseDrafts.FirstOrDefaultAsync(item =>
-            item.TenantId == tenantId && item.OrgId == sellerOrgId && item.Id == draftId, ct);
-        if (draft is null) return Results.NotFound(new { message = "Selling case draft was not found." });
-        if (draft.CaseId is { } completedCaseId)
-            return Results.Ok(new { draftId = draft.Id, caseId = completedCaseId, finalizedAtUtc = draft.FinalizedAtUtc });
+            var draft = await db.SellingCaseDrafts.FirstOrDefaultAsync(item =>
+                item.TenantId == tenantId && item.OrgId == sellerOrgId && item.Id == draftId, ct);
+            if (draft is null) return Results.NotFound(new { message = "Selling case draft was not found." });
+            if (draft.CaseId is { } completedCaseId)
+                return Results.Ok(new { draftId = draft.Id, caseId = completedCaseId, finalizedAtUtc = draft.FinalizedAtUtc });
 
-        if (ValidatePlaintiff(request.FirstName, request.LastName, request.Birthdate, request.Email, request.Phone,
-                request.Gender, request.Address, request.City, request.State, request.Zipcode) is { } plaintiffError)
-            return plaintiffError;
-        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError)) return idempotencyError!;
-        var route = $"/api/liens/selling/case-drafts/{draftId}/plaintiff";
-        var replay = await SellingIdempotency.GetReplayAsync(
-            db, tenantId, "User", userId, route, "SellingCaseDraft", draftId.ToString(), idempotencyKey!, request, ct);
-        if (replay is not null) return replay;
-
-        var started = await SellingIdempotency.TryBeginAsync(
-            db, tenantId, "User", userId, route, "SellingCaseDraft", draftId.ToString(), idempotencyKey!, request, ct);
-        if (started.Result is not null) return started.Result;
-
-        var finalizationGate = await SellingIdempotency.TryBeginAsync(
-            db, tenantId, "SellingCaseDraftFinalization", draftId, route, "SellingCaseDraft", draftId.ToString(),
-            "selling-case-draft-finalization-v1", request: null, ct: ct);
-        if (finalizationGate.Result is not null)
-        {
-            return await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status409Conflict, new
+            if (ValidatePlaintiff(request.FirstName, request.LastName, request.Birthdate, request.Email, request.Phone,
+                    request.Gender, request.Address, request.City, request.State, request.Zipcode) is { } plaintiffError)
+                return plaintiffError;
+            var route = $"/api/liens/selling/case-drafts/{draftId}/plaintiff";
+            var finalizationGate = await SellingIdempotency.TryBeginAsync(
+                db, tenantId, "SellingCaseDraftFinalization", draftId, route, "SellingCaseDraft", draftId.ToString(),
+                "selling-case-draft-finalization-v1", request: null, ct: ct);
+            if (finalizationGate.Result is not null)
             {
-                error = new
+                return Results.Conflict(new
                 {
-                    code = "case_draft_finalization_conflict",
-                    message = "The selling case draft is being finalized. Retry shortly.",
-                },
-            }, ct);
-        }
-
-        try
-        {
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
-            var accidentTypeName = await ResolveAccidentTypeNameAsync(db, tenantId, draft.AccidentTypeId, ct);
-            var caseEntity = CreateCaseFromDraft(draft, request, userId, accidentTypeName);
-            db.Cases.Add(caseEntity);
-            draft.Finalize(caseEntity.Id, userId);
-            await db.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
-
-            var response = new
-            {
-                draftId = draft.Id,
-                caseId = caseEntity.Id,
-                caseNumber = caseEntity.CaseNumber,
-                finalizedAtUtc = draft.FinalizedAtUtc,
-            };
-            var completed = await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status201Created, response, ct);
-            await SellingIdempotency.CompleteAsync(db, finalizationGate.Record!, userId, StatusCodes.Status201Created, response, ct);
-            return completed;
-        }
-        catch
-        {
-            var finalized = await db.SellingCaseDrafts.AsNoTracking().AnyAsync(item =>
-                item.TenantId == tenantId && item.OrgId == sellerOrgId && item.Id == draftId && item.CaseId.HasValue, ct);
-            if (!finalized)
-            {
-                db.SellingIdempotencyRecords.Remove(started.Record!);
-                db.SellingIdempotencyRecords.Remove(finalizationGate.Record!);
-                await db.SaveChangesAsync(ct);
+                    error = new
+                    {
+                        code = "case_draft_finalization_conflict",
+                        message = "The selling case draft is being finalized. Retry shortly.",
+                    },
+                });
             }
-            throw;
-        }
+
+            try
+            {
+                await using var transaction = await db.Database.BeginTransactionAsync(ct);
+                var accidentTypeName = await ResolveAccidentTypeNameAsync(db, tenantId, draft.AccidentTypeId, ct);
+                var caseEntity = CreateCaseFromDraft(draft, request, userId, accidentTypeName);
+                db.Cases.Add(caseEntity);
+                draft.Finalize(caseEntity.Id, userId);
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+
+                var response = new
+                {
+                    draftId = draft.Id,
+                    caseId = caseEntity.Id,
+                    caseNumber = caseEntity.CaseNumber,
+                    finalizedAtUtc = draft.FinalizedAtUtc,
+                };
+                return await SellingIdempotency.CompleteAsync(db, finalizationGate.Record!, userId, StatusCodes.Status201Created, response, ct);
+            }
+            catch
+            {
+                var finalized = await db.SellingCaseDrafts.AsNoTracking().AnyAsync(item =>
+                    item.TenantId == tenantId && item.OrgId == sellerOrgId && item.Id == draftId && item.CaseId.HasValue, ct);
+                if (!finalized)
+                {
+                    db.SellingIdempotencyRecords.Remove(finalizationGate.Record!);
+                    await db.SaveChangesAsync(ct);
+                }
+                throw;
+            }
         }
         finally
         {
@@ -339,9 +320,65 @@ public static class SellingV2Endpoints
         }
     }
 
-    private static async Task<IResult> UpdateSellingCase(
+    private static async Task<IResult> UpdateSellingCaseInformation(
         Guid caseId,
-        UpdateSellingCaseRequest request,
+        CreateSellingCaseDraftRequest request,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
+        var caseEntity = await db.Cases.FirstOrDefaultAsync(item =>
+            item.TenantId == tenantId && item.OrgId == sellerOrgId && item.Id == caseId, ct);
+        if (caseEntity is null) return Results.NotFound(new { message = "Case was not found for the seller organization." });
+        var sellingDraftExists = await db.SellingCaseDrafts.AsNoTracking().AnyAsync(draft =>
+            draft.TenantId == tenantId &&
+            draft.OrgId == sellerOrgId &&
+            draft.CaseId == caseId &&
+            draft.FinalizedAtUtc.HasValue, ct);
+        if (!sellingDraftExists)
+            return Results.NotFound(new { message = "Selling case was not found for the seller organization." });
+
+        var validation = await ValidateSellingCaseInformationAsync(
+            db, tenantId, sellerOrgId, caseEntity.Status, request.AccidentTypeId, request.AccidentState,
+            request.DateOfLoss, request.HandlingLawFirmId, request.CaseManagerId, request.CaseTrackingNotes, ct);
+        if (validation.Error is not null) return validation.Error;
+
+        var intake = validation.Value!;
+        var metadata = ParseCaseMetadata(caseEntity.Notes);
+        caseEntity.Update(
+            caseEntity.ClientFirstName, caseEntity.ClientLastName, userId,
+            title: caseEntity.Title,
+            externalReference: caseEntity.ExternalReference,
+            clientDob: caseEntity.ClientDob,
+            clientPhone: caseEntity.ClientPhone,
+            clientEmail: caseEntity.ClientEmail,
+            clientAddress: caseEntity.ClientAddress,
+            dateOfIncident: request.DateOfLoss,
+            insuranceCarrier: caseEntity.InsuranceCarrier,
+            policyNumber: caseEntity.PolicyNumber,
+            claimNumber: caseEntity.ClaimNumber,
+            description: caseEntity.Description,
+            notes: ComposeSellingCaseNotes(request.CaseTrackingNotes, caseEntity.Notes, intake.AccidentTypeId, intake.AccidentTypeName, metadata.GetValueOrDefault("gender")),
+            clientAddressLine1: caseEntity.ClientAddressLine1,
+            clientCity: caseEntity.ClientCity,
+            clientState: caseEntity.ClientState,
+            clientPostalCode: caseEntity.ClientPostalCode,
+            incidentState: intake.AccidentState,
+            currentMedicalStatus: caseEntity.CurrentMedicalStatus,
+            trackingFollowUpDate: caseEntity.TrackingFollowUpDate,
+            minorComp: caseEntity.MinorComp,
+            caseDropped: caseEntity.CaseDropped,
+            attorneyContactPersonId: caseEntity.AttorneyContactPersonId);
+        caseEntity.SetCanonicalCaseParties(intake.HandlingLawFirmId, intake.CaseManagerId, userId);
+        await db.SaveChangesAsync(ct);
+
+        return Results.Ok(new { caseId = caseEntity.Id, caseNumber = caseEntity.CaseNumber, caseStatus = caseEntity.Status });
+    }
+
+    private static async Task<IResult> UpdateSellingCasePlaintiff(
+        Guid caseId,
+        FinalizeSellingCaseDraftPlaintiffRequest request,
         LiensDbContext db,
         ICurrentRequestContext context,
         CancellationToken ct)
@@ -361,12 +398,8 @@ public static class SellingV2Endpoints
         if (ValidatePlaintiff(request.FirstName, request.LastName, request.Birthdate, request.Email, request.Phone,
                 request.Gender, request.Address, request.City, request.State, request.Zipcode) is { } plaintiffError)
             return plaintiffError;
-        var validation = await ValidateSellingCaseInformationAsync(
-            db, tenantId, sellerOrgId, request.CaseStatus, request.AccidentTypeId, request.AccidentState,
-            request.DateOfLoss, request.HandlingLawFirmId, request.CaseManagerId, request.CaseTrackingNotes, ct);
-        if (validation.Error is not null) return validation.Error;
 
-        var intake = validation.Value!;
+        var metadata = ParseCaseMetadata(caseEntity.Notes);
         caseEntity.Update(
             request.FirstName, request.LastName, userId,
             title: caseEntity.Title,
@@ -375,28 +408,77 @@ public static class SellingV2Endpoints
             clientPhone: request.Phone,
             clientEmail: request.Email,
             clientAddress: request.Address,
-            dateOfIncident: request.DateOfLoss,
+            dateOfIncident: caseEntity.DateOfIncident,
             insuranceCarrier: caseEntity.InsuranceCarrier,
             policyNumber: caseEntity.PolicyNumber,
             claimNumber: caseEntity.ClaimNumber,
             description: caseEntity.Description,
-            notes: ComposeSellingCaseNotes(request.CaseTrackingNotes, caseEntity.Notes, intake.AccidentTypeId, intake.AccidentTypeName, request.Gender),
+            notes: ComposeSellingCaseNotes(
+                ExtractSellingCaseTrackingNotes(caseEntity.Notes),
+                caseEntity.Notes,
+                metadata.GetValueOrDefault("accidentTypeId"),
+                metadata.GetValueOrDefault("accidentType"),
+                request.Gender),
             clientAddressLine1: request.Address,
             clientCity: request.City,
             clientState: request.State,
             clientPostalCode: request.Zipcode,
-            incidentState: intake.AccidentState,
+            incidentState: caseEntity.IncidentState,
             currentMedicalStatus: caseEntity.CurrentMedicalStatus,
             trackingFollowUpDate: caseEntity.TrackingFollowUpDate,
             minorComp: caseEntity.MinorComp,
             caseDropped: caseEntity.CaseDropped,
             attorneyContactPersonId: caseEntity.AttorneyContactPersonId);
-        caseEntity.SetCanonicalCaseParties(intake.HandlingLawFirmId, intake.CaseManagerId, userId);
-        if (!string.Equals(caseEntity.Status, intake.CaseStatus, StringComparison.Ordinal))
-            caseEntity.TransitionStatus(intake.CaseStatus, userId);
         await db.SaveChangesAsync(ct);
 
         return Results.Ok(new { caseId = caseEntity.Id, caseNumber = caseEntity.CaseNumber, caseStatus = caseEntity.Status });
+    }
+
+    private static async Task<IResult> GetSellingCase(
+        Guid caseId,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, _) = RequireSellerContext(context);
+        var caseEntity = await db.Cases.AsNoTracking().FirstOrDefaultAsync(item =>
+            item.TenantId == tenantId && item.OrgId == sellerOrgId && item.Id == caseId, ct);
+        if (caseEntity is null) return Results.NotFound(new { message = "Case was not found for the seller organization." });
+
+        var sellingCaseDraft = await db.SellingCaseDrafts.AsNoTracking()
+            .Where(draft => draft.TenantId == tenantId &&
+                            draft.OrgId == sellerOrgId &&
+                            draft.CaseId == caseId &&
+                            draft.FinalizedAtUtc.HasValue)
+            .Select(draft => new { draft.Id })
+            .FirstOrDefaultAsync(ct);
+        if (sellingCaseDraft is null)
+            return Results.NotFound(new { message = "Selling case was not found for the seller organization." });
+
+        var metadata = ParseCaseMetadata(caseEntity.Notes);
+        return Results.Ok(new
+        {
+            draftId = sellingCaseDraft.Id,
+            caseId = caseEntity.Id,
+            caseNumber = caseEntity.CaseNumber,
+            caseStatus = caseEntity.Status,
+            accidentTypeId = metadata.GetValueOrDefault("accidentTypeId"),
+            accidentState = caseEntity.IncidentState,
+            dateOfLoss = caseEntity.DateOfIncident,
+            handlingLawFirmId = caseEntity.HandlingLawFirmCompanyId,
+            caseManagerId = caseEntity.CaseManagerContactPersonId,
+            caseTrackingNotes = ExtractSellingCaseTrackingNotes(caseEntity.Notes),
+            firstName = caseEntity.ClientFirstName,
+            lastName = caseEntity.ClientLastName,
+            birthdate = caseEntity.ClientDob,
+            email = caseEntity.ClientEmail,
+            phone = caseEntity.ClientPhone,
+            gender = metadata.GetValueOrDefault("gender"),
+            address = caseEntity.ClientAddressLine1 ?? caseEntity.ClientAddress,
+            city = caseEntity.ClientCity,
+            state = caseEntity.ClientState,
+            zipcode = caseEntity.ClientPostalCode,
+        });
     }
 
     private static async Task<IResult> GetLienDetail(
@@ -2251,6 +2333,14 @@ public static class SellingV2Endpoints
         if (metadata.Count == 0)
             return text;
         return $"{text}\n\n{LegacyCaseMetadataMarker}\n{string.Join("; ", metadata.Select(item => $"{item.Key}={item.Value}"))}";
+    }
+
+    private static string? ExtractSellingCaseTrackingNotes(string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes)) return null;
+        var markerIndex = notes.IndexOf(LegacyCaseMetadataMarker, StringComparison.Ordinal);
+        var trackingNotes = markerIndex >= 0 ? notes[..markerIndex] : notes;
+        return string.IsNullOrWhiteSpace(trackingNotes) ? null : trackingNotes.Trim();
     }
 
     private static void AddMetadata(IDictionary<string, string> metadata, string key, string? value)

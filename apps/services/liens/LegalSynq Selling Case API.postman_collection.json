@@ -1,0 +1,91 @@
+{
+  "info": {
+    "_postman_id": "519c5ac9-213e-4b49-9ad8-dc2bca75dc30",
+    "name": "LegalSynq Selling Case API",
+    "description": "Seller-scoped case intake and update APIs. Create and finalize a case in two steps: case draft first, then plaintiff information. New drafts default to PreDemand; neither case-draft POST requires an idempotency key.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5009" },
+    { "key": "sellerToken", "value": "" },
+    { "key": "sellingCaseDraftId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "caseId", "value": "00000000-0000-0000-0000-000000000000" },
+    { "key": "handlingLawFirmId", "value": "" },
+    { "key": "caseManagerId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{sellerToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "01 - Draft Case Information",
+      "item": [
+        {
+          "name": "Create Selling Case Draft",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.draftId) pm.collectionVariables.set('sellingCaseDraftId', body.draftId);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"accidentTypeId\": \"MVA\",\n  \"accidentState\": \"CA\",\n  \"dateOfLoss\": \"2026-08-26\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseTrackingNotes\": \"Initial Selling intake\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/case-drafts"
+          }
+        },
+        {
+          "name": "Update Selling Case Draft",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"accidentTypeId\": \"MVA\",\n  \"accidentState\": \"CA\",\n  \"dateOfLoss\": \"2026-08-26\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseTrackingNotes\": \"Updated Selling draft intake\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/case-drafts/{{sellingCaseDraftId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Finalize and Read Case",
+      "item": [
+        {
+          "name": "Finalize Draft with Plaintiff",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.caseId) pm.collectionVariables.set('caseId', body.caseId);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"birthdate\": \"1990-01-01\",\n  \"email\": \"jane@example.test\",\n  \"phone\": \"555-0100\",\n  \"gender\": \"Female\",\n  \"address\": \"100 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"zipcode\": \"90001\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/case-drafts/{{sellingCaseDraftId}}/plaintiff"
+          }
+        },
+        {
+          "name": "Get Selling Case Information",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/selling/cases/{{caseId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Update Finalized Case",
+      "item": [
+        {
+          "name": "Update Selling Case Information",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"accidentTypeId\": \"MVA\",\n  \"accidentState\": \"CA\",\n  \"dateOfLoss\": \"2026-08-26\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseTrackingNotes\": \"Updated Selling case intake\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/cases/{{caseId}}"
+          }
+        },
+        {
+          "name": "Update Selling Case Plaintiff",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"birthdate\": \"1990-01-01\",\n  \"email\": \"jane@example.test\",\n  \"phone\": \"555-0100\",\n  \"gender\": \"Female\",\n  \"address\": \"100 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"zipcode\": \"90001\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/cases/{{caseId}}/plaintiff"
+          }
+        }
+      ]
+    }
+  ]
+}
