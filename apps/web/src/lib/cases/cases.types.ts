@@ -617,6 +617,7 @@ export interface CreateMedicalCodeLiensDto {
   purchaseAmount: string;
   payee: string;
   outboundCheckNumber: string;
+  codeRows?: any;
 }
 
 export interface CreateMedicalPaymentDto {
