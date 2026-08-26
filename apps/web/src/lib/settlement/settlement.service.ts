@@ -1,6 +1,8 @@
 import { settlementApi } from "./settlement.api";
 import type {
   CasePayment,
+  CasePaymentListResponse,
+  CasePaymentQuery,
   CaseReduction,
   CreateLienReductionRequest,
   CreateLienReductionResponse,
@@ -14,6 +16,8 @@ import type {
   GetSettlementHistoryResponse,
   LegacyCasePayment,
   LegacySaveReductionRequest,
+  RecordCasePaymentRequest,
+  RecordCasePaymentResponse,
   SettlementGenericResponse,
   SettlementHistoryItemV3,
   SettlementHistoryV3Query,
@@ -22,6 +26,7 @@ import type {
   UpdateLiensStatusResponse,
   UpdateSettlementRequest,
   UpdateSettlementResponse,
+  VoidCasePaymentResponse,
 } from "./settlement.types";
 
 export interface SettlementHistoryV3Result {
@@ -35,6 +40,28 @@ export interface SettlementHistoryV3Result {
 }
 
 export const settlementService = {
+  async getCasePayments(
+    caseId: string,
+    query: CasePaymentQuery = {},
+  ): Promise<CasePaymentListResponse> {
+    const { data } = await settlementApi.getCasePayments(caseId, query);
+    return data;
+  },
+  async recordCasePayment(
+    caseId: string,
+    form: RecordCasePaymentRequest,
+  ): Promise<RecordCasePaymentResponse> {
+    const { data } = await settlementApi.recordCasePayment(caseId, form);
+    return data;
+  },
+  async voidCasePayment(
+    caseId: string,
+    paymentId: string,
+    reason: string,
+  ): Promise<VoidCasePaymentResponse> {
+    const { data } = await settlementApi.voidCasePayment(caseId, paymentId, reason);
+    return data;
+  },
   async deletePayment(
     id: DeletePaymentRequest["caseId"],
   ): Promise<SettlementGenericResponse> {

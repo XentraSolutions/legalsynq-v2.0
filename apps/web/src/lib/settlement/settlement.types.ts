@@ -35,6 +35,7 @@ export interface UpdateLienSettlementRequest {
   paymentDate: string;
   paymentMethod: string
   referenceNumber: string
+  detailsContext?: string
   notes: string
   settlementType: string
   settlementStatus: string
@@ -134,6 +135,79 @@ export interface CasePayment {
   note: string | null;
   createdAtUtc: string;
   updatedAtUtc: string;
+}
+
+export interface CasePaymentQuery {
+  search?: string;
+  paymentMethod?: string;
+  postingStatus?: string;
+  sortBy?: "paymentDate" | "paymentMethod" | "amount";
+  sortDirection?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CasePaymentSummary {
+  lienSellingAmount: number;
+  totalPaid: number;
+  remainingBalance: number;
+  overpaidAmount: number;
+  lienAgingDays: number | null;
+  currency: string;
+}
+
+export interface CasePaymentItem {
+  id: string;
+  receiptId: string | null;
+  lienId: string;
+  lienNumber: string;
+  paymentNumber: number;
+  paymentDate: string | null;
+  paymentMethod: string;
+  referenceNumber: string | null;
+  amount: number;
+  detailsContext: string | null;
+  notes: string | null;
+  settlementType: string | null;
+  settlementStatus: string | null;
+  postingStatus: "Posted" | "Voided" | string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export interface CasePaymentListResponse {
+  summary: CasePaymentSummary;
+  items: CasePaymentItem[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+}
+
+export interface RecordCasePaymentRequest {
+  amount: number;
+  paymentDate: string;
+  paymentMethod: string;
+  referenceNumber: string;
+  detailsContext?: string;
+  notes?: string;
+  settlementType?: string;
+  settlementStatus?: string;
+  lienStatus?: string;
+  allocations: Array<{ lienId: string; amount: number }>;
+}
+
+export interface RecordCasePaymentResponse {
+  receiptId: string;
+  paymentNumber: number;
+  amount: number;
+  allocations: CasePaymentItem[];
+}
+
+export interface VoidCasePaymentResponse {
+  receiptId: string | null;
+  paymentId: string;
+  voidedAllocations: number;
+  postingStatus: string;
 }
 
 /** Envelope returned by the legacy settlement/payment-details endpoint */
