@@ -54,6 +54,7 @@ function roundToTwo(value: number) {
 }
 
 function parseNumber(value: string) {
+  if (!value) return;
   const parsed = Number(value.replace(/,/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -89,23 +90,42 @@ export default function MedicalCodesDescription(
   function validateForm() {
     const previousRows = Array.isArray(data?.codeRows) ? data.codeRows : [];
     const rowsChanged = JSON.stringify(rows) !== JSON.stringify(previousRows);
-    const valid = rowsChanged ? rows.length > 0 && !form.procedure : false;
+    const valid = rowsChanged || rows.length > 0;
     if (valid) onFormValid?.(valid, { ...form, codeRows: rows });
   }
   function cleanNumericInput(raw: string): string {
+    // Remove everything except digits and dots
     const cleaned = raw.replace(/[^\d.]/g, "");
+
+    // Split by the decimal point to isolate the whole number and decimals
     const parts = cleaned.split(".");
-    return parts.length > 2 ? parts[0] + "." + parts[1] : cleaned;
+
+    if (parts.length > 2) {
+      // If there are multiple dots, keep only the first dot and join the rest
+      return parts[0] + "." + parts.slice(1).join("");
+    }
+
+    return cleaned;
   }
 
   const currentBilling = form.billingAmount;
   const currentPurchase = form.purchaseAmount;
+
   const handleParentInputChange = (raw: string) => {
     const sanitized = cleanNumericInput(raw);
+
+    // Allow the user to type a lone decimal point or trailing dot without resetting to NaN immediately
+    if (sanitized === "" || sanitized === ".") {
+      setForm({ ...form, purchaseAmount: sanitized });
+      return;
+    }
+
     const n = parseFloat(sanitized);
     if (!isNaN(n)) {
-      setForm({ ...form, purchaseAmount: n });
-      return;
+      // If it ends with a dot (e.g. "12."), keep it as a string temporarily so the user can type decimals,
+      // otherwise store the parsed number.
+      const valueToStore = sanitized.endsWith(".") ? sanitized : n;
+      setForm({ ...form, purchaseAmount: valueToStore });
     } else {
       setForm({ ...form, purchaseAmount: sanitized });
     }
@@ -199,9 +219,11 @@ export default function MedicalCodesDescription(
           purchaseAmount: getCurrentValue(),
         };
 
-        setRows((current) => {
+        setRows((current: any) => {
           if (editingId) {
-            return current.map((row) => (row.id === editingId ? nextRow : row));
+            return current.map((row: any) =>
+              row.id === editingId ? nextRow : row,
+            );
           }
           return [...current, nextRow];
         });
@@ -215,9 +237,11 @@ export default function MedicalCodesDescription(
           purchaseAmount: getCurrentValue(),
         };
 
-        setRows((current) => {
+        setRows((current: any) => {
           if (editingId) {
-            return current.map((row) => (row.id === editingId ? nextRow : row));
+            return current.map((row: any) =>
+              row.id === editingId ? nextRow : row,
+            );
           }
           return [...current, nextRow];
         });
@@ -328,7 +352,9 @@ export default function MedicalCodesDescription(
   }
 
   const isLineValid =
-    currentBilling > 0 && currentPurchase > 0 && !!form.procedureCode;
+    currentBilling > 0 &&
+    !!form.procedureCode &&
+    parseFloat(form.medicareCost ?? 0) > 0;
 
   return (
     <div className="container-fluid">
