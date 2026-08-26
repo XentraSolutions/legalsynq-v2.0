@@ -98,8 +98,10 @@ export function LienRowActionsMenu({
   const keepAsInternalAsset = async () => {
     setKeepLoading(true);
     try {
-      await liensService.moveToManagement(lienId, {
-        reason: "Retained internally",
+      await liensService.submitLien(lienId, {
+        ...lien,
+        sellerStatus: "Internal",
+        listingVisibility: "Private",
       });
       toast.success("Lien kept as internal asset.");
       setShowDecisionModal(false);
@@ -125,8 +127,10 @@ export function LienRowActionsMenu({
         await liensService.restoreLien(lienId);
         toast.success("Lien restored.");
       } else {
-        await liensService.moveToManagement(lienId, {
-          reason: "Retained internally",
+        await liensService.submitLien(lienId, {
+          ...lien,
+          sellerStatus: "Internal",
+          listingVisibility: "Private",
         });
         toast.success("Lien kept as internal asset.");
       }

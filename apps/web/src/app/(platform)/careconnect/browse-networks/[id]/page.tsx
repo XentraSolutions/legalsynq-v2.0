@@ -43,7 +43,6 @@ export default async function BrowseNetworkDetailPage({ params, searchParams }: 
       tenantId: item.tenantId,
       tenantCode: item.tenantCode,
       tenantName: item.tenantName,
-      organizationId: item.organizationId ?? undefined,
     }))
     .filter((item, index, arr) => arr.findIndex(x => x.tenantId === item.tenantId) === index);
 
@@ -57,7 +56,7 @@ export default async function BrowseNetworkDetailPage({ params, searchParams }: 
   let detail: PublicNetworkDetail | null = null;
 
   try {
-    detail = await fetchPublicNetworkDetail(selectedTenant.tenantId, id, selectedTenant.organizationId);
+    detail = await fetchPublicNetworkDetail(selectedTenant.tenantId, id);
   } catch {
     // fall through to notFound
   }

@@ -213,7 +213,6 @@ public static class PublicRepresentativeEndpoints
             string? code,
             DateTime? from,
             DateTime? to,
-            string? status,
             int? page,
             int? pageSize,
             HttpContext http,
@@ -234,7 +233,7 @@ public static class PublicRepresentativeEndpoints
             var result = await pendingService.SearchForAttributionAsync(
                 tenantId.Value,
                 attributionId.Value,
-                status,
+                PendingReferralRequest.Statuses.PendingReview,
                 from,
                 to,
                 Math.Max(1, page ?? 1),

@@ -441,43 +441,37 @@ export default function SellingDashboardPage() {
           subtitle="Total for the last 9 months"
           className="px-3 lg:col-span-3"
         >
-          <div className="py-3">
-            <LiensOverTimeChart data={liensOverTimeData} />
-          </div>
+          <LiensOverTimeChart data={liensOverTimeData} />
         </Card>
 
         <Card title="Top 5 Buyers By Balance" className="px-3 lg:col-span-2">
-          <div className="py-3">
-            <BaseTable
-              data={topBuyers}
-              columns={topBuyersColumns}
-              getRowId={(r) => r.id}
-              enableSorting={false}
-              enablePagination={false}
-              emptyMessage="No buyers to show."
-              className="bg-white border-none w-full p-0"
-              headerClassName={TABLE_HEADER_CLASSNAME}
-              headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
-            />
-          </div>
+          <BaseTable
+            data={topBuyers}
+            columns={topBuyersColumns}
+            getRowId={(r) => r.id}
+            enableSorting={false}
+            enablePagination={false}
+            emptyMessage="No buyers to show."
+            className="bg-white border-none w-full p-0"
+            headerClassName={TABLE_HEADER_CLASSNAME}
+            headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
+          />
         </Card>
       </div>
 
       <div>
         <Card title="Aging by Lien Buyer" icon="ri-draggable" className="px-3">
-          <div className="py-3">
-            <BaseTable
-              data={agingByBuyer}
-              columns={agingColumns}
-              getRowId={(r) => r.id}
-              enableSorting={false}
-              enablePagination={false}
-              emptyMessage="No aging data to show."
-              className="bg-white border-none w-full p-0"
-              headerClassName={TABLE_HEADER_CLASSNAME}
-              headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
-            />
-          </div>
+          <BaseTable
+            data={agingByBuyer}
+            columns={agingColumns}
+            getRowId={(r) => r.id}
+            enableSorting={false}
+            enablePagination={false}
+            emptyMessage="No aging data to show."
+            className="bg-white border-none w-full p-0"
+            headerClassName={TABLE_HEADER_CLASSNAME}
+            headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
+          />
         </Card>
       </div>
     </div>

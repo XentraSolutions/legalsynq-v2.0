@@ -26,7 +26,7 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
         },
         {
           href: "/careconnect/pending-requests",
-          label: "Referral Requests",
+          label: "Pending Requests",
           icon: "ri-inbox-unarchive-line",
           requiredRoles: [ProductRole.CareConnectReferrer],
           hiddenForOrgTypes: [OrgType.Provider, OrgType.LienOwner],

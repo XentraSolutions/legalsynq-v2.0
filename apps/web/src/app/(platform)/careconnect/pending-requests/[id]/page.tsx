@@ -7,7 +7,6 @@ import dynamic from "next/dynamic";
 import { careConnectApi } from "@/lib/careconnect-api";
 import { ApiError } from "@/lib/api-client";
 import { formatPhoneDisplay } from "@/lib/phone";
-import { hasReasonableYear, isValidIsoDate } from "@/lib/daterange";
 import { UrgencyBadge } from "@/components/careconnect/status-badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { NumberedMarker } from "@/components/careconnect/public-network-map";
@@ -22,7 +21,6 @@ import type {
 import type { PublicNetworkDetail, PublicNetworkSummary, PublicProviderItem, PublicProviderMarker } from "@/lib/public-network-api";
 
 const NONE_TREATMENT_TYPE = "__none__";
-const TODAY = new Date().toISOString().split("T")[0];
 
 const URGENCY_OPTIONS = ["Low", "Normal", "Urgent", "Emergency"];
 const SERVICE_TYPES = [
@@ -39,20 +37,6 @@ const SERVICE_TYPES = [
   "Follow-up Service",
 ];
 const ALL_SPECIALTIES = "__all_specialties__";
-const REQUEST_STATUS: Record<string, { label: string; className: string }> = {
-  PendingReview: {
-    label: "Pending",
-    className: "border-amber-200 bg-amber-50 text-amber-700",
-  },
-  Converted: {
-    label: "Accepted",
-    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  },
-  Cancelled: {
-    label: "Declined",
-    className: "border-red-200 bg-red-50 text-red-700",
-  },
-};
 
 const PublicNetworkMap = dynamic(
   () => import("@/components/careconnect/public-network-map").then(module => module.PublicNetworkMap),
@@ -249,15 +233,10 @@ function reviewProviderFromSummary(provider: ProviderSummary): ReviewProviderPre
   };
 }
 
-function PendingStatusBadge({ status }: { status: string }) {
-  const badge = REQUEST_STATUS[status] ?? {
-    label: status,
-    className: "border-gray-200 bg-gray-50 text-gray-700",
-  };
-
+function PendingStatusBadge() {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${badge.className}`}>
-      {badge.label}
+    <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+      Pending review
     </span>
   );
 }
@@ -301,34 +280,6 @@ function validateReviewDates(form: UpdatePendingReferralRequest): string | null 
   return null;
 }
 
-function getDateFieldError(value: string | undefined, options: { required: boolean; emptyMessage: string; futureMessage: string; badInput?: boolean }): string | null {
-  if (options.badInput) return "Please enter a valid date.";
-  if (!value) return options.required ? options.emptyMessage : null;
-  if (!isValidIsoDate(value)) return "Please enter a valid date.";
-  if (!hasReasonableYear(value)) return "Please enter a valid year (1900 or later).";
-  if (new Date(value) > new Date()) return options.futureMessage;
-  return null;
-}
-
-function validateReviewDateFields(form: UpdatePendingReferralRequest): Record<string, string> {
-  const errors: Record<string, string> = {};
-  const clientDobError = getDateFieldError(form.clientDob, {
-    required: true,
-    emptyMessage: "Date of birth is required.",
-    futureMessage: "Date of birth cannot be in the future.",
-  });
-  if (clientDobError) errors.clientDob = clientDobError;
-
-  const dateOfAccidentError = getDateFieldError(form.dateOfAccident, {
-    required: true,
-    emptyMessage: "Date of accident is required.",
-    futureMessage: "Date of accident cannot be in the future.",
-  });
-  if (dateOfAccidentError) errors.dateOfAccident = dateOfAccidentError;
-
-  return errors;
-}
-
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -341,20 +292,12 @@ function TextField({
   onChange,
   type = "text",
   required,
-  id,
-  min,
-  max,
-  error,
 }: {
   label: string;
   value: string | undefined;
-  onChange: (value: string, badInput?: boolean) => void;
+  onChange: (value: string) => void;
   type?: string;
   required?: boolean;
-  id?: string;
-  min?: string;
-  max?: string;
-  error?: string;
 }) {
   return (
     <label className="block">
@@ -362,22 +305,12 @@ function TextField({
         {label} {required && <span className="text-red-500">*</span>}
       </span>
       <input
-        id={id}
         type={type}
         value={value ?? ""}
         required={required}
-        min={min}
-        max={max}
-        aria-invalid={!!error}
-        aria-describedby={error && id ? `${id}-error` : undefined}
-        onChange={event => onChange(event.target.value, event.currentTarget.validity.badInput)}
-        className={`h-10 w-full rounded-md border bg-white px-3 text-sm text-gray-900 outline-none transition focus:ring-2 ${
-          error
-            ? "border-red-300 focus:border-red-400 focus:ring-red-100"
-            : "border-gray-300 focus:border-orange-400 focus:ring-orange-100"
-        }`}
+        onChange={event => onChange(event.target.value)}
+        className="h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
       />
-      {error && id && <p id={`${id}-error`} className="mt-1 text-xs text-red-600">{error}</p>}
     </label>
   );
 }
@@ -514,7 +447,6 @@ export default function PendingReferralRequestDetailPage() {
   const [treatmentTypes, setTreatmentTypes] = useState<TreatmentTypeOption[]>([]);
   const [selectedProviders, setSelectedProviders] = useState<ReviewProviderPreference[]>([]);
   const [form, setForm] = useState<UpdatePendingReferralRequest | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [providerPickerOpen, setProviderPickerOpen] = useState(false);
   const [providerSearch, setProviderSearch] = useState("");
   const [providerZip, setProviderZip] = useState("");
@@ -543,14 +475,12 @@ export default function PendingReferralRequestDetailPage() {
         careConnectApi.treatmentTypes.list(),
       ]);
       const nextRequest = requestRes.data;
-      const nextForm = formFromRequest(nextRequest);
       setRequest(nextRequest);
-      setForm(nextForm);
-      setFieldErrors(validateReviewDateFields(nextForm));
+      setForm(formFromRequest(nextRequest));
       setTreatmentTypes(treatmentTypeRes.data);
       setSelectedProviders(preferredProvidersFor(nextRequest).map(reviewProviderFromPreference));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load referral request.");
+      setError(err instanceof ApiError ? err.message : "Failed to load pending request.");
     } finally {
       setLoading(false);
     }
@@ -699,48 +629,9 @@ export default function PendingReferralRequestDetailPage() {
     setSelectedProviders(prev => prev.filter(item => reviewProviderKey(item) !== key));
   }
 
-  function updateFormField(field: keyof UpdatePendingReferralRequest, value: string) {
-    if (!form) return;
-    setForm({ ...form, [field]: value });
-    setFieldErrors(prev => {
-      const next = { ...prev };
-      delete next[field];
-      return next;
-    });
-  }
-
-  function updateDateField(field: "clientDob" | "dateOfAccident", value: string, badInput?: boolean) {
-    if (!form) return;
-    const nextForm = { ...form, [field]: value };
-    setForm(nextForm);
-
-    const error = field === "clientDob"
-      ? getDateFieldError(value, {
-          required: true,
-          emptyMessage: "Date of birth is required.",
-          futureMessage: "Date of birth cannot be in the future.",
-          badInput,
-        })
-      : getDateFieldError(value, {
-          required: true,
-          emptyMessage: "Date of accident is required.",
-          futureMessage: "Date of accident cannot be in the future.",
-          badInput,
-        });
-
-    setFieldErrors(prev => {
-      const next = { ...prev };
-      if (error) next[field] = error;
-      else delete next[field];
-      return next;
-    });
-  }
-
   async function saveRequest() {
     if (!request || !form) return false;
-    const nextFieldErrors = validateReviewDateFields(form);
-    setFieldErrors(nextFieldErrors);
-    const validationError = validateReviewDates(form) ?? Object.values(nextFieldErrors)[0];
+    const validationError = validateReviewDates(form);
     if (validationError) {
       setError(validationError);
       return false;
@@ -750,12 +641,10 @@ export default function PendingReferralRequestDetailPage() {
     try {
       const result = await careConnectApi.pendingReferralRequests.update(request.id, updatePayloadFromForm(form));
       setRequest(result.data);
-      const nextForm = formFromRequest(result.data);
-      setForm(nextForm);
-      setFieldErrors(validateReviewDateFields(nextForm));
+      setForm(formFromRequest(result.data));
       return true;
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to update referral request.");
+      setError(err instanceof ApiError ? err.message : "Failed to update pending request.");
       return false;
     } finally {
       setSaving(false);
@@ -808,9 +697,7 @@ export default function PendingReferralRequestDetailPage() {
 
   async function acceptRequest() {
     if (!request || !form) return;
-    const nextFieldErrors = validateReviewDateFields(form);
-    setFieldErrors(nextFieldErrors);
-    const validationError = validateReviewDates(form) ?? Object.values(nextFieldErrors)[0];
+    const validationError = validateReviewDates(form);
     if (validationError) {
       setError(validationError);
       return;
@@ -828,13 +715,11 @@ export default function PendingReferralRequestDetailPage() {
       // unsaved edits in the form must be saved first or they won't carry over to the referral.
       const saved = await careConnectApi.pendingReferralRequests.update(request.id, updatePayloadFromForm(form));
       setRequest(saved.data);
-      const nextForm = formFromRequest(saved.data);
-      setForm(nextForm);
-      setFieldErrors(validateReviewDateFields(nextForm));
+      setForm(formFromRequest(saved.data));
       const result = await careConnectApi.pendingReferralRequests.convert(request.id, selection);
       router.push(`/careconnect/referrals/${result.data.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to accept referral request.");
+      setError(err instanceof ApiError ? err.message : "Failed to accept pending request.");
       setAccepting(false);
     }
   }
@@ -847,57 +732,51 @@ export default function PendingReferralRequestDetailPage() {
       await careConnectApi.pendingReferralRequests.decline(request.id);
       router.push("/careconnect/pending-requests");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to decline referral request.");
+      setError(err instanceof ApiError ? err.message : "Failed to decline pending request.");
       setDeclining(false);
     }
   }
 
   if (loading) {
-    return <p className="text-sm text-gray-500">Loading referral request...</p>;
+    return <p className="text-sm text-gray-500">Loading pending request...</p>;
   }
 
   if (!request || !form) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
-        Referral request was not found.
+        Pending request was not found.
       </div>
     );
   }
-
-  const requestIsPending = request.status === "PendingReview";
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <Link href="/careconnect/pending-requests" className="text-xs text-gray-400 transition-colors hover:text-gray-600">
-            ← Back to Referral Requests
+            ← Back to pending requests
           </Link>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold text-gray-900">{request.clientFirstName} {request.clientLastName}</h1>
-            <PendingStatusBadge status={request.status} />
+            <PendingStatusBadge />
             <UrgencyBadge urgency={request.urgency} />
           </div>
-          <p className="mt-0.5 text-sm text-gray-500">
-            {requestIsPending ? "Update request values before accepting or declining." : "This request has already been finalized."}
-          </p>
+          <p className="mt-0.5 text-sm text-gray-500">Update request values before accepting or declining.</p>
         </div>
-        {requestIsPending && (
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void handleEditToggleClick()} disabled={saving} className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60">
-              <i className={isEditing ? "ri-save-line" : "ri-edit-line"} />
-              {isEditing ? (saving ? "Saving..." : "Save changes") : "Edit"}
-            </button>
-            <button type="button" onClick={() => void acceptRequest()} disabled={accepting} className="inline-flex items-center gap-2 rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-60">
-              <i className="ri-checkbox-circle-line" />
-              {accepting ? "Accepting..." : "Accept"}
-            </button>
-            <button type="button" onClick={() => void declineRequest()} disabled={declining} className="inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60">
-              <i className="ri-close-circle-line" />
-              {declining ? "Declining..." : "Decline"}
-            </button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void handleEditToggleClick()} disabled={saving} className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60">
+            <i className={isEditing ? "ri-save-line" : "ri-edit-line"} />
+            {isEditing ? (saving ? "Saving..." : "Save changes") : "Edit"}
+          </button>
+          <button type="button" onClick={() => void acceptRequest()} disabled={accepting} className="inline-flex items-center gap-2 rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-60">
+            <i className="ri-checkbox-circle-line" />
+            {accepting ? "Accepting..." : "Accept"}
+          </button>
+          <button type="button" onClick={() => void declineRequest()} disabled={declining} className="inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60">
+            <i className="ri-close-circle-line" />
+            {declining ? "Declining..." : "Decline"}
+          </button>
+        </div>
       </div>
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -915,32 +794,12 @@ export default function PendingReferralRequestDetailPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {isEditing ? (
                 <>
-                  <TextField label="First name" required value={form.clientFirstName} onChange={value => updateFormField("clientFirstName", value)} />
-                  <TextField label="Last name" required value={form.clientLastName} onChange={value => updateFormField("clientLastName", value)} />
-                  <TextField label="Phone" required value={form.clientPhone} onChange={value => updateFormField("clientPhone", value)} />
-                  <TextField label="Email" type="email" value={form.clientEmail} onChange={value => updateFormField("clientEmail", value)} />
-                  <TextField
-                    id="clientDob"
-                    label="Date of birth"
-                    required
-                    type="date"
-                    min="1900-01-01"
-                    max={TODAY}
-                    value={form.clientDob}
-                    error={fieldErrors.clientDob}
-                    onChange={(value, badInput) => updateDateField("clientDob", value, badInput)}
-                  />
-                  <TextField
-                    id="dateOfAccident"
-                    label="Date of accident"
-                    required
-                    type="date"
-                    min="1900-01-01"
-                    max={TODAY}
-                    value={form.dateOfAccident}
-                    error={fieldErrors.dateOfAccident}
-                    onChange={(value, badInput) => updateDateField("dateOfAccident", value, badInput)}
-                  />
+                  <TextField label="First name" required value={form.clientFirstName} onChange={value => setForm({ ...form, clientFirstName: value })} />
+                  <TextField label="Last name" required value={form.clientLastName} onChange={value => setForm({ ...form, clientLastName: value })} />
+                  <TextField label="Phone" required value={form.clientPhone} onChange={value => setForm({ ...form, clientPhone: value })} />
+                  <TextField label="Email" type="email" value={form.clientEmail} onChange={value => setForm({ ...form, clientEmail: value })} />
+                  <TextField label="Date of birth" required type="date" value={form.clientDob} onChange={value => setForm({ ...form, clientDob: value })} />
+                  <TextField label="Date of accident" required type="date" value={form.dateOfAccident} onChange={value => setForm({ ...form, dateOfAccident: value })} />
                 </>
               ) : (
                 <>

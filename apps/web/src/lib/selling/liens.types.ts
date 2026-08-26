@@ -386,10 +386,6 @@ export interface SubmitSellingLienRequest {
   listingVisibility: string;
 }
 
-export interface MoveToManagementRequest {
-  reason?: string;
-}
-
 // Shape returned by GET {lienId}/activity (SellingV2Endpoints.GetLienActivity) —
 // distinct field names from the `activity` array embedded in GetLienDetail
 // (LienActivityItem), which uses changedByUserId/changedAtUtc instead.

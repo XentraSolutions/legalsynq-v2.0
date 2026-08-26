@@ -62,18 +62,6 @@ export default async function DashboardPage() {
                 meta={meta}
                 items={(PRODUCT_NAV[id] ?? [])
                   .flatMap((s) => s.items)
-                  .map((item): NavItem =>
-                    item.children?.length && (!item.href || !item.label)
-                      ? {
-                          ...item,
-                          label: item.label ?? item.heading,
-                          href: item.href ?? item.children[0].href,
-                        }
-                      : item,
-                  )
-                  .filter((item): item is NavItem & { href: string } =>
-                    Boolean(item.href && item.label),
-                  )
                   .slice(0, 3)}
               />
             ))}

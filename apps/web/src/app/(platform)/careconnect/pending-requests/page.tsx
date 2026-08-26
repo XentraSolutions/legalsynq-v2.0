@@ -18,28 +18,6 @@ import type { PendingReferralProviderPreference, PendingReferralRequest } from "
 
 const PAGE_SIZE = 10;
 
-const STATUS_TABS = [
-  { label: "All", value: "" },
-  { label: "Pending", value: "PendingReview" },
-  { label: "Accepted", value: "Converted" },
-  { label: "Declined", value: "Cancelled" },
-];
-
-const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  PendingReview: {
-    label: "Pending",
-    className: "border-amber-200 bg-amber-50 text-amber-700",
-  },
-  Converted: {
-    label: "Accepted",
-    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  },
-  Cancelled: {
-    label: "Declined",
-    className: "border-red-200 bg-red-50 text-red-700",
-  },
-};
-
 function providerSelectionValue(providerId?: string | null, facilityId?: string | null): string {
   return providerId ? `${providerId}|${facilityId ?? ""}` : "";
 }
@@ -76,23 +54,12 @@ function formatDate(value?: string | null): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function PendingStatusBadge({ status }: { status: string }) {
-  const badge = STATUS_BADGE[status] ?? {
-    label: status,
-    className: "border-gray-200 bg-gray-50 text-gray-700",
-  };
-
+function PendingStatusBadge() {
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${badge.className}`}>
-      {badge.label}
+    <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+      Pending review
     </span>
   );
-}
-
-function rowClassName(status: string): string {
-  if (status === "Converted") return "border-l-4 border-l-emerald-400 bg-emerald-50/20 transition-colors hover:bg-emerald-50/50";
-  if (status === "Cancelled") return "border-l-4 border-l-red-400 bg-red-50/20 transition-colors hover:bg-red-50/50";
-  return "border-l-4 border-l-amber-400 bg-amber-50/20 transition-colors hover:bg-amber-50/50";
 }
 
 export default function PendingReferralRequestsPage() {
@@ -105,14 +72,13 @@ export default function PendingReferralRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [decliningId, setDecliningId] = useState<string | null>(null);
-  const [status, setStatus] = useState("");
 
   async function load(nextPage = page) {
     setLoading(true);
     setError(null);
     try {
       const pendingRes = await careConnectApi.pendingReferralRequests.search({
-        status: status || undefined,
+        status: "PendingReview",
         page: nextPage,
         pageSize: PAGE_SIZE,
       });
@@ -130,13 +96,13 @@ export default function PendingReferralRequestsPage() {
         return next;
       });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load referral requests.");
+      setError(err instanceof ApiError ? err.message : "Failed to load pending referral requests.");
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { void load(page); }, [page, status]);
+  useEffect(() => { void load(page); }, [page]);
 
   async function acceptRequest(item: PendingReferralRequest) {
     const preference = firstPreferredProvider(item);
@@ -154,7 +120,7 @@ export default function PendingReferralRequestsPage() {
       const result = await careConnectApi.pendingReferralRequests.convert(item.id, selection);
       router.push(`/careconnect/referrals/${result.data.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to accept referral request.");
+      setError(err instanceof ApiError ? err.message : "Failed to accept pending request.");
       setAcceptingId(null);
     }
   }
@@ -166,7 +132,7 @@ export default function PendingReferralRequestsPage() {
       await careConnectApi.pendingReferralRequests.decline(item.id);
       await load(page);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to decline referral request.");
+      setError(err instanceof ApiError ? err.message : "Failed to decline pending request.");
     } finally {
       setDecliningId(null);
     }
@@ -180,32 +146,12 @@ export default function PendingReferralRequestsPage() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Referral Requests</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Review associate-submitted requests and track their outcomes.</p>
+          <h1 className="text-xl font-semibold text-gray-900">Pending referral requests</h1>
+          <p className="mt-0.5 text-sm text-gray-500">Review associate-submitted requests before routing them to a provider.</p>
         </div>
         <Link href="/careconnect/referrals" className="text-xs text-gray-400 transition-colors hover:text-gray-600">
           View accepted referrals
         </Link>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {STATUS_TABS.map(tab => (
-          <button
-            key={tab.label}
-            type="button"
-            onClick={() => {
-              setStatus(tab.value);
-              setPage(1);
-            }}
-            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-              status === tab.value
-                ? "border-primary bg-primary text-white"
-                : "border-gray-200 bg-white text-gray-600 hover:border-gray-400"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
       </div>
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
@@ -226,12 +172,12 @@ export default function PendingReferralRequestsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">Loading referral requests...</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-500">Loading pending requests...</td></tr>
               ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center">
-                    <p className="text-sm font-medium text-gray-500">No requests found.</p>
-                    <p className="mt-1 text-xs text-gray-400">Referral associate submissions will appear here.</p>
+                    <p className="text-sm font-medium text-gray-500">No pending requests need review.</p>
+                    <p className="mt-1 text-xs text-gray-400">New referral associate submissions will appear here.</p>
                   </td>
                 </tr>
               ) : (
@@ -239,7 +185,7 @@ export default function PendingReferralRequestsPage() {
                   const preference = firstPreferredProvider(item);
                   const busy = acceptingId === item.id || decliningId === item.id;
                   return (
-                    <tr key={item.id} className={rowClassName(item.status)}>
+                    <tr key={item.id} className="border-l-4 border-l-amber-400 bg-amber-50/20 transition-colors hover:bg-amber-50/50">
                       <td className="px-4 py-3">
                         <p className="max-w-[180px] truncate text-sm font-medium text-gray-900">{item.clientFirstName} {item.clientLastName}</p>
                         <p className="mt-0.5 text-xs text-gray-400">{formatPhoneDisplay(item.clientPhone)}</p>
@@ -255,7 +201,7 @@ export default function PendingReferralRequestsPage() {
                         <UrgencyBadge urgency={item.urgency} />
                       </td>
                       <td className="px-4 py-3">
-                        <PendingStatusBadge status={item.status} />
+                        <PendingStatusBadge />
                       </td>
                       <td className="hidden whitespace-nowrap px-4 py-3 lg:table-cell">
                         <p className="text-xs text-gray-500">{formatDate(item.createdAtUtc)}</p>
@@ -279,27 +225,15 @@ export default function PendingReferralRequestsPage() {
                               <i className="ri-eye-line text-base" />
                               View
                             </DropdownMenuItem>
-                            {item.status === "PendingReview" && (
-                              <DropdownMenuItem onClick={() => void acceptRequest(item)}>
-                                <i className="ri-checkbox-circle-line text-base" />
-                                {acceptingId === item.id ? "Accepting..." : "Accept"}
-                              </DropdownMenuItem>
-                            )}
-                            {item.status === "PendingReview" && (
-                              <DropdownMenuSeparator />
-                            )}
-                            {item.status === "PendingReview" && (
-                              <DropdownMenuItem onClick={() => void declineRequest(item)} className="text-red-700 focus:text-red-700">
-                                <i className="ri-close-circle-line text-base" />
-                                {decliningId === item.id ? "Declining..." : "Decline"}
-                              </DropdownMenuItem>
-                            )}
-                            {item.status !== "PendingReview" && (
-                              <DropdownMenuItem disabled>
+                            <DropdownMenuItem onClick={() => void acceptRequest(item)}>
                               <i className="ri-checkbox-circle-line text-base" />
-                              Finalized
-                              </DropdownMenuItem>
-                            )}
+                              {acceptingId === item.id ? "Accepting..." : "Accept"}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => void declineRequest(item)} className="text-red-700 focus:text-red-700">
+                              <i className="ri-close-circle-line text-base" />
+                              {decliningId === item.id ? "Declining..." : "Decline"}
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>

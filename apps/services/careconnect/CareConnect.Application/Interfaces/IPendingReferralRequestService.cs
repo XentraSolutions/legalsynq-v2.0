@@ -53,12 +53,5 @@ public interface IPendingReferralRequestService
         bool isDownload,
         CancellationToken ct = default);
     Task<ReferralResponse> ConvertAsync(
-        Guid tenantId,
-        Guid lawFirmOrganizationId,
-        Guid id,
-        Guid? userId,
-        string? userEmail,
-        string? userName,
-        ConvertPendingReferralRequest request,
-        CancellationToken ct = default);
+        Guid tenantId, Guid lawFirmOrganizationId, Guid id, Guid? userId, ConvertPendingReferralRequest request, CancellationToken ct = default);
 }
