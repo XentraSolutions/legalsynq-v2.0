@@ -33,7 +33,6 @@ export function CaseWizard() {
     setCaseInfo(data);
     try {
       const draft = await createCaseDraft.mutateAsync({
-        caseStatus: data.caseStatusId,
         accidentTypeId: data.accidentTypeId,
         accidentState: data.accidentStateId,
         handlingLawFirmId: data.lawfirmId,

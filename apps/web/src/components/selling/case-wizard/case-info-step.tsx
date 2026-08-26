@@ -30,12 +30,7 @@ export default function CaseInfoStep({
   const [valid, setValid] = useState(false);
 
   useEffect(() => {
-    setValid(
-      !!form.caseStatusId &&
-        !!form.accidentTypeId &&
-        !!form.accidentStateId &&
-        !!form.lawfirmId,
-    );
+    setValid(!!form.accidentTypeId && !!form.accidentStateId && !!form.lawfirmId);
   }, [form]);
 
   return (

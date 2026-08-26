@@ -31,7 +31,6 @@ export default function EditCaseInfoPage() {
   useEffect(() => {
     if (!detail) return;
     setForm({
-      caseStatusId: detail.caseStatus ?? "",
       accidentTypeId: detail.accidentTypeId ?? "",
       accidentStateId: detail.accidentState ?? "",
       dateOfLoss: detail.dateOfLoss ?? "",
@@ -46,7 +45,6 @@ export default function EditCaseInfoPage() {
       {
         caseId,
         request: {
-          caseStatus: form.caseStatusId,
           accidentTypeId: form.accidentTypeId,
           accidentState: form.accidentStateId,
           handlingLawFirmId: form.lawfirmId,
