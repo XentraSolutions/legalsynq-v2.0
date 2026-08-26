@@ -27,6 +27,12 @@ import type {
   ArchiveSellingLienRequest,
   LienArchivedStatusResult,
   SubmitSellingLienRequest,
+  CreateSellingCaseDraftRequest,
+  SellingCaseDraftResult,
+  FinalizeSellingCaseDraftPlaintiffRequest,
+  FinalizeSellingCaseDraftResult,
+  UpdateSellingCaseRequest,
+  UpdateSellingCaseResult,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
@@ -132,6 +138,37 @@ export const liensService = {
 
   async createLien(request: CreateLienParams): Promise<CreateLienResult> {
     const { data } = await liensApi.createLien(request);
+    return data;
+  },
+
+  async createCaseDraft(
+    request: CreateSellingCaseDraftRequest,
+  ): Promise<SellingCaseDraftResult> {
+    const { data } = await liensApi.createCaseDraft(request);
+    return data;
+  },
+
+  async updateCaseDraft(
+    draftId: string,
+    request: CreateSellingCaseDraftRequest,
+  ): Promise<SellingCaseDraftResult> {
+    const { data } = await liensApi.updateCaseDraft(draftId, request);
+    return data;
+  },
+
+  async finalizeCaseDraft(
+    draftId: string,
+    request: FinalizeSellingCaseDraftPlaintiffRequest,
+  ): Promise<FinalizeSellingCaseDraftResult> {
+    const { data } = await liensApi.finalizeCaseDraft(draftId, request);
+    return data;
+  },
+
+  async updateSellingCase(
+    caseId: string,
+    request: UpdateSellingCaseRequest,
+  ): Promise<UpdateSellingCaseResult> {
+    const { data } = await liensApi.updateSellingCase(caseId, request);
     return data;
   },
 

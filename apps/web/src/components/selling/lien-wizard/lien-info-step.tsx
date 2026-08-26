@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ApiError } from "@/lib/api-client";
 import { liensService } from "@/lib/selling";
 import { LienInfoParams } from "@/lib/liens/liens.types";
@@ -10,6 +10,14 @@ import LienInfo from "../forms/add-medical-lien/lien-info";
 import { LienWizardShell } from "./shell";
 import { buildFormsFromLien } from "./shared";
 import { SkeletonField, SkeletonFormGrid } from "@/components/lien/skeleton-loader";
+import {
+  CaseIntakeForm,
+  PlaintiffIntakeForm,
+} from "./case-intake-form";
+import type {
+  CreateSellingCaseDraftRequest,
+  FinalizeSellingCaseDraftPlaintiffRequest,
+} from "@/lib/selling/liens.types";
 
 // Mirrors LienInfo's layout: title, a 2x2 field grid (status/date,
 // date/select), then a full-width notes textarea.
@@ -24,20 +32,26 @@ function LienInfoSkeleton() {
 }
 
 export interface LienInfoStepProps {
-  // Existing lien being edited (route: edit/step-1). Omitted on the
-  // brand-new /add page, where step 1 doubles as lien creation.
+  // Existing lien being edited (route: edit/step-1). The /add route creates
+  // a case draft and plaintiff first, then creates the lien with that case.
   lienId?: string;
   caseId?: string;
 }
 
-// Step 1 — used both to create a brand-new lien (/add, no lienId) and to
-// edit an existing one's info (/edit/step-1, lienId from the route).
+// /add is a two-step case intake; edit/step-1 updates lien information.
 export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const draftId = searchParams.get("draftId");
   const [hydrating, setHydrating] = useState(!!lienId);
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState<any>(null);
   const [formValid, setFormValid] = useState(false);
+
+  const [caseDraft, setCaseDraft] =
+    useState<CreateSellingCaseDraftRequest | null>(null);
+  const [plaintiff, setPlaintiff] =
+    useState<FinalizeSellingCaseDraftPlaintiffRequest | null>(null);
 
   useEffect(() => {
     if (!lienId) return;
@@ -66,6 +80,61 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
   }
 
   const handleContinue = async () => {
+    if (!lienId) {
+      if (!draftId) {
+        if (!caseDraft) return;
+        setSubmitting(true);
+        try {
+          const draft = await liensService.createCaseDraft({
+            caseStatus: caseDraft.caseStatus,
+            accidentTypeId: caseDraft.accidentTypeId || undefined,
+            accidentState: caseDraft.accidentState || undefined,
+            dateOfLoss: caseDraft.dateOfLoss || undefined,
+            handlingLawFirmId: caseDraft.handlingLawFirmId || undefined,
+            caseManagerId: caseDraft.caseManagerId || undefined,
+            caseTrackingNotes: caseDraft.caseTrackingNotes || undefined,
+          });
+          router.push(
+            `/selling/portfolio/lien/add?draftId=${encodeURIComponent(draft.draftId)}`,
+          );
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : "Failed to create case draft");
+        } finally {
+          setSubmitting(false);
+        }
+        return;
+      }
+
+      if (!plaintiff) return;
+      setSubmitting(true);
+      try {
+        const finalized = await liensService.finalizeCaseDraft(draftId, {
+          firstName: plaintiff.firstName,
+          lastName: plaintiff.lastName,
+          birthdate: plaintiff.birthdate || undefined,
+          email: plaintiff.email || undefined,
+          phone: plaintiff.phone || undefined,
+          gender: plaintiff.gender || undefined,
+          address: plaintiff.address || undefined,
+          city: plaintiff.city || undefined,
+          state: plaintiff.state || undefined,
+          zipcode: plaintiff.zipcode || undefined,
+        });
+        const created = await liensService.createLien({
+          caseId: finalized.caseId,
+          sellerStatus: "Pending",
+          source: "Single",
+        });
+        toast.success("Case created");
+        router.push(`/selling/portfolio/lien/${created.lienId}/edit/step-1`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to create case");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     if (!formData) return;
     setSubmitting(true);
     try {
@@ -77,30 +146,9 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
         notes: formData.notes,
       };
 
-      // The lien only gets created once. Re-submitting step 1 after coming
-      // back to it (via /edit/step-1) must update that same lien's info,
-      // not POST /liens again.
-      if (lienId) {
-        await liensService.createLienInfo(lienId, request);
-        router.push(`/selling/portfolio/lien/${lienId}/edit/step-2`);
-        return;
-      }
+      await liensService.createLienInfo(lienId, request);
+      router.push(`/selling/portfolio/lien/${lienId}/edit/step-2`);
 
-      // There's no "create draft" endpoint — a lien only gets an id via
-      // POST /liens (liensService.createLien), then the rest of step 1's
-      // fields are saved with a separate PUT .../lien-information call.
-      // See the comment on liensApi.createLien for the backend source.
-      const created = await liensService.createLien({
-        sellerStatus: request.sellerStatus,
-        source: "Single",
-      });
-      await liensService.createLienInfo(created.lienId, request);
-      toast.success("Liens Created");
-      // Move the URL onto the resumable draft route so a refresh (or the
-      // back button) continues editing this lien instead of creating another
-      // bare one. The backend has no draft-listing endpoint yet, so this URL
-      // is the only way progress survives a refresh.
-      router.push(`/selling/portfolio/lien/${created.lienId}/edit/step-2`);
     } catch (err) {
       if (err instanceof ApiError) {
         toast.error(err.message);
@@ -114,7 +162,7 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
 
   return (
     <LienWizardShell
-      step={1}
+      step={!lienId && draftId ? 2 : 1}
       hydrating={hydrating}
       skeleton={<LienInfoSkeleton />}
       submitting={submitting}
@@ -122,12 +170,28 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
       onBack={() => router.back()}
       onContinue={handleContinue}
     >
-      <LienInfo
-        caseId={caseId}
-        lienId={lienId}
-        data={formData}
-        onFormValid={onFormValid}
-      />
+      {!lienId && !draftId ? (
+        <CaseIntakeForm
+          onFormValid={(valid, data) => {
+            setFormValid(valid);
+            setCaseDraft(data);
+          }}
+        />
+      ) : !lienId ? (
+        <PlaintiffIntakeForm
+          onFormValid={(valid, data) => {
+            setFormValid(valid);
+            setPlaintiff(data);
+          }}
+        />
+      ) : (
+        <LienInfo
+          caseId={caseId}
+          lienId={lienId}
+          data={formData}
+          onFormValid={onFormValid}
+        />
+      )}
     </LienWizardShell>
   );
 }

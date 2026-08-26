@@ -7,25 +7,17 @@ export interface CaseInformationFieldsValue {
   fundingCompany?: string;
   fundingCompanyContactId: string;
   fundingCompanyContact?: string;
-  lawfirmId: string;
-  caseManagerId: string;
 }
 
-// Shared by FundingCompanyInfo (add/edit step-1's "Case Information"
-// section) and EditCaseInformationModal (lien detail page) — both capture
-// the same medical provider / funding company / contact / law firm / case
-// manager selections for a lien's case.
+// Shared by the lien-associations wizard step and detail-page modal. Case
+// ownership belongs to the case-first intake flow; this endpoint only saves
+// associations owned by the lien itself.
 export function CaseInformationFields({
   value,
   onChange,
-  // Law firm is required everywhere this drives step/form validity (both
-  // the add/edit wizard and the lien detail page's edit modal). Funding
-  // company is optional since it defaults to us when left unspecified.
-  required = false,
 }: {
   value: CaseInformationFieldsValue;
   onChange: (patch: Partial<CaseInformationFieldsValue>) => void;
-  required?: boolean;
 }) {
   return (
     <div className="grid grid-cols-2 gap-4">
@@ -90,42 +82,6 @@ export function CaseInformationFields({
           searchPlaceholder="Search contacts..."
           allowCreate
           createLabel="Add New Contact Person"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Handling Law Firm
-          {required && (
-            <span className="text-red-500 ml-0.5">*</span>
-          )}
-        </label>
-        <SellingEntitySelect
-          entityType="LawFirm"
-          value={value.lawfirmId}
-          onChange={(v) => onChange({ lawfirmId: v, caseManagerId: "" })}
-          placeholder="Select law firm..."
-          searchPlaceholder="Search law firms..."
-          allowCreate
-          createLabel="Add New Law Firm"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Case Manager
-        </label>
-        <SellingEntitySelect
-          entityType="LawFirm"
-          contactType="CaseManager"
-          companyId={value.lawfirmId}
-          isContactPerson
-          requireParent
-          parentHint="Select a law firm first"
-          value={value.caseManagerId}
-          onChange={(v) => onChange({ caseManagerId: v })}
-          placeholder="Select case manager..."
-          searchPlaceholder="Search case managers..."
-          allowCreate
-          createLabel="Add Case Manager"
         />
       </div>
     </div>

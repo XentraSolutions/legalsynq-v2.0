@@ -45,14 +45,12 @@ export interface BuyerSelectionStepProps {
   lienId: string;
 }
 
-// Step 1/2 — pick the funding company (and optionally a contact) this lien
-// will be sold to. Persisted on Continue via saveCaseInformation so the
-// selection survives a refresh or a return visit.
+// Step 1/2 — pick the funding company and contact this lien will be sold to.
+// The lien-owned association is persisted so the selection survives refreshes.
 export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) {
   const router = useRouter();
 
   const [hydrating, setHydrating] = useState(true);
-  const [caseId, setCaseId] = useState<string | undefined>(undefined);
   const [companySearch, setCompanySearch] = useState("");
   const [companyId, setCompanyId] = useState<string>("");
   const [contactSearch, setContactSearch] = useState("");
@@ -69,7 +67,6 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
       try {
         const lien = await liensService.getLienById(lienId);
         if (cancelled) return;
-        setCaseId(lien.caseInformation?.id);
         if (lien.fundingCompany) {
           setCompanyId(lien.fundingCompany.id);
           if (lien.fundingCompany.contact) {
@@ -149,8 +146,6 @@ export default function BuyerSelectionStep({ lienId }: BuyerSelectionStepProps) 
       await liensService.saveCaseInformation(lienId, {
         fundingCompanyId: companyId,
         fundingCompanyContactId: contactId || undefined,
-        caseId,
-        createCaseIfMissing: !caseId,
       });
       goToStep(router, lienId, 2);
     } catch (err) {

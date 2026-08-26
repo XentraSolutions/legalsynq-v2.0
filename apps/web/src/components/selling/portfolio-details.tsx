@@ -183,7 +183,6 @@ export function PortfolioDetailPanel({
           lienId={lien.lienId}
           fundingCompany={lien.fundingCompany}
           medicalProvider={lien.medicalProvider}
-          caseInformation={lien.caseInformation}
           onClose={() => setEditModal(null)}
           onSaved={() => {
             setEditModal(null);

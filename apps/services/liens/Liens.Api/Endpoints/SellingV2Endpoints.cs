@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Collections.Concurrent;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
@@ -24,7 +25,9 @@ public static class SellingV2Endpoints
     private const string SellingMedicalPricingTaskType = "SellingMedicalPricing";
     private const string SellingDocumentTaskType = "SellingDocumentReference";
     private const string LegacyCaseMetadataMarker = "[legacy-meta]";
+    private const int MaxSellingCaseTrackingNotesLength = 3_500;
     private static readonly JsonSerializerOptions SellingPricingJsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> SellingCaseDraftFinalizationLocks = new();
     private static readonly HashSet<string> IntakeStatuses =
     [
         SellingLienStatus.Pending,
@@ -38,6 +41,14 @@ public static class SellingV2Endpoints
             .RequireProductAccess(LiensPermissions.ProductCode)
             .RequireSellMode();
 
+        seller.MapPost("/case-drafts", CreateCaseDraft)
+            .RequirePermission(LiensPermissions.LienSaleCreate);
+        seller.MapPut("/case-drafts/{draftId:guid}", UpdateCaseDraft)
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
+        seller.MapPost("/case-drafts/{draftId:guid}/plaintiff", FinalizeCaseDraft)
+            .RequirePermission(LiensPermissions.LienSaleCreate);
+        seller.MapPut("/cases/{caseId:guid}", UpdateSellingCase)
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
         seller.MapPost("/liens", CreateLien)
             .RequirePermission(LiensPermissions.LienSaleCreate);
         seller.MapGet("/liens/{lienId:guid}", GetLienDetail)
@@ -124,6 +135,15 @@ public static class SellingV2Endpoints
         var sellerStatus = NormalizeIntakeStatus(request.SellerStatus);
         if (sellerStatus is null)
             return ValidationError("sellerStatus", "sellerStatus must be Pending or Internal.");
+        if (request.CaseId == Guid.Empty)
+            return ValidationError("caseId", "caseId is required.");
+
+        var caseExists = await db.Cases.AsNoTracking().AnyAsync(caseEntity =>
+            caseEntity.TenantId == tenantId &&
+            caseEntity.OrgId == sellerOrgId &&
+            caseEntity.Id == request.CaseId, ct);
+        if (!caseExists)
+            return ValidationError("caseId", "Case was not found for the seller organization.");
 
         var started = await SellingIdempotency.TryBeginAsync(
             db, tenantId, "User", userId, "/api/liens/selling/liens", "SellerOrganization", sellerOrgId.ToString(), idempotencyKey!, request, ct);
@@ -136,7 +156,8 @@ public static class SellingV2Endpoints
             LienType.MedicalLien,
             0m,
             userId,
-            description: request.Source?.Trim());
+            description: request.Source?.Trim(),
+            caseId: request.CaseId);
         lien.UpdateSellingAnalyticsFields(userId, sellerStatus: sellerStatus);
         db.Liens.Add(lien);
         AddActivity(db, lien, userId, $"Selling lien created with status {sellerStatus}.");
@@ -148,6 +169,234 @@ public static class SellingV2Endpoints
             lienNumber = lien.LienNumber,
             sellerStatus = lien.SellerStatus,
         }, ct);
+    }
+
+    private static async Task<IResult> CreateCaseDraft(
+        CreateSellingCaseDraftRequest request,
+        HttpRequest httpRequest,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
+        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError)) return idempotencyError!;
+        var replay = await SellingIdempotency.GetReplayAsync(
+            db, tenantId, "User", userId, "/api/liens/selling/case-drafts", "SellerOrganization", sellerOrgId.ToString(), idempotencyKey!, request, ct);
+        if (replay is not null) return replay;
+
+        var validation = await ValidateSellingCaseInformationAsync(
+            db, tenantId, sellerOrgId, request.CaseStatus, request.AccidentTypeId, request.AccidentState,
+            request.DateOfLoss, request.HandlingLawFirmId, request.CaseManagerId, request.CaseTrackingNotes, ct);
+        if (validation.Error is not null) return validation.Error;
+
+        var started = await SellingIdempotency.TryBeginAsync(
+            db, tenantId, "User", userId, "/api/liens/selling/case-drafts", "SellerOrganization", sellerOrgId.ToString(), idempotencyKey!, request, ct);
+        if (started.Result is not null) return started.Result;
+
+        var intake = validation.Value!;
+        var draft = SellingCaseDraft.Create(
+            tenantId, sellerOrgId, intake.CaseStatus, userId, intake.AccidentTypeId,
+            intake.AccidentState, request.DateOfLoss, intake.HandlingLawFirmId,
+            intake.CaseManagerId, request.CaseTrackingNotes);
+        db.SellingCaseDrafts.Add(draft);
+        await db.SaveChangesAsync(ct);
+
+        return await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status201Created, new
+        {
+            draftId = draft.Id,
+            draft.CaseStatus,
+            draft.AccidentTypeId,
+            draft.AccidentState,
+            draft.DateOfLoss,
+            handlingLawFirmId = draft.HandlingLawFirmCompanyId,
+            caseManagerId = draft.CaseManagerContactPersonId,
+            draft.CaseTrackingNotes,
+        }, ct);
+    }
+
+    private static async Task<IResult> UpdateCaseDraft(
+        Guid draftId,
+        CreateSellingCaseDraftRequest request,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
+        var draft = await db.SellingCaseDrafts.FirstOrDefaultAsync(item =>
+            item.TenantId == tenantId && item.OrgId == sellerOrgId && item.Id == draftId, ct);
+        if (draft is null) return Results.NotFound(new { message = "Selling case draft was not found." });
+        if (draft.CaseId.HasValue)
+            return ValidationError("draftId", "A finalized selling case draft cannot be updated.");
+
+        var validation = await ValidateSellingCaseInformationAsync(
+            db, tenantId, sellerOrgId, request.CaseStatus, request.AccidentTypeId, request.AccidentState,
+            request.DateOfLoss, request.HandlingLawFirmId, request.CaseManagerId, request.CaseTrackingNotes, ct);
+        if (validation.Error is not null) return validation.Error;
+
+        var intake = validation.Value!;
+        draft.UpdateCaseInformation(
+            intake.CaseStatus, userId, intake.AccidentTypeId, intake.AccidentState,
+            request.DateOfLoss, intake.HandlingLawFirmId, intake.CaseManagerId, request.CaseTrackingNotes);
+        await db.SaveChangesAsync(ct);
+
+        return Results.Ok(new
+        {
+            draftId = draft.Id,
+            draft.CaseStatus,
+            draft.AccidentTypeId,
+            draft.AccidentState,
+            draft.DateOfLoss,
+            handlingLawFirmId = draft.HandlingLawFirmCompanyId,
+            caseManagerId = draft.CaseManagerContactPersonId,
+            draft.CaseTrackingNotes,
+        });
+    }
+
+    private static async Task<IResult> FinalizeCaseDraft(
+        Guid draftId,
+        FinalizeSellingCaseDraftPlaintiffRequest request,
+        HttpRequest httpRequest,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
+        var finalizationLock = SellingCaseDraftFinalizationLocks.GetOrAdd(draftId, _ => new SemaphoreSlim(1, 1));
+        await finalizationLock.WaitAsync(ct);
+        try
+        {
+        var draft = await db.SellingCaseDrafts.FirstOrDefaultAsync(item =>
+            item.TenantId == tenantId && item.OrgId == sellerOrgId && item.Id == draftId, ct);
+        if (draft is null) return Results.NotFound(new { message = "Selling case draft was not found." });
+        if (draft.CaseId is { } completedCaseId)
+            return Results.Ok(new { draftId = draft.Id, caseId = completedCaseId, finalizedAtUtc = draft.FinalizedAtUtc });
+
+        if (ValidatePlaintiff(request.FirstName, request.LastName, request.Birthdate, request.Email, request.Phone,
+                request.Gender, request.Address, request.City, request.State, request.Zipcode) is { } plaintiffError)
+            return plaintiffError;
+        if (!SellingIdempotency.TryGetKey(httpRequest, out var idempotencyKey, out var idempotencyError)) return idempotencyError!;
+        var route = $"/api/liens/selling/case-drafts/{draftId}/plaintiff";
+        var replay = await SellingIdempotency.GetReplayAsync(
+            db, tenantId, "User", userId, route, "SellingCaseDraft", draftId.ToString(), idempotencyKey!, request, ct);
+        if (replay is not null) return replay;
+
+        var started = await SellingIdempotency.TryBeginAsync(
+            db, tenantId, "User", userId, route, "SellingCaseDraft", draftId.ToString(), idempotencyKey!, request, ct);
+        if (started.Result is not null) return started.Result;
+
+        var finalizationGate = await SellingIdempotency.TryBeginAsync(
+            db, tenantId, "SellingCaseDraftFinalization", draftId, route, "SellingCaseDraft", draftId.ToString(),
+            "selling-case-draft-finalization-v1", request: null, ct: ct);
+        if (finalizationGate.Result is not null)
+        {
+            return await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status409Conflict, new
+            {
+                error = new
+                {
+                    code = "case_draft_finalization_conflict",
+                    message = "The selling case draft is being finalized. Retry shortly.",
+                },
+            }, ct);
+        }
+
+        try
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var accidentTypeName = await ResolveAccidentTypeNameAsync(db, tenantId, draft.AccidentTypeId, ct);
+            var caseEntity = CreateCaseFromDraft(draft, request, userId, accidentTypeName);
+            db.Cases.Add(caseEntity);
+            draft.Finalize(caseEntity.Id, userId);
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+
+            var response = new
+            {
+                draftId = draft.Id,
+                caseId = caseEntity.Id,
+                caseNumber = caseEntity.CaseNumber,
+                finalizedAtUtc = draft.FinalizedAtUtc,
+            };
+            var completed = await SellingIdempotency.CompleteAsync(db, started.Record!, userId, StatusCodes.Status201Created, response, ct);
+            await SellingIdempotency.CompleteAsync(db, finalizationGate.Record!, userId, StatusCodes.Status201Created, response, ct);
+            return completed;
+        }
+        catch
+        {
+            var finalized = await db.SellingCaseDrafts.AsNoTracking().AnyAsync(item =>
+                item.TenantId == tenantId && item.OrgId == sellerOrgId && item.Id == draftId && item.CaseId.HasValue, ct);
+            if (!finalized)
+            {
+                db.SellingIdempotencyRecords.Remove(started.Record!);
+                db.SellingIdempotencyRecords.Remove(finalizationGate.Record!);
+                await db.SaveChangesAsync(ct);
+            }
+            throw;
+        }
+        }
+        finally
+        {
+            finalizationLock.Release();
+        }
+    }
+
+    private static async Task<IResult> UpdateSellingCase(
+        Guid caseId,
+        UpdateSellingCaseRequest request,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
+        var caseEntity = await db.Cases.FirstOrDefaultAsync(item =>
+            item.TenantId == tenantId && item.OrgId == sellerOrgId && item.Id == caseId, ct);
+        if (caseEntity is null) return Results.NotFound(new { message = "Case was not found for the seller organization." });
+        var sellingDraftExists = await db.SellingCaseDrafts.AsNoTracking().AnyAsync(draft =>
+            draft.TenantId == tenantId &&
+            draft.OrgId == sellerOrgId &&
+            draft.CaseId == caseId &&
+            draft.FinalizedAtUtc.HasValue, ct);
+        if (!sellingDraftExists)
+            return Results.NotFound(new { message = "Selling case was not found for the seller organization." });
+
+        if (ValidatePlaintiff(request.FirstName, request.LastName, request.Birthdate, request.Email, request.Phone,
+                request.Gender, request.Address, request.City, request.State, request.Zipcode) is { } plaintiffError)
+            return plaintiffError;
+        var validation = await ValidateSellingCaseInformationAsync(
+            db, tenantId, sellerOrgId, request.CaseStatus, request.AccidentTypeId, request.AccidentState,
+            request.DateOfLoss, request.HandlingLawFirmId, request.CaseManagerId, request.CaseTrackingNotes, ct);
+        if (validation.Error is not null) return validation.Error;
+
+        var intake = validation.Value!;
+        caseEntity.Update(
+            request.FirstName, request.LastName, userId,
+            title: caseEntity.Title,
+            externalReference: caseEntity.ExternalReference,
+            clientDob: request.Birthdate,
+            clientPhone: request.Phone,
+            clientEmail: request.Email,
+            clientAddress: request.Address,
+            dateOfIncident: request.DateOfLoss,
+            insuranceCarrier: caseEntity.InsuranceCarrier,
+            policyNumber: caseEntity.PolicyNumber,
+            claimNumber: caseEntity.ClaimNumber,
+            description: caseEntity.Description,
+            notes: ComposeSellingCaseNotes(request.CaseTrackingNotes, caseEntity.Notes, intake.AccidentTypeId, intake.AccidentTypeName, request.Gender),
+            clientAddressLine1: request.Address,
+            clientCity: request.City,
+            clientState: request.State,
+            clientPostalCode: request.Zipcode,
+            incidentState: intake.AccidentState,
+            currentMedicalStatus: caseEntity.CurrentMedicalStatus,
+            trackingFollowUpDate: caseEntity.TrackingFollowUpDate,
+            minorComp: caseEntity.MinorComp,
+            caseDropped: caseEntity.CaseDropped,
+            attorneyContactPersonId: caseEntity.AttorneyContactPersonId);
+        caseEntity.SetCanonicalCaseParties(intake.HandlingLawFirmId, intake.CaseManagerId, userId);
+        if (!string.Equals(caseEntity.Status, intake.CaseStatus, StringComparison.Ordinal))
+            caseEntity.TransitionStatus(intake.CaseStatus, userId);
+        await db.SaveChangesAsync(ct);
+
+        return Results.Ok(new { caseId = caseEntity.Id, caseNumber = caseEntity.CaseNumber, caseStatus = caseEntity.Status });
     }
 
     private static async Task<IResult> GetLienDetail(
@@ -491,73 +740,6 @@ public static class SellingV2Endpoints
             if (canonicalMedicalProvider is null)
                 return ValidationError("medicalProviderId", "Medical provider must be an active Medical Provider company owned by the seller organization.");
         }
-
-        Case? caseEntity = null;
-        if (request.CaseId.HasValue && request.CaseId.Value != Guid.Empty)
-        {
-            caseEntity = await db.Cases.FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == request.CaseId.Value, ct);
-            if (caseEntity is null) return ValidationError("caseId", "Case was not found in this tenant.");
-            if (caseEntity.OrgId != sellerOrgId)
-                return ValidationError("caseId", "Case is not owned by the seller organization.");
-        }
-        else if (request.CreateCaseIfMissing)
-        {
-            caseEntity = Case.Create(tenantId, sellerOrgId, $"SC-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(), "Pending", "Lien", userId);
-            db.Cases.Add(caseEntity);
-        }
-        else
-        {
-            return ValidationError("caseId", "caseId is required unless createCaseIfMissing is true.");
-        }
-
-        Company? canonicalLawFirm = null;
-        CompanyContactPerson? canonicalCaseManager = null;
-        var legacyLawFirmSelected = false;
-        var legacyCaseManagerSelected = false;
-        if (request.HandlingLawFirmId.HasValue)
-        {
-            canonicalLawFirm = await db.Companies.AsNoTracking().FirstOrDefaultAsync(company =>
-                company.TenantId == tenantId &&
-                company.OrgId == sellerOrgId &&
-                company.Id == request.HandlingLawFirmId.Value &&
-                company.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId &&
-                company.IsActive, ct);
-            if (canonicalLawFirm is null)
-            {
-                legacyLawFirmSelected = await IsActiveStandaloneLawFirmAsync(db, tenantId, request.HandlingLawFirmId.Value, ct);
-                if (!legacyLawFirmSelected)
-                    return ValidationError("handlingLawFirmId", "Handling law firm was not found in this tenant.");
-            }
-        }
-
-        if (request.CaseManagerId.HasValue)
-        {
-            if (canonicalLawFirm is not null)
-            {
-                canonicalCaseManager = await GetCanonicalCaseManagerAsync(
-                    db, tenantId, sellerOrgId, request.CaseManagerId.Value, canonicalLawFirm.Id, ct);
-                if (canonicalCaseManager is null)
-                    return ValidationError("caseManagerId", "Case manager must be active, have the Case Manager role, and belong to the selected law firm.");
-            }
-            else if (!request.HandlingLawFirmId.HasValue)
-            {
-                canonicalCaseManager = await GetCanonicalCaseManagerAsync(
-                    db, tenantId, sellerOrgId, request.CaseManagerId.Value, null, ct);
-                if (canonicalCaseManager is not null)
-                    canonicalLawFirm = canonicalCaseManager.Company;
-                else
-                    legacyCaseManagerSelected = await IsActiveContactAsync(db, tenantId, request.CaseManagerId.Value, ContactType.CaseManager, ct);
-            }
-            else
-            {
-                legacyCaseManagerSelected = await IsActiveContactAsync(db, tenantId, request.CaseManagerId.Value, ContactType.CaseManager, ct);
-            }
-
-            if (canonicalCaseManager is null && !legacyCaseManagerSelected)
-                return ValidationError("caseManagerId", "Case manager was not found in this tenant.");
-        }
-
-        lien.AttachCase(caseEntity.Id, userId);
         lien.SetSellingFundingReferences(
             legacyFundingCompany?.Id,
             legacyFundingCompany is null ? null : fundingCompanyContactId,
@@ -568,42 +750,15 @@ public static class SellingV2Endpoints
             lien.AttachFacility(facilityId.Value, userId);
         if (canonicalMedicalProvider is not null)
             lien.SetCanonicalMedicalProvider(canonicalMedicalProvider.Id, userId);
-
-        if (canonicalLawFirm is not null || canonicalCaseManager is not null)
-        {
-            var retainedCaseManagerId = !request.CaseManagerId.HasValue &&
-                                        caseEntity.HandlingLawFirmCompanyId == canonicalLawFirm?.Id
-                ? caseEntity.CaseManagerContactPersonId
-                : null;
-            caseEntity.SetCanonicalCaseParties(
-                canonicalLawFirm?.Id,
-                canonicalCaseManager?.Id ?? retainedCaseManagerId,
-                userId);
-        }
-        else if (legacyLawFirmSelected || legacyCaseManagerSelected)
-        {
-            caseEntity.SetCanonicalCaseParties(null, null, userId);
-        }
-
-        if (legacyCaseManagerSelected && request.CaseManagerId.HasValue)
-            caseEntity.ReassignCaseManager(request.CaseManagerId.Value, userId);
-        if (legacyLawFirmSelected && request.HandlingLawFirmId.HasValue) caseEntity.Update(
-            caseEntity.ClientFirstName, caseEntity.ClientLastName, userId, caseEntity.Title, caseEntity.ExternalReference,
-            caseEntity.ClientDob, caseEntity.ClientPhone, caseEntity.ClientEmail, caseEntity.ClientAddress,
-            caseEntity.DateOfIncident, caseEntity.InsuranceCarrier, caseEntity.PolicyNumber, caseEntity.ClaimNumber,
-            caseEntity.Description, AppendMetadata(caseEntity.Notes, "lawFirmId", request.HandlingLawFirmId.Value));
-        AddActivity(db, lien, userId, "Selling case and funding-company information updated.");
+        AddActivity(db, lien, userId, "Selling funding-company, facility, and medical-provider information updated.");
         await db.SaveChangesAsync(ct);
         return Results.Ok(new
         {
             lienId = lien.Id,
-            caseId = lien.CaseId,
             fundingCompanyId = lien.FundingCompanyCompanyId ?? lien.FundingCompanyId,
             fundingCompanyContactId = lien.FundingCompanyContactPersonId ?? lien.FundingCompanyContactId,
             facilityId = lien.FacilityId,
             medicalProviderId = lien.MedicalProviderCompanyId,
-            handlingLawFirmId = caseEntity.HandlingLawFirmCompanyId ?? (legacyLawFirmSelected ? request.HandlingLawFirmId : null),
-            caseManagerId = caseEntity.CaseManagerContactPersonId ?? (legacyCaseManagerSelected ? request.CaseManagerId : null),
         });
     }
 
@@ -1926,6 +2081,211 @@ public static class SellingV2Endpoints
         return Results.Ok(new { items });
     }
     private static IResult GetDocumentTypes() => Results.Ok(new { items = new[] { "MedicalBill", "MedicalRecord", "LienAgreement", "SettlementStatement", "Other" } });
+
+    private static async Task<(SellingCaseIntake? Value, IResult? Error)> ValidateSellingCaseInformationAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        string? caseStatus,
+        string? accidentTypeId,
+        string? accidentState,
+        DateOnly? dateOfLoss,
+        Guid? handlingLawFirmId,
+        Guid? caseManagerId,
+        string? caseTrackingNotes,
+        CancellationToken ct)
+    {
+        var normalizedStatus = NormalizeCaseStatus(caseStatus);
+        if (normalizedStatus is null)
+            return (null, ValidationError("caseStatus", "caseStatus must be a valid case status."));
+        if (dateOfLoss > DateOnly.FromDateTime(DateTime.UtcNow))
+            return (null, ValidationError("dateOfLoss", "dateOfLoss cannot be in the future."));
+        if (accidentState?.Trim().Length > 100)
+            return (null, ValidationError("accidentState", "accidentState cannot exceed 100 characters."));
+        if (caseTrackingNotes?.Trim().Length > MaxSellingCaseTrackingNotesLength)
+            return (null, ValidationError("caseTrackingNotes", $"caseTrackingNotes cannot exceed {MaxSellingCaseTrackingNotesLength} characters."));
+
+        var normalizedAccidentTypeId = string.IsNullOrWhiteSpace(accidentTypeId) ? null : accidentTypeId.Trim();
+        string? accidentTypeName = null;
+        if (normalizedAccidentTypeId is not null)
+        {
+            var accidentType = await db.LookupValues.AsNoTracking().FirstOrDefaultAsync(value =>
+                value.Category == LookupCategory.AccidentType &&
+                value.IsActive &&
+                (value.TenantId == null || value.TenantId == tenantId) &&
+                (value.Code == normalizedAccidentTypeId || value.Id.ToString() == normalizedAccidentTypeId), ct);
+            if (accidentType is null)
+                return (null, ValidationError("accidentTypeId", "accidentTypeId must identify an active accident type."));
+            accidentTypeName = accidentType.Name;
+        }
+
+        var lawFirmId = NormalizeOptionalGuid(handlingLawFirmId);
+        Company? lawFirm = null;
+        if (lawFirmId.HasValue)
+        {
+            lawFirm = await db.Companies.AsNoTracking().FirstOrDefaultAsync(company =>
+                company.TenantId == tenantId &&
+                company.OrgId == sellerOrgId &&
+                company.Id == lawFirmId.Value &&
+                company.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId &&
+                company.IsActive, ct);
+            if (lawFirm is null)
+                return (null, ValidationError("handlingLawFirmId", "Handling law firm must be an active Law Firm company owned by the seller organization."));
+        }
+
+        var managerId = NormalizeOptionalGuid(caseManagerId);
+        if (managerId.HasValue)
+        {
+            var caseManager = await GetCanonicalCaseManagerAsync(
+                db, tenantId, sellerOrgId, managerId.Value, lawFirm?.Id, ct);
+            if (caseManager is null)
+                return (null, ValidationError("caseManagerId", lawFirm is null
+                    ? "Case manager must be active, have the Case Manager role, and belong to a seller law firm."
+                    : "Case manager must be active, have the Case Manager role, and belong to the selected law firm."));
+            lawFirm ??= caseManager.Company;
+            lawFirmId = lawFirm!.Id;
+        }
+
+        return (new SellingCaseIntake(
+            normalizedStatus,
+            normalizedAccidentTypeId,
+            accidentState?.Trim(),
+            accidentTypeName,
+            lawFirmId,
+            managerId), null);
+    }
+
+    private static IResult? ValidatePlaintiff(
+        string? firstName,
+        string? lastName,
+        DateOnly? birthdate,
+        string? email,
+        string? phone,
+        string? gender,
+        string? address,
+        string? city,
+        string? state,
+        string? zipcode)
+    {
+        if (string.IsNullOrWhiteSpace(firstName) || firstName.Trim().Length > 100)
+            return ValidationError("firstName", "firstName is required and cannot exceed 100 characters.");
+        if (string.IsNullOrWhiteSpace(lastName) || lastName.Trim().Length > 100)
+            return ValidationError("lastName", "lastName is required and cannot exceed 100 characters.");
+        if (birthdate > DateOnly.FromDateTime(DateTime.UtcNow))
+            return ValidationError("birthdate", "birthdate cannot be in the future.");
+        if (!string.IsNullOrWhiteSpace(email) &&
+            (email.Trim().Length > 320 || !email.Contains('@', StringComparison.Ordinal)))
+            return ValidationError("email", "email must be a valid email address.");
+        if (phone?.Trim().Length > 30)
+            return ValidationError("phone", "phone cannot exceed 30 characters.");
+        if (gender?.Trim().Length > 100)
+            return ValidationError("gender", "gender cannot exceed 100 characters.");
+        if (address?.Trim().Length > 300)
+            return ValidationError("address", "address cannot exceed 300 characters.");
+        if (city?.Trim().Length > 100)
+            return ValidationError("city", "city cannot exceed 100 characters.");
+        if (state?.Trim().Length > 100)
+            return ValidationError("state", "state cannot exceed 100 characters.");
+        if (zipcode?.Trim().Length > 20)
+            return ValidationError("zipcode", "zipcode cannot exceed 20 characters.");
+
+        return null;
+    }
+
+    private static Case CreateCaseFromDraft(
+        SellingCaseDraft draft,
+        FinalizeSellingCaseDraftPlaintiffRequest plaintiff,
+        Guid userId,
+        string? accidentTypeName)
+    {
+        var caseEntity = Case.Create(
+            draft.TenantId,
+            draft.OrgId,
+            $"SC-{Guid.CreateVersion7():N}"[..15].ToUpperInvariant(),
+            plaintiff.FirstName,
+            plaintiff.LastName,
+            userId,
+            clientDob: plaintiff.Birthdate,
+            clientPhone: plaintiff.Phone,
+            clientEmail: plaintiff.Email,
+            clientAddress: plaintiff.Address,
+            dateOfIncident: draft.DateOfLoss,
+            notes: ComposeSellingCaseNotes(
+                draft.CaseTrackingNotes,
+                null,
+                draft.AccidentTypeId,
+                accidentTypeName,
+                plaintiff.Gender),
+            clientAddressLine1: plaintiff.Address,
+            clientCity: plaintiff.City,
+            clientState: plaintiff.State,
+            clientPostalCode: plaintiff.Zipcode,
+            incidentState: draft.AccidentState);
+        caseEntity.SetCanonicalCaseParties(
+            draft.HandlingLawFirmCompanyId,
+            draft.CaseManagerContactPersonId,
+            userId);
+        if (!string.Equals(caseEntity.Status, draft.CaseStatus, StringComparison.Ordinal))
+            caseEntity.TransitionStatus(draft.CaseStatus, userId);
+        return caseEntity;
+    }
+
+    private static string? ComposeSellingCaseNotes(
+        string? trackingNotes,
+        string? existingNotes,
+        string? accidentTypeId,
+        string? accidentTypeName,
+        string? gender)
+    {
+        var metadata = ParseCaseMetadata(existingNotes);
+        metadata.Remove("accidentTypeId");
+        metadata.Remove("accidentType");
+        metadata.Remove("gender");
+        AddMetadata(metadata, "accidentTypeId", accidentTypeId);
+        AddMetadata(metadata, "accidentType", accidentTypeName);
+        AddMetadata(metadata, "gender", gender);
+
+        var text = trackingNotes?.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+            return metadata.Count == 0 ? null : $"{LegacyCaseMetadataMarker}\n{string.Join("; ", metadata.Select(item => $"{item.Key}={item.Value}"))}";
+        if (metadata.Count == 0)
+            return text;
+        return $"{text}\n\n{LegacyCaseMetadataMarker}\n{string.Join("; ", metadata.Select(item => $"{item.Key}={item.Value}"))}";
+    }
+
+    private static void AddMetadata(IDictionary<string, string> metadata, string key, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return;
+        metadata[key] = value.Trim();
+    }
+
+    private static async Task<string?> ResolveAccidentTypeNameAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        string? accidentTypeId,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(accidentTypeId))
+            return null;
+        return await db.LookupValues.AsNoTracking()
+            .Where(value => value.Category == LookupCategory.AccidentType &&
+                            (value.TenantId == null || value.TenantId == tenantId) &&
+                            (value.Code == accidentTypeId || value.Id.ToString() == accidentTypeId))
+            .Select(value => value.Name)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    private static string? NormalizeCaseStatus(string? value)
+        => CaseStatus.All.FirstOrDefault(status => string.Equals(status, value?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private sealed record SellingCaseIntake(
+        string CaseStatus,
+        string? AccidentTypeId,
+        string? AccidentState,
+        string? AccidentTypeName,
+        Guid? HandlingLawFirmId,
+        Guid? CaseManagerId);
 
     private static async Task<Lien?> GetSellerLienAsync(LiensDbContext db, Guid tenantId, Guid sellerOrgId, Guid lienId, CancellationToken ct) =>
         await db.Liens.FirstOrDefaultAsync(lien => lien.TenantId == tenantId && lien.Id == lienId &&

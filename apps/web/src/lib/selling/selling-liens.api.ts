@@ -22,6 +22,12 @@ import type {
   ArchiveSellingLienRequest,
   LienArchivedStatusResult,
   SubmitSellingLienRequest,
+  CreateSellingCaseDraftRequest,
+  SellingCaseDraftResult,
+  FinalizeSellingCaseDraftPlaintiffRequest,
+  FinalizeSellingCaseDraftResult,
+  UpdateSellingCaseRequest,
+  UpdateSellingCaseResult,
   LienListItem,
   LienActivityFeedResult,
   BulkImportSummary,
@@ -129,12 +135,41 @@ export const liensApi = {
     );
   },
 
-  // Undocumented (no OpenAPI entry) but real — see SellingV2Endpoints.CreateLien
-  // in apps/services/liens/Liens.Api/Endpoints/SellingV2Endpoints.cs. There is
-  // no `/drafts` route; this POST to `/liens` is what actually creates a new
-  // seller lien, and it's the only way to get a lienId before saving the rest
-  // of the intake steps (lien-information, case-information, etc). Response
-  // is `{ lienId, lienNumber, sellerStatus }`, not `{ id }`.
+  createCaseDraft(request: CreateSellingCaseDraftRequest) {
+    return apiClient.post<SellingCaseDraftResult>(
+      `${BASE}/case-drafts`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  updateCaseDraft(draftId: string, request: CreateSellingCaseDraftRequest) {
+    return apiClient.put<SellingCaseDraftResult>(
+      `${BASE}/case-drafts/${draftId}`,
+      request,
+    );
+  },
+
+  finalizeCaseDraft(
+    draftId: string,
+    request: FinalizeSellingCaseDraftPlaintiffRequest,
+  ) {
+    return apiClient.post<FinalizeSellingCaseDraftResult>(
+      `${BASE}/case-drafts/${draftId}/plaintiff`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  updateSellingCase(caseId: string, request: UpdateSellingCaseRequest) {
+    return apiClient.put<UpdateSellingCaseResult>(
+      `${BASE}/cases/${caseId}`,
+      request,
+    );
+  },
+
+  // A seller lien is created only after the case-draft/plaintiff flow returns
+  // a canonical caseId. Response is `{ lienId, lienNumber, sellerStatus }`.
   createLien(request: CreateLienParams) {
     return apiClient.post<CreateLienResult>(
       `${BASE}/liens`,

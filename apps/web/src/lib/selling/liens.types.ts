@@ -269,10 +269,57 @@ export interface SaveSellingCaseInformationRequest {
   fundingCompanyId?: string | null;
   fundingCompanyContactId?: string | null;
   facilityId?: string;
+}
+
+export interface CreateSellingCaseDraftRequest {
+  caseStatus: string;
+  accidentTypeId?: string;
+  accidentState?: string;
+  dateOfLoss?: string;
   handlingLawFirmId?: string;
   caseManagerId?: string;
-  caseId?: string;
-  createCaseIfMissing?: boolean;
+  caseTrackingNotes?: string;
+}
+
+export interface SellingCaseDraftResult {
+  draftId: string;
+  caseStatus: string;
+  accidentTypeId?: string | null;
+  accidentState?: string | null;
+  dateOfLoss?: string | null;
+  handlingLawFirmId?: string | null;
+  caseManagerId?: string | null;
+  caseTrackingNotes?: string | null;
+}
+
+export interface FinalizeSellingCaseDraftPlaintiffRequest {
+  firstName: string;
+  lastName: string;
+  birthdate?: string;
+  email?: string;
+  phone?: string;
+  gender?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipcode?: string;
+}
+
+export interface FinalizeSellingCaseDraftResult {
+  draftId: string;
+  caseId: string;
+  caseNumber: string;
+  finalizedAtUtc: string;
+}
+
+export interface UpdateSellingCaseRequest
+  extends CreateSellingCaseDraftRequest,
+    FinalizeSellingCaseDraftPlaintiffRequest {}
+
+export interface UpdateSellingCaseResult {
+  caseId: string;
+  caseNumber: string;
+  caseStatus: string;
 }
 
 export interface SellingMedicalPricingRowRequest {

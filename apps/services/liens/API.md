@@ -296,6 +296,25 @@ Update an existing lien.
 
 Base path: `/api/liens/selling`
 
+### Case-first Selling intake
+
+Selling lien creation is a two-step case workflow. First call `POST /case-drafts` with `caseStatus`,
+`accidentTypeId`, `accidentState`, `dateOfLoss`, `handlingLawFirmId`, `caseManagerId`, and
+`caseTrackingNotes`. Update an unfinalized draft with `PUT /case-drafts/{draftId}`. Then call
+`POST /case-drafts/{draftId}/plaintiff` with `firstName`, `lastName`, `birthdate`, `email`, `phone`,
+`gender`, `address`, `city`, `state`, and `zipcode`; this atomically creates the canonical case and
+returns `caseId`. Draft creation and plaintiff finalization require `Idempotency-Key`.
+
+`PUT /cases/{caseId}` accepts the same case-information and plaintiff fields after finalization. It only
+updates finalized Selling cases owned by the authenticated tenant and seller organization.
+
+`POST /liens` now requires that returned `caseId`, plus `sellerStatus` (`Pending` or `Internal`) and an
+optional `source`. The route rejects cases outside the authenticated tenant/seller organization.
+
+`PUT /liens/{lienId}/case-information` is now restricted to lien-owned `fundingCompanyId`,
+`fundingCompanyContactId`, `facilityId`, and `medicalProviderId`; it no longer accepts `caseId`,
+`createCaseIfMissing`, `handlingLawFirmId`, or `caseManagerId`.
+
 ### POST `/api/liens/selling/liens/{lienId}/move-to-management`
 
 Moves a Selling lien into Liens Management without creating a second lien record. Existing same-tenant,

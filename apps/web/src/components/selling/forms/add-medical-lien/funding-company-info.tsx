@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { useSessionContext } from "@/providers/session-provider";
 import {
   CaseInformationFields,
   type CaseInformationFieldsValue,
@@ -20,36 +19,14 @@ const INITIAL_FORM: CaseInformationFieldsValue = {
   fundingCompany: "",
   fundingCompanyContactId: "",
   fundingCompanyContact: "",
-  lawfirmId: "",
-  caseManagerId: "",
 };
 
 export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
-  const { lookup } = useSessionContext();
   const { data, onFormValid } = props;
   const [form, setForm] = useState(!data ? { ...INITIAL_FORM } : data);
 
-  const statusList =
-    lookup?.LienStatus.map((c) => {
-      return { key: c.id, value: c.code, label: c.name };
-    }) ?? [];
-
-  // Default new liens to "Open" status once the status list is available
-  useEffect(() => {
-    if (statusList.length > 0 && !form.status && !data) {
-      const openStatus = statusList.find(
-        (o) =>
-          o.label.toLowerCase() === "open" || o.value.toLowerCase() === "open",
-      );
-      if (openStatus) {
-        setForm((prev: typeof form) => ({ ...prev, status: openStatus.value }));
-      }
-    }
-  }, [statusList, data]);
-
   function validateForm() {
-    const valid = !!form.lawfirmId;
-    onFormValid?.(valid, form);
+    onFormValid?.(true, form);
   }
 
   useEffect(() => {
@@ -61,11 +38,11 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
     <div className="row mt-5">
       <div className="col-12 mb-2">
         <span className="font-semibold mb-2 text-2xl mt-1">
-          Case Information
+          Lien Associations
         </span>
         <p className="font-normal text-sm text-gray-600 mb-2 mt-1">
-          Provide the case information for this lien. Funding company details
-          are optional and can be added later.
+          Add the medical provider and funding company associated with this
+          lien. Case information is managed separately from the case itself.
         </p>
       </div>
 
@@ -74,7 +51,6 @@ export default function FundingCompanyInfo(props: FundingCompanyInfoProps) {
           <CaseInformationFields
             value={form}
             onChange={(patch) => setForm({ ...form, ...patch })}
-            required
           />
         </div>
       </div>

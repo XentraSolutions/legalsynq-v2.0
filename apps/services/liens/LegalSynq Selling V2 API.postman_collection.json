@@ -50,12 +50,32 @@
       "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sellerToken}}", "type": "string" }] },
       "item": [
         {
+          "name": "Create Selling Case Draft",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.draftId) pm.collectionVariables.set('sellingCaseDraftId', body.draftId);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"caseStatus\": \"PreDemand\",\n  \"accidentTypeId\": \"MVA\",\n  \"accidentState\": \"CA\",\n  \"dateOfLoss\": \"2026-07-30\",\n  \"caseTrackingNotes\": \"Initial Selling intake\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/case-drafts"
+          }
+        },
+        {
+          "name": "Finalize Selling Case Draft Plaintiff",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.caseId) pm.collectionVariables.set('caseId', body.caseId);"] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"birthdate\": \"1990-01-01\",\n  \"email\": \"jane@example.test\",\n  \"phone\": \"555-0100\",\n  \"gender\": \"Female\",\n  \"address\": \"100 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"zipcode\": \"90001\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{baseUrl}}/api/liens/selling/case-drafts/{{sellingCaseDraftId}}/plaintiff"
+          }
+        },
+        {
           "name": "Create Seller Lien (Pending or Internal)",
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["const body = pm.response.json();", "if (body.lienId) pm.collectionVariables.set('sellerLienId', body.lienId);"] } }],
           "request": {
             "method": "POST",
             "header": [{ "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }, { "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"sellerStatus\": \"Pending\",\n  \"source\": \"Postman\"\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"sellerStatus\": \"Pending\",\n  \"source\": \"Postman\"\n}", "options": { "raw": { "language": "json" } } },
             "url": "{{baseUrl}}/api/liens/selling/liens"
           }
         },
@@ -79,10 +99,10 @@
         {
           "name": "Save Case Information",
           "request": {
-            "description": "Reference IDs may come from either legacy Contacts or the Company Directory. fundingCompanyId and fundingCompanyContactId are optional; when supplied, fundingCompanyContactId must belong to the selected funding company. Directory fundingCompanyId and handlingLawFirmId values must identify active Funding Company and Law Firm companies; facilityId must identify an active facility owned by the seller organization; medicalProviderId must identify an active Medical Provider company owned by the seller organization; caseManagerId must belong to the law firm with the Case Manager contact-person type.",
+            "description": "Saves lien-owned funding company/contact, facility, and medical provider references. It does not create or update a case, law firm, or case manager.",
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"fundingCompanyContactId\": \"{{fundingCompanyContactId}}\",\n  \"facilityId\": \"{{facilityId}}\",\n  \"medicalProviderId\": \"{{medicalProviderId}}\",\n  \"handlingLawFirmId\": \"{{handlingLawFirmId}}\",\n  \"caseManagerId\": \"{{caseManagerId}}\",\n  \"caseId\": \"{{caseId}}\",\n  \"createCaseIfMissing\": false\n}", "options": { "raw": { "language": "json" } } },
+            "body": { "mode": "raw", "raw": "{\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\",\n  \"fundingCompanyContactId\": \"{{fundingCompanyContactId}}\",\n  \"facilityId\": \"{{facilityId}}\",\n  \"medicalProviderId\": \"{{medicalProviderId}}\"\n}", "options": { "raw": { "language": "json" } } },
             "url": "{{baseUrl}}/api/liens/selling/liens/{{sellerLienId}}/case-information"
           }
         },

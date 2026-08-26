@@ -649,7 +649,6 @@ export default function ReviewDocumentsStep({
           lienId={lienId}
           fundingCompany={lien.fundingCompany}
           medicalProvider={lien.medicalProvider}
-          caseInformation={lien.caseInformation}
           onClose={() => setEditModal(null)}
           onSaved={() => {
             setEditModal(null);

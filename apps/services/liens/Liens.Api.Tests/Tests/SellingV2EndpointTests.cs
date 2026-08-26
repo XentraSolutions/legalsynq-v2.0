@@ -32,7 +32,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
-    public async Task Create_lien_starts_in_pending_without_exposing_seller_draft()
+    public async Task Create_lien_requires_a_seller_owned_case()
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/liens/selling/liens")
         {
@@ -41,10 +41,125 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         request.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
         var response = await _client.SendAsync(request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        json.RootElement.GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Pending);
-        json.RootElement.GetProperty("sellerStatus").GetString().Should().NotBe("Draft");
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+        (await response.Content.ReadAsStringAsync()).Should().Contain("caseId");
+    }
+
+    [Fact]
+    public async Task Case_draft_finalization_creates_a_complete_case_that_can_be_attached_to_a_lien()
+    {
+        using var createDraft = new HttpRequestMessage(HttpMethod.Post, "/api/liens/selling/case-drafts")
+        {
+            Content = JsonContent.Create(new
+            {
+                caseStatus = CaseStatus.PreDemand,
+                accidentTypeId = "MVA",
+                accidentState = "CA",
+                dateOfLoss = "2026-07-19",
+                caseTrackingNotes = "Plaintiff intake completed.",
+            }),
+        };
+        createDraft.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        var draftResponse = await _client.SendAsync(createDraft);
+        draftResponse.StatusCode.Should().Be(HttpStatusCode.Created, await draftResponse.Content.ReadAsStringAsync());
+        using var draftJson = JsonDocument.Parse(await draftResponse.Content.ReadAsStringAsync());
+        var draftId = draftJson.RootElement.GetProperty("draftId").GetGuid();
+
+        using var finalize = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/case-drafts/{draftId}/plaintiff")
+        {
+            Content = JsonContent.Create(new
+            {
+                firstName = "Pat",
+                lastName = "Plaintiff",
+                birthdate = "1985-02-12",
+                email = "pat@example.test",
+                phone = "555-100-2000",
+                gender = "Nonbinary",
+                address = "100 Main Street",
+                city = "Los Angeles",
+                state = "CA",
+                zipcode = "90001",
+            }),
+        };
+        finalize.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        var finalizedResponse = await _client.SendAsync(finalize);
+        finalizedResponse.StatusCode.Should().Be(HttpStatusCode.Created, await finalizedResponse.Content.ReadAsStringAsync());
+        using var finalizedJson = JsonDocument.Parse(await finalizedResponse.Content.ReadAsStringAsync());
+        var caseId = finalizedJson.RootElement.GetProperty("caseId").GetGuid();
+
+        using var createLien = new HttpRequestMessage(HttpMethod.Post, "/api/liens/selling/liens")
+        {
+            Content = JsonContent.Create(new { caseId, sellerStatus = "Pending", source = "Single" }),
+        };
+        createLien.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        var lienResponse = await _client.SendAsync(createLien);
+        lienResponse.StatusCode.Should().Be(HttpStatusCode.Created, await lienResponse.Content.ReadAsStringAsync());
+        using var lienJson = JsonDocument.Parse(await lienResponse.Content.ReadAsStringAsync());
+        var lienId = lienJson.RootElement.GetProperty("lienId").GetGuid();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persisted = await db.Cases.SingleAsync(item => item.Id == caseId);
+        persisted.ClientFirstName.Should().Be("Pat");
+        persisted.ClientEmail.Should().Be("pat@example.test");
+        persisted.IncidentState.Should().Be("CA");
+        persisted.Notes.Should().Contain("gender=Nonbinary");
+        (await db.Liens.SingleAsync(item => item.Id == lienId)).CaseId.Should().Be(caseId);
+    }
+
+    [Fact]
+    public async Task Concurrent_case_draft_finalization_creates_only_one_case()
+    {
+        using var createDraft = new HttpRequestMessage(HttpMethod.Post, "/api/liens/selling/case-drafts")
+        {
+            Content = JsonContent.Create(new { caseStatus = CaseStatus.PreDemand }),
+        };
+        createDraft.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        var draftResponse = await _client.SendAsync(createDraft);
+        draftResponse.EnsureSuccessStatusCode();
+        using var draftJson = JsonDocument.Parse(await draftResponse.Content.ReadAsStringAsync());
+        var draftId = draftJson.RootElement.GetProperty("draftId").GetGuid();
+
+        Task<HttpResponseMessage> FinalizeAsync() => _client.SendAsync(new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/liens/selling/case-drafts/{draftId}/plaintiff")
+        {
+            Content = JsonContent.Create(new
+            {
+                firstName = "Concurrent",
+                lastName = "Plaintiff",
+                birthdate = "1985-02-12",
+            }),
+            Headers = { { "Idempotency-Key", Guid.CreateVersion7().ToString() } },
+        });
+
+        var responses = await Task.WhenAll(FinalizeAsync(), FinalizeAsync());
+        try
+        {
+            responses.Should().OnlyContain(response =>
+                response.StatusCode == HttpStatusCode.Created ||
+                response.StatusCode == HttpStatusCode.OK ||
+                response.StatusCode == HttpStatusCode.Conflict);
+            var caseIds = new List<Guid>();
+            foreach (var response in responses.Where(response =>
+                         response.StatusCode == HttpStatusCode.Created || response.StatusCode == HttpStatusCode.OK))
+            {
+                using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                caseIds.Add(payload.RootElement.GetProperty("caseId").GetGuid());
+            }
+            caseIds.Distinct().Should().ContainSingle();
+
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            (await db.Cases.CountAsync(item =>
+                item.ClientFirstName == "Concurrent" && item.ClientLastName == "Plaintiff"))
+                .Should().Be(1);
+        }
+        finally
+        {
+            foreach (var response in responses)
+                response.Dispose();
+        }
     }
 
     [Fact]
@@ -1781,7 +1896,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/liens/selling/liens")
         {
-            Content = JsonContent.Create(new { sellerStatus = "Pending", source = "Single" }),
+            Content = JsonContent.Create(new { caseId = SeedHelper.CaseId, sellerStatus = "Pending", source = "Single" }),
         };
         request.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
         var response = await _client.SendAsync(request);

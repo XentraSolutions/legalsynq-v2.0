@@ -10,29 +10,26 @@ import { LienWizardShell } from "./shell";
 import { buildFormsFromLien, goToStep } from "./shared";
 import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
 
-// Mirrors FundingCompanyInfo's layout: title + description, then 5 selects
-// (medical provider, funding company, contact, law firm, and case manager)
-// across full-width and paired rows.
+// Mirrors FundingCompanyInfo's layout: title + description and the lien-owned
+// medical-provider, funding-company, and contact selections.
 function FundingCompanyStepSkeleton() {
   return (
     <div className="space-y-4 animate-pulse pt-5">
       <div className="h-6 bg-gray-100 rounded w-52" />
       <div className="h-3 bg-gray-100 rounded w-full max-w-md" />
-      <SkeletonFormGrid fields={5} />
+      <SkeletonFormGrid fields={3} />
     </div>
   );
 }
 
 export interface FundingCompanyStepProps {
   lienId: string;
-  caseId?: string;
 }
 
 // Step 2 — always edits an existing lien (the route requires an id; a lien
 // is only created by completing step 1 first).
 export default function FundingCompanyStep({
   lienId,
-  caseId,
 }: FundingCompanyStepProps) {
   const router = useRouter();
   const [hydrating, setHydrating] = useState(true);
@@ -71,12 +68,7 @@ export default function FundingCompanyStep({
       await liensService.saveCaseInformation(lienId, {
         medicalProviderId: formData?.medicalProviderId || undefined,
         fundingCompanyId: formData?.fundingCompanyId || null,
-        fundingCompanyContactId:
-          formData?.fundingCompanyContactId || null,
-        handlingLawFirmId: formData?.lawfirmId || undefined,
-        caseManagerId: formData?.caseManagerId || undefined,
-        caseId: caseId || undefined,
-        createCaseIfMissing: !caseId,
+        fundingCompanyContactId: formData?.fundingCompanyContactId || null,
       });
       goToStep(router, lienId, 3);
     } catch (err) {
@@ -101,7 +93,6 @@ export default function FundingCompanyStep({
       onContinue={handleContinue}
     >
       <FundingCompanyInfo
-        caseId={caseId}
         lienId={lienId}
         data={formData}
         onFormValid={onFormValid}

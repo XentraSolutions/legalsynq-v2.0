@@ -5,7 +5,6 @@ import { FormModal } from "@/components/selling/modal";
 import { liensService } from "@/lib/selling";
 import { toast } from "sonner";
 import type {
-  LienCaseDetail,
   LienFundingCompanyDetail,
   LienMedicalProviderDetail,
 } from "@/types/lien-selling";
@@ -18,7 +17,6 @@ interface EditCaseInformationModalProps {
   lienId: string;
   fundingCompany: LienFundingCompanyDetail | null;
   medicalProvider: LienMedicalProviderDetail | null;
-  caseInformation: LienCaseDetail | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -27,7 +25,6 @@ export function EditCaseInformationModal({
   lienId,
   fundingCompany,
   medicalProvider,
-  caseInformation,
   onClose,
   onSaved,
 }: EditCaseInformationModalProps) {
@@ -35,8 +32,6 @@ export function EditCaseInformationModal({
     medicalProviderId: medicalProvider?.id ?? "",
     fundingCompanyId: fundingCompany?.id ?? "",
     fundingCompanyContactId: fundingCompany?.contact?.id ?? "",
-    lawfirmId: caseInformation?.lawFirmId ?? "",
-    caseManagerId: caseInformation?.caseManagerId ?? "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -47,12 +42,8 @@ export function EditCaseInformationModal({
         medicalProviderId: form.medicalProviderId || undefined,
         fundingCompanyId: form.fundingCompanyId || undefined,
         fundingCompanyContactId: form.fundingCompanyContactId || undefined,
-        handlingLawFirmId: form.lawfirmId || undefined,
-        caseManagerId: form.caseManagerId || undefined,
-        caseId: caseInformation?.id,
-        createCaseIfMissing: !caseInformation?.id,
       });
-      toast.success("Funding company, medical provider & case information updated.");
+      toast.success("Lien associations updated.");
       onSaved();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save case information");
@@ -66,15 +57,13 @@ export function EditCaseInformationModal({
       open
       onClose={onClose}
       onSubmit={handleSubmit}
-      title="Edit Case Information"
+      title="Edit Lien Associations"
       submitLabel={saving ? "Saving..." : "Save"}
-      submitDisabled={!form.lawfirmId}
       loading={saving}
     >
       <CaseInformationFields
         value={form}
         onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
-        required
       />
     </FormModal>
   );

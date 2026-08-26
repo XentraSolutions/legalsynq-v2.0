@@ -9,15 +9,13 @@ vi.mock("@/components/selling/selling-entity-select", () => ({
 }));
 
 describe("CaseInformationFields", () => {
-  test("matches the create-lien design without a medical facility field", () => {
+  test("only captures lien-owned associations", () => {
     render(
       <CaseInformationFields
         value={{
           medicalProviderId: "",
           fundingCompanyId: "",
           fundingCompanyContactId: "",
-          lawfirmId: "",
-          caseManagerId: "",
         }}
         onChange={() => undefined}
       />,
@@ -26,8 +24,8 @@ describe("CaseInformationFields", () => {
     expect(screen.getByText("Medical Provider")).toBeInTheDocument();
     expect(screen.getByText("Funding Company")).toBeInTheDocument();
     expect(screen.getByText("Contact Person")).toBeInTheDocument();
-    expect(screen.getByText("Handling Law Firm")).toBeInTheDocument();
-    expect(screen.getByText("Case Manager")).toBeInTheDocument();
+    expect(screen.queryByText("Handling Law Firm")).not.toBeInTheDocument();
+    expect(screen.queryByText("Case Manager")).not.toBeInTheDocument();
     expect(screen.queryByText("Medical Facility")).not.toBeInTheDocument();
   });
 });
