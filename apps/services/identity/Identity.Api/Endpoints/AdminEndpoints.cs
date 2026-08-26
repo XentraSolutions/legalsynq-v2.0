@@ -8863,6 +8863,23 @@ public static partial class AdminEndpointsLscc010
         if (!phoneOk)
             return Results.BadRequest(new { error = phoneError });
 
+        var organizationAlreadyHasActiveMember = await db.UserOrganizationMemberships
+            .AsNoTracking()
+            .AnyAsync(m => m.OrganizationId == id && m.IsActive, ct);
+
+        if (organizationAlreadyHasActiveMember)
+        {
+            logger.LogInformation(
+                "SynqLien buyer self-registration rejected for tenant {TenantId} org {OrgId} because the organization already has an active member.",
+                targetTenantId.Value,
+                id);
+            return Results.Conflict(new
+            {
+                error = "This funding company already has an activated portal user.",
+                code = "FUNDING_COMPANY_USER_ALREADY_EXISTS",
+            });
+        }
+
         var tenantOwnerUserId = await db.Tenants
             .AsNoTracking()
             .Where(t => t.Id == targetTenantId.Value)
