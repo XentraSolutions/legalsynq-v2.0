@@ -25,7 +25,7 @@ export interface CaseResponseDto {
   trackingFollowUpDate: string;
   leadId: string;
   lienStatus?: string;
-  lienStatusId?:string;
+  lienStatusId?: string;
   lawFirmId?: string | null;
   lawFirm?: string | null;
   caseManagerId?: string | null;
@@ -322,6 +322,7 @@ export interface CaseLienItem {
   originalAmount: number;
   facility: string;
   facilityName: string;
+  medicalFacility?: string;
   serviceDate: string;
   purchaseDate: string;
   purchaseAmount: number;

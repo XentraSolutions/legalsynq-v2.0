@@ -5,7 +5,6 @@ import { FormModal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { settlementService } from "@/lib/settlement";
-import { buildSettlementPaymentRequest } from "@/lib/settlement/payment-request";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
 import { lookupService } from "@/lib/lookup";
 import type {
@@ -63,15 +62,19 @@ interface AddPaymentFormProps {
 }
 
 const INITIAL_FORM = {
-  id:"",
+  id: "",
   lienStatus: "",
   checkAmount: "",
   checkDate: "",
   checkNumber: "",
+  paymentMethod: "Check",
+  detailsContext: "",
   type: "",
   status: "",
   note: "",
 };
+
+const PAYMENT_METHODS = ["Check", "ACH", "Wire", "Cash", "Other"];
 
 export function AddPaymentForm({
   open,
@@ -87,7 +90,7 @@ export function AddPaymentForm({
 }: AddPaymentFormProps) {
   const addToast = useLienStore((s) => s.addToast);
   const [form, setForm] = useState({ ...INITIAL_FORM, ...selectedPayment });
-
+  console.log(liens);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [lienPayments, setLienPayments] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -101,8 +104,6 @@ export function AddPaymentForm({
   const [typeError, setTypeError] = useState(false);
   const [statusError, setStatusError] = useState(false);
   const [hasDistributedPayment, setDistributedPayment] = useState(false);
-
-  const PAYMENT_METHOD_CHECK = "Check";
 
   // TEMP: hardcoded until API endpoint is ready
   const TEMP_SETTLEMENT_STATUSES: LookupData[] = [
@@ -192,22 +193,19 @@ export function AddPaymentForm({
     },
   ];
 
-
-  function isEditingLien(l: CaseLienItem & CaseLienItemMetadata):boolean {
-    const filtered = [...checkedIds].filter(item => item == l.id)
-    return filtered.length > 0 ? true : false
+  function isEditingLien(l: CaseLienItem & CaseLienItemMetadata): boolean {
+    const filtered = [...checkedIds].filter((item) => item == l.id);
+    return filtered.length > 0 ? true : false;
   }
 
   function isLienPayable(l: CaseLienItem & CaseLienItemMetadata): boolean {
-    return (
-      l.status !== "Closed" &&
-      l.status !== "Withdrawn" &&
-      l.status !== "Sold" &&
-      l.balance > 0 && 
-      isEditing ? isEditingLien(l) : true
-    );
+    return isEditing
+      ? l.status !== "Withdrawn" && l.status !== "Sold" && l.balance > 0
+      : l.status !== "Closed" &&
+          l.status !== "Withdrawn" &&
+          l.status !== "Sold" &&
+          l.balance > 0;
   }
-
 
   useEffect(() => {
     if (!open) return;
@@ -249,30 +247,21 @@ export function AddPaymentForm({
         ...selectedPayment,
         lienStatus: isEditing
           ? selectedPayment.lienStatus
-          : (active ?? lienStatusOptions[1]?.code ?? ""),
+          : (active?.code ?? lienStatusOptions[0]?.code ?? ""),
       }));
-      if(isEditing) {
-       const filtered = new Set(openLiens.filter((l)=>l.id == selectedPayment.lienId).map((l) => l.id))
-        setCheckedIds(filtered) 
+      if (isEditing) {
+        const filtered = new Set(
+          liens.filter((l) => l.id == selectedPayment.lienId).map((l) => l.id),
+        );
+        setCheckedIds(filtered);
       }
 
       setLookupsLoading(false);
     });
   }, [open]);
 
-  const openLiens = liens.filter(
-    (l) =>
-      l.status !== "Closed" &&
-      l.status !== "Withdrawn" &&
-      l.status !== "Sold" &&
-      l.balance > 0,
-  );
+  const openLiens = liens.filter((l) => l.balance > 0);
 
-
-  function filterLiensForEditing(l:any){
-        const filtered = new Set(openLiens.filter((l)=>l.id == selectedPayment.lienId).map((l) => l.id))
-        setCheckedIds(filtered) 
-  }
 
   const allChecked =
     openLiens.length > 0 && checkedIds.size === openLiens.length;
@@ -327,43 +316,40 @@ export function AddPaymentForm({
         if (l.balance != null) {
           balances += l.balance;
         }
-
-        // If you also need to populate initialPayments for checked items:
-        // initialPayments[l.id] = ...;
       }
     }
     return balances;
   };
 
-/**
- * Distributes a check amount proportionally across a list of selected liens.
- * If the check amount exceeds the total combined balance of all selected liens, 
- * the remaining funds are distributed proportionally, and any final leftover 
- * cents or overpayment amounts are absorbed by the lien with the highest balance.
- * 
- * ## Computation Logic & Documentation
- * 
- * 1. **Validation & Initialization:**
- *    - Parses the check amount (`form.checkAmount`) and ensures it is a valid positive number.
- *    - Validates that at least one lien is selected (`checkedIds.size > 0`) and that the total balance is greater than zero.
- *    - Converts both the total check amount and individual balances to integers (`cents`) to prevent floating-point drift.
- * 
- * 2. **Proportional Distribution & Capping:**
- *    - Establishes a `targetAllocationCents` equal to the full check amount in cents.
- *    - Calculates each lien's ideal proportional share based on its percentage of the total balance.
- *    - If the check amount is less than or equal to the total balance, allocations are capped at each individual lien's balance. 
- *      If the check exceeds the total balance, liens receive their full un-capped proportional share.
- * 
- * 3. **Remainder & Rounding Adjustment:**
- *    - Tracks any flooring differences (`pennyDiff`) and distributes remaining pennies to items with the largest fractional remainders.
- *    - **Overpayment Catch-all:** If any leftover rounding or excess check amount remains after proportional assignment, 
- *      it directly dumps the remaining cents into the highest balance lien (or the last item in the list).
- * 
- * 4. **Output Formatting:**
- *    - Formats the final allocated cent values back into standard two-decimal currency strings (`.toFixed(2)`).
- *    - Updates the payment tracking state (`lienPayments`) and flags the distribution status.
- */
- const handleAllocateProportionally = () => {
+  /**
+   * Distributes a check amount proportionally across a list of selected liens.
+   * If the check amount exceeds the total combined balance of all selected liens,
+   * the remaining funds are distributed proportionally, and any final leftover
+   * cents or overpayment amounts are absorbed by the lien with the highest balance.
+   *
+   * ## Computation Logic & Documentation
+   *
+   * 1. **Validation & Initialization:**
+   *    - Parses the check amount (`form.checkAmount`) and ensures it is a valid positive number.
+   *    - Validates that at least one lien is selected (`checkedIds.size > 0`) and that the total balance is greater than zero.
+   *    - Converts both the total check amount and individual balances to integers (`cents`) to prevent floating-point drift.
+   *
+   * 2. **Proportional Distribution & Capping:**
+   *    - Establishes a `targetAllocationCents` equal to the full check amount in cents.
+   *    - Calculates each lien's ideal proportional share based on its percentage of the total balance.
+   *    - If the check amount is less than or equal to the total balance, allocations are capped at each individual lien's balance.
+   *      If the check exceeds the total balance, liens receive their full un-capped proportional share.
+   *
+   * 3. **Remainder & Rounding Adjustment:**
+   *    - Tracks any flooring differences (`pennyDiff`) and distributes remaining pennies to items with the largest fractional remainders.
+   *    - **Overpayment Catch-all:** If any leftover rounding or excess check amount remains after proportional assignment,
+   *      it directly dumps the remaining cents into the highest balance lien (or the last item in the list).
+   *
+   * 4. **Output Formatting:**
+   *    - Formats the final allocated cent values back into standard two-decimal currency strings (`.toFixed(2)`).
+   *    - Updates the payment tracking state (`lienPayments`) and flags the distribution status.
+   */
+  const handleAllocateProportionally = () => {
     const checkAmountStr = form.checkAmount;
     const val = parseFloat(checkAmountStr);
     if (isNaN(val) || val <= 0 || checkedIds.size === 0) return;
@@ -373,51 +359,72 @@ export function AddPaymentForm({
       0,
     );
     if (totalBalance === 0) return;
+    if (val > totalBalance) {
+      addToast({
+        type: "error",
+        title: "Amount Exceeds Balance",
+        description: "The payment cannot exceed the selected liens' outstanding balance.",
+      });
+      return;
+    }
 
     // Convert check amount and balances to cents (integers) to avoid float drift
     const totalCents = Math.round(val * 100);
     const totalBalanceCents = Math.round(totalBalance * 100);
-    
+
     // Allow target allocation to exceed total balance if check amount is greater
     const targetAllocationCents = totalCents;
 
     const updates: Record<string, string> = { ...lienPayments };
-    
+
     // Track allocations in cents
     let allocatedSoFar = 0;
     const itemAllocations = selectedLiens.map((l) => {
       const balanceCents = Math.round((l.balance ?? 0) * 100);
-      
+
       // Ideal proportional share in cents
-      const idealShare = totalBalanceCents > 0 
-        ? Math.floor((balanceCents / totalBalanceCents) * targetAllocationCents)
-        : 0;
-      
-      // Cap at balance only if check amount is less than or equal to total balance; 
+      const idealShare =
+        totalBalanceCents > 0
+          ? Math.floor(
+              (balanceCents / totalBalanceCents) * targetAllocationCents,
+            )
+          : 0;
+
+      // Cap at balance only if check amount is less than or equal to total balance;
       // otherwise, let it take its full proportional share without capping.
-      const finalCents = totalCents <= totalBalanceCents 
-        ? Math.min(balanceCents, idealShare)
-        : idealShare;
-      
+      const finalCents =
+        totalCents <= totalBalanceCents
+          ? Math.min(balanceCents, idealShare)
+          : idealShare;
+
       allocatedSoFar += finalCents;
       return {
         id: l.id,
         balanceCents,
         cents: finalCents,
-        remainder: totalBalanceCents > 0 ? (balanceCents / totalBalanceCents) * targetAllocationCents - finalCents : 0
+        remainder:
+          totalBalanceCents > 0
+            ? (balanceCents / totalBalanceCents) * targetAllocationCents -
+              finalCents
+            : 0,
       };
     });
 
     // Distribute any remaining penny differences due to flooring
     let pennyDiff = targetAllocationCents - allocatedSoFar;
-    
+
     if (pennyDiff > 0) {
       // Sort by largest fractional remainder to keep distribution as proportional as possible
       itemAllocations.sort((a, b) => b.remainder - a.remainder);
-      
+
       for (let i = 0; i < pennyDiff; i++) {
-        const targetItem = itemAllocations.find(item => totalCents <= totalBalanceCents ? item.cents < item.balanceCents : true) || itemAllocations[itemAllocations.length - 1];
-        
+        const targetItem =
+          itemAllocations.find((item) =>
+            totalCents <= totalBalanceCents
+              ? item.cents < item.balanceCents
+              : true,
+          ) || itemAllocations[itemAllocations.length - 1];
+
         if (targetItem) {
           targetItem.cents += 1;
         } else {
@@ -426,12 +433,18 @@ export function AddPaymentForm({
       }
     }
 
-    // If check amount STILL exceeds total balances after proportional distribution, 
+    // If check amount STILL exceeds total balances after proportional distribution,
     // dump any leftover rounding/remainder cents directly into the highest/last lien.
-    const finalAllocatedSum = itemAllocations.reduce((sum, item) => sum + item.cents, 0);
+    const finalAllocatedSum = itemAllocations.reduce(
+      (sum, item) => sum + item.cents,
+      0,
+    );
     const leftoverCents = totalCents - finalAllocatedSum;
     if (leftoverCents > 0 && itemAllocations.length > 0) {
-      const highestLien = itemAllocations.reduce((prev, curr) => (curr.balanceCents > prev.balanceCents ? curr : prev), itemAllocations[itemAllocations.length - 1]);
+      const highestLien = itemAllocations.reduce(
+        (prev, curr) => (curr.balanceCents > prev.balanceCents ? curr : prev),
+        itemAllocations[itemAllocations.length - 1],
+      );
       highestLien.cents += leftoverCents;
     }
 
@@ -444,41 +457,50 @@ export function AddPaymentForm({
     setDistributedPayment(true);
   };
 
-/**
- * Distributes a check amount equally across a list of selected liens without overpaying.
- * If an equal share exceeds a specific lien's balance, that lien takes only what it owes, 
- * and the remaining funds are re-pooled and split equally among the remaining liens.
- * If the check amount exceeds the total combined balance of all selected liens, 
- * all liens are paid to a zero balance, and any remaining excess funds are 
- * absorbed entirely by the lien with the highest balance.
- * 
- * ## Computation Logic & Documentation
- * 
- * 1. **Validation & Initialization:**
- *    - Parses the check amount (`form.checkAmount`) and ensures it is a valid positive number.
- *    - Validates that at least one lien is selected (`checkedIds.size > 0`).
- *    - Maps and sorts active liens by balance in ascending order (`a.balanceCents - b.balanceCents`) 
- *      so that smaller balances are processed and capped first.
- *    - Converts the check amount and balances into integer cents to prevent floating-point math issues.
- * 
- * 2. **Iterative Waterfall Distribution (Equal Split with Caps):**
- *    - Tracks a `remainingCents` pool starting at the full check amount in cents.
- *    - Loops through active liens to calculate an equal slice (`equalShareCents = remainingCents / unresolvedCount`).
- *    - **Capping Logic:** If the calculated equal share is greater than or equal to what the lien needs (`neededCents`), 
- *      the lien takes only what it needs, and the excess is kept in the pool for the remaining accounts.
- *    - If the equal share is less than what it needs, the lien takes the equal share safely without overpaying.
- * 
- * 3. **Overpayment & Remainder Absorption:**
- *    - If the check amount STILL exceeds the total combined balances after all liens are fully paid, 
- *      any remaining unallocated cents are dumped directly into the highest/last lien in the sorted array.
- * 
- * 4. **Output Formatting:**
- *    - Formats the final allocated cent values back into standard two-decimal currency strings (`.toFixed(2)`).
- *    - Updates the payment tracking state (`lienPayments`) and flags the distribution status.
- */
-const handleDistributePayment = () => {
+  /**
+   * Distributes a check amount equally across a list of selected liens without overpaying.
+   * If an equal share exceeds a specific lien's balance, that lien takes only what it owes,
+   * and the remaining funds are re-pooled and split equally among the remaining liens.
+   * If the check amount exceeds the total combined balance of all selected liens,
+   * all liens are paid to a zero balance, and any remaining excess funds are
+   * absorbed entirely by the lien with the highest balance.
+   *
+   * ## Computation Logic & Documentation
+   *
+   * 1. **Validation & Initialization:**
+   *    - Parses the check amount (`form.checkAmount`) and ensures it is a valid positive number.
+   *    - Validates that at least one lien is selected (`checkedIds.size > 0`).
+   *    - Maps and sorts active liens by balance in ascending order (`a.balanceCents - b.balanceCents`)
+   *      so that smaller balances are processed and capped first.
+   *    - Converts the check amount and balances into integer cents to prevent floating-point math issues.
+   *
+   * 2. **Iterative Waterfall Distribution (Equal Split with Caps):**
+   *    - Tracks a `remainingCents` pool starting at the full check amount in cents.
+   *    - Loops through active liens to calculate an equal slice (`equalShareCents = remainingCents / unresolvedCount`).
+   *    - **Capping Logic:** If the calculated equal share is greater than or equal to what the lien needs (`neededCents`),
+   *      the lien takes only what it needs, and the excess is kept in the pool for the remaining accounts.
+   *    - If the equal share is less than what it needs, the lien takes the equal share safely without overpaying.
+   *
+   * 3. **Overpayment & Remainder Absorption:**
+   *    - If the check amount STILL exceeds the total combined balances after all liens are fully paid,
+   *      any remaining unallocated cents are dumped directly into the highest/last lien in the sorted array.
+   *
+   * 4. **Output Formatting:**
+   *    - Formats the final allocated cent values back into standard two-decimal currency strings (`.toFixed(2)`).
+   *    - Updates the payment tracking state (`lienPayments`) and flags the distribution status.
+   */
+  const handleDistributePayment = () => {
     const val = parseFloat(form.checkAmount);
     if (isNaN(val) || val <= 0 || checkedIds.size === 0) return;
+    const selectedBalance = selectedLiens.reduce((sum, lien) => sum + (lien.balance ?? 0), 0);
+    if (val > selectedBalance) {
+      addToast({
+        type: "error",
+        title: "Amount Exceeds Balance",
+        description: "The payment cannot exceed the selected liens' outstanding balance.",
+      });
+      return;
+    }
     const updates: Record<string, string> = { ...lienPayments };
 
     // Convert total check amount to total cents to avoid floating-point math issues
@@ -486,7 +508,7 @@ const handleDistributePayment = () => {
 
     // Map and sort active liens by balance ascending (converted to cents)
     const activeLiens = selectedLiens
-      .map(l => ({
+      .map((l) => ({
         id: l.id,
         balanceCents: Math.round((l.balance ?? 0) * 100),
         allocatedCents: 0,
@@ -509,14 +531,13 @@ const handleDistributePayment = () => {
       }
     }
 
-    // If check amount STILL exceeds total balances, 
+    // If check amount STILL exceeds total balances,
     // dump all remaining cents into the highest/last lien in the sorted array
     if (remainingCents > 0 && activeLiens.length > 0) {
       const highestLien = activeLiens[activeLiens.length - 1];
       highestLien.allocatedCents += remainingCents;
       remainingCents = 0;
     }
-
     // Format back to standard two-decimal currency strings
     for (const lien of activeLiens) {
       updates[lien.id] = (lien.allocatedCents / 100).toFixed(2);
@@ -546,40 +567,33 @@ const handleDistributePayment = () => {
       const paymentDate = form.checkDate ? formatDate(form.checkDate) : "";
 
       if (isEditing) {
-        settlementService.updateSettlementPayment(form.id, {
+        await settlementService.updateSettlementPayment(form.id, {
           lienStatus: form.lienStatus,
           amount: parseFloat(form.checkAmount || "0"),
           paymentDate,
-          paymentMethod: PAYMENT_METHOD_CHECK,
+          paymentMethod: form.paymentMethod,
           referenceNumber: form.checkNumber,
+          detailsContext: form.detailsContext,
           notes: form.note,
           settlementType: form.type,
           settlementStatus: form.status,
         });
       } else {
-        await Promise.all(
-          lienIds.flatMap((id) => [
-            settlementService.createSettlementPayment({
-              lienId: id,
-              lienStatus: form.lienStatus,
-              caseId,
-              amount: parseFloat(lienPayments[id] || "0"),
-              paymentDate,
-              paymentMethod: PAYMENT_METHOD_CHECK,
-              referenceNumber: form.checkNumber,
-              notes: form.note,
-              settlementType: form.type,
-              settlementStatus: form.status,
-            }),
-            settlementService.createLienSettlement({
-              lienId: id,
-              caseId,
-              settlementAmount: parseFloat(lienPayments[id] || "0"),
-              settlementDate: paymentDate,
-              notes: form.note,
-            }),
-          ]),
-        );
+        await settlementService.recordCasePayment(caseId, {
+          amount: parseFloat(form.checkAmount),
+          paymentDate,
+          paymentMethod: form.paymentMethod,
+          referenceNumber: form.checkNumber,
+          detailsContext: form.detailsContext,
+          notes: form.note,
+          settlementType: form.type,
+          settlementStatus: form.status,
+          lienStatus: form.lienStatus,
+          allocations: lienIds.map((lienId) => ({
+            lienId,
+            amount: parseFloat(lienPayments[lienId] || "0"),
+          })),
+        });
       }
 
       addToast({
@@ -601,17 +615,26 @@ const handleDistributePayment = () => {
     }
   };
 
+  const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
+  const allocatedAmount = selectedLiens.reduce(
+    (sum, lien) => sum + (parseFloat(lienPayments[lien.id] || "0") || 0),
+    0,
+  );
+  const paymentAmount = parseFloat(form.checkAmount) || 0;
+  const hasInvalidAllocation = selectedLiens.some((lien) => {
+    const allocated = parseFloat(lienPayments[lien.id] || "0") || 0;
+    return allocated <= 0 || allocated > (lien.balance ?? 0);
+  });
+
   const isFormInvalid =
     form.lienStatus.trim() === "" ||
     form.checkAmount.trim() === "" ||
-    form.checkDate.trim() ==="" ||
-    form.checkNumber.trim() ==="" || 
-    form.type.trim() ==="" || 
-    form.status.trim() ==="" ||
-    (!isEditing  && !hasDistributedPayment) ||
+    form.checkDate.trim() === "" ||
+    form.checkNumber.trim() === "" ||
+    form.type.trim() === "" ||
+    form.status.trim() === "" ||
+    (!isEditing && !hasDistributedPayment) ||
     (!isEditing && checkedIds.size === 0);
-
-  const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
 
   const totalAmountToSettle = openLiens.reduce(
     (s, l) => s + (l.balance ?? 0),
@@ -625,7 +648,7 @@ const handleDistributePayment = () => {
     (s, l) => s + (l.purchaseAmount ?? 0),
     0,
   );
-// 1. Computes the overall total for all open liens
+  // 1. Computes the overall total for all open liens
   const totalReceivedPayment = openLiens.reduce((s, l) => {
     const val = parseFloat(lienPayments[l.id] ?? l.paymentAmount ?? "0") || 0;
     return s + val;
@@ -639,19 +662,30 @@ const handleDistributePayment = () => {
   }, 0);
 
   const checkAmountNum = parseFloat(form.checkAmount) || 0;
-  
+
   // 3. Validation uses only the checked items
   const receivedExceedsCheck =
     checkedReceivedPayment > checkAmountNum &&
     checkAmountNum > 0 &&
-    checkedReceivedPayment > 0 
+    checkedReceivedPayment > 0;
 
   const paymentColumns: LienColumnDef[] = [
     {
       id: "lienId",
       header: "Lien ID",
       cell: (l) => (
-        <span className="text-sm text-primary whitespace-nowrap">{l.lienNumber}</span>
+        <span className="text-sm text-primary whitespace-nowrap">
+          {l.lienNumber}
+        </span>
+      ),
+    },
+    {
+      id: "facilityName",
+      header: "Medical Facility",
+      cell: (l) => (
+        <span className="text-sm text-gray-600 whitespace-wrap max-w-40 block">
+          {l.facilityName || ""}
+        </span>
       ),
     },
     {
@@ -735,7 +769,7 @@ const handleDistributePayment = () => {
 
   const paymentFooter: LienFooterCell[] = [
     {
-      colSpan: 3,
+      colSpan: 4,
       content: (
         <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
           Total
@@ -785,9 +819,8 @@ const handleDistributePayment = () => {
     },
   ];
 
-
   const updateForm = (updates: any) => {
-    setForm((prev:any) => ({
+    setForm((prev: any) => ({
       ...prev,
       ...updates,
     }));
@@ -798,7 +831,7 @@ const handleDistributePayment = () => {
       open={open}
       onClose={handleResetClose}
       onSubmit={handleSave}
-      title="Add Payment"
+      title={isEditing ? "Edit Payment" : "Add Payment"}
       submitLabel={saving ? "Saving..." : "Save Payment"}
       submitDisabled={saving || isFormInvalid}
       size="xl"
@@ -851,18 +884,18 @@ const handleDistributePayment = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Check Amount <span className="text-red-500">*</span>
+                Payment Amount <span className="text-red-500">*</span>
               </label>
               <NumberInput
                 value={form.checkAmount}
                 onValueChange={(v) => {
-                    updateForm({ ...form, checkAmount: v })
-                    setDistributedPayment(false)
+                  updateForm({ ...form, checkAmount: v });
+                  setDistributedPayment(false);
                 }}
                 onBlur={() => {
                   const n = parseFloat(form.checkAmount);
                   if (!isNaN(n) && n > 0)
-                    updateForm({ ...form, checkAmount: n.toFixed(2) })
+                    updateForm({ ...form, checkAmount: n.toFixed(2) });
                 }}
                 placeholder="0.00"
                 prefix="$"
@@ -870,7 +903,7 @@ const handleDistributePayment = () => {
             </div>
 
             <Field
-              label="Check Received"
+              label="Payment Date"
               required
               type="date"
               value={form.checkDate}
@@ -878,11 +911,37 @@ const handleDistributePayment = () => {
             />
 
             <Field
-              label="Check Number"
+              label="Reference / ID"
               required
-              placeholder="Enter check number"
+              placeholder="Enter reference or confirmation number"
               value={form.checkNumber}
               onChange={(v) => updateForm({ ...form, checkNumber: v })}
+            />
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Payment Method <span className="text-red-500">*</span>
+              </label>
+              <Select
+                value={form.paymentMethod}
+                onValueChange={(value) => updateForm({ paymentMethod: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((method) => (
+                    <SelectItem key={method} value={method}>{method}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Field
+              label="Details / Context"
+              placeholder="Optional payment context"
+              value={form.detailsContext}
+              onChange={(value) => updateForm({ detailsContext: value })}
             />
 
             <div>

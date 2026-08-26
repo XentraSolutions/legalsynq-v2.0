@@ -36,4 +36,38 @@ describe("describeSettlementHistoryItem", () => {
 
     expect(describeSettlementHistoryItem(item)).toBe("Reduction of $100.00");
   });
+
+  it("uses the recorded payment note as the activity description", () => {
+    const item: SettlementHistoryItemV3 = {
+      id: "history-3",
+      type: "payment",
+      lienId: "lien-1",
+      amount: 100,
+      paymentNumber: 1,
+      payee: "",
+      checkNumber: "3626",
+      note: "Paid with CK#3626",
+      createdAt: "2026-08-10T14:44:00Z",
+      updatedBy: "QA Case Manager",
+    };
+
+    expect(describeSettlementHistoryItem(item)).toBe("Paid with CK#3626");
+  });
+
+  it("uses the check number when a payment has no recorded note", () => {
+    const item: SettlementHistoryItemV3 = {
+      id: "history-4",
+      type: "payment",
+      lienId: "lien-1",
+      amount: 100,
+      paymentNumber: 1,
+      payee: "",
+      checkNumber: "3626",
+      note: "",
+      createdAt: "2026-08-10T14:44:00Z",
+      updatedBy: "QA Case Manager",
+    };
+
+    expect(describeSettlementHistoryItem(item)).toBe("Paid with CK#3626");
+  });
 });

@@ -18,6 +18,8 @@ export function describeSettlementHistoryItem(
     case "law-firm-change":
       return item.description || item.note || "Law firm changed";
     case "payment":
+      if (item.note.trim()) return item.note.trim();
+      if (item.checkNumber) return `Paid with CK#${item.checkNumber}`;
       description = `Payment of ${formatCurrency(item.amount)}${item.payee ? ` to ${item.payee}` : ""}${item.checkNumber ? ` (Check #${item.checkNumber})` : ""}`;
       break;
     case "reduction":
