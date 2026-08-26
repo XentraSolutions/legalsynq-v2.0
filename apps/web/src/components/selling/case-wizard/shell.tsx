@@ -63,14 +63,13 @@ export function CaseWizardShell({
   return (
     <div className="max-w-[700px] m-auto">
       <div className="flex items-center mb-6 ">
-        <nav>
-          <Link
-            href="/selling/portfolio/cases"
-            className="text-sm text-gray-500 hover:text-gray-800"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-        </nav>
+        <Link
+          href="/selling/portfolio/cases"
+          aria-label="Back"
+          className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Link>
         <ProgressBar currentStep={step} totalSteps={totalSteps} />
       </div>
       <p className={`mt-2 text-xs text-gray-600`}>
