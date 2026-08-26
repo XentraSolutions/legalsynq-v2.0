@@ -130,7 +130,7 @@ function OverviewTab({ detail }: { detail: OfferedLienDetail }) {
               {detail.status}
             </span>
           </div>
-          <DetailField label="Submitted Date" value={formatDateTimeParts(detail.submittedAtUtc)} />
+          <DetailField label="Submitted Date" value={formatOptionalDate(detail.submittedAtUtc)} />
           <DetailField label="Initial Service Date" value={formatOptionalDate(detail.initialServiceDate)} />
           <DetailField label="End Service Date" value={formatOptionalDate(detail.endServiceDate)} />
           <div className="pb-4 sm:col-span-2">
@@ -267,7 +267,7 @@ function DocumentRow({
         <p className="truncate text-[16px] font-semibold leading-5 text-[#0a0a0a]">
           {document.fileName}
         </p>
-        <p className="mt-1 truncate text-[16px] font-normal leading-[1.6] text-[#737373]">
+        <p className="mt-1 whitespace-normal break-words text-[16px] font-normal leading-[1.6] text-[#737373]">
           {detail || "Document"}
         </p>
       </div>
