@@ -65,8 +65,9 @@ public class ReferralEmailService : IReferralEmailService
     // ── Tenant URL helper ─────────────────────────────────────────────────────
     //
     // Builds a tenant-branded URL:
+    //   Tenant hostname available → https://{hostname}{path}
     //   AppBaseDomain configured → https://{subdomain}.{AppBaseDomain}{path}
-    //   AppBaseDomain empty / subdomain unavailable → {AppBaseUrl}{path}
+    //   AppBaseDomain empty / tenant host unavailable → {AppBaseUrl}{path}
     //
     // Subdomain is sourced from ITenantSubdomainCache (Singleton), so the result
     // survives across DI scopes and request lifetimes.
@@ -74,25 +75,30 @@ public class ReferralEmailService : IReferralEmailService
     private async Task<string> BuildTenantUrlAsync(
         Guid tenantId, string path, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(_options.AppBaseDomain))
-            return _options.AppBaseUrl + path;
-
-        if (!_subdomainCache.TryGetValue(tenantId, out var subdomain))
+        if (!_subdomainCache.TryGetValue(tenantId, out var tenantHost))
         {
-            subdomain = await _tenantClient.GetSubdomainAsync(tenantId, ct);
-            if (!string.IsNullOrWhiteSpace(subdomain))
-                _subdomainCache.TryAdd(tenantId, subdomain!);
+            tenantHost = await _tenantClient.GetTenantHostAsync(tenantId, ct);
+            if (tenantHost is not null)
+                _subdomainCache.TryAdd(tenantId, tenantHost);
         }
 
-        if (string.IsNullOrWhiteSpace(subdomain))
+        if (!string.IsNullOrWhiteSpace(tenantHost?.Hostname))
+            return $"https://{tenantHost.Hostname}{path}";
+
+        if (!string.IsNullOrEmpty(_options.AppBaseDomain) &&
+            !string.IsNullOrWhiteSpace(tenantHost?.Subdomain))
+        {
+            return $"https://{tenantHost.Subdomain}.{_options.AppBaseDomain}{path}";
+        }
+
+        if (tenantHost is null)
         {
             _logger.LogDebug(
-                "ReferralEmailService: subdomain not found for tenant {TenantId} — using AppBaseUrl fallback.",
+                "ReferralEmailService: tenant host not found for tenant {TenantId} — using AppBaseUrl fallback.",
                 tenantId);
-            return _options.AppBaseUrl + path;
         }
 
-        return $"https://{subdomain}.{_options.AppBaseDomain}{path}";
+        return _options.AppBaseUrl + path;
     }
 
     // ── Token helpers ─────────────────────────────────────────────────────────
@@ -1020,6 +1026,14 @@ public class ReferralEmailService : IReferralEmailService
         return string.IsNullOrWhiteSpace(withZip) ? null : withZip;
     }
 
+    private static string? ReferralOriginationName(Referral r)
+    {
+        var firstName = r.ReferralAttribution?.FirstName?.Trim();
+        var lastName = r.ReferralAttribution?.LastName?.Trim();
+        var name = string.Join(" ", new[] { firstName, lastName }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        return string.IsNullOrWhiteSpace(name) ? null : name;
+    }
+
     /// <summary>Titled section with orange-gradient rule and a data table.</summary>
     private static string Section(string title, string rows)
         => string.IsNullOrEmpty(rows) ? "" : $"""
@@ -1145,6 +1159,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Urgency",           r.Urgency) +
             Row("Date of Accident",  r.DateOfAccident?.ToString("yyyy-MM-dd")) +
             Row("Type of Treatment", treatmentTypeName) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Notes",             r.Notes);
 
         var providerRows =
@@ -1281,6 +1296,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
             Row("Provider", provName, bold: true) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Case #",   r.CaseNumber);
 
         var footer = $"<strong>{provName}</strong> will be in touch with your client to continue coordinating care.";
@@ -1349,6 +1365,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
             Row("Provider", provName) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Case #",   r.CaseNumber);
 
         var footer = $"You may search for an alternative provider or contact <strong>{provName}</strong> directly for more information.";
@@ -1397,6 +1414,7 @@ public class ReferralEmailService : IReferralEmailService
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
             Row("Provider", provName) +
+            Row("Referral Origination", ReferralOriginationName(r)) +
             Row("Case #",   r.CaseNumber);
 
         var footer = "If this cancellation was unexpected, please contact the involved parties for more information.";
@@ -1425,7 +1443,8 @@ public class ReferralEmailService : IReferralEmailService
         var summaryRows =
             Row("Patient",  $"{r.ClientFirstName} {r.ClientLastName}".Trim(), bold: true) +
             Row("Service",  r.RequestedService) +
-            Row("From",     senderLabel);
+            Row("From",     senderLabel) +
+            Row("Referral Origination", isFromReferrer ? null : ReferralOriginationName(r));
 
         var footer = "Reply directly in the referral thread using the button above.";
         IReadOnlyCollection<ReferralAttachment> commentAttachments = comment.Attachments ?? [];

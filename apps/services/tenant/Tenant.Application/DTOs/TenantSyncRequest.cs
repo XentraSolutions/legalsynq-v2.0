@@ -18,6 +18,7 @@ public record TenantSyncRequest(
     string  DisplayName,
     string  Status,
     string? Subdomain,
+    string? Hostname,
     Guid?   LogoDocumentId,
     Guid?   LogoWhiteDocumentId,
     DateTime? SourceCreatedAtUtc,

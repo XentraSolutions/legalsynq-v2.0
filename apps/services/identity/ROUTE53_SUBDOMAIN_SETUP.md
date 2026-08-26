@@ -6,8 +6,11 @@ This document explains how tenant subdomain provisioning works in the Identity s
 and base domain. Empty produces `{tenant}.{baseDomain}`; `nonprod` produces
 `{tenant}.nonprod.{baseDomain}`. Set it with `Route53__EnvironmentLabel=nonprod`.
 The checked-in Development environment override uses `nonprod`.
-The hosted zone remains the base-domain zone. Create, delete, verification, and
-retry paths use the authoritative `IDnsService.BuildHostname` method.
+The hosted zone remains the base-domain zone. New provisioning uses the
+authoritative `IDnsService.BuildHostname` method, then stores the resulting
+hostname as the tenant's primary platform domain. Admin reads, public links, and
+verification retries use the persisted hostname first so changing
+`Route53:EnvironmentLabel` does not rewrite existing tenant URLs.
 
 ## Scope
 
@@ -28,14 +31,23 @@ When a tenant is created:
 1. The Tenant service creates the canonical tenant record.
 2. The Tenant service calls the Identity internal provisioning endpoint.
 3. Identity creates the tenant, org, and admin user.
-4. Identity calls `Route53DnsService.CreateSubdomainAsync(subdomain)`.
-5. The DNS service upserts a Route53 record for `<slug>.<base-domain>`.
-6. Identity verifies the hostname:
+4. Identity builds the effective hostname. With `Route53:EnvironmentLabel=nonprod`,
+   new tenants use `<slug>.nonprod.<base-domain>`.
+5. Identity calls `Route53DnsService.CreateSubdomainAsync(subdomain)`.
+6. The DNS service upserts a Route53 record for the effective hostname.
+7. Identity persists that hostname in its tenant domain table and syncs it to the
+   Tenant service primary platform domain.
+8. Identity verifies the hostname:
    - DNS resolution must succeed.
    - HTTPS `GET https://<hostname>/.well-known/tenant-verify` must succeed.
    - The response body must contain `tenant-verify-ok`.
-7. If verification passes, the tenant becomes `Active`.
-8. If verification fails, the tenant may remain in `Verifying` and retry automatically, or end in `Failed`.
+9. If verification passes, the tenant becomes `Active`.
+10. If verification fails, the tenant may remain in `Verifying` and retry automatically, or end in `Failed`.
+
+Existing QA tenants created before `.nonprod` labelling should be preserved by
+backfilling their Tenant service primary platform domain to
+`{subdomain}.legalsynq.net` with `scripts/backfill-qa-tenant-platform-domains.sql`
+before relying on mixed legacy/new public links.
 
 ## Required Configuration
 

@@ -436,6 +436,8 @@ public static class AdminEndpoints
         }).ToList();
 
         var defaultOrg = t.Organizations.OrderBy(o => o.CreatedAtUtc).FirstOrDefault();
+        var persistedHostname = await ResolvePersistedTenantHostnameAsync(db, t.Id, default);
+
         return Results.Ok(new
         {
             id                    = t.Id,
@@ -461,15 +463,26 @@ public static class AdminEndpoints
             lastProvisioningAttemptUtc       = t.LastProvisioningAttemptUtc,
             provisioningFailureReason       = t.ProvisioningFailureReason,
             provisioningFailureStage        = t.ProvisioningFailureStage.ToString(),
-            hostname                        = t.Subdomain != null
+            hostname                        = persistedHostname ?? (t.Subdomain != null
                 ? dnsService.BuildHostname(t.Subdomain)
-                : (string?)null,
+                : (string?)null),
             verificationAttemptCount        = t.VerificationAttemptCount,
             lastVerificationAttemptUtc      = t.LastVerificationAttemptUtc,
             nextVerificationRetryAtUtc      = t.NextVerificationRetryAtUtc,
             isVerificationRetryExhausted    = t.IsVerificationRetryExhausted,
         });
     }
+
+    private static Task<string?> ResolvePersistedTenantHostnameAsync(
+        IdentityDbContext db,
+        Guid tenantId,
+        CancellationToken ct) =>
+        db.TenantDomains
+            .Where(d => d.TenantId == tenantId && d.DomainType == "SUBDOMAIN")
+            .OrderByDescending(d => d.IsPrimary)
+            .ThenByDescending(d => d.IsVerified)
+            .Select(d => d.Domain)
+            .FirstOrDefaultAsync(ct);
 
     /// <summary>
     /// POST /api/admin/tenants
@@ -602,6 +615,7 @@ public static class AdminEndpoints
                 DisplayName:         tenant.Name,
                 Status:              "Active",
                 Subdomain:           tenant.Subdomain,
+                Hostname:            null,
                 LogoDocumentId:      tenant.LogoDocumentId,
                 LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
                 SourceCreatedAtUtc:  tenant.CreatedAtUtc,
@@ -618,6 +632,32 @@ public static class AdminEndpoints
 
         // ── Provision subdomain (DNS + TenantDomain record) ──────────────────
         var provResult = await provisioningService.ProvisionAsync(tenant, ct);
+
+        if (!string.IsNullOrWhiteSpace(provResult.Hostname))
+        {
+            try
+            {
+                await syncAdapter.SyncAsync(new IdentityTenantSyncRequest(
+                    TenantId:            tenant.Id,
+                    Code:                tenant.Code,
+                    DisplayName:         tenant.Name,
+                    Status:              tenant.IsActive ? "Active" : "Inactive",
+                    Subdomain:           tenant.Subdomain,
+                    Hostname:            provResult.Hostname,
+                    LogoDocumentId:      tenant.LogoDocumentId,
+                    LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
+                    SourceCreatedAtUtc:  tenant.CreatedAtUtc,
+                    SourceUpdatedAtUtc:  tenant.UpdatedAtUtc,
+                    EventType:           "Update"), ct);
+            }
+            catch (Exception syncEx)
+            {
+                log.LogError(syncEx,
+                    "[TenantDualWrite] Strict host sync failure in CreateTenant for TenantId={TenantId}, aborting.",
+                    tenant.Id);
+                return Results.Problem("Tenant host sync failed (strict mode active).", statusCode: 502);
+            }
+        }
 
         if (provResult.Success)
         {
@@ -895,7 +935,8 @@ public static class AdminEndpoints
         var log = loggerFactory.CreateLogger("Identity.Api.AdminEndpoints");
         log.LogInformation("Verification retry requested (admin) for tenant {TenantCode}", tenant.Code);
 
-        var hostname = dnsService.BuildHostname(tenant.Subdomain);
+        var hostname = await ResolvePersistedTenantHostnameAsync(db, tenant.Id, ct)
+            ?? dnsService.BuildHostname(tenant.Subdomain);
 
         tenant.ResetVerificationRetryState();
         await db.SaveChangesAsync(ct);
@@ -1151,6 +1192,7 @@ public static class AdminEndpoints
             DisplayName:         tenant.Name,
             Status:              tenant.IsActive ? "Active" : "Inactive",
             Subdomain:           tenant.Subdomain,
+            Hostname:            await ResolvePersistedTenantHostnameAsync(db, tenant.Id, default),
             LogoDocumentId:      tenant.LogoDocumentId,
             LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
             SourceCreatedAtUtc:  tenant.CreatedAtUtc,
@@ -1225,6 +1267,7 @@ public static class AdminEndpoints
             DisplayName:         tenant.Name,
             Status:              tenant.IsActive ? "Active" : "Inactive",
             Subdomain:           tenant.Subdomain,
+            Hostname:            await ResolvePersistedTenantHostnameAsync(db, tenant.Id, default),
             LogoDocumentId:      null,
             LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
             SourceCreatedAtUtc:  tenant.CreatedAtUtc,
@@ -1304,6 +1347,7 @@ public static class AdminEndpoints
             DisplayName:         tenant.Name,
             Status:              tenant.IsActive ? "Active" : "Inactive",
             Subdomain:           tenant.Subdomain,
+            Hostname:            await ResolvePersistedTenantHostnameAsync(db, tenant.Id, default),
             LogoDocumentId:      tenant.LogoDocumentId,
             LogoWhiteDocumentId: tenant.LogoWhiteDocumentId,
             SourceCreatedAtUtc:  tenant.CreatedAtUtc,
@@ -1373,6 +1417,7 @@ public static class AdminEndpoints
             DisplayName:         tenant.Name,
             Status:              tenant.IsActive ? "Active" : "Inactive",
             Subdomain:           tenant.Subdomain,
+            Hostname:            await ResolvePersistedTenantHostnameAsync(db, tenant.Id, default),
             LogoDocumentId:      tenant.LogoDocumentId,
             LogoWhiteDocumentId: null,
             SourceCreatedAtUtc:  tenant.CreatedAtUtc,
@@ -2296,7 +2341,9 @@ public static class AdminEndpoints
         });
 
         // LS-ID-TNT-016-01: Build tenant-subdomain-aware reset link.
-        var resetTenant = await db.Tenants.FindAsync([opTenantId], ct);
+        var resetTenant = await db.Tenants
+            .Include(t => t.Domains)
+            .FirstOrDefaultAsync(t => t.Id == opTenantId, ct);
         var resetLink   = TenantPortalUrlHelper.Build(resetTenant, "reset-password", rawToken, notificationsOptions.Value);
         if (resetLink is not null)
         {
@@ -4451,7 +4498,9 @@ public static class AdminEndpoints
         if (body.TenantId == Guid.Empty)
             return Results.BadRequest(new { error = "tenantId is required." });
 
-        var tenant = await db.Tenants.FindAsync([body.TenantId], ct);
+        var tenant = await db.Tenants
+            .Include(t => t.Domains)
+            .FirstOrDefaultAsync(t => t.Id == body.TenantId, ct);
         if (tenant is null) return Results.NotFound(new { error = $"Tenant '{body.TenantId}' not found." });
 
         // UIX-003-01: TenantAdmin may only invite users into their own tenant.
@@ -4780,7 +4829,9 @@ public static class AdminEndpoints
 
         // Build activation link via tenant portal helper.
         var logger         = loggerFactory.CreateLogger("AdminEndpoints.InvitePlatformUser");
-        var platformTenant = await db.Tenants.FindAsync([platformTenantId], ct);
+        var platformTenant = await db.Tenants
+            .Include(t => t.Domains)
+            .FirstOrDefaultAsync(t => t.Id == platformTenantId, ct);
         string? activationLink = null;
         if (platformTenant is not null)
         {
@@ -4865,7 +4916,9 @@ public static class AdminEndpoints
 
         // LS-ID-TNT-016-01: Build tenant-subdomain-aware activation link.
         var logger        = loggerFactory.CreateLogger("AdminEndpoints.ResendInvite");
-        var inviteTenant  = await db.Tenants.FindAsync([opTenantId], ct);
+        var inviteTenant = await db.Tenants
+            .Include(t => t.Domains)
+            .FirstOrDefaultAsync(t => t.Id == opTenantId, ct);
         var activationLink = TenantPortalUrlHelper.Build(inviteTenant, "accept-invite", rawToken, notifOptions.Value);
 
         if (activationLink is null)
@@ -8345,7 +8398,9 @@ public static partial class AdminEndpointsLscc010
 
                 // Best-effort tenant-access-granted notification email.
                 var notificationSent = false;
-                var providerTenantForNotif = await db.Tenants.FindAsync([targetTenantId], ct);
+                var providerTenantForNotif = await db.Tenants
+                    .Include(t => t.Domains)
+                    .FirstOrDefaultAsync(t => t.Id == targetTenantId, ct);
                 var portalUrl = TenantPortalUrlHelper.BuildBaseUrl(providerTenantForNotif, notifOptions.Value);
                 if (portalUrl is not null)
                 {
@@ -8413,7 +8468,9 @@ public static partial class AdminEndpointsLscc010
                     ct);
 
                 var invSent       = false;
-                var provTenant    = await db.Tenants.FindAsync([targetTenantId], ct);
+                var provTenant = await db.Tenants
+                    .Include(t => t.Domains)
+                    .FirstOrDefaultAsync(t => t.Id == targetTenantId, ct);
                 var activationLink = TenantPortalUrlHelper.Build(provTenant, "accept-invite", rawToken, notifOptions.Value);
                 if (activationLink is not null)
                 {
@@ -8488,7 +8545,9 @@ public static partial class AdminEndpointsLscc010
 
         // Best-effort invitation email — LS-ID-TNT-016-01: tenant-subdomain-aware link.
         var invitationSent = false;
-        var providerTenant = await db.Tenants.FindAsync([targetTenantId], ct);
+        var providerTenant = await db.Tenants
+            .Include(t => t.Domains)
+            .FirstOrDefaultAsync(t => t.Id == targetTenantId, ct);
         var activationLinkNew = TenantPortalUrlHelper.Build(providerTenant, "accept-invite", rawToken2, notifOptions.Value);
         if (activationLinkNew is not null)
         {

@@ -153,7 +153,9 @@ public static class LawFirmUserManagementEndpoints
                 return Results.BadRequest(new { error = "tenantId does not match the organization's tenant." });
 
             var tenantId = body.TenantId;
-            var tenant = await db.Tenants.FindAsync([tenantId], ct);
+            var tenant = await db.Tenants
+                .Include(t => t.Domains)
+                .FirstOrDefaultAsync(t => t.Id == tenantId, ct);
             if (tenant is null)
                 return Results.NotFound(new { error = $"Tenant '{tenantId}' not found." });
 
@@ -315,7 +317,9 @@ public static class LawFirmUserManagementEndpoints
                 Tags = ["careconnect", "law-firm-user-management", "invite"],
             });
 
-            var tenant = await db.Tenants.FindAsync([tenantId], ct);
+            var tenant = await db.Tenants
+                .Include(t => t.Domains)
+                .FirstOrDefaultAsync(t => t.Id == tenantId, ct);
             var activationLink = TenantPortalUrlHelper.Build(tenant, "accept-invite", rawToken, notifOptions.Value);
             if (activationLink is null)
             {

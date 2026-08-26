@@ -7,11 +7,13 @@ namespace Identity.Api.Helpers;
 /// LS-ID-TNT-016-01: Builds tenant-subdomain-aware portal URLs for user-management emails.
 ///
 /// Priority:
-///   1. <c>NotificationsService:PortalBaseDomain</c> is set →
+///   1. Tenant has a primary platform domain loaded →
+///      <c>https://{persistedTenantHost}/{path}?token=...</c>
+///   2. <c>NotificationsService:PortalBaseDomain</c> is set →
 ///      <c>https://{tenantSlug}.{PortalBaseDomain}/{path}?token=...</c>
-///   2. <c>NotificationsService:PortalBaseUrl</c> is set (fallback) →
+///   3. <c>NotificationsService:PortalBaseUrl</c> is set (fallback) →
 ///      <c>{PortalBaseUrl}/{path}?token=...</c>
-///   3. Both missing → returns <c>null</c>; callers must treat this as a
+///   4. Both missing → returns <c>null</c>; callers must treat this as a
 ///      configuration error and NOT emit a malformed link.
 ///
 /// Tenant slug resolution:
@@ -69,6 +71,16 @@ public static class TenantPortalUrlHelper
         Tenant?                     tenant,
         NotificationsServiceOptions opts)
     {
+        var persistedHost = tenant?.Domains
+            .Where(d => string.Equals(d.DomainType, "SUBDOMAIN", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(d => d.IsPrimary)
+            .ThenByDescending(d => d.IsVerified)
+            .Select(d => d.Domain?.Trim().TrimEnd('/'))
+            .FirstOrDefault(d => !string.IsNullOrWhiteSpace(d));
+
+        if (!string.IsNullOrWhiteSpace(persistedHost))
+            return $"https://{persistedHost}";
+
         var baseDomain = opts.PortalBaseDomain?.Trim().TrimEnd('/');
 
         if (!string.IsNullOrWhiteSpace(baseDomain) && tenant is not null)

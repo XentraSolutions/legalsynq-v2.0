@@ -50,6 +50,21 @@ public class TenantPortalUrlHelperTests
     }
 
     [Fact]
+    public void BuildBaseUrl_TenantHasPersistedDomain_ReturnsPersistedDomain()
+    {
+        var tenant = TenantWithSubdomain("acme", "acme");
+        tenant.Domains.Add(TenantDomain.Create(
+            tenant.Id,
+            "acme.legalsynq.net",
+            "SUBDOMAIN",
+            isPrimary: true));
+
+        var url = TenantPortalUrlHelper.BuildBaseUrl(tenant, Opts("nonprod.legalsynq.net"));
+
+        Assert.Equal("https://acme.legalsynq.net", url);
+    }
+
+    [Fact]
     public void BuildBaseUrl_BaseDomainSet_SubdomainIsUppercase_IsNormalisedToLower()
     {
         var tenant = TenantWithSubdomain("test", "MyFirm");

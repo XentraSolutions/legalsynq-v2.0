@@ -52,9 +52,14 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
         if (slug != tenant.Subdomain)
             tenant.SetSubdomain(slug);
 
+        var existingDomain = await _db.TenantDomains
+            .FirstOrDefaultAsync(d => d.TenantId == tenant.Id && d.DomainType == "SUBDOMAIN", ct);
+        var hostname = existingDomain?.Domain ?? _dns.BuildHostname(slug);
+
         var priorStatus = tenant.ProvisioningStatus;
         var canSkipDns = isRetry &&
-            (priorStatus == ProvisioningStatus.Provisioned ||
+            (existingDomain is not null ||
+             priorStatus == ProvisioningStatus.Provisioned ||
              priorStatus == ProvisioningStatus.Verifying);
 
         tenant.MarkProvisioningInProgress();
@@ -64,8 +69,6 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
         _log.LogInformation(
             "Provisioning {Action} for tenant {TenantCode} with subdomain {Slug} (priorStatus={PriorStatus})",
             isRetry ? "retry" : "started", tenant.Code, slug, priorStatus);
-
-        var hostname = _dns.BuildHostname(slug);
 
         try
         {
@@ -81,9 +84,6 @@ public sealed class TenantProvisioningService : ITenantProvisioningService
                     return new ProvisioningResult(false, null, msg, ProvisioningFailureStage.DnsProvisioning);
                 }
             }
-
-            var existingDomain = await _db.TenantDomains
-                .FirstOrDefaultAsync(d => d.TenantId == tenant.Id && d.DomainType == "SUBDOMAIN", ct);
 
             if (existingDomain is null)
             {
