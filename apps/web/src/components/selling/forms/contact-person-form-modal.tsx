@@ -11,7 +11,7 @@ import {
   useContactPersonTypes,
   useCreateContactPerson,
   useUpdateContactPerson,
-} from "@/hooks/use-selling-companies";
+} from "@/hooks/selling/use-selling-companies";
 import { AddContactPersonRoleModal } from "@/components/selling/forms/add-contact-person-role-modal";
 import type { ContactPerson } from "@/lib/selling/companies.types";
 

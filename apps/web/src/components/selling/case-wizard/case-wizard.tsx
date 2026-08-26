@@ -10,7 +10,7 @@ import PlaintiffInfoStep, {
 import { NewCaseAddedModal } from "./new-case-added-modal";
 import type { CaseInfoFieldsValue } from "../forms/add-case/case-info-fields";
 import type { PlaintiffInfoFieldsValue } from "../forms/add-case/plaintiff-info-fields";
-import { useCreateCaseDraft, useAttachPlaintiff } from "@/hooks/use-case-drafts";
+import { useCreateCaseDraft, useAttachPlaintiff } from "@/hooks/selling/use-case-drafts";
 
 export function CaseWizard() {
   const router = useRouter();
@@ -23,6 +23,9 @@ export function CaseWizard() {
   );
   const [draftId, setDraftId] = useState<string | null>(null);
   const [createdCaseId, setCreatedCaseId] = useState<string | null>(null);
+  const [createdCaseNumber, setCreatedCaseNumber] = useState<string | null>(
+    null,
+  );
   const createCaseDraft = useCreateCaseDraft();
   const attachPlaintiff = useAttachPlaintiff();
 
@@ -68,6 +71,7 @@ export function CaseWizard() {
         },
       });
       setCreatedCaseId(finalized.caseId);
+      setCreatedCaseNumber(finalized.caseNumber);
     } catch {
       toast.error("Failed to create case");
     }
@@ -94,6 +98,7 @@ export function CaseWizard() {
       />
       <NewCaseAddedModal
         open={!!createdCaseId}
+        caseNumber={createdCaseNumber ?? undefined}
         onClose={() => router.push("/selling/portfolio/cases")}
         onAddLien={() =>
           router.push(`/selling/portfolio/lien/add?caseId=${createdCaseId}`)
