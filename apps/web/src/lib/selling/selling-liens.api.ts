@@ -22,6 +22,8 @@ import type {
   ArchiveSellingLienRequest,
   LienArchivedStatusResult,
   SubmitSellingLienRequest,
+  MoveSellingLienToManagementV2Request,
+  MoveSellingLienToManagementV2Result,
   LienListItem,
   LienActivityFeedResult,
   BulkImportSummary,
@@ -220,6 +222,17 @@ export const liensApi = {
   submitLien(lienId: string, request: SubmitSellingLienRequest) {
     return apiClient.put<any>(
       `${BASE}/liens/${lienId}/lien-information`,
+      request,
+      idempotencyHeaders(),
+    );
+  },
+
+  moveToManagementV2(
+    lienId: string,
+    request: MoveSellingLienToManagementV2Request,
+  ) {
+    return apiClient.post<MoveSellingLienToManagementV2Result>(
+      `${BASE}/liens/${lienId}/move-to-management-v2`,
       request,
       idempotencyHeaders(),
     );

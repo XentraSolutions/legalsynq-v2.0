@@ -14,7 +14,12 @@ import {
 import { Modal, ConfirmDialog } from "@/components/selling/modal";
 import { ActionMenu, type ActionMenuItem } from "@/components/selling/action-menu";
 import { Button } from "@/components/selling/button";
-import { LienDetail, LienListItem, liensService } from "@/lib/selling";
+import { CreateCaseForm } from "@/components/lien/forms/create-case-form";
+import {
+  type LienListItem,
+  type MoveSellingLienToManagementCaseInfoRequest,
+  liensService,
+} from "@/lib/selling";
 import { toast } from "sonner";
 
 interface LienRowActionsMenuProps {
@@ -57,11 +62,11 @@ export function LienRowActionsMenu({
 }: LienRowActionsMenuProps) {
   const router = useRouter();
   const [showDecisionModal, setShowDecisionModal] = useState(autoOpenDecision);
+  const [showCreateCaseModal, setShowCreateCaseModal] = useState(false);
   const [confirmAction, setConfirmAction] = useState<
-    "withdraw-sale" | "archive" | "restore" | "keep" | null
+    "withdraw-sale" | "archive" | "restore" | null
   >(null);
   const [actionLoading, setActionLoading] = useState(false);
-  const [keepLoading, setKeepLoading] = useState(false);
 
   const status = lien?.sellerStatus ?? lien?.status;
   const resolvedActions =
@@ -77,7 +82,11 @@ export function LienRowActionsMenu({
       router.push(`/selling/portfolio/lien/${lienId}/sell`);
       return;
     }
-    if (action === "keep" || action === "withdraw-sale" || action === "archive" || action === "restore") {
+    if (action === "keep") {
+      setShowCreateCaseModal(true);
+      return;
+    }
+    if (action === "withdraw-sale" || action === "archive" || action === "restore") {
       setConfirmAction(action);
       return;
     }
@@ -95,23 +104,13 @@ export function LienRowActionsMenu({
       };
     });
 
-  const keepAsInternalAsset = async () => {
-    setKeepLoading(true);
-    try {
-      await liensService.submitLien(lienId, {
-        ...lien,
-        sellerStatus: "Internal",
-        listingVisibility: "Private",
-      });
-      toast.success("Lien kept as internal asset.");
-      setShowDecisionModal(false);
-      onActionComplete();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Action failed");
-    } finally {
-      setKeepLoading(false);
-    }
-  };
+  const moveToManagement = (
+    caseInfo: MoveSellingLienToManagementCaseInfoRequest,
+  ) =>
+    liensService.moveToManagementV2(lienId, {
+      reason: "Keep internally",
+      caseInfo,
+    });
 
   const runConfirmAction = async () => {
     if (!confirmAction) return;
@@ -126,13 +125,6 @@ export function LienRowActionsMenu({
       } else if (confirmAction === "restore") {
         await liensService.restoreLien(lienId);
         toast.success("Lien restored.");
-      } else {
-        await liensService.submitLien(lienId, {
-          ...lien,
-          sellerStatus: "Internal",
-          listingVisibility: "Private",
-        });
-        toast.success("Lien kept as internal asset.");
       }
       setConfirmAction(null);
       setShowDecisionModal(false);
@@ -161,14 +153,15 @@ export function LienRowActionsMenu({
           <>
             <Button
               variant="secondary"
-              loading={keepLoading}
-              onClick={keepAsInternalAsset}
+              onClick={() => {
+                setShowDecisionModal(false);
+                setShowCreateCaseModal(true);
+              }}
             >
-              {keepLoading ? "Keeping..." : "Keep"}
+              Keep
             </Button>
             <Button
               variant="primary"
-              disabled={keepLoading}
               onClick={() => {
                 setShowDecisionModal(false);
                 router.push(`/selling/portfolio/lien/${lienId}/sell`);
@@ -185,6 +178,17 @@ export function LienRowActionsMenu({
         </p>
       </Modal>
 
+      <CreateCaseForm
+        open={showCreateCaseModal}
+        onClose={() => setShowCreateCaseModal(false)}
+        onMoveToManagement={moveToManagement}
+        onCreated={(caseId) => {
+          setShowCreateCaseModal(false);
+          onActionComplete();
+          router.push(`/lien/cases/${caseId}`);
+        }}
+      />
+
       <ConfirmDialog
         open={confirmAction !== null}
         onClose={() => setConfirmAction(null)}
@@ -195,29 +199,29 @@ export function LienRowActionsMenu({
             ? "Withdraw From Sale?"
             : confirmAction === "archive"
               ? "Archive This Lien?"
-              : confirmAction === "restore"
-                ? "Restore This Lien?"
-              : "Keep as Internal Asset?"
+            : confirmAction === "restore"
+              ? "Restore This Lien?"
+              : "Confirm Action"
         }
         description={
           confirmAction === "withdraw-sale"
             ? "This lien will no longer be visible to the buyer and will need to be re-submitted for sale."
             : confirmAction === "archive"
               ? "This lien will be hidden from active portfolio lists, but its record and history will be retained."
-              : confirmAction === "restore"
-                ? "This lien will be restored to the Pending list for active portfolio tracking."
-              : "This lien will be kept as a private internal asset instead of being listed for sale."
+            : confirmAction === "restore"
+              ? "This lien will be restored to the Pending list for active portfolio tracking."
+              : ""
         }
         confirmLabel={
           confirmAction === "withdraw-sale"
             ? "Withdraw"
             : confirmAction === "archive"
               ? "Archive"
-              : confirmAction === "restore"
-                ? "Restore"
-              : "Keep"
+            : confirmAction === "restore"
+              ? "Restore"
+              : "Confirm"
         }
-        confirmVariant={confirmAction === "keep" || confirmAction === "restore" ? "primary" : "danger"}
+        confirmVariant={confirmAction === "restore" ? "primary" : "danger"}
       />
     </div>
   );

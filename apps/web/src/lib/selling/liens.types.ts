@@ -335,6 +335,40 @@ export interface SubmitSellingLienRequest {
   listingVisibility: string;
 }
 
+export interface MoveSellingLienToManagementCaseInfoRequest {
+  clientFirstName: string;
+  clientLastName: string;
+  clientDob: string;
+  clientAddress?: string;
+  clientCity?: string;
+  clientState?: string;
+  clientZipCode?: string;
+  isServicing?: boolean;
+  statusLabel: string;
+  accidentTypeId: string;
+  stateOfIncident: string;
+  dateOfIncident?: string;
+  lawFirmId: string;
+  caseManagerId?: string;
+  notes?: string;
+}
+
+export interface MoveSellingLienToManagementV2Request {
+  reason?: string;
+  caseInfo?: MoveSellingLienToManagementCaseInfoRequest;
+}
+
+export interface MoveSellingLienToManagementV2Result {
+  lienId: string;
+  caseId: string;
+  sellingCaseId: string;
+  caseCreated: boolean;
+  caseNumber: string;
+  sellerStatus: string;
+  status: string;
+  message: string;
+}
+
 // Shape returned by GET {lienId}/activity (SellingV2Endpoints.GetLienActivity) —
 // distinct field names from the `activity` array embedded in GetLienDetail
 // (LienActivityItem), which uses changedByUserId/changedAtUtc instead.

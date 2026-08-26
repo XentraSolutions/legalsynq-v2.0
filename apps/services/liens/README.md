@@ -84,6 +84,7 @@ Liens.Infrastructure/ DbContext (LiensDb), repositories, EF migrations
 | `POST`          | `/api/liens/cases/dashboard/cash-received`                                                          | Sums non-deleted settlement-row amounts by persisted `SettlementDate`. An explicit range is inclusive; an omitted range defaults through the previous Pacific calendar day and excludes undated or future settlements.                                                                                                                                                                                                                                                                                                                                                    |
 
 Legacy procedure-cost lookup (`/lookup/medical/procedure/costs/{code}`) returns manual medical-code costs first, then CMS Procedure Price Lookup costs when available. Codes without CMS cost rows return a successful empty `data` array so UI entry flows can leave Medicare Cost blank instead of treating the lookup as a broken route.
+Procedure-code lookup (`/lookup/medical/procedure/codes`) returns active tenant manual codes before shared and CMS codes, so a manual entry overrides a matching CPT code; optional `search` matches a code or description.
 
 Current Medical Status is backed by the `MedicalStatus` lookup category. The lookup seed provides `Treating`, and the accompanying data migration adds each nonblank status already stored on a tenant's cases so Case Tracking can continue to select imported legacy values.
 

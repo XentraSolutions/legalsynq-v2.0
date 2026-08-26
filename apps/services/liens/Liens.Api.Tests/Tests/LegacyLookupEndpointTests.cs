@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Liens.Api.Tests.Helpers;
 using Liens.Domain.Entities;
@@ -368,6 +369,30 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
                 item?["description"]?.GetValue<string>() == "Manual Procedure (MANUAL-001)")
             .Should()
             .BeTrue();
+    }
+
+    [Fact]
+    public async Task ProcedureCodes_prefers_manual_medical_codes_that_match_medicare_codes()
+    {
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/manual/medical/code/create",
+            new
+            {
+                code = "45385",
+                description = "Tenant colonoscopy override",
+            });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var response = await _client.GetAsync("/lookup/medical/procedure/codes?search=45385");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        var medicalCode = payload["data"]!.AsArray()
+            .Single(item => item?["code"]?.GetValue<string>() == "45385")!;
+        medicalCode["description"]!
+            .GetValue<string>()
+            .Should()
+            .Be("Tenant colonoscopy override (45385)");
     }
 
     [Fact]

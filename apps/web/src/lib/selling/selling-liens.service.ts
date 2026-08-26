@@ -27,6 +27,8 @@ import type {
   ArchiveSellingLienRequest,
   LienArchivedStatusResult,
   SubmitSellingLienRequest,
+  MoveSellingLienToManagementV2Request,
+  MoveSellingLienToManagementV2Result,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
@@ -209,6 +211,14 @@ export const liensService = {
     request: SubmitSellingLienRequest,
   ): Promise<any> {
     const { data } = await liensApi.submitLien(lienId, request);
+    return data;
+  },
+
+  async moveToManagementV2(
+    lienId: string,
+    request: MoveSellingLienToManagementV2Request,
+  ): Promise<MoveSellingLienToManagementV2Result> {
+    const { data } = await liensApi.moveToManagementV2(lienId, request);
     return data;
   },
 

@@ -3,6 +3,7 @@ import { ContactResponseDto } from "../contacts/contacts.types";
 export interface LookupGenericResponse {
   id: string;
   name: string;
+  code?: string;
 }
 
 export interface GenericPaginationData {

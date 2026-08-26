@@ -13,19 +13,30 @@ import { ApiError } from "@/lib/api-client";
 import { getCreateCaseFormErrors } from "./create-case-form-validator";
 import Field from "../field";
 import { contactsService } from "@/lib/contacts";
-import { useSessionContext } from "@/providers/session-provider";
-import { dateConverter } from "@/lib/cases/cases.mapper";
 import { ContactEntitySelect } from "@/components/lien/contact-entity-select";
+import { dateConverter, dateConvertertoIso } from "@/lib/cases/cases.mapper";
 import { useCreateCase } from "@/hooks/use-case-liens";
 import { LitigationStatusForm } from "./litigation-form";
 import { DropdownOption } from "@/lib/lookup/lookup.types";
 import { lookupService } from "@/lib/lookup";
+import type {
+  MoveSellingLienToManagementCaseInfoRequest,
+  MoveSellingLienToManagementV2Result,
+} from "@/lib/selling";
 
 interface CreateCaseFormProps {
   caseNumber?: string;
   open: boolean;
   onClose: () => void;
-  onCreated?: (data: any) => void;
+  onCreated?: (caseId: string) => void;
+  /**
+   * Reuses the case UI for a Selling lien's atomic move-to-management flow.
+   * The standalone case screen intentionally omits this callback and retains
+   * its existing create-case behavior.
+   */
+  onMoveToManagement?: (
+    caseInfo: MoveSellingLienToManagementCaseInfoRequest,
+  ) => Promise<MoveSellingLienToManagementV2Result>;
 }
 
 const INITIAL_FORM = {
@@ -55,92 +66,39 @@ const INITIAL_FORM = {
   isServicing: "true",
 };
 
-const LEGACY_CASE_STATUS_OPTIONS = [
-  { key: "legacy-case-status-new", value: "New", label: "New" },
-  {
-    key: "legacy-case-status-processing",
-    value: "Processing",
-    label: "Processing",
-  },
-  { key: "legacy-case-status-closed", value: "Closed", label: "Closed" },
-  {
-    key: "legacy-case-status-pre-demand",
-    value: "Pre-demand",
-    label: "Pre-demand",
-  },
-  {
-    key: "legacy-case-status-demand-sent",
-    value: "Demand Sent",
-    label: "Demand Sent",
-  },
-  {
-    key: "legacy-case-status-negotiations",
-    value: "Negotiations",
-    label: "Negotiations",
-  },
-  {
-    key: "legacy-case-status-litigation",
-    value: "Litigation",
-    label: "Litigation",
-  },
-  {
-    key: "legacy-case-status-case-settled",
-    value: "Case Settled",
-    label: "Case Settled",
-  },
-] as const;
-
-const LEGACY_ACCIDENT_TYPE_NAMES = [
-  "Dog Bite",
-  "Motor Vehicle Accident",
-  "Other",
-  "Slip and Fall",
-  "Workers Compensation",
-  "Medical Malpractice",
-] as const;
-
-const LEGACY_ACCIDENT_TYPE_FALLBACKS: Record<
-  string,
-  { key: string; value: string; label: string }
-> = {
-  "Medical Malpractice": {
-    key: "legacy-accident-type-medical-malpractice",
-    value: "MedicalMalpractice",
-    label: "Medical Malpractice",
-  },
-};
-
-const EMPTY_GUID = "00000000-0000-0000-0000-000000000000";
 export function CreateCaseForm({
   caseNumber,
   open,
   onClose,
   onCreated,
+  onMoveToManagement,
 }: CreateCaseFormProps) {
   const router = useRouter();
-  const { lookup } = useSessionContext();
   const { mutateAsync: createCase } = useCreateCase();
+  const isMoveToManagement = Boolean(onMoveToManagement);
 
   const addToast = useLienStore((s) => s.addToast);
   const [form, setForm] = useState({
     ...INITIAL_FORM,
     caseNumber: caseNumber ?? "",
   });
+
+  const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<string>();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [data, setData] = useState<{
-    state: Array<{ key: string; value: string; label: string }>;
-    accidentState: Array<{ key: string; value: string; label: string }>;
-    status: Array<{ key: string; value: string; label: string }>;
-    accidentType: Array<{ key: string; value: string; label: string }>;
+    state: DropdownOption[];
+    accidentState: DropdownOption[];
+    status: DropdownOption[];
+    accidentType: DropdownOption[];
+    lawFirm: DropdownOption[];
   }>({
     state: [],
     accidentState: [],
     status: [],
     accidentType: [],
+    lawFirm: [],
   });
-
-  const [caseManagerRoleCode, setCaseManagerRoleCode] = useState<string>();
 
   const [isValid, setIsValid] = useState(false);
   const [showLitigationForm, setShowLitigationForm] = useState(false);
@@ -165,6 +123,9 @@ export function CreateCaseForm({
 
   const validate = () => {
     const newErrors = getCreateCaseFormErrors(form);
+    if (onMoveToManagement && !form.accidentStateId) {
+      newErrors.accidentStateId = "Accident State is required";
+    }
     setErrors(newErrors);
     const valid = Object.keys(newErrors).length === 0;
     setIsValid(valid);
@@ -172,48 +133,55 @@ export function CreateCaseForm({
   };
 
   const fetchData = useCallback(async () => {
-    const [lawfirmRes, caseManagersRes] = await Promise.allSettled([
-      lookupService.getLawfirm(),
-      contactsService.getCaseManagers(),
-    ]);
-    if (
-      lawfirmRes.status === "fulfilled" &&
-      caseManagersRes.status === "fulfilled"
-    ) {
-      setData((prev: any) => ({
-        ...prev,
-        status:
-          lookup?.CaseStatus?.map((c) => {
-            return { key: c.id, value: c.code, label: c.name };
-          }) ?? [],
-        state:
-          lookup?.State?.map((c) => {
-            return { key: c.id, value: c.code, label: c.code };
-          }) ?? [],
-        accidentState:
-          lookup?.State?.map((c) => {
-            return { key: c.id, value: c.code, label: c.code };
-          }) ?? [],
-        lawFirm:
-          lawfirmRes.value.items.map((c) => {
-            return { key: c.id, value: c.id, label: c.displayName };
-          }) ?? [],
-        caseManagers:
-          caseManagersRes.value.items.map((c) => {
-            return { key: c.id, value: c.id, label: c.displayName };
-          }) ?? [],
-        accidentType: LEGACY_ACCIDENT_TYPE_NAMES.flatMap((name) => {
-          const match = lookup?.AccidentType?.find((c) => c.name === name);
-
-          if (match && match.id !== EMPTY_GUID) {
-            return [{ key: match.id, value: match.id, label: match.name }];
-          }
-
-          const fallback = LEGACY_ACCIDENT_TYPE_FALLBACKS[name];
-          return fallback ? [fallback] : [];
-        }),
-      }));
-    }
+    const [caseStatusRes, statesRes, accidentTypeRes, lawFirmRes] =
+      await Promise.allSettled([
+        lookupService.getCaseStatus(),
+        lookupService.getStates(),
+        lookupService.getAccidentType(),
+        lookupService.getLawfirm(),
+      ]);
+    setData({
+      status:
+        caseStatusRes.status === "fulfilled"
+          ? caseStatusRes.value.items.map((item) => ({
+              key: item.id,
+              value: item.code,
+              label: item.name,
+            }))
+          : [],
+      state:
+        statesRes.status === "fulfilled"
+          ? statesRes.value.items.map((item) => ({
+              key: item.id,
+              value: item.code ?? item.name,
+              label: item.code ?? item.name,
+            }))
+          : [],
+      accidentState:
+        statesRes.status === "fulfilled"
+          ? statesRes.value.items.map((item) => ({
+              key: item.id,
+              value: item.code ?? item.name,
+              label: item.code ?? item.name,
+            }))
+          : [],
+      accidentType:
+        accidentTypeRes.status === "fulfilled"
+          ? accidentTypeRes.value.items.map((item) => ({
+              key: item.id,
+              value: item.id,
+              label: item.name,
+            }))
+          : [],
+      lawFirm:
+        lawFirmRes.status === "fulfilled"
+          ? lawFirmRes.value.items.map((item) => ({
+              key: item.id,
+              value: item.id,
+              label: item.displayName,
+            }))
+          : [],
+    });
   }, []);
 
   useEffect(() => {
@@ -227,12 +195,14 @@ export function CreateCaseForm({
   }, [form, touched]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (open) fetchData();
+  }, [fetchData, open]);
 
   useEffect(() => {
-    contactsService.getCaseManagerRoleCode().then(setCaseManagerRoleCode);
-  }, []);
+    if (open) {
+      contactsService.getCaseManagerRoleCode().then(setCaseManagerRoleCode);
+    }
+  }, [open]);
 
   const formatDate = (dateString: string) => {
     const input = dateString;
@@ -276,6 +246,28 @@ export function CreateCaseForm({
     };
   };
 
+  const buildMoveToManagementCaseInfo = (): MoveSellingLienToManagementCaseInfoRequest => ({
+    clientFirstName: form.clientFirstName.trim(),
+    clientLastName: form.clientLastName.trim(),
+    clientDob: dateConvertertoIso(form.clientDob),
+    clientAddress: form.clientAddress.trim() || undefined,
+    clientCity: form.clientCity.trim() || undefined,
+    clientState: form.clientState || undefined,
+    clientZipCode: form.clientZipcode.trim() || undefined,
+    isServicing: form.isServicing === "true",
+    statusLabel:
+      data.status.find((item) => item.value === form.caseStatusId)?.label ??
+      form.caseStatusId,
+    accidentTypeId: form.accidentTypeId,
+    stateOfIncident: form.accidentStateId,
+    dateOfIncident: form.dateOfIncident
+      ? dateConvertertoIso(form.dateOfIncident)
+      : undefined,
+    lawFirmId: form.lawfirmId,
+    caseManagerId: form.caseManagerId || undefined,
+    notes: form.notes.trim() || undefined,
+  });
+
   const markAllTouched = () => {
     setTouched(
       Object.keys(INITIAL_FORM).reduce(
@@ -293,6 +285,19 @@ export function CreateCaseForm({
 
     setSubmitting(true);
     try {
+      if (onMoveToManagement) {
+        const result = await onMoveToManagement(buildMoveToManagementCaseInfo());
+        addToast({
+          type: "success",
+          title: "Lien Moved to Management",
+          description: result.message,
+        });
+        setForm({ ...INITIAL_FORM });
+        setErrors({});
+        onCreated?.(result.caseId);
+        return;
+      }
+
       const request = buildRequest();
       const duplicate = await casesService.checkDuplicateCase(request);
       if (duplicate.isDuplicate && duplicate.matches.length > 0) {
@@ -412,12 +417,27 @@ export function CreateCaseForm({
     <>
       <FormModal
         open={open}
-        onClose={reset}
+        onClose={submitting ? () => {} : reset}
         onSubmit={handleSubmit}
-        title="Create Case"
-        subtitle="Add a new case to the system"
-        submitLabel={submitting ? "Creating..." : "Create Case"}
-        submitDisabled={!isValid}
+        title={
+          isMoveToManagement ? "Keep & Move to Lien Management" : "Create Case"
+        }
+        subtitle={
+          isMoveToManagement
+            ? "Create a case to keep this lien as an internal asset"
+            : "Add a new case to the system"
+        }
+        submitLabel={
+          submitting
+            ? isMoveToManagement
+              ? "Keeping & Moving..."
+              : "Creating..."
+            : isMoveToManagement
+              ? "Keep & Move"
+              : "Create Case"
+        }
+        submitDisabled={!isValid || submitting}
+        size="xl"
       >
         <div className="space-y-4">
           <div className="col-12 mb-6 mt-2">
@@ -561,49 +581,97 @@ export function CreateCaseForm({
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Law Firm<span className="text-red-500 ml-0.5">*</span>
-              </label>
-              <ContactEntitySelect
-                contactType="LawFirm"
-                value={form.lawfirmId}
-                onChange={(v) => {
-                  setForm((prev) => ({
-                    ...prev,
-                    lawfirmId: v,
-                    caseManagerId: "",
-                  }));
-                  setTouched((prev) => ({ ...prev, lawfirmId: true }));
-                }}
-                error={Boolean(touched.lawfirmId && errors.lawfirmId)}
-                placeholder="Select law firm..."
-                searchPlaceholder="Search law firms..."
-                allowCreate
-                createLabel="Add New Law Firm"
-              />
-              {touched.lawfirmId && errors.lawfirmId && (
-                <p className="text-xs text-red-500 mt-1">{errors.lawfirmId}</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Case Manager
-              </label>
-              <ContactEntitySelect
-                contactType="LawFirm"
-                contactSubtype={caseManagerRoleCode}
-                lawFirmId={form.lawfirmId}
-                requireParent
-                parentHint="Select a law firm first"
-                value={form.caseManagerId}
-                onChange={(v) => setForm({ ...form, caseManagerId: v })}
-                placeholder="Select case manager..."
-                searchPlaceholder="Search case managers..."
-                allowCreate
-                createLabel="Add Case Manager"
-              />
-            </div>
+            {isMoveToManagement ? (
+              <>
+                <div>
+                  <Field
+                    label="Law Firm"
+                    required
+                    type="select"
+                    value={form.lawfirmId}
+                    options={data.lawFirm}
+                    onChange={(v: string) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        lawfirmId: v,
+                        caseManagerId: "",
+                      }));
+                      setTouched((prev) => ({ ...prev, lawfirmId: true }));
+                    }}
+                    placeholder="Select law firm..."
+                  />
+                  {touched.lawfirmId && errors.lawfirmId && (
+                    <p className="mt-1 text-xs text-red-500">
+                      {errors.lawfirmId}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Case Manager
+                  </label>
+                  <ContactEntitySelect
+                    contactType="LawFirm"
+                    contactSubtype={caseManagerRoleCode}
+                    lawFirmId={form.lawfirmId}
+                    requireParent
+                    parentHint="Select a law firm first"
+                    value={form.caseManagerId}
+                    onChange={(v) => updateField("caseManagerId", v)}
+                    placeholder="Select case manager..."
+                    searchPlaceholder="Search case managers..."
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Law Firm<span className="ml-0.5 text-red-500">*</span>
+                  </label>
+                  <ContactEntitySelect
+                    contactType="LawFirm"
+                    value={form.lawfirmId}
+                    onChange={(v) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        lawfirmId: v,
+                        caseManagerId: "",
+                      }));
+                      setTouched((prev) => ({ ...prev, lawfirmId: true }));
+                    }}
+                    error={Boolean(touched.lawfirmId && errors.lawfirmId)}
+                    placeholder="Select law firm..."
+                    searchPlaceholder="Search law firms..."
+                    allowCreate
+                    createLabel="Add New Law Firm"
+                  />
+                  {touched.lawfirmId && errors.lawfirmId && (
+                    <p className="mt-1 text-xs text-red-500">
+                      {errors.lawfirmId}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Case Manager
+                  </label>
+                  <ContactEntitySelect
+                    contactType="LawFirm"
+                    contactSubtype={caseManagerRoleCode}
+                    lawFirmId={form.lawfirmId}
+                    requireParent
+                    parentHint="Select a law firm first"
+                    value={form.caseManagerId}
+                    onChange={(v) => updateField("caseManagerId", v)}
+                    placeholder="Select case manager..."
+                    searchPlaceholder="Search case managers..."
+                    allowCreate
+                    createLabel="Add Case Manager"
+                  />
+                </div>
+              </>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

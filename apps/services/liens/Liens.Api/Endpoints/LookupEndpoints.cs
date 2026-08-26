@@ -439,6 +439,7 @@ public static class LookupEndpoints
     }
 
     private static async Task<IResult> GetLegacyProcedureCodes(
+        string? search,
         ILookupValueService lookupService,
         LiensDbContext db,
         ICurrentRequestContext ctx,
@@ -448,16 +449,36 @@ public static class LookupEndpoints
         var tenantId = ctx.TenantId
             ?? throw new UnauthorizedAccessException("Tenant context is required.");
 
-        var lookupCodes = await lookupService.GetByCategoryAsync(tenantId, LookupCategory.ProcedureCode, ct);
-        var data = lookupCodes
-            .Select(l => new
+        var manualCodes = await db.ManualMedicalCodes
+            .AsNoTracking()
+            .Where(m => m.TenantId == tenantId && m.Status == "A")
+            .OrderBy(m => m.Description)
+            .ThenBy(m => m.Code)
+            .Select(m => new
             {
-                code = l.Code,
-                description = l.Description ?? l.Name,
+                code = m.Code,
+                description = $"{m.Description ?? string.Empty} ({m.Code})",
             })
-            .ToList();
+            .ToListAsync(ct);
 
+        // Manual entries are tenant-specific overrides. Add them first so a
+        // matching CMS or shared lookup code does not hide the manual entry.
+        var data = manualCodes.ToList();
         var existingCodes = new HashSet<string>(data.Select(item => item.code), StringComparer.OrdinalIgnoreCase);
+
+        var lookupCodes = await lookupService.GetByCategoryAsync(tenantId, LookupCategory.ProcedureCode, ct);
+        foreach (var lookupCode in lookupCodes)
+        {
+            if (existingCodes.Add(lookupCode.Code))
+            {
+                data.Add(new
+                {
+                    code = lookupCode.Code,
+                    description = lookupCode.Description ?? lookupCode.Name,
+                });
+            }
+        }
+
         var medicareCodes = await GetMedicareProcedureCodesAsync(httpClientFactory, ct);
         foreach (var medicareCode in medicareCodes
             .Where(item => !string.IsNullOrWhiteSpace(item.Code))
@@ -476,24 +497,13 @@ public static class LookupEndpoints
             }
         }
 
-        var manualCodes = await db.ManualMedicalCodes
-            .AsNoTracking()
-            .Where(m => m.TenantId == tenantId && m.Status == "A")
-            .OrderBy(m => m.Description)
-            .ThenBy(m => m.Code)
-            .Select(m => new
-            {
-                code = m.Code,
-                description = $"{m.Description ?? string.Empty} ({m.Code})",
-            })
-            .ToListAsync(ct);
-
-        foreach (var manualCode in manualCodes)
+        if (!string.IsNullOrWhiteSpace(search))
         {
-            if (existingCodes.Add(manualCode.code))
-            {
-                data.Add(manualCode);
-            }
+            var term = search.Trim();
+            data = data
+                .Where(item => item.code.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                               item.description.Contains(term, StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
 
         return Results.Ok(new { isSuccess = true, message = string.Empty, data });
