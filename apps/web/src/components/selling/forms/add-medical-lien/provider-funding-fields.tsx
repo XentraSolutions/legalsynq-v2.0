@@ -1,4 +1,5 @@
 import { SellingEntitySelect } from "@/components/selling/selling-entity-select";
+import { FundingCompanyContactField } from "@/components/selling/funding-company-contact-field";
 
 export interface ProviderFundingFieldsValue {
   medicalProviderId: string;
@@ -83,27 +84,28 @@ export function ProviderFundingFields({
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Contact Person
-        </label>
-        <SellingEntitySelect
-          entityType="FundingCompany"
-          companyId={value.fundingCompanyId}
-          isContactPerson
-          requireParent
-          parentHint="Select a funding company first"
-          value={value.fundingCompanyContactId}
-          onChange={(v, option) =>
-            onChange({
-              fundingCompanyContactId: v,
-              fundingCompanyContact: option?.label ?? "",
-            })
-          }
-          placeholder="Select contact person..."
-          searchPlaceholder="Search contacts..."
-          allowCreate
-          createLabel="Add New Contact Person"
-        />
+        {value.fundingCompanyId ? (
+          <FundingCompanyContactField
+            companyId={value.fundingCompanyId}
+            companyName={value.fundingCompany}
+            value={value.fundingCompanyContactId}
+            onChange={(contactId, contact) =>
+              onChange({
+                fundingCompanyContactId: contactId,
+                fundingCompanyContact: contact?.displayName ?? "",
+              })
+            }
+          />
+        ) : (
+          <>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Contact Person
+            </label>
+            <p className="text-xs text-gray-400 border border-gray-200 rounded-lg px-3 py-2">
+              Select a funding company first
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
