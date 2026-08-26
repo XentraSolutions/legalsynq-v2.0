@@ -31,8 +31,8 @@ import type {
   SellingCaseDraftResult,
   FinalizeSellingCaseDraftPlaintiffRequest,
   FinalizeSellingCaseDraftResult,
+  UpdateSellingCaseRequest,
   UpdateSellingCaseResult,
-  SellingCaseInformationResult,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
@@ -166,22 +166,9 @@ export const liensService = {
 
   async updateSellingCase(
     caseId: string,
-    request: CreateSellingCaseDraftRequest,
+    request: UpdateSellingCaseRequest,
   ): Promise<UpdateSellingCaseResult> {
     const { data } = await liensApi.updateSellingCase(caseId, request);
-    return data;
-  },
-
-  async updateSellingCasePlaintiff(
-    caseId: string,
-    request: FinalizeSellingCaseDraftPlaintiffRequest,
-  ): Promise<UpdateSellingCaseResult> {
-    const { data } = await liensApi.updateSellingCasePlaintiff(caseId, request);
-    return data;
-  },
-
-  async getSellingCase(caseId: string): Promise<SellingCaseInformationResult> {
-    const { data } = await liensApi.getSellingCase(caseId);
     return data;
   },
 

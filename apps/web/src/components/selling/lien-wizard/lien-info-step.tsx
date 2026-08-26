@@ -86,6 +86,7 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
         setSubmitting(true);
         try {
           const draft = await liensService.createCaseDraft({
+            caseStatus: caseDraft.caseStatus,
             accidentTypeId: caseDraft.accidentTypeId || undefined,
             accidentState: caseDraft.accidentState || undefined,
             dateOfLoss: caseDraft.dateOfLoss || undefined,

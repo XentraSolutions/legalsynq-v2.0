@@ -26,8 +26,8 @@ import type {
   SellingCaseDraftResult,
   FinalizeSellingCaseDraftPlaintiffRequest,
   FinalizeSellingCaseDraftResult,
+  UpdateSellingCaseRequest,
   UpdateSellingCaseResult,
-  SellingCaseInformationResult,
   LienListItem,
   LienActivityFeedResult,
   BulkImportSummary,
@@ -46,7 +46,7 @@ import { LienListResult } from "./selling-liens.service";
 const BASE = "/selling/api/liens/selling";
 
 // prepare-sale / confirm-sale / withdraw-sale / archive all require an
-// Other Selling mutations retain their Idempotency-Key requirement.
+// Idempotency-Key header per SellingV2Endpoints.cs (SellingIdempotency.TryGetKey).
 function idempotencyHeaders(): Record<string, string> {
   return { "Idempotency-Key": crypto.randomUUID() };
 }
@@ -139,6 +139,7 @@ export const liensApi = {
     return apiClient.post<SellingCaseDraftResult>(
       `${BASE}/case-drafts`,
       request,
+      idempotencyHeaders(),
     );
   },
 
@@ -156,28 +157,15 @@ export const liensApi = {
     return apiClient.post<FinalizeSellingCaseDraftResult>(
       `${BASE}/case-drafts/${draftId}/plaintiff`,
       request,
+      idempotencyHeaders(),
     );
   },
 
-  updateSellingCase(caseId: string, request: CreateSellingCaseDraftRequest) {
+  updateSellingCase(caseId: string, request: UpdateSellingCaseRequest) {
     return apiClient.put<UpdateSellingCaseResult>(
       `${BASE}/cases/${caseId}`,
       request,
     );
-  },
-
-  updateSellingCasePlaintiff(
-    caseId: string,
-    request: FinalizeSellingCaseDraftPlaintiffRequest,
-  ) {
-    return apiClient.put<UpdateSellingCaseResult>(
-      `${BASE}/cases/${caseId}/plaintiff`,
-      request,
-    );
-  },
-
-  getSellingCase(caseId: string) {
-    return apiClient.get<SellingCaseInformationResult>(`${BASE}/cases/${caseId}`);
   },
 
   // A seller lien is created only after the case-draft/plaintiff flow returns

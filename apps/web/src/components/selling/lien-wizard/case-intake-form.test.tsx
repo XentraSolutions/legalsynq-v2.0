@@ -22,6 +22,7 @@ describe("selling case intake", () => {
   test("renders all case-first fields before lien intake", () => {
     render(<CaseIntakeForm onFormValid={() => undefined} />);
 
+    expect(screen.getByText("Case Status")).toBeInTheDocument();
     expect(screen.getByText("Accident Type")).toBeInTheDocument();
     expect(screen.getByText("Accident State")).toBeInTheDocument();
     expect(screen.getByText("Date of Loss")).toBeInTheDocument();

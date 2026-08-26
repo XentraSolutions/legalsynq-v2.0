@@ -10,6 +10,7 @@ import type {
 } from "@/lib/selling/liens.types";
 
 const EMPTY_CASE_FORM: CreateSellingCaseDraftRequest = {
+  caseStatus: "",
   accidentTypeId: "",
   accidentState: "",
   dateOfLoss: "",
@@ -47,6 +48,15 @@ export function CaseIntakeForm({
   const { lookup } = useSessionContext();
   const [form, setForm] = useState<CreateSellingCaseDraftRequest>(EMPTY_CASE_FORM);
 
+  const caseStatusOptions = useMemo(
+    () =>
+      (lookup?.CaseStatus ?? []).map((item) => ({
+        key: item.id,
+        value: item.code,
+        label: item.name,
+      })),
+    [lookup?.CaseStatus],
+  );
   const accidentTypeOptions = useMemo(
     () => lookupOptions(lookup?.AccidentType ?? []),
     [lookup?.AccidentType],
@@ -62,7 +72,7 @@ export function CaseIntakeForm({
   );
 
   useEffect(() => {
-    onFormValid(true, form);
+    onFormValid(Boolean(form.caseStatus), form);
   }, [form, onFormValid]);
 
   const update = (patch: Partial<CreateSellingCaseDraftRequest>) =>
@@ -78,6 +88,15 @@ export function CaseIntakeForm({
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field
+          type="select"
+          label="Case Status"
+          required
+          value={form.caseStatus}
+          options={caseStatusOptions}
+          placeholder="Select case status..."
+          onChange={(value: string) => update({ caseStatus: value })}
+        />
         <Field
           type="select"
           label="Accident Type"

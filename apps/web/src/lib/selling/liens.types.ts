@@ -272,6 +272,7 @@ export interface SaveSellingCaseInformationRequest {
 }
 
 export interface CreateSellingCaseDraftRequest {
+  caseStatus: string;
   accidentTypeId?: string;
   accidentState?: string;
   dateOfLoss?: string;
@@ -311,16 +312,11 @@ export interface FinalizeSellingCaseDraftResult {
   finalizedAtUtc: string;
 }
 
-export interface UpdateSellingCaseResult {
-  caseId: string;
-  caseNumber: string;
-  caseStatus: string;
-}
-
-export interface SellingCaseInformationResult
+export interface UpdateSellingCaseRequest
   extends CreateSellingCaseDraftRequest,
-    FinalizeSellingCaseDraftPlaintiffRequest {
-  draftId: string;
+    FinalizeSellingCaseDraftPlaintiffRequest {}
+
+export interface UpdateSellingCaseResult {
   caseId: string;
   caseNumber: string;
   caseStatus: string;
