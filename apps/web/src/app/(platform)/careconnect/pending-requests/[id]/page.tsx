@@ -39,6 +39,20 @@ const SERVICE_TYPES = [
   "Follow-up Service",
 ];
 const ALL_SPECIALTIES = "__all_specialties__";
+const REQUEST_STATUS: Record<string, { label: string; className: string }> = {
+  PendingReview: {
+    label: "Pending",
+    className: "border-amber-200 bg-amber-50 text-amber-700",
+  },
+  Converted: {
+    label: "Accepted",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  Cancelled: {
+    label: "Declined",
+    className: "border-red-200 bg-red-50 text-red-700",
+  },
+};
 
 const PublicNetworkMap = dynamic(
   () => import("@/components/careconnect/public-network-map").then(module => module.PublicNetworkMap),
@@ -235,10 +249,15 @@ function reviewProviderFromSummary(provider: ProviderSummary): ReviewProviderPre
   };
 }
 
-function PendingStatusBadge() {
+function PendingStatusBadge({ status }: { status: string }) {
+  const badge = REQUEST_STATUS[status] ?? {
+    label: status,
+    className: "border-gray-200 bg-gray-50 text-gray-700",
+  };
+
   return (
-    <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-      Pending review
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${badge.className}`}>
+      {badge.label}
     </span>
   );
 }
@@ -531,7 +550,7 @@ export default function PendingReferralRequestDetailPage() {
       setTreatmentTypes(treatmentTypeRes.data);
       setSelectedProviders(preferredProvidersFor(nextRequest).map(reviewProviderFromPreference));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load pending request.");
+      setError(err instanceof ApiError ? err.message : "Failed to load referral request.");
     } finally {
       setLoading(false);
     }
@@ -736,7 +755,7 @@ export default function PendingReferralRequestDetailPage() {
       setFieldErrors(validateReviewDateFields(nextForm));
       return true;
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to update pending request.");
+      setError(err instanceof ApiError ? err.message : "Failed to update referral request.");
       return false;
     } finally {
       setSaving(false);
@@ -815,7 +834,7 @@ export default function PendingReferralRequestDetailPage() {
       const result = await careConnectApi.pendingReferralRequests.convert(request.id, selection);
       router.push(`/careconnect/referrals/${result.data.id}`);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to accept pending request.");
+      setError(err instanceof ApiError ? err.message : "Failed to accept referral request.");
       setAccepting(false);
     }
   }
@@ -828,51 +847,57 @@ export default function PendingReferralRequestDetailPage() {
       await careConnectApi.pendingReferralRequests.decline(request.id);
       router.push("/careconnect/pending-requests");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to decline pending request.");
+      setError(err instanceof ApiError ? err.message : "Failed to decline referral request.");
       setDeclining(false);
     }
   }
 
   if (loading) {
-    return <p className="text-sm text-gray-500">Loading pending request...</p>;
+    return <p className="text-sm text-gray-500">Loading referral request...</p>;
   }
 
   if (!request || !form) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
-        Pending request was not found.
+        Referral request was not found.
       </div>
     );
   }
+
+  const requestIsPending = request.status === "PendingReview";
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <Link href="/careconnect/pending-requests" className="text-xs text-gray-400 transition-colors hover:text-gray-600">
-            ← Back to pending requests
+            ← Back to Referral Requests
           </Link>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold text-gray-900">{request.clientFirstName} {request.clientLastName}</h1>
-            <PendingStatusBadge />
+            <PendingStatusBadge status={request.status} />
             <UrgencyBadge urgency={request.urgency} />
           </div>
-          <p className="mt-0.5 text-sm text-gray-500">Update request values before accepting or declining.</p>
+          <p className="mt-0.5 text-sm text-gray-500">
+            {requestIsPending ? "Update request values before accepting or declining." : "This request has already been finalized."}
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => void handleEditToggleClick()} disabled={saving} className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60">
-            <i className={isEditing ? "ri-save-line" : "ri-edit-line"} />
-            {isEditing ? (saving ? "Saving..." : "Save changes") : "Edit"}
-          </button>
-          <button type="button" onClick={() => void acceptRequest()} disabled={accepting} className="inline-flex items-center gap-2 rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-60">
-            <i className="ri-checkbox-circle-line" />
-            {accepting ? "Accepting..." : "Accept"}
-          </button>
-          <button type="button" onClick={() => void declineRequest()} disabled={declining} className="inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60">
-            <i className="ri-close-circle-line" />
-            {declining ? "Declining..." : "Decline"}
-          </button>
-        </div>
+        {requestIsPending && (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => void handleEditToggleClick()} disabled={saving} className="inline-flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60">
+              <i className={isEditing ? "ri-save-line" : "ri-edit-line"} />
+              {isEditing ? (saving ? "Saving..." : "Save changes") : "Edit"}
+            </button>
+            <button type="button" onClick={() => void acceptRequest()} disabled={accepting} className="inline-flex items-center gap-2 rounded-md bg-green-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-60">
+              <i className="ri-checkbox-circle-line" />
+              {accepting ? "Accepting..." : "Accept"}
+            </button>
+            <button type="button" onClick={() => void declineRequest()} disabled={declining} className="inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60">
+              <i className="ri-close-circle-line" />
+              {declining ? "Declining..." : "Decline"}
+            </button>
+          </div>
+        )}
       </div>
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
