@@ -37,6 +37,8 @@ import type {
   UpdateCasePlaintiffRequest,
   UpdateCasePlaintiffResult,
   MoveToManagementRequest,
+  CaseSearchQuery,
+  CaseSearchItem,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
@@ -58,6 +60,11 @@ export interface LienListResult {
 
 export interface LienOffersResult {
   items: LienOfferItem[];
+}
+
+export interface CaseSearchResult {
+  items: CaseSearchItem[];
+  pagination: PaginationMeta;
 }
 
 async function readJson(response: Response): Promise<string | null> {
@@ -177,6 +184,24 @@ export const liensService = {
   async getCaseById(caseId: string): Promise<CaseDetailResult> {
     const { data } = await liensApi.getCaseById(caseId);
     return data;
+  },
+
+  async searchCases(query: CaseSearchQuery = {}): Promise<CaseSearchResult> {
+    const { data } = await liensApi.searchCases(query);
+    // The endpoint only returns `items`/`totalCount` — page/pageSize aren't
+    // echoed back, unlike PaginatedResultDto<T>, so pagination is built from
+    // what was requested rather than mapPagination().
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? (data.items.length || 1);
+    return {
+      items: data.items,
+      pagination: {
+        page,
+        pageSize,
+        totalCount: data.totalCount,
+        totalPages: Math.ceil(data.totalCount / Math.max(pageSize, 1)),
+      },
+    };
   },
 
   async updateCasePlaintiff(

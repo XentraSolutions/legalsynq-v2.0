@@ -351,6 +351,44 @@ export interface CaseDetailResult {
   zipcode?: string | null;
 }
 
+// GET /api/liens/selling/cases — server-side keyword search + pagination.
+// Backs both the lien wizard's Case picker (@/components/selling/case-select,
+// which only reads caseId/caseNumber/firstName/lastName) and the Cases
+// portfolio list (@/components/selling/cases-table). Response items carry the
+// same raw fields as CaseDetailResult, plus each *Id field's resolved display
+// name under the same name without the "Id" suffix (accidentTypeId ->
+// accidentType, handlingLawFirmId -> handlingLawFirm, caseManagerId ->
+// caseManager) when the referenced lookup value is populated.
+export interface CaseSearchQuery {
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CaseSearchItem {
+  caseId: string;
+  caseNumber: string;
+  caseStatus: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  birthdate?: string | null;
+  dateOfLoss?: string | null;
+  accidentState?: string | null;
+  accidentTypeId?: string | null;
+  accidentType?: string | null;
+  handlingLawFirmId?: string | null;
+  handlingLawFirm?: string | null;
+  caseManagerId?: string | null;
+  caseManager?: string | null;
+}
+
+// The endpoint doesn't echo back `page`/`pageSize` — only `items` and
+// `totalCount` — unlike the rest of Selling's PaginatedResultDto<T> shape.
+export interface CaseSearchResultDto {
+  items: CaseSearchItem[];
+  totalCount: number;
+}
+
 export type UpdateCasePlaintiffRequest = FinalizeCaseDraftRequest;
 
 export interface UpdateCasePlaintiffResult {
