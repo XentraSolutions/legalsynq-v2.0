@@ -156,8 +156,8 @@ export function ServicingTab({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
 
-  let openLiens = liens.filter((i) => i.closedAtUtc === null);
-  let closedLiens = liens.filter((i) => i.closedAtUtc !== null);
+  let openLiens = liens.filter((i) => i.status === "Open");
+  let closedLiens = liens.filter((i) => i.status === "Closed");
 
   const openLiensTotalBilling = openLiens.reduce(
     (s, l) => s + l.originalAmount,
