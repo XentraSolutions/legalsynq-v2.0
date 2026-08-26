@@ -13,7 +13,7 @@ import type {
   ReassignFundingCompanyRequestDto,
   ReassignMedicalProviderRequestDto,
   SaveSellingLienInformationRequest,
-  SaveSellingCaseInformationRequest,
+  SaveSellingProviderFundingRequest,
   SaveSellingMedicalPricingRequest,
   SaveSellingDocumentsRequest,
   PrepareSellingLienRequest,
@@ -22,22 +22,21 @@ import type {
   ArchiveSellingLienRequest,
   LienArchivedStatusResult,
   SubmitSellingLienRequest,
-  CreateSellingCaseDraftRequest,
-  SellingCaseDraftResult,
-  FinalizeSellingCaseDraftPlaintiffRequest,
-  FinalizeSellingCaseDraftResult,
-  UpdateSellingCaseRequest,
-  UpdateSellingCaseResult,
+  CaseDraftRequest,
+  CaseDraftResult,
+  FinalizeCaseDraftRequest,
+  FinalizeCaseDraftResult,
+  UpdateCaseRequest,
+  UpdateCaseResult,
+  CaseDetailResult,
+  UpdateCasePlaintiffRequest,
+  UpdateCasePlaintiffResult,
   MoveToManagementRequest,
   LienListItem,
   LienActivityFeedResult,
   BulkImportSummary,
   BulkImportRowsResult,
   BulkImportRowStatus,
-  CreateCaseDraftRequest,
-  CreateCaseDraftResult,
-  AttachPlaintiffRequest,
-  AttachPlaintiffResult,
 } from "./liens.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
@@ -140,35 +139,40 @@ export const liensApi = {
     );
   },
 
-  createCaseDraft(request: CreateSellingCaseDraftRequest) {
-    return apiClient.post<SellingCaseDraftResult>(
+  createCaseDraft(request: CaseDraftRequest) {
+    return apiClient.post<CaseDraftResult>(
       `${BASE}/case-drafts`,
       request,
       idempotencyHeaders(),
     );
   },
 
-  updateCaseDraft(draftId: string, request: CreateSellingCaseDraftRequest) {
-    return apiClient.put<SellingCaseDraftResult>(
+  updateCaseDraft(draftId: string, request: CaseDraftRequest) {
+    return apiClient.put<CaseDraftResult>(
       `${BASE}/case-drafts/${draftId}`,
       request,
     );
   },
 
-  finalizeCaseDraft(
-    draftId: string,
-    request: FinalizeSellingCaseDraftPlaintiffRequest,
-  ) {
-    return apiClient.post<FinalizeSellingCaseDraftResult>(
+  finalizeCaseDraft(draftId: string, request: FinalizeCaseDraftRequest) {
+    return apiClient.post<FinalizeCaseDraftResult>(
       `${BASE}/case-drafts/${draftId}/plaintiff`,
       request,
       idempotencyHeaders(),
     );
   },
 
-  updateSellingCase(caseId: string, request: UpdateSellingCaseRequest) {
-    return apiClient.put<UpdateSellingCaseResult>(
-      `${BASE}/cases/${caseId}`,
+  updateCase(caseId: string, request: UpdateCaseRequest) {
+    return apiClient.put<UpdateCaseResult>(`${BASE}/cases/${caseId}`, request);
+  },
+
+  getCaseById(caseId: string) {
+    return apiClient.get<CaseDetailResult>(`${BASE}/cases/${caseId}`);
+  },
+
+  updateCasePlaintiff(caseId: string, request: UpdateCasePlaintiffRequest) {
+    return apiClient.put<UpdateCasePlaintiffResult>(
+      `${BASE}/cases/${caseId}/plaintiff`,
       request,
     );
   },
@@ -193,9 +197,11 @@ export const liensApi = {
     );
   },
 
-  saveCaseInformation(
+  // Endpoint path is the backend's — kept as "case-information" even though
+  // the payload is really the lien's provider/funding-company links.
+  saveProviderFundingDetails(
     lienId: string,
-    request: SaveSellingCaseInformationRequest,
+    request: SaveSellingProviderFundingRequest,
   ) {
     return apiClient.put<any>(
       `${BASE}/liens/${lienId}/case-information`,
@@ -268,22 +274,6 @@ export const liensApi = {
   moveToManagement(lienId: string, request: MoveToManagementRequest = {}) {
     return apiClient.post<any>(
       `${BASE}/liens/${lienId}/move-to-management`,
-      request,
-      idempotencyHeaders(),
-    );
-  },
-
-  createCaseDraft(request: CreateCaseDraftRequest) {
-    return apiClient.post<CreateCaseDraftResult>(
-      `${BASE}/case-drafts`,
-      request,
-      idempotencyHeaders(),
-    );
-  },
-
-  attachPlaintiff(draftId: string, request: AttachPlaintiffRequest) {
-    return apiClient.post<AttachPlaintiffResult>(
-      `${BASE}/case-drafts/${draftId}/plaintiff`,
       request,
       idempotencyHeaders(),
     );

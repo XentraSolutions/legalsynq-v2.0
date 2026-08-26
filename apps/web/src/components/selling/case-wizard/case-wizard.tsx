@@ -10,7 +10,7 @@ import PlaintiffInfoStep, {
 import { NewCaseAddedModal } from "./new-case-added-modal";
 import type { CaseInfoFieldsValue } from "../forms/add-case/case-info-fields";
 import type { PlaintiffInfoFieldsValue } from "../forms/add-case/plaintiff-info-fields";
-import { useCreateCaseDraft, useAttachPlaintiff } from "@/hooks/selling/use-case-drafts";
+import { useCreateCaseDraft, useFinalizeCaseDraft } from "@/hooks/selling/use-case-drafts";
 
 export function CaseWizard() {
   const router = useRouter();
@@ -27,7 +27,7 @@ export function CaseWizard() {
     null,
   );
   const createCaseDraft = useCreateCaseDraft();
-  const attachPlaintiff = useAttachPlaintiff();
+  const finalizeCaseDraft = useFinalizeCaseDraft();
 
   const handleStep1Continue = async (data: CaseInfoFieldsValue) => {
     setCaseInfo(data);
@@ -55,7 +55,7 @@ export function CaseWizard() {
     setPlaintiffInfo(data);
     if (!draftId) return;
     try {
-      const finalized = await attachPlaintiff.mutateAsync({
+      const finalized = await finalizeCaseDraft.mutateAsync({
         draftId,
         request: {
           firstName: data.firstName,
@@ -92,7 +92,7 @@ export function CaseWizard() {
     <>
       <PlaintiffInfoStep
         data={plaintiffInfo}
-        submitting={attachPlaintiff.isPending}
+        submitting={finalizeCaseDraft.isPending}
         onBack={() => setStep(1)}
         onContinue={handleStep2Continue}
       />

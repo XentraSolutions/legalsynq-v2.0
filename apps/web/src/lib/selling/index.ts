@@ -10,9 +10,14 @@ export type {
   CreateLienOfferRequestDto,
   SaleFinalizationResultDto,
   LienArchivedStatusResult,
-  CreateCaseDraftRequest,
-  CreateCaseDraftResult,
-  AttachPlaintiffRequest,
-  AttachPlaintiffResult,
+  CaseDraftRequest,
+  CaseDraftResult,
+  FinalizeCaseDraftRequest,
+  FinalizeCaseDraftResult,
+  UpdateCaseRequest,
+  UpdateCaseResult,
+  CaseDetailResult,
+  UpdateCasePlaintiffRequest,
+  UpdateCasePlaintiffResult,
 } from "./liens.types";
 export type { LienListResult, LienOffersResult } from "./selling-liens.service";
