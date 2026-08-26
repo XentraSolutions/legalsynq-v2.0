@@ -20,6 +20,7 @@ public sealed class SellingCaseDraftConfiguration : IEntityTypeConfiguration<Sel
         builder.Property(draft => draft.AccidentState).HasMaxLength(100);
         builder.Property(draft => draft.DateOfLoss).HasColumnType("date");
         builder.Property(draft => draft.CaseTrackingNotes).HasMaxLength(4000);
+        builder.Property(draft => draft.ConcurrencyToken).IsRequired();
         builder.Property(draft => draft.FinalizedAtUtc);
         builder.Property(draft => draft.CreatedByUserId).IsRequired();
         builder.Property(draft => draft.UpdatedByUserId);

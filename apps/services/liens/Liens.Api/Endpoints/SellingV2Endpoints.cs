@@ -43,10 +43,14 @@ public static class SellingV2Endpoints
 
         seller.MapPost("/case-drafts", CreateCaseDraft)
             .RequirePermission(LiensPermissions.LienSaleCreate);
+        seller.MapGet("/case-drafts/{draftId:guid}", GetCaseDraft)
+            .RequirePermission(LiensPermissions.LienSaleRead);
         seller.MapPut("/case-drafts/{draftId:guid}", UpdateCaseDraft)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
         seller.MapPost("/case-drafts/{draftId:guid}/plaintiff", FinalizeCaseDraft)
             .RequirePermission(LiensPermissions.LienSaleCreate);
+        seller.MapGet("/cases", GetSellingCases)
+            .RequirePermission(LiensPermissions.LienSaleRead);
         seller.MapGet("/cases/{caseId:guid}", GetSellingCase)
             .RequirePermission(LiensPermissions.LienSaleRead);
         seller.MapPut("/cases/{caseId:guid}", UpdateSellingCaseInformation)
@@ -205,6 +209,34 @@ public static class SellingV2Endpoints
             handlingLawFirmId = draft.HandlingLawFirmCompanyId,
             caseManagerId = draft.CaseManagerContactPersonId,
             draft.CaseTrackingNotes,
+        });
+    }
+
+    private static async Task<IResult> GetCaseDraft(
+        Guid draftId,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, _) = RequireSellerContext(context);
+        var draft = await db.SellingCaseDrafts.AsNoTracking().FirstOrDefaultAsync(item =>
+            item.TenantId == tenantId && item.OrgId == sellerOrgId && item.Id == draftId, ct);
+        if (draft is null) return Results.NotFound(new { message = "Selling case draft was not found." });
+
+        return Results.Ok(new
+        {
+            draftId = draft.Id,
+            draft.CaseStatus,
+            draft.AccidentTypeId,
+            draft.AccidentState,
+            draft.DateOfLoss,
+            handlingLawFirmId = draft.HandlingLawFirmCompanyId,
+            caseManagerId = draft.CaseManagerContactPersonId,
+            draft.CaseTrackingNotes,
+            draft.CaseId,
+            draft.FinalizedAtUtc,
+            draft.CreatedAtUtc,
+            draft.UpdatedAtUtc,
         });
     }
 
@@ -455,30 +487,148 @@ public static class SellingV2Endpoints
         if (sellingCaseDraft is null)
             return Results.NotFound(new { message = "Selling case was not found for the seller organization." });
 
-        var metadata = ParseCaseMetadata(caseEntity.Notes);
-        return Results.Ok(new
+        var lookupNames = await LoadSellingCaseLookupNamesAsync(
+            db, tenantId, sellerOrgId, [caseEntity], ct);
+        return Results.Ok(MapSellingCase(sellingCaseDraft.Id, caseEntity, lookupNames));
+    }
+
+    private static async Task<IResult> GetSellingCases(
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, _) = RequireSellerContext(context);
+        var rows = await (
+                from draft in db.SellingCaseDrafts.AsNoTracking()
+                join caseEntity in db.Cases.AsNoTracking()
+                    on draft.CaseId equals (Guid?)caseEntity.Id
+                where draft.TenantId == tenantId &&
+                      draft.OrgId == sellerOrgId &&
+                      draft.FinalizedAtUtc.HasValue &&
+                      caseEntity.TenantId == tenantId &&
+                      caseEntity.OrgId == sellerOrgId
+                orderby draft.FinalizedAtUtc descending, draft.CreatedAtUtc descending
+                select new { DraftId = draft.Id, Case = caseEntity })
+            .ToListAsync(ct);
+        var lookupNames = await LoadSellingCaseLookupNamesAsync(
+            db, tenantId, sellerOrgId, rows.Select(row => row.Case).ToList(), ct);
+        var items = rows.Select(row => MapSellingCase(row.DraftId, row.Case, lookupNames)).ToList();
+
+        return Results.Ok(new { totalCount = items.Count, items });
+    }
+
+    private static async Task<SellingCaseLookupNames> LoadSellingCaseLookupNamesAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        IReadOnlyCollection<Case> cases,
+        CancellationToken ct)
+    {
+        var accidentTypeReferences = cases
+            .Select(caseEntity => ParseCaseMetadata(caseEntity.Notes).GetValueOrDefault("accidentTypeId"))
+            .Where(reference => !string.IsNullOrWhiteSpace(reference))
+            .Select(reference => reference!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var accidentTypeIds = accidentTypeReferences
+            .Select(reference => Guid.TryParse(reference, out var id) ? id : (Guid?)null)
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .ToList();
+        var accidentTypes = accidentTypeReferences.Count == 0
+            ? []
+            : await db.LookupValues.AsNoTracking()
+                .Where(value =>
+                    value.Category == LookupCategory.AccidentType &&
+                    (value.TenantId == null || value.TenantId == tenantId) &&
+                    (accidentTypeReferences.Contains(value.Code) || accidentTypeIds.Contains(value.Id)))
+                .Select(value => new { value.Id, value.TenantId, value.Code, value.Name })
+                .ToListAsync(ct);
+        var accidentTypeNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var accidentType in accidentTypes.OrderBy(value => value.TenantId.HasValue))
         {
-            draftId = sellingCaseDraft.Id,
-            caseId = caseEntity.Id,
-            caseNumber = caseEntity.CaseNumber,
-            caseStatus = caseEntity.Status,
-            accidentTypeId = metadata.GetValueOrDefault("accidentTypeId"),
-            accidentState = caseEntity.IncidentState,
-            dateOfLoss = caseEntity.DateOfIncident,
-            handlingLawFirmId = caseEntity.HandlingLawFirmCompanyId,
-            caseManagerId = caseEntity.CaseManagerContactPersonId,
-            caseTrackingNotes = ExtractSellingCaseTrackingNotes(caseEntity.Notes),
-            firstName = caseEntity.ClientFirstName,
-            lastName = caseEntity.ClientLastName,
-            birthdate = caseEntity.ClientDob,
-            email = caseEntity.ClientEmail,
-            phone = caseEntity.ClientPhone,
-            gender = metadata.GetValueOrDefault("gender"),
-            address = caseEntity.ClientAddressLine1 ?? caseEntity.ClientAddress,
-            city = caseEntity.ClientCity,
-            state = caseEntity.ClientState,
-            zipcode = caseEntity.ClientPostalCode,
-        });
+            accidentTypeNames[accidentType.Id.ToString()] = accidentType.Name;
+            accidentTypeNames[accidentType.Code] = accidentType.Name;
+        }
+
+        var lawFirmIds = cases
+            .Where(caseEntity => caseEntity.HandlingLawFirmCompanyId.HasValue)
+            .Select(caseEntity => caseEntity.HandlingLawFirmCompanyId!.Value)
+            .Distinct()
+            .ToList();
+        var lawFirmNames = lawFirmIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await db.Companies.AsNoTracking()
+                .Where(company =>
+                    company.TenantId == tenantId &&
+                    company.OrgId == sellerOrgId &&
+                    company.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId &&
+                    lawFirmIds.Contains(company.Id))
+                .ToDictionaryAsync(company => company.Id, company => company.Name, ct);
+
+        var caseManagerIds = cases
+            .Where(caseEntity => caseEntity.CaseManagerContactPersonId.HasValue)
+            .Select(caseEntity => caseEntity.CaseManagerContactPersonId!.Value)
+            .Distinct()
+            .ToList();
+        var caseManagerNames = caseManagerIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await db.CompanyContactPersons.AsNoTracking()
+                .Where(contact =>
+                    contact.TenantId == tenantId &&
+                    caseManagerIds.Contains(contact.Id) &&
+                    contact.Company != null &&
+                    contact.Company.TenantId == tenantId &&
+                    contact.Company.OrgId == sellerOrgId &&
+                    contact.Company.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId)
+                .ToDictionaryAsync(
+                    contact => contact.Id,
+                    contact => (contact.FirstName + " " + contact.LastName).Trim(),
+                    ct);
+
+        return new SellingCaseLookupNames(accidentTypeNames, lawFirmNames, caseManagerNames);
+    }
+
+    private static SellingCaseResponse MapSellingCase(
+        Guid draftId,
+        Case caseEntity,
+        SellingCaseLookupNames lookupNames)
+    {
+        var metadata = ParseCaseMetadata(caseEntity.Notes);
+        var accidentTypeId = metadata.GetValueOrDefault("accidentTypeId");
+        var accidentTypeName = metadata.GetValueOrDefault("accidentType");
+        if (string.IsNullOrWhiteSpace(accidentTypeName) &&
+            !string.IsNullOrWhiteSpace(accidentTypeId) &&
+            lookupNames.AccidentTypeNames.TryGetValue(accidentTypeId, out var resolvedAccidentTypeName))
+            accidentTypeName = resolvedAccidentTypeName;
+        return new SellingCaseResponse(
+            draftId,
+            caseEntity.Id,
+            caseEntity.CaseNumber,
+            caseEntity.Status,
+            accidentTypeId,
+            accidentTypeName,
+            caseEntity.IncidentState,
+            caseEntity.DateOfIncident,
+            caseEntity.HandlingLawFirmCompanyId,
+            caseEntity.HandlingLawFirmCompanyId is { } handlingLawFirmId
+                ? lookupNames.LawFirmNames.GetValueOrDefault(handlingLawFirmId)
+                : null,
+            caseEntity.CaseManagerContactPersonId,
+            caseEntity.CaseManagerContactPersonId is { } caseManagerId
+                ? lookupNames.CaseManagerNames.GetValueOrDefault(caseManagerId)
+                : null,
+            ExtractSellingCaseTrackingNotes(caseEntity.Notes),
+            caseEntity.ClientFirstName,
+            caseEntity.ClientLastName,
+            caseEntity.ClientDob,
+            caseEntity.ClientEmail,
+            caseEntity.ClientPhone,
+            metadata.GetValueOrDefault("gender"),
+            caseEntity.ClientAddressLine1 ?? caseEntity.ClientAddress,
+            caseEntity.ClientCity,
+            caseEntity.ClientState,
+            caseEntity.ClientPostalCode);
     }
 
     private static async Task<IResult> GetLienDetail(
@@ -2999,6 +3149,34 @@ public static class SellingV2Endpoints
         => string.Equals(facility.Name, name.Trim(), StringComparison.OrdinalIgnoreCase);
     private sealed record FundingCompanyLookupItem(Guid Id, string Name, Guid? OrgId);
     private sealed record FundingCompanyContactLookupItem(Guid Id, string Name, string? Email);
+    private sealed record SellingCaseLookupNames(
+        IReadOnlyDictionary<string, string> AccidentTypeNames,
+        IReadOnlyDictionary<Guid, string> LawFirmNames,
+        IReadOnlyDictionary<Guid, string> CaseManagerNames);
+    private sealed record SellingCaseResponse(
+        Guid DraftId,
+        Guid CaseId,
+        string CaseNumber,
+        string CaseStatus,
+        string? AccidentTypeId,
+        string? AccidentTypeName,
+        string? AccidentState,
+        DateOnly? DateOfLoss,
+        Guid? HandlingLawFirmId,
+        string? HandlingLawFirmName,
+        Guid? CaseManagerId,
+        string? CaseManagerName,
+        string? CaseTrackingNotes,
+        string FirstName,
+        string LastName,
+        DateOnly? Birthdate,
+        string? Email,
+        string? Phone,
+        string? Gender,
+        string? Address,
+        string? City,
+        string? State,
+        string? Zipcode);
     private static (string Code, string Description) ParseImportMedicalCode(string? value)
     {
         var normalized = value?.Trim() ?? string.Empty;

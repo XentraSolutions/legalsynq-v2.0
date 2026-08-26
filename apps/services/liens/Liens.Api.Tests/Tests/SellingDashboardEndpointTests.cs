@@ -362,6 +362,53 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
         body.Items[0].LienId.Should().Be(pending.Id);
     }
 
+    [Fact]
+    public async Task Lien_list_filters_rows_and_total_count_by_case_id()
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var targetCase = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-TARGET-{Guid.NewGuid():N}"[..32],
+            "Target",
+            "Plaintiff",
+            SeedHelper.UserId);
+        var otherCase = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-OTHER-{Guid.NewGuid():N}"[..32],
+            "Other",
+            "Plaintiff",
+            SeedHelper.UserId);
+        var matchingLien = CreateDashboardLien(
+            fundingCompanyId,
+            SellingLienStatus.Pending,
+            1_000m,
+            800m,
+            0m,
+            caseId: targetCase.Id);
+        var otherLien = CreateDashboardLien(
+            fundingCompanyId,
+            SellingLienStatus.Pending,
+            2_000m,
+            1_600m,
+            0m,
+            caseId: otherCase.Id);
+
+        await SeedDashboardLiensAsync(db => db.AddRange(targetCase, otherCase, matchingLien, otherLien));
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/liens?tab=all&caseId={targetCase.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingLienListResponse>();
+        body.Should().NotBeNull();
+        body!.TotalCount.Should().Be(1);
+        body.Items.Should().ContainSingle(item =>
+            item.LienId == matchingLien.Id && item.CaseId == targetCase.Id);
+        body.Items.Should().NotContain(item => item.LienId == otherLien.Id);
+    }
+
     private async Task SeedDashboardLiensAsync(Action<LiensDbContext> arrange)
     {
         using var scope = _factory.Services.CreateScope();
@@ -378,7 +425,8 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
         decimal highestBidAmount,
         Guid? sellerOrgId = null,
         decimal? purchasePrice = null,
-        DateTime? soldAtUtc = null)
+        DateTime? soldAtUtc = null,
+        Guid? caseId = null)
     {
         var orgId = sellerOrgId ?? SeedHelper.OrgId;
         var lien = Lien.Create(
@@ -388,7 +436,7 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
             LienType.MedicalLien,
             originalAmount,
             SeedHelper.UserId,
-            caseId: SeedHelper.CaseId,
+            caseId: caseId ?? SeedHelper.CaseId,
             facilityId: SeedHelper.FacilityId,
             initialServiceDate: new DateOnly(2026, 1, 15));
 

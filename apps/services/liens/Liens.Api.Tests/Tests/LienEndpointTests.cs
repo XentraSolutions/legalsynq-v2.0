@@ -266,7 +266,7 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
     }
 
     [Fact]
-    public async Task ListLiens_serializes_datetime_fields_in_pacific_time()
+    public async Task ListLiens_serializes_datetime_fields_in_utc()
     {
         var response = await _client.GetAsync("/api/liens/liens?page=1&pageSize=1");
 
@@ -281,9 +281,8 @@ public class LienEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLifetime
             .GetString();
 
         createdAtUtc.Should().NotBeNullOrWhiteSpace();
-        (createdAtUtc!.EndsWith("-07:00", StringComparison.Ordinal) ||
-         createdAtUtc.EndsWith("-08:00", StringComparison.Ordinal))
-            .Should().BeTrue($"expected Pacific offset in serialized timestamp but got '{createdAtUtc}'");
+        createdAtUtc!.EndsWith("Z", StringComparison.Ordinal)
+            .Should().BeTrue($"expected UTC timestamp but got '{createdAtUtc}'");
     }
 
     [Fact]

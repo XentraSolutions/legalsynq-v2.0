@@ -222,6 +222,7 @@ public static class SellingEndpoints
         ICurrentRequestContext ctx,
         string? tab = null,
         string? search = null,
+        Guid? caseId = null,
         Guid? fundingCompanyId = null,
         Guid? lawFirmId = null,
         Guid? caseManagerId = null,
@@ -241,6 +242,7 @@ public static class SellingEndpoints
             {
                 Tab = tab ?? "pending",
                 Search = search,
+                CaseId = caseId,
                 FundingCompanyId = fundingCompanyId,
                 LawFirmId = lawFirmId,
                 CaseManagerId = caseManagerId,

@@ -177,6 +177,63 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Saved_case_draft_can_be_retrieved_only_by_its_seller_organization()
+    {
+        var createResponse = await _client.PostAsJsonAsync("/api/liens/selling/case-drafts", new
+        {
+            accidentTypeId = "MVA",
+            accidentState = "CA",
+            dateOfLoss = "2026-07-19",
+            caseTrackingNotes = "Resume this saved case intake.",
+        });
+        createResponse.EnsureSuccessStatusCode();
+        using var createJson = JsonDocument.Parse(await createResponse.Content.ReadAsStringAsync());
+        var draftId = createJson.RootElement.GetProperty("draftId").GetGuid();
+
+        var response = await _client.GetAsync($"/api/liens/selling/case-drafts/{draftId}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var draft = json.RootElement;
+        draft.GetProperty("draftId").GetGuid().Should().Be(draftId);
+        draft.GetProperty("caseStatus").GetString().Should().Be(CaseStatus.PreDemand);
+        draft.GetProperty("accidentTypeId").GetString().Should().Be("MVA");
+        draft.GetProperty("accidentState").GetString().Should().Be("CA");
+        draft.GetProperty("dateOfLoss").GetString().Should().Be("2026-07-19");
+        draft.GetProperty("caseTrackingNotes").GetString().Should().Be("Resume this saved case intake.");
+        draft.GetProperty("createdAtUtc").GetDateTime().Should().NotBe(default);
+        draft.GetProperty("updatedAtUtc").GetDateTime().Should().NotBe(default);
+
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", JwtTokenHelper.CreateFullAccessToken(SeedHelper.TenantId, SeedHelper.UserId, Guid.CreateVersion7()));
+        var foreignOrganizationResponse = await _client.GetAsync($"/api/liens/selling/case-drafts/{draftId}");
+        foreignOrganizationResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Retrieved_finalized_case_draft_includes_its_case_id()
+    {
+        var draftResponse = await _client.PostAsJsonAsync("/api/liens/selling/case-drafts", new { });
+        draftResponse.EnsureSuccessStatusCode();
+        using var draftJson = JsonDocument.Parse(await draftResponse.Content.ReadAsStringAsync());
+        var draftId = draftJson.RootElement.GetProperty("draftId").GetGuid();
+
+        var finalizeResponse = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/case-drafts/{draftId}/plaintiff",
+            new { firstName = "Finalized", lastName = "Plaintiff" });
+        finalizeResponse.EnsureSuccessStatusCode();
+        using var finalizeJson = JsonDocument.Parse(await finalizeResponse.Content.ReadAsStringAsync());
+        var caseId = finalizeJson.RootElement.GetProperty("caseId").GetGuid();
+
+        var response = await _client.GetAsync($"/api/liens/selling/case-drafts/{draftId}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        json.RootElement.GetProperty("caseId").GetGuid().Should().Be(caseId);
+        json.RootElement.GetProperty("finalizedAtUtc").GetDateTime().Should().NotBe(default);
+    }
+
+    [Fact]
     public async Task Finalized_selling_case_can_be_retrieved_and_updated_in_two_steps()
     {
         using var createDraft = new HttpRequestMessage(HttpMethod.Post, "/api/liens/selling/case-drafts")
@@ -260,6 +317,81 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         result.GetProperty("city").GetString().Should().Be("Las Vegas");
         result.GetProperty("state").GetString().Should().Be("NV");
         result.GetProperty("zipcode").GetString().Should().Be("89101");
+    }
+
+    [Fact]
+    public async Task Selling_cases_returns_all_finalized_cases_for_the_seller_organization()
+    {
+        Guid accidentTypeId;
+        Company lawFirm;
+        CompanyContactPerson caseManager;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            accidentTypeId = await db.LookupValues
+                .Where(value => value.Category == LookupCategory.AccidentType && value.Code == "MVA")
+                .Select(value => value.Id)
+                .SingleAsync();
+            var caseManagerRoleId = CompanyDirectoryReferenceData.ContactPersonTypes
+                .Single(role =>
+                    role.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId &&
+                    role.Code == "CaseManager")
+                .Id;
+            lawFirm = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.LawFirmId,
+                "Selling Case Law LLP",
+                SeedHelper.UserId);
+            caseManager = CompanyContactPerson.Create(
+                SeedHelper.TenantId,
+                lawFirm.Id,
+                caseManagerRoleId,
+                "Casey",
+                "Manager",
+                SeedHelper.UserId);
+            db.AddRange(lawFirm, caseManager);
+            await db.SaveChangesAsync();
+        }
+
+        var draftResponse = await _client.PostAsJsonAsync("/api/liens/selling/case-drafts", new
+        {
+            accidentTypeId,
+            handlingLawFirmId = lawFirm.Id,
+            caseManagerId = caseManager.Id,
+        });
+        draftResponse.EnsureSuccessStatusCode();
+        using var draftJson = JsonDocument.Parse(await draftResponse.Content.ReadAsStringAsync());
+        var draftId = draftJson.RootElement.GetProperty("draftId").GetGuid();
+        var finalizeResponse = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/case-drafts/{draftId}/plaintiff",
+            new { firstName = "Alice", lastName = "First" });
+        finalizeResponse.EnsureSuccessStatusCode();
+        using var finalizeJson = JsonDocument.Parse(await finalizeResponse.Content.ReadAsStringAsync());
+        var firstCaseId = finalizeJson.RootElement.GetProperty("caseId").GetGuid();
+        var secondCaseId = await FinalizeSellingCaseAsync("Bob", "Second");
+
+        var response = await _client.GetAsync("/api/liens/selling/cases");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var result = json.RootElement;
+        result.GetProperty("totalCount").GetInt32().Should().Be(2);
+        var items = result.GetProperty("items").EnumerateArray().ToList();
+        items.Select(item => item.GetProperty("caseId").GetGuid())
+            .Should().BeEquivalentTo([firstCaseId, secondCaseId]);
+        items.Select(item => item.GetProperty("firstName").GetString())
+            .Should().BeEquivalentTo(["Alice", "Bob"]);
+        items.Should().OnlyContain(item =>
+            item.GetProperty("caseStatus").GetString() == CaseStatus.PreDemand &&
+            item.GetProperty("draftId").GetGuid() != Guid.Empty);
+        var caseWithLookups = items.Single(item => item.GetProperty("caseId").GetGuid() == firstCaseId);
+        AssertSellingCaseLookupNames(caseWithLookups, accidentTypeId, lawFirm.Id, caseManager.Id);
+
+        var detailResponse = await _client.GetAsync($"/api/liens/selling/cases/{firstCaseId}");
+        detailResponse.StatusCode.Should().Be(HttpStatusCode.OK, await detailResponse.Content.ReadAsStringAsync());
+        using var detailJson = JsonDocument.Parse(await detailResponse.Content.ReadAsStringAsync());
+        AssertSellingCaseLookupNames(detailJson.RootElement, accidentTypeId, lawFirm.Id, caseManager.Id);
     }
 
     [Fact]
@@ -2044,6 +2176,35 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
 
     private static void SetId<T>(T entity, Guid id) where T : class
         => typeof(T).GetProperty("Id", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)!.SetValue(entity, id);
+
+    private static void AssertSellingCaseLookupNames(
+        JsonElement item,
+        Guid accidentTypeId,
+        Guid lawFirmId,
+        Guid caseManagerId)
+    {
+        item.GetProperty("accidentTypeId").GetString().Should().Be(accidentTypeId.ToString());
+        item.GetProperty("accidentTypeName").GetString().Should().Be("Motor Vehicle Accident");
+        item.GetProperty("handlingLawFirmId").GetGuid().Should().Be(lawFirmId);
+        item.GetProperty("handlingLawFirmName").GetString().Should().Be("Selling Case Law LLP");
+        item.GetProperty("caseManagerId").GetGuid().Should().Be(caseManagerId);
+        item.GetProperty("caseManagerName").GetString().Should().Be("Casey Manager");
+    }
+
+    private async Task<Guid> FinalizeSellingCaseAsync(string firstName, string lastName)
+    {
+        var draftResponse = await _client.PostAsJsonAsync("/api/liens/selling/case-drafts", new { });
+        draftResponse.EnsureSuccessStatusCode();
+        using var draftJson = JsonDocument.Parse(await draftResponse.Content.ReadAsStringAsync());
+        var draftId = draftJson.RootElement.GetProperty("draftId").GetGuid();
+
+        var finalizeResponse = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/case-drafts/{draftId}/plaintiff",
+            new { firstName, lastName });
+        finalizeResponse.EnsureSuccessStatusCode();
+        using var finalizeJson = JsonDocument.Parse(await finalizeResponse.Content.ReadAsStringAsync());
+        return finalizeJson.RootElement.GetProperty("caseId").GetGuid();
+    }
 
     private async Task<Guid> CreateSellingLienAsync()
     {

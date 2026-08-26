@@ -56,9 +56,18 @@
           }
         },
         {
+          "name": "Get All Selling Cases",
+          "request": {
+            "method": "GET",
+            "description": "Returns all finalized seller-owned cases. Each item includes accidentTypeName, handlingLawFirmName, and caseManagerName alongside the corresponding IDs.",
+            "url": "{{baseUrl}}/api/liens/selling/cases"
+          }
+        },
+        {
           "name": "Get Selling Case Information",
           "request": {
             "method": "GET",
+            "description": "Returns a finalized seller-owned case with accidentTypeName, handlingLawFirmName, and caseManagerName alongside the corresponding IDs.",
             "url": "{{baseUrl}}/api/liens/selling/cases/{{caseId}}"
           }
         }

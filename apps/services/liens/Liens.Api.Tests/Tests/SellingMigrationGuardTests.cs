@@ -98,6 +98,17 @@ public sealed class SellingMigrationGuardTests
     }
 
     [Fact]
+    public void Selling_schema_recovery_replays_case_draft_and_concurrency_token_migrations_in_order()
+    {
+        SellingSchemaRepair.CreateRecoveryMigrations()
+            .Select(migration => migration.GetType())
+            .Should()
+            .ContainInOrder(
+                typeof(AddSellingCaseDraft),
+                typeof(AddSellingCaseDraftConcurrencyToken));
+    }
+
+    [Fact]
     public void Selling_case_reference_migration_uses_restart_safe_mysql_guards()
     {
         var migration = new AddLienSellingCaseReference();
@@ -109,5 +120,27 @@ public sealed class SellingMigrationGuardTests
         sql.Should().Contain("COLUMN_NAME = 'MovedToManagementAtUtc'");
         sql.Should().Contain("IX_Liens_SellingCaseId");
         sql.Should().Contain("FK_liens_Liens_liens_Cases_SellingCaseId");
+    }
+
+    [Fact]
+    public void Selling_case_draft_concurrency_token_migration_backfills_before_enforcing_not_null()
+    {
+        var migration = new AddSellingCaseDraftConcurrencyToken();
+
+        migration.UpOperations.Should().HaveCount(3);
+        migration.UpOperations.Should().OnlyContain(operation => operation is SqlOperation);
+
+        var sqlOperations = migration.UpOperations.Cast<SqlOperation>().ToList();
+        sqlOperations.Should().OnlyContain(operation => operation.SuppressTransaction);
+        var sql = string.Join(Environment.NewLine, sqlOperations.Select(operation => operation.Sql));
+
+        sql.Should().Contain("COLUMN_NAME = 'ConcurrencyToken'");
+        sql.Should().Contain("ADD COLUMN `ConcurrencyToken` char(36) COLLATE ascii_general_ci NULL");
+        sql.Should().Contain("SET `ConcurrencyToken` = UUID()");
+        sql.Should().Contain("MODIFY COLUMN `ConcurrencyToken` char(36) COLLATE ascii_general_ci NOT NULL");
+
+        sql.IndexOf("SET `ConcurrencyToken` = UUID()", StringComparison.Ordinal)
+            .Should().BeLessThan(
+                sql.IndexOf("MODIFY COLUMN `ConcurrencyToken`", StringComparison.Ordinal));
     }
 }

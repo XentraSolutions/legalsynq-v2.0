@@ -14,21 +14,9 @@ public partial class BackfillMedicalStatusLookupValues : Migration
 
     protected override void Up(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.Sql($"""
-            INSERT INTO `liens_LookupValues`
-                (`Id`, `TenantId`, `Category`, `Code`, `Name`, `Description`,
-                 `SortOrder`, `IsActive`, `IsSystem`,
-                 `CreatedByUserId`, `UpdatedByUserId`, `CreatedAtUtc`, `UpdatedAtUtc`)
-            SELECT UUID(), NULL, 'MedicalStatus', 'Treating', 'Treating', NULL,
-                   1, 1, 1, '{SystemUserId}', NULL, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM `liens_LookupValues`
-                WHERE `TenantId` IS NULL
-                  AND `Category` = 'MedicalStatus'
-                  AND `Code` = 'Treating'
-            );
-            """);
+        SeedGlobalMedicalStatus(migrationBuilder, "TREATING", "Plaintiff Treating", 1);
+        SeedGlobalMedicalStatus(migrationBuilder, "DONE_TREATING", "Plaintiff Done Treating", 2);
+        SeedGlobalMedicalStatus(migrationBuilder, "UNKNOWN", "Unknown", 3);
 
         var backfillSql = $"""
             INSERT INTO `liens_LookupValues`
@@ -65,6 +53,29 @@ public partial class BackfillMedicalStatusLookupValues : Migration
             EXECUTE legalsynq_medical_status_backfill_stmt;
             DEALLOCATE PREPARE legalsynq_medical_status_backfill_stmt;
             """, suppressTransaction: true);
+    }
+
+    private static void SeedGlobalMedicalStatus(
+        MigrationBuilder migrationBuilder,
+        string code,
+        string name,
+        int sortOrder)
+    {
+        migrationBuilder.Sql($"""
+            INSERT INTO `liens_LookupValues`
+                (`Id`, `TenantId`, `Category`, `Code`, `Name`, `Description`,
+                 `SortOrder`, `IsActive`, `IsSystem`,
+                 `CreatedByUserId`, `UpdatedByUserId`, `CreatedAtUtc`, `UpdatedAtUtc`)
+            SELECT UUID(), NULL, 'MedicalStatus', '{code}', '{name}', NULL,
+                   {sortOrder}, 1, 1, '{SystemUserId}', NULL, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6)
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM `liens_LookupValues`
+                WHERE `TenantId` IS NULL
+                  AND `Category` = 'MedicalStatus'
+                  AND `Code` = '{code}'
+            );
+            """);
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)

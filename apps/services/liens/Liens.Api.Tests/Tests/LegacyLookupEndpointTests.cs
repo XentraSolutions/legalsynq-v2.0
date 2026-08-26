@@ -43,10 +43,16 @@ public class LegacyLookupEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var payload = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
-        payload.AsArray().Any(item =>
-            item is JsonObject option &&
-            option["code"]?.GetValue<string>() == "Treating" &&
-            option["name"]?.GetValue<string>() == "Treating").Should().BeTrue();
+        payload.AsArray()
+            .Select(item => (
+                Code: item?["code"]?.GetValue<string>(),
+                Name: item?["name"]?.GetValue<string>()))
+            .Should().Contain(new (string? Code, string? Name)[]
+            {
+                ("TREATING", "Plaintiff Treating"),
+                ("DONE_TREATING", "Plaintiff Done Treating"),
+                ("UNKNOWN", "Unknown")
+            });
     }
     [Fact] public Task SettlementStatus_returns200()  => GetOk("/lookup/settlement/status");
     [Fact] public Task SettlementType_returns200()    => GetOk("/lookup/settlement/type");

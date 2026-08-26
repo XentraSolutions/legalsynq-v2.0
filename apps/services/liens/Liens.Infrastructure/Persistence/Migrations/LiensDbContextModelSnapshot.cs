@@ -3258,6 +3258,9 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("varchar(4000)");
 
+                    b.Property<Guid>("ConcurrencyToken")
+                        .HasColumnType("char(36)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime(6)");
 

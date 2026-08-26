@@ -58,6 +58,8 @@ public sealed class SellingDashboardService : ISellingDashboardService
             ? lienQuery.Where(l => l.ArchivedAtUtc != null || l.SellerStatus == SellingLienStatus.Archived)
             : lienQuery.Where(l => l.ArchivedAtUtc == null && l.SellerStatus != SellingLienStatus.Archived);
 
+        if (normalizedQuery.CaseId.HasValue)
+            lienQuery = lienQuery.Where(l => l.CaseId == normalizedQuery.CaseId);
         if (normalizedQuery.FundingCompanyId.HasValue)
             lienQuery = lienQuery.Where(l =>
                 l.FundingCompanyCompanyId == normalizedQuery.FundingCompanyId
@@ -496,6 +498,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         {
             Tab = tab,
             Search = query.Search?.Trim(),
+            CaseId = query.CaseId,
             FundingCompanyId = query.FundingCompanyId,
             LawFirmId = query.LawFirmId,
             CaseManagerId = query.CaseManagerId,

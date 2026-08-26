@@ -37,6 +37,7 @@ public class LiensMigrationDiscoveryTests
         Assert.Contains("20260825160000_AddLegacyReportParityFields", migrationIds);
         Assert.Contains("20260825180000_AddLienImportedCreatedByName", migrationIds);
         Assert.Contains("20260826090000_AddLienSellingCaseReference", migrationIds);
+        Assert.Contains("20260827100000_AddSellingCaseDraftConcurrencyToken", migrationIds);
     }
 
     [Fact]
@@ -61,6 +62,7 @@ public class LiensMigrationDiscoveryTests
             typeof(Liens.Infrastructure.Persistence.Migrations.AddLegacyReportParityFields),
             typeof(Liens.Infrastructure.Persistence.Migrations.AddLienImportedCreatedByName),
             typeof(Liens.Infrastructure.Persistence.Migrations.AddLienSellingCaseReference),
+            typeof(Liens.Infrastructure.Persistence.Migrations.AddSellingCaseDraftConcurrencyToken),
         };
 
         foreach (var migrationType in migrationTypes)

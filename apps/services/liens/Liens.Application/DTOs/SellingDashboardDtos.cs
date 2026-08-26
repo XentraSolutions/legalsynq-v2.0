@@ -4,6 +4,7 @@ public sealed class SellingDashboardQuery
 {
     public string Tab { get; init; } = "pending";
     public string? Search { get; init; }
+    public Guid? CaseId { get; init; }
     public Guid? FundingCompanyId { get; init; }
     public Guid? LawFirmId { get; init; }
     public Guid? CaseManagerId { get; init; }
