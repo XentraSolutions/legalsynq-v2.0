@@ -210,7 +210,7 @@ export function NoRecoveryForm({
 
   const noRecoveryFooter: LienFooterCell[] = [
     {
-      colSpan: 3,
+      colSpan: 4,
       content: (
         <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
           Selected ({checkedIds.size} of {openLiens.length})

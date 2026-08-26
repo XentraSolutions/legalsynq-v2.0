@@ -156,46 +156,55 @@ export function ServicingTab({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
 
-  let openLiens = liens.filter((i) => i.closedAtUtc === null);
-  let closedLiens = liens.filter((i) => i.closedAtUtc !== null);
+  let openLiens = liens.filter((i) => i.status === "Open");
+  let closedLiens = liens.filter((i) => i.status === "Closed");
 
-  const openLiensTotalBilling = openLiens.reduce(
-    (s, l) => s + l.originalAmount,
-    0,
-  );
-  const openLiensTotalPurchase = openLiens.reduce(
-    (s, l) => s + (l.purchaseAmount ?? 0),
-    0,
-  );
-  const openLiensTotalBalance = openLiens.reduce((s, l) => s + l.balance, 0);
-  const openLiensTotalReduction = openLiens.reduce(
-    (s, l) => s + (l.reductionAmount ?? 0),
-    0,
-  );
-  const openLiensTotalPayment = openLiens.reduce(
-    (s, l) => s + (l.paymentAmount ?? 0),
-    0,
-  );
-  const closedLiensTotalBilling = closedLiens.reduce(
-    (s, l) => s + l.originalAmount,
-    0,
-  );
-  const closedLiensTotalPurchase = closedLiens.reduce(
-    (s, l) => s + (l.purchaseAmount ?? 0),
-    0,
-  );
-  const closedLiensTotalReduction = closedLiens.reduce(
-    (s, l) => s + (l.reductionAmount ?? 0),
-    0,
-  );
-  const closedLiensTotalBalance = closedLiens.reduce(
-    (s, l) => s + l.balance,
-    0,
-  );
-  const closedLiensTotalPayment = closedLiens.reduce(
-    (s, l) => s + (l.paymentAmount ?? 0),
-    0,
-  );
+  const openLiensTotalBilling =
+    openLiens.reduce(
+      (s, l) => s + Math.round((l.originalAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const openLiensTotalPurchase =
+    openLiens.reduce(
+      (s, l) => s + Math.round((l.purchaseAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const openLiensTotalBalance =
+    openLiens.reduce((s, l) => s + Math.round((l.balance ?? 0) * 100), 0) / 100;
+  const openLiensTotalReduction =
+    openLiens.reduce(
+      (s, l) => s + Math.round((l.reductionAmount ?? 0) * 100),
+      0,
+    ) / 100;
+
+  const openLiensTotalPayment =
+    openLiens.reduce(
+      (s, l) => s + Math.round((l.paymentAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const closedLiensTotalBilling =
+    closedLiens.reduce(
+      (s, l) => s + Math.round((l.originalAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const closedLiensTotalPurchase =
+    closedLiens.reduce(
+      (s, l) => s + Math.round((l.purchaseAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const closedLiensTotalReduction =
+    closedLiens.reduce(
+      (s, l) => s + Math.round((l.reductionAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const closedLiensTotalBalance =
+    closedLiens.reduce((s, l) => s + Math.round((l.balance ?? 0) * 100), 0) /
+    100;
+  const closedLiensTotalPayment =
+    closedLiens.reduce(
+      (s, l) => s + Math.round((l.paymentAmount ?? 0) * 100),
+      0,
+    ) / 100;
 
   const { lookup } = useSessionContext();
 
