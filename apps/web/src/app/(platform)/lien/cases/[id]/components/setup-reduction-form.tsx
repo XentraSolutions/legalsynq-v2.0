@@ -307,8 +307,12 @@ export function SetupReductionForm({
         : 0
       : (l.reductionAmount ?? 0);
 
-  const totalBilling = liens.reduce((s, l) => s + (l.originalAmount ?? 0), 0);
-  const totalPurchase = liens.reduce((s, l) => s + (l.purchaseAmount ?? 0), 0);
+  const totalBilling =
+    liens.reduce((s, l) => s + Math.round((l.originalAmount ?? 0) * 100), 0) /
+    100;
+  const totalPurchase =
+    liens.reduce((s, l) => s + Math.round((l.purchaseAmount ?? 0) * 100), 0) /
+    100;
   const totalReduction = liens.reduce((s, l) => s + getRowReduction(l), 0);
   const totalSettle = totalBilling - totalReduction;
 
@@ -418,7 +422,7 @@ export function SetupReductionForm({
 
   const reductionFooter: LienFooterCell[] = [
     {
-      colSpan: 3,
+      colSpan: 4,
       content: (
         <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
           Total
