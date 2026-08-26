@@ -107,7 +107,10 @@ export interface NavItem {
   heading?: string;
   href?: string;
   label?: string;
+  /** Remix Icon class name, e.g. "ri-folder-3-line". Ignored when lucideIcon is set. */
   icon?: string;
+  /** Lucide icon component, takes precedence over `icon` when both are set. */
+  lucideIcon?: import("lucide-react").LucideIcon;
   badge?: string;
   badgeKey?: string;
   requiredRoles?: ProductRoleValue[];
