@@ -13,15 +13,19 @@ export function MedicalLienDetailSection({
   onDocumentsUploaded,
   onGoBack,
   onSave,
+  invalidForm,
+  saving,
 }: {
   caseId: string;
   lienId: string;
   loading: boolean;
   data: Record<number, any>;
-  onFormValid: (data: any, index: number) => void;
+  onFormValid: (isValid: boolean, data: any, index: number) => void;
   onDocumentsUploaded: () => void;
   onGoBack?: () => void;
   onSave: () => void;
+  invalidForm: boolean;
+  saving: boolean;
 }) {
   return (
     <CollapsibleSection title="Medical Liens" icon="ri-stack-line">
@@ -33,7 +37,7 @@ export function MedicalLienDetailSection({
               lienId={lienId}
               data={data[0]}
               onFormValid={(e: boolean, formData?: any) => {
-                onFormValid(formData, 0);
+                onFormValid(e, formData, 0);
               }}
             />
           </div>
@@ -44,7 +48,7 @@ export function MedicalLienDetailSection({
               lienId={lienId}
               data={data[1]}
               onFormValid={(e: boolean, formData?: any) =>
-                onFormValid(formData, 1)
+                onFormValid(e, formData, 1)
               }
             />
           </div>
@@ -55,7 +59,7 @@ export function MedicalLienDetailSection({
               lienId={lienId}
               data={{ ...data[2], ...data[4] }}
               onFormValid={(e: boolean, formData?: any) =>
-                onFormValid(formData, 2)
+                onFormValid(e, formData, 2)
               }
             />
           </div>
@@ -67,7 +71,7 @@ export function MedicalLienDetailSection({
               data={data[3]}
               onUploaded={() => onDocumentsUploaded()}
               onFormValid={(e: boolean, formData?: any) =>
-                onFormValid(formData, 3)
+                onFormValid(e, formData, 3)
               }
             />
           </div>
@@ -83,9 +87,10 @@ export function MedicalLienDetailSection({
         </button>
         <button
           onClick={onSave}
+          disabled={invalidForm || saving}
           className="text-sm px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg disabled:opacity-50"
         >
-          Save
+          {saving ? "Saving..." : "Save"}
         </button>
       </div>
     </CollapsibleSection>
