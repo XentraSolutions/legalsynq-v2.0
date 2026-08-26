@@ -17,6 +17,7 @@ export interface CaseSelectProps {
   searchPlaceholder?: string;
   error?: boolean;
   className?: string;
+  disabled?: boolean;
 }
 
 function toOption(c: { id: string; caseNumber: string; clientName: string }): CaseOption {
@@ -57,6 +58,7 @@ export function CaseSelect({
   searchPlaceholder = "Search cases...",
   error,
   className,
+  disabled,
 }: CaseSelectProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -112,6 +114,7 @@ export function CaseSelect({
       searchPlaceholder={searchPlaceholder}
       error={error}
       className={className}
+      disabled={disabled}
       renderOption={(option, { selected, active }) => (
         <div className={`flex flex-col ${selected || active ? "" : ""}`}>
           <span className="text-sm font-medium text-gray-900">
