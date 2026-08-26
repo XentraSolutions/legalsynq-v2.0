@@ -268,6 +268,7 @@ export function AddPaymentForm({
       l.balance > 0,
   );
 
+  const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
 
   function filterLiensForEditing(l:any){
         const filtered = new Set(openLiens.filter((l)=>l.id == selectedPayment.lienId).map((l) => l.id))
@@ -610,8 +611,6 @@ const handleDistributePayment = () => {
     form.status.trim() ==="" ||
     (!isEditing  && !hasDistributedPayment) ||
     (!isEditing && checkedIds.size === 0);
-
-  const selectedLiens = openLiens.filter((l) => checkedIds.has(l.id));
 
   const totalAmountToSettle = openLiens.reduce(
     (s, l) => s + (l.balance ?? 0),

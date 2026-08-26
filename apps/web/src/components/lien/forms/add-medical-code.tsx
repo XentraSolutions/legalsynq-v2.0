@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { FormModal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { casesService, type CreateCaseRequestDto } from "@/lib/cases";
@@ -25,6 +26,7 @@ export function CreateMedicalCode({
   onCreated,
 }: CreateMedicalCodeProps) {
   const addToast = useLienStore((s) => s.addToast);
+  const queryClient = useQueryClient();
   const [form, setForm] = useState({ ...INITIAL_FORM });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -46,6 +48,7 @@ export function CreateMedicalCode({
         description: form.description.trim(),
       };
       await casesService.createMedicalCode(request);
+      await queryClient.invalidateQueries({ queryKey: ["procedureCodes"] });
       addToast({
         type: "success",
         title: "Code Created",
