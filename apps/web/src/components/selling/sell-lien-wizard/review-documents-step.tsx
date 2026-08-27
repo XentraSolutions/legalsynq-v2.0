@@ -134,9 +134,18 @@ async function docSlotsFromLien(
   }[] = [];
   for (const doc of documents) {
     const data = parseDocumentReference(doc);
-    if (!data.documentId || !slots[data.documentType]) continue;
+    if (!data.documentId) continue;
+    // Older uploads persisted the human-readable label (e.g. "Police Report")
+    // instead of the raw enum key ("PoliceReport") as documentType, so a
+    // direct slot lookup misses them — fall back to matching by label.
+    const slotType = slots[data.documentType]
+      ? data.documentType
+      : Object.keys(slots).find(
+          (key) => camelCaseToLabel(key) === data.documentType,
+        );
+    if (!slotType) continue;
     refs.push({
-      slotType: data.documentType,
+      slotType,
       documentId: data.documentId,
       displayName: data.displayName,
     });
