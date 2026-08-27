@@ -174,16 +174,33 @@ export function NoRecoveryForm({
     }
   };
 
-  const totalBilling = openLiens
-    .filter((l) => checkedIds.has(l.id))
-    .reduce((s, l) => s + (l.originalAmount ?? 0), 0);
+  const totalBilling = openLiens.reduce(
+    (s, l) => s + (l.originalAmount ?? 0),
+    0,
+  );
+  const totalPurchase =
+    liens.reduce((s, l) => s + Math.round((l.purchaseAmount ?? 0) * 100), 0) /
+    100;
+
+  const totalBalance = openLiens.reduce((s, l) => s + (l.balance ?? 0), 0);
 
   const noRecoveryColumns: LienColumnDef[] = [
     {
       id: "lienId",
       header: "Lien ID",
       cell: (l) => (
-        <span className="text-xs font-mono text-primary">{l.lienNumber}</span>
+        <span className="text-sm text-primary whitespace-nowrap">
+          {l.lienNumber}
+        </span>
+      ),
+    },
+    {
+      id: "facilityName",
+      header: "Medical Facility",
+      cell: (l) => (
+        <span className="text-sm text-gray-600 whitespace-wrap max-w-40 block">
+          {l.facilityName || ""}
+        </span>
       ),
     },
     {
@@ -197,8 +214,19 @@ export function NoRecoveryForm({
       ),
     },
     {
+      id: "purchase",
+      header: "Purchase Amount",
+      align: "right",
+      cell: (l) => (
+        <span className="text-sm text-gray-700 tabular-nums">
+          {formatCurrency(l.purchaseAmount ?? 0)}
+        </span>
+      ),
+    },
+
+    {
       id: "balance",
-      header: "Balance",
+      header: "Amount to Settle",
       align: "right",
       cell: (l) => (
         <span className="text-sm text-gray-700 tabular-nums">
@@ -225,7 +253,22 @@ export function NoRecoveryForm({
         </span>
       ),
     },
-    { content: null },
+    {
+      align: "right",
+      content: (
+        <span className="text-sm font-semibold text-gray-900 tabular-nums">
+          {formatCurrency(totalPurchase)}
+        </span>
+      ),
+    },
+    {
+      align: "right",
+      content: (
+        <span className="text-sm font-semibold text-gray-900 tabular-nums">
+          {formatCurrency(totalBalance)}
+        </span>
+      ),
+    },
   ];
 
   return (

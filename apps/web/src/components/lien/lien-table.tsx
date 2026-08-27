@@ -1,8 +1,15 @@
 "use client";
 
 import * as React from "react";
-import type { ColumnDef, OnChangeFn, RowSelectionState } from "@tanstack/react-table";
-import { BaseTable, type BaseTableFooterCell } from "@/components/ui/base-table";
+import type {
+  ColumnDef,
+  OnChangeFn,
+  RowSelectionState,
+} from "@tanstack/react-table";
+import {
+  BaseTable,
+  type BaseTableFooterCell,
+} from "@/components/ui/base-table";
 import { Badge } from "@/components/ui/badge";
 import { DateDisplay } from "@/components/ui/date-display";
 import { cn } from "@/lib/utils";
@@ -83,9 +90,11 @@ export function LienTableToolbar({
     >
       <span className="text-[11px] text-gray-400">
         Last loaded:{" "}
-        {loadedAt
-          ? <DateDisplay value={loadedAt.toISOString()} format="datetime" />
-          : "—"}
+        {loadedAt ? (
+          <DateDisplay value={loadedAt.toISOString()} format="datetime" />
+        ) : (
+          "—"
+        )}
       </span>
       <button
         type="button"
@@ -93,7 +102,12 @@ export function LienTableToolbar({
         disabled={!onRefresh || isRefreshing}
         className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-primary transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        <i className={cn("ri-refresh-line text-xs", isRefreshing && "animate-spin")} />
+        <i
+          className={cn(
+            "ri-refresh-line text-xs",
+            isRefreshing && "animate-spin",
+          )}
+        />
         {isRefreshing ? "Refreshing..." : "Refresh"}
       </button>
     </div>
@@ -134,21 +148,26 @@ export function LienTable({
   }, [checkedIds]);
 
   const handleRowSelectionChange: OnChangeFn<RowSelectionState> = (updater) => {
-    const next = typeof updater === "function" ? updater(rowSelection) : updater;
+    const next =
+      typeof updater === "function" ? updater(rowSelection) : updater;
     const nextIds = new Set(Object.keys(next).filter((id) => next[id]));
     const prevIds = checkedIds ?? new Set<string>();
 
     if (nextIds.size === prevIds.size) return;
 
     const allNowSelected =
-      nextIds.size === selectableLiens.length && prevIds.size !== selectableLiens.length;
-    const allNowDeselected = nextIds.size === 0 && prevIds.size === selectableLiens.length;
+      nextIds.size === selectableLiens.length &&
+      prevIds.size !== selectableLiens.length;
+    const allNowDeselected =
+      nextIds.size === 0 && prevIds.size === selectableLiens.length;
     if (allNowSelected || allNowDeselected) {
       onToggleAll?.();
       return;
     }
 
-    const toggled = liens.find((lien) => prevIds.has(lien.id) !== nextIds.has(lien.id));
+    const toggled = liens.find(
+      (lien) => prevIds.has(lien.id) !== nextIds.has(lien.id),
+    );
     if (toggled) onToggleCheck?.(toggled.id);
   };
 
@@ -185,12 +204,14 @@ export function LienTable({
     [columnIds, selectable],
   );
 
-  const footerCells: BaseTableFooterCell[] | undefined = footer?.map((cell) => ({
-    content: cell.content,
-    colSpan: cell.colSpan,
-    align: cell.align,
-    className: cell.className,
-  }));
+  const footerCells: BaseTableFooterCell[] | undefined = footer?.map(
+    (cell) => ({
+      content: cell.content,
+      colSpan: cell.colSpan,
+      align: cell.align,
+      className: cell.className,
+    }),
+  );
 
   return (
     <BaseTable
@@ -213,7 +234,11 @@ export function LienTable({
       className={className}
       toolbar={
         showLastLoaded ? (
-          <LienTableToolbar loadedAt={loadedAt} onRefresh={onRefresh} isRefreshing={isRefreshing} />
+          <LienTableToolbar
+            loadedAt={loadedAt}
+            onRefresh={onRefresh}
+            isRefreshing={isRefreshing}
+          />
         ) : undefined
       }
     />
@@ -223,7 +248,6 @@ export function LienTable({
 function LienExpandedRow({ lien }: { lien: LienRow }) {
   return (
     <div className="flex items-center flex-wrap gap-x-6 gap-y-1">
-      <LienExpandedField label="Facility" value={lien.facility ?? "—"} />
       {lien.status && (
         <LienExpandedField label="Status">
           <Badge variant="outline">{lien.status}</Badge>
@@ -247,9 +271,7 @@ function LienExpandedField({
       <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">
         {label}
       </span>
-      {children ?? (
-        <span className="text-xs text-gray-600">{value}</span>
-      )}
+      {children ?? <span className="text-xs text-gray-600">{value}</span>}
     </div>
   );
 }
