@@ -61,6 +61,7 @@ export function MedicalLienDetailSection({
               onFormValid={(e: boolean, formData?: any) =>
                 onFormValid(e, formData, 2)
               }
+              mode="edit"
             />
           </div>
 
@@ -73,6 +74,7 @@ export function MedicalLienDetailSection({
               onFormValid={(e: boolean, formData?: any) =>
                 onFormValid(e, formData, 3)
               }
+              mode="edit"
             />
           </div>
         </>

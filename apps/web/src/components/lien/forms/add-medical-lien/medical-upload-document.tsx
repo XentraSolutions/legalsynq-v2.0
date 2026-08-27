@@ -26,6 +26,7 @@ export interface UploadDocumentsProps {
   onFormValid?: (valid: boolean, data?: any) => void;
   openAddFundingCompanyModal?: () => void;
   onUploaded?: (valid: boolean, data?: any) => void;
+  mode?: "add" | "edit";
 }
 
 const INITIAL_FORM = {
@@ -98,8 +99,10 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
       label: d.name,
     };
   });
-  const [documents, setDocuments] = useState<any[]>(data);
+  const [documents, setDocuments] = useState<any[]>(data ?? []);
   const [files, setFiles] = useState<File[] | null>(null);
+  const [temporaryFiles, setTemporaryFiles] = useState<File[] | null>(null);
+
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   useEffect(() => {}, [data, isSubmitting]);
@@ -136,6 +139,18 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     showConfirmAction({ isOpen: true, id: fileId });
   }
   const deleteFile = useCallback(async () => {
+    if (props.mode == "add") {
+      setDocuments((current) =>
+        current.filter((row) => row.id !== confirmAction.id),
+      );
+      addToast({
+        type: "success",
+        title: `Deleted`,
+      });
+      showConfirmAction({ id: "", isOpen: false });
+
+      return;
+    }
     try {
       await casesService.deleteLiensDocument(confirmAction.id);
       fetchDocument();
@@ -148,9 +163,37 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         });
       }
     }
+    showConfirmAction({ id: "", isOpen: false });
   }, [confirmAction]);
 
   const uploadLiensDocuments = useCallback(async () => {
+    // if (props.mode == "add") {
+    //   const filesData =
+    //     files?.map((d: any, index: number) => ({
+    //       name: d.name,
+    //       type: form.documentType,
+    //       id: documents.length,
+    //       url: d.url,
+    //     })) ?? [];
+    //   const tempFilesData =
+    //     files?.map((f) => ({
+    //       ...f,
+    //       documentType: form.documentType,
+    //     })) ?? [];
+    //   console.log(tempFilesData);
+    //   setDocuments((prev) => [...prev, ...filesData]);
+    //   setTemporaryFiles((prevTemp) => [
+    //     ...(prevTemp != null ? prevTemp : []),
+    //     ...(tempFilesData != null ? Array.from(tempFilesData) : []),
+    //   ]);
+    //   dropzoneRef?.current?.reset();
+    //   props.onFormValid?.(true, [
+    //     ...(temporaryFiles != null ? temporaryFiles : []),
+    //     ...(tempFilesData != null ? tempFilesData : []),
+    //   ]);
+    //   setForm(initialForm);
+    //   return;
+    // }
     setIsSubmitting(true);
 
     if (!files) return;
@@ -194,7 +237,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
         }
       }
     }, 0);
-  }, [isSubmitting, files]);
+  }, [isSubmitting, files, documents]);
 
   const fetchDocument = async () => {
     const docs = await casesService.loadLiensDocuments(lienId ?? "");
@@ -212,22 +255,6 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
   const getDocumentNameById = (id: string) => {
     return documentTypes?.find((t) => t.key == id)?.label;
   };
-  useEffect(() => {
-    if (data?.length > 0) {
-      setDocuments(
-        data.map((d: any) => {
-          return {
-            name: d.filename,
-            type: d.typeId,
-            id: d.id,
-            url: d.url,
-          };
-        }),
-      );
-    } else {
-      fetchDocument();
-    }
-  }, [data, onUploaded]);
 
   return (
     <div className="container-fluid">

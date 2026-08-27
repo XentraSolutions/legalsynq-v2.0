@@ -20,6 +20,7 @@ export interface MedicalCodesDescriptionProps {
   lienId?: string;
   data?: any;
   onFormValid?: (valid: boolean, data?: any) => void;
+  mode?: "add" | "edit";
 }
 
 const INITIAL_FORM = {
@@ -42,6 +43,7 @@ const INITIAL_ROW = {
 };
 
 function formatCurrency(value: number) {
+  if (!value) return "$ 0.00";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -181,12 +183,12 @@ export default function MedicalCodesDescription(
     if (form.purchaseAmountType == "percent") {
       const val =
         typeof inverseValue == "string"
-          ? parseNumber(inverseValue)
+          ? parseNumber(inverseValue ?? 0)
           : inverseValue;
       return val;
     } else {
       return typeof currentPurchase == "string"
-        ? parseNumber(currentPurchase)
+        ? parseNumber(currentPurchase ?? 0)
         : currentPurchase;
     }
   };
@@ -322,7 +324,7 @@ export default function MedicalCodesDescription(
   }
 
   function handleDeleteRow(id: string) {
-    // setRows((current) => current.filter((row) => row.id !== id));
+    console.log(editingId);
     if (editingId === id) {
       resetLine();
     }
@@ -330,6 +332,15 @@ export default function MedicalCodesDescription(
   }
 
   async function deleteCode(id: string) {
+    if (props.mode == "add") {
+      setRows((current) => current.filter((row) => row.id !== id));
+      addToast({
+        type: "success",
+        title: `Deleted`,
+      });
+      return;
+    }
+
     try {
       await casesService.deleteMedicalCodeLiens(id);
       addToast({

@@ -7,6 +7,7 @@ import { casesService, type CreateCaseRequestDto } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
 import Field from "../field";
 import { CreateMedicalCodeDto } from "@/lib/cases/cases.types";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface CreateMedicalCodeProps {
   open: boolean;
@@ -25,6 +26,7 @@ export function CreateMedicalCode({
   onCreated,
 }: CreateMedicalCodeProps) {
   const addToast = useLienStore((s) => s.addToast);
+  const queryClient = useQueryClient();
   const [form, setForm] = useState({ ...INITIAL_FORM });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -46,6 +48,7 @@ export function CreateMedicalCode({
         description: form.description.trim(),
       };
       await casesService.createMedicalCode(request);
+      await queryClient.invalidateQueries({ queryKey: ["procedureCodes"] });
       addToast({
         type: "success",
         title: "Code Created",

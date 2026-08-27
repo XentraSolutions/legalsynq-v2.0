@@ -120,7 +120,7 @@ export function LienDetailView({
 
   useEffect(() => {
     fetchLienDetails();
-  }, [fetchLienDetails]);
+  }, []);
 
   function onFormValid(isValid: boolean, formData: any, index: number) {
     setValid((s) => ({ ...s, [index]: !!isValid }));
