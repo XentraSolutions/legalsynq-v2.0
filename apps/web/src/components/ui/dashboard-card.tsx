@@ -20,7 +20,7 @@ export function Card({
     <article
       className={`flex flex-col rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] ${className ?? ""}`}
     >
-      <div className="flex items-center justify-between gap-4">
+      <div className="mb-6 flex items-center justify-between gap-4">
         <div>
           <h2 className="flex items-center gap-2 text-base font-semibold leading-5">
             {icon && <i className={`${icon} text-gray-400`} aria-hidden />}

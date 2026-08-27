@@ -27,3 +27,19 @@ export type {
   LienOffersResult,
   CaseSearchResult,
 } from "./selling-liens.service";
+export type {
+  MonthlyAgingReport,
+  MonthlyAgingReportQuery,
+  MonthlyAgingReportRow,
+  MonthlyAgingSummaryTotals,
+} from "./aging-report.types";
+export type {
+  SellingOperationsAgingBucket,
+  SellingOperationsBuyerAgingItem,
+  SellingOperationsDashboardQuery,
+  SellingOperationsDashboardResponse,
+  SellingOperationsMetric,
+  SellingOperationsStatusItem,
+  SellingOperationsTimeseriesPoint,
+  SellingOperationsTopBuyerItem,
+} from "./dashboard-analytics.types";
