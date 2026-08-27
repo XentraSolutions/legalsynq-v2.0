@@ -340,9 +340,7 @@ export default function ReviewDocumentsStep({
       .filter(([, slot]) => slot.documentId)
       .map(([documentType, slot]) => ({
         documentId: slot.documentId!,
-        documentType: sellingDocumentTypes.includes(documentType)
-          ? documentType
-          : "Other",
+        documentType,
         displayName: slot.displayName ?? undefined,
       }));
 
