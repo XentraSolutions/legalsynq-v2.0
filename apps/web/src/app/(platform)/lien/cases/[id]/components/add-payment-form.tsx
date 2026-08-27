@@ -197,13 +197,12 @@ export function AddPaymentForm({
   }
 
   function isLienPayable(l: CaseLienItem & CaseLienItemMetadata): boolean {
-    return l.status !== "Closed" &&
-      l.status !== "Withdrawn" &&
-      l.status !== "Sold" &&
-      l.balance > 0 &&
-      isEditing
-      ? isEditingLien(l)
-      : true;
+    return isEditing
+      ? l.status !== "Withdrawn" && l.status !== "Sold"
+      : l.status !== "Closed" &&
+          l.status !== "Withdrawn" &&
+          l.status !== "Sold" &&
+          l.balance > 0;
   }
 
   useEffect(() => {
@@ -250,9 +249,7 @@ export function AddPaymentForm({
       }));
       if (isEditing) {
         const filtered = new Set(
-          openLiens
-            .filter((l) => l.id == selectedPayment.lienId)
-            .map((l) => l.id),
+          liens.filter((l) => l.id == selectedPayment.lienId).map((l) => l.id),
         );
         setCheckedIds(filtered);
       }
@@ -261,20 +258,7 @@ export function AddPaymentForm({
     });
   }, [open]);
 
-  const openLiens = liens.filter(
-    (l) =>
-      l.status !== "Closed" &&
-      l.status !== "Withdrawn" &&
-      l.status !== "Sold" &&
-      l.balance > 0,
-  );
-
-  function filterLiensForEditing(l: any) {
-    const filtered = new Set(
-      openLiens.filter((l) => l.id == selectedPayment.lienId).map((l) => l.id),
-    );
-    setCheckedIds(filtered);
-  }
+  const openLiens = liens.filter((l) => l.balance > 0);
 
   const allChecked =
     openLiens.length > 0 && checkedIds.size === openLiens.length;
@@ -329,9 +313,6 @@ export function AddPaymentForm({
         if (l.balance != null) {
           balances += Math.round(l.balance * 100) / 100;
         }
-
-        // If you also need to populate initialPayments for checked items:
-        // initialPayments[l.id] = ...;
       }
     }
     return balances;
@@ -678,6 +659,15 @@ export function AddPaymentForm({
       ),
     },
     {
+      id: "facilityName",
+      header: "Medical Facility",
+      cell: (l) => (
+        <span className="text-sm text-gray-600 whitespace-wrap max-w-40 block">
+          {l.facilityName || ""}
+        </span>
+      ),
+    },
+    {
       id: "billing",
       header: "Billing Amount",
       align: "right",
@@ -758,7 +748,7 @@ export function AddPaymentForm({
 
   const paymentFooter: LienFooterCell[] = [
     {
-      colSpan: 3,
+      colSpan: 4,
       content: (
         <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
           Total
@@ -820,7 +810,7 @@ export function AddPaymentForm({
       open={open}
       onClose={handleResetClose}
       onSubmit={handleSave}
-      title="Add Payment"
+      title={isEditing ? "Edit Payment" : "Add Payment"}
       submitLabel={saving ? "Saving..." : "Save Payment"}
       submitDisabled={saving || isFormInvalid}
       size="xl"
