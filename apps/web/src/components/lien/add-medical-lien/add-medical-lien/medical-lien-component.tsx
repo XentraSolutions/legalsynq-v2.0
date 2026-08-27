@@ -284,18 +284,15 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
 
   const uploadDocuments = async (payload: any, lienId: string) => {
     if (payload?.length == 0 || payload == null) return;
-
     if (Array.isArray(payload)) {
       try {
-        const formData = new FormData();
-
         const promises = payload.map(async (row) => {
-          formData.append("File", row.document ?? "");
+          const formData = new FormData();
+          formData.append("File", row.file ?? "");
           formData.append("liensId", lienId);
-          formData.append("DocName", "Lien Document");
+          formData.append("DocName", row.name);
           formData.append("DocDescription", "Legacy lien Document upload");
-          formData.append("DocFileTypeId", row.documentType);
-
+          formData.append("DocFileTypeId", row.documentTypeId);
           try {
             await casesService.uploadLiensDocuments(formData);
             // addToast({
