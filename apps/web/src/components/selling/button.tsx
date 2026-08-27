@@ -2,9 +2,11 @@
 
 import * as React from "react";
 import {
+  ArrowDownWideNarrow,
   ChevronDown,
   CloudBackup,
   CloudUpload,
+  Divide,
   Loader,
   Plus,
   RefreshCw,
@@ -22,9 +24,11 @@ import { cn } from "@/lib/utils";
  * in. Add new entries here as new icons are actually needed.
  */
 const BUTTON_ICONS = {
+  arrowDownWideNarrow: ArrowDownWideNarrow,
   chevronDown: ChevronDown,
   cloudBackup: CloudBackup,
   cloudUpload: CloudUpload,
+  divide: Divide,
   plus: Plus,
   refreshCw: RefreshCw,
   settings2: Settings2,
