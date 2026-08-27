@@ -367,7 +367,7 @@ export function DetailsTab({
     } else {
       setCaseStatusList(initialList);
     }
-  }, [lookup]);
+  }, [lookup, d]);
 
   return (
     <LayoutSplit
