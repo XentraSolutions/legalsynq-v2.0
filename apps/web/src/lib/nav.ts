@@ -13,6 +13,7 @@ import {
   ContactRound,
   Building2,
   UserRound,
+  LayoutDashboard,
 } from "lucide-react";
 
 // ── Per-product sidebar navigation (sections) ─────────────────────────────────
@@ -286,6 +287,11 @@ export const PRODUCT_NAV: Record<string, NavSection[]> = {
     {
       heading: "Lien Portfolio",
       items: [
+        {
+          href: "/selling/dashboard",
+          label: "Dashboard",
+          lucideIcon: LayoutDashboard,
+        },
         {
           heading: "Portfolio",
           lucideIcon: FolderClosed,

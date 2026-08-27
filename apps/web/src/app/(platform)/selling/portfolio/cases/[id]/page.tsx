@@ -130,6 +130,9 @@ export default function CaseDetailPage() {
         />
       </div>
 
+      {/* TODO: extract this pill-tab nav into a shared component — the same
+          markup/classes are duplicated in company-detail-shell.tsx and
+          contacts-tabs.tsx. */}
       <nav className="flex items-center h-[38px] gap-1 bg-[#FAFAFA] rounded-md p-1">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.key;
@@ -141,7 +144,7 @@ export default function CaseDetailPage() {
               className={[
                 "flex-1 h-[30px] flex items-center justify-center text-sm font-medium rounded-md transition-colors whitespace-nowrap border",
                 isActive
-                  ? "bg-white border-[#E5E5E5] shadow-sm text-gray-900"
+                  ? "bg-[#EE7132] border-[#F4A076] shadow-sm text-white"
                   : "border-transparent text-gray-500 hover:text-gray-700",
               ].join(" ")}
             >
@@ -175,10 +178,7 @@ export default function CaseDetailPage() {
                 <StatusBadge status={caseDetail.caseStatus} />
               </InfoField>
               <InfoField label="Accident Type">
-                {/* accidentTypeId is a GUID — this endpoint doesn't return
-                    the display name, so we render the raw id as a
-                    placeholder. Resolving it to a name is a follow-up. */}
-                {caseDetail.accidentTypeId ?? "—"}
+                {caseDetail.accidentTypeName ?? "—"}
               </InfoField>
               <InfoField label="Accident State">
                 {caseDetail.accidentState ?? "—"}
@@ -187,11 +187,10 @@ export default function CaseDetailPage() {
                 <DateDisplay value={caseDetail.dateOfLoss} format="date" />
               </InfoField>
               <InfoField label="Law Firm">
-                {/* handlingLawFirmId is a GUID — same follow-up as above. */}
-                {caseDetail.handlingLawFirmId ?? "—"}
+                {caseDetail.handlingLawFirmName ?? "—"}
               </InfoField>
               <InfoField label="Case Manager">
-                {caseDetail.caseManagerId ?? "—"}
+                {caseDetail.caseManagerName ?? "—"}
               </InfoField>
               <div className="col-span-2">
                 <InfoField label="Case Tracking Note">

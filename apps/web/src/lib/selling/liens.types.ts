@@ -337,10 +337,13 @@ export interface CaseDetailResult {
   caseNumber: string;
   caseStatus: string;
   accidentTypeId?: string | null;
+  accidentTypeName?: string | null;
   accidentState?: string | null;
   dateOfLoss?: string | null;
   handlingLawFirmId?: string | null;
+  handlingLawFirmName?: string | null;
   caseManagerId?: string | null;
+  caseManagerName?: string | null;
   caseTrackingNotes?: string | null;
   firstName?: string | null;
   lastName?: string | null;
