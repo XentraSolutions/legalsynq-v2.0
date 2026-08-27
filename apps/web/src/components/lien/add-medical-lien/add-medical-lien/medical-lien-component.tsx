@@ -290,7 +290,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
           const formData = new FormData();
           formData.append("File", row.file ?? "");
           formData.append("liensId", lienId);
-          formData.append("DocName", row.name);
+          formData.append("DocName", row.file.name);
           formData.append("DocDescription", "Legacy lien Document upload");
           formData.append("DocFileTypeId", row.documentTypeId);
           try {

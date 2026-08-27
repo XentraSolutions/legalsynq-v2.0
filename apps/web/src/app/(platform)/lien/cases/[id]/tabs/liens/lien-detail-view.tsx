@@ -87,6 +87,13 @@ export function LienDetailView({
                 itemData = { ...itemData, status: canonicalStatus };
               }
             }
+            if (index === 3) {
+              setData((prev) => ({
+                ...prev,
+                [index]: { files: [...itemData], hasInitialValue: true },
+              }));
+              return;
+            }
             setData((prev) => ({
               ...prev,
               [index]: { ...itemData, hasInitialValue: true },
