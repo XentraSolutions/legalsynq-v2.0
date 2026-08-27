@@ -3,10 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowDownUp, Split } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import Field from "@/components/lien/field";
 import { Button } from "@/components/selling/button";
+import { Checkbox } from "@/components/selling/checkbox";
 import {
   PAYMENT_METHOD_OPTIONS,
   formatCurrency,
@@ -278,18 +279,18 @@ export default function AddCasePaymentPage() {
             <Button
               variant="secondary"
               className="border-gray-300"
+              rightIcon="divide"
               onClick={handleAllocateProportionally}
             >
               Allocate Proportionally
-              <Split className="h-4 w-4" />
             </Button>
             <Button
               variant="secondary"
               className="border-gray-300"
+              rightIcon="arrowDownWideNarrow"
               onClick={handleDistributeEvenly}
             >
               Distribute
-              <ArrowDownUp className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -299,18 +300,18 @@ export default function AddCasePaymentPage() {
             <thead>
               <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500">
                 <th className="px-6 py-3 w-10">
-                  <input
-                    type="checkbox"
+                  <Checkbox
+                    size="medium"
                     checked={rows.length > 0 && rows.every((r) => selected[r.lienId])}
-                    onChange={(e) => {
+                    onCheckedChange={(checked) => {
+                      const isChecked = checked === true;
                       const next: Record<string, boolean> = {};
                       rows.forEach((r) => {
-                        next[r.lienId] = e.target.checked;
+                        next[r.lienId] = isChecked;
                       });
                       setSelected(next);
-                      if (!e.target.checked) setAllocationAmounts({});
+                      if (!isChecked) setAllocationAmounts({});
                     }}
-                    className="rounded border-gray-300"
                   />
                 </th>
                 <th className="px-3 py-3">Lien ID</th>
@@ -338,11 +339,10 @@ export default function AddCasePaymentPage() {
                 rows.map((row) => (
                   <tr key={row.lienId} className="border-t border-gray-100">
                     <td className="px-6 py-3">
-                      <input
-                        type="checkbox"
+                      <Checkbox
+                        size="medium"
                         checked={!!selected[row.lienId]}
-                        onChange={() => toggleRow(row.lienId)}
-                        className="rounded border-gray-300"
+                        onCheckedChange={() => toggleRow(row.lienId)}
                       />
                     </td>
                     <td className="px-3 py-3 text-gray-900 font-medium whitespace-nowrap">
@@ -361,23 +361,17 @@ export default function AddCasePaymentPage() {
                       {formatCurrency(row.remainingBalance)}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
-                      {selected[row.lienId] ? (
-                        <div className="relative w-32">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
-                            $
-                          </span>
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            value={allocationAmounts[row.lienId] ?? ""}
-                            onChange={(e) => handleAllocationInput(row.lienId, e.target.value)}
-                            className="w-full pl-5 pr-2 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#EE7132]/20 focus:border-[#EE7132]"
-                          />
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
+                      <div className="w-32">
+                        <Field
+                          type="number"
+                          label=""
+                          prefix="$"
+                          maxDecimals={2}
+                          disabled={!selected[row.lienId]}
+                          value={allocationAmounts[row.lienId] ?? ""}
+                          onChange={(value) => handleAllocationInput(row.lienId, value)}
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))
