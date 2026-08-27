@@ -267,7 +267,7 @@ function DocumentRow({
         <p className="truncate text-[16px] font-semibold leading-5 text-[#0a0a0a]">
           {document.fileName}
         </p>
-        <p className="mt-1 truncate text-[16px] font-normal leading-[1.6] text-[#737373]">
+        <p className="mt-1 whitespace-normal break-words text-[16px] font-normal leading-[1.6] text-[#737373]">
           {detail || "Document"}
         </p>
       </div>
