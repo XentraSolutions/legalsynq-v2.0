@@ -182,6 +182,9 @@ export function CompanyDetailShell({
         />
       </div>
 
+      {/* TODO: extract this pill-tab nav into a shared component — the same
+          markup/classes are duplicated in cases/[id]/page.tsx and
+          contacts-tabs.tsx. */}
       <nav className="flex items-center h-[38px] gap-1 bg-[#FAFAFA] rounded-md p-1">
         {TABS.map((tab) => {
           const href = `${BASE_PATH}/${id}/${tab.key}`;
@@ -193,7 +196,7 @@ export function CompanyDetailShell({
               className={[
                 "flex-1 h-[30px] flex items-center justify-center text-sm font-medium rounded-md transition-colors whitespace-nowrap border",
                 isActive
-                  ? "bg-white border-[#E5E5E5] shadow-sm text-gray-900"
+                  ? "bg-[#EE7132] border-[#F4A076] shadow-sm text-white"
                   : "border-transparent text-gray-500 hover:text-gray-700",
               ].join(" ")}
             >

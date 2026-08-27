@@ -43,7 +43,7 @@ export function PlaintiffInfoFields({
 }) {
   const { lookup } = useSessionContext();
   const stateList =
-    lookup?.State.map((c) => ({ key: c.id, value: c.id, label: c.name })) ?? [];
+    lookup?.State.map((c) => ({ key: c.id, value: c.code, label: c.name })) ?? [];
 
   return (
     <div className="grid grid-cols-2 gap-4">
