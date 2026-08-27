@@ -10,7 +10,9 @@ const closedLienDisplayColumns: LienColumnDef[] = [
     id: "lienId",
     header: "Lien ID",
     cell: (l) => (
-      <span className="text-sm text-gray-600 whitespace-nowrap">{l.lienNumber}</span>
+      <span className="text-sm text-gray-600 whitespace-nowrap">
+        {l.lienNumber}
+      </span>
     ),
   },
   {
@@ -114,6 +116,7 @@ export function ClosedLiensSection({
   closedLiensTotalBalance: number;
   closedLiensTotalPayment: number;
 }) {
+  console.log(closedLiens);
   return (
     <CollapsibleSection title="Closed Liens" icon="ri-checkbox-circle-line">
       {closedLiens.length === 0 ? (

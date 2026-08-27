@@ -197,13 +197,12 @@ export function AddPaymentForm({
   }
 
   function isLienPayable(l: CaseLienItem & CaseLienItemMetadata): boolean {
-    return l.status !== "Closed" &&
-      l.status !== "Withdrawn" &&
-      l.status !== "Sold" &&
-      l.balance > 0 &&
-      isEditing
-      ? isEditingLien(l)
-      : true;
+    return isEditing
+      ? l.status !== "Withdrawn" && l.status !== "Sold"
+      : l.status !== "Closed" &&
+          l.status !== "Withdrawn" &&
+          l.status !== "Sold" &&
+          l.balance > 0;
   }
 
   useEffect(() => {
@@ -250,9 +249,7 @@ export function AddPaymentForm({
       }));
       if (isEditing) {
         const filtered = new Set(
-          openLiens
-            .filter((l) => l.id == selectedPayment.lienId)
-            .map((l) => l.id),
+          liens.filter((l) => l.id == selectedPayment.lienId).map((l) => l.id),
         );
         setCheckedIds(filtered);
       }
@@ -261,20 +258,7 @@ export function AddPaymentForm({
     });
   }, [open]);
 
-  const openLiens = liens.filter(
-    (l) =>
-      l.status !== "Closed" &&
-      l.status !== "Withdrawn" &&
-      l.status !== "Sold" &&
-      l.balance > 0,
-  );
-
-  function filterLiensForEditing(l: any) {
-    const filtered = new Set(
-      openLiens.filter((l) => l.id == selectedPayment.lienId).map((l) => l.id),
-    );
-    setCheckedIds(filtered);
-  }
+  const openLiens = liens.filter((l) => l.balance > 0);
 
   const allChecked =
     openLiens.length > 0 && checkedIds.size === openLiens.length;
@@ -671,6 +655,15 @@ export function AddPaymentForm({
       cell: (l) => (
         <span className="text-sm text-primary whitespace-nowrap">
           {l.lienNumber}
+        </span>
+      ),
+    },
+    {
+      id: "facilityName",
+      header: "Medical Facility",
+      cell: (l) => (
+        <span className="text-sm text-gray-600 whitespace-wrap max-w-40 block">
+          {l.facilityName || ""}
         </span>
       ),
     },
