@@ -45,6 +45,7 @@ public sealed class LienResponse
     public string? IsServicing { get; init; }
     public string? ImportedCreatedByName { get; init; }
     public string? Description { get; init; }
+    public string? Notes { get; init; }
     public DateTime? OpenedAtUtc { get; init; }
     public DateTime? ClosedAtUtc { get; init; }
     public DateTime CreatedAtUtc { get; init; }

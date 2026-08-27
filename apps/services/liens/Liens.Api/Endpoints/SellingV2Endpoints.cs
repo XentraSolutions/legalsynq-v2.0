@@ -663,6 +663,13 @@ public static class SellingV2Endpoints
                 c.Id == lien.MedicalProviderCompanyId.Value &&
                 c.CompanyTypeId == CompanyDirectoryReferenceData.MedicalProviderId, ct)
             : null;
+        var canonicalMedicalFacility = lien.MedicalFacilityCompanyId.HasValue
+            ? await db.Companies.AsNoTracking().FirstOrDefaultAsync(c =>
+                c.TenantId == tenantId &&
+                c.OrgId == sellerOrgId &&
+                c.Id == lien.MedicalFacilityCompanyId.Value &&
+                c.CompanyTypeId == CompanyDirectoryReferenceData.MedicalFacilityId, ct)
+            : null;
         var facility = lien.FacilityId.HasValue
             ? await db.Facilities.AsNoTracking().FirstOrDefaultAsync(f =>
                 f.TenantId == tenantId && f.OrgId == sellerOrgId && f.Id == lien.FacilityId.Value, ct)
@@ -673,7 +680,8 @@ public static class SellingV2Endpoints
             .Select(item => item.Notes)
             .FirstOrDefaultAsync(ct);
         var legacyFacilityMetadata = ParseCaseMetadata(legacyFacilityInfo);
-        var effectiveFacilityName = facility?.Name ??
+        var effectiveFacilityId = canonicalMedicalFacility?.Id ?? facility?.Id;
+        var effectiveFacilityName = canonicalMedicalFacility?.Name ?? facility?.Name ??
             (legacyFacilityMetadata.TryGetValue("facilityName", out var importedFacilityName) ? importedFacilityName : null);
         var effectiveMedicalProviderName = canonicalMedicalProvider?.Name ??
             (legacyFacilityMetadata.TryGetValue("medicalProvider", out var importedProviderName) ? importedProviderName : null);
@@ -770,9 +778,9 @@ public static class SellingV2Endpoints
             },
             facility = string.IsNullOrWhiteSpace(effectiveFacilityName) ? null : new
             {
-                id = facility?.Id,
+                id = effectiveFacilityId,
                 name = effectiveFacilityName,
-                emailAddress = facility?.Email,
+                emailAddress = canonicalMedicalFacility?.Email ?? facility?.Email,
             },
             medicalProvider = string.IsNullOrWhiteSpace(effectiveMedicalProviderName) ? null : new
             {
@@ -857,14 +865,31 @@ public static class SellingV2Endpoints
         if (sellerStatus is null) return ValidationError("sellerStatus", "sellerStatus must be Pending or Internal during intake.");
         var visibility = NormalizeVisibility(request.ListingVisibility);
         if (visibility is null) return ValidationError("listingVisibility", "listingVisibility must be Public or Private.");
+        if (!TryParseOptionalDate(request.InitialServiceDate, "initialServiceDate", out var initialServiceDate, out var initialServiceDateError))
+            return initialServiceDateError!;
+        if (!TryParseOptionalDate(request.EndServiceDate, "endServiceDate", out var endServiceDate, out var endServiceDateError))
+            return endServiceDateError!;
         if (!TryParseOptionalDate(request.ReceivableDueDate, "receivableDueDate", out var receivableDueDate, out var dueDateError))
             return dueDateError!;
+        if (!TryParseOptionalString(request.Notes, "notes", out var notes, out var notesError))
+            return notesError!;
+
+        var effectiveInitialServiceDate = request.InitialServiceDate.ValueKind == JsonValueKind.Undefined
+            ? lien.InitialServiceDate
+            : initialServiceDate;
+        var effectiveEndServiceDate = request.EndServiceDate.ValueKind == JsonValueKind.Undefined
+            ? lien.EndServiceDate
+            : endServiceDate;
+        var effectiveNotes = request.Notes.ValueKind == JsonValueKind.Undefined
+            ? lien.Notes
+            : notes;
 
         lien.Update(
             lien.LienType, lien.OriginalAmount, userId, lien.ExternalReference,
             lien.SubjectFirstName, lien.SubjectLastName, lien.IsConfidential, lien.Jurisdiction,
-            lien.IncidentDate, request.InitialServiceDate, request.EndServiceDate,
-            lien.IsBulk, lien.IsServicing, lien.Description, request.Notes);
+            lien.IncidentDate, effectiveInitialServiceDate, effectiveEndServiceDate,
+            lien.IsBulk, lien.IsServicing, lien.Description, effectiveNotes,
+            purchaseDate: lien.PurchaseDate);
         lien.UpdateSellingAnalyticsFields(userId, sellerStatus: sellerStatus, listingVisibility: visibility);
         if (request.ReceivableDueDate.ValueKind != JsonValueKind.Undefined)
             lien.SetReceivableDueDate(receivableDueDate, userId);
@@ -949,14 +974,25 @@ public static class SellingV2Endpoints
             return ValidationError("fundingCompanyContactId", "Funding company contact requires a funding company.");
         }
 
+        Company? canonicalMedicalFacility = null;
+        var hasLegacyFacility = false;
         if (facilityId.HasValue)
         {
-            var facilityExists = await db.Facilities.AsNoTracking().AnyAsync(facility =>
+            hasLegacyFacility = await db.Facilities.AsNoTracking().AnyAsync(facility =>
                 facility.TenantId == tenantId &&
                 facility.OrgId == sellerOrgId &&
                 facility.Id == facilityId.Value &&
                 facility.IsActive, ct);
-            if (!facilityExists)
+            if (!hasLegacyFacility)
+            {
+                canonicalMedicalFacility = await db.Companies.AsNoTracking().FirstOrDefaultAsync(company =>
+                    company.TenantId == tenantId &&
+                    company.OrgId == sellerOrgId &&
+                    company.Id == facilityId.Value &&
+                    company.CompanyTypeId == CompanyDirectoryReferenceData.MedicalFacilityId &&
+                    company.IsActive, ct);
+            }
+            if (!hasLegacyFacility && canonicalMedicalFacility is null)
                 return ValidationError("facilityId", "Facility must be active and owned by the seller organization.");
         }
 
@@ -978,8 +1014,10 @@ public static class SellingV2Endpoints
             canonicalFundingCompany?.Id,
             canonicalFundingContact?.Id,
             userId);
-        if (facilityId.HasValue)
+        if (hasLegacyFacility && facilityId.HasValue)
             lien.AttachFacility(facilityId.Value, userId);
+        if (canonicalMedicalFacility is not null)
+            lien.SetCanonicalMedicalFacility(canonicalMedicalFacility.Id, userId);
         if (canonicalMedicalProvider is not null)
             lien.SetCanonicalMedicalProvider(canonicalMedicalProvider.Id, userId);
         AddActivity(db, lien, userId, "Selling funding-company, facility, and medical-provider information updated.");
@@ -989,7 +1027,7 @@ public static class SellingV2Endpoints
             lienId = lien.Id,
             fundingCompanyId = lien.FundingCompanyCompanyId ?? lien.FundingCompanyId,
             fundingCompanyContactId = lien.FundingCompanyContactPersonId ?? lien.FundingCompanyContactId,
-            facilityId = lien.FacilityId,
+            facilityId = lien.MedicalFacilityCompanyId ?? lien.FacilityId,
             medicalProviderId = lien.MedicalProviderCompanyId,
         });
     }
@@ -1288,6 +1326,7 @@ public static class SellingV2Endpoints
         HttpRequest httpRequest,
         LiensDbContext db,
         ICurrentRequestContext context,
+        ISellerOrganizationDisplayResolver sellerDisplayResolver,
         CancellationToken ct)
     {
         const string route = "/api/liens/selling/liens/{lienId}/move-to-management";
@@ -1308,6 +1347,28 @@ public static class SellingV2Endpoints
             item.Id == lien.CaseId.Value && item.TenantId == tenantId && item.OrgId == sellerOrgId, ct);
         if (lien.CaseId.HasValue && !existingCase)
             return ValidationError("caseId", "The lien case was not found in this tenant and seller organization.");
+
+        var sellerDisplay = await sellerDisplayResolver.ResolveAsync(
+            tenantId,
+            sellerOrgId,
+            Array.Empty<Contact>(),
+            userId,
+            context.Email,
+            includeIdentityOwnerEmailFallback: true,
+            ct);
+        var tenantFundingCompanyName = string.Equals(
+            sellerDisplay.Company,
+            "Seller company unavailable",
+            StringComparison.OrdinalIgnoreCase)
+            ? null
+            : sellerDisplay.Company.Trim();
+        if (string.IsNullOrWhiteSpace(tenantFundingCompanyName))
+        {
+            return Results.Problem(
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                title: "Tenant name unavailable",
+                detail: "The tenant name could not be resolved, so the Management funding company was not created.");
+        }
 
         var lienTransition = await SellingIdempotency.TryBeginAsync(
             db, tenantId, "LienStateTransition", lienId, "/api/liens/selling/liens/{lienId}/state-transition", "Lien", lienId.ToString(),
@@ -1333,6 +1394,20 @@ public static class SellingV2Endpoints
                 lien.AttachCase(caseEntity.Id, userId);
             }
 
+            var tenantFundingCompany = await EnsureTenantFundingCompanyAsync(
+                db,
+                tenantId,
+                sellerOrgId,
+                tenantFundingCompanyName,
+                userId,
+                ct);
+            lien.SetSellingFundingReferences(
+                legacyFundingCompanyId: null,
+                legacyFundingCompanyContactId: null,
+                fundingCompanyCompanyId: tenantFundingCompany.Id,
+                fundingCompanyContactPersonId: null,
+                updatedByUserId: userId);
+
             if (IsSubmittedLien(lien))
             {
                 lien.ReturnToSellingPending(userId, recordWithdrawal: true);
@@ -1355,7 +1430,16 @@ public static class SellingV2Endpoints
                 }
             }
 
+            lien.SetPurchaseDate(DateOnly.FromDateTime(DateTime.UtcNow), userId);
             await EnsureManagementAmountsAsync(db, lien, tenantId, sellerOrgId, userId, ct);
+            await EnsureManagementPartyInfoAsync(
+                db,
+                tenantId,
+                sellerOrgId,
+                lien,
+                lien.CaseId!.Value,
+                userId,
+                ct);
             lien.MoveToInternalManagement(userId);
 
             AddActivity(db, lien, userId,
@@ -1540,6 +1624,7 @@ public static class SellingV2Endpoints
             }
 
             var caseResolution = await ResolveMoveToManagementCaseAsync(db, tenantId, sellerOrgId, userId, lien, request.CaseInfo, ct);
+            ApplyMoveToManagementCaseInfo(caseResolution.Case, request.CaseInfo, userId);
             if (request.CaseInfo?.IsServicing is { } isServicing)
             {
                 lien.Update(
@@ -1577,7 +1662,9 @@ public static class SellingV2Endpoints
                     offer.Expire(userId);
             }
 
+            await ReassignLienServicingItemsToCaseAsync(db, tenantId, lien.Id, caseResolution.Case.Id, userId, ct);
             await EnsureManagementAmountsAsync(db, tenantId, sellerOrgId, lien, caseResolution.Case.Id, userId, ct);
+            await EnsureManagementPartyInfoAsync(db, tenantId, sellerOrgId, lien, caseResolution.Case.Id, userId, ct);
             lien.AttachCase(caseResolution.Case.Id, userId);
             lien.MoveToInternalManagement(userId);
             AddActivity(db, lien, userId, caseResolution.CaseCreated
@@ -2827,38 +2914,75 @@ public static class SellingV2Endpoints
             clientAddress: address,
             dateOfIncident: caseInfo?.DateOfIncident ?? lien.IncidentDate,
             description: lien.Description,
-            notes: notes);
+            notes: notes,
+            clientAddressLine1: caseInfo?.ClientAddress,
+            clientCity: caseInfo?.ClientCity,
+            clientState: caseInfo?.ClientState,
+            clientPostalCode: caseInfo?.ClientZipCode,
+            incidentState: caseInfo?.StateOfIncident);
 
         return created;
     }
 
-    private static string? BuildMoveToManagementCaseNotes(MoveSellingLienToManagementCaseInfoRequest? caseInfo)
+    private static void ApplyMoveToManagementCaseInfo(
+        Case caseEntity,
+        MoveSellingLienToManagementCaseInfoRequest? caseInfo,
+        Guid userId)
     {
         if (caseInfo is null)
-            return null;
+            return;
 
-        var parts = new List<string>();
-        if (!string.IsNullOrWhiteSpace(caseInfo.Notes))
-            parts.Add(caseInfo.Notes.Trim());
+        caseEntity.Update(
+            caseInfo.ClientFirstName!,
+            caseInfo.ClientLastName!,
+            userId,
+            title: caseEntity.Title,
+            externalReference: caseEntity.ExternalReference,
+            clientDob: caseInfo.ClientDob,
+            clientPhone: caseEntity.ClientPhone,
+            clientEmail: caseEntity.ClientEmail,
+            clientAddress: BuildMoveToManagementCaseAddress(caseInfo) ?? caseEntity.ClientAddress,
+            dateOfIncident: caseInfo.DateOfIncident ?? caseEntity.DateOfIncident,
+            insuranceCarrier: caseEntity.InsuranceCarrier,
+            policyNumber: caseEntity.PolicyNumber,
+            claimNumber: caseEntity.ClaimNumber,
+            description: caseEntity.Description,
+            notes: BuildMoveToManagementCaseNotes(caseInfo, caseEntity.Notes),
+            clientAddressLine1: caseInfo.ClientAddress ?? caseEntity.ClientAddressLine1,
+            clientCity: caseInfo.ClientCity ?? caseEntity.ClientCity,
+            clientState: caseInfo.ClientState ?? caseEntity.ClientState,
+            clientPostalCode: caseInfo.ClientZipCode ?? caseEntity.ClientPostalCode,
+            incidentState: caseInfo.StateOfIncident ?? caseEntity.IncidentState,
+            currentMedicalStatus: caseEntity.CurrentMedicalStatus,
+            trackingFollowUpDate: caseEntity.TrackingFollowUpDate,
+            minorComp: caseEntity.MinorComp,
+            caseDropped: caseEntity.CaseDropped,
+            attorneyContactPersonId: caseEntity.AttorneyContactPersonId);
+    }
 
-        AddMetadata(parts, "isServicing", caseInfo.IsServicing?.ToString(CultureInfo.InvariantCulture));
-        AddMetadata(parts, "statusLabel", caseInfo.StatusLabel);
-        AddMetadata(parts, "accidentTypeId", caseInfo.AccidentTypeId);
-        AddMetadata(parts, "accidentState", caseInfo.StateOfIncident);
-        AddMetadata(parts, "lawFirmId", caseInfo.LawFirmId);
-        AddMetadata(parts, "caseManagerId", caseInfo.CaseManagerId);
-        if (parts.Count == 0)
-            return null;
+    private static string? BuildMoveToManagementCaseNotes(
+        MoveSellingLienToManagementCaseInfoRequest? caseInfo,
+        string? existingNotes = null)
+    {
+        if (caseInfo is null)
+            return existingNotes;
 
-        var metadataStart = parts.FindIndex(part => part.Contains('='));
-        if (metadataStart < 0)
-            return string.Join("; ", parts);
+        var metadata = ParseCaseMetadata(existingNotes);
+        AddMetadata(metadata, "isServicing", caseInfo.IsServicing?.ToString(CultureInfo.InvariantCulture));
+        AddMetadata(metadata, "statusLabel", caseInfo.StatusLabel);
+        AddMetadata(metadata, "accidentTypeId", caseInfo.AccidentTypeId);
+        AddMetadata(metadata, "accidentState", caseInfo.StateOfIncident);
+        AddMetadata(metadata, "lawFirmId", caseInfo.LawFirmId);
+        AddMetadata(metadata, "caseManagerId", caseInfo.CaseManagerId);
 
-        var userNotes = metadataStart == 0 ? null : string.Join("; ", parts.Take(metadataStart));
-        var metadata = string.Join("; ", parts.Skip(metadataStart));
+        var userNotes = FirstNonEmpty(caseInfo.Notes, ExtractSellingCaseTrackingNotes(existingNotes));
+        if (metadata.Count == 0)
+            return userNotes;
+
+        var serializedMetadata = string.Join("; ", metadata.Select(item => $"{item.Key}={item.Value}"));
         return string.IsNullOrWhiteSpace(userNotes)
-            ? $"{LegacyCaseMetadataMarker}{Environment.NewLine}{metadata}"
-            : $"{userNotes}{Environment.NewLine}{Environment.NewLine}{LegacyCaseMetadataMarker}{Environment.NewLine}{metadata}";
+            ? $"{LegacyCaseMetadataMarker}{Environment.NewLine}{serializedMetadata}"
+            : $"{userNotes}{Environment.NewLine}{Environment.NewLine}{LegacyCaseMetadataMarker}{Environment.NewLine}{serializedMetadata}";
     }
 
     private static string? BuildMoveToManagementCaseAddress(MoveSellingLienToManagementCaseInfoRequest? caseInfo)
@@ -2884,6 +3008,214 @@ public static class SellingV2Endpoints
     {
         if (!string.IsNullOrWhiteSpace(value))
             parts.Add($"{key}={value.Trim()}");
+    }
+
+    private static async Task ReassignLienServicingItemsToCaseAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid lienId,
+        Guid caseId,
+        Guid userId,
+        CancellationToken ct)
+    {
+        var items = await db.ServicingItems
+            .Where(item =>
+                item.TenantId == tenantId &&
+                item.LienId == lienId &&
+                item.CaseId != caseId)
+            .ToListAsync(ct);
+
+        foreach (var item in items)
+        {
+            item.Update(
+                item.TaskType,
+                item.Description,
+                item.AssignedTo,
+                userId,
+                item.Priority,
+                caseId,
+                lienId,
+                item.DueDate,
+                item.Notes,
+                item.AssignedToUserId);
+        }
+    }
+
+    private static async Task<Company> EnsureTenantFundingCompanyAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        string tenantName,
+        Guid userId,
+        CancellationToken ct)
+    {
+        var normalizedName = Company.NormalizeName(tenantName);
+        var company = await db.Companies.FirstOrDefaultAsync(item =>
+            item.TenantId == tenantId &&
+            item.OrgId == sellerOrgId &&
+            item.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
+            item.NormalizedName == normalizedName,
+            ct);
+
+        if (company is null)
+        {
+            company = Company.Create(
+                tenantId,
+                sellerOrgId,
+                CompanyDirectoryReferenceData.FundingCompanyId,
+                tenantName,
+                userId,
+                linkedTenantId: tenantId);
+            db.Companies.Add(company);
+            return company;
+        }
+
+        if (!company.IsActive)
+            company.Reactivate(userId);
+
+        return company;
+    }
+
+    private static async Task EnsureManagementPartyInfoAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        Lien lien,
+        Guid caseId,
+        Guid userId,
+        CancellationToken ct)
+    {
+        var existingRows = await db.ServicingItems
+            .Where(item =>
+                item.TenantId == tenantId &&
+                item.LienId == lien.Id &&
+                item.TaskType == "LegacyMedicalFacilityInfo")
+            .OrderByDescending(item => item.UpdatedAtUtc)
+            .ToListAsync(ct);
+        var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in existingRows.OrderBy(item => item.UpdatedAtUtc))
+        {
+            foreach (var field in ParseCaseMetadata(row.Notes))
+                fields[field.Key] = field.Value;
+        }
+
+        foreach (var managedField in new[]
+        {
+            "facilityId",
+            "facilityName",
+            "email",
+            "phone",
+            "medicalProviderId",
+            "medicalProvider",
+            "fundingCompanyId",
+            "fundingCompany",
+            "fundingCompanyContactId",
+            "fundingCompanyContact",
+            "initialServiceDate",
+            "endServiceDate",
+            "receivableDueDate",
+        })
+        {
+            fields.Remove(managedField);
+        }
+
+        var canonicalFacility = lien.MedicalFacilityCompanyId.HasValue
+            ? await db.Companies.AsNoTracking().FirstOrDefaultAsync(company =>
+                company.TenantId == tenantId &&
+                company.OrgId == sellerOrgId &&
+                company.Id == lien.MedicalFacilityCompanyId.Value, ct)
+            : null;
+        var legacyFacility = lien.FacilityId.HasValue
+            ? await db.Facilities.AsNoTracking().FirstOrDefaultAsync(facility =>
+                facility.TenantId == tenantId &&
+                facility.OrgId == sellerOrgId &&
+                facility.Id == lien.FacilityId.Value, ct)
+            : null;
+        var medicalProvider = lien.MedicalProviderCompanyId.HasValue
+            ? await db.Companies.AsNoTracking().FirstOrDefaultAsync(company =>
+                company.TenantId == tenantId &&
+                company.OrgId == sellerOrgId &&
+                company.Id == lien.MedicalProviderCompanyId.Value, ct)
+            : null;
+        Company? canonicalFundingCompany = null;
+        if (lien.FundingCompanyCompanyId.HasValue)
+        {
+            canonicalFundingCompany = db.Companies.Local.FirstOrDefault(company =>
+                company.TenantId == tenantId &&
+                company.OrgId == sellerOrgId &&
+                company.Id == lien.FundingCompanyCompanyId.Value);
+            canonicalFundingCompany ??= await db.Companies.AsNoTracking().FirstOrDefaultAsync(company =>
+                company.TenantId == tenantId &&
+                company.OrgId == sellerOrgId &&
+                company.Id == lien.FundingCompanyCompanyId.Value, ct);
+        }
+        var canonicalFundingContact = lien.FundingCompanyContactPersonId.HasValue && lien.FundingCompanyCompanyId.HasValue
+            ? await db.CompanyContactPersons.AsNoTracking().FirstOrDefaultAsync(contact =>
+                contact.TenantId == tenantId &&
+                contact.Id == lien.FundingCompanyContactPersonId.Value &&
+                contact.CompanyId == lien.FundingCompanyCompanyId.Value, ct)
+            : null;
+        var legacyFundingCompany = lien.FundingCompanyId.HasValue
+            ? await db.Contacts.AsNoTracking().FirstOrDefaultAsync(contact =>
+                contact.TenantId == tenantId &&
+                contact.Id == lien.FundingCompanyId.Value, ct)
+            : null;
+        var legacyFundingContact = lien.FundingCompanyContactId.HasValue
+            ? await db.Contacts.AsNoTracking().FirstOrDefaultAsync(contact =>
+                contact.TenantId == tenantId &&
+                contact.Id == lien.FundingCompanyContactId.Value, ct)
+            : null;
+
+        AddMetadata(fields, "facilityId", canonicalFacility?.Id.ToString() ?? legacyFacility?.Id.ToString());
+        AddMetadata(fields, "facilityName", canonicalFacility?.Name ?? legacyFacility?.Name);
+        AddMetadata(fields, "email", canonicalFacility?.Email ?? legacyFacility?.Email);
+        AddMetadata(fields, "phone", canonicalFacility?.Phone ?? legacyFacility?.Phone);
+        AddMetadata(fields, "medicalProviderId", medicalProvider?.Id.ToString());
+        AddMetadata(fields, "medicalProvider", medicalProvider?.Name);
+        AddMetadata(fields, "fundingCompanyId", canonicalFundingCompany?.Id.ToString() ?? legacyFundingCompany?.Id.ToString());
+        AddMetadata(fields, "fundingCompany", canonicalFundingCompany?.Name ?? legacyFundingCompany?.Organization ?? legacyFundingCompany?.DisplayName);
+        AddMetadata(fields, "fundingCompanyContactId", canonicalFundingContact?.Id.ToString() ?? legacyFundingContact?.Id.ToString());
+        AddMetadata(fields, "fundingCompanyContact", canonicalFundingContact is null ? legacyFundingContact?.DisplayName : DisplayName(canonicalFundingContact));
+        AddMetadata(fields, "initialServiceDate", lien.InitialServiceDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        AddMetadata(fields, "endServiceDate", lien.EndServiceDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        AddMetadata(fields, "receivableDueDate", lien.ReceivableDueDate?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+
+        if (fields.Count == 0)
+        {
+            db.ServicingItems.RemoveRange(existingRows);
+            return;
+        }
+
+        var notes = string.Join("; ", fields.Select(item => $"{item.Key}={item.Value}"));
+        var existing = existingRows.FirstOrDefault();
+        if (existing is null)
+        {
+            db.ServicingItems.Add(ServicingItem.Create(
+                tenantId,
+                sellerOrgId,
+                $"LMFI-{Guid.CreateVersion7():N}".ToUpperInvariant(),
+                "LegacyMedicalFacilityInfo",
+                "Legacy medical facility information",
+                "system",
+                userId,
+                caseId: caseId,
+                lienId: lien.Id,
+                notes: notes));
+            return;
+        }
+
+        existing.Update(
+            existing.TaskType,
+            existing.Description,
+            existing.AssignedTo,
+            userId,
+            existing.Priority,
+            caseId,
+            lien.Id,
+            existing.DueDate,
+            notes,
+            existing.AssignedToUserId);
+        db.ServicingItems.RemoveRange(existingRows.Skip(1));
     }
 
     private static async Task EnsureManagementAmountsAsync(
@@ -2997,6 +3329,26 @@ public static class SellingV2Endpoints
         }
 
         error = ValidationError(key, $"{key} must be ISO yyyy-MM-dd or null.");
+        return false;
+    }
+
+    private static bool TryParseOptionalString(
+        JsonElement value,
+        string key,
+        out string? text,
+        out IResult? error)
+    {
+        text = null;
+        error = null;
+        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            return true;
+        if (value.ValueKind == JsonValueKind.String)
+        {
+            text = value.GetString();
+            return true;
+        }
+
+        error = ValidationError(key, $"{key} must be a string or null.");
         return false;
     }
 

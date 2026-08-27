@@ -240,7 +240,7 @@ public static class SellingEndpoints
             RequireOrgId(ctx),
             new SellingDashboardQuery
             {
-                Tab = tab ?? "pending",
+                Tab = tab ?? "all",
                 Search = search,
                 CaseId = caseId,
                 FundingCompanyId = fundingCompanyId,

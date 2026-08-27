@@ -138,6 +138,18 @@ public class Lien : AuditableEntity
         Touch(updatedByUserId);
     }
 
+    public void SetCanonicalMedicalFacility(Guid medicalFacilityCompanyId, Guid updatedByUserId)
+    {
+        if (medicalFacilityCompanyId == Guid.Empty)
+            throw new ArgumentException("Medical facility company id is required.", nameof(medicalFacilityCompanyId));
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        MedicalFacilityCompanyId = medicalFacilityCompanyId;
+        FacilityId = null;
+        Touch(updatedByUserId);
+    }
+
     public void ReassignCanonicalCompany(Guid sourceCompanyId, Guid targetCompanyId, Guid updatedByUserId)
     {
         ValidateReassignment(sourceCompanyId, targetCompanyId, updatedByUserId);
@@ -620,6 +632,7 @@ public class Lien : AuditableEntity
         if (facilityId == Guid.Empty) throw new ArgumentException("FacilityId is required.", nameof(facilityId));
 
         FacilityId      = facilityId;
+        MedicalFacilityCompanyId = null;
         UpdatedByUserId = updatedByUserId;
         UpdatedAtUtc    = DateTime.UtcNow;
     }

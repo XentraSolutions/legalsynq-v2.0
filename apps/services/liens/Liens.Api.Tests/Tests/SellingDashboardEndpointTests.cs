@@ -139,6 +139,32 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Lien_list_defaults_to_all_tab_when_tab_is_omitted()
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var caseEntity = Case.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            $"CASE-ALL-{Guid.NewGuid():N}"[..32],
+            "All",
+            "Tabs",
+            SeedHelper.UserId);
+        var pending = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Pending, 1_000m, 800m, 0m, caseId: caseEntity.Id);
+        var internalLien = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Internal, 2_000m, 1_600m, 0m, caseId: caseEntity.Id);
+        var sold = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Sold, 3_000m, 2_400m, 0m, caseId: caseEntity.Id);
+
+        await SeedDashboardLiensAsync(db => db.AddRange(caseEntity, pending, internalLien, sold));
+
+        var response = await _client.GetAsync($"/api/liens/selling/liens?caseId={caseEntity.Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingLienListResponse>();
+        body.Should().NotBeNull();
+        body!.TotalCount.Should().Be(3);
+        body.Items.Select(item => item.LienId).Should().BeEquivalentTo([pending.Id, internalLien.Id, sold.Id]);
+    }
+
+    [Fact]
     public async Task Archived_tab_returns_archived_liens_while_active_tabs_exclude_them()
     {
         var fundingCompanyId = Guid.CreateVersion7();

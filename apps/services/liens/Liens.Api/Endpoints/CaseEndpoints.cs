@@ -368,10 +368,13 @@ public static class CaseEndpoints
         public string id { get; init; } = string.Empty;
         public string liensId { get; init; } = string.Empty;
         public string facilityId { get; init; } = string.Empty;
+        public string facility { get; init; } = string.Empty;
         public string facilityContactId { get; init; } = string.Empty;
+        public string facilityContact { get; init; } = string.Empty;
         public string email { get; init; } = string.Empty;
         public string phone { get; init; } = string.Empty;
         public string medicalProviderId { get; init; } = string.Empty;
+        public string medicalProvider { get; init; } = string.Empty;
         public string created { get; init; } = string.Empty;
         public string createdBy { get; init; } = string.Empty;
         public string updated { get; init; } = string.Empty;
@@ -1082,7 +1085,7 @@ public static class CaseEndpoints
         }
 
         var lien = await lienService.GetByIdAsync(tenantId, lienId, ct);
-        if (lien is null || !lien.FacilityId.HasValue)
+        if (lien is null)
         {
             return Results.NotFound(new
             {
@@ -1107,17 +1110,29 @@ public static class CaseEndpoints
             string.Equals(i.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal) &&
             i.LienId == lienId);
 
+        if (info is null && !lien.FacilityId.HasValue)
+        {
+            return Results.NotFound(new
+            {
+                isSuccess = false,
+                message = "No record found.",
+            });
+        }
+
         var infoFields = ParseLegacyNoteFields(info?.Notes);
 
         var data = new LegacyLiensMedicalInformationFacilityResponse
         {
             id = string.Empty,
             liensId = lien.Id.ToString(),
-            facilityId = infoFields.GetValueOrDefault("facilityId", lien.FacilityId.Value.ToString()),
+            facilityId = infoFields.GetValueOrDefault("facilityId", lien.FacilityId?.ToString() ?? string.Empty),
+            facility = infoFields.GetValueOrDefault("facilityName", string.Empty),
             facilityContactId = infoFields.GetValueOrDefault("facilityContactId", string.Empty),
+            facilityContact = infoFields.GetValueOrDefault("facilityContactPerson", string.Empty),
             email = infoFields.GetValueOrDefault("email", string.Empty),
             phone = infoFields.GetValueOrDefault("phone", string.Empty),
             medicalProviderId = infoFields.GetValueOrDefault("medicalProviderId", string.Empty),
+            medicalProvider = infoFields.GetValueOrDefault("medicalProvider", string.Empty),
             created = FormatLegacyTimestamp(lien.CreatedAtUtc),
             createdBy = lien.ImportedCreatedByName ?? string.Empty,
             updated = FormatLegacyTimestamp(lien.UpdatedAtUtc),
@@ -1319,6 +1334,7 @@ public static class CaseEndpoints
         string id,
         ILienService lienService,
         IContactService contactService,
+        IServicingItemService servicingItemService,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -1352,6 +1368,24 @@ public static class CaseEndpoints
                                  string.Empty;
         }
 
+        var partyInfoResult = await servicingItemService.SearchAsync(
+            tenantId,
+            search: "LegacyMedicalFacilityInfo",
+            status: null,
+            priority: null,
+            assignedTo: null,
+            caseId: null,
+            lienId: lienId,
+            page: 1,
+            pageSize: 50,
+            ct);
+        var partyInfo = partyInfoResult.Items.FirstOrDefault(item =>
+            string.Equals(item.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal) &&
+            item.LienId == lienId);
+        var partyFields = ParseLegacyNoteFields(partyInfo?.Notes);
+        var fundingCompanyId = partyFields.GetValueOrDefault("fundingCompanyId", lien.ExternalReference ?? string.Empty);
+        fundingCompanyName = partyFields.GetValueOrDefault("fundingCompany", fundingCompanyName);
+
         var data = new LegacyLiensMedicalResponse
         {
             id = lien.Id.ToString(),
@@ -1360,12 +1394,12 @@ public static class CaseEndpoints
             purchaseDate = lien.PurchaseDate ?? string.Empty,
             initialServiceDate = FormatLegacyDate(lien.InitialServiceDate),
             endServiceDate = FormatLegacyDate(lien.EndServiceDate),
-            note = lien.Description ?? string.Empty,
+            note = lien.Notes ?? lien.Description ?? string.Empty,
             created = FormatLegacyTimestamp(lien.CreatedAtUtc),
             createdBy = string.Empty,
             updated = FormatLegacyTimestamp(lien.UpdatedAtUtc),
             updatedBy = string.Empty,
-            fundingCompanyId = lien.ExternalReference ?? string.Empty,
+            fundingCompanyId = fundingCompanyId,
             fundingCompany = fundingCompanyName,
             isBulk = lien.IsBulk ?? string.Empty,
             isServicing = lien.IsServicing ?? string.Empty,
@@ -6321,6 +6355,7 @@ public static class CaseEndpoints
             IsServicing = lien.IsServicing,
             ImportedCreatedByName = lien.ImportedCreatedByName,
             Description = lien.Description,
+            Notes = lien.Notes,
             OpenedAtUtc = lien.OpenedAtUtc,
             ClosedAtUtc = lien.ClosedAtUtc,
             CreatedAtUtc = lien.CreatedAtUtc,

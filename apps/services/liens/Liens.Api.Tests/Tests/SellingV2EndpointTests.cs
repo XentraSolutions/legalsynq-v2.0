@@ -474,6 +474,76 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Lien_information_preserves_omitted_optional_fields_and_clears_explicit_nulls()
+    {
+        var lienId = await CreateSellingLienAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await db.Liens.SingleAsync(item => item.Id == lienId);
+            lien.SetPurchaseDate(new DateOnly(2026, 6, 20), SeedHelper.UserId);
+            await db.SaveChangesAsync();
+        }
+
+        var initialSave = await _client.PutAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/lien-information",
+            new
+            {
+                sellerStatus = SellingLienStatus.Pending,
+                listingVisibility = SellingListingVisibility.Private,
+                initialServiceDate = "2026-07-01",
+                endServiceDate = "2026-07-15",
+                receivableDueDate = "2026-08-01",
+                notes = "Preserve these values",
+            });
+        initialSave.EnsureSuccessStatusCode();
+
+        var partialUpdate = await _client.PutAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/lien-information",
+            new
+            {
+                sellerStatus = SellingLienStatus.Internal,
+                listingVisibility = SellingListingVisibility.Private,
+            });
+        partialUpdate.StatusCode.Should().Be(HttpStatusCode.OK, await partialUpdate.Content.ReadAsStringAsync());
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var persisted = await db.Liens.SingleAsync(item => item.Id == lienId);
+            persisted.InitialServiceDate.Should().Be(new DateOnly(2026, 7, 1));
+            persisted.EndServiceDate.Should().Be(new DateOnly(2026, 7, 15));
+            persisted.ReceivableDueDate.Should().Be(new DateOnly(2026, 8, 1));
+            persisted.PurchaseDate.Should().Be(new DateOnly(2026, 6, 20));
+            persisted.Notes.Should().Be("Preserve these values");
+        }
+
+        var clearUpdate = await _client.PutAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/lien-information",
+            new
+            {
+                sellerStatus = SellingLienStatus.Internal,
+                listingVisibility = SellingListingVisibility.Private,
+                initialServiceDate = (string?)null,
+                endServiceDate = (string?)null,
+                receivableDueDate = (string?)null,
+                notes = (string?)null,
+            });
+        clearUpdate.StatusCode.Should().Be(HttpStatusCode.OK, await clearUpdate.Content.ReadAsStringAsync());
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var persisted = await db.Liens.SingleAsync(item => item.Id == lienId);
+            persisted.InitialServiceDate.Should().BeNull();
+            persisted.EndServiceDate.Should().BeNull();
+            persisted.ReceivableDueDate.Should().BeNull();
+            persisted.PurchaseDate.Should().Be(new DateOnly(2026, 6, 20));
+            persisted.Notes.Should().BeNull();
+        }
+    }
+
+    [Fact]
     public async Task Save_medical_pricing_persists_multiple_rows_with_unique_task_numbers()
     {
         var lienId = await CreateSellingLienAsync();
@@ -731,6 +801,48 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         persisted.FundingCompanyContactId.Should().BeNull();
         persisted.FundingCompanyCompanyId.Should().BeNull();
         persisted.FundingCompanyContactPersonId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Case_information_accepts_a_seller_owned_company_directory_medical_facility()
+    {
+        Company facility;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            facility = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.MedicalFacilityId,
+                "Directory Facility",
+                SeedHelper.UserId);
+            db.Companies.Add(facility);
+            await db.SaveChangesAsync();
+        }
+
+        var lienId = await CreateSellingLienAsync();
+        var response = await _client.PutAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/case-information",
+            new { facilityId = facility.Id });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var savedPayload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        savedPayload.RootElement.GetProperty("facilityId").GetGuid().Should().Be(facility.Id);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var persisted = await db.Liens.SingleAsync(item => item.Id == lienId);
+            persisted.MedicalFacilityCompanyId.Should().Be(facility.Id);
+            persisted.FacilityId.Should().BeNull();
+        }
+
+        var detailResponse = await _client.GetAsync($"/api/liens/selling/liens/{lienId}");
+        detailResponse.StatusCode.Should().Be(HttpStatusCode.OK, await detailResponse.Content.ReadAsStringAsync());
+        using var detailPayload = JsonDocument.Parse(await detailResponse.Content.ReadAsStringAsync());
+        var savedFacility = detailPayload.RootElement.GetProperty("facility");
+        savedFacility.GetProperty("id").GetGuid().Should().Be(facility.Id);
+        savedFacility.GetProperty("name").GetString().Should().Be("Directory Facility");
     }
 
     [Fact]
@@ -1709,6 +1821,129 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Move_to_management_sets_today_purchase_date_and_creates_management_facility_provider_info()
+    {
+        var lienId = await CreateSellingLienAsync();
+        Company facility;
+        Company medicalProvider;
+
+        using (var setupScope = _factory.Services.CreateScope())
+        {
+            var setupDb = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            facility = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.MedicalFacilityId,
+                "Management Facility",
+                SeedHelper.UserId,
+                email: "facility@management.test",
+                phone: "555-0300");
+            medicalProvider = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.MedicalProviderId,
+                "Management Provider",
+                SeedHelper.UserId);
+            setupDb.Companies.AddRange(facility, medicalProvider);
+
+            var lien = await setupDb.Liens.SingleAsync(item => item.Id == lienId);
+            lien.SetPurchaseDate(new DateOnly(2025, 1, 1), SeedHelper.UserId);
+            await setupDb.SaveChangesAsync();
+
+            setupDb.ServicingItems.Should().NotContain(item =>
+                item.LienId == lienId && item.TaskType == "LegacyMedicalFacilityInfo");
+            setupDb.Companies.Should().NotContain(item =>
+                item.TenantId == SeedHelper.TenantId &&
+                item.OrgId == SeedHelper.OrgId &&
+                item.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
+                item.NormalizedName == Company.NormalizeName("RL Liens1"));
+        }
+
+        var caseInformationResponse = await _client.PutAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/case-information",
+            new
+            {
+                facilityId = facility.Id,
+                medicalProviderId = medicalProvider.Id,
+            });
+        caseInformationResponse.StatusCode.Should().Be(HttpStatusCode.OK, await caseInformationResponse.Content.ReadAsStringAsync());
+
+        var todayBeforeMove = DateOnly.FromDateTime(DateTime.UtcNow);
+        using var move = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management")
+        {
+            Content = JsonContent.Create(new { reason = "Retained internally" }),
+        };
+        move.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+
+        var response = await _client.SendAsync(move);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var todayAfterMove = DateOnly.FromDateTime(DateTime.UtcNow);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var lien = await db.Liens.SingleAsync(item => item.Id == lienId);
+            lien.PurchaseDate.Should().BeOneOf(todayBeforeMove, todayAfterMove);
+            lien.MedicalFacilityCompanyId.Should().Be(facility.Id);
+            lien.MedicalProviderCompanyId.Should().Be(medicalProvider.Id);
+            lien.FundingCompanyId.Should().BeNull();
+            lien.FundingCompanyCompanyId.Should().NotBeNull();
+
+            var fundingCompany = await db.Companies.SingleAsync(item =>
+                item.Id == lien.FundingCompanyCompanyId &&
+                item.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId);
+            fundingCompany.Name.Should().Be("RL Liens1");
+            fundingCompany.LinkedTenantId.Should().Be(SeedHelper.TenantId);
+
+            db.ServicingItems.Should().ContainSingle(item =>
+                item.LienId == lienId &&
+                item.CaseId == SeedHelper.CaseId &&
+                item.TaskType == "LegacyMedicalFacilityInfo" &&
+                item.Notes!.Contains($"facilityId={facility.Id}") &&
+                item.Notes.Contains("facilityName=Management Facility") &&
+                item.Notes.Contains($"medicalProviderId={medicalProvider.Id}") &&
+                item.Notes.Contains("medicalProvider=Management Provider") &&
+                item.Notes.Contains($"fundingCompanyId={fundingCompany.Id}") &&
+                item.Notes.Contains("fundingCompany=RL Liens1"));
+        }
+
+        var managementResponse = await _client.GetAsync($"/api/liens/cases/liens/get-facility/{lienId}");
+        managementResponse.StatusCode.Should().Be(HttpStatusCode.OK, await managementResponse.Content.ReadAsStringAsync());
+        using var managementJson = JsonDocument.Parse(await managementResponse.Content.ReadAsStringAsync());
+        var managementFacility = managementJson.RootElement.GetProperty("data");
+        managementFacility.GetProperty("facilityId").GetString().Should().Be(facility.Id.ToString());
+        managementFacility.GetProperty("facility").GetString().Should().Be("Management Facility");
+        managementFacility.GetProperty("medicalProviderId").GetString().Should().Be(medicalProvider.Id.ToString());
+        managementFacility.GetProperty("medicalProvider").GetString().Should().Be("Management Provider");
+
+        var managementLienResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medical/{lienId}");
+        managementLienResponse.StatusCode.Should().Be(HttpStatusCode.OK, await managementLienResponse.Content.ReadAsStringAsync());
+        using var managementLienJson = JsonDocument.Parse(await managementLienResponse.Content.ReadAsStringAsync());
+        managementLienJson.RootElement.GetProperty("data").GetProperty("fundingCompany").GetString().Should().Be("RL Liens1");
+
+        var secondLienId = await CreateSellingLienAsync();
+        using var secondMove = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{secondLienId}/move-to-management")
+        {
+            Content = JsonContent.Create(new { reason = "Reuse tenant funding company" }),
+        };
+        secondMove.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+        (await _client.SendAsync(secondMove)).EnsureSuccessStatusCode();
+
+        using var verificationScope = _factory.Services.CreateScope();
+        var verificationDb = verificationScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var tenantFundingCompanies = await verificationDb.Companies
+            .Where(item =>
+                item.TenantId == SeedHelper.TenantId &&
+                item.OrgId == SeedHelper.OrgId &&
+                item.CompanyTypeId == CompanyDirectoryReferenceData.FundingCompanyId &&
+                item.NormalizedName == Company.NormalizeName("RL Liens1"))
+            .ToListAsync();
+        tenantFundingCompanies.Should().ContainSingle();
+        var secondLien = await verificationDb.Liens.SingleAsync(item => item.Id == secondLienId);
+        secondLien.FundingCompanyCompanyId.Should().Be(tenantFundingCompanies[0].Id);
+    }
+
+    [Fact]
     public async Task Move_to_management_withdraws_a_submitted_lien_before_marking_it_internal()
     {
         var lienId = await CreateSellingLienAsync();
@@ -1735,7 +1970,12 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         movedLien!.Status.Should().Be(LienStatus.Draft);
         movedLien.SellerStatus.Should().Be(SellingLienStatus.Internal);
         movedLien.WithdrawnAtUtc.Should().NotBeNull();
-        movedLien.FundingCompanyId.Should().Be(SeedHelper.FundingCompanyId);
+        movedLien.FundingCompanyId.Should().BeNull();
+        movedLien.FundingCompanyCompanyId.Should().NotBeNull();
+        var tenantFundingCompany = await verificationScope.ServiceProvider
+            .GetRequiredService<LiensDbContext>()
+            .Companies.SingleAsync(item => item.Id == movedLien.FundingCompanyCompanyId);
+        tenantFundingCompany.Name.Should().Be("RL Liens1");
     }
 
     [Fact]
@@ -1882,16 +2122,100 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
-    public async Task Move_to_management_v2_creates_case_from_case_info_and_moves_lien_internal()
+    public async Task Move_to_management_v2_transfers_complete_case_and_lien_information_to_management()
     {
         var lienId = await CreateSellingLienAsync();
+        Company facility;
+        Company medicalProvider;
+        Company fundingCompany;
+        Guid compatibilityItemId;
+        using (var setupScope = _factory.Services.CreateScope())
+        {
+            var setupDb = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            facility = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.MedicalFacilityId,
+                "Complete Care Facility",
+                SeedHelper.UserId,
+                email: "facility@complete-care.test",
+                phone: "555-0100");
+            medicalProvider = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.MedicalProviderId,
+                "Complete Care Provider",
+                SeedHelper.UserId);
+            fundingCompany = Company.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                CompanyDirectoryReferenceData.FundingCompanyId,
+                "Complete Capital",
+                SeedHelper.UserId);
+            setupDb.Companies.AddRange(facility, medicalProvider, fundingCompany);
+
+            var existingCase = await setupDb.Cases.SingleAsync(item => item.Id == SeedHelper.CaseId);
+            existingCase.Update(
+                existingCase.ClientFirstName,
+                existingCase.ClientLastName,
+                SeedHelper.UserId,
+                title: existingCase.Title,
+                externalReference: "CASE-EXT-100",
+                clientDob: existingCase.ClientDob,
+                clientPhone: "555-0199",
+                clientEmail: "maria.santos@test.local",
+                clientAddress: existingCase.ClientAddress,
+                dateOfIncident: existingCase.DateOfIncident,
+                insuranceCarrier: "Complete Insurance",
+                policyNumber: "POL-100",
+                claimNumber: "CLM-100",
+                description: "Existing case description",
+                notes: $"Original case notes{Environment.NewLine}{Environment.NewLine}[legacy-meta]{Environment.NewLine}gender=Female");
+
+            var setupLien = await setupDb.Liens.SingleAsync(item => item.Id == lienId);
+            setupLien.SetPurchaseDate(new DateOnly(2026, 6, 20), SeedHelper.UserId);
+            var seededCompatibilityItem = ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LMFI-{Guid.CreateVersion7():N}",
+                "LegacyMedicalFacilityInfo",
+                "Legacy medical facility information",
+                "system",
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                lienId: lienId,
+                notes: "customField=preserve-me; fundingCompany=Stale funding company");
+            compatibilityItemId = seededCompatibilityItem.Id;
+            setupDb.ServicingItems.Add(seededCompatibilityItem);
+            await setupDb.SaveChangesAsync();
+        }
+
+        (await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/lien-information", new
+        {
+            sellerStatus = "Pending",
+            listingVisibility = "Private",
+            initialServiceDate = "2026-07-01",
+            endServiceDate = "2026-07-31",
+            receivableDueDate = "2026-08-15",
+            notes = "Complete lien notes",
+        })).EnsureSuccessStatusCode();
+        (await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/case-information", new
+        {
+            facilityId = facility.Id,
+            medicalProviderId = medicalProvider.Id,
+            fundingCompanyId = fundingCompany.Id,
+        })).EnsureSuccessStatusCode();
         (await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/medical-pricing", new
         {
             askAmount = 1250m,
             billingAmount = 1800m,
             rows = new[] { new { medicalCode = "99213", description = "Office visit", billingAmount = 1800m, medicareCost = 180m, targetSaleAmount = 1250m } },
         })).EnsureSuccessStatusCode();
-
+        var documentId = Guid.CreateVersion7();
+        (await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/documents", new
+        {
+            documents = new[] { new { documentId, documentType = "MedicalBill", displayName = "complete-bill.pdf" } },
+        })).EnsureSuccessStatusCode();
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management-v2")
         {
             Content = JsonContent.Create(new
@@ -1923,34 +2247,75 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        payload.RootElement.GetProperty("caseCreated").GetBoolean().Should().BeTrue();
+        payload.RootElement.GetProperty("caseCreated").GetBoolean().Should().BeFalse();
         var caseId = payload.RootElement.GetProperty("caseId").GetGuid();
+        caseId.Should().Be(SeedHelper.CaseId);
         payload.RootElement.GetProperty("sellingCaseId").GetGuid().Should().Be(caseId);
         payload.RootElement.GetProperty("sellerStatus").GetString().Should().Be(SellingLienStatus.Internal);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         var lien = await db.Liens.FindAsync(lienId);
-        var createdCase = await db.Cases.FindAsync(caseId);
+        var managementCase = await db.Cases.FindAsync(caseId);
         lien!.CaseId.Should().Be(caseId);
         lien.SellingCaseId.Should().Be(caseId);
         lien.MovedToManagementAtUtc.Should().NotBeNull();
         lien.SellerStatus.Should().Be(SellingLienStatus.Internal);
         lien.Status.Should().Be(LienStatus.Draft);
         lien.IsServicing.Should().Be("true");
-        createdCase!.ClientFirstName.Should().Be("Maria");
-        createdCase.ClientLastName.Should().Be("Santos");
-        createdCase.ClientDob.Should().Be(new DateOnly(1990, 1, 15));
-        createdCase.ClientAddress.Should().Be("123 Main St, Los Angeles, CA, 90001");
-        createdCase.DateOfIncident.Should().Be(new DateOnly(2026, 8, 1));
-        createdCase.Notes.Should().Contain("[legacy-meta]");
-        createdCase.Notes.Should().Contain("accidentState=CA");
+        lien.PurchaseDate.Should().Be(new DateOnly(2026, 6, 20));
+        lien.InitialServiceDate.Should().Be(new DateOnly(2026, 7, 1));
+        lien.EndServiceDate.Should().Be(new DateOnly(2026, 7, 31));
+        lien.ReceivableDueDate.Should().Be(new DateOnly(2026, 8, 15));
+        lien.Notes.Should().Be("Complete lien notes");
+        lien.MedicalFacilityCompanyId.Should().Be(facility.Id);
+        lien.MedicalProviderCompanyId.Should().Be(medicalProvider.Id);
+        lien.FundingCompanyCompanyId.Should().Be(fundingCompany.Id);
+        managementCase!.ClientFirstName.Should().Be("Maria");
+        managementCase.ClientLastName.Should().Be("Santos");
+        managementCase.ClientDob.Should().Be(new DateOnly(1990, 1, 15));
+        managementCase.ClientPhone.Should().Be("555-0199");
+        managementCase.ClientEmail.Should().Be("maria.santos@test.local");
+        managementCase.ClientAddress.Should().Be("123 Main St, Los Angeles, CA, 90001");
+        managementCase.ClientAddressLine1.Should().Be("123 Main St");
+        managementCase.ClientCity.Should().Be("Los Angeles");
+        managementCase.ClientState.Should().Be("CA");
+        managementCase.ClientPostalCode.Should().Be("90001");
+        managementCase.DateOfIncident.Should().Be(new DateOnly(2026, 8, 1));
+        managementCase.IncidentState.Should().Be("CA");
+        managementCase.InsuranceCarrier.Should().Be("Complete Insurance");
+        managementCase.PolicyNumber.Should().Be("POL-100");
+        managementCase.ClaimNumber.Should().Be("CLM-100");
+        managementCase.Notes.Should().Contain("Brief case notes");
+        managementCase.Notes.Should().Contain("gender=Female");
+        managementCase.Notes.Should().Contain("accidentState=CA");
         db.ServicingItems.Should().Contain(item =>
             item.LienId == lienId &&
             item.CaseId == caseId &&
             item.TaskType == "LegacyMedicalCode" &&
             item.Notes!.Contains("billingAmount=1800") &&
             item.Notes.Contains("purchaseAmount=1250"));
+        db.ServicingItems.Should().Contain(item =>
+            item.LienId == lienId &&
+            item.CaseId == caseId &&
+            item.TaskType == "SellingDocumentReference" &&
+            item.Notes!.Contains(documentId.ToString()));
+        db.ServicingItems.Should().ContainSingle(item =>
+            item.LienId == lienId &&
+            item.CaseId == caseId &&
+            item.TaskType == "LegacyMedicalFacilityInfo" &&
+            item.Notes!.Contains($"facilityId={facility.Id}") &&
+            item.Notes.Contains("facilityName=Complete Care Facility") &&
+            item.Notes.Contains($"medicalProviderId={medicalProvider.Id}") &&
+            item.Notes.Contains("medicalProvider=Complete Care Provider") &&
+            item.Notes.Contains($"fundingCompanyId={fundingCompany.Id}") &&
+            item.Notes.Contains("fundingCompany=Complete Capital") &&
+            item.Notes.Contains("receivableDueDate=2026-08-15"));
+        var compatibilityItem = await db.ServicingItems.SingleAsync(item =>
+            item.LienId == lienId && item.TaskType == "LegacyMedicalFacilityInfo");
+        compatibilityItem.Id.Should().Be(compatibilityItemId);
+        compatibilityItem.Notes.Should().Contain("customField=preserve-me");
+        compatibilityItem.Notes.Should().NotContain("fundingCompany=Stale funding company");
 
         var managementCaseResponse = await _client.GetAsync($"/api/liens/cases/{caseId}");
         managementCaseResponse.StatusCode.Should().Be(HttpStatusCode.OK, await managementCaseResponse.Content.ReadAsStringAsync());
@@ -1962,12 +2327,31 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         managementCaseJson.RootElement.GetProperty("stateOfIncident").GetString().Should().Be("CA");
         managementCaseJson.RootElement.GetProperty("lawFirmId").GetString().Should().Be(SeedHelper.LawFirmId.ToString());
         managementCaseJson.RootElement.GetProperty("accidentTypeId").GetString().Should().Be("MVA");
+
+        var managementLienResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medical/{lienId}");
+        managementLienResponse.StatusCode.Should().Be(HttpStatusCode.OK, await managementLienResponse.Content.ReadAsStringAsync());
+        using var managementLienJson = JsonDocument.Parse(await managementLienResponse.Content.ReadAsStringAsync());
+        var managementLien = managementLienJson.RootElement.GetProperty("data");
+        managementLien.GetProperty("note").GetString().Should().Be("Complete lien notes");
+        managementLien.GetProperty("fundingCompanyId").GetString().Should().Be(fundingCompany.Id.ToString());
+        managementLien.GetProperty("fundingCompany").GetString().Should().Be("Complete Capital");
+
+        var managementFacilityResponse = await _client.GetAsync($"/api/liens/cases/liens/get-facility/{lienId}");
+        managementFacilityResponse.StatusCode.Should().Be(HttpStatusCode.OK, await managementFacilityResponse.Content.ReadAsStringAsync());
+        using var managementFacilityJson = JsonDocument.Parse(await managementFacilityResponse.Content.ReadAsStringAsync());
+        var managementFacility = managementFacilityJson.RootElement.GetProperty("data");
+        managementFacility.GetProperty("facilityId").GetString().Should().Be(facility.Id.ToString());
+        managementFacility.GetProperty("facility").GetString().Should().Be("Complete Care Facility");
+        managementFacility.GetProperty("medicalProviderId").GetString().Should().Be(medicalProvider.Id.ToString());
+        managementFacility.GetProperty("medicalProvider").GetString().Should().Be("Complete Care Provider");
+
     }
 
     [Fact]
     public async Task Move_to_management_v2_reuses_duplicate_case_and_still_processes_lien()
     {
         var lienId = await CreateSellingLienAsync();
+        Guid documentReferenceId;
         var existingCase = Case.Create(
             SeedHelper.TenantId,
             SeedHelper.OrgId,
@@ -1982,6 +2366,21 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         {
             var setupDb = setupScope.ServiceProvider.GetRequiredService<LiensDbContext>();
             setupDb.Cases.Add(existingCase);
+            var detachedLien = await setupDb.Liens.SingleAsync(item => item.Id == lienId);
+            var seededDocumentReference = ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"SDR-{Guid.CreateVersion7():N}",
+                "SellingDocumentReference",
+                "duplicate-case-document.pdf",
+                "Selling",
+                SeedHelper.UserId,
+                caseId: detachedLien.CaseId,
+                lienId: lienId,
+                notes: $"documentId={Guid.CreateVersion7()}");
+            documentReferenceId = seededDocumentReference.Id;
+            setupDb.ServicingItems.Add(seededDocumentReference);
+            detachedLien.DetachCase(SeedHelper.UserId);
             await setupDb.SaveChangesAsync();
         }
 
@@ -2018,6 +2417,8 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         lien.SellingCaseId.Should().Be(existingCase.Id);
         lien.MovedToManagementAtUtc.Should().NotBeNull();
         lien.SellerStatus.Should().Be(SellingLienStatus.Internal);
+        var documentReference = await db.ServicingItems.FindAsync(documentReferenceId);
+        documentReference!.CaseId.Should().Be(existingCase.Id);
         var duplicateCount = await db.Cases.CountAsync(c =>
             c.TenantId == SeedHelper.TenantId &&
             c.OrgId == SeedHelper.OrgId &&
@@ -2051,7 +2452,7 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
         var lien = await db.Liens.FindAsync(lienId);
-        lien!.CaseId.Should().BeNull();
+        lien!.CaseId.Should().Be(SeedHelper.CaseId);
         lien.SellerStatus.Should().Be(SellingLienStatus.Pending);
     }
 

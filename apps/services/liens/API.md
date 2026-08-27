@@ -317,9 +317,14 @@ including `draftId`, `caseId`, and `caseNumber`. It is limited to the authentica
 `POST /liens` now requires that returned `caseId`, plus `sellerStatus` (`Pending` or `Internal`) and an
 optional `source`. The route rejects cases outside the authenticated tenant/seller organization.
 
+`PUT /liens/{lienId}/lien-information` requires `sellerStatus` and `listingVisibility`. Omitted
+`initialServiceDate`, `endServiceDate`, `receivableDueDate`, and `notes` fields preserve their current values;
+supplying one of those fields as `null` clears its current value.
+
 `PUT /liens/{lienId}/case-information` is now restricted to lien-owned `fundingCompanyId`,
 `fundingCompanyContactId`, `facilityId`, and `medicalProviderId`; it no longer accepts `caseId`,
-`createCaseIfMissing`, `handlingLawFirmId`, or `caseManagerId`.
+`createCaseIfMissing`, `handlingLawFirmId`, or `caseManagerId`. `facilityId` may reference either an active
+seller-owned legacy facility or an active seller-owned Company Directory Medical Facility.
 
 ### POST `/api/liens/selling/liens/{lienId}/move-to-management`
 
@@ -341,8 +346,13 @@ management case from the lien information, falling back to `Jane Doe` when no pl
 Every lien shown on the Selling **Pending** tab is eligible, including `Pending`, `Approval`, `PreparedForSale`,
 and `SubmittedForSale`. Submitted liens are atomically withdrawn, buyer access revoked, and pending offers
 withdrawn before they become internal. Management receives the Selling billing amount as its billing total and
-the Selling ask amount as its purchase total. Existing `Internal` liens and legacy draft liens with no seller status
-remain eligible for backward compatibility.
+the Selling ask amount as its purchase total. The lien purchase date is set to the UTC calendar date on which the
+move completes. Canonical medical-facility and medical-provider selections are projected into Management's
+`LegacyMedicalFacilityInfo` compatibility record; the record is created when it does not already exist, so both
+selections are immediately available through the Management facility endpoint. The funding company is resolved from
+the authenticated tenant's organization name. An active canonical Funding Company with that name is reused, or created
+and linked to the tenant when absent, then exposed through the same Management compatibility record. Existing `Internal`
+liens and legacy draft liens with no seller status remain eligible for backward compatibility.
 
 ### POST `/api/liens/selling/liens/{lienId}/move-to-management-v2`
 
@@ -352,11 +362,16 @@ also persisted on the lien's `sellingCaseId` reference. If the lien already has 
 `caseInfo` is provided, the API first searches the same tenant and seller organization for an existing case with the
 same first name, last name, DOB, and date of loss. Matching an existing case is not an error: the lien is added to that
 case and processing continues. If no match exists, a new case is created from `caseInfo`; if `caseInfo` is omitted, a
-generic `Jane Doe` case is created.
+generic `Jane Doe` case is created. When the lien already has a seller-owned case, supplied `caseInfo` updates that
+same case while preserving phone, email, insurance, policy, claim, description, medical-status, tracking, and canonical
+party fields that are outside the move request.
 
 Submitted-for-sale liens are first returned to draft Selling state, active buyer links are revoked, pending buyer offers
 are expired, and then the lien is moved to Internal. Selling medical-pricing rows are copied into Management
 `LegacyMedicalCode` rows so Management billing and purchase totals match Selling billing and target-sale amounts.
+The original lien record retains its purchase/service/due dates, notes, financial values, and canonical company links.
+All lien-scoped servicing and Selling document-reference rows are associated with the resolved Management case, while
+funding-company, medical-facility, and medical-provider details are projected into Management's compatibility read model.
 
 **Permission:** `SYNQ_LIENS.lien_sale:update`
 

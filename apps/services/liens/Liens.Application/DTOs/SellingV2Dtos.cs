@@ -34,10 +34,10 @@ public sealed class FinalizeSellingCaseDraftPlaintiffRequest
 public sealed class SaveSellingLienInformationRequest
 {
     public string SellerStatus { get; init; } = string.Empty;
-    public DateOnly? InitialServiceDate { get; init; }
-    public DateOnly? EndServiceDate { get; init; }
+    public System.Text.Json.JsonElement InitialServiceDate { get; init; }
+    public System.Text.Json.JsonElement EndServiceDate { get; init; }
     public string? ListingVisibility { get; init; }
-    public string? Notes { get; init; }
+    public System.Text.Json.JsonElement Notes { get; init; }
     public System.Text.Json.JsonElement ReceivableDueDate { get; init; }
 }
 

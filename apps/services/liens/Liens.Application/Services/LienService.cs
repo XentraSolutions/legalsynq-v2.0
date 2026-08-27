@@ -508,6 +508,7 @@ public sealed class LienService : ILienService
             IsServicing = entity.IsServicing,
             ImportedCreatedByName = entity.ImportedCreatedByName,
             Description = entity.Description,
+            Notes = entity.Notes,
             OpenedAtUtc = entity.OpenedAtUtc,
             ClosedAtUtc = entity.ClosedAtUtc,
             CreatedAtUtc = entity.CreatedAtUtc,
