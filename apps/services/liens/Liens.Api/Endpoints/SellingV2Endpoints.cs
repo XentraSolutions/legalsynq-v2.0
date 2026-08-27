@@ -2399,7 +2399,21 @@ public static class SellingV2Endpoints
         var items = await query.OrderBy(code => code.Code).Take(100).Select(code => new { code.Id, code.Code, code.Description, code.Cost }).ToListAsync(ct);
         return Results.Ok(new { items });
     }
-    private static IResult GetDocumentTypes() => Results.Ok(new { items = new[] { "MedicalBill", "MedicalRecord", "LienAgreement", "SettlementStatement", "Other" } });
+    private static IResult GetDocumentTypes() => Results.Ok(new
+    {
+        items = new[]
+        {
+            "MedicalBill",
+            "MedicalRecord",
+            "LienAgreement",
+            "SettlementStatement",
+            "Other",
+            "ItemizedBill",
+            "HCFA-1500",
+            "SignedLien",
+            "LetterOfProtection",
+        },
+    });
 
     private static async Task<(SellingCaseIntake? Value, IResult? Error)> ValidateSellingCaseInformationAsync(
         LiensDbContext db,
@@ -2683,7 +2697,6 @@ public static class SellingV2Endpoints
         var existingManagementRows = await db.ServicingItems
             .Where(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == "LegacyMedicalCode")
             .ToListAsync(ct);
-        db.ServicingItems.RemoveRange(existingManagementRows);
 
         var sellingPricingRows = await db.ServicingItems.AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingMedicalPricingTaskType)
@@ -2693,11 +2706,32 @@ public static class SellingV2Endpoints
 
         if (sellingPricingRows.Count == 0)
         {
+            if (existingManagementRows.Count > 0)
+            {
+                foreach (var row in existingManagementRows)
+                {
+                    row.Update(
+                        row.TaskType,
+                        row.Description,
+                        row.AssignedTo,
+                        userId,
+                        row.Priority,
+                        lien.CaseId,
+                        lien.Id,
+                        row.DueDate,
+                        row.Notes,
+                        row.AssignedToUserId);
+                }
+                return;
+            }
+
             AddManagementPricingRow(
                 db, lien, tenantId, sellerOrgId, userId,
                 "Selling lien pricing", lien.OriginalAmount, lien.AskAmount ?? 0m, null, null);
             return;
         }
+
+        db.ServicingItems.RemoveRange(existingManagementRows);
 
         foreach (var sellingPricingRow in sellingPricingRows)
         {
@@ -3397,7 +3431,6 @@ public static class SellingV2Endpoints
         var staleRows = await db.ServicingItems
             .Where(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == "LegacyMedicalCode")
             .ToListAsync(ct);
-        db.ServicingItems.RemoveRange(staleRows);
 
         var sellingRows = await db.ServicingItems.AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.LienId == lien.Id && item.TaskType == SellingMedicalPricingTaskType)
@@ -3406,9 +3439,30 @@ public static class SellingV2Endpoints
 
         if (sellingRows.Count == 0)
         {
+            if (staleRows.Count > 0)
+            {
+                foreach (var row in staleRows)
+                {
+                    row.Update(
+                        row.TaskType,
+                        row.Description,
+                        row.AssignedTo,
+                        userId,
+                        row.Priority,
+                        caseId,
+                        lien.Id,
+                        row.DueDate,
+                        row.Notes,
+                        row.AssignedToUserId);
+                }
+                return;
+            }
+
             AddManagementPricingRow(db, tenantId, sellerOrgId, caseId, lien.Id, userId, "SellingLien", lien.Description, lien.OriginalAmount, lien.AskAmount ?? 0m, null);
             return;
         }
+
+        db.ServicingItems.RemoveRange(staleRows);
 
         foreach (var row in sellingRows)
         {

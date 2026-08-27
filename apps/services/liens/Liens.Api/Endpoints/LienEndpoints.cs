@@ -1227,7 +1227,9 @@ public static class LienEndpoints
         var userId = RequireUserId(ctx);
 
         var existing = await servicingItemService.GetByIdAsync(tenantId, id, ct);
-        if (existing is null || !string.Equals(existing.TaskType, "LegacyMedicalDocument", StringComparison.Ordinal))
+        if (existing is null ||
+            (!string.Equals(existing.TaskType, "LegacyMedicalDocument", StringComparison.Ordinal) &&
+             !string.Equals(existing.TaskType, "LegacyLienDocument", StringComparison.Ordinal)))
         {
             return Results.NotFound(new
             {

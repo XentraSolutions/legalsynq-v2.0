@@ -447,8 +447,10 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
             .Should().Be("10000000-0000-0000-0000-000000000005");
     }
 
-    [Fact]
-    public async Task DeleteMedicalDocument_accepts_legacy_bff_proxy_path()
+    [Theory]
+    [InlineData("LegacyMedicalDocument")]
+    [InlineData("LegacyLienDocument")]
+    public async Task DeleteMedicalDocument_accepts_listed_legacy_document_types(string taskType)
     {
         Guid documentId;
         using (var scope = _factory.Services.CreateScope())
@@ -458,7 +460,7 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
                 SeedHelper.TenantId,
                 SeedHelper.OrgId,
                 $"DOC-MEDICAL-{Guid.CreateVersion7():N}"[..36],
-                "LegacyMedicalDocument",
+                taskType,
                 "Medical document",
                 "Legacy import",
                 SeedHelper.UserId,

@@ -1066,6 +1066,29 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Document_type_lookup_returns_all_selling_document_codes()
+    {
+        var response = await _client.GetAsync("/api/liens/selling/lookups/document-types");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        payload.RootElement.GetProperty("items")
+            .EnumerateArray()
+            .Select(item => item.GetString())
+            .Should()
+            .Equal(
+                "MedicalBill",
+                "MedicalRecord",
+                "LienAgreement",
+                "SettlementStatement",
+                "Other",
+                "ItemizedBill",
+                "HCFA-1500",
+                "SignedLien",
+                "LetterOfProtection");
+    }
+
+    [Fact]
     public async Task Confirm_sale_notification_uses_buyer_organization_and_never_persists_portal_capability_in_idempotency_replay()
     {
         var buyerOrgId = Guid.CreateVersion7();
@@ -1818,6 +1841,111 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         managementJson.RootElement.GetProperty("originalAmount").GetDecimal().Should().Be(1800m);
         managementJson.RootElement.GetProperty("totalBilling").GetDecimal().Should().Be(1800m);
         managementJson.RootElement.GetProperty("totalPurchase").GetDecimal().Should().Be(1250m);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Move_to_management_preserves_existing_management_medical_codes_when_selling_pricing_is_absent(bool useV2)
+    {
+        var lienId = await CreateSellingLienAsync();
+        Guid medicalCodeId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var medicalCode = ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LMC-{Guid.CreateVersion7():N}".ToUpperInvariant(),
+                "LegacyMedicalCode",
+                "Medical code 99213",
+                "system",
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                lienId: lienId,
+                notes: "code=99213; description=Office visit; medicareCost=180; billingAmount=1800; purchaseAmount=1250");
+            medicalCodeId = medicalCode.Id;
+            db.ServicingItems.Add(medicalCode);
+            await db.SaveChangesAsync();
+        }
+
+        var route = useV2 ? "move-to-management-v2" : "move-to-management";
+        using var move = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/{route}")
+        {
+            Content = JsonContent.Create(new { reason = "Retained internally" }),
+        };
+        move.Headers.Add("Idempotency-Key", Guid.CreateVersion7().ToString());
+
+        var response = await _client.SendAsync(move);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var preservedCode = await db.ServicingItems.SingleAsync(item => item.Id == medicalCodeId);
+            preservedCode.CaseId.Should().Be(SeedHelper.CaseId);
+            preservedCode.Notes.Should().Contain("code=99213");
+        }
+
+        var medicalCodesResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medicalcode/{lienId}");
+        medicalCodesResponse.StatusCode.Should().Be(HttpStatusCode.OK, await medicalCodesResponse.Content.ReadAsStringAsync());
+        using var medicalCodesJson = JsonDocument.Parse(await medicalCodesResponse.Content.ReadAsStringAsync());
+        var medicalCodeJson = medicalCodesJson.RootElement.GetProperty("data").EnumerateArray().Single();
+        medicalCodeJson.GetProperty("code").GetString().Should().Be("99213");
+        medicalCodeJson.GetProperty("description").GetString().Should().Be("Office visit");
+        medicalCodeJson.GetProperty("medicareCost").GetString().Should().Be("180");
+        medicalCodeJson.GetProperty("billingAmount").GetString().Should().Be("1800");
+        medicalCodeJson.GetProperty("purchaseAmount").GetString().Should().Be("1250");
+    }
+
+    [Fact]
+    public async Task Management_medical_code_read_recovers_a_blank_legacy_row_from_selling_pricing()
+    {
+        var lienId = await CreateSellingLienAsync();
+        (await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/medical-pricing", new
+        {
+            askAmount = 1250m,
+            billingAmount = 1800m,
+            rows = new[]
+            {
+                new
+                {
+                    medicalCode = "99213",
+                    description = "Office visit",
+                    billingAmount = 1800m,
+                    medicareCost = 180m,
+                    targetSaleAmount = 1250m,
+                },
+            },
+        })).EnsureSuccessStatusCode();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.ServicingItems.Add(ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LMC-{Guid.CreateVersion7():N}".ToUpperInvariant(),
+                "LegacyMedicalCode",
+                "Imported pricing",
+                "system",
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                lienId: lienId,
+                notes: "code=; description=; medicareCost=0; billingAmount=0; purchaseAmount=0"));
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync($"/api/liens/cases/liens/get-medicalcode/{lienId}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var medicalCode = payload.RootElement.GetProperty("data").EnumerateArray().Single();
+        medicalCode.GetProperty("code").GetString().Should().Be("99213");
+        medicalCode.GetProperty("description").GetString().Should().Be("Office visit");
+        medicalCode.GetProperty("medicareCost").GetString().Should().Be("180");
+        medicalCode.GetProperty("billingAmount").GetString().Should().Be("1800");
+        medicalCode.GetProperty("purchaseAmount").GetString().Should().Be("1250");
     }
 
     [Fact]

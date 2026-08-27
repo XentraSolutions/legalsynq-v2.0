@@ -326,6 +326,10 @@ supplying one of those fields as `null` clears its current value.
 `createCaseIfMissing`, `handlingLawFirmId`, or `caseManagerId`. `facilityId` may reference either an active
 seller-owned legacy facility or an active seller-owned Company Directory Medical Facility.
 
+`GET /lookups/document-types` returns the fixed Selling document codes `MedicalBill`, `MedicalRecord`,
+`LienAgreement`, `SettlementStatement`, `Other`, `ItemizedBill`, `HCFA-1500`, `SignedLien`, and
+`LetterOfProtection`.
+
 ### POST `/api/liens/selling/liens/{lienId}/move-to-management`
 
 Moves a Selling lien into Liens Management without creating a second lien record. Existing same-tenant,
@@ -347,7 +351,9 @@ Every lien shown on the Selling **Pending** tab is eligible, including `Pending`
 and `SubmittedForSale`. Submitted liens are atomically withdrawn, buyer access revoked, and pending offers
 withdrawn before they become internal. Management receives the Selling billing amount as its billing total and
 the Selling ask amount as its purchase total. The lien purchase date is set to the UTC calendar date on which the
-move completes. Canonical medical-facility and medical-provider selections are projected through reusable legacy
+move completes. Existing Management medical-code rows are retained when no Selling-pricing rows exist. For a
+historical single blank compatibility row, the Management medical-code response recovers code, description, and
+amounts from the retained Selling-pricing row and lien totals. Canonical medical-facility and medical-provider selections are projected through reusable legacy
 facility/contact records into Management's `LegacyMedicalFacilityInfo` compatibility record; the record is created
 when it does not already exist, so both selectors resolve immediately through the Management APIs. The funding company is resolved from
 the authenticated tenant's organization name. An active canonical Funding Company with that name is reused, or created

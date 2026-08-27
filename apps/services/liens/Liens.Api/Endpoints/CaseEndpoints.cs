@@ -301,6 +301,15 @@ public static class CaseEndpoints
         string Description,
         int Frequency);
 
+    private sealed record SellingMedicalPricingFallback
+    {
+        public string? MedicalCode { get; init; }
+        public string? Description { get; init; }
+        public decimal BillingAmount { get; init; }
+        public decimal? MedicareCost { get; init; }
+        public decimal TargetSaleAmount { get; init; }
+    }
+
     private sealed class LegacyGenerateCaseCsvRequest
     {
         public string? caseId { get; init; }
@@ -2648,13 +2657,59 @@ public static class CaseEndpoints
             httpClientFactory,
             ct);
 
-        var data = results.Items
+        var legacyItems = results.Items
             .Where(i => string.Equals(i.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
+            .ToList();
+        var lienIds = legacyItems
+            .Where(item => item.LienId.HasValue)
+            .Select(item => item.LienId!.Value)
+            .Distinct()
+            .ToList();
+        var sellingPricingRows = await db.ServicingItems.AsNoTracking()
+            .Where(item =>
+                item.TenantId == tenantId &&
+                item.LienId.HasValue &&
+                lienIds.Contains(item.LienId.Value) &&
+                item.TaskType == "SellingMedicalPricing")
+            .OrderBy(item => item.CreatedAtUtc)
+            .Select(item => new { item.LienId, item.Description, item.Notes })
+            .ToListAsync(ct);
+        var sellingFallbacks = sellingPricingRows
+            .GroupBy(item => item.LienId!.Value)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(
+                group => group.Key,
+                group => ParseSellingMedicalPricingFallback(
+                    group.Single().Description,
+                    group.Single().Notes));
+        var lienAmounts = await db.Liens.AsNoTracking()
+            .Where(lien => lien.TenantId == tenantId && lienIds.Contains(lien.Id))
+            .Select(lien => new { lien.Id, lien.OriginalAmount, lien.AskAmount })
+            .ToDictionaryAsync(lien => lien.Id, ct);
+        var legacyRowsPerLien = legacyItems
+            .Where(item => item.LienId.HasValue)
+            .GroupBy(item => item.LienId!.Value)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var data = legacyItems
             .Select(i =>
             {
                 var fields = ParseLegacyNoteFields(i.Notes);
-                var code = fields.GetValueOrDefault("code", string.Empty);
-                var description = fields.GetValueOrDefault("description", string.Empty);
+                var lienId = i.LienId;
+                var sellingFallback = lienId.HasValue
+                    ? sellingFallbacks.GetValueOrDefault(lienId.Value)
+                    : null;
+                var lienAmount = lienId.HasValue &&
+                    legacyRowsPerLien.GetValueOrDefault(lienId.Value) == 1
+                        ? lienAmounts.GetValueOrDefault(lienId.Value)
+                        : null;
+                var code = FirstNonEmpty(
+                    fields.GetValueOrDefault("code"),
+                    sellingFallback?.MedicalCode,
+                    ExtractMedicalCodeFromDescription(i.Description)) ?? string.Empty;
+                var description = FirstNonEmpty(
+                    fields.GetValueOrDefault("description"),
+                    sellingFallback?.Description) ?? string.Empty;
                 if (string.IsNullOrWhiteSpace(description) &&
                     !string.IsNullOrWhiteSpace(code) &&
                     descriptionsByCode.TryGetValue(code, out var resolvedDescription))
@@ -2668,9 +2723,17 @@ public static class CaseEndpoints
                     liensId = i.LienId?.ToString() ?? string.Empty,
                     code = code,
                     description = description,
-                    medicareCost = fields.GetValueOrDefault("medicareCost", string.Empty),
-                    billingAmount = fields.GetValueOrDefault("billingAmount", string.Empty),
-                    purchaseAmount = fields.GetValueOrDefault("purchaseAmount", string.Empty),
+                    medicareCost = ResolveLegacyMedicalAmount(
+                        fields.GetValueOrDefault("medicareCost"),
+                        sellingFallback?.MedicareCost),
+                    billingAmount = ResolveLegacyMedicalAmount(
+                        fields.GetValueOrDefault("billingAmount"),
+                        sellingFallback?.BillingAmount,
+                        lienAmount?.OriginalAmount),
+                    purchaseAmount = ResolveLegacyMedicalAmount(
+                        fields.GetValueOrDefault("purchaseAmount"),
+                        sellingFallback?.TargetSaleAmount,
+                        lienAmount?.AskAmount),
                     payee = fields.GetValueOrDefault("payee", string.Empty),
                     outboundCheckNumber = fields.GetValueOrDefault("outboundCheckNumber", string.Empty),
                     created = FormatLegacyTimestamp(i.CreatedAtUtc),
@@ -2687,6 +2750,55 @@ public static class CaseEndpoints
             message = "Successfully retrieved medical code records.",
             data,
         });
+    }
+
+    private static SellingMedicalPricingFallback? ParseSellingMedicalPricingFallback(
+        string? rowDescription,
+        string? notes)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+            return null;
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<SellingMedicalPricingFallback>(notes, MedicareJsonOptions);
+            if (parsed is null)
+                return null;
+            return parsed with { MedicalCode = FirstNonEmpty(parsed.MedicalCode, rowDescription) };
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? ExtractMedicalCodeFromDescription(string? description)
+    {
+        const string prefix = "Medical code ";
+        if (string.IsNullOrWhiteSpace(description) ||
+            !description.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return FirstNonEmpty(description[prefix.Length..]);
+    }
+
+    private static string ResolveLegacyMedicalAmount(
+        string? storedValue,
+        decimal? sellingValue,
+        decimal? lienValue = null)
+    {
+        if (decimal.TryParse(storedValue, NumberStyles.Number, CultureInfo.InvariantCulture, out var storedAmount) &&
+            storedAmount != 0m)
+        {
+            return storedValue!.Trim();
+        }
+
+        var fallback = sellingValue is not null and not 0m
+            ? sellingValue
+            : lienValue;
+        return fallback?.ToString(CultureInfo.InvariantCulture) ?? storedValue?.Trim() ?? string.Empty;
     }
 
     private static async Task<Dictionary<string, string>> BuildLegacyProcedureCodeDescriptionsAsync(
