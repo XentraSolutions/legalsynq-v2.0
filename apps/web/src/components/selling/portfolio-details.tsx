@@ -26,6 +26,7 @@ import { Tabs } from "@/components/selling/tabs";
 import { LienRowActionsMenu } from "./lien-row-actions-menu";
 import { Button } from "@/components/selling/button";
 import { ContactsEmptyState } from "@/components/selling/contacts/contacts-empty-state";
+import { MessagesTab } from "@/components/selling/messages-tab";
 
 interface LienDetailPanelProps {
   lien: LienDetailsResult;
@@ -39,6 +40,7 @@ const TABS = [
   { key: "documents", label: "Documents" },
   { key: "payment", label: "Payment" },
   { key: "activity", label: "Activity" },
+  { key: "messages", label: "Messages" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -174,6 +176,7 @@ export function PortfolioDetailPanel({
       {activeTab === "documents" && <DocumentsTab lien={lien} />}
       {activeTab === "payment" && <PaymentTab lien={lien} />}
       {activeTab === "activity" && <ActivityTab lienId={lien.lienId} />}
+      {activeTab === "messages" && <MessagesTab />}
 
       {editModal === "medical-pricing" && (
         <EditMedicalPricingModal
@@ -291,7 +294,10 @@ function ActivityTab({ lienId }: { lienId: string }) {
   );
 }
 
-function DocumentsTab({ lien }: { lien: LienDetailsResult }) {
+// Only `lien.lienId` is actually read below — widened to a Pick so the
+// case detail page's Documents tab can reuse this per lien without needing
+// a full LienDetailsResult for each of the case's liens.
+export function DocumentsTab({ lien }: { lien: Pick<LienDetailsResult, "lienId"> }) {
   const { data: docs = [], isLoading } = useLienDocuments(lien.lienId);
   const saveLienDocuments = useSaveLienDocuments(lien.lienId);
   const [showUpload, setShowUpload] = useState(false);
@@ -337,7 +343,7 @@ function DocumentsTab({ lien }: { lien: LienDetailsResult }) {
           </div>
         ) : docs.length === 0 ? (
           <div className="py-10 text-center">
-            <Copy className="h-6 w-6 text-gray-300" />
+            <Copy className="h-6 w-6 text-gray-300 mx-auto" />
             <p className="text-sm text-gray-400 mt-2">
               No documents attached to this lien yet
             </p>

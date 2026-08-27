@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronDown, CircleAlert, SquarePen, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { ActionMenu, type ActionMenuItem } from "@/components/selling/action-menu";
@@ -12,6 +12,13 @@ import { DateDisplay } from "@/components/ui/date-display";
 import { ApiError } from "@/lib/api-client";
 import { useSellingCaseDetail } from "@/hooks/selling/use-case-drafts";
 import { detailEditHref } from "@/components/selling/case-wizard/shared";
+import { CaseLiensTab } from "@/components/selling/case-detail/case-liens-tab";
+import { CaseDocumentsTab } from "@/components/selling/case-detail/case-documents-tab";
+import { CasePaymentsTab } from "@/components/selling/case-detail/case-payments-tab";
+import { MessagesTab } from "@/components/selling/messages-tab";
+
+const TAB_KEYS = ["details", "liens", "documents", "payments", "messages"] as const;
+type TabKey = (typeof TAB_KEYS)[number];
 
 const LIST_PATH = "/selling/portfolio/cases";
 
@@ -27,7 +34,11 @@ export default function CaseDetailPage() {
   const params = useParams<{ id: string }>();
   const caseId = params?.id ?? "";
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("details");
+  const searchParams = useSearchParams();
+  const initialTab = TAB_KEYS.includes(searchParams.get("tab") as TabKey)
+    ? (searchParams.get("tab") as TabKey)
+    : "details";
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
 
   const { data: caseDetail, isLoading, error } = useSellingCaseDetail(caseId);
 
@@ -68,11 +79,7 @@ export default function CaseDetailPage() {
     .join(" ") || "Unnamed Plaintiff";
 
   const handleTabClick = (tab: (typeof TABS)[number]) => {
-    if (tab.key === "details") {
-      setActiveTab("details");
-      return;
-    }
-    toast.info(`${tab.label} is coming soon.`);
+    setActiveTab(tab.key as TabKey);
   };
 
   const address = [
@@ -224,6 +231,11 @@ export default function CaseDetailPage() {
           </section>
         </div>
       )}
+
+      {activeTab === "liens" && <CaseLiensTab caseId={caseId} />}
+      {activeTab === "documents" && <CaseDocumentsTab caseId={caseId} />}
+      {activeTab === "payments" && <CasePaymentsTab caseId={caseId} />}
+      {activeTab === "messages" && <MessagesTab />}
     </div>
   );
 }
