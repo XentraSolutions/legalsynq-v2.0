@@ -284,36 +284,51 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
 
   const uploadDocuments = async (payload: any, lienId: string) => {
     if (payload?.length == 0 || payload == null) return;
-    const formData = new FormData();
-    formData.append("File", payload.document ?? "");
-    formData.append("liensId", lienId);
-    formData.append("DocName", "Lien Document");
-    formData.append("DocDescription", "Legacy lien Document upload");
-    formData.append("DocFileTypeId", payload.documentType);
 
-    try {
-      await casesService.uploadLiensDocuments(formData);
-      // addToast({
-      //   type: "success",
-      //   title: "Document Uploaded",
-      //   description: `Document has been updated.`,
-      // });
-      setErrors({});
-    } catch (err: unknown) {
-      if (err instanceof ApiError) {
-        addToast({
-          type: "error",
-          title: "Update Document Failed",
-          description: err.message,
+    if (Array.isArray(payload)) {
+      try {
+        const formData = new FormData();
+
+        const promises = payload.map(async (row) => {
+          formData.append("File", row.document ?? "");
+          formData.append("liensId", lienId);
+          formData.append("DocName", "Lien Document");
+          formData.append("DocDescription", "Legacy lien Document upload");
+          formData.append("DocFileTypeId", row.documentType);
+
+          try {
+            await casesService.uploadLiensDocuments(formData);
+            // addToast({
+            //   type: "success",
+            //   title: "Document Uploaded",
+            //   description: `Document has been updated.`,
+            // });
+            setErrors({});
+          } catch (err: unknown) {
+            if (err instanceof ApiError) {
+              addToast({
+                type: "error",
+                title: "Update Document Failed",
+                description: err.message,
+              });
+            } else {
+              addToast({
+                type: "error",
+                title: "Update Failed",
+                description: "An unexpected error occurred",
+              });
+            }
+          }
         });
-      } else {
-        addToast({
-          type: "error",
-          title: "Update Failed",
-          description: "An unexpected error occurred",
-        });
+
+        await Promise.all(promises);
+        console.log("All rows successfully saved concurrently!");
+      } catch (err) {
+        console.error("One or more rows failed to save:", err);
       }
     }
+    return;
+
     // finally {
     //   setSubmitting(false);
     // }
@@ -330,6 +345,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
 
   async function save(lienId: string) {
     setLoading(true);
+
     try {
       // Implement save logic here (API call)
       Promise.allSettled([
@@ -424,6 +440,7 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
                 lienId={liensId}
                 data={forms[2]}
                 onFormValid={onFormValid}
+                mode="add"
               />
             )}
             {currentStep === 4 && (
@@ -432,6 +449,8 @@ export default function MedicalLienComponent(props: MedicalLienComponentProps) {
                 caseId={caseId}
                 lienId={liensId}
                 onUploaded={onFormValid}
+                onFormValid={onFormValid}
+                mode="add"
               />
             )}
           </div>

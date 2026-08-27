@@ -8,6 +8,7 @@ import { casesService, type CreateCaseRequestDto } from "@/lib/cases";
 import { ApiError } from "@/lib/api-client";
 import Field from "../field";
 import { CreateMedicalCodeDto } from "@/lib/cases/cases.types";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface CreateMedicalCodeProps {
   open: boolean;
