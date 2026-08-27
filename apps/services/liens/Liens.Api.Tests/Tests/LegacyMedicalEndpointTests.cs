@@ -446,4 +446,37 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
         document["documentTypeId"]!.GetValue<string>()
             .Should().Be("10000000-0000-0000-0000-000000000005");
     }
+
+    [Fact]
+    public async Task DeleteMedicalDocument_accepts_legacy_bff_proxy_path()
+    {
+        Guid documentId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var document = ServicingItem.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"DOC-MEDICAL-{Guid.CreateVersion7():N}"[..36],
+                "LegacyMedicalDocument",
+                "Medical document",
+                "Legacy import",
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId,
+                lienId: SeedHelper.LienId,
+                notes: "url=/documents/medical; filename=medical.pdf");
+            documentId = document.Id;
+            db.ServicingItems.Add(document);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.DeleteAsync($"/liens/delete-medicaldocument/{documentId}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        (await verifyDb.ServicingItems.FindAsync(documentId)).Should().BeNull();
+    }
 }

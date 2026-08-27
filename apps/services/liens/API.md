@@ -347,9 +347,9 @@ Every lien shown on the Selling **Pending** tab is eligible, including `Pending`
 and `SubmittedForSale`. Submitted liens are atomically withdrawn, buyer access revoked, and pending offers
 withdrawn before they become internal. Management receives the Selling billing amount as its billing total and
 the Selling ask amount as its purchase total. The lien purchase date is set to the UTC calendar date on which the
-move completes. Canonical medical-facility and medical-provider selections are projected into Management's
-`LegacyMedicalFacilityInfo` compatibility record; the record is created when it does not already exist, so both
-selections are immediately available through the Management facility endpoint. The funding company is resolved from
+move completes. Canonical medical-facility and medical-provider selections are projected through reusable legacy
+facility/contact records into Management's `LegacyMedicalFacilityInfo` compatibility record; the record is created
+when it does not already exist, so both selectors resolve immediately through the Management APIs. The funding company is resolved from
 the authenticated tenant's organization name. An active canonical Funding Company with that name is reused, or created
 and linked to the tenant when absent, then exposed through the same Management compatibility record. Existing `Internal`
 liens and legacy draft liens with no seller status remain eligible for backward compatibility.
@@ -372,6 +372,8 @@ are expired, and then the lien is moved to Internal. Selling medical-pricing row
 The original lien record retains its purchase/service/due dates, notes, financial values, and canonical company links.
 All lien-scoped servicing and Selling document-reference rows are associated with the resolved Management case, while
 funding-company, medical-facility, and medical-provider details are projected into Management's compatibility read model.
+Facility/provider IDs in that read model reference the legacy records understood by Management while the lien retains
+its canonical Company Directory associations.
 
 **Permission:** `SYNQ_LIENS.lien_sale:update`
 

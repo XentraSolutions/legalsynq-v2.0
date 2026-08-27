@@ -3166,12 +3166,25 @@ public static class SellingV2Endpoints
                 contact.Id == lien.FundingCompanyContactId.Value, ct)
             : null;
 
-        AddMetadata(fields, "facilityId", canonicalFacility?.Id.ToString() ?? legacyFacility?.Id.ToString());
-        AddMetadata(fields, "facilityName", canonicalFacility?.Name ?? legacyFacility?.Name);
-        AddMetadata(fields, "email", canonicalFacility?.Email ?? legacyFacility?.Email);
-        AddMetadata(fields, "phone", canonicalFacility?.Phone ?? legacyFacility?.Phone);
-        AddMetadata(fields, "medicalProviderId", medicalProvider?.Id.ToString());
-        AddMetadata(fields, "medicalProvider", medicalProvider?.Name);
+        var managementFacility = legacyFacility;
+        if (canonicalFacility is not null)
+        {
+            managementFacility = await EnsureLegacyFacilityCompatibilityAsync(
+                db, tenantId, sellerOrgId, canonicalFacility, userId, ct);
+            lien.SetSellingMedicalFacility(managementFacility.Id, canonicalFacility.Id, userId);
+        }
+
+        var managementProvider = medicalProvider is null
+            ? null
+            : await EnsureLegacyProviderCompatibilityAsync(
+                db, tenantId, sellerOrgId, medicalProvider, userId, ct);
+
+        AddMetadata(fields, "facilityId", managementFacility?.Id.ToString());
+        AddMetadata(fields, "facilityName", canonicalFacility?.Name ?? managementFacility?.Name);
+        AddMetadata(fields, "email", canonicalFacility?.Email ?? managementFacility?.Email);
+        AddMetadata(fields, "phone", canonicalFacility?.Phone ?? managementFacility?.Phone);
+        AddMetadata(fields, "medicalProviderId", managementProvider?.Id.ToString());
+        AddMetadata(fields, "medicalProvider", medicalProvider?.Name ?? managementProvider?.Organization ?? managementProvider?.DisplayName);
         AddMetadata(fields, "fundingCompanyId", canonicalFundingCompany?.Id.ToString() ?? legacyFundingCompany?.Id.ToString());
         AddMetadata(fields, "fundingCompany", canonicalFundingCompany?.Name ?? legacyFundingCompany?.Organization ?? legacyFundingCompany?.DisplayName);
         AddMetadata(fields, "fundingCompanyContactId", canonicalFundingContact?.Id.ToString() ?? legacyFundingContact?.Id.ToString());
@@ -3216,6 +3229,160 @@ public static class SellingV2Endpoints
             notes,
             existing.AssignedToUserId);
         db.ServicingItems.RemoveRange(existingRows.Skip(1));
+    }
+
+    private static async Task<Facility> EnsureLegacyFacilityCompatibilityAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        Company company,
+        Guid userId,
+        CancellationToken ct)
+    {
+        var marker = $"SellingCompanyId={company.Id}";
+        var contact = await db.Contacts.FirstOrDefaultAsync(item =>
+            item.TenantId == tenantId &&
+            item.OrgId == sellerOrgId &&
+            (item.ContactType == ContactType.Facility || item.ContactType == ContactType.MedicalFacility) &&
+            item.ContactSubtype == null &&
+            (item.Notes == marker || item.Organization == company.Name || item.DisplayName == company.Name), ct);
+
+        Facility? facility = null;
+        if (contact?.FacilityId is { } linkedFacilityId)
+        {
+            facility = await db.Facilities.FirstOrDefaultAsync(item =>
+                item.TenantId == tenantId &&
+                item.OrgId == sellerOrgId &&
+                item.Id == linkedFacilityId, ct);
+        }
+
+        facility ??= await db.Facilities.FirstOrDefaultAsync(item =>
+            item.TenantId == tenantId &&
+            item.OrgId == sellerOrgId &&
+            (item.ExternalReference == company.Id.ToString() || item.Name == company.Name), ct);
+        if (facility is null)
+        {
+            facility = Facility.Create(
+                tenantId,
+                sellerOrgId,
+                company.Name,
+                userId,
+                externalReference: company.Id.ToString(),
+                addressLine1: company.AddressLine1,
+                city: company.City,
+                state: company.State,
+                postalCode: company.PostalCode,
+                phone: company.Phone,
+                email: company.Email);
+            db.Facilities.Add(facility);
+        }
+        else if (!facility.IsActive)
+        {
+            facility.Reactivate(userId);
+        }
+
+        if (contact is null)
+        {
+            var (firstName, lastName) = SplitCompatibilityName(company.Name, "Facility");
+            contact = Contact.Create(
+                tenantId,
+                sellerOrgId,
+                ContactType.MedicalFacility,
+                firstName,
+                lastName,
+                userId,
+                facilityId: facility.Id,
+                organization: company.Name,
+                email: company.Email,
+                phone: company.Phone,
+                addressLine1: company.AddressLine1,
+                city: company.City,
+                state: company.State,
+                postalCode: company.PostalCode,
+                notes: marker);
+            db.Contacts.Add(contact);
+        }
+        else
+        {
+            if (!contact.IsActive)
+                contact.Reactivate(userId);
+            if (contact.FacilityId != facility.Id)
+            {
+                contact.Update(
+                    contact.FirstName,
+                    contact.LastName,
+                    contact.ContactType,
+                    userId,
+                    facilityId: facility.Id,
+                    contactSubtype: contact.ContactSubtype,
+                    title: contact.Title,
+                    organization: contact.Organization,
+                    email: contact.Email,
+                    phone: contact.Phone,
+                    fax: contact.Fax,
+                    website: contact.Website,
+                    addressLine1: contact.AddressLine1,
+                    city: contact.City,
+                    state: contact.State,
+                    postalCode: contact.PostalCode,
+                    notes: contact.Notes);
+            }
+        }
+
+        return facility;
+    }
+
+    private static async Task<Contact> EnsureLegacyProviderCompatibilityAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        Company company,
+        Guid userId,
+        CancellationToken ct)
+    {
+        var marker = $"SellingCompanyId={company.Id}";
+        var contact = await db.Contacts.FirstOrDefaultAsync(item =>
+            item.TenantId == tenantId &&
+            item.OrgId == sellerOrgId &&
+            item.ContactType == ContactType.Provider &&
+            item.ContactSubtype == null &&
+            (item.Notes == marker || item.Organization == company.Name || item.DisplayName == company.Name), ct);
+        if (contact is not null)
+        {
+            if (!contact.IsActive)
+                contact.Reactivate(userId);
+            return contact;
+        }
+
+        var (firstName, lastName) = SplitCompatibilityName(company.Name, "Provider");
+        contact = Contact.Create(
+            tenantId,
+            sellerOrgId,
+            ContactType.Provider,
+            firstName,
+            lastName,
+            userId,
+            organization: company.Name,
+            email: company.Email,
+            phone: company.Phone,
+            addressLine1: company.AddressLine1,
+            city: company.City,
+            state: company.State,
+            postalCode: company.PostalCode,
+            notes: marker);
+        db.Contacts.Add(contact);
+        return contact;
+    }
+
+    private static (string FirstName, string LastName) SplitCompatibilityName(string name, string fallbackLastName)
+    {
+        var parts = name.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => (fallbackLastName, fallbackLastName),
+            1 => (parts[0], fallbackLastName),
+            _ => (parts[0], parts[1]),
+        };
     }
 
     private static async Task EnsureManagementAmountsAsync(

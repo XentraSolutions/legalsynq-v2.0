@@ -150,6 +150,19 @@ public class Lien : AuditableEntity
         Touch(updatedByUserId);
     }
 
+    public void SetSellingMedicalFacility(
+        Guid? facilityId,
+        Guid? medicalFacilityCompanyId,
+        Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        FacilityId = NormalizeOptionalId(facilityId, nameof(facilityId));
+        MedicalFacilityCompanyId = NormalizeOptionalId(medicalFacilityCompanyId, nameof(medicalFacilityCompanyId));
+        Touch(updatedByUserId);
+    }
+
     public void ReassignCanonicalCompany(Guid sourceCompanyId, Guid targetCompanyId, Guid updatedByUserId)
     {
         ValidateReassignment(sourceCompanyId, targetCompanyId, updatedByUserId);

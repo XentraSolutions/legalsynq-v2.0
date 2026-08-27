@@ -134,6 +134,13 @@ public static class LienEndpoints
 
     public static void MapLienEndpoints(this WebApplication app)
     {
+        // Compatibility for the tenant portal's legacy BFF path. The gateway removes
+        // its /liens prefix before forwarding, leaving this service path.
+        app.MapDelete("/liens/delete-medicaldocument/{id:guid}", DeleteMedicalDocumentLegacy)
+            .RequireAuthorization(Policies.AuthenticatedUser)
+            .RequireProductAccess(LiensPermissions.ProductCode)
+            .RequirePermission(LiensPermissions.LienUpdate);
+
         var group = app.MapGroup("/api/liens/liens")
             .RequireAuthorization(Policies.AuthenticatedUser)
             .RequireProductAccess(LiensPermissions.ProductCode);

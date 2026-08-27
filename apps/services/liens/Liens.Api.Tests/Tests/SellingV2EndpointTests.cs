@@ -1868,6 +1868,23 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
             });
         caseInformationResponse.StatusCode.Should().Be(HttpStatusCode.OK, await caseInformationResponse.Content.ReadAsStringAsync());
 
+        (await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/medical-pricing", new
+        {
+            askAmount = 1250m,
+            billingAmount = 1800m,
+            rows = new[]
+            {
+                new
+                {
+                    medicalCode = "99213",
+                    description = "Office visit",
+                    billingAmount = 1800m,
+                    medicareCost = 180m,
+                    targetSaleAmount = 1250m,
+                },
+            },
+        })).EnsureSuccessStatusCode();
+
         var todayBeforeMove = DateOnly.FromDateTime(DateTime.UtcNow);
         using var move = new HttpRequestMessage(HttpMethod.Post, $"/api/liens/selling/liens/{lienId}/move-to-management")
         {
@@ -1879,6 +1896,8 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         var todayAfterMove = DateOnly.FromDateTime(DateTime.UtcNow);
+        Guid managementFacilityId;
+        Guid managementProviderId;
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -1888,6 +1907,15 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
             lien.MedicalProviderCompanyId.Should().Be(medicalProvider.Id);
             lien.FundingCompanyId.Should().BeNull();
             lien.FundingCompanyCompanyId.Should().NotBeNull();
+            lien.FacilityId.Should().NotBeNull();
+            managementFacilityId = lien.FacilityId!.Value;
+
+            var managementProvider = await db.Contacts.SingleAsync(item =>
+                item.TenantId == SeedHelper.TenantId &&
+                item.OrgId == SeedHelper.OrgId &&
+                item.ContactType == ContactType.Provider &&
+                item.Notes == $"SellingCompanyId={medicalProvider.Id}");
+            managementProviderId = managementProvider.Id;
 
             var fundingCompany = await db.Companies.SingleAsync(item =>
                 item.Id == lien.FundingCompanyCompanyId &&
@@ -1899,9 +1927,9 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
                 item.LienId == lienId &&
                 item.CaseId == SeedHelper.CaseId &&
                 item.TaskType == "LegacyMedicalFacilityInfo" &&
-                item.Notes!.Contains($"facilityId={facility.Id}") &&
+                item.Notes!.Contains($"facilityId={managementFacilityId}") &&
                 item.Notes.Contains("facilityName=Management Facility") &&
-                item.Notes.Contains($"medicalProviderId={medicalProvider.Id}") &&
+                item.Notes.Contains($"medicalProviderId={managementProviderId}") &&
                 item.Notes.Contains("medicalProvider=Management Provider") &&
                 item.Notes.Contains($"fundingCompanyId={fundingCompany.Id}") &&
                 item.Notes.Contains("fundingCompany=RL Liens1"));
@@ -1911,10 +1939,27 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         managementResponse.StatusCode.Should().Be(HttpStatusCode.OK, await managementResponse.Content.ReadAsStringAsync());
         using var managementJson = JsonDocument.Parse(await managementResponse.Content.ReadAsStringAsync());
         var managementFacility = managementJson.RootElement.GetProperty("data");
-        managementFacility.GetProperty("facilityId").GetString().Should().Be(facility.Id.ToString());
+        managementFacility.GetProperty("facilityId").GetString().Should().Be(managementFacilityId.ToString());
         managementFacility.GetProperty("facility").GetString().Should().Be("Management Facility");
-        managementFacility.GetProperty("medicalProviderId").GetString().Should().Be(medicalProvider.Id.ToString());
+        managementFacility.GetProperty("medicalProviderId").GetString().Should().Be(managementProviderId.ToString());
         managementFacility.GetProperty("medicalProvider").GetString().Should().Be("Management Provider");
+
+        var facilityResponse = await _client.GetAsync($"/api/liens/facilities/{managementFacilityId}");
+        facilityResponse.StatusCode.Should().Be(HttpStatusCode.OK, await facilityResponse.Content.ReadAsStringAsync());
+        var providerResponse = await _client.GetAsync($"/api/liens/contacts/{managementProviderId}");
+        providerResponse.StatusCode.Should().Be(HttpStatusCode.OK, await providerResponse.Content.ReadAsStringAsync());
+
+        var medicalCodesResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medicalcode/{lienId}");
+        medicalCodesResponse.StatusCode.Should().Be(HttpStatusCode.OK, await medicalCodesResponse.Content.ReadAsStringAsync());
+        using (var medicalCodesJson = JsonDocument.Parse(await medicalCodesResponse.Content.ReadAsStringAsync()))
+        {
+            var medicalCode = medicalCodesJson.RootElement.GetProperty("data").EnumerateArray().Single();
+            medicalCode.GetProperty("code").GetString().Should().Be("99213");
+            medicalCode.GetProperty("description").GetString().Should().Be("Office visit");
+            medicalCode.GetProperty("medicareCost").GetString().Should().Be("180");
+            medicalCode.GetProperty("billingAmount").GetString().Should().Be("1800");
+            medicalCode.GetProperty("purchaseAmount").GetString().Should().Be("1250");
+        }
 
         var managementLienResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medical/{lienId}");
         managementLienResponse.StatusCode.Should().Be(HttpStatusCode.OK, await managementLienResponse.Content.ReadAsStringAsync());
@@ -2271,6 +2316,13 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         lien.MedicalFacilityCompanyId.Should().Be(facility.Id);
         lien.MedicalProviderCompanyId.Should().Be(medicalProvider.Id);
         lien.FundingCompanyCompanyId.Should().Be(fundingCompany.Id);
+        lien.FacilityId.Should().NotBeNull();
+        var managementFacilityId = lien.FacilityId!.Value;
+        var managementProviderId = (await db.Contacts.SingleAsync(item =>
+            item.TenantId == SeedHelper.TenantId &&
+            item.OrgId == SeedHelper.OrgId &&
+            item.ContactType == ContactType.Provider &&
+            item.Notes == $"SellingCompanyId={medicalProvider.Id}")).Id;
         managementCase!.ClientFirstName.Should().Be("Maria");
         managementCase.ClientLastName.Should().Be("Santos");
         managementCase.ClientDob.Should().Be(new DateOnly(1990, 1, 15));
@@ -2304,9 +2356,9 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
             item.LienId == lienId &&
             item.CaseId == caseId &&
             item.TaskType == "LegacyMedicalFacilityInfo" &&
-            item.Notes!.Contains($"facilityId={facility.Id}") &&
+            item.Notes!.Contains($"facilityId={managementFacilityId}") &&
             item.Notes.Contains("facilityName=Complete Care Facility") &&
-            item.Notes.Contains($"medicalProviderId={medicalProvider.Id}") &&
+            item.Notes.Contains($"medicalProviderId={managementProviderId}") &&
             item.Notes.Contains("medicalProvider=Complete Care Provider") &&
             item.Notes.Contains($"fundingCompanyId={fundingCompany.Id}") &&
             item.Notes.Contains("fundingCompany=Complete Capital") &&
@@ -2340,11 +2392,25 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
         managementFacilityResponse.StatusCode.Should().Be(HttpStatusCode.OK, await managementFacilityResponse.Content.ReadAsStringAsync());
         using var managementFacilityJson = JsonDocument.Parse(await managementFacilityResponse.Content.ReadAsStringAsync());
         var managementFacility = managementFacilityJson.RootElement.GetProperty("data");
-        managementFacility.GetProperty("facilityId").GetString().Should().Be(facility.Id.ToString());
+        managementFacility.GetProperty("facilityId").GetString().Should().Be(managementFacilityId.ToString());
         managementFacility.GetProperty("facility").GetString().Should().Be("Complete Care Facility");
-        managementFacility.GetProperty("medicalProviderId").GetString().Should().Be(medicalProvider.Id.ToString());
+        managementFacility.GetProperty("medicalProviderId").GetString().Should().Be(managementProviderId.ToString());
         managementFacility.GetProperty("medicalProvider").GetString().Should().Be("Complete Care Provider");
 
+        (await _client.GetAsync($"/api/liens/facilities/{managementFacilityId}"))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.GetAsync($"/api/liens/contacts/{managementProviderId}"))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var medicalCodesResponse = await _client.GetAsync($"/api/liens/cases/liens/get-medicalcode/{lienId}");
+        medicalCodesResponse.StatusCode.Should().Be(HttpStatusCode.OK, await medicalCodesResponse.Content.ReadAsStringAsync());
+        using var medicalCodesJson = JsonDocument.Parse(await medicalCodesResponse.Content.ReadAsStringAsync());
+        var medicalCode = medicalCodesJson.RootElement.GetProperty("data").EnumerateArray().Single();
+        medicalCode.GetProperty("code").GetString().Should().Be("99213");
+        medicalCode.GetProperty("description").GetString().Should().Be("Office visit");
+        medicalCode.GetProperty("medicareCost").GetString().Should().Be("180");
+        medicalCode.GetProperty("billingAmount").GetString().Should().Be("1800");
+        medicalCode.GetProperty("purchaseAmount").GetString().Should().Be("1250");
     }
 
     [Fact]
