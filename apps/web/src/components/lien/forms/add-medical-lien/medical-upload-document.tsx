@@ -18,6 +18,7 @@ import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { ConfirmDialog } from "../../modal";
 import { documentsService } from "@/lib/documents";
+import { dateConverter } from "@/lib/cases/cases.mapper";
 
 export interface UploadDocumentsProps {
   caseId?: string;
@@ -28,6 +29,11 @@ export interface UploadDocumentsProps {
   onUploaded?: (valid: boolean, data?: any) => void;
   mode?: "add" | "edit";
 }
+
+type tempFileType = {
+  file: File;
+  documentTypeId: string;
+};
 
 const INITIAL_FORM = {
   documentType: "",
@@ -101,7 +107,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
   });
   const [documents, setDocuments] = useState<any[]>(data ?? []);
   const [files, setFiles] = useState<File[] | null>(null);
-  const [temporaryFiles, setTemporaryFiles] = useState<File[] | null>(null);
+  const [temporaryFiles, setTemporaryFiles] = useState<tempFileType[]>([]);
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
@@ -166,34 +172,34 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     showConfirmAction({ id: "", isOpen: false });
   }, [confirmAction]);
 
+  const setFilesData = (files: File[] | null) => {
+    const tempData =
+      files?.map((f: any) => {
+        return {
+          file: f,
+          documentTypeId: form.documentType,
+        };
+      }) ?? [];
+    setTemporaryFiles((prev) => [...prev, ...tempData]);
+    setFiles(files);
+  };
+
   const uploadLiensDocuments = useCallback(async () => {
-    // if (props.mode == "add") {
-    //   const filesData =
-    //     files?.map((d: any, index: number) => ({
-    //       name: d.name,
-    //       type: form.documentType,
-    //       id: documents.length,
-    //       url: d.url,
-    //     })) ?? [];
-    //   const tempFilesData =
-    //     files?.map((f) => ({
-    //       ...f,
-    //       documentType: form.documentType,
-    //     })) ?? [];
-    //   console.log(tempFilesData);
-    //   setDocuments((prev) => [...prev, ...filesData]);
-    //   setTemporaryFiles((prevTemp) => [
-    //     ...(prevTemp != null ? prevTemp : []),
-    //     ...(tempFilesData != null ? Array.from(tempFilesData) : []),
-    //   ]);
-    //   dropzoneRef?.current?.reset();
-    //   props.onFormValid?.(true, [
-    //     ...(temporaryFiles != null ? temporaryFiles : []),
-    //     ...(tempFilesData != null ? tempFilesData : []),
-    //   ]);
-    //   setForm(initialForm);
-    //   return;
-    // }
+    if (props.mode == "add") {
+      const filesData =
+        files?.map((d: any, index: number) => ({
+          name: d.name,
+          type: form.documentType,
+          id: documents.length,
+          url: d.url,
+        })) ?? [];
+      setDocuments((prev) => [...prev, ...filesData]);
+
+      dropzoneRef?.current?.reset();
+      props.onFormValid?.(true, temporaryFiles);
+      setForm(initialForm);
+      return;
+    }
     setIsSubmitting(true);
 
     if (!files) return;
@@ -244,6 +250,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
     setDocuments(
       docs.data.map((d: any) => {
         return {
+          ...d,
           name: d.filename,
           type: d.typeId,
           id: d.id,
@@ -255,6 +262,23 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
   const getDocumentNameById = (id: string) => {
     return documentTypes?.find((t) => t.key == id)?.label;
   };
+
+  useEffect(() => {
+    if (data?.length > 0) {
+      setDocuments(
+        data.map((d: any) => {
+          return {
+            name: d.filename,
+            type: d.typeId,
+            id: d.id,
+            url: d.url,
+          };
+        }),
+      );
+    } else {
+      fetchDocument();
+    }
+  }, [data, onUploaded]);
 
   return (
     <div className="container-fluid">
@@ -281,8 +305,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
                 Array.isArray(e) &&
                 e.length > 0 &&
                 e.every((item) => item instanceof File);
-
-              setFiles(finalizedFiles ? e : null);
+              setFilesData(finalizedFiles ? e : null);
             }}
           />
           <button
