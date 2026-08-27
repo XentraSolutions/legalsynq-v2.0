@@ -105,7 +105,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
       label: d.name,
     };
   });
-  const [documents, setDocuments] = useState<any[]>(data ?? []);
+  const [documents, setDocuments] = useState<any[]>([]);
   const [files, setFiles] = useState<File[] | null>(null);
   const [temporaryFiles, setTemporaryFiles] = useState<tempFileType[]>([]);
 
@@ -223,6 +223,7 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
           setForm(initialForm);
           props?.onUploaded?.(true, "");
           props.onFormValid?.(true, "");
+          fetchDocument();
           setIsSubmitting(false);
         });
       } catch (err) {
@@ -264,21 +265,21 @@ export default function UploadDocuments(props: UploadDocumentsProps) {
   };
 
   useEffect(() => {
-    if (data?.length > 0) {
-      setDocuments(
-        data.map((d: any) => {
-          return {
-            name: d.filename,
-            type: d.typeId,
-            id: d.id,
-            url: d.url,
-          };
-        }),
-      );
-    } else {
-      fetchDocument();
+    if (props.mode == "edit") {
+      if (data.hasInitialValue) {
+        setDocuments(
+          data.files.map((d: any) => {
+            return {
+              name: d.filename,
+              type: d.typeId,
+              id: d.id,
+              url: d.url,
+            };
+          }),
+        );
+      }
     }
-  }, [data, onUploaded]);
+  }, []);
 
   return (
     <div className="container-fluid">
