@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSession } from "@/hooks/use-session";
-import { formatDateOnly } from "@/lib/format-date";
 import {
   DateRangePicker,
   type DateRangeValue,
@@ -22,6 +22,14 @@ import {
   TABLE_HEADER_CLASSNAME,
   TABLE_HEADER_CELL_CLASSNAME,
 } from "@/components/selling/table-cell-styles";
+import {
+  liensService,
+  type SellingOperationsAgingBucket,
+  type SellingOperationsBuyerAgingItem,
+  type SellingOperationsMetric,
+  type SellingOperationsStatusItem,
+  type SellingOperationsTopBuyerItem,
+} from "@/lib/selling";
 
 export const dynamic = "force-dynamic";
 
@@ -29,55 +37,52 @@ function formatUsd(value: number): string {
   return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// The dollar figures below are static mock data, but the picker should still visibly
-// do *something* — swap the "vs <period>" comparison text to the selected range
-// instead of leaving it a permanent no-op.
-function formatPeriodLabel(range: DateRangeValue): string | null {
-  if (!range.from || !range.to) return null;
-  const from = formatDateOnly(`${range.from}T00:00:00`, {
-    month: "short",
-    day: "numeric",
-  });
-  const to = formatDateOnly(`${range.to}T00:00:00`, {
-    month: "short",
-    day: "numeric",
-  });
-  return `${from} – ${to}`;
+function formatCompactUsd(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
 }
 
 // Shared blue/orange/green/yellow/red palette used across both summary donuts on this page.
 const SUMMARY_COLORS = ["#3b82f6", "#f97316", "#22c55e", "#eab308", "#ef4444"];
 
-// Dollar amounts are derived from the displayed percentages of the $3,842,196.18
-// total (rather than typed in independently) so the pie wedges, legend
-// percentages, and "Total A/R" header can't drift out of sync with each other.
-const arAgingSegments: Segment[] = [
-  { label: "0-30 Days", value: 1256398.15, color: SUMMARY_COLORS[0] },
-  { label: "31-60 Days", value: 987444.42, color: SUMMARY_COLORS[1] },
-  { label: "61-90 Days", value: 753070.45, color: SUMMARY_COLORS[2] },
-  { label: "91-120 Days", value: 430325.97, color: SUMMARY_COLORS[3] },
-  { label: "120+ Days", value: 414957.19, color: SUMMARY_COLORS[4] },
+// Generic copy for any analytics section the backend reports as unavailable
+// (isAvailable: false). The API's unavailableReason is internal engineering
+// detail (e.g. "no due date persisted") — never render it verbatim to users.
+const UNAVAILABLE_FEATURE_MESSAGE = "Coming soon.";
+
+// Rotating avatar background classes for the top-buyers table.
+const AVATAR_CLASSNAMES = [
+  "bg-blue-100 text-blue-700",
+  "bg-orange-100 text-orange-700",
+  "bg-green-100 text-green-700",
+  "bg-yellow-100 text-yellow-700",
+  "bg-red-100 text-red-700",
 ];
 
-const lienStatusSegments: Segment[] = [
-  { label: "Active", value: 842, color: SUMMARY_COLORS[0] },
-  { label: "Settled", value: 214, color: SUMMARY_COLORS[1] },
-  { label: "In Reduction", value: 112, color: SUMMARY_COLORS[2] },
-  { label: "Paid", value: 56, color: SUMMARY_COLORS[3] },
-  { label: "Other / Closed", value: 24, color: SUMMARY_COLORS[4] },
-];
+const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  year: "2-digit",
+});
 
-const liensOverTimeData: LiensOverTimePoint[] = [
-  { month: "Sep 24", value: 4200000 },
-  { month: "Oct 24", value: 2600000 },
-  { month: "Nov 24", value: 1400000 },
-  { month: "Dec 24", value: 900000 },
-  { month: "Jan 25", value: 1600000 },
-  { month: "Feb 25", value: 3600000 },
-  { month: "Mar 25", value: 5432123 },
-  { month: "Apr 25", value: 3200000 },
-  { month: "May 25", value: 1100000 },
-];
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
+function formatShortDate(dateOnly: string): string {
+  return SHORT_DATE_FORMATTER.format(new Date(`${dateOnly}T00:00:00`));
+}
+
+function buyerInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
 
 interface TopBuyerRow {
   id: string;
@@ -88,54 +93,6 @@ interface TopBuyerRow {
   percentOfTotal: number;
   avatarClassName: string;
 }
-
-const topBuyers: TopBuyerRow[] = [
-  {
-    id: "apex-mutual",
-    initials: "AM",
-    name: "Apex Mutual",
-    activeLiens: 182,
-    lienBalance: 1125842.5,
-    percentOfTotal: 23.5,
-    avatarClassName: "bg-blue-100 text-blue-700",
-  },
-  {
-    id: "nova-care",
-    initials: "NC",
-    name: "Nova Care",
-    activeLiens: 132,
-    lienBalance: 687421.88,
-    percentOfTotal: 14.4,
-    avatarClassName: "bg-purple-100 text-purple-700",
-  },
-  {
-    id: "summit-ins",
-    initials: "SI",
-    name: "Summit Ins.",
-    activeLiens: 98,
-    lienBalance: 456218.33,
-    percentOfTotal: 9.5,
-    avatarClassName: "bg-green-100 text-green-700",
-  },
-  {
-    id: "beacon-life",
-    initials: "BL",
-    name: "Beacon Life",
-    activeLiens: 76,
-    lienBalance: 321775.19,
-    percentOfTotal: 6.7,
-    avatarClassName: "bg-orange-100 text-orange-700",
-  },
-  {
-    id: "vanguard",
-    initials: "VG",
-    name: "Vanguard",
-    activeLiens: 64,
-    lienBalance: 289114.22,
-    percentOfTotal: 6.0,
-    avatarClassName: "bg-pink-100 text-pink-700",
-  },
-];
 
 const topBuyersColumns: ColumnDef<TopBuyerRow, any>[] = [
   {
@@ -186,102 +143,71 @@ const topBuyersColumns: ColumnDef<TopBuyerRow, any>[] = [
   },
 ];
 
-type AgingStatus = "High" | "Medium" | "Low";
-
-interface AgingByBuyerRow {
-  id: string;
-  fundingCompany: string;
-  d0_30: number;
-  d31_60: number;
-  d61_90: number;
-  d91_120: number;
-  d120Plus: number;
-  total: number;
-  pastDuePercent: number;
-  status: AgingStatus;
-}
-
-// d0_30 is set so each row's five buckets sum exactly to `total` (which is kept in
-// sync with the matching company's `lienBalance` in topBuyers above) — the source
-// figures were off by anywhere from $0.31 to ~$1,000 depending on the row.
-const agingByBuyer: AgingByBuyerRow[] = [
-  {
-    id: "apex-mutual",
-    fundingCompany: "Apex Mutual",
-    d0_30: 412512.31,
-    d31_60: 298451.23,
-    d61_90: 221114.55,
-    d91_120: 112662.11,
-    d120Plus: 81102.3,
-    total: 1125842.5,
-    pastDuePercent: 17.1,
-    status: "High",
-  },
-  {
-    id: "nova-care",
-    fundingCompany: "Nova Care",
-    d0_30: 211541.23,
-    d31_60: 156882.21,
-    d61_90: 118442.33,
-    d91_120: 74551.12,
-    d120Plus: 126004.99,
-    total: 687421.88,
-    pastDuePercent: 29.1,
-    status: "High",
-  },
-  {
-    id: "summit-ins",
-    fundingCompany: "Summit Ins.",
-    d0_30: 166331.14,
-    d31_60: 108992.77,
-    d61_90: 76551.88,
-    d91_120: 53221.99,
-    d120Plus: 51120.55,
-    total: 456218.33,
-    pastDuePercent: 22.8,
-    status: "Medium",
-  },
-  {
-    id: "beacon-life",
-    fundingCompany: "Beacon Life",
-    d0_30: 99772.33,
-    d31_60: 72441.11,
-    d61_90: 54002.19,
-    d91_120: 38441.77,
-    d120Plus: 57117.79,
-    total: 321775.19,
-    pastDuePercent: 29.7,
-    status: "High",
-  },
-  {
-    id: "vanguard",
-    fundingCompany: "Vanguard",
-    d0_30: 76221.31,
-    d31_60: 54883.12,
-    d61_90: 41667.22,
-    d91_120: 29561.88,
-    d120Plus: 86780.69,
-    total: 289114.22,
-    pastDuePercent: 40.3,
-    status: "High",
-  },
-];
-
-const AGING_STATUS_STYLES: Record<AgingStatus, string> = {
-  High: "bg-red-100 text-red-600",
-  Medium: "bg-amber-100 text-amber-700",
-  Low: "bg-green-100 text-green-600",
-};
-
-// Tight padding — 9 columns of currency data need to fit without triggering
+// Tight padding — the report's currency columns need to fit without triggering
 // horizontal scroll at the card's normal width, unlike the default px-4 cells.
 const DENSE_CELL_META = { headerClassName: "px-2", cellClassName: "px-2" };
+
+interface BuyerAgingRow {
+  id: string;
+  buyerName: string;
+  days0To30: number;
+  days31To60: number;
+  days61To90: number;
+  days91To120: number;
+  moreThan120: number;
+  total: number;
+  pastDuePercent: number | null;
+}
+
+// Bucket labels aren't a fixed enum on the wire, so buckets are matched by the
+// day-range embedded in their label (e.g. "1-30", "0-30 Days", "120+") rather
+// than an exact string, since the backend's bucket-naming convention isn't
+// pinned down while ArAging/BuyerAging are still stub responses.
+const BUCKET_RANGES: { key: keyof BuyerAgingRow; low: number; high: number }[] = [
+  { key: "days0To30", low: 0, high: 30 },
+  { key: "days31To60", low: 31, high: 60 },
+  { key: "days61To90", low: 61, high: 90 },
+  { key: "days91To120", low: 91, high: 120 },
+  { key: "moreThan120", low: 120, high: Infinity },
+];
+
+function parseBucketRange(bucket: string): [number, number] | null {
+  const plusMatch = bucket.match(/(\d+)\s*\+/);
+  if (plusMatch) return [Number(plusMatch[1]), Infinity];
+  const rangeMatch = bucket.match(/(\d+)\D+(\d+)/);
+  if (rangeMatch) return [Number(rangeMatch[1]), Number(rangeMatch[2])];
+  return null;
+}
+
+function bucketAmounts(
+  buckets: SellingOperationsAgingBucket[],
+): Partial<Record<keyof BuyerAgingRow, number>> {
+  const result: Partial<Record<keyof BuyerAgingRow, number>> = {};
+  for (const b of buckets) {
+    const range = parseBucketRange(b.bucket);
+    if (!range) continue;
+    const [lo, hi] = range;
+    const match = BUCKET_RANGES.find(
+      (r) => Math.abs(r.low - lo) <= 1 && (r.high === Infinity ? hi === Infinity : Math.abs(r.high - hi) <= 1),
+    );
+    if (match) result[match.key] = b.amount;
+  }
+  return result;
+}
+
+// The API doesn't send a severity — derived client-side from pastDuePercent.
+function pastDueStatus(pastDuePercent: number | null): { label: string; className: string } | null {
+  if (pastDuePercent == null) return null;
+  if (pastDuePercent >= 25) return { label: "High", className: "bg-red-100 text-red-700" };
+  if (pastDuePercent >= 10) return { label: "Medium", className: "bg-yellow-100 text-yellow-700" };
+  return { label: "Low", className: "bg-green-100 text-green-700" };
+}
 
 function agingCurrencyColumn(
   id: string,
   header: string,
-  accessor: (row: AgingByBuyerRow) => number,
-): ColumnDef<AgingByBuyerRow, any> {
+  accessor: (row: BuyerAgingRow) => number,
+): ColumnDef<BuyerAgingRow, any> {
   return {
     id,
     header,
@@ -294,39 +220,30 @@ function agingCurrencyColumn(
   };
 }
 
-const agingColumns: ColumnDef<AgingByBuyerRow, any>[] = [
+const buyerAgingColumns: ColumnDef<BuyerAgingRow, any>[] = [
   {
     id: "fundingCompany",
     header: "Funding Company",
     meta: DENSE_CELL_META,
     cell: ({ row }) => (
-      <span className={TABLE_CELL_CLASSNAME}>
-        {row.original.fundingCompany}
-      </span>
+      <span className={TABLE_CELL_CLASSNAME}>{row.original.buyerName}</span>
     ),
   },
-  agingCurrencyColumn("0-30", "0 - 30 Days", (r) => r.d0_30),
-  agingCurrencyColumn("31-60", "31 - 60 Days", (r) => r.d31_60),
-  agingCurrencyColumn("61-90", "61 - 90 Days", (r) => r.d61_90),
-  agingCurrencyColumn("91-120", "91 - 120 Days", (r) => r.d91_120),
-  agingCurrencyColumn("120+", "120+ Days", (r) => r.d120Plus),
+  agingCurrencyColumn("0-30", "0 - 30 Days", (r) => r.days0To30),
+  agingCurrencyColumn("31-60", "31 - 60 Days", (r) => r.days31To60),
+  agingCurrencyColumn("61-90", "61 - 90 Days", (r) => r.days61To90),
+  agingCurrencyColumn("91-120", "91 - 120 Days", (r) => r.days91To120),
+  agingCurrencyColumn("120+", "120+ Days", (r) => r.moreThan120),
+  agingCurrencyColumn("total", "Total", (r) => r.total),
   {
-    id: "total",
-    header: "Total",
-    meta: DENSE_CELL_META,
-    cell: ({ row }) => (
-      <span className={TABLE_CELL_CLASSNAME}>
-        {formatUsd(row.original.total)}
-      </span>
-    ),
-  },
-  {
-    id: "pastDue",
+    id: "pastDuePercent",
     header: "Past Due %",
     meta: DENSE_CELL_META,
     cell: ({ row }) => (
       <span className={TABLE_CELL_CLASSNAME}>
-        {row.original.pastDuePercent.toFixed(1)}%
+        {row.original.pastDuePercent != null
+          ? `${row.original.pastDuePercent.toFixed(1)}%`
+          : "—"}
       </span>
     ),
   },
@@ -334,13 +251,17 @@ const agingColumns: ColumnDef<AgingByBuyerRow, any>[] = [
     id: "status",
     header: "Status",
     meta: DENSE_CELL_META,
-    cell: ({ row }) => (
-      <span
-        className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${AGING_STATUS_STYLES[row.original.status]}`}
-      >
-        {row.original.status}
-      </span>
-    ),
+    cell: ({ row }) => {
+      const status = pastDueStatus(row.original.pastDuePercent);
+      if (!status) return <span className={TABLE_CELL_CLASSNAME}>—</span>;
+      return (
+        <span
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${status.className}`}
+        >
+          {status.label}
+        </span>
+      );
+    },
   },
 ];
 
@@ -348,7 +269,124 @@ export default function SellingDashboardPage() {
   const { session } = useSession();
   const displayName = session?.orgName || session?.email?.split("@")[0] || "";
   const [dashboardRange, setDashboardRange] = useState<DateRangeValue>({});
-  const periodLabel = formatPeriodLabel(dashboardRange) ?? "Apr 1 – Apr 30";
+
+  const hasCustomRange = Boolean(dashboardRange.from && dashboardRange.to);
+  const { data: analyticsDashboard, isPending: isAnalyticsPending } = useQuery({
+    queryKey: [
+      "selling-analytics-dashboard",
+      hasCustomRange ? dashboardRange.from : null,
+      hasCustomRange ? dashboardRange.to : null,
+    ],
+    queryFn: () =>
+      liensService.getAnalyticsDashboard({
+        startDate: hasCustomRange ? dashboardRange.from : undefined,
+        endDate: hasCustomRange ? dashboardRange.to : undefined,
+        compare: "previousPeriod",
+      }),
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const arAgingSegments = useMemo<Segment[]>(() => {
+    const amounts = bucketAmounts(analyticsDashboard?.arAging.buckets ?? []);
+    return [
+      { label: "1-30 Days", value: amounts.days0To30 ?? 0, color: SUMMARY_COLORS[0] },
+      { label: "31-60 Days", value: amounts.days31To60 ?? 0, color: SUMMARY_COLORS[1] },
+      { label: "61-90 Days", value: amounts.days61To90 ?? 0, color: SUMMARY_COLORS[2] },
+      { label: "91-120 Days", value: amounts.days91To120 ?? 0, color: SUMMARY_COLORS[3] },
+      { label: "120+ Days", value: amounts.moreThan120 ?? 0, color: SUMMARY_COLORS[4] },
+    ];
+  }, [analyticsDashboard]);
+  const totalAr = analyticsDashboard?.arAging.total ?? 0;
+
+  const lienStatusSegments = useMemo<Segment[]>(() => {
+    const statuses = analyticsDashboard?.lienStatuses ?? [];
+    return statuses.map((s: SellingOperationsStatusItem, i) => ({
+      label: s.status,
+      value: s.lienCount,
+      color: SUMMARY_COLORS[i % SUMMARY_COLORS.length],
+    }));
+  }, [analyticsDashboard]);
+  const totalLienCount = lienStatusSegments.reduce((sum, s) => sum + s.value, 0);
+
+  const liensOverTimeData = useMemo<LiensOverTimePoint[]>(() => {
+    const points = analyticsDashboard?.timeSeries ?? [];
+    const mapped = points.map((p) => ({
+      month: MONTH_LABEL_FORMATTER.format(new Date(`${p.bucketStart}T00:00:00`)),
+      value: p.lienRevenue,
+    }));
+    // A single bucket renders as an isolated dot with no line, so we prepend a
+    // zero-value point for the prior month purely to give the chart a line to draw.
+    if (mapped.length === 1) {
+      const soleBucketDate = new Date(`${points[0].bucketStart}T00:00:00`);
+      const priorMonthDate = new Date(soleBucketDate);
+      priorMonthDate.setMonth(priorMonthDate.getMonth() - 1);
+      return [
+        { month: MONTH_LABEL_FORMATTER.format(priorMonthDate), value: 0 },
+        ...mapped,
+      ];
+    }
+    return mapped;
+  }, [analyticsDashboard]);
+
+  const topBuyers = useMemo<TopBuyerRow[]>(() => {
+    const buyers = analyticsDashboard?.topBuyers ?? [];
+    return buyers.map((b: SellingOperationsTopBuyerItem, i) => ({
+      id: b.buyerOrgId,
+      initials: buyerInitials(b.buyerName),
+      name: b.buyerName,
+      activeLiens: b.activeLienCount,
+      lienBalance: b.totalBalance,
+      percentOfTotal: b.percentOfTotalBalance,
+      avatarClassName: AVATAR_CLASSNAMES[i % AVATAR_CLASSNAMES.length],
+    }));
+  }, [analyticsDashboard]);
+
+  const buyerAgingRows = useMemo<BuyerAgingRow[]>(() => {
+    const items = analyticsDashboard?.buyerAging?.items ?? [];
+    return items.map((item: SellingOperationsBuyerAgingItem) => {
+      const amounts = bucketAmounts(item.buckets);
+      return {
+        id: item.buyerOrgId,
+        buyerName: item.buyerName,
+        days0To30: amounts.days0To30 ?? 0,
+        days31To60: amounts.days31To60 ?? 0,
+        days61To90: amounts.days61To90 ?? 0,
+        days91To120: amounts.days91To120 ?? 0,
+        moreThan120: amounts.moreThan120 ?? 0,
+        total: item.total,
+        pastDuePercent: item.pastDuePercent,
+      };
+    });
+  }, [analyticsDashboard]);
+
+  const periodLabel = useMemo(() => {
+    const period = analyticsDashboard?.period;
+    if (!period) return "";
+    return `${formatShortDate(period.startDate)} – ${formatShortDate(period.endDate)}`;
+  }, [analyticsDashboard]);
+
+  const metrics = analyticsDashboard?.metrics;
+  const metricCardProps = (metric: SellingOperationsMetric | undefined) => {
+    if (!metric) {
+      return { value: 0 };
+    }
+    if (!metric.isAvailable || metric.value == null) {
+      return { unavailable: true };
+    }
+    if (metric.changePercent == null) {
+      return { value: metric.value };
+    }
+    const trend: "up" | "down" = metric.changePercent >= 0 ? "up" : "down";
+    const percent = Math.abs(Math.round(metric.changePercent * 10) / 10);
+    return {
+      value: metric.value,
+      trend,
+      statsPercentage: percent,
+      trendDescription: trend === "up" ? "Trending up this month " : "Trending down this month ",
+      description: `${trend === "up" ? "Up" : "Down"} ${percent}%${periodLabel ? ` vs ${periodLabel}` : ""}`,
+    };
+  };
 
   return (
     <div className="space-y-6">
@@ -372,65 +410,63 @@ export default function SellingDashboardPage() {
         </div>
       </div>
 
+      {/* Past Amount Due shows "Coming soon" via metricCardProps' unavailable
+          branch — the analytics endpoint (SellingOperationsDashboardService.
+          GetAsync) always returns Metrics.PastAmountDue as IsAvailable=false
+          today because Lien has no persisted due date to compute past-due
+          against (internal reason from the API, not shown to users: "Lien
+          receivables do not currently persist a due date..."). It'll switch
+          to real data automatically once the backend starts sending
+          IsAvailable=true — see "Aging by Lien Buyer" below for the same
+          blocker. */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <MetricCard
           label="Total Lien Revenue"
-          value={4782350.72}
-          trend="up"
-          trendDescription="Trending up this month"
-          statsPercentage={8.9}
-          description={`Up 8.9% vs ${periodLabel}`}
           formatAsCurrency={true}
+          {...metricCardProps(metrics?.totalLienRevenue)}
         />
         <MetricCard
           label="Total Outstanding"
-          value={3842196.18}
-          trend="up"
-          trendDescription="Trending up this month"
-          statsPercentage={6.4}
-          description={`Up 6.4% vs ${periodLabel}`}
           formatAsCurrency={true}
+          {...metricCardProps(metrics?.totalOutstanding)}
         />
         <MetricCard
           label="Past Amount Due"
-          value={1287542.63}
-          trend="up"
-          trendDescription="Trending up this month"
-          statsPercentage={14.2}
-          description={`Up 14.2% vs ${periodLabel}`}
           formatAsCurrency={true}
+          {...metricCardProps(metrics?.pastAmountDue)}
         />
         <MetricCard
           label="Payments"
-          value={635251.44}
-          trend="down"
-          trendDescription="Trending down this month"
-          statsPercentage={5.0}
-          description={`Down 5.0% vs ${periodLabel}`}
           formatAsCurrency={true}
+          {...metricCardProps(metrics?.payments)}
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <StatCard
           title="A/R Aging Summary"
-          total={arAgingSegments.reduce((sum, s) => sum + s.value, 0)}
+          total={totalAr}
           segments={arAgingSegments}
           statsType="A/R:"
-          totalStats={3842196.18}
-          centerValue="$3.8M"
+          totalStats={totalAr}
+          centerValue={isAnalyticsPending ? "..." : formatCompactUsd(totalAr)}
           centerLabel="Total A/R"
+          unavailableMessage={
+            analyticsDashboard && !analyticsDashboard.arAging.isAvailable
+              ? UNAVAILABLE_FEATURE_MESSAGE
+              : undefined
+          }
         />
 
         <StatCard
           title="Liens by Status"
-          total={1248}
+          total={totalLienCount}
           segments={lienStatusSegments}
           statsType=""
-          totalStats={0}
+          totalStats={totalLienCount}
           showHeaderStat={false}
           valueFormat="number"
-          centerValue="1,248"
+          centerValue={totalLienCount.toLocaleString()}
           centerLabel="Total Liens"
         />
       </div>
@@ -438,48 +474,55 @@ export default function SellingDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         <Card
           title="Liens Over Time"
-          subtitle="Total for the last 9 months"
+          subtitle="Revenue by month for the selected period"
           className="px-3 lg:col-span-3"
         >
-          <div className="py-3">
-            <LiensOverTimeChart data={liensOverTimeData} />
-          </div>
+          <LiensOverTimeChart data={liensOverTimeData} />
         </Card>
 
         <Card title="Top 5 Buyers By Balance" className="px-3 lg:col-span-2">
-          <div className="py-3">
-            <BaseTable
-              data={topBuyers}
-              columns={topBuyersColumns}
-              getRowId={(r) => r.id}
-              enableSorting={false}
-              enablePagination={false}
-              emptyMessage="No buyers to show."
-              className="bg-white border-none w-full p-0"
-              headerClassName={TABLE_HEADER_CLASSNAME}
-              headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
-            />
-          </div>
+          <BaseTable
+            data={topBuyers}
+            columns={topBuyersColumns}
+            getRowId={(r) => r.id}
+            enableSorting={false}
+            enablePagination={false}
+            emptyMessage="No buyers to show."
+            className="bg-white border-none w-full p-0"
+            headerClassName={TABLE_HEADER_CLASSNAME}
+            headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
+          />
         </Card>
       </div>
 
-      <div>
-        <Card title="Aging by Lien Buyer" icon="ri-draggable" className="px-3">
-          <div className="py-3">
-            <BaseTable
-              data={agingByBuyer}
-              columns={agingColumns}
-              getRowId={(r) => r.id}
-              enableSorting={false}
-              enablePagination={false}
-              emptyMessage="No aging data to show."
-              className="bg-white border-none w-full p-0"
-              headerClassName={TABLE_HEADER_CLASSNAME}
-              headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
-            />
-          </div>
-        </Card>
-      </div>
+      {/* TODO: buyerAgingRows will always be empty until the backend adds a
+          persisted due date to Lien — SellingOperationsDashboardService
+          returns BuyerAging.IsAvailable=false unconditionally today
+          (internal reason from the API: "Lien receivables do not currently
+          persist a due date, so past-due and A/R aging values cannot be
+          calculated reliably."). That's implementation detail, not
+          something to surface to end users, so the table shows a generic
+          empty state instead — see UNAVAILABLE_FEATURE_MESSAGE. The
+          column/bucket-matching logic below is ready for real data as soon
+          as the API starts sending it — no frontend change needed. */}
+      <Card title="Aging by Lien Buyer" icon="ri-draggable" className="px-3">
+        <BaseTable
+          data={buyerAgingRows}
+          columns={buyerAgingColumns}
+          getRowId={(r) => r.id}
+          enableSorting={false}
+          enablePagination={false}
+          isLoading={isAnalyticsPending}
+          emptyMessage={
+            analyticsDashboard && !analyticsDashboard.buyerAging.isAvailable
+              ? UNAVAILABLE_FEATURE_MESSAGE
+              : "No aging data to show."
+          }
+          className="bg-white border-none w-full p-0"
+          headerClassName={TABLE_HEADER_CLASSNAME}
+          headerCellClassName={TABLE_HEADER_CELL_CLASSNAME}
+        />
+      </Card>
     </div>
   );
 }

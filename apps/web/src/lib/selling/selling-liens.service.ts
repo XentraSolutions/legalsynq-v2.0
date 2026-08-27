@@ -40,6 +40,14 @@ import type {
   CaseSearchQuery,
   CaseSearchItem,
 } from "./liens.types";
+import type {
+  MonthlyAgingReport,
+  MonthlyAgingReportQuery,
+} from "./aging-report.types";
+import type {
+  SellingOperationsDashboardQuery,
+  SellingOperationsDashboardResponse,
+} from "./dashboard-analytics.types";
 import { DashboardQuery } from "./dashboard.types";
 import {
   CreateLienParams,
@@ -104,6 +112,20 @@ export const liensService = {
 
   async getSellingDashboard(query: DashboardQuery = {}): Promise<any> {
     const { data } = await liensApi.getDashboard(query);
+    return data;
+  },
+
+  async getMonthlyAgingReport(
+    query: MonthlyAgingReportQuery,
+  ): Promise<MonthlyAgingReport> {
+    const { data } = await liensApi.getMonthlyAgingReport(query);
+    return data;
+  },
+
+  async getAnalyticsDashboard(
+    query: SellingOperationsDashboardQuery = {},
+  ): Promise<SellingOperationsDashboardResponse> {
+    const { data } = await liensApi.getAnalyticsDashboard(query);
     return data;
   },
 
