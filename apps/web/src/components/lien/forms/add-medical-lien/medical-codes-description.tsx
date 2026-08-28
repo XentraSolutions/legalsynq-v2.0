@@ -86,7 +86,9 @@ export default function MedicalCodesDescription(
   }, [rows, data?.codeRows]);
 
   useEffect(() => {
-    setForm((prev: any) => ({ ...prev, medicareCost: medicareCosts }));
+    if (!editingId) {
+      setForm((prev: any) => ({ ...prev, medicareCost: medicareCosts }));
+    }
   }, [medicareCosts]);
 
   function validateForm() {
@@ -158,14 +160,19 @@ export default function MedicalCodesDescription(
   };
 
   const totals = useMemo(() => {
-    return rows.reduce(
+    const total = rows.reduce(
       (tot, row) => ({
-        medicare: tot.medicare + row.medicareCost,
-        billing: tot.billing + row.billingAmount,
-        purchase: tot.purchase + row.purchaseAmount,
+        medicare: tot.medicare + Math.round((row.medicareCost ?? 0) * 100),
+        billing: tot.billing + Math.round((row.billingAmount ?? 0) * 100),
+        purchase: tot.purchase + Math.round((row.purchaseAmount ?? 0) * 100),
       }),
       { medicare: 0, billing: 0, purchase: 0 },
     );
+    return {
+      medicare: total.medicare / 100,
+      billing: total.billing / 100,
+      purchase: total.purchase / 100,
+    };
   }, [rows, data]);
 
   function resetLine() {
@@ -272,9 +279,9 @@ export default function MedicalCodesDescription(
         id: payload.id,
         liensId: props.lienId ?? "",
         code: findCodeByDescription(selectedCode),
-        medicareCost: parseFloat(payload.medicareCost).toFixed(2),
-        billingAmount: parseFloat(payload.billingAmount).toFixed(2),
-        purchaseAmount: parseFloat(payload.purchaseAmount).toFixed(2),
+        medicareCost: parseFloat(payload.medicareCost ?? 0).toFixed(2),
+        billingAmount: parseFloat(payload.billingAmount ?? 0).toFixed(2),
+        purchaseAmount: parseFloat(payload.purchaseAmount ?? 0).toFixed(2),
         payee: payload.payee,
         outboundCheckNumber: payload.outboundCheckNumber,
       };
@@ -362,10 +369,7 @@ export default function MedicalCodesDescription(
     }
   }
 
-  const isLineValid =
-    currentBilling > 0 &&
-    !!form.procedureCode &&
-    parseFloat(form.medicareCost ?? 0) > 0;
+  const isLineValid = currentBilling > 0 && !!form.procedureCode;
 
   return (
     <div className="container-fluid">
