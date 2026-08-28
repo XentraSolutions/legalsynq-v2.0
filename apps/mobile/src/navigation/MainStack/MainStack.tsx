@@ -9,7 +9,7 @@ import {
   EditCasePersonalScreen,
   PayoffQuoteScreen,
 } from '@/features/cases';
-import { DashboardReportDetailScreen } from '@/features/dashboard';
+import { DashboardReportDetailScreen, SellingAgingReportDetailScreen } from '@/features/dashboard';
 import {
   ContactDetailScreen,
   ContactFormScreen,
@@ -64,6 +64,7 @@ export function MainStack() {
       <Stack.Screen component={SettingsScreen} name="Settings" />
       <Stack.Screen component={XeniaChatScreen} name="XeniaAI" />
       <Stack.Screen component={DashboardReportDetailScreen} name="DashboardReportDetail" />
+      <Stack.Screen component={SellingAgingReportDetailScreen} name="SellingAgingReportDetail" />
       <Stack.Screen component={PlaceholderScreen} name="Placeholder" />
     </Stack.Navigator>
   );

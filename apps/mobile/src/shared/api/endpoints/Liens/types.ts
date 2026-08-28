@@ -241,6 +241,59 @@ export interface SellingDashboardStatus {
   percentOfLiens: number;
 }
 
+export interface SellingAgingBucket {
+  bucket: string;
+  amount: number;
+  lienCount: number;
+}
+
+export interface SellingBuyerAgingItem {
+  buyerOrgId: string;
+  buyerCompanyId?: string | null;
+  buyerName: string;
+  total: number;
+  pastDuePercent?: number | null;
+  buckets: SellingAgingBucket[];
+}
+
+export interface MonthlyAgingReportRequest {
+  asOfDate: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface MonthlyAgingReportRow {
+  lienCode: string;
+  fundingCompany: string;
+  days1To30: number;
+  days31To60: number;
+  days61To90: number;
+  days91To120: number;
+  moreThan120: number;
+  totalAmount: number;
+}
+
+export interface MonthlyAgingReportResponse {
+  isSuccess: boolean;
+  message: string;
+  asOfDate: string;
+  currency: string;
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  summaryTotals?: {
+    totalLiens: number;
+    days1To30: number;
+    days31To60: number;
+    days61To90: number;
+    days91To120: number;
+    moreThan120: number;
+    totalAmount: number;
+  };
+  data?: MonthlyAgingReportRow[];
+}
+
 export interface SellingDashboardAnalyticsResponse {
   period: SellingDashboardPeriod;
   comparisonPeriod: SellingDashboardPeriod | null;
@@ -255,7 +308,7 @@ export interface SellingDashboardAnalyticsResponse {
     isAvailable: boolean;
     unavailableReason?: string;
     total: number | null;
-    buckets: Array<{ label: string; amount: number; percent?: number }>;
+    buckets: Array<SellingAgingBucket & { label?: string; percent?: number }>;
   };
   lienStatuses: SellingDashboardStatus[];
   sellerStatuses: SellingDashboardStatus[];
@@ -278,7 +331,7 @@ export interface SellingDashboardAnalyticsResponse {
   buyerAging: {
     isAvailable: boolean;
     unavailableReason?: string;
-    items: unknown[];
+    items: SellingBuyerAgingItem[];
   };
   generatedAtUtc: string;
 }

@@ -7,3 +7,4 @@ export * from './useDashboardPiechart';
 export * from './useDashboardTotalCaseReport';
 export * from './useDashboardTotalLienReport';
 export * from './useSellingDashboardAnalytics';
+export * from './useMonthlyAgingReport';

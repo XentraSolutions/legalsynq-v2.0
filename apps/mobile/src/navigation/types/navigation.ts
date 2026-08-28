@@ -53,5 +53,6 @@ export type MainStackParamList = {
   Settings: undefined;
   XeniaAI: undefined;
   DashboardReportDetail: { reportType: DashboardReportType; dateRange: DashboardDateRange };
+  SellingAgingReportDetail: { asOfDate: string };
   Placeholder: { title: string; subtitle?: string };
 };

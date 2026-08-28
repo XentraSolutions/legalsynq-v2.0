@@ -25,6 +25,8 @@ import type {
   UpdateOfferRequest,
   SellingDashboardAnalyticsRequest,
   SellingDashboardAnalyticsResponse,
+  MonthlyAgingReportRequest,
+  MonthlyAgingReportResponse,
 } from './types';
 
 const LIENS_BASE_PATH = '/liens/api/liens/liens';
@@ -32,6 +34,8 @@ const CASE_LIENS_BASE_PATH = '/liens/api/liens/cases/liens';
 const FACILITIES_BASE_PATH = '/liens/api/liens/facilities';
 const SELLING_ANALYTICS_DASHBOARD_PATH = '/liens/api/liens/selling/analytics/dashboard';
 const DIRECT_SELLING_ANALYTICS_DASHBOARD_PATH = '/api/liens/selling/analytics/dashboard';
+const MONTHLY_AGING_REPORT_PATH = '/liens/api/liens/reports/monthly-aging';
+const DIRECT_MONTHLY_AGING_REPORT_PATH = '/api/liens/reports/monthly-aging';
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -43,6 +47,15 @@ function unwrapData(value: unknown): unknown {
   let current = value;
   for (let index = 0; index < 2; index += 1) {
     const record = asRecord(current);
+    if (
+      record &&
+      ('summaryTotals' in record ||
+        'asOfDate' in record ||
+        'period' in record ||
+        'metrics' in record)
+    ) {
+      break;
+    }
     if (!record || !('data' in record)) break;
     current = record.data;
   }
@@ -56,6 +69,24 @@ export const lienKeys = {
 };
 
 export const LiensApi = {
+  async getMonthlyAgingReport(
+    params: MonthlyAgingReportRequest
+  ): Promise<MonthlyAgingReportResponse> {
+    try {
+      const response = await apiClient.get<MonthlyAgingReportResponse>(MONTHLY_AGING_REPORT_PATH, {
+        params,
+      });
+      return unwrapData(response.data) as MonthlyAgingReportResponse;
+    } catch (error) {
+      if ((error as { statusCode?: number }).statusCode !== 404) throw error;
+      const response = await apiClient.get<MonthlyAgingReportResponse>(
+        DIRECT_MONTHLY_AGING_REPORT_PATH,
+        { params }
+      );
+      return unwrapData(response.data) as MonthlyAgingReportResponse;
+    }
+  },
+
   async getSellingDashboardAnalytics(
     params: SellingDashboardAnalyticsRequest
   ): Promise<SellingDashboardAnalyticsResponse> {
@@ -96,7 +127,9 @@ export const LiensApi = {
   },
 
   async getLienStatusHistory(id: string): Promise<StatusHistoryEntry[]> {
-    const response = await apiClient.get<StatusHistoryEntry[]>(`/liens/api/liens/${id}/status-history`);
+    const response = await apiClient.get<StatusHistoryEntry[]>(
+      `/liens/api/liens/${id}/status-history`
+    );
     return response.data;
   },
 
@@ -110,12 +143,11 @@ export const LiensApi = {
     return response.data;
   },
 
-  async updateOffer(
-    lienId: string,
-    offerId: string,
-    body: UpdateOfferRequest
-  ): Promise<Offer> {
-    const response = await apiClient.patch<Offer>(`/liens/api/liens/${lienId}/offers/${offerId}`, body);
+  async updateOffer(lienId: string, offerId: string, body: UpdateOfferRequest): Promise<Offer> {
+    const response = await apiClient.patch<Offer>(
+      `/liens/api/liens/${lienId}/offers/${offerId}`,
+      body
+    );
     return response.data;
   },
 

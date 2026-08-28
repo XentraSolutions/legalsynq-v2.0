@@ -1,5 +1,5 @@
 import type { DashboardDateRange } from '@/features/dashboard/types/types';
-import { useSellingDashboardAnalytics } from '@/features/dashboard/hooks';
+import { useMonthlyAgingReport, useSellingDashboardAnalytics } from '@/features/dashboard/hooks';
 import { DashboardReportState } from '../DashboardReportState';
 import { SellingDashboardMetricGrid } from './SellingDashboardMetricGrid';
 import { SellingDashboardAgingSummary } from './SellingDashboardAgingSummary';
@@ -7,23 +7,30 @@ import { SellingDashboardStatusSummary } from './SellingDashboardStatusSummary';
 import { SellingDashboardTimeSeries } from './SellingDashboardTimeSeries';
 import { SellingDashboardTopBuyers } from './SellingDashboardTopBuyers';
 import { SellingDashboardBuyerAging } from './SellingDashboardBuyerAging';
+import { resolveSellingAgingAsOfDate } from './sellingDashboardFormatters';
 
 export function SellingDashboard({
   dashboardSettingsHydrated,
   dateRange,
   isDark,
   useDummyData,
+  onViewAgingDetails,
 }: {
   dashboardSettingsHydrated: boolean;
   dateRange: DashboardDateRange;
   isDark: boolean;
   useDummyData: boolean;
+  onViewAgingDetails: (asOfDate: string) => void;
 }) {
-  const query = useSellingDashboardAnalytics(
-    dateRange,
+  const query = useSellingDashboardAnalytics(dateRange, dashboardSettingsHydrated && !useDummyData);
+  const data = query.data;
+  const agingAsOfDate = resolveSellingAgingAsOfDate(dateRange.endDate);
+  const monthlyAgingQuery = useMonthlyAgingReport(
+    agingAsOfDate,
+    1,
+    10,
     dashboardSettingsHydrated && !useDummyData
   );
-  const data = query.data;
 
   if (!useDummyData && (!dashboardSettingsHydrated || (!data && query.isFetching))) {
     return (
@@ -63,7 +70,14 @@ export function SellingDashboard({
   return (
     <>
       <SellingDashboardMetricGrid data={data} isDark={isDark} useDummyData={useDummyData} />
-      <SellingDashboardAgingSummary data={data} isDark={isDark} useDummyData={useDummyData} />
+      <SellingDashboardAgingSummary
+        isDark={isDark}
+        isError={monthlyAgingQuery.isError}
+        isLoading={monthlyAgingQuery.isFetching}
+        monthlyAging={monthlyAgingQuery.data}
+        useDummyData={useDummyData}
+        onViewDetails={() => onViewAgingDetails(agingAsOfDate)}
+      />
       <SellingDashboardStatusSummary data={data} isDark={isDark} useDummyData={useDummyData} />
       <SellingDashboardTimeSeries data={data} isDark={isDark} useDummyData={useDummyData} />
       <SellingDashboardTopBuyers data={data} isDark={isDark} useDummyData={useDummyData} />

@@ -16,13 +16,12 @@ export const SELLING_STATS: StatCardData[] = [
   { label: 'Payments', value: '$635,251.44', trend: '5.0%', trendTone: 'negative' },
 ];
 
-
 export const SELLING_AGING: DonutSlice[] = [
-  { label: '0-30 Days', value: 32.7, amount: '$1,125,842.50', percent: '(32.7%)', color: BLUE },
-  { label: '31-60 Days', value: 21.2, amount: '$987,651.22', percent: '(21.2%)', color: ORANGE },
-  { label: '61-90 Days', value: 19.2, amount: '$987,651.22', percent: '(19.2%)', color: GREEN },
-  { label: '91-120 Days', value: 11.2, amount: '$754,221.17', percent: '(11.2%)', color: YELLOW },
-  { label: '120+ Days', value: 10.8, amount: '$411,601.15', percent: '(10.8%)', color: RED },
+  { label: 'Days 1–30', value: 32.7, amount: '$1,125,842.50', percent: '(32.7%)', color: BLUE },
+  { label: 'Days 31–60', value: 21.2, amount: '$987,651.22', percent: '(21.2%)', color: ORANGE },
+  { label: 'Days 61–90', value: 19.2, amount: '$987,651.22', percent: '(19.2%)', color: GREEN },
+  { label: 'Days 91–120', value: 11.2, amount: '$754,221.17', percent: '(11.2%)', color: YELLOW },
+  { label: 'Days 121+', value: 10.8, amount: '$411,601.15', percent: '(10.8%)', color: RED },
 ];
 
 export const SELLING_STATUS: DonutSlice[] = [
@@ -90,7 +89,6 @@ export const SELLING_SELLERS: SellerRisk[] = [
   { name: 'Beacon Life', balance: '$321,775.19', share: '29.7%', risk: 'High' },
   { name: 'Vanguard', balance: '$289,114.22', share: '40.3%', risk: 'High' },
 ];
-
 
 export const LINE_POINTS = [2.4, 3.7, 2.6, 1.0, 2.5, 2.6];
 
