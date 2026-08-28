@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
+import { Star } from 'lucide-react';
 import { Chip } from './chip';
 
 const COLORS = [
@@ -27,6 +28,11 @@ const meta = {
   component: Chip,
   parameters: {
     layout: 'centered',
+    // Figma prep — swap in the real file/node URL once the design is linked.
+    design: {
+      type: 'figma',
+      url: '',
+    },
   },
   args: {
     children: 'Chip',
@@ -59,17 +65,41 @@ export const Interactive: Story = {
 export const AllVariants: Story = {
   parameters: { docs: { disable: true }, controls: { disable: true } },
   render: () => (
-    <div className="flex flex-col gap-4">
-      {VARIANTS.map((variant) => (
-        <div key={variant} className="flex flex-wrap items-center gap-2">
-          <span className="w-16 shrink-0 text-xs font-medium text-gray-500">{variant}</span>
-          {COLORS.map((color) => (
-            <Chip key={color} variant={variant} color={color}>
-              {color}
-            </Chip>
-          ))}
+    <div className="flex flex-col gap-8">
+      <section className="flex flex-col gap-4">
+        <span className="text-xs font-medium text-gray-500">Colors</span>
+        {VARIANTS.map((variant) => (
+          <div key={variant} className="flex flex-wrap items-center gap-2">
+            <span className="w-16 shrink-0 text-xs font-medium text-gray-500">{variant}</span>
+            {COLORS.map((color) => (
+              <Chip key={color} variant={variant} color={color}>
+                {color}
+              </Chip>
+            ))}
+          </div>
+        ))}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <span className="text-xs font-medium text-gray-500">Sizes</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <Chip size="lg">Large</Chip>
+          <Chip size="md">Medium</Chip>
+          <Chip size="sm">Small</Chip>
+          <Chip size="icon" leftIcon={<Star className="h-3 w-3" />} iconOnly aria-label="Starred" />
         </div>
-      ))}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <span className="text-xs font-medium text-gray-500">With icons</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <Chip leftIcon={<Star className="h-3 w-3" />}>Starred</Chip>
+          <Chip rightIcon={<Star className="h-3 w-3" />}>Starred</Chip>
+          <Chip variant="soft" color="success" leftIcon={<Star className="h-3 w-3" />}>
+            Starred
+          </Chip>
+        </div>
+      </section>
     </div>
   ),
 };

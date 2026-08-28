@@ -8,6 +8,11 @@ const meta = {
   component: Button,
   parameters: {
     layout: 'centered',
+    // Figma prep — swap in the real file/node URL once the design is linked.
+    design: {
+      type: 'figma',
+      url: '',
+    },
   },
   args: {
     onClick: fn(),
@@ -37,14 +42,6 @@ export const Interactive: Story = {
   args: { variant: 'primary' },
 };
 
-export const Loading: Story = {
-  args: { variant: 'primary', loading: true },
-};
-
-export const Disabled: Story = {
-  args: { variant: 'primary', disabled: true },
-};
-
 export const AsLink: Story = {
   name: 'asChild (rendered as <a>)',
   parameters: {
@@ -63,59 +60,104 @@ export const AsLink: Story = {
   ),
 };
 
-/** Icon composition gallery — regression check only, not part of the docs page. */
-export const WithIcons: Story = {
-  parameters: { docs: { disable: true }, controls: { disable: true } },
-  render: () => (
-    <div className="flex flex-wrap items-center gap-3">
-      <Button variant="primary" leftIcon={<Plus className="h-4 w-4" />}>
-        Add Company
-      </Button>
-      <Button variant="secondary" rightIcon={<Download className="h-4 w-4" />}>
-        Export
-      </Button>
-      <Button
-        variant="tertiary"
-        leftIcon={<Settings className="h-4 w-4" />}
-        rightIcon={<Download className="h-4 w-4" />}
-      >
-        Both icons
-      </Button>
-      <Button variant="destructive" leftIcon={<Trash className="h-4 w-4" />}>
-        Delete
-      </Button>
-      <Button variant="icon-rounded" aria-label="Settings">
-        <Settings className="h-4 w-4" />
-      </Button>
-      <Button variant="icon-square" aria-label="Add">
-        <Plus className="h-4 w-4" />
-      </Button>
-    </div>
-  ),
-};
-
-/** Every variant/state at a glance — regression check only, not part of the docs page. */
+/** Every variant/state at a glance, plus forced :hover / :focus-visible / :active — regression check only, not part of the docs page. */
 export const AllVariants: Story = {
-  parameters: { docs: { disable: true }, controls: { disable: true } },
+  parameters: {
+    docs: { disable: true },
+    controls: { disable: true },
+    pseudo: {
+      hover: '.pseudo-hover',
+      focusVisible: '.pseudo-focus-visible',
+      active: '.pseudo-active',
+    },
+  },
   render: () => (
-    <div className="flex flex-wrap items-center gap-3">
-      <Button variant="primary">Primary</Button>
-      <Button variant="secondary">Secondary</Button>
-      <Button variant="tertiary">Tertiary</Button>
-      <Button variant="ghost">Ghost</Button>
-      <Button variant="destructive">Destructive</Button>
-      <Button variant="icon-rounded" aria-label="Settings">
-        <Settings className="h-4 w-4" />
-      </Button>
-      <Button variant="icon-square" aria-label="Settings">
-        <Settings className="h-4 w-4" />
-      </Button>
-      <Button variant="primary" loading>
-        Loading
-      </Button>
-      <Button variant="primary" disabled>
-        Disabled
-      </Button>
+    <div className="flex flex-col gap-8">
+      <section className="flex flex-col gap-2">
+        <span className="text-xs font-medium text-gray-500">Variants</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary">Primary</Button>
+          <Button variant="secondary">Secondary</Button>
+          <Button variant="tertiary">Tertiary</Button>
+          <Button variant="ghost">Ghost</Button>
+          <Button variant="destructive">Destructive</Button>
+          <Button variant="icon-rounded" aria-label="Settings">
+            <Settings className="h-4 w-4" />
+          </Button>
+          <Button variant="icon-square" aria-label="Settings">
+            <Settings className="h-4 w-4" />
+          </Button>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <span className="text-xs font-medium text-gray-500">States</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary" loading>
+            Loading
+          </Button>
+          <Button variant="primary" disabled>
+            Disabled
+          </Button>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <span className="text-xs font-medium text-gray-500">With icons</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary" leftIcon={<Plus className="h-4 w-4" />}>
+            Add Company
+          </Button>
+          <Button variant="secondary" rightIcon={<Download className="h-4 w-4" />}>
+            Export
+          </Button>
+          <Button
+            variant="tertiary"
+            leftIcon={<Settings className="h-4 w-4" />}
+            rightIcon={<Download className="h-4 w-4" />}
+          >
+            Both icons
+          </Button>
+          <Button variant="destructive" leftIcon={<Trash className="h-4 w-4" />}>
+            Delete
+          </Button>
+        </div>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <span className="text-xs font-medium text-gray-500">Interaction states</span>
+        <div className="flex flex-wrap items-center gap-6">
+          {(['primary', 'secondary', 'tertiary', 'ghost', 'destructive'] as const).map((variant) => (
+            <div key={variant} className="flex flex-col gap-2">
+              <span className="text-xs font-medium text-gray-500">{variant}</span>
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col items-center gap-1.5">
+                  <span className="text-[10px] text-gray-400">Default</span>
+                  <Button variant={variant}>Button</Button>
+                </div>
+                <div className="flex flex-col items-center gap-1.5">
+                  <span className="text-[10px] text-gray-400">Hover</span>
+                  <Button className="pseudo-hover" variant={variant}>
+                    Button
+                  </Button>
+                </div>
+                <div className="flex flex-col items-center gap-1.5">
+                  <span className="text-[10px] text-gray-400">Focus-visible</span>
+                  <Button className="pseudo-focus-visible" variant={variant}>
+                    Button
+                  </Button>
+                </div>
+                <div className="flex flex-col items-center gap-1.5">
+                  <span className="text-[10px] text-gray-400">Active</span>
+                  <Button className="pseudo-active" variant={variant}>
+                    Button
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   ),
 };
