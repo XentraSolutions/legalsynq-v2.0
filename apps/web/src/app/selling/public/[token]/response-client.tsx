@@ -78,11 +78,11 @@ function ResponseCard({
 
   return (
     <section
-      className="flex w-full max-w-[700px] flex-col gap-10 rounded-2xl border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px]"
+      className="flex w-full max-w-[700px] flex-col gap-10 rounded-2xl border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px] max-sm:p-4"
       aria-labelledby="response-title"
     >
       <div className="flex flex-col gap-2">
-        <h2 id="response-title" className="m-0 text-lg font-extrabold leading-[1.6] tracking-normal">
+        <h2 id="response-title" className="m-0 text-lg font-bold leading-[1.6] tracking-normal">
           Your Response
         </h2>
         <p className="m-0 text-base leading-[1.6] text-[#737373]">
@@ -184,13 +184,13 @@ function LienSummaryCard({ data }: { data: PublicBuyerPortalData }) {
   return (
     <details
       open
-      className="public-portal-details group w-full max-w-[700px] rounded-2xl border border-[#e5e5e5] bg-white px-6 py-6 pb-2 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px]"
+      className="public-portal-details group w-full max-w-[700px] rounded-2xl border border-[#e5e5e5] bg-white px-6 py-6 pb-2 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px] max-sm:px-4"
       aria-labelledby="lien-summary-title"
     >
       <summary className="-mx-2 flex min-h-10 cursor-pointer list-none items-center justify-between gap-4 rounded-lg px-2 py-1 transition-colors hover:bg-[#f5f5f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] max-sm:flex-col max-sm:items-start [&::-webkit-details-marker]:hidden">
         <div className="flex items-center gap-3">
           <i className="ri-arrow-down-s-line -rotate-90 text-2xl leading-none text-[#0a0a0a] transition-transform group-open:rotate-0" aria-hidden="true" />
-          <h2 id="lien-summary-title" className="m-0 text-lg font-extrabold leading-[1.6] tracking-normal">
+          <h2 id="lien-summary-title" className="m-0 text-lg font-bold leading-[1.6] tracking-normal">
             Lien Summary
           </h2>
         </div>
@@ -237,7 +237,7 @@ function ResponseStatusBadge({
         : "bg-yellow-500/15 text-[#a16207]";
 
   return (
-    <span className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3 py-1 text-sm font-semibold leading-[1.6] max-sm:text-xs ${className}`}>
+    <span className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3 py-1 text-sm font-medium leading-[1.6] max-sm:text-xs ${className}`}>
       {presentation.label}
     </span>
   );
@@ -259,8 +259,8 @@ function FieldSection({
 
   return (
     <section className="border-b border-[#e5e5e5] pb-4 last:border-b-0">
-      <div className="mb-4 flex items-center gap-2 text-sm font-bold leading-[1.6] text-[#0a0a0a]">
-        <i className={`${icon} text-lg leading-none`} aria-hidden="true" />
+      <div className="mb-4 flex items-center gap-2 text-base font-medium leading-[1.6] text-[#0a0a0a]">
+        <i className={`${icon} text-2xl leading-none`} aria-hidden="true" />
         <span>{title}</span>
       </div>
       {visibleRows.length > 0 ? (
@@ -271,12 +271,12 @@ function FieldSection({
               {row.href ? (
                 <a
                   href={row.href}
-                  className="break-words text-sm font-semibold leading-[1.6] text-[#0a0a0a] no-underline"
+                  className="break-words text-sm font-medium leading-[1.6] text-[#0a0a0a] no-underline"
                 >
                   {row.value}
                 </a>
               ) : (
-                <span className="break-words text-sm font-semibold leading-[1.6] text-[#0a0a0a]">
+                <span className="break-words text-sm font-medium leading-[1.6] text-[#0a0a0a]">
                   {row.value}
                 </span>
               )}
@@ -287,7 +287,7 @@ function FieldSection({
       {notes ? (
         <div className="mt-4 flex flex-col gap-1.5">
           <span className="text-sm leading-[1.6] text-[#737373]">Lien Notes</span>
-          <p className="m-0 text-sm font-semibold leading-[1.6] text-[#0a0a0a]">
+          <p className="m-0 text-sm font-medium leading-[1.6] text-[#0a0a0a]">
             {notes}
           </p>
         </div>
