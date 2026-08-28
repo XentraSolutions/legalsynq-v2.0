@@ -66,7 +66,10 @@ export function mapLienToListItem(dto: LienResponseDto): LienListItem {
     caseId: safeString(dto.caseId),
     totalBilling: dto.totalBilling ?? null,
     closedAtUtc: dto.closedAtUtc ?? null,
-    isServicing: dto.isServicing === true || dto.isServicing === "Y",
+    isServicing:
+      dto.isServicing === true ||
+      dto.isServicing === "Y" ||
+      dto.isServicing === "Yes",
     jurisdiction: safeString(dto.jurisdiction),
     isConfidential: dto.isConfidential,
     subjectName: buildSubjectName(dto),

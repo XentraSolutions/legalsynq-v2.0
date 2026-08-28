@@ -213,7 +213,7 @@ export function mapMedicalInfo(
       : "",
     note: result.note,
     isBulk: result.isBulk == "Yes" ? "true" : "false",
-    isServicing: result.isBulk == "Yes" ? "true" : "false",
+    isServicing: result.isServicing == "Yes" || result.isServicing == "Y",
     fundingCompany: result.fundingCompany,
     fundingCompanyId: result.fundingCompanyId,
   };
