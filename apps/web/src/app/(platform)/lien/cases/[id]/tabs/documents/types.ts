@@ -6,4 +6,5 @@ export type DocumentType = {
   liensId: string;
   size: string;
   url: string;
+  mimeType: string;
 };

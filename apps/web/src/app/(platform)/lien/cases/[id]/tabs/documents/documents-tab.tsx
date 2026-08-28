@@ -13,7 +13,11 @@ import { UploadDocumentSection } from "./sections/upload-document-section";
 import { CaseDocumentsSection } from "./sections/case-documents-section";
 import { LienDocumentsSection } from "./sections/lien-documents-section";
 import type { DocumentType } from "./types";
-import { ConfirmDialog } from "@/components/lien/modal";
+import { ConfirmDialog, Modal } from "@/components/lien/modal";
+import { MergeCaseForm } from "@/components/lien/forms/merge-case-form";
+import { MergePdf } from "@/components/lien/merge-file";
+import { Button } from "@/components/ui/button";
+import { mergePdfsFromUrls } from "@/lib/pdf-merge.service";
 
 export function DocumentsTab({
   docTypes,
@@ -33,6 +37,14 @@ export function DocumentsTab({
 
   const [selectedDocType, setSelectedDocType] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[] | null>([]);
+  const [mergeFile, setMergeFile] = useState<{
+    document: DocumentType | null;
+    isOpen: boolean;
+  }>({
+    document: null,
+    isOpen: false,
+  });
+  const [selectedMergeFiles, setSelectedMergeFiles] = useState<any>([]);
 
   const [caseDocuments, setCaseDocuments] = useState<DocumentType[]>([]);
   const [liensDocuments, setLiensDocuments] = useState<DocumentType[]>([]);
@@ -47,7 +59,7 @@ export function DocumentsTab({
     async (payload: any) => {
       if (!payload || payload.length == 0) return;
       setIsSubmitting(true);
-        try {
+      try {
         setIsSubmitting(true);
 
         for (const element of payload) {
@@ -123,6 +135,58 @@ export function DocumentsTab({
     }
   }, [confirmAction]);
 
+  const deleteFiles = useCallback(async (payload: File[]) => {
+    try {
+      for (const element of payload) {
+        await casesService.deleteCaseDocument(confirmAction.id);
+
+        showConfirmAction({ id: "", isOpen: false, type: "" });
+        fetchDocuments();
+      }
+    } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Delete Failed",
+          description: err.message,
+        });
+      }
+    }
+  }, []);
+
+  const mergeFiles = async () => {
+    console.log(selectedMergeFiles);
+
+    try {
+      let docs = [];
+
+      for (const element of selectedMergeFiles.documents) {
+        const documentId = element.url.split("/").filter(Boolean).pop();
+
+        const viewUrl = await documentsService.getViewUrl(documentId);
+        console.log(viewUrl);
+        docs.push(viewUrl);
+      }
+
+      const mergedBytes = await mergePdfsFromUrls(docs);
+      const safeBytes = new Uint8Array(mergedBytes);
+
+      const file = new File(
+        [safeBytes],
+        `${selectedMergeFiles.form.fileName}.pdf`,
+        {
+          type: "application/pdf",
+        },
+      );
+      if (file) {
+        await uploadCaseDocuments(file);
+      }
+      // await deleteFiles(payload);
+    } catch (err) {
+    } finally {
+    }
+  };
+
   async function download(url: string) {
     if (!url) return;
     const documentId = url.split("/").filter(Boolean).pop();
@@ -164,6 +228,9 @@ export function DocumentsTab({
         caseDocuments={caseDocuments}
         onDownload={download}
         onDelete={(d) => deleteFileConfimation(d, "case")}
+        onMerge={(document) =>
+          setMergeFile({ isOpen: true, document: document })
+        }
       />
 
       <LienDocumentsSection
@@ -187,6 +254,35 @@ export function DocumentsTab({
           confirmLabel="Delete"
           confirmVariant="danger"
         />
+      )}
+
+      {mergeFile.isOpen && (
+        <Modal
+          open={mergeFile.isOpen}
+          onClose={() => setMergeFile({ document: null, isOpen: false })}
+          title="Arrange & Merge Documents"
+          size="xl"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => {}}>
+                Maybe Later
+              </Button>
+              <Button variant="primary" onClick={() => mergeFiles()}>
+                Add Lien
+              </Button>
+            </>
+          }
+        >
+          <MergePdf
+            open={mergeFile.isOpen}
+            documents={caseDocuments}
+            documentTypes={docTypes}
+            selectedDocument={mergeFile.document}
+            apiService={(documents, form) =>
+              setSelectedMergeFiles({ documents: documents, form: form })
+            }
+          />
+        </Modal>
       )}
     </div>
   );

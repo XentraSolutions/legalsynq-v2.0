@@ -7,10 +7,12 @@ export function CaseDocumentsSection({
   caseDocuments,
   onDownload,
   onDelete,
+  onMerge,
 }: {
   caseDocuments: DocumentType[];
   onDownload: (url: string) => void;
   onDelete: (id: string) => void;
+  onMerge: (id: DocumentType) => void;
 }) {
   const caseDocumentsColumns: ColumnDef<DocumentType, any>[] = [
     {
@@ -49,6 +51,15 @@ export function CaseDocumentsSection({
       meta: { align: "right" },
       cell: ({ row }) => (
         <div className="inline-flex items-center gap-1">
+          {row.original.mimeType == ".pdf" && (
+            <button
+              className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors"
+              title="Merge File"
+              onClick={() => onMerge(row.original)}
+            >
+              <i className="ri-download-2-line text-sm" />
+            </button>
+          )}
           <button
             className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-gray-100 text-gray-400 hover:text-primary transition-colors"
             title="Download"
