@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BaseSelect, type BaseSelectOption } from "@/components/ui/base-select";
 import { CompanyFormModal } from "@/components/selling/forms/company-form-modal";
 import { ContactPersonFormModal } from "@/components/selling/forms/contact-person-form-modal";
+import { nameSimilarity } from "@/lib/selling/string-similarity";
 import {
   useCompanyTypes,
   useCompanies,
@@ -58,6 +59,13 @@ interface SellingEntitySelectProps {
   /** Renders a "+ Add …" row that opens an inline create modal, then refreshes this list. */
   allowCreate?: boolean;
   createLabel?: string;
+  /**
+   * A name that came in unlinked (e.g. from a bulk-upload row whose provider
+   * or company text didn't match any existing record) — shown as a prompt to
+   * create that record, prefilled, instead of leaving the field looking
+   * empty. Ignored once `value` is set.
+   */
+  pendingName?: string;
   /** Lists `companyId`'s contact persons instead of companies of `entityType`. */
   isContactPerson?: boolean;
   /** Client-side filter on the contact persons list by role code.
@@ -82,8 +90,13 @@ export function SellingEntitySelect({
   createLabel = "Add New",
   isContactPerson,
   contactType,
+  pendingName,
 }: SellingEntitySelectProps) {
   const [showCreate, setShowCreate] = useState(false);
+  const [createName, setCreateName] = useState<string | undefined>(undefined);
+
+  const showPendingPrompt =
+    allowCreate && !isContactPerson && !value && Boolean(pendingName);
 
   const parentMissing = Boolean(requireParent) && isContactPerson && !companyId;
 
@@ -107,6 +120,25 @@ export function SellingEntitySelect({
     { companyTypeId: companyType?.id, search: debouncedCompanySearch || undefined },
     { enabled: !isContactPerson && (!entityType || Boolean(companyType?.id)) },
   );
+
+  // Broadest reasonable term to find candidates for the "close match"
+  // suggestions below — the backend search matches on containment, so a
+  // single leading word casts a wider net than the full pendingName would;
+  // nameSimilarity then re-ranks/filters the results against the full name.
+  const suggestSearchTerm = pendingName?.trim().split(/\s+/)[0];
+  const suggestQuery = useCompanies(
+    { companyTypeId: companyType?.id, search: suggestSearchTerm },
+    { enabled: showPendingPrompt && Boolean(companyType?.id) && Boolean(suggestSearchTerm) },
+  );
+  const SIMILARITY_THRESHOLD = 0.5;
+  const suggestions = useMemo(() => {
+    if (!showPendingPrompt || !pendingName) return [];
+    return (suggestQuery.data?.items ?? [])
+      .map((c) => ({ id: c.id, name: c.name, score: nameSimilarity(pendingName, c.name) }))
+      .filter((s) => s.score >= SIMILARITY_THRESHOLD)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  }, [showPendingPrompt, pendingName, suggestQuery.data]);
   // A debounced-search refetch in flight, distinct from the very first load —
   // BaseSelect shows a different skeleton for each.
   const isSearchingCompanies =
@@ -195,10 +227,53 @@ export function SellingEntitySelect({
         filterLocally={isContactPerson}
         createAction={
           allowCreate && !parentMissing
-            ? { label: createLabel, onSelect: () => setShowCreate(true) }
+            ? {
+                label: createLabel,
+                onSelect: () => {
+                  setCreateName(undefined);
+                  setShowCreate(true);
+                },
+              }
             : undefined
         }
       />
+
+      {showPendingPrompt && (
+        <div className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-xs text-amber-800">
+              <span className="font-medium">&ldquo;{pendingName}&rdquo;</span>{" "}
+              was imported but doesn&apos;t have a matching record yet.
+            </p>
+            <button
+              type="button"
+              className="shrink-0 text-xs font-medium text-amber-900 underline underline-offset-2 hover:text-amber-950"
+              onClick={() => {
+                setCreateName(pendingName);
+                setShowCreate(true);
+              }}
+            >
+              Create it
+            </button>
+          </div>
+
+          {suggestions.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 border-t border-amber-200 pt-1.5">
+              <span className="text-xs text-amber-800">Did you mean:</span>
+              {suggestions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="rounded-full border border-amber-300 bg-white px-2 py-0.5 text-xs text-amber-900 hover:bg-amber-100"
+                  onClick={() => onChange(s.id, { value: s.id, label: s.name })}
+                >
+                  {s.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {showCreate && !isContactPerson && companyType && (
         <CompanyFormModal
@@ -207,6 +282,7 @@ export function SellingEntitySelect({
           title={createLabel}
           companyTypeId={companyType.id}
           lockCompanyType
+          initialName={createName}
           onSaved={(created) => {
             onChange(created.id, { value: created.id, label: created.name });
             setShowCreate(false);

@@ -41,6 +41,7 @@ export function ProviderFundingFields({
           searchPlaceholder="Search medical providers..."
           allowCreate
           createLabel="Add Medical Provider"
+          pendingName={value.medicalProviderId ? undefined : value.medicalProvider}
         />
       </div>
       <div>
@@ -60,6 +61,7 @@ export function ProviderFundingFields({
           searchPlaceholder="Search medical facilities..."
           allowCreate
           createLabel="Add Medical Facility"
+          pendingName={value.facilityId ? undefined : value.facility}
         />
       </div>
       <div>
@@ -81,6 +83,7 @@ export function ProviderFundingFields({
           searchPlaceholder="Search funding companies..."
           allowCreate
           createLabel="Add Funding Company"
+          pendingName={value.fundingCompanyId ? undefined : value.fundingCompany}
         />
       </div>
       <div>
