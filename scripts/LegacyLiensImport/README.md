@@ -782,6 +782,38 @@ row-count postconditions, and is safe to rerun after a new preflight.
 `import-sl-core-complete - Copy*.sql` are archival working copies and must not
 be deployed or used for a new import.
 
+### Existing-import case-note materialization
+
+[`backfill-sl-core-case-notes.sql`](backfill-sl-core-case-notes.sql) inserts
+missing `SL_CASE_NOTES` crosswalk targets into `liens_CaseNotes`. It preserves
+the source content, category, deletion state, and creator name, and maps the
+approved legacy creator names to their V3 user IDs. It requires the matching
+completed import, source-provenance receipt, and both case and note crosswalks.
+An existing target note with incompatible fields is a conflict that prevents
+all writes. Numeric note and case crosswalks are staged into indexed temporary
+maps so the source join remains bounded and does not apply functions to indexed
+join columns. The dry run also verifies that every note crosswalk produced one
+staged source row; missing source notes, cases, or content block the apply as
+`CrosswalkCoverageErrors`. An otherwise-identical note still owned by the
+completed import's migration user and carrying a known importer fallback name
+has both `CreatedByUserId` and canonical `CreatedByName` updated to the mapped
+V3 author in the same transaction. When legacy
+`CN_CREATED_BY` is blank, the source has no recoverable creator identity, so the
+procedure assigns the completed import's migration user ID and the name
+`system-migration`. A legacy creator value of `migration` is normalized to the
+same canonical name. Other nonblank legacy creator names are preserved. Names
+present in the approved map receive their V3 user ID; other names retain the
+migration user ID until an explicit mapping is approved.
+
+Run the procedure in DBeaver, then dry run before inserting the exact returned
+count. The dry run returns one summary row with `ChangesToApply`, `Conflicts`,
+`InsertsToApply`, `AuthorUpdatesToApply`, and the remaining breakdown:
+
+```sql
+CALL liens_backfill_sl_core_case_notes('<tenant-guid>', -1, '0');
+CALL liens_backfill_sl_core_case_notes('<tenant-guid>', <ChangesToApply>, '1');
+```
+
 For a MySQL-only rehearsal or controlled one-time import, use
 [`import-sl-core-core-to-019ea7f6-21e9-7421-ab54-7846cdc6bc76.sql`](import-sl-core-core-to-019ea7f6-21e9-7421-ab54-7846cdc6bc76.sql).
 It is hard-bound to both supplied target IDs:

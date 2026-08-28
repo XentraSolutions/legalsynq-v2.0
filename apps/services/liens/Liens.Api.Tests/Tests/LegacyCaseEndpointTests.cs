@@ -1297,6 +1297,55 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
     }
 
     [Fact]
+    public async Task DetailsUpdate_replaces_litigation_label_when_status_changes_to_negotiations()
+    {
+        Guid caseId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-NEG-{Guid.CreateVersion7():N}",
+                "Legacy",
+                "Negotiations",
+                SeedHelper.UserId,
+                notes: "[legacy-meta]\nstatusLabel=Litigation (Open)");
+            caseEntity.TransitionStatus(CaseStatus.LitigationOpen, SeedHelper.UserId);
+            caseId = caseEntity.Id;
+            db.Cases.Add(caseEntity);
+            await db.SaveChangesAsync();
+        }
+
+        var patchResp = await _client.PatchAsJsonAsync("/api/liens/cases/details-update", new
+        {
+            caseId,
+            currentStatus = "Negotiations",
+        });
+
+        patchResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await patchResp.Content.ReadAsStringAsync()}");
+
+        var getResp = await _client.GetAsync($"/api/liens/cases/{caseId}");
+        getResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await getResp.Content.ReadAsStringAsync()}");
+
+        var body = await getResp.Content.ReadFromJsonAsync<JsonDocument>();
+        body.Should().NotBeNull();
+        body!.RootElement.GetProperty("status").GetString().Should().Be("Negotiations");
+        body.RootElement.GetProperty("statusLabel").GetString().Should().Be("Negotiations");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var updatedCase = await verifyDb.Cases.FindAsync(caseId);
+        updatedCase.Should().NotBeNull();
+        updatedCase!.Status.Should().Be(CaseStatus.InNegotiation);
+        updatedCase.Notes.Should().Contain("statusLabel=Negotiations");
+        updatedCase.Notes.Should().NotContain("statusLabel=Litigation (Open)");
+    }
+
+    [Fact]
     public async Task GetCaseById_returns_default_false_flags_when_metadata_is_missing()
     {
         Guid caseId;

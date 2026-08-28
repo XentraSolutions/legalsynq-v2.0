@@ -1949,6 +1949,60 @@ public sealed class SellingV2EndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Management_medical_code_read_recovers_each_blank_legacy_row_from_matching_selling_pricing()
+    {
+        var lienId = await CreateSellingLienAsync();
+        (await _client.PutAsJsonAsync($"/api/liens/selling/liens/{lienId}/medical-pricing", new
+        {
+            askAmount = 1850m,
+            billingAmount = 2500m,
+            rows = new[]
+            {
+                new { medicalCode = "62323", description = "Injection", billingAmount = 800m, medicareCost = 100m, targetSaleAmount = 600m },
+                new { medicalCode = "64483", description = "Anesthetic injection", billingAmount = 900m, medicareCost = 200m, targetSaleAmount = 700m },
+                new { medicalCode = "43239", description = "Endoscopy", billingAmount = 800m, medicareCost = 300m, targetSaleAmount = 550m },
+            },
+        })).EnsureSuccessStatusCode();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            foreach (var code in new[] { "62323", "64483", "43239" })
+            {
+                db.ServicingItems.Add(ServicingItem.Create(
+                    SeedHelper.TenantId,
+                    SeedHelper.OrgId,
+                    $"LMC-{Guid.CreateVersion7():N}".ToUpperInvariant(),
+                    "LegacyMedicalCode",
+                    $"Medical code {code}",
+                    "system",
+                    SeedHelper.UserId,
+                    caseId: SeedHelper.CaseId,
+                    lienId: lienId,
+                    notes: $"code={code}; description=; medicareCost=0; billingAmount=0; purchaseAmount=0"));
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync($"/api/liens/cases/liens/get-medicalcode/{lienId}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var medicalCodes = payload.RootElement.GetProperty("data")
+            .EnumerateArray()
+            .ToDictionary(code => code.GetProperty("code").GetString()!);
+        medicalCodes["62323"].GetProperty("medicareCost").GetString().Should().Be("100");
+        medicalCodes["62323"].GetProperty("billingAmount").GetString().Should().Be("800");
+        medicalCodes["62323"].GetProperty("purchaseAmount").GetString().Should().Be("600");
+        medicalCodes["64483"].GetProperty("medicareCost").GetString().Should().Be("200");
+        medicalCodes["64483"].GetProperty("billingAmount").GetString().Should().Be("900");
+        medicalCodes["64483"].GetProperty("purchaseAmount").GetString().Should().Be("700");
+        medicalCodes["43239"].GetProperty("medicareCost").GetString().Should().Be("300");
+        medicalCodes["43239"].GetProperty("billingAmount").GetString().Should().Be("800");
+        medicalCodes["43239"].GetProperty("purchaseAmount").GetString().Should().Be("550");
+    }
+
+    [Fact]
     public async Task Move_to_management_sets_today_purchase_date_and_creates_management_facility_provider_info()
     {
         var lienId = await CreateSellingLienAsync();

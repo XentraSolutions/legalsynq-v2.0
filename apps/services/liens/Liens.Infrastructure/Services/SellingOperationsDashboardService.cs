@@ -10,11 +10,20 @@ namespace Liens.Infrastructure.Services;
 
 public sealed class SellingOperationsDashboardService : ISellingOperationsDashboardService
 {
-    private const string AgingUnavailableReason =
-        "Lien receivables do not currently persist a due date, so past-due and A/R aging values cannot be calculated reliably.";
+    private const string PastAmountDueUnavailableReason =
+        "Past Amount Due is not calculated by the selling operations dashboard.";
 
     private readonly LiensDbContext _db;
     private readonly TimeProvider _timeProvider;
+
+    private static readonly string[] MonthlyAgingBuckets =
+    [
+        "1-30",
+        "31-60",
+        "61-90",
+        "91-120",
+        "120+",
+    ];
 
     public SellingOperationsDashboardService(LiensDbContext db, TimeProvider timeProvider)
     {
@@ -48,6 +57,7 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
         var sellerStatuses = await GetSellerStatusesAsync(scopedLiens, period, ct);
         var timeSeries = await GetTimeSeriesAsync(scopedLiens, period, ct);
         var topBuyers = await GetTopBuyersAsync(scopedLiens, tenantId, sellerOrgId, period, ct);
+        var acceptedAging = await GetAcceptedBuyerAgingAsync(tenantId, sellerOrgId, period.DateTo, ct);
 
         return new SellingOperationsDashboardResponse
         {
@@ -67,30 +77,189 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
                 PastAmountDue = new SellingOperationsMetric
                 {
                     IsAvailable = false,
-                    Formula = "Unavailable until an authoritative receivable due date is persisted.",
-                    UnavailableReason = AgingUnavailableReason,
+                    Formula = "Unavailable in the selling operations dashboard read model.",
+                    UnavailableReason = PastAmountDueUnavailableReason,
                 },
                 Payments = AvailableMetric(
                     currentPayments,
                     comparisonPayments,
                     "Sum of non-deleted SettlementPaymentDetail.Amount values whose PaymentDate is within the period and whose lien belongs to the seller."),
             },
-            ArAging = new SellingOperationsArAgingResponse
-            {
-                IsAvailable = false,
-                UnavailableReason = AgingUnavailableReason,
-                Total = null,
-            },
+            ArAging = acceptedAging.ArAging,
             LienStatuses = lienStatuses,
             SellerStatuses = sellerStatuses,
             TimeSeries = timeSeries,
             TopBuyers = topBuyers,
-            BuyerAging = new SellingOperationsBuyerAgingResponse
-            {
-                IsAvailable = false,
-                UnavailableReason = AgingUnavailableReason,
-            },
+            BuyerAging = acceptedAging.BuyerAging,
             GeneratedAtUtc = generatedAtUtc,
+        };
+    }
+
+    private async Task<AcceptedBuyerAgingResult> GetAcceptedBuyerAgingAsync(
+        Guid tenantId,
+        Guid sellerOrgId,
+        DateOnly asOfDate,
+        CancellationToken ct)
+    {
+        var asOfStartUtc = asOfDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var asOfEndUtc = asOfDate == DateOnly.MaxValue
+            ? DateTime.MaxValue
+            : asOfStartUtc.AddDays(1);
+        var acceptedLinks = _db.SellingBuyerAccessLinks.AsNoTracking()
+            .Where(link =>
+                link.TenantId == tenantId &&
+                link.SellerOrgId == sellerOrgId &&
+                link.Purpose == SellingAccessLinkPurposes.ConfirmSaleBuyerResponse &&
+                link.ResponseStatus == SellingBuyerResponseStatus.Accepted &&
+                link.RespondedAtUtc.HasValue &&
+                link.RespondedAtUtc.Value < asOfEndUtc);
+        var firstAcceptanceTimes = acceptedLinks
+            .GroupBy(link => link.LienId)
+            .Select(group => new
+            {
+                LienId = group.Key,
+                BuyerAcceptedAtUtc = group.Min(link => link.RespondedAtUtc),
+            });
+        var firstAcceptanceCandidates = await (
+            from link in acceptedLinks
+            join first in firstAcceptanceTimes
+                on new { link.LienId, link.RespondedAtUtc }
+                equals new { first.LienId, RespondedAtUtc = first.BuyerAcceptedAtUtc }
+            join lien in _db.Liens.AsNoTracking()
+                on new { TenantId = tenantId, link.LienId }
+                equals new { lien.TenantId, LienId = lien.Id }
+            select new
+            {
+                link.Id,
+                link.LienId,
+                link.BuyerOrgId,
+                link.BuyerCompanyId,
+                link.BuyerContactId,
+                BuyerAcceptedAtUtc = link.RespondedAtUtc!.Value,
+                Amount = link.ResponseAmount ?? 0m,
+            }).ToListAsync(ct);
+
+        var rows = firstAcceptanceCandidates
+            .GroupBy(link => link.LienId)
+            .Select(group => group
+                .OrderByDescending(link => link.Amount)
+                .ThenBy(link => link.Id)
+                .First())
+            .Select(link => new AcceptedBuyerAgingRow(
+                link.BuyerOrgId,
+                link.BuyerCompanyId,
+                link.BuyerContactId,
+                link.BuyerAcceptedAtUtc,
+                link.Amount,
+                AgingBucket(asOfDate, link.BuyerAcceptedAtUtc)))
+            .ToList();
+
+        var companyIds = rows
+            .Where(row => row.BuyerCompanyId.HasValue)
+            .Select(row => row.BuyerCompanyId!.Value)
+            .Distinct()
+            .ToList();
+        var contactIds = rows
+            .Where(row => !row.BuyerCompanyId.HasValue)
+            .Select(row => row.BuyerContactId)
+            .Distinct()
+            .ToList();
+        var companyNames = companyIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await _db.Companies.AsNoTracking()
+                .Where(company => company.TenantId == tenantId && companyIds.Contains(company.Id))
+                .ToDictionaryAsync(company => company.Id, company => company.Name, ct);
+        var contactNames = contactIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await _db.Contacts.AsNoTracking()
+                .Where(contact => contact.TenantId == tenantId && contactIds.Contains(contact.Id))
+                .ToDictionaryAsync(
+                    contact => contact.Id,
+                    contact => contact.Organization ?? contact.DisplayName,
+                    ct);
+
+        var arBuckets = BuildAgingBuckets(rows);
+        var buyerItems = rows
+            .GroupBy(row => row.BuyerOrgId)
+            .Select(group =>
+            {
+                var total = group.Sum(row => row.Amount);
+                var selectedIdentity = group
+                    .OrderByDescending(row => row.BuyerCompanyId.HasValue)
+                    .ThenBy(row => row.BuyerCompanyId)
+                    .ThenBy(row => row.BuyerContactId)
+                    .First();
+                var buyerName = selectedIdentity.BuyerCompanyId is Guid companyId
+                    ? companyNames.GetValueOrDefault(companyId)
+                    : contactNames.GetValueOrDefault(selectedIdentity.BuyerContactId);
+                var pastDueAmount = group
+                    .Where(row => row.Bucket is "31-60" or "61-90" or "91-120" or "120+")
+                    .Sum(row => row.Amount);
+
+                return new SellingOperationsBuyerAgingItem
+                {
+                    BuyerOrgId = group.Key,
+                    BuyerCompanyId = selectedIdentity.BuyerCompanyId,
+                    BuyerName = buyerName ?? group.Key.ToString(),
+                    Total = total,
+                    PastDuePercent = total <= 0m
+                        ? 0m
+                        : decimal.Round(pastDueAmount * 100m / total, 2),
+                    Buckets = BuildAgingBuckets(group),
+                };
+            })
+            .OrderByDescending(item => item.Total)
+            .ThenBy(item => item.BuyerName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(item => item.BuyerOrgId)
+            .ToList();
+
+        return new AcceptedBuyerAgingResult(
+            new SellingOperationsArAgingResponse
+            {
+                IsAvailable = true,
+                Total = rows.Sum(row => row.Amount),
+                Buckets = arBuckets,
+            },
+            new SellingOperationsBuyerAgingResponse
+            {
+                IsAvailable = true,
+                Items = buyerItems,
+            });
+    }
+
+    private static List<SellingOperationsAgingBucket> BuildAgingBuckets(
+        IEnumerable<AcceptedBuyerAgingRow> rows)
+    {
+        var aggregates = rows
+            .GroupBy(row => row.Bucket)
+            .ToDictionary(
+                group => group.Key,
+                group => new { Amount = group.Sum(row => row.Amount), Count = group.Count() },
+                StringComparer.Ordinal);
+
+        return MonthlyAgingBuckets.Select(bucket =>
+        {
+            var aggregate = aggregates.GetValueOrDefault(bucket);
+            return new SellingOperationsAgingBucket
+            {
+                Bucket = bucket,
+                Amount = aggregate?.Amount ?? 0m,
+                LienCount = aggregate?.Count ?? 0,
+            };
+        }).ToList();
+    }
+
+    private static string AgingBucket(DateOnly asOfDate, DateTime acceptedAtUtc)
+    {
+        var acceptedDate = DateOnly.FromDateTime(acceptedAtUtc);
+        var agingDays = asOfDate.DayNumber - acceptedDate.DayNumber + 1;
+        return agingDays switch
+        {
+            <= 30 => "1-30",
+            <= 60 => "31-60",
+            <= 90 => "61-90",
+            <= 120 => "91-120",
+            _ => "120+",
         };
     }
 
@@ -483,4 +652,14 @@ public sealed class SellingOperationsDashboardService : ISellingOperationsDashbo
 
     private readonly record struct DashboardPeriod(DateOnly DateFrom, DateOnly DateTo);
     private sealed record FinancialAggregate(decimal LienRevenue, decimal Outstanding);
+    private sealed record AcceptedBuyerAgingRow(
+        Guid BuyerOrgId,
+        Guid? BuyerCompanyId,
+        Guid BuyerContactId,
+        DateTime BuyerAcceptedAtUtc,
+        decimal Amount,
+        string Bucket);
+    private sealed record AcceptedBuyerAgingResult(
+        SellingOperationsArAgingResponse ArAging,
+        SellingOperationsBuyerAgingResponse BuyerAging);
 }

@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Liens.Api.Tests.Helpers;
 using Liens.Application.DTOs;
+using Liens.Application.Interfaces;
 using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
@@ -67,7 +68,7 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
     }
 
     [Fact]
-    public async Task Dashboard_returns_zeroes_and_explicit_unavailable_aging_for_empty_period()
+    public async Task Dashboard_returns_zeroes_and_complete_empty_aging_for_empty_period()
     {
         var response = await _client.GetAsync(
             "/api/liens/selling/analytics/dashboard?startDate=2030-01-01&endDate=2030-01-31&compare=none");
@@ -84,16 +85,93 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
         body.Metrics.Payments.Value.Should().Be(0m);
         body.Metrics.PastAmountDue.IsAvailable.Should().BeFalse();
         body.Metrics.PastAmountDue.Value.Should().BeNull();
-        body.Metrics.PastAmountDue.UnavailableReason.Should().Contain("due date");
-        body.ArAging.IsAvailable.Should().BeFalse();
-        body.ArAging.Total.Should().BeNull();
-        body.ArAging.Buckets.Should().BeEmpty();
-        body.BuyerAging.IsAvailable.Should().BeFalse();
+        body.Metrics.PastAmountDue.UnavailableReason.Should().Contain("operations dashboard");
+        body.ArAging.IsAvailable.Should().BeTrue();
+        body.ArAging.Total.Should().Be(0m);
+        body.ArAging.Buckets.Should().HaveCount(5);
+        body.ArAging.Buckets.Should().OnlyContain(bucket => bucket.Amount == 0m && bucket.LienCount == 0);
+        body.BuyerAging.IsAvailable.Should().BeTrue();
         body.BuyerAging.Items.Should().BeEmpty();
         body.LienStatuses.Should().BeEmpty();
         body.SellerStatuses.Should().BeEmpty();
         body.TimeSeries.Should().BeEmpty();
         body.TopBuyers.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Dashboard_aging_matches_monthly_buyer_acceptance_boundaries_and_accepts_date_aliases()
+    {
+        var asOfDate = new DateOnly(2026, 1, 31);
+        var buyerOrgId = Guid.CreateVersion7();
+        var buyerContactId = Guid.CreateVersion7();
+        var buyerCompany = Company.Create(
+            SeedHelper.TenantId,
+            SeedHelper.OrgId,
+            CompanyDirectoryReferenceData.FundingCompanyId,
+            "Dashboard Aging Capital",
+            SeedHelper.UserId);
+        var agingRows = new[]
+        {
+            (Days: 1, Amount: 10m),
+            (Days: 30, Amount: 300m),
+            (Days: 31, Amount: 310m),
+            (Days: 60, Amount: 600m),
+            (Days: 61, Amount: 610m),
+            (Days: 90, Amount: 900m),
+            (Days: 91, Amount: 910m),
+            (Days: 120, Amount: 1_200m),
+            (Days: 121, Amount: 1_210m),
+        };
+
+        await SeedAsync(db =>
+        {
+            db.Companies.Add(buyerCompany);
+            foreach (var row in agingRows)
+            {
+                var lien = CreateLien(
+                    $"AGING-{row.Days}",
+                    new DateOnly(2026, 1, 15),
+                    row.Amount,
+                    row.Amount);
+                db.Liens.Add(lien);
+                db.SellingBuyerAccessLinks.Add(CreateAcceptedBuyerLink(
+                    lien.Id,
+                    buyerOrgId,
+                    buyerContactId,
+                    buyerCompany.Id,
+                    row.Amount,
+                    asOfDate.AddDays(-(row.Days - 1))));
+            }
+        });
+
+        var response = await _client.GetAsync(
+            "/api/liens/selling/analytics/dashboard?dateFrom=2026-01-01&dateTo=2026-01-31&compare=none");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingOperationsDashboardResponse>();
+        body.Should().NotBeNull();
+        body!.Period.StartDate.Should().Be(new DateOnly(2026, 1, 1));
+        body.Period.EndDate.Should().Be(asOfDate);
+        body.ArAging.IsAvailable.Should().BeTrue();
+        body.ArAging.Total.Should().Be(6_050m);
+        body.ArAging.Buckets.Single(bucket => bucket.Bucket == "1-30")
+            .Should().BeEquivalentTo(new { Amount = 310m, LienCount = 2 });
+        body.ArAging.Buckets.Single(bucket => bucket.Bucket == "31-60")
+            .Should().BeEquivalentTo(new { Amount = 910m, LienCount = 2 });
+        body.ArAging.Buckets.Single(bucket => bucket.Bucket == "61-90")
+            .Should().BeEquivalentTo(new { Amount = 1_510m, LienCount = 2 });
+        body.ArAging.Buckets.Single(bucket => bucket.Bucket == "91-120")
+            .Should().BeEquivalentTo(new { Amount = 2_110m, LienCount = 2 });
+        body.ArAging.Buckets.Single(bucket => bucket.Bucket == "120+")
+            .Should().BeEquivalentTo(new { Amount = 1_210m, LienCount = 1 });
+
+        var buyerAging = body.BuyerAging.Items.Should().ContainSingle().Subject;
+        buyerAging.BuyerOrgId.Should().Be(buyerOrgId);
+        buyerAging.BuyerCompanyId.Should().Be(buyerCompany.Id);
+        buyerAging.BuyerName.Should().Be("Dashboard Aging Capital");
+        buyerAging.Total.Should().Be(6_050m);
+        buyerAging.PastDuePercent.Should().Be(94.88m);
+        buyerAging.Buckets.Should().BeEquivalentTo(body.ArAging.Buckets);
     }
 
     [Fact]
@@ -301,7 +379,9 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
 
     [Theory]
     [InlineData("?startDate=2026-01-01")]
+    [InlineData("?dateFrom=2026-01-01")]
     [InlineData("?startDate=2026-02-01&endDate=2026-01-01")]
+    [InlineData("?startDate=2026-01-01&dateFrom=2026-01-02&endDate=2026-01-31")]
     [InlineData("?startDate=2025-01-01&endDate=2026-01-02")]
     [InlineData("?startDate=0001-01-01&endDate=0001-01-01&compare=previousPeriod")]
     [InlineData("?compare=yearOverYear")]
@@ -354,6 +434,35 @@ public class SellingOperationsDashboardEndpointTests : IClassFixture<LiensApiFac
     {
         SetProperty(lien, nameof(Lien.OrgId), orgId);
         SetProperty(lien, nameof(Lien.SellingOrgId), sellingOrgId);
+    }
+
+    private static SellingBuyerAccessLink CreateAcceptedBuyerLink(
+        Guid lienId,
+        Guid buyerOrgId,
+        Guid buyerContactId,
+        Guid buyerCompanyId,
+        decimal amount,
+        DateOnly acceptedDate)
+    {
+        var link = SellingBuyerAccessLink.Create(
+            SeedHelper.TenantId,
+            lienId,
+            SeedHelper.OrgId,
+            buyerOrgId,
+            buyerContactId,
+            $"dashboard-aging-token-{Guid.CreateVersion7():N}",
+            SellingAccessLinkPurposes.ConfirmSaleBuyerResponse,
+            "/selling/public",
+            $"dashboard-aging-key-{Guid.CreateVersion7():N}",
+            DateTime.UtcNow.AddYears(1),
+            SeedHelper.UserId);
+        link.LinkCanonicalBuyer(buyerCompanyId, null);
+        link.RecordResponse(SellingBuyerResponseStatus.Accepted, amount, null);
+        SetProperty(
+            link,
+            nameof(SellingBuyerAccessLink.RespondedAtUtc),
+            acceptedDate.ToDateTime(new TimeOnly(12, 0), DateTimeKind.Utc));
+        return link;
     }
 
     private static void SetProperty<T>(T entity, string propertyName, object? value) where T : class

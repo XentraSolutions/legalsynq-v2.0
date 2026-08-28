@@ -184,7 +184,7 @@ Import [`LegalSynq Selling Payments and Aging API.postman_collection.json`](Lega
 | ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET`  | `/api/liens/selling/dashboard?tab=pending\|internal\|sold\|archived\|all` | Returns seller-scoped portfolio totals, tab counts, and a paginated lien table. Summary amounts aggregate the displayed billing amounts for the filtered Pending, Internal, and Sold lists; Total Portfolio Value is their sum and excludes statuses outside those lists. Approval-stage rows (`Approval`, `PreparedForSale`, and `SubmittedForSale`) remain in the Pending tab while preserving their current status label. The Archived tab returns only soft-archived liens. Supports search, funding company, law firm, case manager, facility, initial-service-date, and sort filters. Accepted liens are categorized and displayed as Sold. |
 | `GET`  | `/api/liens/selling/liens?tab=pending\|internal\|sold\|archived\|all`     | Returns the same seller-scoped, filtered, paginated lien rows without dashboard totals. When `tab` is omitted, it defaults to `all`. Each row includes the lien creation timestamp as `createDate` and the existing `createdAtUtc` alias. Approval-stage rows remain searchable in the Pending tab, Archived rows remain searchable in the Archived tab, and Accepted liens remain searchable in the Sold tab.                                                                                                                                                    |
-| `GET`  | `/api/liens/selling/analytics/dashboard`                        | Returns the composite operations-dashboard read model for the authenticated seller organization. Optional inclusive `startDate`/`endDate` values must be supplied together and cannot exceed 366 days; the default is the current UTC calendar month. `compare=previousPeriod` (default) returns an adjacent equal-length comparison period when it is representable, while `compare=none` omits it. Requires `SYNQ_LIENS`, sell mode, and `SYNQ_LIENS.lien_sale:view_analytics`. |
+| `GET`  | `/api/liens/selling/analytics/dashboard`                        | Returns the composite operations-dashboard read model for the authenticated seller organization. Optional inclusive `startDate`/`endDate` values must be supplied together and cannot exceed 366 days; `dateFrom`/`dateTo` are supported aliases. The default is the current UTC calendar month. `compare=previousPeriod` (default) returns an adjacent equal-length comparison period when it is representable, while `compare=none` omits it. Requires `SYNQ_LIENS`, sell mode, and `SYNQ_LIENS.lien_sale:view_analytics`. |
 
 The operations dashboard uses `InitialServiceDate` as the lien cohort date and reports USD because lien records do not
 persist a currency code. Total Lien Revenue is the sum of `OriginalAmount`; Total Outstanding is the sum of
@@ -196,12 +196,15 @@ inconsistent legacy Sold rows appear as `SaleIncomplete`. Status and monthly tim
 projections rather than loading full lien/offer sets.
 
 All selling analytics query filters and analytics export request bodies use `startDate` and `endDate`. The operations
-dashboard returns the same names in its `period` and `comparisonPeriod` objects.
+dashboard also accepts `dateFrom` and `dateTo` as request aliases and returns `startDate` and `endDate` in its `period`
+and `comparisonPeriod` objects.
 
-Past Amount Due, A/R aging, and buyer aging intentionally return `isAvailable: false`, null/empty values, and an
-`unavailableReason`; unavailable A/R returns a null total. The Liens schema has no authoritative receivable due date, so
-deriving those values from service, submission, sale, or update dates would misstate A/R. Top buyers are grouped by the
-persisted `BuyingOrgId` for non-terminal liens with a positive balance. Completed purchase amount is calculated separately
+Dashboard A/R aging and buyer aging use the same population and age calculation as the weekly and monthly buyer-acceptance
+reports: the earliest accepted buyer response anchors the lien, acceptance day is day 1, future and declined responses are
+excluded, and the accepted response amount is placed in exactly one `1-30`, `31-60`, `61-90`, `91-120`, or `120+` bucket.
+The dashboard period end date is the aging as-of date; aging is not restricted to the `InitialServiceDate` cohort. Past
+Amount Due remains unavailable in this read model. Top buyers are grouped by the persisted `BuyingOrgId` for non-terminal
+liens with a positive balance. Completed purchase amount is calculated separately
 for the displayed buyers, so completed settled purchases remain included. Buyer Company Directory identity uses the most
 recent accepted, period-relevant offer, ordered by response time, offer time, then offer ID; when no such scoped company
 exists, the buyer organization ID is returned as the display fallback.

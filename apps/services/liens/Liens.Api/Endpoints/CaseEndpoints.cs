@@ -2674,14 +2674,30 @@ public static class CaseEndpoints
             .OrderBy(item => item.CreatedAtUtc)
             .Select(item => new { item.LienId, item.Description, item.Notes })
             .ToListAsync(ct);
-        var sellingFallbacks = sellingPricingRows
-            .GroupBy(item => item.LienId!.Value)
+        var parsedSellingPricingRows = sellingPricingRows
+            .Select(item => new
+            {
+                LienId = item.LienId!.Value,
+                Fallback = ParseSellingMedicalPricingFallback(item.Description, item.Notes),
+            })
+            .Where(item => item.Fallback is not null)
+            .ToList();
+        var singleSellingFallbacks = parsedSellingPricingRows
+            .GroupBy(item => item.LienId)
             .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.Single().Fallback!);
+        var sellingFallbacksByCode = parsedSellingPricingRows
+            .Where(item => !string.IsNullOrWhiteSpace(item.Fallback!.MedicalCode))
+            .GroupBy(item => item.LienId)
             .ToDictionary(
                 group => group.Key,
-                group => ParseSellingMedicalPricingFallback(
-                    group.Single().Description,
-                    group.Single().Notes));
+                group => group
+                    .GroupBy(item => item.Fallback!.MedicalCode!, StringComparer.OrdinalIgnoreCase)
+                    .Where(codeGroup => codeGroup.Count() == 1)
+                    .ToDictionary(
+                        codeGroup => codeGroup.Key,
+                        codeGroup => codeGroup.Single().Fallback!,
+                        StringComparer.OrdinalIgnoreCase));
         var lienAmounts = await db.Liens.AsNoTracking()
             .Where(lien => lien.TenantId == tenantId && lienIds.Contains(lien.Id))
             .Select(lien => new { lien.Id, lien.OriginalAmount, lien.AskAmount })
@@ -2696,15 +2712,23 @@ public static class CaseEndpoints
             {
                 var fields = ParseLegacyNoteFields(i.Notes);
                 var lienId = i.LienId;
-                var sellingFallback = lienId.HasValue
-                    ? sellingFallbacks.GetValueOrDefault(lienId.Value)
-                    : null;
+                var storedCode = FirstNonEmpty(
+                    fields.GetValueOrDefault("code"),
+                    ExtractMedicalCodeFromDescription(i.Description));
+                var sellingFallback = lienId.HasValue &&
+                    !string.IsNullOrWhiteSpace(storedCode) &&
+                    sellingFallbacksByCode.TryGetValue(lienId.Value, out var fallbacksByCode) &&
+                    fallbacksByCode.TryGetValue(storedCode, out var codeFallback)
+                    ? codeFallback
+                    : lienId.HasValue
+                        ? singleSellingFallbacks.GetValueOrDefault(lienId.Value)
+                        : null;
                 var lienAmount = lienId.HasValue &&
                     legacyRowsPerLien.GetValueOrDefault(lienId.Value) == 1
                         ? lienAmounts.GetValueOrDefault(lienId.Value)
                         : null;
                 var code = FirstNonEmpty(
-                    fields.GetValueOrDefault("code"),
+                    storedCode,
                     sellingFallback?.MedicalCode,
                     ExtractMedicalCodeFromDescription(i.Description)) ?? string.Empty;
                 var description = FirstNonEmpty(
@@ -3092,6 +3116,7 @@ public static class CaseEndpoints
         {
             "NEW" => "New",
             "PROCESSING" => "Processing",
+            "NEGOTIATIONS" or "INNEGOTIATION" => "Negotiations",
             "LITIGATION" => "Litigation",
             "LITIGATIONPENDING" => "Litigation (Pending)",
             "LITIGATIONOPEN" => "Litigation (Open)",
