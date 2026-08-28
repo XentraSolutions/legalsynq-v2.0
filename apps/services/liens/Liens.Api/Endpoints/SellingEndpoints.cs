@@ -250,7 +250,7 @@ public static class SellingEndpoints
                 FacilityId = facilityId,
                 InitialServiceDateFrom = initialServiceDateFrom,
                 InitialServiceDateTo = initialServiceDateTo,
-                SortBy = sortBy ?? "initialServiceDate",
+                SortBy = sortBy ?? "createDate",
                 SortDirection = sortDirection ?? "desc",
                 Page = page,
                 PageSize = pageSize,

@@ -389,6 +389,25 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task Lien_list_defaults_to_create_date_sort()
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var olderLien = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Pending, 1_000m, 800m, 0m);
+        var newerLien = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Pending, 2_000m, 1_600m, 0m);
+        SetCreatedAtUtc(olderLien, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        SetCreatedAtUtc(newerLien, new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc));
+        await SeedDashboardLiensAsync(db => db.Liens.AddRange(olderLien, newerLien));
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/liens?tab=pending&fundingCompanyId={fundingCompanyId}&sortDirection=desc");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingLienListResponse>();
+        body.Should().NotBeNull();
+        body!.Items.Select(item => item.LienId).Should().Equal(newerLien.Id, olderLien.Id);
+    }
+
+    [Fact]
     public async Task Lien_list_filters_rows_and_total_count_by_case_id()
     {
         var fundingCompanyId = Guid.CreateVersion7();
@@ -516,4 +535,7 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
         typeof(Lien).GetProperty(nameof(Lien.OrgId))!.SetValue(lien, orgId);
         typeof(Lien).GetProperty(nameof(Lien.SellingOrgId))!.SetValue(lien, sellingOrgId);
     }
+
+    private static void SetCreatedAtUtc(Lien lien, DateTime createdAtUtc) =>
+        typeof(Lien).GetProperty(nameof(Lien.CreatedAtUtc))!.SetValue(lien, createdAtUtc);
 }
