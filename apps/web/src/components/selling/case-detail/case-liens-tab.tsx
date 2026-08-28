@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { File, CloudUpload, Search } from "lucide-react";
 import type { SortingState } from "@tanstack/react-table";
 import { Card } from "@/components/ui/dashboard-card";
 import { PortfolioTable } from "@/components/selling/portfolio-table";
 import { Button } from "@/components/selling/button";
+import { ActionMenu } from "@/components/selling/action-menu";
 import {
   Select,
   SelectContent,
@@ -18,6 +20,7 @@ import {
   EMPTY_LIENS_FILTERS,
   type LiensFilterValues,
 } from "@/app/(platform)/selling/liens/components/liens-filter";
+import { BulkUploadForm } from "@/components/selling/forms/bulk-upload-form";
 import { useCaseLiens } from "@/lib/selling/use-case-liens";
 import type { LiensQuery } from "@/lib/selling/liens.types";
 import { ApiError } from "@/lib/api-client";
@@ -47,13 +50,21 @@ function countActiveFilters(f: LiensFilterValues): number {
   );
 }
 
-export function CaseLiensTab({ caseId }: { caseId: string }) {
+export function CaseLiensTab({
+  caseId,
+  caseCode,
+}: {
+  caseId: string;
+  caseCode: string;
+}) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [filters, setFilters] = useState<LiensFilterValues>(EMPTY_LIENS_FILTERS);
   const [showFilter, setShowFilter] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10 });
+  const [bulkUpload, setBulkUpload] = useState(false);
   const activeFilterCount = countActiveFilters(filters);
 
   const query = useMemo<LiensQuery>(
@@ -71,7 +82,7 @@ export function CaseLiensTab({ caseId }: { caseId: string }) {
     [status, search, filters, sorting, pagination],
   );
 
-  const { data, isLoading, isError, error } = useCaseLiens(caseId, query);
+  const { data, isLoading, isError, error, refetch } = useCaseLiens(caseId, query);
 
   const paginationMeta = {
     page: pagination.page,
@@ -136,6 +147,26 @@ export function CaseLiensTab({ caseId }: { caseId: string }) {
               )}
             </Button>
           </div>
+          <ActionMenu
+            trigger={
+              <Button variant="primary" rightIcon="chevronDown">
+                Add New Lien
+              </Button>
+            }
+            items={[
+              {
+                label: "Add Single Lien",
+                icon: File,
+                onClick: () =>
+                  router.push(`/selling/portfolio/lien/add?caseId=${caseId}`),
+              },
+              {
+                label: "Bulk Upload",
+                icon: CloudUpload,
+                onClick: () => setBulkUpload(true),
+              },
+            ]}
+          />
         </div>
 
         <LiensFilter
@@ -167,6 +198,17 @@ export function CaseLiensTab({ caseId }: { caseId: string }) {
           }
         />
       </Card>
+
+      {bulkUpload && (
+        <BulkUploadForm
+          open={bulkUpload}
+          onClose={() => setBulkUpload(false)}
+          referenceType="Case"
+          referenceId={caseId}
+          caseCode={caseCode}
+          onUploaded={() => refetch()}
+        />
+      )}
     </div>
   );
 }

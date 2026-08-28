@@ -8,6 +8,7 @@ import { useLienStore } from "@/stores/lien-store";
 import { documentsService } from "@/lib/documents";
 import { liensService } from "@/lib/selling";
 import { liensApi } from "@/lib/selling/selling-liens.api";
+import { stripFirstCsvColumn, prependCsvColumn } from "@/lib/selling/csv-utils";
 import { ApiError } from "@/lib/api-client";
 import { Button } from "@/components/selling/button";
 import { ReviewBulkUploadModal } from "@/components/selling/forms/review-bulk-upload-modal";
@@ -20,7 +21,15 @@ interface BulkUploadFormProps {
   referenceId?: string;
   tenantId?: string;
   documentTypeId?: string;
+  // When set, the form is scoped to a single case: the template's first
+  // column ("Case Code*") is stripped on download since the case is already
+  // known, and re-added with this value before the file is uploaded.
+  caseCode?: string;
 }
+
+// Matches the header SellingBulkImportTemplateColumns puts first — see the
+// comment on BulkImportRowItem in liens.types.ts.
+const CASE_CODE_HEADER = "Case Code*";
 
 const REFERENCE_TYPE_OPTIONS = ["Case", "Lien", "Bill of Sale"];
 
@@ -35,6 +44,7 @@ export function BulkUploadForm({
   referenceId,
   tenantId,
   documentTypeId,
+  caseCode,
 }: BulkUploadFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -64,7 +74,14 @@ export function BulkUploadForm({
       setUploading(true);
       const formData = new FormData();
       if (!file) return;
-      formData.append("File", file);
+      const uploadFile = caseCode
+        ? new File(
+            [prependCsvColumn(await file.text(), CASE_CODE_HEADER, caseCode)],
+            file.name,
+            { type: file.type || "text/csv" },
+          )
+        : file;
+      formData.append("File", uploadFile);
       formData.append("templateType", "SellingLienImport");
       formData.append("defaultListingVisibility", "Private");
       formData.append("defaultSellerStatus", "Pending");
@@ -127,7 +144,12 @@ export function BulkUploadForm({
   };
 
   const downloadTemplate = async () => {
-    const blob = await liensService.downloadTemplate();
+    let blob = await liensService.downloadTemplate();
+    if (caseCode) {
+      blob = new Blob([stripFirstCsvColumn(await blob.text())], {
+        type: blob.type || "text/csv",
+      });
+    }
     const url = URL.createObjectURL(blob);
 
     const link = document.createElement("a");
@@ -155,7 +177,7 @@ export function BulkUploadForm({
           ref={fileInputRef}
           type="file"
           className="hidden"
-          accept=".csv,.xlsx"
+          accept={caseCode ? ".csv" : ".csv,.xlsx"}
           onChange={(e) => handleFileSelect(e.target.files)}
         />
         {file && (
