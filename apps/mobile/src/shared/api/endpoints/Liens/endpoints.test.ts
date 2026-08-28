@@ -18,10 +18,7 @@ describe('LiensApi management endpoints', () => {
     });
 
     await LiensApi.getManagementLienDetails('lien-1');
-    expect(apiClient.post).toHaveBeenCalledWith(
-      '/liens/api/liens/liens/details/lien-1',
-      {}
-    );
+    expect(apiClient.post).toHaveBeenCalledWith('/liens/api/liens/liens/details/lien-1', {});
   });
 
   it('loads selling dashboard analytics with its comparison filter', async () => {
@@ -33,10 +30,40 @@ describe('LiensApi management endpoints', () => {
 
     await LiensApi.getSellingDashboardAnalytics(params);
 
-    expect(apiClient.get).toHaveBeenCalledWith(
-      '/liens/api/liens/selling/analytics/dashboard',
-      { params }
-    );
+    expect(apiClient.get).toHaveBeenCalledWith('/liens/api/liens/selling/analytics/dashboard', {
+      params,
+    });
+  });
+
+  it('loads the monthly aging report with its as-of date and pagination', async () => {
+    const params = { asOfDate: '2026-08-25', page: 1, pageSize: 10 };
+
+    const report = {
+      asOfDate: '2026-08-25',
+      currency: 'USD',
+      summaryTotals: { totalAmount: 4500 },
+      data: [{ lienCode: 'SL-1', totalAmount: 4500 }],
+    };
+    apiClient.get = jest.fn(() => Promise.resolve({ data: report }));
+
+    await expect(LiensApi.getMonthlyAgingReport(params)).resolves.toBe(report);
+
+    expect(apiClient.get).toHaveBeenCalledWith('/liens/api/liens/reports/monthly-aging', {
+      params,
+    });
+  });
+
+  it('unwraps a gateway envelope without unwrapping the monthly report rows', async () => {
+    const params = { asOfDate: '2026-08-25', page: 1, pageSize: 10 };
+    const report = {
+      asOfDate: '2026-08-25',
+      currency: 'USD',
+      summaryTotals: { totalAmount: 4500 },
+      data: [{ lienCode: 'SL-1', totalAmount: 4500 }],
+    };
+    apiClient.get = jest.fn(() => Promise.resolve({ data: { data: report } }));
+
+    await expect(LiensApi.getMonthlyAgingReport(params)).resolves.toBe(report);
   });
 
   it('retries the exact dashboard path when the gateway-prefixed route is missing', async () => {
@@ -53,38 +80,34 @@ describe('LiensApi management endpoints', () => {
       '/liens/api/liens/selling/analytics/dashboard',
       { params }
     );
-    expect(apiClient.get).toHaveBeenNthCalledWith(
-      2,
-      '/api/liens/selling/analytics/dashboard',
-      { params }
-    );
+    expect(apiClient.get).toHaveBeenNthCalledWith(2, '/api/liens/selling/analytics/dashboard', {
+      params,
+    });
   });
 
   it('requests every lien page from the selected case endpoint', async () => {
-    apiClient.post = jest.fn(() =>
-      Promise.resolve({ data: { items: [], totalCount: 0 } })
-    );
+    apiClient.post = jest.fn(() => Promise.resolve({ data: { items: [], totalCount: 0 } }));
 
     await LiensApi.listAllCaseLiens('case-1');
 
-    expect(apiClient.post).toHaveBeenCalledWith(
-      '/liens/api/liens/cases/liens/case-1',
-      { page: 1, limit: 200 }
-    );
+    expect(apiClient.post).toHaveBeenCalledWith('/liens/api/liens/cases/liens/case-1', {
+      page: 1,
+      limit: 200,
+    });
   });
 
   it('uses existing endpoints for confirmed create and update orchestration', async () => {
     await LiensApi.createMedicalInfo({ id: 'lien-1', caseId: 'case-1' });
-    expect(apiClient.post).toHaveBeenCalledWith(
-      '/liens/api/liens/cases/liens/medical',
-      { id: 'lien-1', caseId: 'case-1' }
-    );
+    expect(apiClient.post).toHaveBeenCalledWith('/liens/api/liens/cases/liens/medical', {
+      id: 'lien-1',
+      caseId: 'case-1',
+    });
 
     await LiensApi.updateFacilityInfo({ liensId: 'lien-1', facilityId: 'facility-1' });
-    expect(apiClient.post).toHaveBeenCalledWith(
-      '/liens/api/liens/cases/liens/update-facility',
-      { liensId: 'lien-1', facilityId: 'facility-1' }
-    );
+    expect(apiClient.post).toHaveBeenCalledWith('/liens/api/liens/cases/liens/update-facility', {
+      liensId: 'lien-1',
+      facilityId: 'facility-1',
+    });
   });
 
   it('loads active lien document types from the lookup endpoint', async () => {
@@ -116,9 +139,8 @@ describe('LiensApi management endpoints', () => {
     await expect(LiensApi.exportLiens({ lienStatusId: 'Open' })).resolves.toMatchObject({
       filename: 'liens.csv',
     });
-    expect(apiClient.post).toHaveBeenCalledWith(
-      '/liens/api/liens/cases/liens/generate-csv',
-      { lienStatusId: 'Open' }
-    );
+    expect(apiClient.post).toHaveBeenCalledWith('/liens/api/liens/cases/liens/generate-csv', {
+      lienStatusId: 'Open',
+    });
   });
 });

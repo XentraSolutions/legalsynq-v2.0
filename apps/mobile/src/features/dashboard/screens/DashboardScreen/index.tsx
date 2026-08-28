@@ -54,6 +54,9 @@ export function DashboardScreen() {
   const handleViewReport = (reportType: DashboardReportType) => {
     navigation.navigate('DashboardReportDetail', { reportType, dateRange });
   };
+  const handleViewSellingAging = (asOfDate: string) => {
+    navigation.navigate('SellingAgingReportDetail', { asOfDate });
+  };
   const handleRefresh = useCallback(async () => {
     if (refreshInFlightRef.current || !dashboardSettingsHydrated || useDashboardDummyData) {
       return;
@@ -110,6 +113,7 @@ export function DashboardScreen() {
             dateRange={dateRange}
             isDark={isDark}
             useDummyData={useDashboardDummyData}
+            onViewAgingDetails={handleViewSellingAging}
           />
         ) : (
           <BuyingDashboard
