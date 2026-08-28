@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { BaseTable } from "@/components/ui/base-table";
 import { BaseSelect, type BaseSelectOption } from "@/components/ui/base-select";
 import { Card } from "@/components/ui/dashboard-card";
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@legalsynq/design-system";
 import Field from "@/components/lien/field";
 import { ActionMenu, type ActionMenuItem } from "@/components/selling/action-menu";
 import { ConfirmDialog, FormModal } from "@/components/selling/modal";

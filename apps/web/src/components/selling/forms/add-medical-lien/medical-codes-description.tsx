@@ -6,7 +6,7 @@ import {
   useMedicareCosts,
   useMedicareProcedureCodes,
 } from "@/hooks/use-case-liens";
-import { Input } from "@/components/ui/input";
+import { Input } from "@legalsynq/design-system";
 import Field from "@/components/lien/field";
 import { Button } from "@/components/selling/button";
 

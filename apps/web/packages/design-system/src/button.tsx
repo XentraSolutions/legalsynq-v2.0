@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
 import { Loader2 } from "lucide-react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "@/lib/utils";
+import { cn } from "./utils";
 
 /**
  * Matches the "Buttons" component set in the LegalSynq V3 design system
@@ -11,34 +12,29 @@ import { cn } from "@/lib/utils";
  * Tertiary / Ghost / Destructive plus Icon Rounded / Icon Square, each with
  * Default / Hover / Disabled / Loading states.
  *
- * Two intentional deviations from the literal spec, both to stay consistent
- * with the rest of this app rather than the exact exported values:
- * - Text/icon color is gray-900, not the spec's literal #0a0a0a (~1 shade
- *   off, imperceptible) — this app's grays are all Tailwind `gray`, never
- *   `neutral`.
- * - Primary's hover is `bg-primary/90` (already the app-wide convention),
- *   not the spec's literal darker hex — the spec's hex was just whatever
- *   tenant brand color was active at export time; `--color-primary` is
- *   tenant-dynamic (see globals.css), so a fixed hex would only be right
- *   for one tenant.
+ * Text/icon color is the `text-primary` token (gray-950), not the spec's
+ * literal #0a0a0a (~1 shade off, imperceptible) — this app's grays are all
+ * Tailwind `gray`, never `neutral`.
  */
 const buttonVariants = cva(
-  "inline-flex h-[38px] items-center justify-center gap-2.5 whitespace-nowrap rounded-[10px] text-sm font-medium shadow-[0_1px_2px_0_rgba(0,0,0,0.1)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex h-[38px] items-center justify-center gap-2.5 whitespace-nowrap rounded-[10px] text-sm font-medium shadow-[0_1px_2px_0_rgba(0,0,0,0.1)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-brand-orange/30 disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        primary: "px-4 py-2 bg-primary text-white hover:bg-primary/90",
+        primary:
+          "px-4 py-2 bg-button-primary-bg-default text-button-primary-text hover:bg-button-primary-bg-hover",
         secondary:
-          "px-4 py-2 bg-white text-gray-900 border border-gray-200 hover:bg-gray-100",
+          "px-4 py-2 bg-surface-primary text-text-primary border border-button-border hover:bg-button-secondary-bg-hover",
         tertiary:
-          "px-4 py-2 bg-gray-100 text-gray-900 border border-gray-200 hover:bg-gray-200",
+          "px-4 py-2 bg-button-tertiary-bg-default text-text-primary border border-button-border hover:bg-button-tertiary-bg-hover",
         ghost:
-          "px-4 py-2 bg-transparent text-gray-900 shadow-none hover:bg-gray-100",
-        destructive: "px-4 py-2 bg-red-600 text-white hover:bg-red-700",
+          "px-4 py-2 bg-transparent text-text-primary shadow-none hover:bg-button-ghost-bg-hover",
+        destructive:
+          "px-4 py-2 bg-button-destructive-bg-default text-button-primary-text hover:bg-button-destructive-bg-hover",
         "icon-rounded":
-          "h-9 w-9 p-0 rounded-full bg-white text-gray-900 border border-gray-200 hover:bg-gray-100",
+          "h-9 w-9 p-0 rounded-full bg-surface-primary text-text-primary border border-button-border hover:bg-button-secondary-bg-hover",
         "icon-square":
-          "h-9 w-9 p-0 bg-white text-gray-900 border border-gray-200 hover:bg-gray-100",
+          "h-9 w-9 p-0 bg-surface-primary text-text-primary border border-button-border hover:bg-button-secondary-bg-hover",
       },
     },
     defaultVariants: {
@@ -60,18 +56,30 @@ export interface ButtonProps
    * Sets `leftIcon`/`rightIcon` off from the label with a full-height
    * vertical rule, matching the design system's "button + icon" split
    * composition (e.g. "Add Company", "Export"). Divider color follows the
-   * variant: white/25 on solid variants (primary/destructive), gray-200
-   * otherwise. Ignored on icon-only variants or while loading.
+   * variant: white/25 on solid variants (primary/destructive), the
+   * `button-border` token otherwise. Ignored on icon-only variants or while
+   * loading.
    */
   iconDivider?: boolean;
+  /**
+   * Renders the button's styles/behavior onto its child element instead of
+   * a `<button>` (via Radix `Slot`) — for a read-only trigger that needs to
+   * actually be a link or another primitive's element, e.g.
+   * `<Button asChild variant="ghost"><Link href="/cases/1">View</Link></Button>`
+   * or wrapping a Radix `DropdownMenuTrigger`. The child must be a single
+   * element and is responsible for its own href/navigation; `loading`,
+   * `leftIcon`, `rightIcon`, and `iconDivider` are ignored in this mode —
+   * pass icons as part of the child's own content instead.
+   */
+  asChild?: boolean;
 }
 
 const DIVIDER_COLOR_CLASS: Record<string, string> = {
   primary: "border-white/25",
   destructive: "border-white/25",
-  secondary: "border-gray-200",
-  tertiary: "border-gray-200",
-  ghost: "border-gray-200",
+  secondary: "border-button-border",
+  tertiary: "border-button-border",
+  ghost: "border-button-border",
 };
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -84,6 +92,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       leftIcon,
       rightIcon,
       iconDivider,
+      asChild,
       children,
       ...props
     },
@@ -92,6 +101,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const isIconOnly = variant === "icon-rounded" || variant === "icon-square";
     const showDivider = iconDivider && !isIconOnly && !loading && (leftIcon || rightIcon);
     const dividerColorClass = DIVIDER_COLOR_CLASS[variant ?? "primary"];
+
+    if (asChild) {
+      return (
+        <Slot
+          ref={ref}
+          className={cn(buttonVariants({ variant }), className)}
+          {...props}
+        >
+          {children}
+        </Slot>
+      );
+    }
 
     return (
       <button

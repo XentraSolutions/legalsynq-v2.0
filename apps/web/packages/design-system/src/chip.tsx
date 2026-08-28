@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "@/lib/utils";
+import { cn } from "./utils";
 
 const chipVariants = cva(
   "inline-flex items-center justify-center gap-1 rounded-full font-medium whitespace-nowrap",
@@ -34,19 +34,19 @@ const chipVariants = cva(
       {
         variant: "solid",
         color: "default",
-        class: "bg-zinc-900 text-zinc-50",
+        class: "bg-surface-invert text-text-invert",
       },
       {
         variant: "solid",
         color: "success",
-        class: "bg-green-500 text-black",
+        class: "bg-surface-success text-black",
       },
       {
         variant: "solid",
         color: "warning",
-        class: "bg-yellow-500 text-black",
+        class: "bg-surface-warning text-black",
       },
-      { variant: "solid", color: "danger", class: "bg-red-500 text-white" },
+      { variant: "solid", color: "danger", class: "bg-surface-error text-white" },
       { variant: "solid", color: "info", class: "bg-blue-500 text-white" },
       {
         variant: "solid",
@@ -59,55 +59,55 @@ const chipVariants = cva(
       {
         variant: "light",
         color: "default",
-        class: "bg-zinc-100 text-zinc-900",
+        class: "bg-surface-tertiary text-text-primary",
       },
       {
         variant: "light",
         color: "success",
-        class: "bg-zinc-100 text-green-700",
+        class: "bg-surface-tertiary text-text-success-dark",
       },
       {
         variant: "light",
         color: "warning",
-        class: "bg-zinc-100 text-yellow-700",
+        class: "bg-surface-tertiary text-text-warning-dark",
       },
       {
         variant: "light",
         color: "danger",
-        class: "bg-zinc-100 text-red-700",
+        class: "bg-surface-tertiary text-text-error-dark",
       },
-      { variant: "light", color: "info", class: "bg-zinc-100 text-blue-700" },
+      { variant: "light", color: "info", class: "bg-surface-tertiary text-blue-700" },
       {
         variant: "light",
         color: "purple",
-        class: "bg-zinc-100 text-purple-700",
+        class: "bg-surface-tertiary text-purple-700",
       },
       {
         variant: "light",
         color: "teal",
-        class: "bg-zinc-100 text-teal-700",
+        class: "bg-surface-tertiary text-teal-700",
       },
 
       // soft (tinted background matching the color)
       {
         variant: "soft",
         color: "default",
-        class: "bg-zinc-500/15 text-zinc-900",
+        class: "bg-gray-500/15 text-text-primary",
       },
       {
         variant: "soft",
         color: "success",
-        class: "bg-green-500/15 text-green-700",
+        class: "bg-surface-success/15 text-text-success-dark",
       },
       {
         variant: "soft",
         color: "warning",
-        class: "bg-yellow-500/15 text-yellow-700",
+        class: "bg-surface-warning/15 text-text-warning-dark",
       },
       {
         variant: "soft",
         color: "danger",
-        class: "bg-red-500/15 text-red-700",
+        class: "bg-surface-error/15 text-text-error-dark",
       },
       {
         variant: "soft",

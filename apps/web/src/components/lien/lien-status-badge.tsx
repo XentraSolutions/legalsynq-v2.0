@@ -1,4 +1,4 @@
-import { Chip, type ChipProps } from "@/components/ui/chip";
+import { Chip, type ChipProps } from "@legalsynq/design-system";
 
 interface LienStatusBadgeProps {
   status: string;

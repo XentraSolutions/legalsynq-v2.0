@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { BaseSelect } from '@/components/ui/base-select';
-import { buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@legalsynq/design-system';
 import { cn } from '@/lib/utils';
 
 interface FilterOption {

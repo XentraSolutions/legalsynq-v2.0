@@ -6,7 +6,7 @@ import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
 import { settlementService } from "@/lib/settlement";
 import type { CaseLienItem, CaseLienItemMetadata } from "@/lib/cases";
-import { Input } from "@/components/ui/input";
+import { Input } from "@legalsynq/design-system";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/ui/date-picker";
 import { LienTable } from "@/components/lien/lien-table";

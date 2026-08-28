@@ -13,7 +13,7 @@ import {
   useMedicareCosts,
   useMedicareProcedureCodes,
 } from "@/hooks/use-case-liens";
-import { Input } from "@/components/ui/input";
+import { Input } from "@legalsynq/design-system";
 
 export interface MedicalCodesDescriptionProps {
   caseId?: string;

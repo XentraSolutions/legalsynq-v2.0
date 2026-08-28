@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@legalsynq/design-system/theme.css";
 @import "remixicon/fonts/remixicon.css";
 @import "sonner/dist/styles.css";
 

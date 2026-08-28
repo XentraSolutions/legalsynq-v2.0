@@ -6,6 +6,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   allowedDevOrigins: ['*.spock.replit.dev', '*.replit.dev'],
+  // Local workspace package (apps/web/packages/design-system) ships untranspiled
+  // TS/TSX source, so Next must run it through its own compiler like app code.
+  transpilePackages: ['@legalsynq/design-system'],
   // Point Next.js file-tracing at the monorepo root so it does not
   // over-trace files and does not emit the workspace-root warning caused
   // by finding multiple lockfiles.

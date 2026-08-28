@@ -26,3 +26,6 @@ e2e/data/credentials.json
 
 # Saved login sessions from global-setup.ts (contains real session cookies).
 e2e/.auth/
+
+*storybook.log
+storybook-static

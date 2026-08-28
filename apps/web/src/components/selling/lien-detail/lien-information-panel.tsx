@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LienCaseDetail, LienDetail } from "@/types/lien-selling";
-import { Chip, type ChipProps } from "@/components/ui/chip";
+import { Chip, type ChipProps } from "@legalsynq/design-system";
 import { PanelShell } from "./panel-shell";
 import { sellerStatusLabel } from "@/lib/selling/selling-detail.mapper";
 

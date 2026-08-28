@@ -8,7 +8,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
-    include: ['src/**/*.test.tsx'],
+    include: ['src/**/*.test.tsx', 'packages/**/*.test.tsx'],
     server: {
       deps: {
         // By default Vitest loads node_modules packages via Node's native
@@ -38,18 +38,20 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      react: path.resolve(__dirname, '../../node_modules/react'),
-      'react-dom': path.resolve(__dirname, '../../node_modules/react-dom'),
-      'react/jsx-runtime': path.resolve(__dirname, '../../node_modules/react/jsx-runtime.js'),
-      'react/jsx-dev-runtime': path.resolve(__dirname, '../../node_modules/react/jsx-dev-runtime.js'),
+      react: path.resolve(__dirname, './node_modules/react'),
+      'react-dom': path.resolve(__dirname, './node_modules/react-dom'),
+      'react/jsx-runtime': path.resolve(__dirname, './node_modules/react/jsx-runtime.js'),
+      'react/jsx-dev-runtime': path.resolve(__dirname, './node_modules/react/jsx-dev-runtime.js'),
     },
-    // pnpm keeps a separate physical copy of react/react-dom under
-    // apps/web's own store in addition to the workspace root's — without
-    // deduping, a package that nests its own react (e.g. @radix-ui/*, whose
-    // dist resolves react via its own node_modules chain rather than the
-    // alias above) ends up rendering against a second React instance with
-    // its own hook dispatcher, so hooks inside it fail with "Cannot read
-    // properties of null (reading 'useMemo')".
+    // apps/web is its own pnpm workspace with its own node_modules, so its
+    // react/react-dom live under ./node_modules, not the monorepo root's —
+    // aliasing to the root copy (as this used to) leaves apps/web's own
+    // copy as a second, un-deduped React instance. A package that nests its
+    // own react (e.g. @radix-ui/*, whose dist resolves react via its own
+    // node_modules chain rather than the alias above) ends up rendering
+    // against that second instance with its own hook dispatcher, so hooks
+    // inside it fail with "Cannot read properties of null (reading
+    // 'useMemo')" / "Invalid hook call".
     dedupe: ['react', 'react-dom'],
   },
 });
