@@ -231,7 +231,9 @@ export default function CaseDetailPage() {
         </div>
       )}
 
-      {activeTab === "liens" && <CaseLiensTab caseId={caseId} />}
+      {activeTab === "liens" && (
+        <CaseLiensTab caseId={caseId} caseCode={caseDetail.caseNumber} />
+      )}
       {activeTab === "documents" && <CaseDocumentsTab caseId={caseId} />}
       {activeTab === "payments" && <CasePaymentsTab caseId={caseId} />}
       {activeTab === "messages" && <MessagesTab />}
