@@ -9,6 +9,7 @@ using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Application.Services;
 using Liens.Api;
+using Liens.Api.Serialization;
 using Liens.Domain;
 using Liens.Domain.Entities;
 using Liens.Domain.Enums;
@@ -1173,7 +1174,7 @@ public static class SellingEndpoints
     {
         var status = GetBuyerOfferedLienStatus(accessLink.ResponseStatus, lien.Status, lien.SellerStatus);
         var askAmount = lien.AskAmount ?? lien.OfferPrice;
-        var submittedAtUtc = accessLink.NotificationSubmittedAtUtc ?? lien.SubmittedForSaleAtUtc ?? accessLink.CreatedAtUtc;
+        var submittedAtUtc = PacificTimeHelper.Convert(lien.SubmittedForSaleAtUtc ?? accessLink.NotificationSubmittedAtUtc ?? accessLink.CreatedAtUtc);
         var sellerName = FirstNonEmpty(new[] { sellerDisplay.Name, sellerDisplay.Company, "Seller unavailable" }) ?? "Seller unavailable";
         var resolvedSellerCompany = FirstNonEmpty(new[] { sellerDisplay.Company, sellerDisplay.Name });
         var title = FirstNonEmpty(new[] { sellerName, ResolveLienSubjectName(lien), lien.LienNumber }) ?? lien.Id.ToString();
@@ -2638,7 +2639,7 @@ public static class SellingEndpoints
         BuyerOfferedLienBuyerDetail Buyer,
         string? ProviderName,
         string Status,
-        DateTime SubmittedAtUtc,
+        DateTimeOffset SubmittedAtUtc,
         DateOnly? InitialServiceDate,
         DateOnly? EndServiceDate,
         decimal BillingAmount,

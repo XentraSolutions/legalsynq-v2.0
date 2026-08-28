@@ -713,8 +713,9 @@ non-actionable rows expose `view` only.
 Returns the authenticated funding-company detail view for one offered lien. The `{accessLinkId}` is the `id` returned
 by `GET /api/liens/selling/buyer/liens`; access is scoped to the authenticated buyer contact matched by email, using the
 same `BuyerContactId` filtering as the list endpoint.
-The `submittedAtUtc` field uses the buyer access-link notification timestamp when present so it matches the public
-offer page's Lien Information section.
+The `submittedAtUtc` field uses the lien's submitted-for-sale timestamp when present, serialized with the DST-aware
+U.S. Pacific offset, and falls back to notification or access-link creation time only for legacy rows without a
+sale-submission timestamp.
 The `notes` field returns the persisted lien notes shown in the seller portfolio; lien description is used only when
 those notes are blank.
 
@@ -907,6 +908,9 @@ email and authenticated funding-company views. Handling law firm is the selected
 contacts remain case/asset metadata and are not used as the buyer-facing seller identity. For buyer-purpose links, the `account` block indicates whether the access link has already
 activated an account or whether the token-scoped buyer email already belongs to an Identity account, so the tenant portal
 can render `Log In` instead of `Activate Free Account`.
+The lien `submittedAtUtc` field is the submitted-for-sale timestamp when present, serialized with the DST-aware U.S.
+Pacific offset; it falls back to the notification submission or access-link creation timestamp only for legacy rows
+without a persisted sale-submission timestamp.
 
 ```json
 {
