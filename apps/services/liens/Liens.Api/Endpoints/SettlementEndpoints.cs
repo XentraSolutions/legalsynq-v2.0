@@ -117,7 +117,7 @@ public static class SettlementEndpoints
         CancellationToken ct = default)
     {
         var tenantId = CaseEndpoints.RequireTenantId(ctx);
-        var result = await svc.GetReductionsByCaseAsync(tenantId, caseId, ct);
+        var result = await svc.GetLatestReductionsByCaseAsync(tenantId, caseId, ct);
         return Results.Ok(result);
     }
 

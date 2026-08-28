@@ -81,6 +81,42 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task GetReductionsByCase_returns_only_latest_reduction_per_lien_after_repeated_bulk_posts()
+    {
+        foreach (var amount in new[] { 750m, 900m })
+        {
+            var createResponse = await _client.PostAsJsonAsync("/service/liens/update/reduction", new
+            {
+                caseId = SeedHelper.CaseId,
+                data = new[]
+                {
+                    new
+                    {
+                        liensId = SeedHelper.LienId,
+                        reductionAmount = amount,
+                    },
+                },
+            });
+            createResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+        }
+
+        var response = await _client.GetAsync(
+            $"/api/liens/settlement/reductions/case/{SeedHelper.CaseId}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+        var body = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        var reductionsForLien = body!.RootElement
+            .EnumerateArray()
+            .Where(item => item.GetProperty("lienId").GetGuid() == SeedHelper.LienId)
+            .ToArray();
+
+        reductionsForLien.Should().ContainSingle();
+        reductionsForLien[0].GetProperty("amount").GetDecimal().Should().Be(900m);
+    }
+
+    [Fact]
     public async Task GetReductionsByCase_omits_legacy_settlement_reduction_without_a_date()
     {
         Lien lien;

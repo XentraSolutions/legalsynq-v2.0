@@ -2136,7 +2136,9 @@ Export all matching active, top-level contacts as a Base64-encoded CSV. The defa
 
 Base path: `/api/liens/settlement/reductions`
 
-`GET /case/{caseId}` and `GET /lien/{lienId}` return canonical lien reductions.
+`GET /case/{caseId}` returns only the latest canonical reduction for each lien,
+ordered by reduction date and then creation time. `GET /lien/{lienId}` returns
+the lien's canonical reduction history.
 For a lien without a canonical reduction, the response also exposes preserved
 SL-CORE settlement metadata containing both a valid `reductionAmount` and an
 explicit `SLS_REDUCTION_DATE`. Historical source rows without a reduction date

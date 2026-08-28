@@ -39,6 +39,23 @@ public class SettlementService : ISettlementService
         return MapReductionsWithLegacyFallback(reductions, settlements);
     }
 
+    public async Task<List<LienReductionResponse>> GetLatestReductionsByCaseAsync(
+        Guid tenantId, Guid caseId, CancellationToken ct = default)
+    {
+        var reductions = await GetReductionsByCaseAsync(tenantId, caseId, ct);
+        return reductions
+            .GroupBy(reduction => reduction.LienId)
+            .Select(group => group
+                .OrderByDescending(reduction => reduction.ReductionDate)
+                .ThenByDescending(reduction => reduction.CreatedAtUtc)
+                .ThenByDescending(reduction => reduction.Id)
+                .First())
+            .OrderByDescending(reduction => reduction.ReductionDate)
+            .ThenByDescending(reduction => reduction.CreatedAtUtc)
+            .ThenByDescending(reduction => reduction.Id)
+            .ToList();
+    }
+
     public async Task<List<LienReductionResponse>> GetReductionsByLienAsync(
         Guid tenantId, Guid lienId, CancellationToken ct = default)
     {
