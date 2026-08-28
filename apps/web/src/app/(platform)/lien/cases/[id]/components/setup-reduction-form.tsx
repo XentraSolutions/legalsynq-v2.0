@@ -14,6 +14,7 @@ import type {
   LienFooterCell,
 } from "@/components/lien/lien-table";
 import Field from "@/components/lien/field";
+import { dateConverter } from "@/lib/cases/cases.mapper";
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "";
@@ -41,7 +42,7 @@ interface SetupReductionFormProps {
 }
 
 const INITIAL_FORM = {
-  reductionDate: new Date().toISOString().slice(0, 10),
+  reductionDate: dateConverter(new Date().toISOString().slice(0, 10)),
   note: "",
 };
 
