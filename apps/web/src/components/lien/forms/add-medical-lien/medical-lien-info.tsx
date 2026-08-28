@@ -33,7 +33,6 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
   const { data, onFormValid } = props;
   const [form, setForm] = useState(!data ? { ...INITIAL_FORM } : data);
   const [errors, setErrors] = useState<Record<string, string>>({});
-
   const statusList =
     lookup?.LienStatus.map((c) => {
       return { key: c.id, value: c.code, label: c.name };
@@ -133,7 +132,7 @@ export default function MedicalLienInfo(props: MedicalLienInfoProps) {
           <Field
             type="checkbox"
             label="Servicing"
-            isChecked={form.isServicing == "true"}
+            isChecked={form.isServicing == "true" || form.isServicing == true}
             onChange={(v) => {
               setForm({ ...form, isServicing: v.toString() });
             }}
