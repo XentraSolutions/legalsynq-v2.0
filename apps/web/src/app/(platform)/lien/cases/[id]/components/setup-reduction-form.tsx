@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { FormModal } from "@/components/lien/modal";
 import { useLienStore } from "@/stores/lien-store";
 import { ApiError } from "@/lib/api-client";
@@ -13,6 +13,8 @@ import type {
   LienColumnDef,
   LienFooterCell,
 } from "@/components/lien/lien-table";
+import Field from "@/components/lien/field";
+import { dateConverter } from "@/lib/cases/cases.mapper";
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "";
@@ -40,7 +42,7 @@ interface SetupReductionFormProps {
 }
 
 const INITIAL_FORM = {
-  reductionDate: new Date().toISOString().slice(0, 10),
+  reductionDate: dateConverter(new Date().toISOString().slice(0, 10)),
   note: "",
 };
 
@@ -160,14 +162,20 @@ export function SetupReductionForm({
 
   const handleParentInputChange = (raw: string) => {
     const sanitized = cleanNumericInput(raw);
+
     if (isPercent) {
       const n = parseFloat(sanitized);
       if (!isNaN(n) && n > 100) {
         setReductionInput("100");
+        exactValueRef.current = 100; // Update memory to capped value
         return;
       }
     }
+
     setReductionInput(sanitized);
+
+    // Update the exact memory with whatever the user just typed
+    exactValueRef.current = sanitized === "" ? null : parseFloat(sanitized);
   };
 
   const syncInputsFromReductions = (reductions: Record<string, number>) => {
@@ -220,7 +228,7 @@ export function SetupReductionForm({
         const computed = isPercent
           ? ((l.originalAmount ?? 0) * val) / 100
           : val;
-        updates[l.id] = Math.min(computed, l.originalAmount ?? 0);
+        updates[l.id] = Math.round((computed ?? 0) * 100) / 100;
       }
     }
     setLienReductions(updates);
@@ -277,6 +285,7 @@ export function SetupReductionForm({
         data: liensToSave.map((l) => ({
           liensId: l.id,
           reductionAmount: Math.round((lienReductions[l.id] ?? 0) * 100) / 100,
+          reductionDate: form.reductionDate,
         })),
       });
       addToast({
@@ -463,21 +472,42 @@ export function SetupReductionForm({
     },
   ];
 
+  // 1. Keep track of the exact unrounded value
+  const exactValueRef = useRef<number | null>(null);
+
   const inverseValue = (() => {
     if (numericParent <= 0 || checkedBilling === 0) return null;
+
+    // Use the exact stored value if toggling, otherwise use the typed numericParent
+    const baseValue =
+      exactValueRef.current !== null ? exactValueRef.current : numericParent;
+
     return isPercent
-      ? (numericParent / 100) * checkedBilling
-      : (numericParent / checkedBilling) * 100;
+      ? (baseValue / 100) * checkedBilling
+      : (baseValue / checkedBilling) * 100;
   })();
 
   const handleToggleMode = (toPercent: boolean) => {
     if (toPercent === isPercent) return;
+
     if (inverseValue !== null) {
+      // If this is the first toggle, capture the current input value as the exact base
+      if (exactValueRef.current === null) {
+        exactValueRef.current = numericParent;
+      }
+
       const swapped = toPercent ? Math.min(inverseValue, 100) : inverseValue;
+
+      // Update our exact tracker to the newly swapped value
+      exactValueRef.current = swapped;
+
+      // Display the rounded version in the UI input
       setReductionInput(swapped.toFixed(2));
     } else {
+      exactValueRef.current = null;
       setReductionInput("");
     }
+
     setIsPercent(toPercent);
   };
 
@@ -650,49 +680,5 @@ export function SetupReductionForm({
         />
       </div>
     </FormModal>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  error,
-  placeholder,
-  type = "text",
-  required,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  error?: string;
-  placeholder?: string;
-  type?: string;
-  required?: boolean;
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      {type === "date" ? (
-        <DatePicker
-          value={value}
-          onChange={onChange}
-          className={error ? "border-red-300" : undefined}
-          disableFutureDates
-        />
-      ) : (
-        <Input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className={error ? "border-red-300" : undefined}
-        />
-      )}
-      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-    </div>
   );
 }
