@@ -218,9 +218,12 @@ function ColorTokensPage() {
 }
 
 const meta: Meta<typeof ColorTokensPage> = {
-  title: 'Design System/Color Tokens',
+  title: 'Foundations/Colors',
   component: ColorTokensPage,
   parameters: { layout: 'fullscreen' },
+  // This is already a bespoke reference page, not a component variant demo —
+  // an auto-generated docs page around it would just be redundant chrome.
+  tags: ['!autodocs'],
 };
 
 export default meta;

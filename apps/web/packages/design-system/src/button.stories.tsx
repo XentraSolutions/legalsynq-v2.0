@@ -1,14 +1,14 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import { fn } from 'storybook/test';
+import { Download, Plus, Settings, Trash } from 'lucide-react';
 import { Button } from './button';
 
 const meta = {
-  title: 'Design System/Button',
+  title: 'Components/Button',
   component: Button,
   parameters: {
     layout: 'centered',
   },
-  tags: ['autodocs'],
   args: {
     onClick: fn(),
     children: 'Button',
@@ -32,24 +32,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Primary: Story = {
+/** Playground — use the controls to explore every variant/state combination. */
+export const Interactive: Story = {
   args: { variant: 'primary' },
-};
-
-export const Secondary: Story = {
-  args: { variant: 'secondary' },
-};
-
-export const Tertiary: Story = {
-  args: { variant: 'tertiary' },
-};
-
-export const Ghost: Story = {
-  args: { variant: 'ghost' },
-};
-
-export const Destructive: Story = {
-  args: { variant: 'destructive' },
 };
 
 export const Loading: Story = {
@@ -63,6 +48,7 @@ export const Disabled: Story = {
 export const AsLink: Story = {
   name: 'asChild (rendered as <a>)',
   parameters: {
+    controls: { disable: true },
     docs: {
       description: {
         story:
@@ -77,7 +63,40 @@ export const AsLink: Story = {
   ),
 };
 
+/** Icon composition gallery — regression check only, not part of the docs page. */
+export const WithIcons: Story = {
+  parameters: { docs: { disable: true }, controls: { disable: true } },
+  render: () => (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button variant="primary" leftIcon={<Plus className="h-4 w-4" />}>
+        Add Company
+      </Button>
+      <Button variant="secondary" rightIcon={<Download className="h-4 w-4" />}>
+        Export
+      </Button>
+      <Button
+        variant="tertiary"
+        leftIcon={<Settings className="h-4 w-4" />}
+        rightIcon={<Download className="h-4 w-4" />}
+      >
+        Both icons
+      </Button>
+      <Button variant="destructive" leftIcon={<Trash className="h-4 w-4" />}>
+        Delete
+      </Button>
+      <Button variant="icon-rounded" aria-label="Settings">
+        <Settings className="h-4 w-4" />
+      </Button>
+      <Button variant="icon-square" aria-label="Add">
+        <Plus className="h-4 w-4" />
+      </Button>
+    </div>
+  ),
+};
+
+/** Every variant/state at a glance — regression check only, not part of the docs page. */
 export const AllVariants: Story = {
+  parameters: { docs: { disable: true }, controls: { disable: true } },
   render: () => (
     <div className="flex flex-wrap items-center gap-3">
       <Button variant="primary">Primary</Button>
@@ -85,6 +104,12 @@ export const AllVariants: Story = {
       <Button variant="tertiary">Tertiary</Button>
       <Button variant="ghost">Ghost</Button>
       <Button variant="destructive">Destructive</Button>
+      <Button variant="icon-rounded" aria-label="Settings">
+        <Settings className="h-4 w-4" />
+      </Button>
+      <Button variant="icon-square" aria-label="Settings">
+        <Settings className="h-4 w-4" />
+      </Button>
       <Button variant="primary" loading>
         Loading
       </Button>

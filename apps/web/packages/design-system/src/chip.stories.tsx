@@ -1,24 +1,44 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import { Chip } from './chip';
 
+const COLORS = [
+  'default',
+  'success',
+  'warning',
+  'danger',
+  'info',
+  'purple',
+  'teal',
+  'gray',
+  'red',
+  'yellow',
+  'green',
+  'blue',
+  'indigo',
+  'pink',
+  'brand-orange',
+  'brand-slate',
+] as const;
+
+const VARIANTS = ['primary', 'secondary', 'tertiary', 'soft'] as const;
+
 const meta = {
-  title: 'Design System/Chip',
+  title: 'Components/Chip',
   component: Chip,
   parameters: {
     layout: 'centered',
   },
-  tags: ['autodocs'],
   args: {
     children: 'Chip',
   },
   argTypes: {
     color: {
       control: 'select',
-      options: ['default', 'success', 'warning', 'danger', 'info', 'purple', 'teal'],
+      options: COLORS,
     },
     variant: {
       control: 'select',
-      options: ['solid', 'light', 'soft'],
+      options: VARIANTS,
     },
     size: {
       control: 'select',
@@ -30,30 +50,24 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Solid: Story = {
-  args: { variant: 'solid', color: 'default' },
+/** Playground — use the controls to explore every variant/color/size combination. */
+export const Interactive: Story = {
+  args: { variant: 'primary', color: 'default' },
 };
 
-export const Light: Story = {
-  args: { variant: 'light', color: 'success' },
-};
-
-export const Soft: Story = {
-  args: { variant: 'soft', color: 'danger' },
-};
-
-export const AllColors: Story = {
+/** Every variant x color combination at a glance — regression check only, not part of the docs page. */
+export const AllVariants: Story = {
+  parameters: { docs: { disable: true }, controls: { disable: true } },
   render: () => (
-    <div className="flex flex-col gap-3">
-      {(['solid', 'light', 'soft'] as const).map((variant) => (
+    <div className="flex flex-col gap-4">
+      {VARIANTS.map((variant) => (
         <div key={variant} className="flex flex-wrap items-center gap-2">
-          {(['default', 'success', 'warning', 'danger', 'info', 'purple', 'teal'] as const).map(
-            (color) => (
-              <Chip key={color} variant={variant} color={color}>
-                {color}
-              </Chip>
-            ),
-          )}
+          <span className="w-16 shrink-0 text-xs font-medium text-gray-500">{variant}</span>
+          {COLORS.map((color) => (
+            <Chip key={color} variant={variant} color={color}>
+              {color}
+            </Chip>
+          ))}
         </div>
       ))}
     </div>

@@ -101,9 +101,12 @@ function ColorsPage() {
 }
 
 const meta: Meta<typeof ColorsPage> = {
-  title: 'Design System/Colors',
+  title: 'Foundations/Colors',
   component: ColorsPage,
   parameters: { layout: 'fullscreen' },
+  // This is already a bespoke reference page, not a component variant demo —
+  // an auto-generated docs page around it would just be redundant chrome.
+  tags: ['!autodocs'],
 };
 
 export default meta;

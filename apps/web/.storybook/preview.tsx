@@ -1,7 +1,9 @@
 import type { Preview } from '@storybook/nextjs';
+import { Title, Description, Primary, Controls } from '@storybook/addon-docs/blocks';
 import '../src/app/globals.css';
 
 const preview: Preview = {
+  tags: ['autodocs'],
   parameters: {
     controls: {
       matchers: {
@@ -15,6 +17,22 @@ const preview: Preview = {
         { name: 'light', value: '#ffffff' },
         { name: 'dark', value: '#0a0a0a' },
       ],
+    },
+    docs: {
+      // Default autodocs template also renders a "Stories" section that
+      // re-lists every docs-visible story, duplicating Primary right below
+      // itself. Most of our components only keep one story visible in docs
+      // (a `Default`/args-driven example) with the rest hidden via
+      // `docs.disable`, so that section is always a redundant repeat — drop
+      // it globally instead of overriding `docs.page` per component.
+      page: () => (
+        <>
+          <Title />
+          <Description />
+          <Primary />
+          <Controls />
+        </>
+      ),
     },
   },
   globalTypes: {

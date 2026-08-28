@@ -48,19 +48,18 @@ export interface ButtonProps
     VariantProps<typeof buttonVariants> {
   /** Shows a spinner in place of the left icon (or the icon-only content) and disables the button — matches the design system's Loading state, which also drops the right icon. */
   loading?: boolean;
-  /** Rendered before the label. Ignored on icon-only variants — pass the icon as `children` instead. */
-  leftIcon?: React.ReactNode;
-  /** Rendered after the label; dropped while loading. */
-  rightIcon?: React.ReactNode;
   /**
-   * Sets `leftIcon`/`rightIcon` off from the label with a full-height
-   * vertical rule, matching the design system's "button + icon" split
-   * composition (e.g. "Add Company", "Export"). Divider color follows the
-   * variant: white/25 on solid variants (primary/destructive), the
-   * `button-border` token otherwise. Ignored on icon-only variants or while
-   * loading.
+   * Rendered before the label. Ignored on icon-only variants — pass the
+   * icon as `children` instead. Whenever `leftIcon` or `rightIcon` is set,
+   * it's shown off from the label by a full-height vertical rule, matching
+   * the design system's "button + icon" split composition (e.g. "Add
+   * Company", "Export"). Divider color follows the variant: white/25 on
+   * solid variants (primary/destructive), the `button-border` token
+   * otherwise. Ignored while loading.
    */
-  iconDivider?: boolean;
+  leftIcon?: React.ReactNode;
+  /** Rendered after the label; dropped while loading. See `leftIcon` for the divider behavior. */
+  rightIcon?: React.ReactNode;
   /**
    * Renders the button's styles/behavior onto its child element instead of
    * a `<button>` (via Radix `Slot`) — for a read-only trigger that needs to
@@ -68,8 +67,8 @@ export interface ButtonProps
    * `<Button asChild variant="ghost"><Link href="/cases/1">View</Link></Button>`
    * or wrapping a Radix `DropdownMenuTrigger`. The child must be a single
    * element and is responsible for its own href/navigation; `loading`,
-   * `leftIcon`, `rightIcon`, and `iconDivider` are ignored in this mode —
-   * pass icons as part of the child's own content instead.
+   * `leftIcon`, and `rightIcon` are ignored in this mode — pass icons as
+   * part of the child's own content instead.
    */
   asChild?: boolean;
 }
@@ -91,7 +90,6 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       disabled,
       leftIcon,
       rightIcon,
-      iconDivider,
       asChild,
       children,
       ...props
@@ -99,7 +97,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref,
   ) => {
     const isIconOnly = variant === "icon-rounded" || variant === "icon-square";
-    const showDivider = iconDivider && !isIconOnly && !loading && (leftIcon || rightIcon);
+    const showDivider = !isIconOnly && !loading && (leftIcon || rightIcon);
     const dividerColorClass = DIVIDER_COLOR_CLASS[variant ?? "primary"];
 
     if (asChild) {

@@ -64,9 +64,12 @@ function IconsPage() {
 }
 
 const meta: Meta<typeof IconsPage> = {
-  title: 'Design System/Icons',
+  title: 'Foundations/Icons',
   component: IconsPage,
   parameters: { layout: 'fullscreen' },
+  // This is already a bespoke reference page, not a component variant demo —
+  // an auto-generated docs page around it would just be redundant chrome.
+  tags: ['!autodocs'],
 };
 
 export default meta;
