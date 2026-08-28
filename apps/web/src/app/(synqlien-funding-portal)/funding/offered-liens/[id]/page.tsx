@@ -398,11 +398,13 @@ function formatDateTimeParts(value?: string | null): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   const datePart = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
     month: "2-digit",
     day: "2-digit",
     year: "numeric",
   }).format(date);
   const timePart = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",

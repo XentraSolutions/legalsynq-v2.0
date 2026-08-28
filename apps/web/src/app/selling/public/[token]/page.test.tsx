@@ -131,9 +131,11 @@ describe("PublicBuyerPortalPage", () => {
       requestHost: "synqlien-demo.localhost:3000",
       requestProto: "http",
     });
-    expect(screen.getByAltText("LegalSynq")).toHaveAttribute(
+    expect(screen.getByText("LEGALSYNQ")).toBeInTheDocument();
+    expect(screen.getByText("Funding Company Portal")).toBeInTheDocument();
+    expect(document.querySelector('img[src="/figma/synqlien-funding-public/icon-logo.svg"]')).toHaveAttribute(
       "src",
-      "/legalsynq-logo-temp-portal.svg",
+      "/figma/synqlien-funding-public/icon-logo.svg",
     );
     expect(screen.getByText("Manage Offered Liens")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Activate Free Account" })).toHaveAttribute(

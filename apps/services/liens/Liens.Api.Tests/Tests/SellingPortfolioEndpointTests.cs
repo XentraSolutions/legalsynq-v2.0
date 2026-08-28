@@ -1926,8 +1926,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         acceptResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await acceptResponse.Content.ReadAsStringAsync()}");
 
-        var lienSubmittedAtUtc = new DateTime(2026, 8, 24, 15, 0, 0, DateTimeKind.Utc);
-        var notificationSubmittedAtUtc = new DateTime(2026, 8, 25, 1, 0, 0, DateTimeKind.Utc);
+        var lienSubmittedAtUtc = new DateTime(2026, 8, 24, 15, 0, 0, DateTimeKind.Unspecified);
+        var notificationSubmittedAtUtc = new DateTime(2026, 8, 25, 1, 0, 0, DateTimeKind.Unspecified);
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
@@ -1944,7 +1944,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
             $"Body: {await publicResponse.Content.ReadAsStringAsync()}");
         var publicJson = await publicResponse.Content.ReadFromJsonAsync<JsonElement>();
         var publicSubmittedAtUtc = publicJson.GetProperty("lien").GetProperty("submittedAtUtc").GetString();
-        publicSubmittedAtUtc.Should().StartWith("2026-08-24T18:00:00");
+        publicSubmittedAtUtc.Should().Be("2026-08-24T08:00:00-07:00");
 
         using var buyerClient = CreateBuyerClient(buyerOrgId);
         var listResponse = await buyerClient.GetAsync("/api/liens/selling/buyer/liens?search=DETAIL-100");

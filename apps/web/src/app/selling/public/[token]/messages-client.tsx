@@ -66,12 +66,12 @@ export function PublicPortalMessagesCard({
   return (
     <details
       open
-      className="public-portal-details group w-full max-w-[700px] rounded-2xl border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px]"
+      className="public-portal-details group w-full max-w-[700px] rounded-2xl border border-[#e5e5e5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px] max-sm:p-4"
       aria-labelledby="messages-title"
     >
       <summary className="-mx-2 flex min-h-10 cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-1 transition-colors hover:bg-[#f5f5f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132] [&::-webkit-details-marker]:hidden">
         <i className="ri-arrow-down-s-line -rotate-90 text-2xl leading-none text-[#0a0a0a] transition-transform group-open:rotate-0" aria-hidden="true" />
-        <h2 id="messages-title" className="m-0 text-lg font-extrabold leading-[1.6] tracking-normal">
+        <h2 id="messages-title" className="m-0 text-lg font-bold leading-[1.6] tracking-normal">
           Messages
         </h2>
       </summary>

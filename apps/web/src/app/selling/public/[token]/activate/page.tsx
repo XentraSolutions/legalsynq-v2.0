@@ -2,11 +2,9 @@ import { headers } from "next/headers";
 import {
   fetchPublicBuyerPortal,
   SYNQLIEN_BUYER_LOGIN_URL,
-  type PublicBuyerPortalData,
   type PublicBuyerPortalError,
   type PublicBuyerPortalResult,
 } from "@/lib/liens/public-buyer-portal";
-import { PublicBuyerActivationForm } from "./activation-form";
 
 export const dynamic = "force-dynamic";
 
@@ -58,9 +56,8 @@ function ActivationShell({
             ".public-portal-primary:active{background:#c95720;}",
         }}
       />
-      <PortalHeader />
       {result.ok ? (
-        <ActivationContent token={token} data={result.data} />
+        <ActivationContent token={token} result={result} />
       ) : (
         <LinkState error={result.error} />
       )}
@@ -68,117 +65,164 @@ function ActivationShell({
   );
 }
 
-function PortalHeader() {
-  return (
-    <header className="flex h-20 items-center justify-center bg-[#0c1d33] px-6 py-5 max-sm:h-[72px]">
-      <img
-        src="/legalsynq-logo-temp-portal.svg"
-        alt="LegalSynq"
-        className="h-[39.5px] w-[137px] object-contain"
-      />
-    </header>
-  );
-}
-
 function ActivationContent({
   token,
-  data,
+  result,
 }: {
   token: string;
-  data: PublicBuyerPortalData;
+  result: Extract<PublicBuyerPortalResult, { ok: true }>;
 }) {
+  const { data } = result;
+
   return (
     <section
-      className="flex flex-col items-center gap-6 bg-white px-5 py-6 pb-8 max-sm:px-3.5 max-sm:py-[18px]"
+      className="flex flex-col items-center bg-[#fafafa] px-5 pb-12 max-sm:px-3.5"
       aria-label="Activate SynqLien buyer account"
     >
-      <HeroBanner token={token} />
-      {data.account?.hasExistingAccount ? (
-        <ExistingAccountCard loginUrl={data.account.loginUrl || SYNQLIEN_BUYER_LOGIN_URL} />
-      ) : (
-        <PublicBuyerActivationForm token={token} data={data} />
-      )}
-      {data.account?.hasExistingAccount ? null : (
-        <p className="m-0 w-full max-w-[700px] text-center text-sm leading-[1.6] text-[#737373]">
-          Already have platform access?{" "}
-          <a
-            href={data.account?.loginUrl || SYNQLIEN_BUYER_LOGIN_URL}
-            className="cursor-pointer text-[#ee7132] underline underline-offset-2 transition-colors hover:text-[#d85f25]"
-          >
-            Log in
-          </a>{" "}
-          with your existing account.
-        </p>
-      )}
+      <IntroScreen
+        token={token}
+        loginUrl={data.account?.loginUrl || SYNQLIEN_BUYER_LOGIN_URL}
+        hasExistingAccount={data.account?.hasExistingAccount === true}
+      />
     </section>
   );
 }
 
-function ExistingAccountCard({ loginUrl }: { loginUrl: string }) {
+function IntroScreen({
+  token,
+  loginUrl,
+  hasExistingAccount,
+}: {
+  token: string;
+  loginUrl: string;
+  hasExistingAccount: boolean;
+}) {
   return (
-    <section
-      className="flex w-full max-w-[700px] flex-col gap-5 rounded-2xl border border-[#d1fae5] bg-white p-6 shadow-[0_1px_1.5px_rgba(0,0,0,0.1)] max-sm:rounded-[14px]"
-      aria-labelledby="existing-account-title"
-    >
-      <div className="flex items-start gap-4">
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-700">
-          <i className="ri-login-circle-line text-2xl leading-none" aria-hidden="true" />
-        </span>
-        <div className="min-w-0">
-          <h2 id="existing-account-title" className="m-0 text-lg font-extrabold leading-[1.6] tracking-normal text-[#0a0a0a]">
-            Account already exists
-          </h2>
-          <p className="m-0 text-sm leading-[1.6] text-[#737373]">
-            Log in with your existing account to manage offered liens.
+    <section className="flex min-h-screen w-full flex-col items-center justify-center py-12">
+      <div className="flex w-full max-w-[574px] flex-col gap-4 pb-3">
+        <a
+          href={`/selling/public/${encodeURIComponent(token)}`}
+          aria-label="Back to lien offer"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-[#e5e5e5] bg-white text-[#0a0a0a] shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-colors hover:bg-[#f5f5f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132]"
+        >
+          <img
+            src="/figma/synqlien-funding-intro/arrow-left.svg"
+            alt=""
+            className="h-4 w-4"
+          />
+        </a>
+      </div>
+      <div className="flex w-full max-w-[574px] flex-col items-center gap-8">
+        <div className="flex w-full flex-col items-start">
+          <div className="flex w-full items-center justify-center pb-4 pt-3">
+            <div className="border-r border-[#d4d4d4] pr-4">
+              <img
+                src="/figma/synqlien-funding-intro/legalsynq-logo.svg"
+                alt="LegalSynq"
+                className="h-10 w-[141px] object-contain"
+              />
+            </div>
+            <div className="flex h-10 items-center pl-4 text-xl font-normal leading-7 text-black">
+              <span className="font-semibold text-[#0d1e34]">Funding</span>
+              <span className="text-[#ee7132]">Company</span>
+            </div>
+          </div>
+          <div className="flex w-full flex-col gap-4 py-4 text-center">
+            <h1 className="m-0 w-full text-[52px] font-semibold leading-[56px] tracking-normal text-[#0f172a] max-sm:text-[36px] max-sm:leading-[40px]">
+              Review, and manage liens in one place
+            </h1>
+            <p className="m-0 w-full text-base font-normal leading-[1.6] text-[#737373]">
+              A centralized workspace for funding companies to evaluate, and manage medical liens seamlessly.
+            </p>
+          </div>
+          <div className="grid w-full grid-cols-2 gap-4 pb-5 pt-4 max-sm:grid-cols-1">
+            <IntroFeature
+              iconSrc="/figma/synqlien-funding-intro/file-input.svg"
+              title="Manage Offered Liens"
+              description="Review, accept, evaluate, or reject incoming medical lien offers."
+            />
+            <IntroFeature
+              iconSrc="/figma/synqlien-funding-intro/layout-dashboard.svg"
+              title="Portal Overview"
+              description="Track key metrics, including total pending liens, purchased liens, and capital deployed."
+            />
+            <IntroFeature
+              iconSrc="/figma/synqlien-funding-intro/bell-ring.svg"
+              title="Real-Time Notifications"
+              description="Receive instant alerts and stay updated whenever new lien offers or updates require action."
+            />
+            <IntroFeature
+              iconSrc="/figma/synqlien-funding-intro/receipt-text.svg"
+              title="Track Purchases & Capital"
+              description="Monitor active investments, track pending offers, and audit settled payouts in one place."
+            />
+          </div>
+        </div>
+        <div className="flex w-full flex-col items-center gap-4 pt-5">
+          <p className="m-0 text-center text-base leading-[1.6] text-[#737373]">
+            Takes less than 10 minutes <span aria-hidden="true">&bull;</span> Token secure link verified
+          </p>
+          {hasExistingAccount ? (
+            <a
+              href={loginUrl}
+              className="public-portal-primary inline-flex h-[38px] w-full items-center justify-center rounded-[10px] px-4 py-2 text-sm font-medium leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+            >
+              Log In
+            </a>
+          ) : (
+            <a
+              href={`/selling/public/${encodeURIComponent(token)}/activate/register`}
+              className="public-portal-primary inline-flex h-[38px] w-full items-center justify-center overflow-hidden rounded-[10px] text-sm font-medium leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+            >
+              <span className="flex h-full flex-1 items-center justify-center px-4">Get Started</span>
+              <span className="flex h-full w-9 items-center justify-center border-l border-[#f4a076]">
+                <img
+                  src="/figma/synqlien-funding-intro/arrow-right.svg"
+                  alt=""
+                  className="h-4 w-4"
+                />
+              </span>
+            </a>
+          )}
+          <p className="m-0 flex flex-wrap justify-center gap-1 text-center text-base leading-[1.6] text-[#737373]">
+            <span>Already have an activated portal account?</span>
+            <a href={loginUrl} className="font-semibold text-[#ee7132] no-underline hover:underline">
+              Log In
+            </a>
           </p>
         </div>
       </div>
-      <a
-        href={loginUrl}
-        className="public-portal-primary inline-flex h-11 items-center justify-center rounded-[10px] px-4 py-2 text-sm font-semibold leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:shadow-[0_4px_10px_rgba(238,113,50,0.24)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132]"
-      >
-        Log In
-      </a>
     </section>
   );
 }
 
-function HeroBanner({ token }: { token: string }) {
+function IntroFeature({
+  iconSrc,
+  title,
+  description,
+}: {
+  iconSrc: string;
+  title: string;
+  description: string;
+}) {
   return (
-    <section
-      className="relative w-full max-w-[700px] overflow-hidden rounded-2xl bg-[#0d1e34] p-8 text-[#fafafa] shadow-[0_1px_3px_rgba(0,0,0,0.1)] max-sm:rounded-[14px] max-sm:p-6"
-      aria-labelledby="activate-buyer-account-title"
-    >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_86%_36%,rgba(255,255,255,0.12),transparent_25%),linear-gradient(180deg,rgba(12,29,51,0),#0c1d33)] opacity-80" />
-      <div
-        className="absolute right-[-54px] top-7 h-44 w-44 bg-contain bg-center bg-no-repeat"
-        style={{ backgroundImage: 'url("/legalsynq-temp-portal-watermark.svg")' }}
-        aria-hidden="true"
-      />
-      <div className="relative z-10">
-        <div className="mb-2 flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
-          <h1 id="activate-buyer-account-title" className="m-0 text-lg font-extrabold leading-[1.6] tracking-normal">
-            Activate Buyer Account
-          </h1>
-          <a
-            href={`/selling/public/${encodeURIComponent(token)}`}
-            className="public-portal-primary inline-flex h-[38px] cursor-pointer items-center justify-center whitespace-nowrap rounded-[10px] border border-transparent px-4 py-2 text-sm font-semibold leading-[1.6] text-white shadow-[0_1px_2px_rgba(0,0,0,0.1)] transition-colors hover:shadow-[0_4px_10px_rgba(238,113,50,0.28)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ee7132]"
-          >
-            Back to Lien Offer
-          </a>
-        </div>
-        <p className="m-0 max-w-[560px] text-base leading-[1.6] text-white/90">
-          Create your funding company login to manage offered liens, responses,
-          documents, and purchase workflow from your dashboard.
-        </p>
+    <article className="flex min-h-[162px] flex-col items-start rounded-lg bg-white px-4 pb-8 pt-4">
+      <div className="mb-5 flex w-full justify-end">
+        <img src={iconSrc} alt="" className="h-6 w-6" />
       </div>
-    </section>
+      <h2 className="m-0 whitespace-pre-line text-2xl font-medium leading-8 text-[#404040]">
+        {title}
+      </h2>
+      <p className="m-0 mt-5 text-base font-normal leading-[1.6] text-[#404040]">
+        {description}
+      </p>
+    </article>
   );
 }
 
 function LinkState({ error }: { error: PublicBuyerPortalError }) {
   return (
-    <section className="flex min-h-[calc(100vh-80px)] items-center justify-center bg-white p-6 max-sm:min-h-[calc(100vh-72px)]">
+    <section className="flex min-h-screen items-center justify-center bg-[#fafafa] p-6">
       <div className="w-full max-w-[520px] rounded-2xl border border-[#e5e5e5] p-7 text-center shadow-[0_1px_1.5px_rgba(0,0,0,0.1)]">
         <h1 className="m-0 mb-2 text-[22px] font-bold text-[#0a0a0a]">
           {error.title}
