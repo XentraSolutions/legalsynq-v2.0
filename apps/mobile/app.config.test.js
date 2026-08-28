@@ -3,16 +3,62 @@ const {
   deriveAndroidRouteClaims,
   resolveDeepLinkHost,
 } = require('./app.config.helpers');
+const routeRegistry = require('../../shared/contracts/deep-links/routes.json');
+
+function loadExpoConfig(environment) {
+  const originalAppEnvironment = process.env.EXPO_PUBLIC_APP_ENV;
+  const originalDeepLinkHost = process.env.EXPO_PUBLIC_DEEP_LINK_HOST;
+
+  if (environment.EXPO_PUBLIC_APP_ENV === undefined) {
+    delete process.env.EXPO_PUBLIC_APP_ENV;
+  } else {
+    process.env.EXPO_PUBLIC_APP_ENV = environment.EXPO_PUBLIC_APP_ENV;
+  }
+
+  if (environment.EXPO_PUBLIC_DEEP_LINK_HOST === undefined) {
+    delete process.env.EXPO_PUBLIC_DEEP_LINK_HOST;
+  } else {
+    process.env.EXPO_PUBLIC_DEEP_LINK_HOST = environment.EXPO_PUBLIC_DEEP_LINK_HOST;
+  }
+
+  jest.resetModules();
+
+  try {
+    return require('./app.config').expo;
+  } finally {
+    if (originalAppEnvironment === undefined) {
+      delete process.env.EXPO_PUBLIC_APP_ENV;
+    } else {
+      process.env.EXPO_PUBLIC_APP_ENV = originalAppEnvironment;
+    }
+
+    if (originalDeepLinkHost === undefined) {
+      delete process.env.EXPO_PUBLIC_DEEP_LINK_HOST;
+    } else {
+      process.env.EXPO_PUBLIC_DEEP_LINK_HOST = originalDeepLinkHost;
+    }
+
+    jest.resetModules();
+  }
+}
 
 describe('Mobile verified-link Expo configuration', () => {
   it('derives narrow Android route claims from the shared registry', () => {
-    expect(deriveAndroidRouteClaims()).toEqual([
-      { path: '/dashboard' },
-      { pathPrefix: '/deals/' },
-      { pathPrefix: '/contacts/' },
-      { pathPrefix: '/applications/' },
-      { pathPrefix: '/reports/' },
-    ]);
+    const enabledRoutes = routeRegistry.routes.filter((route) => route.enabled);
+
+    expect(deriveAndroidRouteClaims()).toHaveLength(enabledRoutes.length);
+    expect(enabledRoutes).not.toHaveLength(0);
+  });
+
+  it('excludes disabled shared routes from Android claims', () => {
+    expect(
+      deriveAndroidRouteClaims({
+        routes: [
+          { enabled: true, pathTemplate: '/enabled/:id' },
+          { enabled: false, pathTemplate: '/disabled/:id' },
+        ],
+      })
+    ).toEqual([{ pathPrefix: '/enabled/' }]);
   });
 
   it.each(['development', 'qa'])(
@@ -65,6 +111,63 @@ describe('Mobile verified-link Expo configuration', () => {
       autoVerify: true,
     });
     expect(JSON.stringify(config)).not.toContain('links.qa.example.test');
+  });
+
+  it('wires helper output into platform-correct exported Expo configuration', () => {
+    const expoConfig = loadExpoConfig({
+      EXPO_PUBLIC_APP_ENV: 'qa',
+      EXPO_PUBLIC_DEEP_LINK_HOST: 'links.integration.example.test',
+    });
+
+    expect(expoConfig.ios.bundleIdentifier).toBe('com.legalsynq.qa');
+    expect(expoConfig.ios.associatedDomains).toEqual(['applinks:links.integration.example.test']);
+    expect(expoConfig.ios.associatedDomains).not.toEqual(
+      expect.arrayContaining([expect.any(Object)])
+    );
+
+    expect(expoConfig.android.package).toBe('com.legalsynq.qa');
+    const expectedAndroidData = deriveAndroidRouteClaims().map((claim) => ({
+      scheme: 'https',
+      host: 'links.integration.example.test',
+      ...claim,
+    }));
+    expect(expoConfig.android.intentFilters).toEqual([
+      {
+        action: 'VIEW',
+        autoVerify: true,
+        category: ['BROWSABLE', 'DEFAULT'],
+        data: expectedAndroidData,
+      },
+    ]);
+    expect(expoConfig.android.intentFilters).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/^applinks:/)])
+    );
+  });
+
+  it('preserves Production identities in exported Expo configuration', () => {
+    const expoConfig = loadExpoConfig({
+      EXPO_PUBLIC_APP_ENV: 'production',
+      EXPO_PUBLIC_DEEP_LINK_HOST: 'links.production.example.test',
+    });
+
+    expect(expoConfig.ios.bundleIdentifier).toBe('com.legalsynq');
+    expect(expoConfig.android.package).toBe('com.legalsynq');
+    expect(JSON.stringify(expoConfig)).not.toContain('links.integration.example.test');
+  });
+
+  it('safely omits native claims in exported Development config without a host', () => {
+    const expoConfig = loadExpoConfig({ EXPO_PUBLIC_APP_ENV: 'development' });
+
+    expect(expoConfig.ios.bundleIdentifier).toBe('com.legalsynq.qa');
+    expect(expoConfig.ios.associatedDomains).toEqual([]);
+    expect(expoConfig.android.package).toBe('com.legalsynq.qa');
+    expect(expoConfig.android.intentFilters).toEqual([]);
+  });
+
+  it('fails exported Production config without a host instead of falling back', () => {
+    expect(() => loadExpoConfig({ EXPO_PUBLIC_APP_ENV: 'production' })).toThrow(
+      'EXPO_PUBLIC_DEEP_LINK_HOST is required for production Mobile builds.'
+    );
   });
 
   it('fails Production config resolution when the host is missing', () => {
