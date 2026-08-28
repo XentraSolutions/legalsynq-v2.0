@@ -334,13 +334,13 @@ function formatDateTime(value: string | null): string | null {
   if (Number.isNaN(date.getTime())) return value;
 
   const datePart = new Intl.DateTimeFormat("en-US", {
-    timeZone: "UTC",
+    timeZone: "America/Los_Angeles",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(date);
   const timePart = new Intl.DateTimeFormat("en-US", {
-    timeZone: "UTC",
+    timeZone: "America/Los_Angeles",
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",

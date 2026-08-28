@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Notifications;
+using Liens.Api.Serialization;
 using Liens.Application.Interfaces;
 using Liens.Application.Services;
 using Liens.Domain.Entities;
@@ -2374,7 +2375,7 @@ public static class SellingPublicEndpoints
                 ResolveLienCode(view.Lien),
                 view.Lien.Status,
                 view.Lien.SellerStatus,
-                view.AccessLink.NotificationSubmittedAtUtc ?? view.Lien.SubmittedForSaleAtUtc ?? view.AccessLink.CreatedAtUtc,
+                PacificTimeHelper.Convert(view.Lien.SubmittedForSaleAtUtc ?? view.AccessLink.NotificationSubmittedAtUtc ?? view.AccessLink.CreatedAtUtc),
                 view.Lien.ListingVisibility,
                 view.Lien.InitialServiceDate,
                 view.Lien.EndServiceDate,
@@ -2654,7 +2655,7 @@ public static class SellingPublicEndpoints
         string LienCode,
         string Status,
         string? SellerStatus,
-        DateTime SubmittedAtUtc,
+        DateTimeOffset SubmittedAtUtc,
         string? ListingVisibility,
         DateOnly? InitialServiceDate,
         DateOnly? EndServiceDate,
