@@ -15,6 +15,7 @@ const STATUS_STYLES: Record<string, string> = {
   "Pre-Demand":           'bg-[#dbf6e9]   text-[#10c469]   border-green-200',
   DemandSent:            'bg-indigo-50   text-indigo-700  border-indigo-200',
   InNegotiation:         'bg-purple-50   text-purple-700  border-purple-200',
+  Negotiations:          'bg-purple-50   text-purple-700  border-purple-200',
   CaseSettled:           'bg-emerald-50  text-emerald-700 border-emerald-200',
   Closed:                'bg-red-200     text-red-600     border-gray-200',
   Pending:               'bg-[#dbf6e9]   text-yellow-700  border-yellow-200',
@@ -38,6 +39,7 @@ const STATUS_STYLES: Record<string, string> = {
   Rejected:              'bg-red-50      text-red-600     border-red-200',
   Litigation:            'bg-[#dbf6e9]   text-[#10c469]   border-green-200',
   'Litigation (Open)':   'bg-[#dbf6e9]   text-[#10c469]   border-green-200',
+  'Litigation (Pending)': 'bg-[#dbf6e9]   text-[#10c469]   border-green-200',
   'Litigation (Closed)': 'bg-[#dbf6e9]   text-[#10c469]   border-green-200',
 };
 
