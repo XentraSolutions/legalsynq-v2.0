@@ -13,6 +13,7 @@ import type {
   LienColumnDef,
   LienFooterCell,
 } from "@/components/lien/lien-table";
+import Field from "@/components/lien/field";
 
 function formatCurrency(amount: number | null): string {
   if (amount === null || amount === undefined) return "";
@@ -220,7 +221,7 @@ export function SetupReductionForm({
         const computed = isPercent
           ? ((l.originalAmount ?? 0) * val) / 100
           : val;
-        updates[l.id] = Math.min(computed, l.originalAmount ?? 0);
+        updates[l.id] = Math.round((computed ?? 0) * 100) / 100;
       }
     }
     setLienReductions(updates);
@@ -277,6 +278,7 @@ export function SetupReductionForm({
         data: liensToSave.map((l) => ({
           liensId: l.id,
           reductionAmount: Math.round((lienReductions[l.id] ?? 0) * 100) / 100,
+          reductionDate: form.reductionDate,
         })),
       });
       addToast({
@@ -650,49 +652,5 @@ export function SetupReductionForm({
         />
       </div>
     </FormModal>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  error,
-  placeholder,
-  type = "text",
-  required,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  error?: string;
-  placeholder?: string;
-  type?: string;
-  required?: boolean;
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      {type === "date" ? (
-        <DatePicker
-          value={value}
-          onChange={onChange}
-          className={error ? "border-red-300" : undefined}
-          disableFutureDates
-        />
-      ) : (
-        <Input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className={error ? "border-red-300" : undefined}
-        />
-      )}
-      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
-    </div>
   );
 }
