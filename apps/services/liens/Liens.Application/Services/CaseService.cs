@@ -852,14 +852,17 @@ public sealed class CaseService : ICaseService
         Guid caseId,
         CancellationToken ct)
     {
-        var latestLien = (await _lienRepo.GetByCaseIdAsync(tenantId, caseId, ct))
+        var liensByRecency = (await _lienRepo.GetByCaseIdAsync(tenantId, caseId, ct))
             .OrderByDescending(lien => lien.CreatedAtUtc)
             .ThenByDescending(lien => lien.Id)
-            .FirstOrDefault();
-        if (latestLien is null)
+            .ToList();
+        var representativeLien = liensByRecency
+            .FirstOrDefault(lien => LienStatus.Open.Contains(lien.Status))
+            ?? liensByRecency.FirstOrDefault();
+        if (representativeLien is null)
             return (string.Empty, string.Empty);
 
-        var statusLabel = latestLien.Status switch
+        var statusLabel = representativeLien.Status switch
         {
             LienStatus.Cancelled or LienStatus.Declined => "Rejected",
             LienStatus.Settled or LienStatus.Withdrawn => "Closed",
@@ -868,7 +871,7 @@ public sealed class CaseService : ICaseService
         var statusLookup = await _lookupValueService.GetByCodeAsync(
             tenantId,
             LookupCategory.LienStatus,
-            latestLien.Status,
+            representativeLien.Status,
             ct);
 
         return (statusLabel, statusLookup?.Id.ToString() ?? string.Empty);

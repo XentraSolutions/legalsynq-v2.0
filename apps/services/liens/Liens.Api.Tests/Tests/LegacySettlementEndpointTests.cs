@@ -436,6 +436,36 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task GetCaseById_returns_open_lien_status_when_newest_lien_is_closed()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var closedLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CLOSED-LIEN-{Guid.CreateVersion7():N}",
+                LienType.MedicalLien,
+                500m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId);
+            closedLien.SetLegacyMedicalStatus("Closed", SeedHelper.UserId);
+            db.Liens.Add(closedLien);
+            await db.SaveChangesAsync();
+        }
+
+        var caseResponse = await _client.GetAsync($"/api/liens/cases/{SeedHelper.CaseId}");
+        caseResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await caseResponse.Content.ReadAsStringAsync()}");
+
+        var caseBody = await caseResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        caseBody!.RootElement.GetProperty("status").GetString()
+            .Should().Be(CaseStatus.PreDemand);
+        caseBody.RootElement.GetProperty("lienStatus").GetString()
+            .Should().Be("Open");
+    }
+
+    [Fact]
     public async Task GetCaseById_hides_settlement_status_until_all_liens_are_closed()
     {
         Guid settlementStatusId;
