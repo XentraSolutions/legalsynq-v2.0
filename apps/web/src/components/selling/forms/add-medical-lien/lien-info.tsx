@@ -84,12 +84,17 @@ export default function LienInfo(props: LienInfoProps) {
             <CaseSelect
               value={form.caseId}
               onChange={(v) => setForm({ ...form, caseId: v })}
-              disabled={!!lienId}
+              disabled={!!lienId || !!caseId}
             />
             {lienId && (
               <p className="mt-1 text-xs text-gray-500">
                 A lien's case can only be set when it's created — it can't be
                 reassigned afterward.
+              </p>
+            )}
+            {!lienId && caseId && (
+              <p className="mt-1 text-xs text-gray-500">
+                This lien is being added to the case you came from.
               </p>
             )}
           </div>
