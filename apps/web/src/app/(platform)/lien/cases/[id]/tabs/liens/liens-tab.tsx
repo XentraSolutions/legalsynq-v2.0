@@ -169,14 +169,16 @@ export function LiensTab({
     }
   };
 
-  const totalBilling = filtered.reduce(
-    (sum, l) => sum + (Math.round(l.originalAmount ?? 0) * 100) / 100,
-    0,
-  );
-  const totalPurchase = filtered.reduce(
-    (sum, l) => sum + (Math.round(l.purchaseAmount ?? 0) * 100) / 100,
-    0,
-  );
+  const totalBilling =
+    filtered.reduce(
+      (sum, l) => sum + Math.round((l.originalAmount ?? 0) * 100),
+      0,
+    ) / 100;
+  const totalPurchase =
+    filtered.reduce(
+      (sum, l) => sum + Math.round((l.purchaseAmount ?? 0) * 100),
+      0,
+    ) / 100;
 
   const lienRowColumns: ColumnDef<(typeof displayLiens)[number], any>[] = [
     {
