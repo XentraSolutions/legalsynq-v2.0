@@ -83,7 +83,11 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
     [Fact]
     public async Task GetReductionsByCase_returns_only_latest_reduction_per_lien_after_repeated_bulk_posts()
     {
-        foreach (var amount in new[] { 750m, 900m })
+        foreach (var reduction in new[]
+                 {
+                     new { reductionDate = "2099-12-31", amount = 750m },
+                     new { reductionDate = "2020-01-01", amount = 900m },
+                 })
         {
             var createResponse = await _client.PostAsJsonAsync("/service/liens/update/reduction", new
             {
@@ -93,7 +97,8 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
                     new
                     {
                         liensId = SeedHelper.LienId,
-                        reductionAmount = amount,
+                        reductionAmount = reduction.amount,
+                        reduction.reductionDate,
                     },
                 },
             });
@@ -114,6 +119,7 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         reductionsForLien.Should().ContainSingle();
         reductionsForLien[0].GetProperty("amount").GetDecimal().Should().Be(900m);
+        reductionsForLien[0].GetProperty("reductionDate").GetString().Should().Be("2020-01-01");
     }
 
     [Fact]

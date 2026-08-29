@@ -132,7 +132,7 @@ public class LienRepository : ILienRepository
         return (items, totalCount);
     }
 
-    public async Task<(List<Lien> PageItems, List<Lien> AllItems, int TotalCount)> SearchReportAsync(
+    public async Task<List<Lien>> SearchReportAsync(
         Guid tenantId,
         string? search,
         IReadOnlyCollection<string> lienStatuses,
@@ -144,11 +144,11 @@ public class LienRepository : ILienRepository
         bool useSettlementDateForClosedFilter,
         string? isBulk,
         IReadOnlyCollection<Guid> caseIds,
-        int page,
-        int pageSize,
         CancellationToken ct = default)
     {
-        var q = _db.Liens.Where(l => l.TenantId == tenantId);
+        var q = _db.Liens
+            .AsNoTracking()
+            .Where(l => l.TenantId == tenantId);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -265,15 +265,9 @@ public class LienRepository : ILienRepository
             q = q.Where(l => l.CaseId.HasValue && ids.Contains(l.CaseId.Value));
         }
 
-        var ordered = q.OrderByDescending(l => l.CreatedAtUtc);
-        var totalCount = await ordered.CountAsync(ct);
-        var allItems = await ordered.ToListAsync(ct);
-        var pageItems = allItems
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
-
-        return (pageItems, allItems, totalCount);
+        return await q
+            .OrderByDescending(l => l.CreatedAtUtc)
+            .ToListAsync(ct);
     }
 
     public async Task<List<Lien>> GetByCaseIdAsync(Guid tenantId, Guid caseId, CancellationToken ct = default)

@@ -25,6 +25,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
     {
         "lienid",
         "createdate",
+        "createdatutc",
         "fundingcompany",
         "initialservicedate",
         "billingamount",
@@ -399,7 +400,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
             "lienid" => descending
                 ? rows.OrderByDescending(row => row.Lien.LienNumber, StringComparer.OrdinalIgnoreCase)
                 : rows.OrderBy(row => row.Lien.LienNumber, StringComparer.OrdinalIgnoreCase),
-            "createdate" => descending
+            "createdate" or "createdatutc" => descending
                 ? rows.OrderByDescending(row => row.Lien.CreatedAtUtc)
                 : rows.OrderBy(row => row.Lien.CreatedAtUtc),
             "fundingcompany" => descending
@@ -482,7 +483,7 @@ public sealed class SellingDashboardService : ISellingDashboardService
         if (!Tabs.Contains(tab))
             errors["tab"] = ["Tab must be pending, internal, sold, archived, or all."];
         if (!SortFields.Contains(sortBy))
-            errors["sortBy"] = ["SortBy must be lienId, createDate, fundingCompany, initialServiceDate, billingAmount, askAmount, highestBid, or status."];
+            errors["sortBy"] = ["SortBy must be lienId, createDate, createdAtUtc, fundingCompany, initialServiceDate, billingAmount, askAmount, highestBid, or status."];
         if (sortDirection is not "asc" and not "desc")
             errors["sortDirection"] = ["SortDirection must be asc or desc."];
         if (query.Page < 1)

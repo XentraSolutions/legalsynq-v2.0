@@ -161,7 +161,7 @@ public class DIYReportService : IDIYReportService
         var limit = GetReportInt(request, "limit", request.Limit);
         if (limit < 1) limit = 50;
 
-        var reportData = await _lienRepo.SearchReportAsync(
+        var reportLiens = await _lienRepo.SearchReportAsync(
             tenantId,
             search,
             lienStatuses.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
@@ -173,11 +173,9 @@ public class DIYReportService : IDIYReportService
             isCasesReport,
             normalizedBulkFilter,
             filterCaseIds,
-            page,
-            limit,
             ct);
 
-        var caseIds = reportData.AllItems
+        var caseIds = reportLiens
             .Select(l => l.CaseId)
             .Where(id => id.HasValue)
             .Select(id => id!.Value)
@@ -187,10 +185,11 @@ public class DIYReportService : IDIYReportService
             .ToDictionary(caseEntity => caseEntity.Id);
         var servicingItems = await _servicingItemRepo.GetByLienIdsAsync(
             tenantId,
-            reportData.AllItems.Select(lien => lien.Id).Distinct().ToList(),
+            reportLiens.Select(lien => lien.Id).Distinct().ToList(),
+            ["LegacyMedicalCode", "LegacyMedicalFacilityInfo"],
             ct);
         var filteredLiens = ApplyRelationshipFilters(
-            reportData.AllItems,
+            reportLiens,
             casesById,
             servicingItems,
             relationshipFilters);
@@ -237,7 +236,7 @@ public class DIYReportService : IDIYReportService
 
         totalCount = isCasesReport ? reportCasesById.Count : filteredLiens.Count;
         var rowCasesById = isCasesReport
-            ? reportCasesById
+            ? TakeCasePage(reportCasesById, effectivePage, effectiveLimit)
             : pageLiens
                 .Where(lien => lien.CaseId.HasValue && casesById.ContainsKey(lien.CaseId.Value))
                 .Select(lien => lien.CaseId!.Value)
@@ -245,9 +244,15 @@ public class DIYReportService : IDIYReportService
                 .ToDictionary(caseId => caseId, caseId => casesById[caseId]);
 
         var legacyMedicalAmounts = GetLegacyMedicalAmountsByLienId(filteredLiens, servicingItems);
+        var rowLiens = isCasesReport
+            ? filteredLiens
+                .Where(lien => lien.CaseId.HasValue && rowCasesById.ContainsKey(lien.CaseId.Value))
+                .ToList()
+            : pageLiens;
         var rowEnrichment = await GetRowEnrichmentAsync(
             tenantId,
             filteredLiens,
+            rowLiens,
             rowCasesById,
             servicingItems,
             ShouldIncludeTrackingNotes(request),
@@ -256,7 +261,7 @@ public class DIYReportService : IDIYReportService
             ct);
 
         var rows = isCasesReport
-            ? BuildCaseRows(filteredLiens, rowCasesById, legacyMedicalAmounts, rowEnrichment, effectivePage, effectiveLimit)
+            ? BuildCaseRows(filteredLiens, rowCasesById, legacyMedicalAmounts, rowEnrichment)
             : pageLiens.Select(lien => BuildLienRow(lien, rowCasesById, legacyMedicalAmounts, rowEnrichment)).ToList();
 
         var summary = BuildSummary(
@@ -385,6 +390,23 @@ public class DIYReportService : IDIYReportService
         return skip >= liens.Count
             ? []
             : liens.Skip((int)skip).Take(limit).ToList();
+    }
+
+    private static Dictionary<Guid, Case> TakeCasePage(
+        IReadOnlyDictionary<Guid, Case> casesById,
+        int page,
+        int limit)
+    {
+        var skip = (long)(page - 1) * limit;
+        if (skip >= casesById.Count)
+            return [];
+
+        return casesById.Values
+            .OrderByDescending(caseEntity => caseEntity.CreatedAtUtc)
+            .ThenByDescending(caseEntity => caseEntity.Id)
+            .Skip((int)skip)
+            .Take(limit)
+            .ToDictionary(caseEntity => caseEntity.Id);
     }
 
     private static string NormalizeReportType(string? reportType) =>
@@ -605,9 +627,7 @@ public class DIYReportService : IDIYReportService
         IReadOnlyCollection<Lien> liens,
         IReadOnlyDictionary<Guid, Case> casesById,
         IReadOnlyDictionary<Guid, LegacyMedicalAmounts> legacyMedicalAmounts,
-        ReportRowEnrichment enrichment,
-        int page,
-        int limit)
+        ReportRowEnrichment enrichment)
     {
         var liensByCaseId = liens
             .Where(l => l.CaseId.HasValue)
@@ -617,13 +637,7 @@ public class DIYReportService : IDIYReportService
             .OrderByDescending(caseEntity => caseEntity.CreatedAtUtc)
             .ThenByDescending(caseEntity => caseEntity.Id)
             .ToList();
-        var skip = (long)(page - 1) * limit;
-        if (skip >= orderedCases.Count)
-            return [];
-
         return orderedCases
-            .Skip((int)skip)
-            .Take(limit)
             .Select(caseEntity =>
             {
                 var caseLiens = liensByCaseId.GetValueOrDefault(caseEntity.Id, []);
@@ -765,6 +779,7 @@ public class DIYReportService : IDIYReportService
     private async Task<ReportRowEnrichment> GetRowEnrichmentAsync(
         Guid tenantId,
         IReadOnlyCollection<Lien> liens,
+        IReadOnlyCollection<Lien> rowLiens,
         IReadOnlyDictionary<Guid, Case> casesById,
         IReadOnlyCollection<ServicingItem> servicingItems,
         bool includeTrackingNotes,
@@ -773,8 +788,10 @@ public class DIYReportService : IDIYReportService
         CancellationToken ct)
     {
         var lienIds = liens.Select(lien => lien.Id).Distinct().ToList();
+        var rowLienIds = rowLiens.Select(lien => lien.Id).ToHashSet();
         var facilityInfoByLienId = servicingItems
             .Where(item => item.LienId.HasValue &&
+                           rowLienIds.Contains(item.LienId.Value) &&
                            string.Equals(item.TaskType, "LegacyMedicalFacilityInfo", StringComparison.Ordinal))
             .GroupBy(item => item.LienId!.Value)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(item => item.CreatedAtUtc).First());
@@ -782,14 +799,14 @@ public class DIYReportService : IDIYReportService
         var caseMetadataById = casesById.Values
             .ToDictionary(caseEntity => caseEntity.Id, caseEntity => ParseLegacyNoteFields(caseEntity.Notes));
 
-        var facilityIds = new HashSet<Guid>(liens
+        var facilityIds = new HashSet<Guid>(rowLiens
             .Where(lien => lien.FacilityId.HasValue)
             .Select(lien => lien.FacilityId!.Value));
         var contactIds = new HashSet<Guid>();
         var companyIds = new HashSet<Guid>();
         var companyContactPersonIds = new HashSet<Guid>();
 
-        foreach (var lien in liens)
+        foreach (var lien in rowLiens)
         {
             AddGuidIfValid(companyIds, lien.MedicalProviderCompanyId?.ToString());
             AddGuidIfValid(companyIds, lien.MedicalFacilityCompanyId?.ToString());
@@ -807,7 +824,7 @@ public class DIYReportService : IDIYReportService
             AddGuidIfValid(companyContactPersonIds, caseEntity.AttorneyContactPersonId?.ToString());
         }
 
-        foreach (var lien in liens)
+        foreach (var lien in rowLiens)
         {
             if (facilityInfoByLienId.TryGetValue(lien.Id, out var facilityInfo))
             {
@@ -832,8 +849,16 @@ public class DIYReportService : IDIYReportService
                 companyContactPersonIds,
                 ct))
             .ToDictionary(contact => contact.Id);
+        var medicalCodeFieldsByLienId = servicingItems
+            .Where(item => item.LienId.HasValue &&
+                           rowLienIds.Contains(item.LienId.Value) &&
+                           string.Equals(item.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
+            .GroupBy(item => item.LienId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(item => ParseLegacyNoteFields(item.Notes)).ToList());
         var medicalDetailsByLienId = new Dictionary<Guid, MedicalLienReportDetails>();
-        foreach (var lien in liens)
+        foreach (var lien in rowLiens)
         {
             var facilityFields = facilityInfoByLienId.TryGetValue(lien.Id, out var facilityInfo)
                 ? ParseLegacyNoteFields(facilityInfo.Notes)
@@ -852,10 +877,8 @@ public class DIYReportService : IDIYReportService
             contactsById.TryGetValue(providerId ?? Guid.Empty, out var providerContact);
             companiesById.TryGetValue(lien.MedicalProviderCompanyId ?? Guid.Empty, out var providerCompany);
 
-            var codes = servicingItems
-                .Where(item => item.LienId == lien.Id &&
-                               string.Equals(item.TaskType, "LegacyMedicalCode", StringComparison.Ordinal))
-                .Select(item => ParseLegacyNoteFields(item.Notes))
+            var codes = medicalCodeFieldsByLienId
+                .GetValueOrDefault(lien.Id, [])
                 .Select(fields => FirstNonEmpty(
                     fields.GetValueOrDefault("code"),
                     fields.GetValueOrDefault("description")))
@@ -914,7 +937,7 @@ public class DIYReportService : IDIYReportService
                 FormatNullableFlag(caseEntity.MinorComp, fields.GetValueOrDefault("minorComp")));
         }
 
-        var reductions = await _reductionRepo.GetByLienIdsAsync(tenantId, lienIds, ct);
+        var reductions = await _reductionRepo.GetByLienIdsAsync(tenantId, rowLienIds, ct);
         var reductionAmountsByLienId = reductions
             .GroupBy(reduction => reduction.LienId)
             .ToDictionary(

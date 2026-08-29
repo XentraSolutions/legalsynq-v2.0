@@ -1891,6 +1891,92 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.ToTable("liens_LegacyImportRuns", (string)null);
                 });
 
+            modelBuilder.Entity("Liens.Domain.Entities.LegacyUpdateEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("ActorDisplayName")
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<Guid>("CaseId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ImportRunId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("ImportedAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("LegacyId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<long>("LegacySequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("LienId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("SourceSystem")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("SourceTable")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ImportRunId")
+                        .HasDatabaseName("IX_LegacyUpdateEvents_ImportRunId");
+
+                    b.HasIndex("TenantId", "CaseId", "Scope", "OccurredAtUtc", "LegacySequence")
+                        .IsDescending(false, false, false, true, true)
+                        .HasDatabaseName("IX_LegacyUpdateEvents_CaseTimeline");
+
+                    b.HasIndex("TenantId", "LienId", "OccurredAtUtc", "LegacySequence")
+                        .IsDescending(false, false, true, true)
+                        .HasDatabaseName("IX_LegacyUpdateEvents_LienTimeline");
+
+                    b.HasIndex("TenantId", "SourceSystem", "SourceTable", "LegacyId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_LegacyUpdateEvents_Tenant_Source_Table_Key");
+
+                    b.ToTable("liens_LegacyUpdateEvents", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_LegacyUpdateEvents_Scope", "`Scope` IN ('Case', 'Lien')");
+                            t.HasCheckConstraint("CK_LegacyUpdateEvents_ScopeLien", "(`Scope` = 'Case' AND `LienId` IS NULL) OR (`Scope` = 'Lien' AND `LienId` IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Liens.Domain.Entities.Lien", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4425,6 +4511,15 @@ namespace Liens.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ApprovalId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Liens.Domain.Entities.LegacyUpdateEvent", b =>
+                {
+                    b.HasOne("Liens.Domain.Entities.LegacyImportRun", null)
+                        .WithMany()
+                        .HasForeignKey("ImportRunId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Liens.Domain.Entities.Lien", b =>

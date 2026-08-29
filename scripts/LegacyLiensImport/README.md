@@ -45,6 +45,83 @@ $env:LegacySlCoreConnectionString = 'Server=localhost;Database=sl_core_staging;U
 $env:ConnectionStrings__LiensDb = 'Server=localhost;Database=liens_db;User ID=...;Password=...'
 ```
 
+## Import Program 1 update history
+
+The `--import-update-logs` mode is a separate, dry-run-first import for
+`SL_CASE_UPDATE_LOG` and `SL_LIENS_UPDATE_LOG`. It writes append-only
+`liens_LegacyUpdateEvents` plus one `LegacyUpdateEvent` crosswalk per imported
+source row. It does not require core-import lien amount or collision options.
+
+This mode is bound to the frozen dump SHA-256
+`01f5a7a6668d93f8edcd5c287d8357d7eabb7c55d03014c798c4184a4a06d07c`,
+Program `1`, and mapping/import scope `sl-core-update-history-v1`. Before running
+it, apply Liens migration `20260829120000_AddLegacyUpdateEvents` and complete
+exactly one compatible core Program 1 import for the same tenant, organization,
+and source fingerprint.
+
+The controlled staging restore must create a dedicated provenance receipt with:
+
+- `PROVENANCE_KEY = sl-core-update-history-v1`
+- `SOURCE_FINGERPRINT` equal to the frozen fingerprint above
+- `IMPORT_SCOPE = sl-core-update-history-v1`
+- `TIMESTAMP_SEMANTICS = America/Los_Angeles-wall-clock`
+
+Do not replace or reuse the `sl-core-current` receipt. Restore with the MySQL
+session time zone fixed to `+00:00` so timestamp literals remain deterministic.
+The importer also sets its source session to `+00:00`, interprets update-log
+timestamps as Pacific wall-clock values, rejects invalid/ambiguous DST times,
+and validates the 19 embedded UTC anchor notes before importing.
+
+Dry run:
+
+```bash
+dotnet run --project scripts/LegacyLiensImport/LegacyLiensImport.csproj -- \
+  --import-update-logs \
+  --tenant-id <tenant-guid> \
+  --org-id <organization-guid> \
+  --migration-user-id <migration-actor-guid> \
+  --legacy-program 1 \
+  --source-dump <path-to-frozen-dump.sql>
+```
+
+For apply, add `--apply`, `--mapping-manifest`, and
+`--mapping-manifest-signature`. The Identity-signed manifest must bind the
+tenant, organization, actor, Program 1, fingerprint, exact dry-run case/lien
+counts, excluded count, aggregate checksum, approval reference, and
+`approvedAnomalies: ["SL_LIENS_UPDATE_LOG:4891"]`. Both `importScope` and
+`mappingVersion` must be `sl-core-update-history-v1`.
+
+The runner derives every lien event's case from its crosswalk-bound V2 lien;
+blank `LU_CASE_ID` is valid. The approved source mismatch at `LU_ID=4891` and
+eligible rows without a target crosswalk are recorded as redacted exceptions.
+Wrong-entity, changed-hash, missing-target, cross-tenant, cross-organization,
+and unapproved case/lien mismatches block apply. An identical completed apply
+is a no-op only after the runner confirms that no event evidence needs to be
+reinserted. Apply uses set-based revalidation and multi-row event/crosswalk
+inserts in batches of up to 500 inside the target transaction.
+
+For the approved fingerprint, reconciliation must report 2,756 case events and
+15,976 lien events, including exactly 1,280 lien rows with blank `LU_CASE_ID`,
+plus the single approved exclusion `SL_LIENS_UPDATE_LOG:4891`. Action totals are:
+
+- Case: 1,502 `Case Details Update`, 1,186 `Case Created`, and 68
+  `Case Personal Information Update`.
+- Lien: 11,157 `Create`, 2,587 `Create Medical Payee`, 1,870 `Update`,
+  303 `Update Medical Code`, 57 `Update Medical Information`, and 2
+  `Update Medical Payee`.
+
+After apply, run the same dry-run command again. It must report zero inserts,
+the same aggregate checksum, one event and one `LegacyUpdateEvent` crosswalk
+per imported source key, the same approved exception evidence, and no ownership
+violations before the read flag is enabled.
+
+The feature remains hidden after import. Reconcile the printed counts and
+checksum, then enable `LegacyUpdateHistory:Enabled`. Before exposure, the
+reviewed run-bound compensation script
+[`compensate-program-1-update-history-import.sql`](compensate-program-1-update-history-import.sql)
+may remove only that run's events and event crosswalks while retaining run and
+exception evidence. After exposure, disable the feature and repair forward.
+
 ## Restore legacy case and lien creators
 
 For an SL-CORE core import completed before creator names were retained, run

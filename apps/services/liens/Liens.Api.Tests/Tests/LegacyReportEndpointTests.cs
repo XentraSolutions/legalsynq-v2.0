@@ -85,6 +85,86 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
+    public async Task RunReport_paginates_case_rows_without_changing_full_summary_totals()
+    {
+        var prefix = $"LIEN-DIY-CASE-PAGE-{Guid.CreateVersion7():N}"[..34];
+        List<(string CaseNumber, string CaseType)> expectedCases;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var firstCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-PAGE-A-{Guid.CreateVersion7():N}"[..30],
+                "First",
+                "Plaintiff",
+                SeedHelper.UserId,
+                notes: "accidentType=First Type");
+            var secondCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DIY-PAGE-B-{Guid.CreateVersion7():N}"[..30],
+                "Second",
+                "Plaintiff",
+                SeedHelper.UserId,
+                notes: "accidentType=Second Type");
+            var firstLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-A",
+                LienType.MedicalLien,
+                100m,
+                SeedHelper.UserId,
+                caseId: firstCase.Id,
+                isBulk: "N");
+            var secondLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"{prefix}-B",
+                LienType.MedicalLien,
+                200m,
+                SeedHelper.UserId,
+                caseId: secondCase.Id,
+                isBulk: "N");
+
+            db.Cases.AddRange(firstCase, secondCase);
+            db.Liens.AddRange(firstLien, secondLien);
+            await db.SaveChangesAsync();
+
+            expectedCases = new[] { firstCase, secondCase }
+                .OrderByDescending(caseEntity => caseEntity.CreatedAtUtc)
+                .ThenByDescending(caseEntity => caseEntity.Id)
+                .Select(caseEntity => (
+                    caseEntity.CaseNumber,
+                    caseEntity.Id == firstCase.Id ? "First Type" : "Second Type"))
+                .ToList();
+        }
+
+        for (var page = 1; page <= expectedCases.Count; page++)
+        {
+            var response = await _client.PostAsJsonAsync("/report/diy", new
+            {
+                reportType = "CASES",
+                search = prefix,
+                isBulk = "N",
+                columns = new[] { "case_id", "case_type" },
+                page,
+                limit = 1,
+            });
+            response.StatusCode.Should().Be(HttpStatusCode.OK,
+                $"Body: {await response.Content.ReadAsStringAsync()}");
+
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            payload.RootElement.GetProperty("totalCount").GetInt32().Should().Be(2);
+            payload.RootElement.GetProperty("summaryTotals").GetProperty("totalCases").GetInt32().Should().Be(2);
+            var row = payload.RootElement.GetProperty("data").EnumerateArray().Single();
+            row.GetProperty("case_id").GetString().Should().Be(expectedCases[page - 1].CaseNumber);
+            row.GetProperty("case_type").GetString().Should().Be(expectedCases[page - 1].CaseType);
+        }
+    }
+
+    [Fact]
     public async Task RunReport_treats_the_ui_N_bulk_sentinel_as_no_filter()
     {
         string nonBulkLienNumber;

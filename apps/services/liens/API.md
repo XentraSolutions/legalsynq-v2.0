@@ -1412,6 +1412,20 @@ The response uses the legacy envelope `{ isSuccess, message, data }`. `data` is 
 
 `POST /api/liens/cases/add-note` and `POST /api/liens/cases/get-notes` are the separate Feed-note routes. Feed notes are shown only in the case Feed; they are not returned by this case-notes endpoint or by case-update history.
 
+When `LegacyUpdateHistory:Enabled` is true, `POST /api/liens/cases/case-updates/v3`
+also merges imported Program 1 case-update events and
+`POST /api/liens/cases/liens-updates/v3` merges imported lien-update events.
+Global ordering is timestamp descending, native before imported on an exact
+timestamp tie, then stable source sequence/ID descending. Counts and pagination
+cover all enabled sources. Timeline requests are limited to 200 rows per page
+and the first 25,000 rows; larger windows return `400`. Imported case rows retain the existing wire fields:
+`note` repeats `description`, `category` is `legacy`, `isPinned` and `isEdited`
+are false, `created` equals `timestamp`, `createdBy`/`updatedBy` contain the
+legacy actor or an empty string, and `updated` is empty. The known `ÔåÆ` token
+is rendered as `→`; other source text is unchanged. With the flag disabled,
+both endpoints retain native-only behavior. Case updates return a successful
+empty result; lien updates return `404` when every enabled source is empty.
+
 ---
 
 ### POST `/api/liens/cases/dashboard/deployed` and `/api/liens/cases/dashboard/cash-received`
@@ -1426,7 +1440,7 @@ The dashboard Total Lien Report, including its status chart and totals, excludes
 
 Compatibility alias: `GET /api/liens/cases/payoff-qoute/{caseId}`.
 
-Returns the latest payoff statement URL for the case. If no payoff document exists, the service generates a payoff PDF from the case and its open servicing liens, uploads it to the Documents service as a case document, records `LegacyCaseDocument` metadata with legacy type ID `14`, and returns the uploaded document URL.
+Returns the latest payoff statement URL for the case. If no payoff document exists, the service generates a payoff PDF from the case and its open servicing liens, uploads it to the Documents service as a case document, and records `LegacyCaseDocument` metadata with legacy type ID `14`. Before returning success, the service waits briefly for the Documents security scan to report `CLEAN`; terminal scan outcomes remain unavailable rather than returning a URL that the frontend cannot open.
 
 **Response:** `200 OK`
 
@@ -2137,8 +2151,8 @@ Export all matching active, top-level contacts as a Base64-encoded CSV. The defa
 Base path: `/api/liens/settlement/reductions`
 
 `GET /case/{caseId}` returns only the latest canonical reduction for each lien,
-ordered by reduction date and then creation time. `GET /lien/{lienId}` returns
-the lien's canonical reduction history.
+selected by the most recent persisted update rather than the business reduction
+date. `GET /lien/{lienId}` returns the lien's canonical reduction history.
 For a lien without a canonical reduction, the response also exposes preserved
 SL-CORE settlement metadata containing both a valid `reductionAmount` and an
 explicit `SLS_REDUCTION_DATE`. Historical source rows without a reduction date

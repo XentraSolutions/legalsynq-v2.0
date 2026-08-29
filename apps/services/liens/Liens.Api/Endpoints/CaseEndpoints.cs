@@ -11,8 +11,10 @@ using Liens.Domain.Entities;
 using Liens.Domain.Enums;
 using Liens.Api.Serialization;
 using Liens.Infrastructure.Persistence;
+using Liens.Infrastructure.Options;
 using ManualMedicalCodeEntity = Liens.Domain.Entities.ManualMedicalCode;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using System.Text;
 using System.Globalization;
 using System.Text.Json;
@@ -25,6 +27,8 @@ namespace Liens.Api.Endpoints;
 public static class CaseEndpoints
 {
     private const string LegacyMetadataMarker = "[legacy-meta]";
+    private const int LegacyTimelineMaximumPageSize = 200;
+    private const int LegacyTimelineMaximumWindow = 25_000;
     private const string MedicareProcedureLookupClientName = "MedicareProcedureLookup";
     private const string MedicareProcedureLookupApiKey = "1iuNYl3IYBHTSjmn34m0XOLLqfm1nrmz";
     private const string MedicareProcedureLookupAmaLicense = "b733fd32-ee85-4174-9ab1-e09ec14048bb";
@@ -40,6 +44,35 @@ public static class CaseEndpoints
         public string? FirstName { get; init; }
         public string? LastName { get; init; }
     }
+
+    private sealed record LegacyCaseTimelineItem(
+        string Id,
+        string CaseId,
+        string Action,
+        string Description,
+        DateTime SortAt,
+        int SourceRank,
+        long LegacySequence,
+        string Note,
+        string Category,
+        bool IsPinned,
+        bool IsEdited,
+        DateTime CreatedAt,
+        string CreatedBy,
+        DateTime? UpdatedAt,
+        string UpdatedBy);
+
+    private sealed record LegacyLienTimelineItem(
+        string Id,
+        string CaseId,
+        string LienId,
+        string Action,
+        string Description,
+        string UpdatedBy,
+        Guid? UpdatedByUserId,
+        DateTime SortAt,
+        int SourceRank,
+        long LegacySequence);
 
     private sealed record LegacyCaseCsvSource(
         Guid OrgId,
@@ -5443,7 +5476,8 @@ public static class CaseEndpoints
 
     private static async Task<IResult> GetCaseUpdatesV3Legacy(
         LegacyCaseUpdatesV3Request req,
-        ILienCaseNoteService caseNoteService,
+        LiensDbContext db,
+        IOptions<LegacyUpdateHistoryOptions> historyOptions,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
@@ -5458,38 +5492,99 @@ public static class CaseEndpoints
             });
         }
 
-        var notes = await caseNoteService.GetNotesAsync(tenantId, caseId, ct);
-        var ordered = notes
-            .Where(n =>
-                string.Equals(n.Category, CaseNoteCategory.Internal, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(n.Category, CaseNoteCategory.CaseCreated, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(n => n.UpdatedAtUtc ?? n.CreatedAtUtc)
-            .ThenByDescending(n => n.Id)
-            .ToList();
+        if (!TryGetTimelineWindow(req.Page, req.Limit, out var page, out var limit, out var offset, out var fetchCount))
+            return LegacyTimelinePaginationError();
 
-        var page = req.Page < 1 ? 1 : req.Page;
-        var limit = req.Limit < 1 ? 10 : req.Limit;
+        var nativeQuery = db.LienCaseNotes
+            .AsNoTracking()
+            .Where(note => note.TenantId == tenantId
+                && note.CaseId == caseId
+                && !note.IsDeleted
+                && (note.Category == CaseNoteCategory.Internal || note.Category == CaseNoteCategory.CaseCreated));
+        var nativeCount = await nativeQuery.CountAsync(ct);
+        var nativeNotes = await nativeQuery
+            .OrderByDescending(note => note.UpdatedAtUtc ?? note.CreatedAtUtc)
+            .ThenByDescending(note => note.Id)
+            .Take(fetchCount)
+            .ToListAsync(ct);
 
-        var data = ordered
-            .Skip((page - 1) * limit)
-            .Take(limit)
-            .Select(n => new
-            {
-                id = n.Id.ToString(),
-                caseId = n.CaseId.ToString(),
-                action = string.Equals(n.Category, CaseNoteCategory.Internal, StringComparison.OrdinalIgnoreCase)
+        var timeline = nativeNotes.Select(note =>
+        {
+            var description = LegacyCaseUpdateCompatibility.NormalizeDescription(note.Content, note.Category);
+            return new LegacyCaseTimelineItem(
+                note.Id.ToString(),
+                note.CaseId.ToString(),
+                string.Equals(note.Category, CaseNoteCategory.Internal, StringComparison.OrdinalIgnoreCase)
                     ? "Case Details Update"
-                    : string.IsNullOrWhiteSpace(n.Category) ? "CaseNote" : n.Category,
-                description = LegacyCaseUpdateCompatibility.NormalizeDescription(n.Content, n.Category),
-                timestamp = FormatLegacyTimestamp(n.UpdatedAtUtc ?? n.CreatedAtUtc),
-                note = LegacyCaseUpdateCompatibility.NormalizeDescription(n.Content, n.Category),
-                category = n.Category,
-                isPinned = n.IsPinned,
-                isEdited = n.IsEdited,
-                created = FormatLegacyTimestamp(n.CreatedAtUtc),
-                createdBy = n.CreatedByName,
-                updated = n.UpdatedAtUtc.HasValue ? FormatLegacyTimestamp(n.UpdatedAtUtc.Value) : string.Empty,
-                updatedBy = n.CreatedByName,
+                    : string.IsNullOrWhiteSpace(note.Category) ? "CaseNote" : note.Category,
+                description,
+                note.UpdatedAtUtc ?? note.CreatedAtUtc,
+                0,
+                0,
+                description,
+                note.Category,
+                note.IsPinned,
+                note.IsEdited,
+                note.CreatedAtUtc,
+                note.CreatedByName,
+                note.UpdatedAtUtc,
+                note.CreatedByName);
+        }).ToList();
+
+        var importedCount = 0;
+        if (historyOptions.Value.Enabled)
+        {
+            var importedQuery = db.LegacyUpdateEvents
+                .AsNoTracking()
+                .Where(update => update.TenantId == tenantId
+                    && update.CaseId == caseId
+                    && update.Scope == LegacyUpdateEvent.CaseScope);
+            importedCount = await importedQuery.CountAsync(ct);
+            var imported = await importedQuery
+                .OrderByDescending(update => update.OccurredAtUtc)
+                .ThenByDescending(update => update.LegacySequence)
+                .Take(fetchCount)
+                .ToListAsync(ct);
+            timeline.AddRange(imported.Select(update => new LegacyCaseTimelineItem(
+                update.Id.ToString(),
+                update.CaseId.ToString(),
+                update.Action,
+                NormalizeLegacyUpdateDescription(update.Description),
+                update.OccurredAtUtc,
+                1,
+                update.LegacySequence,
+                NormalizeLegacyUpdateDescription(update.Description),
+                "legacy",
+                false,
+                false,
+                update.OccurredAtUtc,
+                update.ActorDisplayName ?? string.Empty,
+                null,
+                update.ActorDisplayName ?? string.Empty)));
+        }
+
+        var data = timeline
+            .OrderByDescending(item => item.SortAt)
+            .ThenBy(item => item.SourceRank)
+            .ThenByDescending(item => item.LegacySequence)
+            .ThenByDescending(item => item.Id, StringComparer.Ordinal)
+            .Skip(offset)
+            .Take(limit)
+            .Select(item => new
+            {
+                id = item.Id,
+                caseId = item.CaseId,
+                action = item.Action,
+                description = item.Description,
+                timestamp = FormatLegacyTimestamp(item.SortAt),
+                note = item.Note,
+                category = item.Category,
+                isPinned = item.IsPinned,
+                isEdited = item.IsEdited,
+                created = FormatLegacyTimestamp(item.CreatedAt),
+                createdBy = item.CreatedBy,
+                updated = item.UpdatedAt.HasValue ? FormatLegacyTimestamp(item.UpdatedAt.Value) : string.Empty,
+                updatedBy = item.UpdatedBy,
             })
             .ToList();
 
@@ -5498,7 +5593,7 @@ public static class CaseEndpoints
             isSuccess = true,
             message = "Case updates retrieved successfully.",
             data,
-            totalCount = ordered.Count,
+            totalCount = nativeCount + importedCount,
             page,
             limit,
         });
@@ -5506,8 +5601,8 @@ public static class CaseEndpoints
 
     private static async Task<IResult> GetLiensUpdatesV3Legacy(
         LegacyLiensUpdatesV3Request req,
-        ILienStatusHistoryRepository lienStatusHistoryRepo,
-        IServicingItemService servicingItemService,
+        LiensDbContext db,
+        IOptions<LegacyUpdateHistoryOptions> historyOptions,
         IHttpClientFactory httpClientFactory,
         HttpContext httpContext,
         ICurrentRequestContext ctx,
@@ -5524,72 +5619,81 @@ public static class CaseEndpoints
             });
         }
 
-        const int fetchPageSize = 200;
+        if (!TryGetTimelineWindow(req.Page, req.Limit, out var page, out var limit, out var offset, out var fetchCount))
+            return LegacyTimelinePaginationError();
 
-        var statusHistory = await lienStatusHistoryRepo.GetByCaseIdAsync(tenantId, caseId, ct);
-        var updatedByNames = await ResolveLienHistoryUserNamesAsync(
-            statusHistory.Select(item => item.ChangedByUserId),
-            httpClientFactory,
-            httpContext.Request.Headers.Authorization.ToString(),
-            ct);
+        var statusQuery = db.LienStatusHistories
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.CaseId == caseId);
+        var servicingQuery = db.ServicingItems
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.CaseId == caseId && item.LienId != null);
+        var statusCount = await statusQuery.CountAsync(ct);
+        var servicingCount = await servicingQuery.CountAsync(ct);
+        var statusHistory = await statusQuery
+            .OrderByDescending(item => item.ChangedAtUtc)
+            .ThenByDescending(item => item.Id)
+            .Take(fetchCount)
+            .ToListAsync(ct);
+        var servicingItems = await servicingQuery
+            .OrderByDescending(item => item.UpdatedAtUtc)
+            .ThenByDescending(item => item.Id)
+            .Take(fetchCount)
+            .ToListAsync(ct);
 
-        var servicingItems = new List<ServicingItemResponse>();
-        var servicingPage = 1;
-        while (true)
-        {
-            var chunk = await servicingItemService.SearchAsync(
-                tenantId,
-                search: null,
-                status: null,
-                priority: null,
-                assignedTo: null,
-                caseId: caseId,
-                lienId: null,
-                page: servicingPage,
-                pageSize: fetchPageSize,
-                ct);
-
-            if (chunk.Items.Count == 0)
-                break;
-
-            servicingItems.AddRange(chunk.Items);
-
-            if (servicingItems.Count >= chunk.TotalCount)
-                break;
-
-            servicingPage++;
-        }
-
-        var combined = statusHistory
-            .Select(item => new
-            {
-                id = item.Id.ToString(),
-                caseId = caseId.ToString(),
-                lienId = item.LienId.ToString(),
-                action = "LienStatus",
-                description = item.Description,
-                updatedBy = updatedByNames.GetValueOrDefault(item.ChangedByUserId, string.Empty),
-                timestamp = FormatLegacyTimestamp(item.ChangedAtUtc),
-                sortAt = item.ChangedAtUtc,
-            })
-            .Concat(
-                servicingItems
-                    .Where(i => i.LienId.HasValue)
-                    .Select(i => new
-                    {
-                        id = i.Id.ToString(),
-                        caseId = i.CaseId?.ToString() ?? caseId.ToString(),
-                        lienId = i.LienId!.Value.ToString(),
-                        action = i.TaskType,
-                        description = string.IsNullOrWhiteSpace(i.Resolution) ? i.Description : i.Resolution,
-                        updatedBy = i.AssignedTo,
-                        timestamp = FormatLegacyTimestamp(i.UpdatedAtUtc),
-                        sortAt = i.UpdatedAtUtc,
-                    }))
-            .OrderByDescending(i => i.sortAt)
+        var combined = statusHistory.Select(item => new LegacyLienTimelineItem(
+                item.Id.ToString(),
+                caseId.ToString(),
+                item.LienId.ToString(),
+                "LienStatus",
+                item.Description,
+                string.Empty,
+                item.ChangedByUserId,
+                item.ChangedAtUtc,
+                0,
+                0))
+            .Concat(servicingItems.Select(item => new LegacyLienTimelineItem(
+                item.Id.ToString(),
+                item.CaseId?.ToString() ?? caseId.ToString(),
+                item.LienId!.Value.ToString(),
+                item.TaskType,
+                string.IsNullOrWhiteSpace(item.Resolution) ? item.Description : item.Resolution,
+                item.AssignedTo,
+                null,
+                item.UpdatedAtUtc,
+                0,
+                0)))
             .ToList();
 
-        if (combined.Count == 0)
+        var importedCount = 0;
+        if (historyOptions.Value.Enabled)
+        {
+            var importedQuery = db.LegacyUpdateEvents
+                .AsNoTracking()
+                .Where(update => update.TenantId == tenantId
+                    && update.CaseId == caseId
+                    && update.Scope == LegacyUpdateEvent.LienScope);
+            importedCount = await importedQuery.CountAsync(ct);
+            var imported = await importedQuery
+                .OrderByDescending(update => update.OccurredAtUtc)
+                .ThenByDescending(update => update.LegacySequence)
+                .Take(fetchCount)
+                .ToListAsync(ct);
+            combined.AddRange(imported.Select(update => new LegacyLienTimelineItem(
+                update.Id.ToString(),
+                update.CaseId.ToString(),
+                update.LienId!.Value.ToString(),
+                update.Action,
+                NormalizeLegacyUpdateDescription(update.Description),
+                update.ActorDisplayName ?? string.Empty,
+                null,
+                update.OccurredAtUtc,
+                1,
+                update.LegacySequence)));
+        }
+
+        var totalCount = statusCount + servicingCount + importedCount;
+        if (totalCount == 0)
         {
             return Results.NotFound(new
             {
@@ -5598,21 +5702,31 @@ public static class CaseEndpoints
             });
         }
 
-        var page = req.Page < 1 ? 1 : req.Page;
-        var limit = req.Limit < 1 ? 10 : req.Limit;
-
-        var data = combined
-            .Skip((page - 1) * limit)
+        var selected = combined
+            .OrderByDescending(item => item.SortAt)
+            .ThenBy(item => item.SourceRank)
+            .ThenByDescending(item => item.LegacySequence)
+            .ThenByDescending(item => item.Id, StringComparer.Ordinal)
+            .Skip(offset)
             .Take(limit)
+            .ToList();
+        var updatedByNames = await ResolveLienHistoryUserNamesAsync(
+            selected.Where(item => item.UpdatedByUserId.HasValue).Select(item => item.UpdatedByUserId!.Value),
+            httpClientFactory,
+            httpContext.Request.Headers.Authorization.ToString(),
+            ct);
+        var data = selected
             .Select(i => new
             {
-                i.id,
-                i.caseId,
-                i.lienId,
-                i.action,
-                i.description,
-                i.updatedBy,
-                i.timestamp,
+                id = i.Id,
+                caseId = i.CaseId,
+                lienId = i.LienId,
+                action = i.Action,
+                description = i.Description,
+                updatedBy = i.UpdatedByUserId.HasValue
+                    ? updatedByNames.GetValueOrDefault(i.UpdatedByUserId.Value, string.Empty)
+                    : i.UpdatedBy,
+                timestamp = FormatLegacyTimestamp(i.SortAt),
             })
             .ToList();
 
@@ -5621,11 +5735,43 @@ public static class CaseEndpoints
             isSuccess = true,
             message = "Liens updates retrieved successfully.",
             data,
-            totalCount = combined.Count,
+            totalCount,
             page,
             limit,
         });
     }
+
+    private static bool TryGetTimelineWindow(
+        int requestedPage,
+        int requestedLimit,
+        out int page,
+        out int limit,
+        out int offset,
+        out int fetchCount)
+    {
+        page = requestedPage < 1 ? 1 : requestedPage;
+        limit = requestedLimit < 1 ? 10 : requestedLimit;
+        var requestedWindow = (long)page * limit;
+        if (limit > LegacyTimelineMaximumPageSize || requestedWindow > LegacyTimelineMaximumWindow)
+        {
+            offset = 0;
+            fetchCount = 0;
+            return false;
+        }
+
+        offset = (page - 1) * limit;
+        fetchCount = (int)requestedWindow;
+        return true;
+    }
+
+    private static IResult LegacyTimelinePaginationError() => Results.BadRequest(new
+    {
+        isSuccess = false,
+        message = $"Error: Pagination is limited to {LegacyTimelineMaximumPageSize} rows per page and the first {LegacyTimelineMaximumWindow:N0} timeline rows.",
+    });
+
+    private static string NormalizeLegacyUpdateDescription(string? description) =>
+        (description ?? string.Empty).Replace("ÔåÆ", "→", StringComparison.Ordinal);
 
     private static async Task<IReadOnlyDictionary<Guid, string>> ResolveLienHistoryUserNamesAsync(
         IEnumerable<Guid> userIds,

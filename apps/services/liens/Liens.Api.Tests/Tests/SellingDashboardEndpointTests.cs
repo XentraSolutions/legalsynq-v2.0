@@ -407,6 +407,27 @@ public class SellingDashboardEndpointTests : IClassFixture<LiensApiFactory>, IAs
         body!.Items.Select(item => item.LienId).Should().Equal(newerLien.Id, olderLien.Id);
     }
 
+    [Theory]
+    [InlineData("createDate")]
+    [InlineData("createdAtUtc")]
+    public async Task Lien_list_supports_creation_timestamp_sort_aliases(string sortBy)
+    {
+        var fundingCompanyId = Guid.CreateVersion7();
+        var olderLien = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Pending, 1_000m, 800m, 0m);
+        var newerLien = CreateDashboardLien(fundingCompanyId, SellingLienStatus.Pending, 2_000m, 1_600m, 0m);
+        SetCreatedAtUtc(olderLien, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        SetCreatedAtUtc(newerLien, new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc));
+        await SeedDashboardLiensAsync(db => db.Liens.AddRange(olderLien, newerLien));
+
+        var response = await _client.GetAsync(
+            $"/api/liens/selling/liens?tab=pending&fundingCompanyId={fundingCompanyId}&sortBy={sortBy}&sortDirection=asc");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var body = await response.Content.ReadFromJsonAsync<SellingLienListResponse>();
+        body.Should().NotBeNull();
+        body!.Items.Select(item => item.LienId).Should().Equal(olderLien.Id, newerLien.Id);
+    }
+
     [Fact]
     public async Task Lien_list_filters_rows_and_total_count_by_case_id()
     {

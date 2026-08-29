@@ -46,11 +46,11 @@ public class SettlementService : ISettlementService
         return reductions
             .GroupBy(reduction => reduction.LienId)
             .Select(group => group
-                .OrderByDescending(reduction => reduction.ReductionDate)
+                .OrderByDescending(reduction => reduction.UpdatedAtUtc)
                 .ThenByDescending(reduction => reduction.CreatedAtUtc)
                 .ThenByDescending(reduction => reduction.Id)
                 .First())
-            .OrderByDescending(reduction => reduction.ReductionDate)
+            .OrderByDescending(reduction => reduction.UpdatedAtUtc)
             .ThenByDescending(reduction => reduction.CreatedAtUtc)
             .ThenByDescending(reduction => reduction.Id)
             .ToList();

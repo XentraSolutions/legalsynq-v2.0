@@ -31,16 +31,20 @@ public class ServicingItemRepository : IServicingItemRepository
     public async Task<List<ServicingItem>> GetByLienIdsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> lienIds,
+        IReadOnlyCollection<string> taskTypes,
         CancellationToken ct = default)
     {
-        if (lienIds.Count == 0)
+        if (lienIds.Count == 0 || taskTypes.Count == 0)
             return [];
 
         var ids = lienIds.ToList();
+        var types = taskTypes.ToList();
         return await _db.ServicingItems
+            .AsNoTracking()
             .Where(s => s.TenantId == tenantId &&
                         s.LienId.HasValue &&
-                        ids.Contains(s.LienId.Value))
+                        ids.Contains(s.LienId.Value) &&
+                        types.Contains(s.TaskType))
             .ToListAsync(ct);
     }
 

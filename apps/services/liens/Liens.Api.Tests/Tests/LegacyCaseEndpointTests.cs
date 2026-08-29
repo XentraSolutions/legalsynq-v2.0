@@ -1610,6 +1610,7 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         upload.Length.Should().BeGreaterThan(0);
         body.RootElement.GetProperty("base64").GetString()
             .Should().Be(Convert.ToBase64String(upload.Content));
+        StubDocumentsServiceHandler.GetMetadataRequestCount(upload.DocumentId).Should().Be(2);
 
         using var verifyScope = _factory.Services.CreateScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();

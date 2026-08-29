@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json;
 using BuildingBlocks.Authentication.ServiceTokens;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
@@ -17,6 +19,8 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
     private const string DocumentsServiceAudience = "documents-service";
     private const string PayoffNavy = "#0B2D52";
     private const string PayoffBody = "#555667";
+    private const int DocumentScanPollAttempts = 20;
+    private static readonly TimeSpan DocumentScanPollInterval = TimeSpan.FromMilliseconds(250);
     private static readonly Guid LegacyFallbackDocumentTypeId =
         Guid.Parse("00000000-0000-0000-0000-000000000001");
 
@@ -68,9 +72,29 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
             ct);
         var payoffStatementTypeId = payoffStatementType?.Id.ToString();
 
-        var existing = await FindExistingPayoffDocumentAsync(tenantId, actingUserId, caseId, payoffStatementTypeId, ct);
+        var existing = await FindExistingPayoffDocumentAsync(tenantId, caseId, payoffStatementTypeId, ct);
         if (existing is not null)
-            return PayoffQuoteResult.Success(existing.Url, existing.Base64);
+        {
+            var existingBase64 = string.Empty;
+            if (existing.DocumentId.HasValue)
+            {
+                var isClean = await WaitForDocumentCleanAsync(
+                    tenantId,
+                    actingUserId,
+                    existing.DocumentId.Value,
+                    ct);
+                if (!isClean)
+                    return PayoffQuoteResult.Unavailable();
+
+                existingBase64 = await TryReadDocumentBase64Async(
+                    tenantId,
+                    actingUserId,
+                    existing.DocumentId.Value,
+                    ct);
+            }
+
+            return PayoffQuoteResult.Success(existing.Url, existingBase64);
+        }
 
         var liens = await GetOpenServicingLiensAsync(tenantId, caseId, ct);
         var payoffLines = await BuildPayoffLinesAsync(tenantId, liens, ct);
@@ -119,12 +143,22 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
             },
             ct);
 
+        if (upload.DocumentId.HasValue)
+        {
+            var isClean = await WaitForDocumentCleanAsync(
+                tenantId,
+                actingUserId,
+                upload.DocumentId.Value,
+                ct);
+            if (!isClean)
+                return PayoffQuoteResult.Unavailable();
+        }
+
         return PayoffQuoteResult.Success(upload.Url, base64);
     }
 
     private async Task<ExistingPayoffDocument?> FindExistingPayoffDocumentAsync(
         Guid tenantId,
-        Guid actingUserId,
         Guid caseId,
         string? payoffStatementTypeId,
         CancellationToken ct)
@@ -156,12 +190,7 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
                     ResolveDocumentId(fields)))
                 .FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate.Url));
             if (document is not null)
-            {
-                var base64 = document.DocumentId.HasValue
-                    ? await TryReadDocumentBase64Async(tenantId, actingUserId, document.DocumentId.Value, ct)
-                    : string.Empty;
-                return document with { Base64 = base64 };
-            }
+                return document;
 
             if (result.Items.Count == 0 || page * pageSize >= result.TotalCount)
                 return null;
@@ -589,6 +618,87 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
         }
     }
 
+    internal async Task<bool> WaitForDocumentCleanAsync(
+        Guid tenantId,
+        Guid actingUserId,
+        Guid documentId,
+        CancellationToken ct)
+    {
+        var client = _httpClientFactory.CreateClient("DocumentsService");
+
+        for (var attempt = 1; attempt <= DocumentScanPollAttempts; attempt++)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"/documents/{documentId}");
+                ApplyDocumentsAuthorization(request, tenantId, actingUserId);
+
+                using var response = await client.SendAsync(request, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    await using var stream = await response.Content.ReadAsStreamAsync(ct);
+                    using var payload = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+                    if (!payload.RootElement.TryGetProperty("data", out var data) ||
+                        !data.TryGetProperty("scanStatus", out var scanStatusElement))
+                    {
+                        _logger.LogWarning(
+                            "Documents service omitted scan status for payoff document {DocumentId}",
+                            documentId);
+                        return false;
+                    }
+
+                    var scanStatus = scanStatusElement.GetString();
+                    if (string.Equals(scanStatus, "CLEAN", StringComparison.OrdinalIgnoreCase))
+                        return true;
+
+                    if (!string.Equals(scanStatus, "PENDING", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogWarning(
+                            "Payoff document {DocumentId} cannot be accessed because its scan status is {ScanStatus}",
+                            documentId,
+                            scanStatus);
+                        return false;
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Unable to read scan status for payoff document {DocumentId}: Documents service returned {StatusCode}",
+                        documentId,
+                        response.StatusCode);
+
+                    if ((int)response.StatusCode < 500 && response.StatusCode != HttpStatusCode.TooManyRequests)
+                        return false;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex,
+                    "Documents service returned invalid scan metadata for payoff document {DocumentId}",
+                    documentId);
+                return false;
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex,
+                    "Unable to read scan status for payoff document {DocumentId}",
+                    documentId);
+            }
+
+            if (attempt < DocumentScanPollAttempts)
+                await Task.Delay(DocumentScanPollInterval, ct);
+        }
+
+        _logger.LogWarning(
+            "Timed out waiting for payoff document {DocumentId} to complete its security scan",
+            documentId);
+        return false;
+    }
+
     private void ApplyDocumentsAuthorization(HttpRequestMessage request, Guid tenantId, Guid actorUserId)
     {
         if (!_serviceTokenIssuer.IsConfigured)
@@ -691,10 +801,7 @@ public sealed class PayoffQuoteService : IPayoffQuoteService
         return null;
     }
 
-    private sealed record ExistingPayoffDocument(string Url, Guid? DocumentId)
-    {
-        public string Base64 { get; init; } = string.Empty;
-    }
+    private sealed record ExistingPayoffDocument(string Url, Guid? DocumentId);
 
     private sealed record PayoffQuoteLine(string MedicalFacility, string DateOfService, decimal Amount);
 }

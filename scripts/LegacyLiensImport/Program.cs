@@ -18,6 +18,9 @@ internal static class LegacyLiensImportProgram
 
     public static async Task<int> RunAsync(string[] args)
     {
+        if (args.Any(arg => arg == "--import-update-logs"))
+            return await UpdateHistoryImport.RunAsync(args);
+
         if (args.Any(arg => arg is "--backfill-case-relationships" or "--backfill-v3-report-fields"))
             return await CaseRelationshipBackfill.RunAsync(args);
 
@@ -167,6 +170,11 @@ Relationship repair:
                                   lien-facility repair.
                                   Use --backfill-case-relationships --help for
                                   its required arguments and dry-run/apply flow.
+
+Update history:
+  --import-update-logs            Imports Program 1 case and lien update logs.
+                                  This mode has separate options and approval rules;
+                                  run with --import-update-logs --help for details.
 """);
     }
 
