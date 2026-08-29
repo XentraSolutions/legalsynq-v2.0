@@ -47,7 +47,7 @@ export function DocumentsTab({
     async (payload: any) => {
       if (!payload || payload.length == 0) return;
       setIsSubmitting(true);
-        try {
+      try {
         setIsSubmitting(true);
 
         for (const element of payload) {
@@ -91,9 +91,21 @@ export function DocumentsTab({
   );
 
   const fetchDocuments = async () => {
-    const docs = await casesService.loadDocuments(caseDetail.id);
-    setCaseDocuments(docs.caseDocuments);
-    setLiensDocuments(docs.liensDocuments);
+    try {
+      const docs = await casesService.loadDocuments(caseDetail.id);
+      setCaseDocuments(docs.caseDocuments);
+      setLiensDocuments(docs.liensDocuments);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (
+          err.message == "No record found." ||
+          err.message == "No record found."
+        ) {
+          setCaseDocuments([]);
+          setLiensDocuments([]);
+        }
+      }
+    }
   };
 
   async function deleteFileConfimation(fileId: string, type: string) {
@@ -101,17 +113,19 @@ export function DocumentsTab({
   }
   const deleteFile = useCallback(async () => {
     try {
-      if (confirmAction.type == "case")
+      if (confirmAction.type == "case") {
         await casesService.deleteCaseDocument(confirmAction.id);
-      if (confirmAction.type == "liens")
+      }
+      if (confirmAction.type == "liens") {
         await casesService.deleteLiensDocument(confirmAction.id);
+      }
+
       addToast({
         type: "success",
         title: "Delete Document",
         description: "Delete Document Successfully",
       });
       showConfirmAction({ id: "", isOpen: false, type: "" });
-      fetchDocuments();
     } catch (err) {
       if (err instanceof ApiError) {
         addToast({
@@ -120,6 +134,8 @@ export function DocumentsTab({
           description: err.message,
         });
       }
+    } finally {
+      fetchDocuments();
     }
   }, [confirmAction]);
 

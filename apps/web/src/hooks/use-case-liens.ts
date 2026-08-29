@@ -165,14 +165,17 @@ async function enrichLiens(
   const latestReductionDateByLien = new Map<string, string>();
 
   const sortedReductions = [...reductions].sort((a, b) => {
-    const dateDiff = b.reductionDate.localeCompare(a.reductionDate);
+    const dateDiff = b.updatedAtUtc.localeCompare(a.updatedAtUtc);
     return dateDiff !== 0
       ? dateDiff
       : b.createdAtUtc.localeCompare(a.createdAtUtc);
   });
   for (const r of sortedReductions) {
     if (!latestReductionByLien.has(r.lienId)) {
-      latestReductionByLien.set(r.lienId, r.amount);
+      latestReductionByLien.set(
+        r.lienId,
+        Math.round((r.amount ?? 0) * 100) / 100,
+      );
       latestReductionDateByLien.set(r.lienId, dateConverter(r.reductionDate));
     }
   }
@@ -206,7 +209,7 @@ async function enrichLiens(
       purchaseAmount: lien.purchaseAmount ?? 0,
       isServicing: lien.isServicing ?? false,
       paymentAmount,
-      balance: totalBalance > 0 ? totalBalance : 0,
+      balance: totalBalance,
       closedAtUtc: lien.closedAtUtc ?? null,
     };
   });
