@@ -1,6 +1,7 @@
 using Liens.Domain.Entities;
 using Liens.Infrastructure.Persistence;
 using Liens.Infrastructure.Persistence.Migrations;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -176,6 +177,25 @@ public sealed class LegacyUpdateHistoryPersistenceTests
         var action = migration.BuildDown;
         action.Should().Throw<InvalidOperationException>()
             .WithMessage("*irreversible*");
+    }
+
+    [Theory]
+    [InlineData(
+        "((`Scope` in (_utf8mb4'Case',_utf8mb4'Lien')))",
+        "scopein('case','lien')")]
+    [InlineData(
+        "((`Scope` = _utf8mb4'Case' and `LienId` is null) or (`Scope` = _utf8mb4'Lien' and `LienId` is not null))",
+        "(scope='case'andlienidisnull)or(scope='lien'andlienidisnotnull)")]
+    public void Recovery_normalizes_MySql_check_clauses_before_exact_validation(
+        string mysqlClause,
+        string expected)
+    {
+        var normalize = typeof(LegacyUpdateEventSchemaRepair).GetMethod(
+            "NormalizeCheckClause",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new MissingMethodException(nameof(LegacyUpdateEventSchemaRepair), "NormalizeCheckClause");
+
+        normalize.Invoke(null, [mysqlClause]).Should().Be(expected);
     }
 
     private static LiensDbContext CreateDbContext()

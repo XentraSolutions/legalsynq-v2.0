@@ -139,8 +139,10 @@ Program 1 `SL_CASE_UPDATE_LOG` and `SL_LIENS_UPDATE_LOG` history can be imported
 as append-only evidence through [`scripts/LegacyLiensImport`](../../scripts/LegacyLiensImport/README.md).
 Migration `20260829120000_AddLegacyUpdateEvents` uses guarded MySQL DDL. Liens
 replays its table and index operations under an advisory lock during startup and
-then retries EF migrations when the history entry was pending, so a prior failed
-or partially applied deployment can recover without duplicating schema objects.
+validates the complete column, index, check-constraint, and import-run foreign-key
+contract before reconciling the exact EF history entry. It then retries pending EF
+migrations, so an earlier failed or partially applied deployment can recover
+without duplicating schema objects or recording history for an incomplete table.
 Imported history is excluded from API responses by default. Set
 `LegacyUpdateHistory__Enabled=true` only after import reconciliation to merge it
 into `case-updates/v3` and `liens-updates/v3`. Those endpoints globally paginate
