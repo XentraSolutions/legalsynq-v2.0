@@ -142,9 +142,11 @@ public class SettlementPaymentDetailRepository : ISettlementPaymentDetailReposit
         await _db.SaveChangesAsync(ct);
     }
 
-    public async Task SoftDeleteAsync(SettlementPaymentDetail detail, CancellationToken ct = default)
+    public async Task SoftDeleteRangeAsync(
+        IReadOnlyCollection<SettlementPaymentDetail> details,
+        CancellationToken ct = default)
     {
-        _db.SettlementPaymentDetails.Update(detail);
+        _db.SettlementPaymentDetails.UpdateRange(details);
         await _db.SaveChangesAsync(ct);
     }
 }

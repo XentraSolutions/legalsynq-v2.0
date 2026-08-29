@@ -441,18 +441,53 @@ public class SettlementService : ISettlementService
     public async Task DeletePaymentAsync(
         Guid tenantId, Guid id, Guid userId, CancellationToken ct = default)
     {
-        var entity = await _paymentRepo.GetByIdAsync(tenantId, id, ct)
+        var selectedPayment = await _paymentRepo.GetByIdAsync(tenantId, id, ct)
             ?? throw new KeyNotFoundException($"Payment {id} not found.");
-        entity.SoftDelete(userId);
-        await _paymentRepo.SoftDeleteAsync(entity, ct);
 
-        var remainingPayments = await _paymentRepo.GetByLienIdAsync(tenantId, entity.LienId, ct);
-        var lien = await _lienService.GetByIdAsync(tenantId, entity.LienId, ct);
-        if (remainingPayments.Count == 0 && lien?.Status == LienStatus.Settled)
+        var casePayments = await _paymentRepo.GetByCaseIdAsync(tenantId, selectedPayment.CaseId, ct);
+        var paymentAllocations = casePayments
+            .Where(payment => BelongsToSamePayment(selectedPayment, payment))
+            .ToList();
+
+        if (paymentAllocations.Count == 0)
+            paymentAllocations.Add(selectedPayment);
+
+        foreach (var payment in paymentAllocations)
+            payment.SoftDelete(userId);
+        await _paymentRepo.SoftDeleteRangeAsync(paymentAllocations, ct);
+
+        foreach (var lienId in paymentAllocations.Select(payment => payment.LienId).Distinct())
         {
-            await _lienService.SetLegacyMedicalStatusAsync(
-                tenantId, entity.LienId, userId, "Open", ct);
+            var lien = await _lienService.GetByIdAsync(tenantId, lienId, ct);
+            if (lien?.Status == LienStatus.Settled)
+            {
+                await _lienService.SetLegacyMedicalStatusAsync(
+                    tenantId, lienId, userId, "Open", ct);
+            }
         }
+    }
+
+    private static bool BelongsToSamePayment(
+        SettlementPaymentDetail selectedPayment,
+        SettlementPaymentDetail candidate)
+    {
+        if (selectedPayment.ReceiptId.HasValue)
+            return candidate.ReceiptId == selectedPayment.ReceiptId;
+
+        if (candidate.ReceiptId.HasValue)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(selectedPayment.CheckNumber))
+        {
+            return selectedPayment.PaymentDate == candidate.PaymentDate &&
+                   string.Equals(
+                       selectedPayment.CheckNumber,
+                       candidate.CheckNumber,
+                       StringComparison.OrdinalIgnoreCase);
+        }
+
+        return selectedPayment.PaymentNumber > 0 &&
+               candidate.PaymentNumber == selectedPayment.PaymentNumber;
     }
 
     private static SettlementPaymentDetailResponse MapPayment(SettlementPaymentDetail p)

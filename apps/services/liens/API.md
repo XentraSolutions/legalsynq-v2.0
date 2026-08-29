@@ -2263,6 +2263,19 @@ Because payment method and settlement classifications use the legacy metadata re
 | `400 Bad Request` | Missing, malformed, unknown, or invalid request field |
 | `404 Not Found` | Payment is missing, deleted, or belongs to another tenant |
 
+### DELETE `/api/liens/settlement/payments/{paymentId}`
+
+Soft-delete a settlement payment and reopen its settled liens. When the selected row belongs to
+a receipt, every active allocation sharing that `receiptId` is deleted and every distinct settled
+lien in the receipt is returned to the open (`Active`) status. Compatibility rows that predate
+receipts are grouped by case, payment date, and reference number, falling back to the case-level
+payment number when no reference is available. The payment deletion and lien-status changes commit
+atomically on relational databases.
+
+**Permission:** `SYNQ_LIENS.lien:update`
+
+**Response:** `200 OK` with `{ "isSuccess": true, "message": "Successfully Deleted." }`.
+
 ---
 
 ## Servicing Endpoints

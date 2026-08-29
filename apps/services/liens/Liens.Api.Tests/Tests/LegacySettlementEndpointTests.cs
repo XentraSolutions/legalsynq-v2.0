@@ -1375,6 +1375,91 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         restoredLien.ClosedAtUtc.Should().BeNull();
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task DeletePayment_deletes_all_allocations_and_reopens_every_lien(bool useReceiptId)
+    {
+        var receiptId = useReceiptId ? Guid.CreateVersion7() : (Guid?)null;
+        var paymentNumber = 700_000_001;
+        var paymentDate = new DateOnly(2026, 8, 30);
+        const string referenceNumber = "DELETE-GROUP-REFERENCE";
+        var liens = new[]
+        {
+            Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DELETE-GROUP-A-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                150m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId),
+            Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DELETE-GROUP-B-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                250m,
+                SeedHelper.UserId,
+                caseId: SeedHelper.CaseId),
+        };
+        foreach (var lien in liens)
+            lien.SetLegacyMedicalStatus("Closed", SeedHelper.UserId);
+
+        var allocations = new[]
+        {
+            SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                SeedHelper.CaseId,
+                liens[0].Id,
+                paymentNumber,
+                150m,
+                SeedHelper.UserId,
+                paymentDate,
+                checkNumber: referenceNumber,
+                receiptId: receiptId),
+            SettlementPaymentDetail.Create(
+                SeedHelper.TenantId,
+                SeedHelper.CaseId,
+                liens[1].Id,
+                useReceiptId ? paymentNumber : paymentNumber + 1,
+                250m,
+                SeedHelper.UserId,
+                paymentDate,
+                checkNumber: referenceNumber,
+                receiptId: receiptId),
+        };
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            db.Liens.AddRange(liens);
+            db.SettlementPaymentDetails.AddRange(allocations);
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.DeleteAsync(
+            $"/api/liens/settlement/payments/{allocations[0].Id}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await response.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        var persistedAllocations = await verifyDb.SettlementPaymentDetails
+            .Where(payment => allocations.Select(allocation => allocation.Id).Contains(payment.Id))
+            .ToListAsync();
+        persistedAllocations.Should().HaveCount(2);
+        persistedAllocations.Should().OnlyContain(payment => payment.IsDeleted);
+
+        var persistedLiens = await verifyDb.Liens
+            .Where(lien => liens.Select(item => item.Id).Contains(lien.Id))
+            .ToListAsync();
+        persistedLiens.Should().HaveCount(2);
+        persistedLiens.Should().OnlyContain(lien => lien.Status == LienStatus.Active);
+        persistedLiens.Should().OnlyContain(lien => lien.ClosedAtUtc == null);
+    }
+
     // ── GET /service/settlement/history/{caseId} ──────────────────────────────
 
     [Fact]
