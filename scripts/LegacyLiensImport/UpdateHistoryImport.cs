@@ -11,10 +11,10 @@ internal static class UpdateHistoryImport
     private const string SourceSystem = "SL-CORE";
     private const string CaseTable = "SL_CASE_UPDATE_LOG";
     private const string LienTable = "SL_LIENS_UPDATE_LOG";
-    private const string MappingVersion = "sl-core-update-history-v1";
-    private const string ProvenanceKey = "sl-core-update-history-v1";
+    private const string MappingVersion = "sl-core-update-history-v2";
+    private const string ProvenanceKey = "sl-core-update-history-v2";
     private const string TimestampSemantics = "America/Los_Angeles-wall-clock";
-    private const string ApprovedFingerprint = "01f5a7a6668d93f8edcd5c287d8357d7eabb7c55d03014c798c4184a4a06d07c";
+    private const string ApprovedFingerprint = "3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe";
     private const string ManifestCertificateSubject = "CN=LegalSynq Identity Migration Signing";
     private const string ApprovedMismatch = "SL_LIENS_UPDATE_LOG:4891";
     private const int ApprovedBlankLienCaseCount = 1280;
@@ -654,7 +654,7 @@ ORDER BY u.LU_ID;
         {
             ["Case Details Update"] = 1502,
             ["Case Created"] = 1186,
-            ["Case Personal Information Update"] = 68,
+            ["Personal Info Update"] = 68,
         }, "case");
         AssertActions(lienActions, new Dictionary<string, int>(StringComparer.Ordinal)
         {
@@ -1556,7 +1556,7 @@ WHERE Id = @id AND Status = 'Running';
     {
         var payload = string.Join('\u001f', new[] { MappingVersion, fingerprint, table, id.ToString(CultureInfo.InvariantCulture) }
             .Concat(values.Select(value => value ?? "<NULL>")));
-        return $"update-history-v1:{Sha256(Encoding.UTF8.GetBytes(payload))}";
+        return $"update-history-v2:{Sha256(Encoding.UTF8.GetBytes(payload))}";
     }
 
     private static bool IsDeleted(string? value) => string.Equals(value?.Trim(), "Y", StringComparison.OrdinalIgnoreCase);

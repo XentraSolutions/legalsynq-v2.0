@@ -148,7 +148,9 @@ public class LienRepository : ILienRepository
     {
         var q = _db.Liens
             .AsNoTracking()
-            .Where(l => l.TenantId == tenantId);
+            .Where(l =>
+                l.TenantId == tenantId &&
+                l.Status != LienStatus.Cancelled);
 
         if (!string.IsNullOrWhiteSpace(search))
         {

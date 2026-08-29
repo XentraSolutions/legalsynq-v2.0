@@ -47,65 +47,124 @@ $env:ConnectionStrings__LiensDb = 'Server=localhost;Database=liens_db;User ID=..
 
 ## Import Program 1 update history
 
-The `--import-update-logs` mode is a separate, dry-run-first import for
+[`import-program-1-update-history.sql`](import-program-1-update-history.sql)
+installs the dry-run-first `liens_import_program_1_update_history` procedure for
 `SL_CASE_UPDATE_LOG` and `SL_LIENS_UPDATE_LOG`. It writes append-only
 `liens_LegacyUpdateEvents` plus one `LegacyUpdateEvent` crosswalk per imported
-source row. It does not require core-import lien amount or collision options.
+source row. The controlled restore must be in the separate `SL-CORE` schema on
+the same MySQL server as the currently selected `LS_QA_LIENS` or `LS_LIENS`
+target, matching the existing complete SL-CORE procedure workflow. Do not run
+the full legacy dump against the target schema: it contains unqualified
+destructive `DROP TABLE` statements. A MySQL procedure cannot read a local dump
+file or connect to a different MySQL server.
 
-This mode is bound to the frozen dump SHA-256
-`01f5a7a6668d93f8edcd5c287d8357d7eabb7c55d03014c798c4184a4a06d07c`,
-Program `1`, and mapping/import scope `sl-core-update-history-v1`. Before running
-it, apply Liens migration `20260829120000_AddLegacyUpdateEvents` and complete
-exactly one compatible core Program 1 import for the same tenant, organization,
-and source fingerprint.
+This v2 mode is bound to the existing controlled core-import fingerprint
+`3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe`,
+Program `1`, and mapping/import scope `sl-core-update-history-v2`. This rebaseline
+keeps imported update events on the same provenance lineage as their existing
+case/lien crosswalks; do not label that restore with the unrelated portable-dump
+fingerprint. Before running it, deploy the schema from Liens migration
+`20260829120000_AddLegacyUpdateEvents` and complete exactly one compatible core
+Program 1 import for the same tenant, organization, and source fingerprint. The
+procedure validates the required update-event table columns and indexes; it
+does not create or alter EF migration-history rows.
 
 The controlled staging restore must create a dedicated provenance receipt with:
 
-- `PROVENANCE_KEY = sl-core-update-history-v1`
+- `PROVENANCE_KEY = sl-core-update-history-v2`
 - `SOURCE_FINGERPRINT` equal to the frozen fingerprint above
-- `IMPORT_SCOPE = sl-core-update-history-v1`
+- `IMPORT_SCOPE = sl-core-update-history-v2`
 - `TIMESTAMP_SEMANTICS = America/Los_Angeles-wall-clock`
 
 Do not replace or reuse the `sl-core-current` receipt. Restore with the MySQL
 session time zone fixed to `+00:00` so timestamp literals remain deterministic.
-The importer also sets its source session to `+00:00`, interprets update-log
+The `SL-CORE.SL_MIGRATION_SOURCE_PROVENANCE` table must include the nullable
+`TIMESTAMP_SEMANTICS varchar(100)` column so the existing core receipt may remain
+unchanged while the separately keyed update-history receipt declares its
+timestamp interpretation. The procedure definer requires `SELECT` on only the
+six named `SL-CORE` source/receipt tables.
+The procedure also sets its session to `+00:00`, interprets update-log
 timestamps as Pacific wall-clock values, rejects invalid/ambiguous DST times,
 and validates the 19 embedded UTC anchor notes before importing.
 
-Dry run:
+After the controlled restore owner adds that nullable column, create the v2
+receipt without changing `sl-core-current`:
 
-```bash
-dotnet run --project scripts/LegacyLiensImport/LegacyLiensImport.csproj -- \
-  --import-update-logs \
-  --tenant-id <tenant-guid> \
-  --org-id <organization-guid> \
-  --migration-user-id <migration-actor-guid> \
-  --legacy-program 1 \
-  --source-dump <path-to-frozen-dump.sql>
+```sql
+INSERT INTO `SL-CORE`.SL_MIGRATION_SOURCE_PROVENANCE (
+  PROVENANCE_KEY, SOURCE_FINGERPRINT, IMPORT_SCOPE, RESTORE_REFERENCE,
+  RESTORED_AT_UTC, TIMESTAMP_SEMANTICS)
+SELECT
+  'sl-core-update-history-v2', SOURCE_FINGERPRINT,
+  'sl-core-update-history-v2', RESTORE_REFERENCE, RESTORED_AT_UTC,
+  'America/Los_Angeles-wall-clock'
+FROM `SL-CORE`.SL_MIGRATION_SOURCE_PROVENANCE
+WHERE PROVENANCE_KEY = 'sl-core-current'
+  AND LOWER(SOURCE_FINGERPRINT) =
+      '3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe'
+  AND IMPORT_SCOPE = 'sl-core-core-liens-v1';
 ```
 
-For apply, add `--apply`, `--mapping-manifest`, and
-`--mapping-manifest-signature`. The Identity-signed manifest must bind the
-tenant, organization, actor, Program 1, fingerprint, exact dry-run case/lien
-counts, excluded count, aggregate checksum, approval reference, and
-`approvedAnomalies: ["SL_LIENS_UPDATE_LOG:4891"]`. Both `importScope` and
-`mappingVersion` must be `sl-core-update-history-v1`.
+Install the procedure by opening the complete SQL file in DBeaver and choosing
+**Execute SQL Script**. Because it is `SQL SECURITY DEFINER`, install it under
+the controlled migration account and grant `EXECUTE` only to the migration
+operator; do not grant that operator direct write access to the source or target
+tables. Then run preflight without an approval:
 
-The runner derives every lien event's case from its crosswalk-bound V2 lien;
+```sql
+CALL liens_import_program_1_update_history(
+  '<tenant-guid>',
+  '<organization-guid>',
+  '<migration-actor-guid>',
+  NULL,
+  0,
+  -1,
+  -1,
+  -1,
+  NULL
+);
+```
+
+For apply, the Identity-owned release process must first create a separate,
+unconsumed `liens_LegacyImportApprovals` row bound to the exact tenant,
+organization, actor, Program `1`, frozen fingerprint, signed-manifest hash, and
+mapping version `sl-core-update-history-v2`. Set its `MappingManifestHash` to
+the exact `ApprovalBindingHash` returned by preflight. That hash canonically
+binds the scope, tenant, organization, actor, fingerprint, case/lien/excluded
+counts, aggregate checksum, and approved `SL_LIENS_UPDATE_LOG:4891` anomaly.
+Copy the exact preflight counts and checksum into the apply call:
+
+```sql
+CALL liens_import_program_1_update_history(
+  '<tenant-guid>',
+  '<organization-guid>',
+  '<migration-actor-guid>',
+  '<update-history-approval-guid>',
+  1,
+  <dry-run-case-count>,
+  <dry-run-lien-count>,
+  <dry-run-excluded-count>,
+  '<dry-run-aggregate-checksum>'
+);
+```
+
+The procedure derives every lien event's case from its crosswalk-bound V2 lien;
 blank `LU_CASE_ID` is valid. The approved source mismatch at `LU_ID=4891` and
 eligible rows without a target crosswalk are recorded as redacted exceptions.
 Wrong-entity, changed-hash, missing-target, cross-tenant, cross-organization,
 and unapproved case/lien mismatches block apply. An identical completed apply
-is a no-op only after the runner confirms that no event evidence needs to be
-reinserted. Apply uses set-based revalidation and multi-row event/crosswalk
-inserts in batches of up to 500 inside the target transaction.
+is a no-op only after the procedure exactly reconciles that run's events,
+crosswalks, and redacted exceptions. Apply shares the tenant's core-import lock,
+atomically revalidates and consumes the database approval, and performs
+set-based event, crosswalk, and redacted-exception inserts in one target
+transaction.
 
 For the approved fingerprint, reconciliation must report 2,756 case events and
 15,976 lien events, including exactly 1,280 lien rows with blank `LU_CASE_ID`,
 plus the single approved exclusion `SL_LIENS_UPDATE_LOG:4891`. Action totals are:
 
 - Case: 1,502 `Case Details Update`, 1,186 `Case Created`, and 68
-  `Case Personal Information Update`.
+  `Personal Info Update`.
 - Lien: 11,157 `Create`, 2,587 `Create Medical Payee`, 1,870 `Update`,
   303 `Update Medical Code`, 57 `Update Medical Information`, and 2
   `Update Medical Payee`.

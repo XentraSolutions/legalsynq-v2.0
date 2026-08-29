@@ -2436,54 +2436,69 @@ public static class CaseEndpoints
     private static async Task<IResult> DeleteCaseLegacy(
         Guid id,
         LiensDbContext db,
+        ILienService lienService,
+        IAuditPublisher auditPublisher,
         ICurrentRequestContext ctx,
         CancellationToken ct = default)
     {
         var tenantId = RequireTenantId(ctx);
         var userId = RequireUserId(ctx);
 
-        var item = await db.Cases
-            .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == id, ct);
-        if (item is null)
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        using var auditBuffer = auditPublisher.BeginBuffer();
+
+        try
         {
-            return Results.NotFound(new
+            var item = await db.Cases
+                .FirstOrDefaultAsync(c => c.TenantId == tenantId && c.Id == id, ct);
+            if (item is null)
             {
-                isSuccess = false,
-                message = "Error: Unable to delete Case.",
+                return Results.NotFound(new
+                {
+                    isSuccess = false,
+                    message = "Error: Unable to delete Case.",
+                });
+            }
+
+            var linkedLiens = await db.Liens
+                .Where(l => l.TenantId == tenantId && (l.CaseId == id || l.SellingCaseId == id))
+                .ToListAsync(ct);
+
+            foreach (var lien in linkedLiens)
+            {
+                await lienService.DeleteAsync(tenantId, lien.Id, userId, ct);
+                if (lien.CaseId == id)
+                    lien.DetachCase(userId);
+                if (lien.SellingCaseId == id)
+                    lien.DetachSellingCase(userId);
+            }
+
+            db.LienCaseNotes.RemoveRange(db.LienCaseNotes.Where(n => n.TenantId == tenantId && n.CaseId == id));
+            db.ServicingItems.RemoveRange(db.ServicingItems.Where(s => s.TenantId == tenantId && s.CaseId == id));
+            db.LienReductions.RemoveRange(db.LienReductions.Where(r => r.TenantId == tenantId && r.CaseId == id));
+            db.LienSettlements.RemoveRange(db.LienSettlements.Where(s => s.TenantId == tenantId && s.CaseId == id));
+            db.SettlementPaymentDetails.RemoveRange(db.SettlementPaymentDetails.Where(p => p.TenantId == tenantId && p.CaseId == id));
+            db.Cases.Remove(item);
+            await db.SaveChangesAsync(ct);
+
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+            auditBuffer.Commit();
+
+            return Results.Ok(new
+            {
+                isSuccess = true,
+                message = "Successfully deleted Case.",
             });
         }
-
-        var linkedLiens = await db.Liens
-            .Where(l => l.TenantId == tenantId && l.CaseId == id)
-            .ToListAsync(ct);
-        var hasBlockingLiens = linkedLiens.Any(l =>
-            !LienStatus.Terminal.Contains(l.Status) &&
-            !string.Equals(l.Status, "Rejected", StringComparison.OrdinalIgnoreCase));
-        if (hasBlockingLiens)
+        catch
         {
-            return Results.BadRequest(new
-            {
-                isSuccess = false,
-                message = "Error: Unable to delete Case. Linked liens must be removed or reassigned first.",
-            });
+            if (transaction is not null)
+                await transaction.RollbackAsync(CancellationToken.None);
+            throw;
         }
-
-        foreach (var lien in linkedLiens)
-            lien.DetachCase(userId);
-
-        db.LienCaseNotes.RemoveRange(db.LienCaseNotes.Where(n => n.TenantId == tenantId && n.CaseId == id));
-        db.ServicingItems.RemoveRange(db.ServicingItems.Where(s => s.TenantId == tenantId && s.CaseId == id));
-        db.LienReductions.RemoveRange(db.LienReductions.Where(r => r.TenantId == tenantId && r.CaseId == id));
-        db.LienSettlements.RemoveRange(db.LienSettlements.Where(s => s.TenantId == tenantId && s.CaseId == id));
-        db.SettlementPaymentDetails.RemoveRange(db.SettlementPaymentDetails.Where(p => p.TenantId == tenantId && p.CaseId == id));
-        db.Cases.Remove(item);
-        await db.SaveChangesAsync(ct);
-
-        return Results.Ok(new
-        {
-            isSuccess = true,
-            message = "Successfully deleted Case.",
-        });
     }
 
     private static async Task<IResult> UpsertCaseOtherLegacy(

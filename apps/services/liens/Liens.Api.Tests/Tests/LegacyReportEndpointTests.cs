@@ -1120,7 +1120,7 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
     }
 
     [Fact]
-    public async Task RunReport_and_export_include_rejected_and_cancelled_liens_for_all_status_view()
+    public async Task RunReport_and_export_exclude_deleted_cancelled_liens()
     {
         var prefix = $"LIEN-DIY-EXCLUDED-{Guid.CreateVersion7():N}"[..36];
         var openLienNumber = $"{prefix}-OPEN";
@@ -1167,8 +1167,8 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
             .ToList();
         previewLienNumbers.Should().BeEquivalentTo(
             openLienNumber,
-            rejectedLienNumber,
-            cancelledLienNumber);
+            rejectedLienNumber);
+        previewLienNumbers.Should().NotContain(cancelledLienNumber);
 
         var exportResponse = await _client.PostAsJsonAsync("/report/diy/export", request);
         exportResponse.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -1178,7 +1178,7 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         var export = exportPayload!.RootElement.GetProperty("data").EnumerateArray().Single();
         var csv = Encoding.UTF8.GetString(Convert.FromBase64String(export.GetProperty("base64").GetString()!));
         csv.Should().Contain(openLienNumber);
-        csv.Should().Contain(rejectedLienNumber).And.Contain(cancelledLienNumber);
+        csv.Should().Contain(rejectedLienNumber).And.NotContain(cancelledLienNumber);
 
         var rejectedResponse = await _client.PostAsJsonAsync("/report/diy", new
         {
@@ -1197,7 +1197,8 @@ public class LegacyReportEndpointTests : IClassFixture<LiensApiFactory>, IAsyncL
         var rejectedLienNumbers = rejectedPayload.RootElement.GetProperty("data").EnumerateArray()
             .Select(row => row.GetProperty("lien_id").GetString())
             .ToList();
-        rejectedLienNumbers.Should().BeEquivalentTo(rejectedLienNumber, cancelledLienNumber);
+        rejectedLienNumbers.Should().BeEquivalentTo(rejectedLienNumber);
+        rejectedLienNumbers.Should().NotContain(cancelledLienNumber);
         rejectedLienNumbers.Should().NotContain(openLienNumber);
     }
 

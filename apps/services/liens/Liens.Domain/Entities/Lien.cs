@@ -640,6 +640,16 @@ public class Lien : AuditableEntity
         UpdatedAtUtc    = DateTime.UtcNow;
     }
 
+    public void DetachSellingCase(Guid updatedByUserId)
+    {
+        if (updatedByUserId == Guid.Empty)
+            throw new ArgumentException("UpdatedByUserId is required.", nameof(updatedByUserId));
+
+        SellingCaseId   = null;
+        UpdatedByUserId = updatedByUserId;
+        UpdatedAtUtc    = DateTime.UtcNow;
+    }
+
     public void AttachFacility(Guid facilityId, Guid updatedByUserId)
     {
         if (facilityId == Guid.Empty) throw new ArgumentException("FacilityId is required.", nameof(facilityId));

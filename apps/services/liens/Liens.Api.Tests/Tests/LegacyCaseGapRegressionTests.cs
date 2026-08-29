@@ -167,6 +167,90 @@ public class LegacyCaseGapRegressionTests : IClassFixture<LiensApiFactory>, IAsy
     }
 
     [Fact]
+    public async Task Delete_legacy_case_deletes_all_active_liens_then_deletes_case()
+    {
+        Guid caseId;
+        Guid retainedCaseId;
+        Guid sellingOnlyLienId;
+        List<Guid> lienIds;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
+            var caseEntity = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DELETE-ACTIVE-{Guid.CreateVersion7():N}"[..30],
+                "Maria",
+                "Lopez",
+                SeedHelper.UserId);
+            var retainedCase = Case.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"CASE-DELETE-RETAINED-{Guid.CreateVersion7():N}"[..30],
+                "Maria",
+                "Lopez",
+                SeedHelper.UserId);
+            var draftLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DELETE-DRAFT-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                1000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            var activeLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DELETE-ACTIVE-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                2000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            activeLien.SetLegacyMedicalStatus("Open", SeedHelper.UserId);
+            var sellingOnlyLien = Lien.Create(
+                SeedHelper.TenantId,
+                SeedHelper.OrgId,
+                $"LIEN-DELETE-SELLING-{Guid.CreateVersion7():N}"[..30],
+                LienType.MedicalLien,
+                3000m,
+                SeedHelper.UserId,
+                caseId: caseEntity.Id);
+            sellingOnlyLien.MoveToInternalManagement(SeedHelper.UserId);
+            sellingOnlyLien.AttachCase(retainedCase.Id, SeedHelper.UserId);
+
+            caseId = caseEntity.Id;
+            retainedCaseId = retainedCase.Id;
+            sellingOnlyLienId = sellingOnlyLien.Id;
+            lienIds = [draftLien.Id, activeLien.Id, sellingOnlyLien.Id];
+            db.Cases.AddRange(caseEntity, retainedCase);
+            db.Liens.AddRange(draftLien, activeLien, sellingOnlyLien);
+            await db.SaveChangesAsync();
+        }
+
+        var deleteResponse = await _client.DeleteAsync($"/api/liens/cases/delete/{caseId}");
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await deleteResponse.Content.ReadAsStringAsync()}");
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<LiensDbContext>();
+        (await verifyDb.Cases.FindAsync(caseId)).Should().BeNull();
+        (await verifyDb.Cases.FindAsync(retainedCaseId)).Should().NotBeNull();
+
+        var storedLiens = await verifyDb.Liens
+            .Where(l => lienIds.Contains(l.Id))
+            .ToListAsync();
+        storedLiens.Should().HaveCount(3);
+        storedLiens.Should().OnlyContain(l => l.Status == LienStatus.Cancelled);
+        storedLiens.Where(l => l.Id != sellingOnlyLienId)
+            .Should().OnlyContain(l => l.CaseId == null);
+
+        var storedSellingOnlyLien = storedLiens.Single(l => l.Id == sellingOnlyLienId);
+        storedSellingOnlyLien.CaseId.Should().Be(retainedCaseId);
+        storedSellingOnlyLien.SellingCaseId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Case_other_metadata_roundtrips_through_legacy_routes()
     {
         var updateResponse = await _client.PostAsJsonAsync("/api/liens/cases/update-other", new

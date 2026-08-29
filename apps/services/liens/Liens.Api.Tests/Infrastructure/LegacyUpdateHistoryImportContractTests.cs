@@ -4,7 +4,7 @@ namespace Liens.Api.Tests.Infrastructure;
 
 public sealed class LegacyUpdateHistoryImportContractTests
 {
-    private const string ApprovedFingerprint = "01f5a7a6668d93f8edcd5c287d8357d7eabb7c55d03014c798c4184a4a06d07c";
+    private const string ApprovedFingerprint = "3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe";
 
     [Fact]
     public void Update_history_mode_has_separate_cli_and_manifest_contract()
@@ -83,7 +83,7 @@ public sealed class LegacyUpdateHistoryImportContractTests
     {
         var importer = ReadImportFile("UpdateHistoryImport.cs");
 
-        importer.Should().Contain("private const string ProvenanceKey = \"sl-core-update-history-v1\"");
+        importer.Should().Contain("private const string ProvenanceKey = \"sl-core-update-history-v2\"");
         importer.Should().Contain("private const string TimestampSemantics = \"America/Los_Angeles-wall-clock\"");
         importer.Should().Contain("SOURCE_FINGERPRINT, IMPORT_SCOPE, TIMESTAMP_SEMANTICS");
         importer.Should().Contain("do not reuse the sl-core-current receipt");
@@ -184,7 +184,7 @@ public sealed class LegacyUpdateHistoryImportContractTests
         importer.Should().Contain("await MarkRunFailedAsync");
         importer.Should().Contain("Status = 'Failed'");
         importer.Should().Contain("event/crosswalk cardinality, ownership, or source-hash reconciliation failed");
-        importer.Should().Contain("update-history-v1:");
+        importer.Should().Contain("update-history-v2:");
         importer.Should().Contain("item.Disposition is \"Insert\" or \"AlreadyImported\" ? \"Imported\" : item.Disposition");
         importer.Should().Contain("A matching completed run exists but imported event evidence is missing");
         importer.Should().Contain("HasCompleteRunEvidenceAsync");
@@ -229,7 +229,7 @@ public sealed class LegacyUpdateHistoryImportContractTests
 
         importer.Should().Contain("[\"Case Details Update\"] = 1502");
         importer.Should().Contain("[\"Case Created\"] = 1186");
-        importer.Should().Contain("[\"Case Personal Information Update\"] = 68");
+        importer.Should().Contain("[\"Personal Info Update\"] = 68");
         importer.Should().Contain("[\"Create\"] = 11157");
         importer.Should().Contain("[\"Create Medical Payee\"] = 2587");
         importer.Should().Contain("[\"Update\"] = 1870");
@@ -239,6 +239,72 @@ public sealed class LegacyUpdateHistoryImportContractTests
         importer.Should().Contain("private const int ApprovedBlankLienCaseCount = 1280");
         importer.Should().Contain("string.IsNullOrWhiteSpace(row.SuppliedCaseLegacyId)");
         importer.Should().Contain("blank LU_CASE_ID count does not match the approved dataset");
+    }
+
+    [Fact]
+    public void Stored_procedure_is_dry_run_first_approval_bound_atomic_and_idempotent()
+    {
+        var sql = ReadImportFile("import-program-1-update-history.sql");
+        var compensation = ReadImportFile("compensate-program-1-update-history-import.sql");
+
+        sql.Should().Contain("CREATE PROCEDURE liens_import_program_1_update_history");
+        sql.Should().Contain("SQL SECURITY DEFINER");
+        sql.Should().Contain(ApprovedFingerprint);
+        sql.Should().Contain("'sl-core-update-history-v2'");
+        sql.Should().Contain("table_schema = 'SL-CORE'");
+        sql.Should().Contain("FROM `SL-CORE`.SL_CASE_UPDATE_LOG u");
+        sql.Should().Contain("FROM `SL-CORE`.SL_LIENS_UPDATE_LOG u");
+        sql.Should().Contain("source_lien.LM_ID = CAST(u.LU_LIEN_ID AS UNSIGNED)");
+        sql.Should().NotContain("CAST(source_lien.LM_ID AS CHAR) = CAST(u.LU_LIEN_ID AS CHAR)");
+        sql.Should().Contain("CREATE TEMPORARY TABLE tmp_luh_foreign_keys");
+        sql.Should().Contain("PRIMARY KEY (SourceTable, LegacyId)");
+        sql.Should().Contain("INSERT IGNORE INTO tmp_luh_foreign_keys");
+        sql.Should().Contain("LEFT JOIN tmp_luh_foreign_keys foreign_parent");
+        sql.Should().Contain("LEFT JOIN tmp_luh_foreign_keys foreign_event");
+        sql.Should().Contain("DROP TEMPORARY TABLE IF EXISTS tmp_luh_foreign_keys");
+        sql.Should().NotContain("FROM liens_LegacyIdCrosswalks foreign_walk");
+        sql.Should().Contain("FROM `SL-CORE`.SL_CASE_NOTES");
+        sql.Should().Contain("FROM `SL-CORE`.SL_MIGRATION_SOURCE_PROVENANCE");
+        sql.Should().NotContain("FROM SL_CASE_UPDATE_LOG u");
+        sql.Should().Contain("TIMESTAMP_SEMANTICS = 'America/Los_Angeles-wall-clock'");
+        sql.Should().Contain("v_anchor_count <> 19 OR v_anchor_errors <> 0");
+        sql.Should().Contain("PacificCandidateCount <> 1");
+        sql.Should().Contain("Action = 'Personal Info Update'");
+        sql.Should().Contain("Status = 'Approved'");
+        sql.Should().Contain("v_approval_binding_hash AS ApprovalBindingHash");
+        sql.Should().Contain("v_approval_manifest_hash <> BINARY v_approval_binding_hash");
+        sql.Should().Contain("BINARY MappingManifestHash = BINARY v_approval_binding_hash");
+        sql.Should().Contain("BINARY MappingApprovalReference = BINARY v_approval_reference");
+        sql.Should().Contain("ExpiresAtUtc IS NULL OR ExpiresAtUtc > UTC_TIMESTAMP(6)");
+        sql.Should().Contain("ConsumedAtUtc IS NULL");
+        sql.Should().Contain("Status = 'Consumed'");
+        sql.Should().Contain("START TRANSACTION");
+        sql.Should().Contain("ROLLBACK");
+        sql.Should().Contain("INSERT INTO liens_LegacyUpdateEvents");
+        sql.Should().Contain("INSERT INTO liens_LegacyIdCrosswalks");
+        sql.Should().Contain("INSERT INTO liens_LegacyImportExceptions");
+        sql.Should().Contain("Legacy update event excluded by approved migration policy.");
+        sql.Should().Contain("matching completed run has incomplete event or exception evidence");
+        sql.Should().Contain("v_existing_event_count <> v_existing_inserted_events");
+        sql.Should().Contain("v_existing_crosswalk_count <> v_existing_inserted_events");
+        sql.Should().Contain("v_existing_planned_count <> v_existing_inserted_events");
+        sql.Should().Contain("v_existing_matching_exception_count <> v_excluded");
+        sql.Should().Contain("v_existing_matching_exception_keys <> v_excluded");
+        sql.Should().Contain("'NO-OP' AS Mode");
+        sql.Should().Contain("unfinished update-history run requires reconciliation");
+        sql.Should().NotContain("--apply");
+
+        sql.Should().Contain("CONCAT('legalsynq:luh:', v_tenant_id)");
+        sql.Should().Contain("CONCAT('liens:slcore:', v_tenant_id)");
+        sql.Should().Contain("parent_run.SourceFingerprint = BINARY v_source_fingerprint");
+        sql.Should().Contain("canonical_case_walk.SourceTable = 'SL_CASE'");
+        sql.Should().Contain("canonical_case_run.Status = 'Completed'");
+        compensation.Should().Contain("CONCAT('legalsynq:luh:', LOWER(p_tenant_id))");
+
+        sql.IndexOf("INSERT INTO liens_LegacyImportRuns", StringComparison.Ordinal)
+            .Should().BeLessThan(sql.IndexOf("START TRANSACTION", StringComparison.Ordinal));
+        sql.IndexOf("START TRANSACTION", StringComparison.Ordinal)
+            .Should().BeLessThan(sql.IndexOf("INSERT INTO liens_LegacyUpdateEvents", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -265,7 +331,7 @@ public sealed class LegacyUpdateHistoryImportContractTests
             123L,
             new string?[] { "case-1", string.Empty, "Update", "raw text", "actor", "2024-07-01 10:22:08.000000" });
 
-        first.Should().StartWith("update-history-v1:").And.HaveLength(82);
+        first.Should().StartWith("update-history-v2:").And.HaveLength(82);
         repeated.Should().Be(first);
         blankInsteadOfNull.Should().NotBe(first);
     }

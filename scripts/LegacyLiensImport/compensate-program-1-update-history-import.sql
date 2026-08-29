@@ -26,8 +26,8 @@ SET @expected_crosswalks = -1;
 SET @expected_checksum = NULL;
 
 SET @expected_source_fingerprint =
-    '01f5a7a6668d93f8edcd5c287d8357d7eabb7c55d03014c798c4184a4a06d07c';
-SET @expected_mapping_version = 'sl-core-update-history-v1';
+    '3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe';
+SET @expected_mapping_version = 'sl-core-update-history-v2';
 
 DROP PROCEDURE IF EXISTS compensate_program_1_update_history_import;
 
@@ -103,7 +103,7 @@ main: BEGIN
             SET MESSAGE_TEXT = 'LSLUH-RB-002 explicit run, tenant, organization, and actor GUIDs are required';
     END IF;
 
-    SET v_lock_name = CONCAT('legalsynq:legacy-update-history-rollback:', LOWER(p_tenant_id));
+    SET v_lock_name = CONCAT('legalsynq:luh:', LOWER(p_tenant_id));
     SELECT GET_LOCK(v_lock_name, 0) INTO v_lock_acquired;
     IF COALESCE(v_lock_acquired, 0) <> 1 THEN
         SIGNAL SQLSTATE '45000'
