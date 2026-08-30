@@ -184,6 +184,12 @@ public sealed class LegacyUpdateHistoryPersistenceTests
         "((`Scope` in (_utf8mb4'Case',_utf8mb4'Lien')))",
         "scopein('case','lien')")]
     [InlineData(
+        @"((`Scope` in (_utf8mb4\'Case\',_utf8mb4\'Lien\')))",
+        "scopein('case','lien')")]
+    [InlineData(
+        @"(`Scope` = _utf8mb4\'Case\Path\')",
+        "scope='case\\path'")]
+    [InlineData(
         "((`Scope` = _utf8mb4'Case' and `LienId` is null) or (`Scope` = _utf8mb4'Lien' and `LienId` is not null))",
         "(scope='case'andlienidisnull)or(scope='lien'andlienidisnotnull)")]
     public void Recovery_normalizes_MySql_check_clauses_before_exact_validation(

@@ -39,6 +39,7 @@ public class LiensMigrationDiscoveryTests
         Assert.Contains("20260826090000_AddLienSellingCaseReference", migrationIds);
         Assert.Contains("20260827100000_AddSellingCaseDraftConcurrencyToken", migrationIds);
         Assert.Contains("20260829120000_AddLegacyUpdateEvents", migrationIds);
+        Assert.Contains("20260831010000_OptimizeCaseNoteReportQueries", migrationIds);
     }
 
     [Fact]
@@ -65,6 +66,7 @@ public class LiensMigrationDiscoveryTests
             typeof(Liens.Infrastructure.Persistence.Migrations.AddLienSellingCaseReference),
             typeof(Liens.Infrastructure.Persistence.Migrations.AddSellingCaseDraftConcurrencyToken),
             typeof(Liens.Infrastructure.Persistence.Migrations.AddLegacyUpdateEvents),
+            typeof(Liens.Infrastructure.Persistence.Migrations.OptimizeCaseNoteReportQueries),
         };
 
         foreach (var migrationType in migrationTypes)
@@ -139,6 +141,18 @@ public class LiensMigrationDiscoveryTests
         Assert.Contains("information_schema.STATISTICS", sql, StringComparison.Ordinal);
         Assert.Contains("IX_SellingBuyerAccessLinks_WeeklyAging", sql, StringComparison.Ordinal);
         Assert.Contains("`RespondedAtUtc`, `LienId`", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CaseNoteReportIndexMigration_CanResumeAfterPartialMySqlDdl()
+    {
+        var migration = new Liens.Infrastructure.Persistence.Migrations.OptimizeCaseNoteReportQueries();
+        var sql = AssertOnlyGuardedSqlOperations(migration);
+
+        Assert.Contains("UPDATE `liens_CaseNotes`", sql, StringComparison.Ordinal);
+        Assert.Contains("information_schema.STATISTICS", sql, StringComparison.Ordinal);
+        Assert.Contains("IX_CaseNotes_ReportLookup", sql, StringComparison.Ordinal);
+        Assert.Contains("`CreatedAtUtc` DESC, `Id` DESC", sql, StringComparison.Ordinal);
     }
 
     [Fact]

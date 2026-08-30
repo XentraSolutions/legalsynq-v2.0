@@ -1458,6 +1458,20 @@ public class LegacySettlementEndpointTests : IClassFixture<LiensApiFactory>, IAs
         persistedLiens.Should().HaveCount(2);
         persistedLiens.Should().OnlyContain(lien => lien.Status == LienStatus.Active);
         persistedLiens.Should().OnlyContain(lien => lien.ClosedAtUtc == null);
+
+        var servicingResponse = await _client.GetAsync(
+            $"/api/liens/liens?caseId={SeedHelper.CaseId}&pageSize=100");
+        servicingResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await servicingResponse.Content.ReadAsStringAsync()}");
+        var servicingPayload = await servicingResponse.Content.ReadFromJsonAsync<JsonDocument>();
+        var reopenedLienIds = liens.Select(lien => lien.Id).ToHashSet();
+        var reopenedItems = servicingPayload!.RootElement
+            .GetProperty("items")
+            .EnumerateArray()
+            .Where(item => reopenedLienIds.Contains(item.GetProperty("id").GetGuid()))
+            .ToArray();
+        reopenedItems.Should().HaveCount(2);
+        reopenedItems.Should().OnlyContain(item => item.GetProperty("status").GetString() == "Open");
     }
 
     // ── GET /service/settlement/history/{caseId} ──────────────────────────────

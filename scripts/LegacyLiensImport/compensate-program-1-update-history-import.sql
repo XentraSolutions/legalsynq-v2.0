@@ -20,6 +20,7 @@ SET @import_run_id = '<legacy-update-history-import-run-guid>';
 SET @tenant_id = '<tenant-guid>';
 SET @org_id = '<organization-guid>';
 SET @rollback_actor_user_id = '<identity-user-guid>';
+SET @rollback_approval_id = '<rollback-approval-guid>';
 SET @expected_case_events = -1;
 SET @expected_lien_events = -1;
 SET @expected_crosswalks = -1;
@@ -41,6 +42,7 @@ CREATE PROCEDURE compensate_program_1_update_history_import(
     IN p_tenant_id CHAR(36),
     IN p_org_id CHAR(36),
     IN p_rollback_actor_user_id CHAR(36),
+    IN p_rollback_approval_id CHAR(36),
     IN p_expected_case_events INT,
     IN p_expected_lien_events INT,
     IN p_expected_crosswalks INT,
@@ -62,6 +64,8 @@ main: BEGIN
     DECLARE v_deleted_events INT DEFAULT 0;
     DECLARE v_updated_runs INT DEFAULT 0;
     DECLARE v_checksum CHAR(64);
+    DECLARE v_approval_binding_hash CHAR(64);
+    DECLARE v_approval_count INT DEFAULT 0;
     DECLARE v_original_time_zone VARCHAR(64);
     DECLARE v_original_group_concat_max_len BIGINT;
 
@@ -98,9 +102,13 @@ main: BEGIN
        OR UNHEX(REPLACE(p_import_run_id, '-', '')) IS NULL
        OR UNHEX(REPLACE(p_tenant_id, '-', '')) IS NULL
        OR UNHEX(REPLACE(p_org_id, '-', '')) IS NULL
-       OR UNHEX(REPLACE(p_rollback_actor_user_id, '-', '')) IS NULL THEN
+       OR UNHEX(REPLACE(p_rollback_actor_user_id, '-', '')) IS NULL
+       OR (p_apply = 1 AND (
+           p_rollback_approval_id IS NULL
+           OR p_rollback_approval_id = '<rollback-approval-guid>'
+           OR UNHEX(REPLACE(p_rollback_approval_id, '-', '')) IS NULL)) THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'LSLUH-RB-002 explicit run, tenant, organization, and actor GUIDs are required';
+            SET MESSAGE_TEXT = 'LSLUH-RB-002 explicit run, tenant, organization, actor, and approval GUIDs are required';
     END IF;
 
     SET v_lock_name = CONCAT('legalsynq:luh:', LOWER(p_tenant_id));
@@ -226,6 +234,18 @@ main: BEGIN
         WHERE BINARY update_event.ImportRunId = BINARY p_import_run_id
     ) checksummed_events;
 
+    SET v_approval_binding_hash = LOWER(SHA2(CONCAT_WS(CHAR(31),
+        'sl-core-update-history-rollback-v1',
+        LOWER(p_import_run_id),
+        LOWER(p_tenant_id),
+        LOWER(p_org_id),
+        LOWER(p_rollback_actor_user_id),
+        LOWER(p_expected_source_fingerprint),
+        CAST(v_case_events AS CHAR),
+        CAST(v_lien_events AS CHAR),
+        CAST(v_crosswalks AS CHAR),
+        LOWER(v_checksum)), 256));
+
     SELECT
         v_schema AS TargetSchema,
         p_import_run_id AS ImportRunId,
@@ -233,6 +253,7 @@ main: BEGIN
         v_lien_events AS LienEventsToDelete,
         v_crosswalks AS CrosswalksToDelete,
         v_checksum AS PlanChecksum,
+        v_approval_binding_hash AS ApprovalBindingHash,
         (SELECT COUNT(*) FROM liens_LegacyImportExceptions exception_row
          WHERE BINARY exception_row.ImportRunId = BINARY p_import_run_id) AS ExceptionsRetained,
         'Import run retained and marked RolledBack' AS RunDisposition;
@@ -262,7 +283,51 @@ main: BEGIN
             SET MESSAGE_TEXT = 'LSLUH-RB-009 expected counts or checksum do not match the reviewed preflight';
     END IF;
 
+    SELECT COUNT(*) INTO v_approval_count
+    FROM liens_LegacyImportApprovals approval
+    WHERE BINARY approval.Id = BINARY LOWER(p_rollback_approval_id)
+      AND BINARY approval.TenantId = BINARY LOWER(p_tenant_id)
+      AND BINARY approval.OrgId = BINARY LOWER(p_org_id)
+      AND approval.SourceSystem = 'SL-CORE'
+      AND BINARY approval.SourceFingerprint = BINARY LOWER(p_expected_source_fingerprint)
+      AND approval.LegacyProgram = '1'
+      AND approval.MappingVersion = 'sl-core-update-history-rollback-v1'
+      AND BINARY approval.MappingManifestHash = BINARY v_approval_binding_hash
+      AND TRIM(COALESCE(approval.MappingApprovalReference, '')) <> ''
+      AND BINARY approval.MigrationUserId = BINARY LOWER(p_rollback_actor_user_id)
+      AND approval.Status = 'Approved'
+      AND approval.ConsumedAtUtc IS NULL
+      AND approval.ConsumedByRunId IS NULL
+      AND (approval.ExpiresAtUtc IS NULL OR approval.ExpiresAtUtc > UTC_TIMESTAMP(6));
+    IF v_approval_count <> 1 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'LSLUH-RB-010 compatible unconsumed rollback approval was not found';
+    END IF;
+
     START TRANSACTION;
+
+    UPDATE liens_LegacyImportApprovals
+    SET Status = 'Consumed',
+        ConsumedAtUtc = UTC_TIMESTAMP(6),
+        ConsumedByRunId = LOWER(p_import_run_id)
+    WHERE BINARY Id = BINARY LOWER(p_rollback_approval_id)
+      AND BINARY TenantId = BINARY LOWER(p_tenant_id)
+      AND BINARY OrgId = BINARY LOWER(p_org_id)
+      AND SourceSystem = 'SL-CORE'
+      AND BINARY SourceFingerprint = BINARY LOWER(p_expected_source_fingerprint)
+      AND LegacyProgram = '1'
+      AND MappingVersion = 'sl-core-update-history-rollback-v1'
+      AND BINARY MigrationUserId = BINARY LOWER(p_rollback_actor_user_id)
+      AND Status = 'Approved'
+      AND ConsumedAtUtc IS NULL
+      AND ConsumedByRunId IS NULL
+      AND BINARY MappingManifestHash = BINARY v_approval_binding_hash
+      AND TRIM(COALESCE(MappingApprovalReference, '')) <> ''
+      AND (ExpiresAtUtc IS NULL OR ExpiresAtUtc > UTC_TIMESTAMP(6));
+    IF ROW_COUNT() <> 1 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'LSLUH-RB-011 rollback approval was consumed concurrently';
+    END IF;
 
     DELETE FROM liens_LegacyIdCrosswalks
     WHERE BINARY ImportRunId = BINARY p_import_run_id
@@ -309,7 +374,7 @@ main: BEGIN
              AND TargetEntity = 'LegacyUpdateEvent'
        ) THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'LSLUH-RB-010 compensation postcondition failed';
+            SET MESSAGE_TEXT = 'LSLUH-RB-012 compensation postcondition failed';
     END IF;
 
     COMMIT;
@@ -335,6 +400,7 @@ CALL compensate_program_1_update_history_import(
     @tenant_id,
     @org_id,
     @rollback_actor_user_id,
+    @rollback_approval_id,
     @expected_case_events,
     @expected_lien_events,
     @expected_crosswalks,

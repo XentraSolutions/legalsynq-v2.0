@@ -58,6 +58,10 @@ the full legacy dump against the target schema: it contains unqualified
 destructive `DROP TABLE` statements. A MySQL procedure cannot read a local dump
 file or connect to a different MySQL server.
 
+The `--import-update-logs` C# mode is diagnostic preflight only. It rejects
+`--apply`; all update-history writes must use the stored procedure so the
+one-time database approval and both migration advisory locks are enforced.
+
 This v2 mode is bound to the existing controlled core-import fingerprint
 `3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe`,
 Program `1`, and mapping/import scope `sl-core-update-history-v2`. This rebaseline
@@ -179,7 +183,11 @@ checksum, then enable `LegacyUpdateHistory:Enabled`. Before exposure, the
 reviewed run-bound compensation script
 [`compensate-program-1-update-history-import.sql`](compensate-program-1-update-history-import.sql)
 may remove only that run's events and event crosswalks while retaining run and
-exception evidence. After exposure, disable the feature and repair forward.
+exception evidence. Its dry run returns an `ApprovalBindingHash`; before apply,
+the Identity-owned release process must create an unconsumed approval with
+mapping version `sl-core-update-history-rollback-v1` and that exact hash. The
+compensation consumes the approval in the same transaction as the deletions and
+run-state update. After exposure, disable the feature and repair forward.
 
 ## Restore legacy case and lien creators
 

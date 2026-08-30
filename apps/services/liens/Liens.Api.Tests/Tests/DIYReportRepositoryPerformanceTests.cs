@@ -72,4 +72,69 @@ public sealed class DIYReportRepositoryPerformanceTests
                 actorId,
                 lienId: lienId);
     }
+
+    [Fact]
+    public async Task Case_note_report_reads_use_canonical_categories_and_report_index()
+    {
+        var options = new DbContextOptionsBuilder<LiensDbContext>()
+            .UseInMemoryDatabase($"diy-report-note-read-{Guid.CreateVersion7()}")
+            .Options;
+        await using var db = new LiensDbContext(options);
+        var tenantId = Guid.CreateVersion7();
+        var caseId = Guid.CreateVersion7();
+        var actorId = Guid.CreateVersion7();
+        var feedNote = LienCaseNote.Create(
+            caseId,
+            tenantId,
+            "Latest feed note",
+            " Feed ",
+            actorId,
+            "Report Author");
+
+        feedNote.Category.Should().Be(CaseNoteCategory.Feed);
+        db.LienCaseNotes.Add(feedNote);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var notes = await new LienCaseNoteRepository(db).GetLatestFeedByCaseIdsAsync(
+            tenantId,
+            [caseId],
+            CancellationToken.None);
+
+        notes.Should().ContainSingle(note =>
+            note.CaseId == caseId &&
+            note.Category == CaseNoteCategory.Feed &&
+            note.Content == "Latest feed note");
+        db.ChangeTracker.Entries<LienCaseNote>().Should().BeEmpty();
+
+        var reportIndex = db.Model.FindEntityType(typeof(LienCaseNote))!
+            .GetIndexes()
+            .Single(index => index.GetDatabaseName() == "IX_CaseNotes_ReportLookup");
+        reportIndex.Properties.Select(property => property.Name).Should().Equal(
+            nameof(LienCaseNote.TenantId),
+            nameof(LienCaseNote.CaseId),
+            nameof(LienCaseNote.IsDeleted),
+            nameof(LienCaseNote.Category),
+            nameof(LienCaseNote.CreatedAtUtc),
+            nameof(LienCaseNote.Id));
+    }
+
+    [Fact]
+    public void Latest_feed_report_query_translates_without_wrapping_the_category_column()
+    {
+        var options = new DbContextOptionsBuilder<LiensDbContext>()
+            .UseMySql(
+                "Server=127.0.0.1;Port=3306;Database=query_translation_only;User=root;Password=ignored;",
+                new MySqlServerVersion(new Version(8, 0, 0)))
+            .Options;
+        using var db = new LiensDbContext(options);
+        var query = new LienCaseNoteRepository(db).BuildLatestFeedReportQuery(
+            Guid.CreateVersion7(),
+            [Guid.CreateVersion7()]);
+
+        var sql = query.ToQueryString();
+
+        sql.Should().Contain("Category");
+        sql.ToUpperInvariant().Should().NotContain("LOWER(");
+    }
 }

@@ -103,7 +103,7 @@ report's detailed breakdown in server-paginated pages of 10 rows. This keeps the
 bounded while preserving uncapped CSV exports and access to every report page.
 
 DIY reports exclude liens in the hidden `Cancelled` state used by lien deletion, including from previews, exports, pagination, and summary totals. They treat the legacy UI sentinel `isBulk: "N"` as no bulk filter, matching the legacy report SQL. Explicit `Y`/`Yes` selects bulk liens, while canonical `No`/`False`/`0` selects non-bulk and unset liens. Legacy relationship filters for law firm, attorney, funding company, medical facility, case manager, and medical provider are applied before pagination and summary calculation. Lien-status filter values may be either status codes or IDs from the lien-status lookup category.
-Interactive DIY report previews retain exact summary totals across the full filtered result while limiting detailed contact, facility, reduction, note, activity, and medical-code enrichment to the requested page. The underlying report and servicing-item reads are untracked and retrieve only the legacy medical metadata used by the report; uncapped CSV exports continue to enrich every exported row.
+Interactive DIY report previews retain exact summary totals across the full filtered result while limiting detailed contact, facility, reduction, note, activity, and medical-code enrichment to the requested page. Case-note enrichment projects only report fields and uses a tenant/case/category lookup index; tracking-note history remains complete and feed notes remain latest-only. The underlying report and servicing-item reads are untracked and retrieve only the legacy medical metadata used by the report; uncapped CSV exports continue to enrich every exported row.
 CASES previews and exports include matching cases that do not yet have a linked lien unless a lien-dependent filter is selected. Server-generated case numbers use `YY-00000` and advance from the highest numeric suffix for the current year; existing six-digit legacy suffixes remain valid inputs when calculating the next sequence.
 The legacy DIY `filter-options` endpoint returns both standalone case-manager contacts and case managers stored as law-firm subcontacts.
 
@@ -149,6 +149,8 @@ Imported history is excluded from API responses by default. Set
 into `case-updates/v3` and `liens-updates/v3`. Those endpoints globally paginate
 native and imported rows, preserve the existing response shapes and empty-result
 behavior, and normalize only the known legacy `ÔåÆ` arrow token at response time.
+When this flag is enabled, startup fails if the guarded update-event schema cannot
+be recovered and validated; the service does not continue with a broken read path.
 
 `POST /api/liens/settlement/create` preserves its settlement-detail status.
 `POST /api/liens/settlement/payments` stores settlement type (for example, `By Attorney`),

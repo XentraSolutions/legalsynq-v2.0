@@ -7,7 +7,7 @@ public sealed class LegacyUpdateHistoryImportContractTests
     private const string ApprovedFingerprint = "3adccecf8a38114a14cd500240aab2a4db3d9bf45f00945c659dc3b5252663fe";
 
     [Fact]
-    public void Update_history_mode_has_separate_cli_and_manifest_contract()
+    public void Update_history_mode_has_separate_preflight_only_cli_contract()
     {
         var program = ReadImportFile("Program.cs");
         var importer = ReadImportFile("UpdateHistoryImport.cs");
@@ -22,8 +22,8 @@ public sealed class LegacyUpdateHistoryImportContractTests
         importer.Should().NotContain("CaseNumberCollision");
         importer.Should().NotContain("LienNumberCollision");
         importer.Should().Contain("--legacy-program must be 1 for update-history import.");
-        importer.Should().Contain("--source-dump is required with --apply.");
-        importer.Should().Contain("--mapping-manifest and --mapping-manifest-signature are required with --apply.");
+        importer.Should().Contain("--apply is disabled for update-history CLI mode");
+        importer.Should().Contain("apply through import-program-1-update-history.sql with a one-time database approval");
         importer.Should().Contain("Manifest importScope and mappingVersion must both be");
         importer.Should().Contain(ApprovedFingerprint);
         importer.Should().Contain("CN=LegalSynq Identity Migration Signing");
@@ -51,7 +51,7 @@ public sealed class LegacyUpdateHistoryImportContractTests
 
     [Theory]
     [InlineData("2", false, "--legacy-program must be 1*")]
-    [InlineData("1", true, "--source-dump is required*")]
+    [InlineData("1", true, "--apply is disabled*")]
     public void Update_history_options_reject_invalid_program_and_unverifiable_apply(
         string program,
         bool apply,
@@ -91,6 +91,17 @@ public sealed class LegacyUpdateHistoryImportContractTests
         importer.Should().Contain("zone.IsInvalidTime(unspecified) || zone.IsAmbiguousTime(unspecified)");
         importer.Should().Contain("TimeZoneInfo.ConvertTimeToUtc(unspecified, zone)");
         importer.Should().Contain("SET time_zone = '+00:00'");
+    }
+
+    [Fact]
+    public void Enabled_imported_history_fails_startup_when_schema_recovery_fails()
+    {
+        var program = ReadLiensApiFile("Program.cs");
+
+        program.Should().Contain("GetValue<bool>(\"LegacyUpdateHistory:Enabled\")");
+        program.Should().Contain("Legacy update-event schema recovery failed while imported history reads are enabled.");
+        program.IndexOf("if (legacyUpdateHistoryEnabled && legacyUpdateEventSchemaRecoveryRequired)", StringComparison.Ordinal)
+            .Should().BeLessThan(program.IndexOf("Legacy update-event schema recovery could not complete", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -165,7 +176,7 @@ public sealed class LegacyUpdateHistoryImportContractTests
     }
 
     [Fact]
-    public void Apply_is_atomic_batched_idempotent_and_reconciled()
+    public void Retired_cli_apply_implementation_remains_atomic_but_is_unreachable()
     {
         var importer = ReadImportFile("UpdateHistoryImport.cs");
 
@@ -269,7 +280,11 @@ public sealed class LegacyUpdateHistoryImportContractTests
         sql.Should().Contain("TIMESTAMP_SEMANTICS = 'America/Los_Angeles-wall-clock'");
         sql.Should().Contain("v_anchor_count <> 19 OR v_anchor_errors <> 0");
         sql.Should().Contain("PacificCandidateCount <> 1");
+        sql.Should().Contain("LOWER(column_type) = 'datetime(6)'");
+        sql.Should().Contain("GROUP_CONCAT(CONCAT(column_name");
+        sql.Should().Contain("CONCAT(CHAR(92), CHAR(39)), CHAR(39)");
         sql.Should().Contain("Action = 'Personal Info Update'");
+        sql.Should().Contain("v_case_events <> 2756 OR v_lien_events <> 15976 OR v_excluded <> 1");
         sql.Should().Contain("Status = 'Approved'");
         sql.Should().Contain("v_approval_binding_hash AS ApprovalBindingHash");
         sql.Should().Contain("v_approval_manifest_hash <> BINARY v_approval_binding_hash");
@@ -290,6 +305,9 @@ public sealed class LegacyUpdateHistoryImportContractTests
         sql.Should().Contain("v_existing_planned_count <> v_existing_inserted_events");
         sql.Should().Contain("v_existing_matching_exception_count <> v_excluded");
         sql.Should().Contain("v_existing_matching_exception_keys <> v_excluded");
+        sql.Should().Contain("update_event.CaseId = plan.TargetCaseId");
+        sql.Should().Contain("BINARY update_event.Description <=> BINARY plan.Description");
+        sql.Should().Contain("update_event.ImportedAtUtc = v_run_started_at");
         sql.Should().Contain("'NO-OP' AS Mode");
         sql.Should().Contain("unfinished update-history run requires reconciliation");
         sql.Should().NotContain("--apply");
@@ -343,6 +361,11 @@ public sealed class LegacyUpdateHistoryImportContractTests
 
         sql.Should().Contain("v_schema NOT IN ('LS_QA_LIENS', 'LS_LIENS')");
         sql.Should().Contain("p_confirm_reads_disabled <> 1 OR p_confirm_pre_exposure <> 1");
+        sql.Should().Contain("sl-core-update-history-rollback-v1");
+        sql.Should().Contain("v_approval_binding_hash AS ApprovalBindingHash");
+        sql.Should().Contain("MappingManifestHash = BINARY v_approval_binding_hash");
+        sql.Should().Contain("rollback approval was consumed concurrently");
+        sql.Should().Contain("ExpiresAtUtc IS NULL OR ExpiresAtUtc > UTC_TIMESTAMP(6)");
         sql.Should().Contain("run.SourceFingerprint = BINARY p_expected_source_fingerprint");
         sql.Should().Contain("run.MappingVersion = BINARY p_expected_mapping_version");
         sql.Should().Contain("run.Status = 'Completed'");
@@ -365,6 +388,9 @@ public sealed class LegacyUpdateHistoryImportContractTests
 
     private static string ReadImportFile(string filename) =>
         File.ReadAllText(Path.Combine(FindRepositoryRoot(), "scripts", "LegacyLiensImport", filename));
+
+    private static string ReadLiensApiFile(string filename) =>
+        File.ReadAllText(Path.Combine(FindRepositoryRoot(), "apps", "services", "liens", "Liens.Api", filename));
 
     private static T InvokeImporter<T>(string methodName, params object?[] arguments)
     {

@@ -61,6 +61,7 @@ main: BEGIN
     DECLARE v_required_columns INT DEFAULT 0;
     DECLARE v_required_indexes INT DEFAULT 0;
     DECLARE v_required_constraints INT DEFAULT 0;
+    DECLARE v_required_check_clauses INT DEFAULT 0;
     DECLARE v_fk_contract INT DEFAULT 0;
     DECLARE v_provenance_count INT DEFAULT 0;
     DECLARE v_core_run_count INT DEFAULT 0;
@@ -204,14 +205,32 @@ main: BEGIN
     FROM information_schema.columns
     WHERE table_schema = v_schema
       AND table_name = 'liens_LegacyUpdateEvents'
-      AND column_name IN (
-          'Id', 'TenantId', 'OrgId', 'CaseId', 'LienId', 'Scope', 'Action',
-          'Description', 'ActorDisplayName', 'OccurredAtUtc', 'ImportedAtUtc',
-          'ImportRunId', 'SourceSystem', 'SourceTable', 'LegacyId', 'LegacySequence'
+      AND (
+          (column_name IN ('Id', 'TenantId', 'OrgId', 'CaseId', 'ImportRunId')
+              AND LOWER(column_type) = 'char(36)' AND is_nullable = 'NO'
+              AND LOWER(collation_name) = 'ascii_general_ci')
+       OR (column_name = 'LienId' AND LOWER(column_type) = 'char(36)'
+              AND is_nullable = 'YES' AND LOWER(collation_name) = 'ascii_general_ci')
+       OR (column_name = 'Scope' AND LOWER(column_type) = 'varchar(20)'
+              AND is_nullable = 'NO' AND LOWER(collation_name) LIKE 'utf8mb4%')
+       OR (column_name = 'Action' AND LOWER(column_type) = 'varchar(255)'
+              AND is_nullable = 'NO' AND LOWER(collation_name) LIKE 'utf8mb4%')
+       OR (column_name = 'Description' AND LOWER(column_type) = 'text'
+              AND is_nullable = 'YES' AND LOWER(collation_name) LIKE 'utf8mb4%')
+       OR (column_name = 'ActorDisplayName' AND LOWER(column_type) = 'varchar(255)'
+              AND is_nullable = 'YES' AND LOWER(collation_name) LIKE 'utf8mb4%')
+       OR (column_name IN ('OccurredAtUtc', 'ImportedAtUtc')
+              AND LOWER(column_type) = 'datetime(6)' AND is_nullable = 'NO'
+              AND collation_name IS NULL)
+       OR (column_name IN ('SourceSystem', 'SourceTable', 'LegacyId')
+              AND LOWER(column_type) = 'varchar(100)' AND is_nullable = 'NO'
+              AND LOWER(collation_name) LIKE 'utf8mb4%')
+       OR (column_name = 'LegacySequence' AND LOWER(column_type) = 'bigint'
+              AND is_nullable = 'NO' AND collation_name IS NULL)
       );
     IF v_required_columns <> 16 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'LSLUH-005 legacy update-event column contract is incomplete';
+            SET MESSAGE_TEXT = 'LSLUH-005 legacy update-event column contract is missing or incompatible';
     END IF;
 
     SELECT COUNT(*) INTO v_required_columns
@@ -237,15 +256,42 @@ main: BEGIN
             SET MESSAGE_TEXT = 'LSLUH-005 SL-CORE update-history source column contract is incomplete';
     END IF;
 
-    SELECT COUNT(DISTINCT index_name) INTO v_required_indexes
-    FROM information_schema.statistics
-    WHERE table_schema = v_schema
-      AND table_name = 'liens_LegacyUpdateEvents'
-      AND index_name IN (
-          'PRIMARY', 'UX_LegacyUpdateEvents_Tenant_Source_Table_Key',
-          'IX_LegacyUpdateEvents_CaseTimeline', 'IX_LegacyUpdateEvents_ImportRunId',
-          'IX_LegacyUpdateEvents_LienTimeline'
-      );
+    SELECT COUNT(*) INTO v_required_indexes
+    FROM (
+        SELECT index_name
+        FROM information_schema.statistics
+        WHERE table_schema = v_schema
+          AND table_name = 'liens_LegacyUpdateEvents'
+          AND index_name IN (
+              'PRIMARY', 'UX_LegacyUpdateEvents_Tenant_Source_Table_Key',
+              'IX_LegacyUpdateEvents_CaseTimeline', 'IX_LegacyUpdateEvents_ImportRunId',
+              'IX_LegacyUpdateEvents_LienTimeline')
+        GROUP BY index_name
+        HAVING
+          (index_name = 'PRIMARY' AND MAX(non_unique) = 0
+           AND GROUP_CONCAT(CONCAT(column_name, ':', COALESCE(collation, 'A'), ':',
+                   COALESCE(CAST(sub_part AS CHAR), 'FULL'), ':', is_visible)
+               ORDER BY seq_in_index SEPARATOR ',') = 'Id:A:FULL:YES')
+          OR (index_name = 'UX_LegacyUpdateEvents_Tenant_Source_Table_Key' AND MAX(non_unique) = 0
+           AND GROUP_CONCAT(CONCAT(column_name, ':', COALESCE(collation, 'A'), ':',
+                   COALESCE(CAST(sub_part AS CHAR), 'FULL'), ':', is_visible)
+               ORDER BY seq_in_index SEPARATOR ',') =
+               'TenantId:A:FULL:YES,SourceSystem:A:FULL:YES,SourceTable:A:FULL:YES,LegacyId:A:FULL:YES')
+          OR (index_name = 'IX_LegacyUpdateEvents_CaseTimeline' AND MIN(non_unique) = 1
+           AND GROUP_CONCAT(CONCAT(column_name, ':', COALESCE(collation, 'A'), ':',
+                   COALESCE(CAST(sub_part AS CHAR), 'FULL'), ':', is_visible)
+               ORDER BY seq_in_index SEPARATOR ',') =
+               'TenantId:A:FULL:YES,CaseId:A:FULL:YES,Scope:A:FULL:YES,OccurredAtUtc:D:FULL:YES,LegacySequence:D:FULL:YES')
+          OR (index_name = 'IX_LegacyUpdateEvents_ImportRunId' AND MIN(non_unique) = 1
+           AND GROUP_CONCAT(CONCAT(column_name, ':', COALESCE(collation, 'A'), ':',
+                   COALESCE(CAST(sub_part AS CHAR), 'FULL'), ':', is_visible)
+               ORDER BY seq_in_index SEPARATOR ',') = 'ImportRunId:A:FULL:YES')
+          OR (index_name = 'IX_LegacyUpdateEvents_LienTimeline' AND MIN(non_unique) = 1
+           AND GROUP_CONCAT(CONCAT(column_name, ':', COALESCE(collation, 'A'), ':',
+                   COALESCE(CAST(sub_part AS CHAR), 'FULL'), ':', is_visible)
+               ORDER BY seq_in_index SEPARATOR ',') =
+               'TenantId:A:FULL:YES,LienId:A:FULL:YES,OccurredAtUtc:D:FULL:YES,LegacySequence:D:FULL:YES')
+    ) exact_indexes;
     IF v_required_indexes <> 5 THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'LSLUH-006 legacy update-event index contract is incomplete';
@@ -272,9 +318,29 @@ main: BEGIN
       AND key_column.referenced_table_name = 'liens_LegacyImportRuns'
       AND key_column.referenced_column_name = 'Id'
       AND reference_rule.delete_rule = 'RESTRICT';
-    IF v_required_constraints <> 4 OR v_fk_contract <> 1 THEN
+    SELECT COUNT(*) INTO v_required_check_clauses
+    FROM information_schema.table_constraints table_constraint
+    INNER JOIN information_schema.check_constraints check_constraint
+      ON check_constraint.constraint_schema = table_constraint.constraint_schema
+     AND check_constraint.constraint_name = table_constraint.constraint_name
+    WHERE table_constraint.table_schema = v_schema
+      AND table_constraint.table_name = 'liens_LegacyUpdateEvents'
+      AND table_constraint.constraint_type = 'CHECK'
+      AND table_constraint.enforced = 'YES'
+      AND ((table_constraint.constraint_name = 'CK_LegacyUpdateEvents_Scope'
+            AND REGEXP_REPLACE(LOWER(REPLACE(REPLACE(REPLACE(
+                    check_constraint.check_clause, '`', ''), '_utf8mb4', ''),
+                    CONCAT(CHAR(92), CHAR(39)), CHAR(39))),
+                    '[[:space:]()]', '') = 'scopein''case'',''lien''')
+        OR (table_constraint.constraint_name = 'CK_LegacyUpdateEvents_ScopeLien'
+            AND REGEXP_REPLACE(LOWER(REPLACE(REPLACE(REPLACE(
+                    check_constraint.check_clause, '`', ''), '_utf8mb4', ''),
+                    CONCAT(CHAR(92), CHAR(39)), CHAR(39))),
+                    '[[:space:]()]', '') =
+                'scope=''case''andlienidisnullorscope=''lien''andlienidisnotnull'));
+    IF v_required_constraints <> 4 OR v_required_check_clauses <> 2 OR v_fk_contract <> 1 THEN
         SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'LSLUH-006 legacy update-event constraint contract is incomplete';
+            SET MESSAGE_TEXT = 'LSLUH-006 legacy update-event index or constraint contract is incompatible';
     END IF;
 
     SELECT COUNT(*) INTO v_provenance_count
@@ -764,6 +830,11 @@ main: BEGIN
          v_case_skips, v_lien_skips, v_excluded, v_out_of_scope
     FROM tmp_luh_plan;
 
+    IF v_case_events <> 2756 OR v_lien_events <> 15976 OR v_excluded <> 1 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'LSLUH-014 imported and excluded totals do not match the approved fingerprint';
+    END IF;
+
     SELECT LOWER(SHA2(GROUP_CONCAT(
         CONCAT(SourceTable, '|', LegacySequence, '|', SourceHash, '|',
             CASE WHEN Disposition IN ('Insert', 'AlreadyImported') THEN 'Imported' ELSE Disposition END,
@@ -1138,9 +1209,18 @@ main: BEGIN
      AND update_event.ImportRunId = v_run_id
      AND update_event.TenantId = v_tenant_id
      AND update_event.OrgId = v_org_id
+     AND update_event.CaseId = plan.TargetCaseId
+     AND update_event.LienId <=> plan.TargetLienId
+     AND update_event.Scope = plan.Scope
+     AND BINARY update_event.Action = BINARY plan.Action
+     AND BINARY update_event.Description <=> BINARY plan.Description
+     AND BINARY update_event.ActorDisplayName <=> BINARY plan.ActorDisplayName
+     AND update_event.OccurredAtUtc = plan.OccurredAtUtc
+     AND update_event.ImportedAtUtc = v_run_started_at
      AND update_event.SourceSystem = v_source_system
      AND update_event.SourceTable = plan.SourceTable
      AND update_event.LegacyId = plan.LegacyId
+     AND update_event.LegacySequence = plan.LegacySequence
     LEFT JOIN liens_LegacyIdCrosswalks event_walk
       ON event_walk.TargetId = update_event.Id
      AND event_walk.ImportRunId = update_event.ImportRunId

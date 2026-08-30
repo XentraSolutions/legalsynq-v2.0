@@ -51,5 +51,17 @@ public class LienCaseNoteConfiguration : IEntityTypeConfiguration<LienCaseNote>
 
         builder.HasIndex(n => new { n.CaseId, n.IsDeleted })
             .HasDatabaseName("IX_CaseNotes_CaseId_IsDeleted");
+
+        builder.HasIndex(n => new
+            {
+                n.TenantId,
+                n.CaseId,
+                n.IsDeleted,
+                n.Category,
+                n.CreatedAtUtc,
+                n.Id,
+            })
+            .IsDescending(false, false, false, false, true, true)
+            .HasDatabaseName("IX_CaseNotes_ReportLookup");
     }
 }

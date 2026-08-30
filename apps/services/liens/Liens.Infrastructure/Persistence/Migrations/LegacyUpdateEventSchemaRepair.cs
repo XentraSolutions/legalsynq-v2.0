@@ -339,7 +339,8 @@ ORDER BY k.ORDINAL_POSITION;
             .Where(character => !char.IsWhiteSpace(character) && character != '`')
             .ToArray())
             .ToLowerInvariant()
-            .Replace("_utf8mb4", string.Empty, StringComparison.Ordinal);
+            .Replace("_utf8mb4", string.Empty, StringComparison.Ordinal)
+            .Replace("\\'", "'", StringComparison.Ordinal);
 
         while (HasRedundantOuterParentheses(normalized))
             normalized = normalized[1..^1];

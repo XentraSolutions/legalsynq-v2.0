@@ -2303,6 +2303,10 @@ namespace Liens.Infrastructure.Persistence.Migrations
                     b.HasIndex("CaseId", "IsDeleted")
                         .HasDatabaseName("IX_CaseNotes_CaseId_IsDeleted");
 
+                    b.HasIndex("TenantId", "CaseId", "IsDeleted", "Category", "CreatedAtUtc", "Id")
+                        .IsDescending(false, false, false, false, true, true)
+                        .HasDatabaseName("IX_CaseNotes_ReportLookup");
+
                     b.HasIndex("TenantId", "CaseId", "CreatedAtUtc")
                         .HasDatabaseName("IX_CaseNotes_TenantId_CaseId_CreatedAt");
 

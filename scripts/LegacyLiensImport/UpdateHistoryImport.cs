@@ -37,9 +37,7 @@ internal static class UpdateHistoryImport
             if (!string.Equals(fingerprint, ApprovedFingerprint, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("The update-history runner is approved only for the frozen Program 1 dump fingerprint.");
 
-            var manifest = options.Apply
-                ? await SignedManifest.LoadAsync(options, fingerprint)
-                : null;
+            SignedManifest? manifest = null;
 
             await using var source = new MySqlConnection(options.LegacyConnectionString);
             await using var target = new MySqlConnection(options.TargetConnectionString);
@@ -120,14 +118,11 @@ Required:
   --legacy-program 1
   --legacy-connection <connection>   (or LegacySlCoreConnectionString)
   --target-connection <connection>   (or ConnectionStrings__LiensDb)
-  --source-dump <path>               required for --apply
+  --source-dump <path>               dump file used to verify the source fingerprint,
+                                     or use --source-fingerprint <sha256>
 
-Apply only:
-  --apply
-  --mapping-manifest <path>
-  --mapping-manifest-signature <path>
-
-Dry runs may use --source-fingerprint instead of --source-dump.
+This CLI mode is preflight-only. Apply through import-program-1-update-history.sql,
+which consumes a one-time database approval under the migration advisory locks.
 """);
 
     private sealed record Options(
@@ -147,23 +142,20 @@ Dry runs may use --source-fingerprint instead of --source-dump.
         {
             var values = ParseArguments(args);
             var apply = values.ContainsKey("apply");
+            if (apply)
+                throw new ArgumentException(
+                    "--apply is disabled for update-history CLI mode; apply through import-program-1-update-history.sql with a one-time database approval.");
             var program = RequireLong(values, "legacy-program");
             if (program != 1)
                 throw new ArgumentException("--legacy-program must be 1 for update-history import.");
 
             var sourceDump = Optional(values, "source-dump");
             var sourceFingerprint = Optional(values, "source-fingerprint");
-            if (apply && string.IsNullOrWhiteSpace(sourceDump))
-                throw new ArgumentException("--source-dump is required with --apply.");
-            if (apply && !string.IsNullOrWhiteSpace(sourceFingerprint))
-                throw new ArgumentException("--source-fingerprint is dry-run only.");
-            if (!apply && string.IsNullOrWhiteSpace(sourceDump) && string.IsNullOrWhiteSpace(sourceFingerprint))
+            if (string.IsNullOrWhiteSpace(sourceDump) && string.IsNullOrWhiteSpace(sourceFingerprint))
                 throw new ArgumentException("Provide --source-dump or --source-fingerprint.");
 
             var manifest = Optional(values, "mapping-manifest");
             var signature = Optional(values, "mapping-manifest-signature");
-            if (apply && (string.IsNullOrWhiteSpace(manifest) || string.IsNullOrWhiteSpace(signature)))
-                throw new ArgumentException("--mapping-manifest and --mapping-manifest-signature are required with --apply.");
 
             return new Options(
                 RequireGuid(values, "tenant-id"),

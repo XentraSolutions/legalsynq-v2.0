@@ -101,6 +101,8 @@ builder.Services.AddHttpClient("MedicareProcedureLookup", client =>
 builder.Services.AddFlowClient(builder.Configuration, serviceName: "synqlien");
 
 var app = builder.Build();
+var legacyUpdateHistoryEnabled =
+    builder.Configuration.GetValue<bool>("LegacyUpdateHistory:Enabled");
 
 var env = app.Environment.EnvironmentName;
 app.Logger.LogInformation("Starting {Service} {Version} in {Environment}", ServiceName, Version, env);
@@ -140,17 +142,30 @@ catch (Exception ex)
 // history. This repairs deployments where MySQL completed only part of the
 // non-transactional migration or an earlier pending migration blocked it.
 var legacyUpdateEventMigrationWasPending = false;
+var legacyUpdateEventSchemaRecoveryRequired = false;
 try
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<LiensDbContext>();
-    legacyUpdateEventMigrationWasPending =
-        await Liens.Infrastructure.Persistence.Migrations.LegacyUpdateEventSchemaRepair.EnsureAsync(
-            db,
-            app.Logger);
+    legacyUpdateEventSchemaRecoveryRequired = db.Database.IsRelational();
+    if (legacyUpdateEventSchemaRecoveryRequired)
+    {
+        legacyUpdateEventMigrationWasPending =
+            await Liens.Infrastructure.Persistence.Migrations.LegacyUpdateEventSchemaRepair.EnsureAsync(
+                db,
+                app.Logger);
+    }
 }
 catch (Exception ex)
 {
+    if (legacyUpdateHistoryEnabled && legacyUpdateEventSchemaRecoveryRequired)
+    {
+        app.Logger.LogCritical(
+            ex,
+            "Legacy update-event schema recovery failed while imported history reads are enabled.");
+        throw;
+    }
+
     app.Logger.LogWarning(
         ex,
         "Legacy update-event schema recovery could not complete — imported history remains unavailable.");
