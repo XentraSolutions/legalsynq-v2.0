@@ -151,7 +151,6 @@ function LienSummaryCard({ data }: { data: PublicBuyerPortalData }) {
   ];
   const lienRows: FieldRow[] = [
     { label: "Submitted Date", value: formatDateTime(data.lien.submittedAtUtc) },
-    { label: "Listing Visibility", value: data.lien.listingVisibility },
     { label: "Initial Service Date", value: formatDate(data.lien.initialServiceDate) },
     { label: "End Service Date", value: formatDate(data.lien.endServiceDate) },
   ];
