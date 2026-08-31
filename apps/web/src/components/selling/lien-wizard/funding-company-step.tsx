@@ -108,6 +108,11 @@ export default function FundingCompanyStep({
           ? () => router.push(detailHref(lienId))
           : () => goToStep(router, lienId, 1)
       }
+      onCancel={
+        isDetailEdit
+          ? () => router.push(detailHref(lienId))
+          : () => router.push("/selling/portfolio/lien")
+      }
       onContinue={handleContinue}
       detailEditReturnHref={isDetailEdit ? detailHref(lienId) : undefined}
     >

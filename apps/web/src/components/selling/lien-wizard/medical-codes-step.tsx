@@ -118,6 +118,7 @@ export default function MedicalCodesStep({
       submitting={submitting}
       continueDisabled={!formValid}
       onBack={() => goToStep(router, lienId, 2)}
+      onCancel={() => router.push("/selling/portfolio/lien")}
       onContinue={handleContinue}
     >
       <MedicalCodesDescription

@@ -145,7 +145,16 @@ export default function LienInfoStep({ lienId, caseId }: LienInfoStepProps) {
       onBack={
         isDetailEdit && lienId
           ? () => router.push(detailHref(lienId))
-          : () => router.back()
+          : lienId
+            ? () => router.push("/selling/portfolio/lien")
+            : () => router.back()
+      }
+      onCancel={
+        isDetailEdit && lienId
+          ? () => router.push(detailHref(lienId))
+          : lienId
+            ? () => router.push("/selling/portfolio/lien")
+            : () => router.back()
       }
       onContinue={handleContinue}
       detailEditReturnHref={

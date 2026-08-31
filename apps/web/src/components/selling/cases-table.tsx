@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { ColumnDef, SortingState } from "@tanstack/react-table";
-import { Eye } from "lucide-react";
+import { Eye, SquarePen } from "lucide-react";
 import { BaseTable } from "../ui/base-table";
 import { StatusBadge } from "@/components/lien/status-badge";
 import { DateDisplay } from "@/components/ui/date-display";
@@ -139,6 +139,12 @@ export function CasesTable({
               icon: Eye,
               onClick: () =>
                 router.push(`/selling/portfolio/cases/${row.original.caseId}`),
+            },
+            {
+              label: "Edit",
+              icon: SquarePen,
+              onClick: () =>
+                router.push(`/selling/portfolio/cases/${row.original.caseId}/edit`),
             },
             // Delete disabled until the delete-case API is available.
             // {
