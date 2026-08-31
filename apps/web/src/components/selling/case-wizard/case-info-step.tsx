@@ -12,9 +12,11 @@ import { CaseWizardShell } from "./shell";
 import {
   detailHref,
   draftStepHref,
+  caseEditStepHref,
   DETAIL_EDIT_PARAM,
   DETAIL_EDIT_VALUE,
 } from "./shared";
+import { SkeletonField, SkeletonFormGrid } from "@/components/lien/skeleton-loader";
 import {
   useCreateCaseDraft,
   useUpdateCaseDraft,
@@ -24,14 +26,31 @@ import {
 } from "@/hooks/selling/use-case-drafts";
 import type { CaseDraftRequest } from "@/lib/selling";
 
+// Mirrors CaseInfoFields' layout: a full-width field (Accident Type), a 2x2
+// grid (Accident State/Date of Loss, Law Firm/Case Manager), then a
+// full-width field (Case Tracking Notes). Same pattern as LienInfoStep's
+// LienInfoSkeleton (@/components/selling/lien-wizard/lien-info-step).
+function CaseInfoSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse pb-3">
+      <div className="h-6 bg-gray-100 rounded w-44" />
+      <SkeletonField full />
+      <SkeletonFormGrid fields={4} />
+      <SkeletonField full />
+    </div>
+  );
+}
+
 export interface CaseInfoStepProps {
   // An in-progress draft being resumed (route: /cases/draft/[draftId]/step-1).
   // Omitted on the brand-new /add page, where step 1 doubles as draft
   // creation.
   draftId?: string;
-  // An existing, already-finalized case being edited from its detail page
-  // (route: /cases/[id]/edit/step-1). Always implies a standalone
-  // Cancel/Save edit — see isDetailEdit below.
+  // An existing, already-finalized case being edited (route:
+  // /cases/[id]/edit/step-1). A "returnTo=detail" query param means this is
+  // a standalone Cancel/Save edit of just this section from the case detail
+  // page; without it, this is one step of the full multi-step edit wizard
+  // (entered via /cases/[id]/edit) — see isDetailEdit below.
   caseId?: string;
 }
 
@@ -110,8 +129,12 @@ export default function CaseInfoStep({ draftId, caseId }: CaseInfoStepProps) {
     try {
       if (caseId) {
         await updateCase.mutateAsync({ caseId, request });
-        toast.success("Case information updated.");
-        router.push(detailHref(caseId));
+        if (isDetailEdit) {
+          toast.success("Case information updated.");
+          router.push(detailHref(caseId));
+          return;
+        }
+        router.push(caseEditStepHref(caseId, 2));
         return;
       }
 
@@ -147,12 +170,22 @@ export default function CaseInfoStep({ draftId, caseId }: CaseInfoStepProps) {
     <CaseWizardShell
       step={1}
       hydrating={hydrating}
+      skeleton={<CaseInfoSkeleton />}
       submitting={submitting}
       continueDisabled={!valid}
       onBack={
         isDetailEdit && caseId
           ? () => router.push(detailHref(caseId))
-          : () => router.back()
+          : caseId || draftId
+            ? () => router.push("/selling/portfolio/cases")
+            : () => router.back()
+      }
+      onCancel={
+        isDetailEdit && caseId
+          ? () => router.push(detailHref(caseId))
+          : caseId || draftId
+            ? () => router.push("/selling/portfolio/cases")
+            : () => router.back()
       }
       onContinue={handleContinue}
       detailEditReturnHref={isDetailEdit && caseId ? detailHref(caseId) : undefined}

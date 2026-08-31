@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/selling/button";
 import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
@@ -36,14 +35,19 @@ export interface LienWizardShellProps {
   submitting?: boolean;
   continueDisabled?: boolean;
   continueLabel?: string;
+  // Circled top-left arrow: goes to the previous step (or, on step 1 where
+  // there is no previous step, behaves the same as onCancel).
   onBack: () => void;
+  // Footer "Cancel" button: exits the wizard entirely, back to wherever the
+  // user came from — the lien list, or the lien/case detail page in
+  // detail-edit mode.
+  onCancel: () => void;
   onContinue: () => void;
   children: React.ReactNode;
   // When set, this step is being opened as a standalone edit from the lien
   // detail page (via a "returnTo=detail" query param) rather than as part of
   // the create/edit wizard: hides the step progress bar, and the footer
-  // reads Cancel/Save instead of Back/Continue. The top-left arrow returns
-  // here directly instead of going to the lien list.
+  // reads Save instead of Continue.
   detailEditReturnHref?: string;
 }
 
@@ -58,6 +62,7 @@ export function LienWizardShell({
   continueDisabled,
   continueLabel = "Continue",
   onBack,
+  onCancel,
   onContinue,
   children,
   detailEditReturnHref,
@@ -67,12 +72,13 @@ export function LienWizardShell({
     <div className="max-w-[700px] m-auto">
       <div className="flex items-center mb-6 ">
         <nav>
-          <Link
-            href={detailEditReturnHref ?? "/selling/portfolio/lien"}
+          <button
+            type="button"
+            onClick={onBack}
             className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors shrink-0"
           >
             <ArrowLeft className="h-5 w-5" />
-          </Link>
+          </button>
         </nav>
         {!isDetailEdit && <ProgressBar currentStep={step} />}
       </div>
@@ -94,8 +100,8 @@ export function LienWizardShell({
             {children}
 
             <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-end gap-2">
-              <Button variant="secondary" onClick={onBack}>
-                {isDetailEdit ? "Cancel" : "Back"}
+              <Button variant="secondary" onClick={onCancel}>
+                Cancel
               </Button>
               <Button
                 variant="primary"

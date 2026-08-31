@@ -21,3 +21,11 @@ export function detailEditHref(caseId: string, step: number) {
 export function draftStepHref(draftId: string, step: number) {
   return `/selling/portfolio/cases/draft/${draftId}/step-${step}`;
 }
+
+// Full multi-step edit of an existing, already-finalized case (walks
+// step-1 -> step-2 with the progress bar and Back/Continue, same mechanics
+// as the lien wizard's /lien/[lienId]/edit/step-{n}) — as opposed to
+// detailEditHref's single-section Cancel/Save edit.
+export function caseEditStepHref(caseId: string, step: number) {
+  return `${detailHref(caseId)}/edit/step-${step}`;
+}

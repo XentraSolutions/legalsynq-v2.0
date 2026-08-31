@@ -12,11 +12,13 @@ import { CaseWizardShell } from "./shell";
 import {
   detailHref,
   draftStepHref,
+  caseEditStepHref,
   DETAIL_EDIT_PARAM,
   DETAIL_EDIT_VALUE,
 } from "./shared";
 import { NewCaseAddedModal } from "./new-case-added-modal";
 import { isValidPhone } from "@/lib/phone";
+import { SkeletonFormGrid } from "@/components/lien/skeleton-loader";
 import {
   useFinalizeCaseDraft,
   useUpdateCasePlaintiff,
@@ -24,13 +26,27 @@ import {
 } from "@/hooks/selling/use-case-drafts";
 import type { FinalizeCaseDraftRequest } from "@/lib/selling";
 
+// Mirrors PlaintiffInfoFields' layout: a uniform 2-col grid of 10 fields, no
+// full-width rows. Same pattern as LienInfoStep's LienInfoSkeleton
+// (@/components/selling/lien-wizard/lien-info-step).
+function PlaintiffInfoSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse pb-3">
+      <div className="h-6 bg-gray-100 rounded w-52" />
+      <SkeletonFormGrid fields={10} />
+    </div>
+  );
+}
+
 export interface PlaintiffInfoStepProps {
   // Finishing an in-progress draft (route: /cases/draft/[draftId]/step-2) —
   // continuing here finalizes the draft into a real case.
   draftId?: string;
-  // An existing, already-finalized case being edited from its detail page
-  // (route: /cases/[id]/edit/step-2). Always implies a standalone
-  // Cancel/Save edit.
+  // An existing, already-finalized case being edited (route:
+  // /cases/[id]/edit/step-2). A "returnTo=detail" query param means this is
+  // a standalone Cancel/Save edit of just this section from the case detail
+  // page; without it, this is one step of the full multi-step edit wizard
+  // (entered via /cases/[id]/edit).
   caseId?: string;
 }
 
@@ -120,13 +136,21 @@ export default function PlaintiffInfoStep({
       <CaseWizardShell
         step={2}
         hydrating={!!caseId && caseLoading}
+        skeleton={<PlaintiffInfoSkeleton />}
         submitting={submitting}
         continueDisabled={!valid}
         continueLabel={caseId ? "Continue" : "Add Case"}
         onBack={
           isDetailEdit && caseId
             ? () => router.push(detailHref(caseId))
-            : () => router.push(draftStepHref(draftId ?? "", 1))
+            : caseId
+              ? () => router.push(caseEditStepHref(caseId, 1))
+              : () => router.push(draftStepHref(draftId ?? "", 1))
+        }
+        onCancel={
+          isDetailEdit && caseId
+            ? () => router.push(detailHref(caseId))
+            : () => router.push("/selling/portfolio/cases")
         }
         onContinue={handleContinue}
         detailEditReturnHref={isDetailEdit && caseId ? detailHref(caseId) : undefined}
