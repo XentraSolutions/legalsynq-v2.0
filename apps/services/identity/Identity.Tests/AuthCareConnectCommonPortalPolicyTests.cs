@@ -1,3 +1,4 @@
+using ProductRoleCodes = BuildingBlocks.Authorization.ProductRoleCodes;
 using Identity.Application.DTOs;
 using Identity.Application.Exceptions;
 using Identity.Application.Interfaces;
@@ -253,6 +254,48 @@ public class AuthCareConnectCommonPortalPolicyTests
 
         Assert.Equal(seeded.TenantId, response.User.TenantId);
         Assert.Contains("SYNQ_LIENS:SYNQLIEN_BUYER", response.User.ProductRoles ?? []);
+    }
+
+    [Fact]
+    public async Task Login_ResolveByEmail_SynqLien_AllowsBuyerAndUserAdmin()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedSynqLienPortalUserAsync(
+            factory,
+            [ProductRoleCodes.SynqLienBuyer, ProductRoleCodes.SynqLienUserAdmin],
+            systemRoles: []);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        var response = await authService.LoginAsync(new LoginRequest(
+            Email: seeded.Email,
+            Password: seeded.Password,
+            ResolveByEmail: true,
+            PortalProductCode: BuildingBlocks.Authorization.ProductCodes.SynqLiens));
+
+        Assert.Contains("SYNQ_LIENS:SYNQLIEN_BUYER", response.User.ProductRoles ?? []);
+        Assert.Contains("SYNQ_LIENS:SYNQLIEN_USER_ADMIN", response.User.ProductRoles ?? []);
+    }
+
+    [Fact]
+    public async Task Login_ResolveByEmail_SynqLien_DeniesUserAdminWithoutBuyer()
+    {
+        using var factory = BuildFactory();
+        var seeded = await SeedSynqLienPortalUserAsync(
+            factory,
+            [ProductRoleCodes.SynqLienUserAdmin],
+            systemRoles: []);
+
+        using var scope = factory.Services.CreateScope();
+        var authService = scope.ServiceProvider.GetRequiredService<IAuthService>();
+
+        await Assert.ThrowsAsync<SynqLienPortalRoleRestrictedException>(() =>
+            authService.LoginAsync(new LoginRequest(
+                Email: seeded.Email,
+                Password: seeded.Password,
+                ResolveByEmail: true,
+                PortalProductCode: BuildingBlocks.Authorization.ProductCodes.SynqLiens)));
     }
 
     [Fact]

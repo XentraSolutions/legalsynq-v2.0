@@ -44,6 +44,7 @@ public class IdentityDbContext : DbContext
     // UIX-002: User Management
     // LS-COR-AUT-007: TenantGroups/GroupMemberships tables dropped — see migration.
     public DbSet<UserInvitation>                UserInvitations                => Set<UserInvitation>();
+    public DbSet<UserInvitationRoleGrant>       UserInvitationRoleGrants       => Set<UserInvitationRoleGrant>();
 
     // UIX-003-03: Security / admin-triggered password reset
     public DbSet<PasswordResetToken>            PasswordResetTokens            => Set<PasswordResetToken>();

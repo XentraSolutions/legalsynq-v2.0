@@ -14,6 +14,7 @@ public static class ProductRoleCodes
     public const string SynqLienSeller = "SYNQLIEN_SELLER";
     public const string SynqLienBuyer  = "SYNQLIEN_BUYER";
     public const string SynqLienHolder = "SYNQLIEN_HOLDER";
+    public const string SynqLienUserAdmin = "SYNQLIEN_USER_ADMIN";
 
     // SynqFund
     public const string SynqFundReferrer        = "SYNQFUND_REFERRER";

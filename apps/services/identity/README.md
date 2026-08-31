@@ -54,6 +54,17 @@ Identity.Api.Tests/      Integration and unit tests
 | `POST` | `/api/admin/organizations/{id}/synqlien-buyer-self-register` | Internal: create a SynqLien buyer user and grant `SYNQ_LIENS:SYNQLIEN_BUYER`; returns `409 FUNDING_COMPANY_USER_ALREADY_EXISTS` when the funding-company organization already has an active member, or `409 ACCOUNT_ALREADY_EXISTS` for existing emails |
 | `GET` | `/api/tenants/current/branding` | Anonymous branding by tenant code |
 | `GET`/`POST` | `/api/internal/organizations/{organizationId}/users[/invite\|/{userId}/resend-invite\|/{userId}/activate\|/{userId}/deactivate\|/{userId}/product-roles]` | Internal (provisioning token, not public JWT): list/invite/resend pending invite/activate/deactivate a law-firm organization's users and assign/revoke their `CARECONNECT_REFERRER`/`CARECONNECT_REFERRER_ADMIN` roles (LSV3-1083). Users with pending invitations are listed as `Invited` even though their account is not active yet. Called by CareConnect's `/api/law-firm-users` on behalf of a caller already verified to hold `CARECONNECT_REFERRER_ADMIN` for that org; every route re-derives org membership itself, treating the caller's own ownership check as advisory only. |
+| `GET` | `/api/v1/products/SYNQ_LIENS/user-management/users[/{userId}]` | Tenant-scoped SynqLien user directory and details. Requires `SYNQ_LIENS.user:read`; responses include direct/inherited roles, product-access state, invitation state, and `AccessVersion`. |
+| `GET`/`POST` | `/api/v1/products/SYNQ_LIENS/user-management/invitations` | List or create product-aware SynqLien invitations. Requires `SYNQ_LIENS.user:invite`. |
+| `POST`/`DELETE` | `/api/v1/products/SYNQ_LIENS/user-management/invitations/{invitationId}/resend` or `/invitations/{invitationId}` | Resend or revoke a pending SynqLien invitation. |
+| `GET` | `/api/v1/products/SYNQ_LIENS/user-management/roles` | List the fixed assignable SynqLien role catalog. Requires `SYNQ_LIENS.user_role:assign`. |
+| `PUT` | `/api/v1/products/SYNQ_LIENS/user-management/users/{userId}/access` | Grant or revoke direct SynqLien-only access. Requires `SYNQ_LIENS.user_access:manage` and an `If-Match` access-version ETag. Revocation also removes direct SynqLien roles but never deactivates the global account; inherited group access remains read-only. |
+| `PUT` | `/api/v1/products/SYNQ_LIENS/user-management/users/{userId}/roles` | Atomically replace direct SynqLien roles. Requires `SYNQ_LIENS.user_role:assign` and `If-Match`; inherited group roles remain read-only. |
+
+Through the gateway, prefix these routes with `/identity`. This module manages tenant-scoped
+records only (`OrganizationId = null`) and rejects legacy organization-scoped SynqLien access
+instead of broadening it. Sensitive operations re-check current Identity state after JWT
+permission filtering, so a stale permission claim cannot continue managing users after revocation.
 
 ## Database
 
@@ -88,6 +99,16 @@ admin users' `AccessVersion` so refreshed JWT permission claims include the new 
 `SYNQ_LIENS.lien:sell` to `SYNQLIEN_SELLER`. This is the explicit Flow
 capability for seller workflow access; it supplements the lien-sale API
 permissions seeded by `20260627000002_SeedSynqLienSalePermissions`.
+
+`20260830193454_AddSynqLienUserManagement` adds product-aware invitation grants and seeds
+`SYNQLIEN_USER_ADMIN` with `SYNQ_LIENS.user:read`, `SYNQ_LIENS.user:invite`,
+`SYNQ_LIENS.user_access:manage`, `SYNQ_LIENS.user_role:assign`, and
+`SYNQ_LIENS.user_audit:read`. The public management
+API is tenant-scoped and fixes the product to `SYNQ_LIENS`; clients cannot submit a
+tenant or product authority. Product access and roles for inactive users are applied
+atomically only when the invitation is accepted. The Audit read permission is seeded
+for forward compatibility, but no audit-query endpoint is exposed until the Audit
+service provides a tenant/product/user-filtered query contract.
 
 ## External Integrations
 

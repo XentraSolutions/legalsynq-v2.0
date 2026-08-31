@@ -15,8 +15,9 @@ public class UserInvitationConfiguration : IEntityTypeConfiguration<UserInvitati
         builder.Property(i => i.UserId).IsRequired();
         builder.Property(i => i.TenantId).IsRequired();
         builder.Property(i => i.InvitedByUserId);
+        builder.Property(i => i.ProductCode).HasMaxLength(50);
         builder.Property(i => i.TokenHash).IsRequired().HasMaxLength(512);
-        builder.Property(i => i.Status).IsRequired().HasMaxLength(20);
+        builder.Property(i => i.Status).IsRequired().HasMaxLength(20).IsConcurrencyToken();
         builder.Property(i => i.PortalOrigin).IsRequired().HasMaxLength(30);
         builder.Property(i => i.ExpiresAtUtc).IsRequired();
         builder.Property(i => i.AcceptedAtUtc);
@@ -26,10 +27,16 @@ public class UserInvitationConfiguration : IEntityTypeConfiguration<UserInvitati
         builder.HasIndex(i => i.UserId);
         builder.HasIndex(i => new { i.UserId, i.Status });
         builder.HasIndex(i => i.TokenHash).IsUnique();
+        builder.HasIndex(i => new { i.TenantId, i.ProductCode, i.Status, i.CreatedAtUtc });
 
         builder.HasOne(i => i.User)
             .WithMany()
             .HasForeignKey(i => i.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(i => i.RoleGrants)
+            .WithOne(g => g.Invitation)
+            .HasForeignKey(g => g.InvitationId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

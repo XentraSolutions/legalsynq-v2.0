@@ -72,7 +72,8 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.Property(u => u.AccessVersion)
             .IsRequired()
-            .HasDefaultValue(0);
+            .HasDefaultValue(0)
+            .IsConcurrencyToken();
 
         // PUM-B01: user type classification stored as a string for readability and
         // forward compatibility. Defaults to TenantUser for all existing rows.

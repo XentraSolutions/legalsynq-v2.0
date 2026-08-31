@@ -54,6 +54,7 @@ internal static class SeedIds
     public static readonly Guid PrXeniaAdmin              = new("50000000-0000-0000-0000-000000000010");
     public static readonly Guid PrCareConnectNetworkManager = new("50000000-0000-0000-0000-000000000011");
     public static readonly Guid PrCareConnectReferrerAdmin = new("50000000-0000-0000-0000-000000000012");
+    public static readonly Guid PrSynqLienUserAdmin         = new("50000000-0000-0000-0000-000000000013");
 
     // ── Permissions — CareConnect ───────────────────────────────────────────
     public static readonly Guid PermReferralCreate        = new("60000000-0000-0000-0000-000000000001");
@@ -175,6 +176,14 @@ internal static class SeedIds
     public static readonly Guid PermXeniaAssistantUse     = new("60000000-0000-0000-0000-000000000063");
     public static readonly Guid PermXeniaAssistantManage  = new("60000000-0000-0000-0000-000000000064");
     public static readonly Guid PermXeniaUsageRead        = new("60000000-0000-0000-0000-000000000065");
+
+    // ── Permissions — SynqLien user management ───────────────────────────────
+    // IDs 0073-0077; 0066-0072 are already allocated by raw seed migrations.
+    public static readonly Guid PermLienUserRead         = new("60000000-0000-0000-0000-000000000073");
+    public static readonly Guid PermLienUserInvite       = new("60000000-0000-0000-0000-000000000074");
+    public static readonly Guid PermLienUserAccessManage = new("60000000-0000-0000-0000-000000000075");
+    public static readonly Guid PermLienUserRoleAssign   = new("60000000-0000-0000-0000-000000000076");
+    public static readonly Guid PermLienUserAuditRead    = new("60000000-0000-0000-0000-000000000077");
 
     // ── Product–OrgType Rules — Xenia / SynqAI ───────────────────────────────
     public static readonly Guid PrOrgTypeRuleXeniaUserLawFirm    = new("90000000-0000-0000-0000-000000000008");

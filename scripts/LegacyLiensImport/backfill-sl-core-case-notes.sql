@@ -365,6 +365,33 @@ BEGIN
             SUM(Resolution = 'Conflict') AS ExistingTargetConflicts,
             v_crosswalk_coverage_errors AS CrosswalkCoverageErrors
         FROM tmp_sl_core_case_note_backfill;
+        IF v_conflicts <> 0 THEN
+            SELECT
+                note_map.LegacyNoteId,
+                case_map.LegacyCaseId,
+                staged.TargetNoteId,
+                staged.TargetCaseId,
+                CAST(target_case.TenantId AS CHAR) AS TargetCaseTenantId,
+                staged.Resolution,
+                CASE
+                    WHEN staged.Resolution = 'InvalidTarget' AND target_case.Id IS NULL
+                        THEN 'MissingTargetCase'
+                    WHEN staged.Resolution = 'InvalidTarget'
+                        THEN 'TargetCaseTenantMismatch'
+                    WHEN staged.Resolution = 'InvalidSource'
+                        THEN 'InvalidLegacyNoteData'
+                    ELSE 'ExistingTargetConflict'
+                END AS ConflictReason
+            FROM tmp_sl_core_case_note_backfill staged
+            LEFT JOIN tmp_sl_core_note_crosswalk note_map
+                ON note_map.TargetNoteId = staged.TargetNoteId
+            LEFT JOIN tmp_sl_core_case_crosswalk case_map
+                ON case_map.TargetCaseId = staged.TargetCaseId
+            LEFT JOIN liens_Cases target_case
+                ON target_case.Id = staged.TargetCaseId
+            WHERE staged.Resolution IN ('InvalidSource', 'InvalidTarget', 'Conflict')
+            ORDER BY case_map.LegacyCaseId, note_map.LegacyNoteId;
+        END IF;
         ROLLBACK;
         SET v_in_transaction = FALSE;
     ELSE
