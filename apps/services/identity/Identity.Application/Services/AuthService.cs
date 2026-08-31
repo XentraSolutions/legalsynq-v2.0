@@ -797,14 +797,8 @@ public class AuthService : IAuthService
         if (synqLienRoles.Count == 0)
             return false;
 
-        // The common funding portal remains a Buyer portal. User administration is
-        // additive, so Buyer + UserAdmin is allowed, while UserAdmin alone and all
-        // Seller/Holder combinations continue to require tenant-specific login.
-        return synqLienRoles.Any(role =>
-                   string.Equals(role, ProductRoleCodes.SynqLienBuyer, StringComparison.OrdinalIgnoreCase))
-               && synqLienRoles.All(role =>
-                   string.Equals(role, ProductRoleCodes.SynqLienBuyer, StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(role, ProductRoleCodes.SynqLienUserAdmin, StringComparison.OrdinalIgnoreCase));
+        return synqLienRoles.All(role =>
+            string.Equals(role, ProductRoleCodes.SynqLienBuyer, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string? NormalizePortalProductCode(string? productCode)

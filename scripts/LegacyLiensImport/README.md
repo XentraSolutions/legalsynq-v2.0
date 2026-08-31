@@ -951,37 +951,12 @@ migration user ID until an explicit mapping is approved.
 
 Run the procedure in DBeaver, then dry run before inserting the exact returned
 count. The dry run returns one summary row with `ChangesToApply`, `Conflicts`,
-`InsertsToApply`, `AuthorUpdatesToApply`, and the remaining breakdown.
-When conflicts exist, it also returns a second result set with the affected
-legacy and target note/case IDs plus a `ConflictReason` suitable for repair:
+`InsertsToApply`, `AuthorUpdatesToApply`, and the remaining breakdown:
 
 ```sql
 CALL liens_backfill_sl_core_case_notes('<tenant-guid>', -1, '0');
 CALL liens_backfill_sl_core_case_notes('<tenant-guid>', <ChangesToApply>, '1');
 ```
-
-#### QA missing parent case 24289
-
-If the QA dry run reports `MissingTargetCase` for legacy notes `29739`,
-`29740`, `50100`, and `50101`, their shared case crosswalk points to the
-reviewed target case `196dc70c-9e1a-11f1-9a38-0a971fa4811b`, but that parent
-case is absent. Deploy
-[`repair-sl-core-missing-case-24289-qa.sql`](repair-sl-core-missing-case-24289-qa.sql)
-only on `LS_QA_LIENS`. The procedure is hard-bound to the QA tenant, legacy
-case `24289`, and that target UUID. It reconstructs the target from the
-original `sl-core-core-liens-v1` mapping and source hash, and blocks source
-drift, a different crosswalk, an existing target mismatch, or a case-number or
-external-reference collision. It never updates an existing case or redirects
-the crosswalk.
-
-```sql
-CALL liens_repair_sl_core_missing_case_24289_qa(-1, '0');
-CALL liens_repair_sl_core_missing_case_24289_qa(<ChangesToApply>, '1');
-```
-
-After `RowsInserted = 1`, rerun the case-note dry run for QA. The four rows
-must move from `InvalidTarget` to `InsertsToApply` and `Conflicts` must be zero
-before applying the exact returned `ChangesToApply` count.
 
 For a MySQL-only rehearsal or controlled one-time import, use
 [`import-sl-core-core-to-019ea7f6-21e9-7421-ab54-7846cdc6bc76.sql`](import-sl-core-core-to-019ea7f6-21e9-7421-ab54-7846cdc6bc76.sql).

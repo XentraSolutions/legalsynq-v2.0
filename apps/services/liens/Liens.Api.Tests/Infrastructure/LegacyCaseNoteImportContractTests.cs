@@ -89,10 +89,6 @@ public sealed class LegacyCaseNoteImportContractTests
         sql.Should().Contain("BINARY c.CreatedByName = BINARY 'system-migration'");
         sql.Should().Contain("BINARY c.CreatedByName = BINARY s.DesiredUserName");
         sql.Should().Contain("CrosswalkCoverageErrors");
-        sql.Should().Contain("TargetCaseTenantId");
-        sql.Should().Contain("MissingTargetCase");
-        sql.Should().Contain("TargetCaseTenantMismatch");
-        sql.Should().Contain("ConflictReason");
         sql.Should().Contain("AuthorUpdatesToApply");
         sql.Should().Contain("RowsAuthorUpdated");
         sql.Should().Contain("expected change count does not match dry run");
@@ -104,34 +100,6 @@ public sealed class LegacyCaseNoteImportContractTests
         sql.Should().Contain("01a02571-5e6b-7b80-9c08-48b919999ebd");
         sql.Should().Contain("Sharrel Tibay");
         sql.Should().Contain("019f1a05-792f-74f2-b071-4fdc0d6bd30a");
-    }
-
-    [Fact]
-    public void Qa_missing_case_repair_is_bound_to_the_reviewed_crosswalk_and_never_redirects_it()
-    {
-        var path = Path.Combine(
-            FindRepositoryRoot(),
-            "scripts",
-            "LegacyLiensImport",
-            "repair-sl-core-missing-case-24289-qa.sql");
-        var sql = File.ReadAllText(path);
-
-        sql.Should().Contain("liens_repair_sl_core_missing_case_24289_qa");
-        sql.Should().Contain("LS_QA_LIENS");
-        sql.Should().Contain("019fb470-f161-7fbd-93a0-c808d43c43c3");
-        sql.Should().Contain("24289");
-        sql.Should().Contain("196dc70c-9e1a-11f1-9a38-0a971fa4811b");
-        sql.Should().Contain("sl-core-core-liens-v1");
-        sql.Should().Contain("SL_MIGRATION_SOURCE_PROVENANCE");
-        sql.Should().Contain("GET_LOCK");
-        sql.Should().Contain("START TRANSACTION");
-        sql.Should().Contain("ROLLBACK");
-        sql.Should().Contain("INSERT INTO liens_Cases");
-        sql.Should().Contain("expected change count does not match dry run");
-        sql.Should().Contain("an existing case already owns the source number or reference");
-        sql.Should().Contain("insert count or postcondition failed");
-        sql.Should().NotContain("UPDATE liens_LegacyIdCrosswalks");
-        sql.Should().NotContain("UPDATE liens_Cases");
     }
 
     private static string FindRepositoryRoot()

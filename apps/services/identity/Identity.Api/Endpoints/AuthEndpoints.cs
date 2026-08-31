@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Data;
 using System.Security.Claims;
 using Identity.Api.Helpers;
 using Identity.Application;
@@ -357,7 +356,6 @@ public static class AuthEndpoints
         app.MapPost("/api/auth/accept-invite", async (
             AcceptInviteRequest                    body,
             IdentityDbContext                      db,
-            ISynqLienUserManagementService         synqLienUserManagement,
             IPasswordHasher                        passwordHasher,
             IAuditEventClient                      auditClient,
             IOptions<NotificationsServiceOptions>  notifOptions,
@@ -367,10 +365,6 @@ public static class AuthEndpoints
                 return Results.BadRequest(new { error = "token is required." });
             if (string.IsNullOrWhiteSpace(body.NewPassword) || body.NewPassword.Length < 8)
                 return Results.BadRequest(new { error = "newPassword must be at least 8 characters." });
-
-            await using var transaction = db.Database.IsRelational()
-                ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct)
-                : null;
 
             // Hash the raw token the same way InviteUser stored it.
             var tokenHash = Convert.ToHexString(
@@ -407,36 +401,7 @@ public static class AuthEndpoints
             // Mark the invitation accepted.
             invitation.Accept();
 
-            // Product-aware invitations stage their product access and role grants on
-            // this same DbContext. The single SaveChanges below makes password setup,
-            // activation, acceptance, and authorization grants atomic.
-            try
-            {
-                await synqLienUserManagement.ApplyInvitationGrantsAsync(invitation.Id, ct);
-            }
-            catch (SynqLienUserManagementException ex)
-            {
-                return Results.Problem(
-                    statusCode: ex.StatusCode,
-                    title: ex.Code,
-                    detail: ex.Message,
-                    extensions: new Dictionary<string, object?> { ["code"] = ex.Code });
-            }
-
-            try
-            {
-                await db.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                return Results.Conflict(new
-                {
-                    error = "This invitation changed while it was being accepted. Refresh and try again.",
-                    code = "INVITATION_CONCURRENCY_CONFLICT",
-                });
-            }
-            if (transaction is not null)
-                await transaction.CommitAsync(ct);
+            await db.SaveChangesAsync(ct);
 
             // Emit audit event (fire-and-observe).
             var now = DateTimeOffset.UtcNow;

@@ -1101,61 +1101,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("60000000-0000-0000-0000-000000000073"),
-                            Category = "User Management",
-                            Code = "SYNQ_LIENS.user:read",
-                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "View tenant users with SynqLien access or invitations",
-                            IsActive = true,
-                            Name = "Read SynqLien Users",
-                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
-                        },
-                        new
-                        {
-                            Id = new Guid("60000000-0000-0000-0000-000000000074"),
-                            Category = "User Management",
-                            Code = "SYNQ_LIENS.user:invite",
-                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Invite users into SynqLien",
-                            IsActive = true,
-                            Name = "Invite SynqLien Users",
-                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
-                        },
-                        new
-                        {
-                            Id = new Guid("60000000-0000-0000-0000-000000000075"),
-                            Category = "User Management",
-                            Code = "SYNQ_LIENS.user_access:manage",
-                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Grant or revoke SynqLien product access",
-                            IsActive = true,
-                            Name = "Manage SynqLien User Access",
-                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
-                        },
-                        new
-                        {
-                            Id = new Guid("60000000-0000-0000-0000-000000000076"),
-                            Category = "User Management",
-                            Code = "SYNQ_LIENS.user_role:assign",
-                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Replace direct SynqLien role assignments",
-                            IsActive = true,
-                            Name = "Assign SynqLien User Roles",
-                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
-                        },
-                        new
-                        {
-                            Id = new Guid("60000000-0000-0000-0000-000000000077"),
-                            Category = "User Management",
-                            Code = "SYNQ_LIENS.user_audit:read",
-                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "View SynqLien user-management audit events",
-                            IsActive = true,
-                            Name = "Read SynqLien User Audit",
-                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
-                        },
-                        new
-                        {
                             Id = new Guid("60000000-0000-0000-0000-000000000020"),
                             Category = "Application",
                             Code = "SYNQ_FUND.application:create",
@@ -1940,16 +1885,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("50000000-0000-0000-0000-000000000013"),
-                            Code = "SYNQLIEN_USER_ADMIN",
-                            CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Tenant-scoped administration of SynqLien users, invitations, access, and roles",
-                            IsActive = true,
-                            Name = "SynqLien User Administrator",
-                            ProductId = new Guid("10000000-0000-0000-0000-000000000002")
-                        },
-                        new
-                        {
                             Id = new Guid("50000000-0000-0000-0000-000000000006"),
                             Code = "SYNQFUND_REFERRER",
                             CreatedAtUtc = new DateTime(2024, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
@@ -2430,41 +2365,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000012"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000001")
-                        },
-                        new
-                        {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000012"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000002")
-                        },
-                        new
-                        {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000012"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000003")
-                        },
-                        new
-                        {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000012"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000007")
-                        },
-                        new
-                        {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000012"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000008")
-                        },
-                        new
-                        {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000012"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000072")
-                        },
-                        new
-                        {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000012"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000011")
-                        },
-                        new
-                        {
                             ProductRoleId = new Guid("50000000-0000-0000-0000-000000000011"),
                             PermissionId = new Guid("60000000-0000-0000-0000-000000000007")
                         },
@@ -2617,31 +2517,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         {
                             ProductRoleId = new Guid("50000000-0000-0000-0000-000000000005"),
                             PermissionId = new Guid("60000000-0000-0000-0000-000000000051")
-                        },
-                        new
-                        {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000013"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000073")
-                        },
-                        new
-                        {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000013"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000074")
-                        },
-                        new
-                        {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000013"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000075")
-                        },
-                        new
-                        {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000013"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000076")
-                        },
-                        new
-                        {
-                            ProductRoleId = new Guid("50000000-0000-0000-0000-000000000013"),
-                            PermissionId = new Guid("60000000-0000-0000-0000-000000000077")
                         },
                         new
                         {
@@ -3029,7 +2904,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .HasColumnType("char(36)");
 
                     b.Property<int>("AccessVersion")
-                        .IsConcurrencyToken()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasDefaultValue(0);
@@ -3131,15 +3005,10 @@ namespace Identity.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("varchar(30)");
 
-                    b.Property<string>("ProductCode")
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Status")
-                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("varchar(20)");
@@ -3164,47 +3033,7 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UserId", "Status");
 
-                    b.HasIndex("TenantId", "ProductCode", "Status", "CreatedAtUtc");
-
                     b.ToTable("idt_UserInvitations", (string)null);
-                });
-
-            modelBuilder.Entity("Identity.Domain.UserInvitationRoleGrant", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime?>("AppliedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<Guid>("InvitationId")
-                        .HasColumnType("char(36)");
-
-                    b.Property<string>("ProductCode")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<string>("RoleCode")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("char(36)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InvitationId", "ProductCode", "RoleCode")
-                        .IsUnique();
-
-                    b.HasIndex("TenantId", "ProductCode", "RoleCode");
-
-                    b.ToTable("idt_UserInvitationRoleGrants", (string)null);
                 });
 
             modelBuilder.Entity("Identity.Domain.UserOrganizationMembership", b =>
@@ -3367,9 +3196,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "UserId", "RoleCode")
                         .HasDatabaseName("IX_UserRoleAssignments_TenantId_UserId_RoleCode");
-
-                    b.HasIndex("TenantId", "ProductCode", "AssignmentStatus", "UserId")
-                        .HasDatabaseName("IX_UserRoleAssignments_Tenant_Product_Status_User");
 
                     b.ToTable("idt_UserRoleAssignments", (string)null);
                 });
@@ -3718,17 +3544,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Identity.Domain.UserInvitationRoleGrant", b =>
-                {
-                    b.HasOne("Identity.Domain.UserInvitation", "Invitation")
-                        .WithMany("RoleGrants")
-                        .HasForeignKey("InvitationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Invitation");
-                });
-
             modelBuilder.Entity("Identity.Domain.UserOrganizationMembership", b =>
                 {
                     b.HasOne("Identity.Domain.Organization", "Organization")
@@ -3847,11 +3662,6 @@ namespace Identity.Infrastructure.Persistence.Migrations
                     b.Navigation("ScopedRoleAssignments");
 
                     b.Navigation("TenantMemberships");
-                });
-
-            modelBuilder.Entity("Identity.Domain.UserInvitation", b =>
-                {
-                    b.Navigation("RoleGrants");
                 });
 #pragma warning restore 612, 618
         }

@@ -25,7 +25,6 @@ public class UserInvitation
     public Guid UserId { get; private set; }
     public Guid TenantId { get; private set; }
     public Guid? InvitedByUserId { get; private set; }
-    public string? ProductCode { get; private set; }
     public string TokenHash { get; private set; } = string.Empty;
     public string Status { get; private set; } = Statuses.Pending;
     public string PortalOrigin { get; private set; } = PortalOrigins.TenantPortal;
@@ -35,7 +34,6 @@ public class UserInvitation
     public DateTime CreatedAtUtc { get; private set; }
 
     public User User { get; private set; } = null!;
-    public ICollection<UserInvitationRoleGrant> RoleGrants { get; private set; } = [];
 
     private UserInvitation() { }
 
@@ -45,8 +43,7 @@ public class UserInvitation
         string tokenHash,
         string portalOrigin = PortalOrigins.TenantPortal,
         Guid? invitedByUserId = null,
-        int expiryHours = 72,
-        string? productCode = null)
+        int expiryHours = 72)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tokenHash);
 
@@ -57,9 +54,6 @@ public class UserInvitation
             UserId          = userId,
             TenantId        = tenantId,
             InvitedByUserId = invitedByUserId,
-            ProductCode     = string.IsNullOrWhiteSpace(productCode)
-                ? null
-                : productCode.Trim().ToUpperInvariant(),
             TokenHash       = tokenHash,
             Status          = Statuses.Pending,
             PortalOrigin    = portalOrigin,

@@ -33,7 +33,6 @@ public class RolePermissionMappingConfiguration : IEntityTypeConfiguration<RoleP
         var seller    = SeedIds.PrSynqLienSeller;
         var buyer     = SeedIds.PrSynqLienBuyer;
         var holder    = SeedIds.PrSynqLienHolder;
-        var lienUserAdmin = SeedIds.PrSynqLienUserAdmin;
         var fReferrer = SeedIds.PrSynqFundReferrer;
         var funder    = SeedIds.PrSynqFundFunder;
         var portal    = SeedIds.PrSynqFundApplicantPortal;
@@ -98,12 +97,6 @@ public class RolePermissionMappingConfiguration : IEntityTypeConfiguration<RoleP
             new { ProductRoleId = holder, PermissionId = SeedIds.PermTaskAssign },
             new { ProductRoleId = holder, PermissionId = SeedIds.PermTaskComplete },
             new { ProductRoleId = holder, PermissionId = SeedIds.PermTaskCancel },
-
-            new { ProductRoleId = lienUserAdmin, PermissionId = SeedIds.PermLienUserRead },
-            new { ProductRoleId = lienUserAdmin, PermissionId = SeedIds.PermLienUserInvite },
-            new { ProductRoleId = lienUserAdmin, PermissionId = SeedIds.PermLienUserAccessManage },
-            new { ProductRoleId = lienUserAdmin, PermissionId = SeedIds.PermLienUserRoleAssign },
-            new { ProductRoleId = lienUserAdmin, PermissionId = SeedIds.PermLienUserAuditRead },
 
             new { ProductRoleId = fReferrer, PermissionId = SeedIds.PermApplicationCreate },
             new { ProductRoleId = fReferrer, PermissionId = SeedIds.PermApplicationReadOwn },

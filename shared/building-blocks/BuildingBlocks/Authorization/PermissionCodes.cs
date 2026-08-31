@@ -42,11 +42,6 @@ public static class PermissionCodes
     public const string CaseRead      = "SYNQ_LIENS.case:read";
     public const string CaseCreate    = "SYNQ_LIENS.case:create";
     public const string CaseUpdate    = "SYNQ_LIENS.case:update";
-    public const string LienUserRead         = "SYNQ_LIENS.user:read";
-    public const string LienUserInvite       = "SYNQ_LIENS.user:invite";
-    public const string LienUserAccessManage = "SYNQ_LIENS.user_access:manage";
-    public const string LienUserRoleAssign   = "SYNQ_LIENS.user_role:assign";
-    public const string LienUserAuditRead    = "SYNQ_LIENS.user_audit:read";
     /// <summary>
     /// LS-FLOW-MERGE-P4 — capability claim required to start a Flow workflow
     /// for a SynqLien sale path (mapped to the <c>CanSellLien</c> policy).

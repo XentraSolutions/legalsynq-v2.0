@@ -1385,7 +1385,6 @@ app.MapAdminEndpoints();
 app.MapTenantProvisioningEndpoints();
 app.MapUserMembershipEndpoints();      // BLK-ID-02
 app.MapLawFirmUserManagementEndpoints(); // LSV3-1083
-app.MapSynqLienUserManagementEndpoints();
 app.MapAccessSourceEndpoints();
 app.MapGroupEndpoints();
 app.MapPermissionCatalogEndpoints();
