@@ -45,7 +45,7 @@ export const MergePdf: React.FC<MergePdfProps> = ({
 
   const [type, setType] = useState<string>("");
   const [checks, setChecks] = useState<string[]>([]);
-  const [pdfUrls, setPdfUrls] = useState<string[]>([]);
+  const [checkedDocuments, setCheckedDocument] = useState<DocumentType[]>([]);
   const [safeDocuments, setSafeDocuments] = useState<DocumentType[]>([]);
   const [merging, setMerging] = useState<boolean>(false);
 
@@ -56,7 +56,7 @@ export const MergePdf: React.FC<MergePdfProps> = ({
     if (!selectedDocument) return;
 
     const initialChecks = [selectedDocument.id];
-    const initialUrls = [selectedDocument.url];
+    const initialUrls = [selectedDocument];
     const filteredSafeDocs: DocumentType[] = [];
 
     documents.forEach((data: any) => {
@@ -69,14 +69,13 @@ export const MergePdf: React.FC<MergePdfProps> = ({
     });
 
     setChecks(initialChecks);
-    setPdfUrls(initialUrls);
+    setCheckedDocument(initialUrls);
     setSafeDocuments(filteredSafeDocs);
   }, [selectedDocument, documents]);
 
   useEffect(() => {
-    console.log(checks);
-    if (safeDocuments.length > 0) {
-      apiService?.(safeDocuments, {
+    if (checkedDocuments.length > 0) {
+      apiService?.(checkedDocuments, {
         fileName: fileName,
         selectedDocType: selectedDocType ?? "",
       });
@@ -111,47 +110,6 @@ export const MergePdf: React.FC<MergePdfProps> = ({
       .map((doc) => doc.url);
   };
 
-  const mergePdfs = async () => {
-    if (!fileName || !type || checks.length < 2 || merging) return;
-    setMerging(true);
-
-    try {
-      const mergedBytes = await mergePdfsFromUrls(getSelectedPdfUrls());
-      const safeBytes = new Uint8Array(mergedBytes);
-
-      const file = new File([safeBytes], `${fileName}.pdf`, {
-        type: "application/pdf",
-      });
-      apiService?.([file]);
-      // await apiService.upload(formData, "");
-
-      // Delete the selected files
-      // await Promise.all(checks.map((id: string) => deleteFile(id, !liensId)));
-
-      // setTimeout(() => {
-      //   loadDocuments();
-      //   dismiss();
-      // }, 500);
-
-      // toastService.success("Merged file successfully saved.");
-    } catch (error: any) {
-      // toastService.error(error.message || "Upload failed");
-    } finally {
-      setMerging(false);
-    }
-  };
-
-  const deleteFile = async (id: string, isCase: boolean) => {
-    const method = isCase
-      ? `case/delete-casedocument|${id}`
-      : `case/liens_delete-medicaldocument|${id}`;
-    try {
-      // await apiService.post(method, {});
-    } catch (error: any) {
-      // toastService.error(error.message || "Error");
-    }
-  };
-
   // const convert = (id: any): string[] => {
   //   return documentIdToName(id || "");
   // };
@@ -159,36 +117,36 @@ export const MergePdf: React.FC<MergePdfProps> = ({
   const toggle = (
     e: React.ChangeEvent<HTMLInputElement>,
     isAll: boolean,
-    d?: CaseDocument,
+    d?: DocumentType,
   ) => {
     const stat = e.target.checked;
     if (isAll) {
       if (stat) {
         const allIds: string[] = [];
-        const allUrls: string[] = [];
-        safeDocuments.forEach((data: CaseDocument) => {
+        const allUrls: DocumentType[] = [];
+        safeDocuments.forEach((data: DocumentType) => {
           if (
-            data.liensId === selectedDocument?.liensId &&
+            data.liensId == selectedDocument.liensId &&
             data.mimeType === ".pdf"
           ) {
             allIds.push(data.id);
-            allUrls.push(data.url);
+            allUrls.push(data);
           }
         });
         setChecks(allIds);
-        setPdfUrls(allUrls);
+        setCheckedDocument(allUrls);
       } else {
         setChecks([]);
-        setPdfUrls([]);
+        setCheckedDocument([]);
       }
     } else {
       if (d) {
         if (stat) {
           setChecks((prev) => [...prev, d.id]);
-          setPdfUrls((prev) => [...prev, d.url]);
+          setCheckedDocument((prev) => [...prev, d]);
         } else {
           setChecks((prev) => prev.filter((id) => id !== d.id));
-          setPdfUrls((prev) => prev.filter((url) => url !== d.url));
+          setCheckedDocument((prev) => prev.filter((id) => id.id !== d.id));
         }
       }
     }

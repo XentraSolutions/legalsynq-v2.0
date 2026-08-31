@@ -21,7 +21,7 @@ export function UploadDocumentSection({
   selectedDocType: string;
   onSelectedDocTypeChange: (v: string) => void;
   selectedFiles: File[] | null;
-  onFilesChange: (files: File[] | null) => void;
+  onFilesChange: (files: File[]) => void;
   dropzoneRef: RefObject<FileDropzoneRef>;
   onAddDocument: () => void;
 }) {

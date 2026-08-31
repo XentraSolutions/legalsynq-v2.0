@@ -36,7 +36,7 @@ export function DocumentsTab({
   const dropzoneRef = useRef<FileDropzoneRef>(null);
 
   const [selectedDocType, setSelectedDocType] = useState("");
-  const [selectedFiles, setSelectedFiles] = useState<File[] | null>([]);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [mergeFile, setMergeFile] = useState<{
     document: DocumentType | null;
     isOpen: boolean;
@@ -44,7 +44,19 @@ export function DocumentsTab({
     document: null,
     isOpen: false,
   });
-  const [selectedMergeFiles, setSelectedMergeFiles] = useState<any>([]);
+  const [selectedMergeFiles, setSelectedMergeFiles] = useState<{
+    document: DocumentType[];
+    form?: {
+      fileName: string;
+      selectedDocType: string;
+    };
+  }>({
+    document: [],
+    form: {
+      fileName: "",
+      selectedDocType: "",
+    },
+  });
 
   const [caseDocuments, setCaseDocuments] = useState<DocumentType[]>([]);
   const [liensDocuments, setLiensDocuments] = useState<DocumentType[]>([]);
@@ -155,35 +167,46 @@ export function DocumentsTab({
   }, []);
 
   const mergeFiles = async () => {
-    console.log(selectedMergeFiles);
+    setIsSubmitting(true);
 
     try {
       let docs = [];
+      if (selectedMergeFiles.document.length > 0) {
+        for (const element of selectedMergeFiles.document) {
+          const documentId = element.url.split("/").filter(Boolean).pop();
 
-      for (const element of selectedMergeFiles.documents) {
-        const documentId = element.url.split("/").filter(Boolean).pop();
+          const viewUrl = await documentsService.getViewUrl(documentId ?? "");
+          docs.push(viewUrl);
+        }
 
-        const viewUrl = await documentsService.getViewUrl(documentId);
-        console.log(viewUrl);
-        docs.push(viewUrl);
-      }
-
-      const mergedBytes = await mergePdfsFromUrls(docs);
-      const safeBytes = new Uint8Array(mergedBytes);
-
-      const file = new File(
-        [safeBytes],
-        `${selectedMergeFiles.form.fileName}.pdf`,
-        {
+        const mergedBytes = await mergePdfsFromUrls(docs);
+        const safeBytes = new Uint8Array(mergedBytes);
+        const fileName = selectedMergeFiles?.form?.fileName ?? "";
+        const file = new File([safeBytes], `${fileName}.pdf`, {
           type: "application/pdf",
-        },
-      );
-      if (file) {
-        await uploadCaseDocuments(file);
+        });
+        if (file) {
+          await uploadCaseDocuments(file);
+        }
       }
       // await deleteFiles(payload);
     } catch (err) {
+      if (err instanceof ApiError) {
+        addToast({
+          type: "error",
+          title: "Merge Failed",
+          description: err.message,
+        });
+      } else {
+        console.log(err);
+        addToast({
+          type: "error",
+          title: "Merge Failed",
+          description: "Something went wrong",
+        });
+      }
     } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -228,7 +251,7 @@ export function DocumentsTab({
         caseDocuments={caseDocuments}
         onDownload={download}
         onDelete={(d) => deleteFileConfimation(d, "case")}
-        onMerge={(document) =>
+        onMerge={(document: any) =>
           setMergeFile({ isOpen: true, document: document })
         }
       />
@@ -259,16 +282,45 @@ export function DocumentsTab({
       {mergeFile.isOpen && (
         <Modal
           open={mergeFile.isOpen}
-          onClose={() => setMergeFile({ document: null, isOpen: false })}
+          onClose={() => {
+            setMergeFile({ document: null, isOpen: false });
+            setSelectedMergeFiles({
+              document: [],
+              form: {
+                fileName: "",
+                selectedDocType: "",
+              },
+            });
+          }}
           title="Arrange & Merge Documents"
           size="xl"
           footer={
             <>
-              <Button variant="secondary" onClick={() => {}}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setMergeFile({ document: null, isOpen: false });
+                  setSelectedMergeFiles({
+                    document: [],
+                    form: {
+                      fileName: "",
+                      selectedDocType: "",
+                    },
+                  });
+                }}
+              >
                 Maybe Later
               </Button>
-              <Button variant="primary" onClick={() => mergeFiles()}>
-                Add Lien
+              <Button
+                variant="primary"
+                disabled={
+                  selectedMergeFiles?.document?.length <= 1 ||
+                  selectedMergeFiles?.form?.selectedDocType == "" ||
+                  submitting
+                }
+                onClick={() => mergeFiles()}
+              >
+                Merge File
               </Button>
             </>
           }
@@ -279,7 +331,7 @@ export function DocumentsTab({
             documentTypes={docTypes}
             selectedDocument={mergeFile.document}
             apiService={(documents, form) =>
-              setSelectedMergeFiles({ documents: documents, form: form })
+              setSelectedMergeFiles({ document: documents, form: form })
             }
           />
         </Modal>
