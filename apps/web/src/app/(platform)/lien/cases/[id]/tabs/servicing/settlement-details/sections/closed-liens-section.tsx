@@ -116,7 +116,6 @@ export function ClosedLiensSection({
   closedLiensTotalBalance: number;
   closedLiensTotalPayment: number;
 }) {
-  console.log(closedLiens);
   return (
     <CollapsibleSection title="Closed Liens" icon="ri-checkbox-circle-line">
       {closedLiens.length === 0 ? (

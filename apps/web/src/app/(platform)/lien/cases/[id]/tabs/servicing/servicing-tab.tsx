@@ -279,6 +279,8 @@ export function ServicingTab({
       });
       setDeletingId(null);
       onRefreshPayments();
+      refreshAllLienData();
+      refetchHistory();
     } catch {
       addToast({
         type: "error",
@@ -292,7 +294,7 @@ export function ServicingTab({
 
   useEffect(() => {
     // getCase();
-  }, []);
+  }, [liens]);
 
   const historyColumns: ColumnDef<SettlementHistoryItemV3, any>[] = [
     {
@@ -403,6 +405,8 @@ export function ServicingTab({
             liens={liens}
             paymentsLoadedAt={paymentsLoadedAt}
             onRefreshPayments={() => {
+              onRefreshLiens();
+              refreshAllLienData();
               onRefreshPayments();
               refetchHistory();
             }}
