@@ -25,9 +25,7 @@ describe("SynqLien funding offered lien client actions", () => {
   test("does not submit blank messages", async () => {
     const fetchImpl = vi.fn();
 
-    const result = await postFundingOfferedLienMessage("offer-1", "   ", {
-      fetchImpl,
-    });
+    const result = await postFundingOfferedLienMessage("offer-1", "   ", [], { fetchImpl });
 
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(result.ok).toBe(false);
@@ -55,9 +53,12 @@ describe("SynqLien funding offered lien client actions", () => {
       ),
     );
 
-    const result = await postFundingOfferedLienMessage("offer-1", "  Following up.  ", {
-      fetchImpl,
-    });
+    const result = await postFundingOfferedLienMessage(
+      "offer-1",
+      "  Following up.  ",
+      [],
+      { fetchImpl },
+    );
 
     expect(fetchImpl).toHaveBeenCalledWith(
       "/api/lien/api/liens/selling/buyer/liens/offer-1/messages",
@@ -151,12 +152,59 @@ describe("SynqLien funding offered lien client actions", () => {
       ),
     );
 
-    const result = await postFundingOfferedLienMessage("offer-1", "Following up.", {
+    const result = await postFundingOfferedLienMessage("offer-1", "Following up.", [], {
       fetchImpl,
     });
 
     expect(result.ok).toBe(false);
     expect(result.status).toBe(404);
     expect(result.error?.message).toBe("Offered lien not found.");
+  });
+
+  test("posts offered lien message attachments as multipart form data", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "message-1",
+          senderType: "buyer",
+          senderName: "Buyer Reviewer",
+          senderEmail: "buyer@example.test",
+          message: "",
+          createdAtUtc: "2026-07-28T12:30:00Z",
+          attachments: [
+            {
+              id: "attachment-1",
+              fileName: "xray-result.jpg",
+              contentType: "image/jpeg",
+              fileSizeBytes: 76800,
+              createdAtUtc: "2026-07-28T12:30:00Z",
+              viewUrl: "/view",
+              downloadUrl: "/download",
+            },
+          ],
+        }),
+        { status: 201 },
+      ),
+    );
+    const file = new File(["image"], "xray-result.jpg", { type: "image/jpeg" });
+
+    const result = await postFundingOfferedLienMessage("offer-1", "  ", [file], {
+      fetchImpl,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/lien/api/liens/selling/buyer/liens/offer-1/messages",
+      expect.objectContaining({
+        method: "POST",
+        headers: { accept: "application/json" },
+        body: expect.any(FormData),
+        cache: "no-store",
+      }),
+    );
+    const formData = (fetchImpl.mock.calls[0]?.[1] as RequestInit).body as FormData;
+    expect(formData.get("message")).toBe("");
+    expect(formData.getAll("files")).toEqual([file]);
+    expect(result.ok).toBe(true);
+    expect(result.message?.attachments?.[0]?.fileName).toBe("xray-result.jpg");
   });
 });

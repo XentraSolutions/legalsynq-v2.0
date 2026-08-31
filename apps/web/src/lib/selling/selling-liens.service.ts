@@ -59,6 +59,8 @@ import type {
   BulkImportSummary,
   BulkImportRowsResult,
   BulkImportRowStatus,
+  SellerLienMessage,
+  SellerLienMessagesResult,
 } from "./liens.types";
 
 export interface LienListResult {
@@ -108,6 +110,20 @@ export const liensService = {
   async getLienActivity(id: string) {
     const { data } = await liensApi.getActivity(id);
     return data;
+  },
+
+  async getLienMessages(id: string): Promise<SellerLienMessagesResult> {
+    const { data } = await liensApi.getMessages(id);
+    return data;
+  },
+
+  async sendLienMessage(id: string, message: string, files: File[] = []): Promise<SellerLienMessage> {
+    const trimmed = message.trim();
+    const response = files.length > 0
+      ? await liensApi.sendMessageForm(id, buildMessageForm(trimmed, files))
+      : await liensApi.sendMessage(id, { message: trimmed });
+    const { data } = response;
+    return { ...data, isCurrentUser: true };
   },
 
   async getSellingDashboard(query: DashboardQuery = {}): Promise<any> {
@@ -359,3 +375,10 @@ export const liensService = {
     return data.items;
   },
 };
+
+function buildMessageForm(message: string, files: File[]): FormData {
+  const form = new FormData();
+  form.append("message", message);
+  files.forEach((file) => form.append("files", file, file.name));
+  return form;
+}

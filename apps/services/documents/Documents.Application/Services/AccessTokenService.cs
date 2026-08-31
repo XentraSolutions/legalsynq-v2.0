@@ -1,6 +1,7 @@
 using Documents.Application.DTOs;
 using Documents.Application.Exceptions;
 using Documents.Application.Models;
+using Documents.Domain;
 using Documents.Domain.Enums;
 using Documents.Domain.Interfaces;
 using Documents.Domain.ValueObjects;
@@ -130,6 +131,7 @@ public sealed class AccessTokenService
             doc.StorageKey,
             _opts.RedirectTtlSeconds,
             token.Type,
+            StorageFileNames.ForDocument(doc.Title, doc.StorageKey),
             ct);
 
         // Minimal context for audit (no JWT — unauthenticated endpoint)

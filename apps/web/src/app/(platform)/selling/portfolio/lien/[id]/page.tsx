@@ -27,10 +27,8 @@ export default function PortfolioLienDetailPage() {
   const router = useRouter();
   const { session, isLoading: sessionLoading } = useSession();
 
-  const isBuyer =
-    session?.productRoles.includes(ProductRole.SynqLienBuyer) ?? false;
-  const isHolder =
-    session?.productRoles.includes(ProductRole.SynqLienHolder) ?? false;
+  const isSeller =
+    session?.productRoles.includes(ProductRole.SynqLienSeller) ?? false;
 
   const [lien, setLien] = useState<LienDetailsResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,13 +69,13 @@ export default function PortfolioLienDetailPage() {
       router.push("/login");
       return;
     }
-    if (!isBuyer && !isHolder) {
+    if (!isSeller) {
       router.push("/dashboard");
       return;
     }
 
     load();
-  }, [session, sessionLoading, isBuyer, isHolder, router, load]);
+  }, [session, sessionLoading, isSeller, router, load]);
 
   if (error) {
     return (

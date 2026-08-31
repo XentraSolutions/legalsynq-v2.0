@@ -428,7 +428,7 @@ app.MapPublicLogoEndpoints();
     app.MapGet("/internal/files", async (string token, string disposition, HttpContext ctx) =>
     {
         var local = ctx.RequestServices.GetRequiredService<Documents.Infrastructure.Storage.LocalStorageProvider>();
-        var (key, expired) = local.ResolveToken(token);
+        var (key, downloadFileName, expired) = local.ResolveToken(token);
 
         if (expired) return Results.Json(new { error = "TOKEN_EXPIRED" }, statusCode: 401);
         if (key is null) return Results.Json(new { error = "TOKEN_INVALID" }, statusCode: 401);
@@ -444,7 +444,7 @@ app.MapPublicLogoEndpoints();
 
         return Results.File(filePath, mimeType,
             enableRangeProcessing: true,
-            fileDownloadName: disposition == "download" ? Path.GetFileName(key) : null);
+            fileDownloadName: disposition == "download" ? (downloadFileName ?? Path.GetFileName(key)) : null);
     })
     .AllowAnonymous()
     .ExcludeFromDescription();

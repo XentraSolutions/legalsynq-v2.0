@@ -40,6 +40,7 @@ public class LiensDbContext : DbContext
     public DbSet<SellingCaseDraft> SellingCaseDrafts => Set<SellingCaseDraft>();
     public DbSet<SellingIdempotencyRecord> SellingIdempotencyRecords => Set<SellingIdempotencyRecord>();
     public DbSet<SellingPortalMessage> SellingPortalMessages => Set<SellingPortalMessage>();
+    public DbSet<SellingPortalMessageAttachment> SellingPortalMessageAttachments => Set<SellingPortalMessageAttachment>();
     public DbSet<BillOfSale> BillsOfSale => Set<BillOfSale>();
     public DbSet<ServicingItem> ServicingItems => Set<ServicingItem>();
     public DbSet<LienTask> LienTasks => Set<LienTask>();

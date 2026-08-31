@@ -176,7 +176,7 @@ export function PortfolioDetailPanel({
       {activeTab === "documents" && <DocumentsTab lien={lien} />}
       {activeTab === "payment" && <PaymentTab lien={lien} />}
       {activeTab === "activity" && <ActivityTab lienId={lien.lienId} />}
-      {activeTab === "messages" && <MessagesTab />}
+      {activeTab === "messages" && <MessagesTab lienId={lien.lienId} />}
 
       {editModal === "medical-pricing" && (
         <EditMedicalPricingModal

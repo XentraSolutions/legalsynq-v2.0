@@ -36,6 +36,8 @@ import type {
   MoveToManagementRequest,
   LienListItem,
   LienActivityFeedResult,
+  SellerLienMessagesResult,
+  SendSellerLienMessageRequest,
   BulkImportSummary,
   BulkImportRowsResult,
   BulkImportRowStatus,
@@ -102,6 +104,24 @@ export const liensApi = {
 
   getActivity(id: string) {
     return apiClient.get<LienActivityFeedResult>(`${BASE}/liens/${id}/activity`);
+  },
+
+  getMessages(id: string) {
+    return apiClient.get<SellerLienMessagesResult>(`${BASE}/liens/${id}/messages`);
+  },
+
+  sendMessage(id: string, request: SendSellerLienMessageRequest) {
+    return apiClient.post<SellerLienMessagesResult["items"][number]>(
+      `${BASE}/liens/${id}/messages`,
+      request,
+    );
+  },
+
+  sendMessageForm(id: string, request: FormData) {
+    return apiClient.postForm<SellerLienMessagesResult["items"][number]>(
+      `${BASE}/liens/${id}/messages`,
+      request,
+    );
   },
 
   getDashboard(query: DashboardQuery = {}) {

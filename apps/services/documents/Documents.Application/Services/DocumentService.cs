@@ -1,6 +1,7 @@
 using Documents.Application.DTOs;
 using Documents.Application.Exceptions;
 using Documents.Application.Models;
+using Documents.Domain;
 using Documents.Domain.Entities;
 using Documents.Domain.Enums;
 using Documents.Domain.Interfaces;
@@ -543,6 +544,7 @@ public sealed class DocumentService
             doc.StorageKey,
             _opts.SignedUrlTtlSeconds,
             disposition,
+            StorageFileNames.ForDocument(doc.Title, doc.StorageKey),
             ct);
     }
 
