@@ -1507,7 +1507,7 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
     }
 
     [Fact]
-    public async Task PayoffQuote_accepts_legacy_misspelled_route()
+    public async Task PayoffQuote_legacy_misspelled_route_ignores_existing_document_and_generates_new_quote()
     {
         using var scope = _factory.Services.CreateScope();
         var uploadClient = scope.ServiceProvider.GetRequiredService<CapturingLegacyDocumentUploadClient>();
@@ -1524,6 +1524,7 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
         var uploadResp = await _client.PostAsync("/api/liens/cases/upload/document", form);
         uploadResp.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await uploadResp.Content.ReadAsStringAsync()}");
+        var existingUpload = uploadClient.Uploads.Single();
 
         var resp = await _client.GetAsync($"/api/liens/cases/payoff-qoute/{SeedHelper.CaseId}");
 
@@ -1531,41 +1532,44 @@ public class LegacyCaseEndpointTests : IClassFixture<LiensApiFactory>, IAsyncLif
             $"Body: {await resp.Content.ReadAsStringAsync()}");
         var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
         body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
+        uploadClient.Uploads.Should().HaveCount(2);
+        var generatedUpload = uploadClient.Uploads[1];
+        generatedUpload.DocumentId.Should().NotBe(existingUpload.DocumentId);
         body.RootElement.GetProperty("url").GetString()
-            .Should().Be($"/documents/{uploadClient.Uploads.Single().DocumentId}");
+            .Should().Be($"/documents/{generatedUpload.DocumentId}");
         body.RootElement.GetProperty("base64").GetString()
-            .Should().Be(Convert.ToBase64String(StubDocumentsServiceHandler.DownloadContent));
+            .Should().Be(Convert.ToBase64String(generatedUpload.Content));
     }
 
     [Fact]
-    public async Task PayoffQuote_finds_document_uploaded_with_payoff_statement_lookup_type()
+    public async Task PayoffQuote_generates_new_document_on_every_call()
     {
         using var scope = _factory.Services.CreateScope();
         var uploadClient = scope.ServiceProvider.GetRequiredService<CapturingLegacyDocumentUploadClient>();
         uploadClient.Clear();
 
-        using var form = new MultipartFormDataContent();
-        form.Add(new StringContent(SeedHelper.CaseId.ToString()), "caseId");
-        form.Add(new StringContent(SeedHelper.PayoffStatementDocumentTypeId.ToString()), "DocFileTypeId");
-        form.Add(new StringContent("payoff-quote"), "DocName");
-        var file = new ByteArrayContent("%PDF-1.4 test"u8.ToArray());
-        file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
-        form.Add(file, "file", "payoff-quote.pdf");
+        var firstResp = await _client.GetAsync($"/api/liens/cases/payoff-qoute/{SeedHelper.CaseId}");
+        var secondResp = await _client.GetAsync($"/api/liens/cases/payoff-qoute/{SeedHelper.CaseId}");
 
-        var uploadResp = await _client.PostAsync("/api/liens/cases/upload/document", form);
-        uploadResp.StatusCode.Should().Be(HttpStatusCode.OK,
-            $"Body: {await uploadResp.Content.ReadAsStringAsync()}");
+        firstResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await firstResp.Content.ReadAsStringAsync()}");
+        secondResp.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await secondResp.Content.ReadAsStringAsync()}");
 
-        var resp = await _client.GetAsync($"/api/liens/cases/payoff-qoute/{SeedHelper.CaseId}");
+        uploadClient.Uploads.Should().HaveCount(2);
+        uploadClient.Uploads[0].DocumentId.Should().NotBe(uploadClient.Uploads[1].DocumentId);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK,
-            $"Body: {await resp.Content.ReadAsStringAsync()}");
-        var body = await resp.Content.ReadFromJsonAsync<JsonDocument>();
-        body!.RootElement.GetProperty("isSuccess").GetBoolean().Should().BeTrue();
-        body.RootElement.GetProperty("url").GetString()
-            .Should().Be($"/documents/{uploadClient.Uploads.Single().DocumentId}");
-        body.RootElement.GetProperty("base64").GetString()
-            .Should().Be(Convert.ToBase64String(StubDocumentsServiceHandler.DownloadContent));
+        var firstBody = await firstResp.Content.ReadFromJsonAsync<JsonDocument>();
+        firstBody!.RootElement.GetProperty("url").GetString()
+            .Should().Be($"/documents/{uploadClient.Uploads[0].DocumentId}");
+        firstBody.RootElement.GetProperty("base64").GetString()
+            .Should().Be(Convert.ToBase64String(uploadClient.Uploads[0].Content));
+
+        var secondBody = await secondResp.Content.ReadFromJsonAsync<JsonDocument>();
+        secondBody!.RootElement.GetProperty("url").GetString()
+            .Should().Be($"/documents/{uploadClient.Uploads[1].DocumentId}");
+        secondBody.RootElement.GetProperty("base64").GetString()
+            .Should().Be(Convert.ToBase64String(uploadClient.Uploads[1].Content));
     }
 
     [Fact]

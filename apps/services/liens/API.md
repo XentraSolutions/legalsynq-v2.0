@@ -1579,7 +1579,7 @@ The dashboard Total Lien Report, including its status chart and totals, excludes
 
 Compatibility alias: `GET /api/liens/cases/payoff-qoute/{caseId}`.
 
-Returns the latest payoff statement URL for the case. If no payoff document exists, the service generates a payoff PDF from the case and its open servicing liens, uploads it to the Documents service as a case document, and records `LegacyCaseDocument` metadata with legacy type ID `14`. Before returning success, the service waits briefly for the Documents security scan to report `CLEAN`; terminal scan outcomes remain unavailable rather than returning a URL that the frontend cannot open.
+Generates a new payoff PDF from the case and its open servicing liens on every request, uploads it to the Documents service as a case document, and records `LegacyCaseDocument` metadata with legacy type ID `14`. Existing payoff documents do not prevent generation. Before returning success, the service waits briefly for the newly generated document's security scan to report `CLEAN`; terminal scan outcomes remain unavailable rather than returning a URL that the frontend cannot open.
 
 **Response:** `200 OK`
 
