@@ -149,6 +149,8 @@ Imported history is excluded from API responses by default. Set
 into `case-updates/v3` and `liens-updates/v3`. Those endpoints globally paginate
 native and imported rows, preserve the existing response shapes and empty-result
 behavior, and normalize only the known legacy `ÔåÆ` arrow token at response time.
+Native servicing rows in lien-update history resolve **Updated By** from the row's
+authenticated updater user ID; the task assignee is not treated as the updater.
 When this flag is enabled, startup fails if the guarded update-event schema cannot
 be recovered and validated; the service does not continue with a broken read path.
 

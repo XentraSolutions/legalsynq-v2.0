@@ -227,6 +227,47 @@ public class LegacyMedicalEndpointTests : IClassFixture<LiensApiFactory>, IAsync
     }
 
     [Fact]
+    public async Task MedicalCode_create_attributes_lien_update_to_authenticated_user()
+    {
+        const string code = "99214";
+        var createResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens/medicalcode",
+            new
+            {
+                id = (string?)null,
+                liensId = SeedHelper.LienId.ToString(),
+                code,
+                medicareCost = "125.00",
+                billingAmount = "150.00",
+                purchaseAmount = "100.00",
+                payee = "test payee",
+                outboundCheckNumber = "check-1001",
+            });
+        createResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await createResponse.Content.ReadAsStringAsync()}");
+
+        var updatesResponse = await _client.PostAsJsonAsync(
+            "/api/liens/cases/liens-updates/v3",
+            new
+            {
+                caseId = SeedHelper.CaseId,
+                page = 1,
+                limit = 50,
+            });
+        updatesResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await updatesResponse.Content.ReadAsStringAsync()}");
+
+        var body = JsonNode.Parse(await updatesResponse.Content.ReadAsStringAsync())!;
+        var update = body["data"]!
+            .AsArray()
+            .Single(item =>
+                item!["action"]!.GetValue<string>() == "LegacyMedicalCode" &&
+                item["description"]!.GetValue<string>() == $"Medical code {code}");
+
+        update!["updatedBy"]!.GetValue<string>().Should().Be("Demo User");
+    }
+
+    [Fact]
     public async Task MedicalCode_update_falls_back_to_lien_and_code_when_row_id_is_stale()
     {
         var code = "45385";

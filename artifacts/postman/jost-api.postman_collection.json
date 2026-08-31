@@ -1,0 +1,786 @@
+{
+  "info": {
+    "_postman_id": "1a8c42d9-890e-4a72-9b1f-0a5700000001",
+    "name": "jost api",
+    "description": "Focused SynqLien Management API collection for balance verification, reductions, lien entry, and record email/note/status updates. The default baseUrl calls Liens.Api directly on port 5009. To call through the gateway, set baseUrl to http://localhost:5010/liens. Supply a JWT with SYNQ_LIENS product access and the permissions required by each request. No credentials are stored in this collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "1 - Balance Verification",
+      "description": "There is no single balance-verification endpoint. Reproduce the tenant portal balance by reading case liens, payments, and the latest persisted reduction per lien. Formula: totalBilling - latestReduction - sum(payments).",
+      "item": [
+        {
+          "name": "List Liens for Case",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/liens?caseId={{caseId}}&page=1&pageSize=100",
+            "description": "Returns lien rows and aggregated totalBilling. The servicing UI uses totalBilling as the starting amount. Requires SYNQ_LIENS.lien:read."
+          }
+        },
+        {
+          "name": "Get Lien Detail",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/liens/{{lienId}}",
+            "description": "Returns originalAmount and persisted currentBalance. The servicing UI computes its displayed balance independently. Requires SYNQ_LIENS.lien:read."
+          }
+        },
+        {
+          "name": "Get Payments by Case",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/settlement/payments/case/{{caseId}}",
+            "description": "Sum payment amount values by lienId. Requires SYNQ_LIENS.lien:read."
+          }
+        },
+        {
+          "name": "Get Latest Reductions by Case",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/settlement/reductions/case/{{caseId}}",
+            "description": "Returns the most recently persisted reduction for each lien in the case. Requires SYNQ_LIENS.lien:read."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Reductions",
+      "item": [
+        {
+          "name": "Create Reduction",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.id) pm.collectionVariables.set('reductionId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"lienId\": \"{{lienId}}\",\n  \"reductionDate\": \"{{businessDate}}\",\n  \"amount\": 2500.00,\n  \"note\": \"Negotiated reduction\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/settlement/reductions",
+            "description": "Creates a canonical reduction and saves its ID into reductionId. Requires SYNQ_LIENS.lien:update."
+          }
+        },
+        {
+          "name": "Update Reduction",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reductionDate\": \"{{businessDate}}\",\n  \"amount\": 2250.00,\n  \"note\": \"Corrected reduction amount\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/settlement/reductions/{{reductionId}}",
+            "description": "Updates a tenant-scoped reduction. Requires SYNQ_LIENS.lien:update."
+          }
+        },
+        {
+          "name": "Get Reductions by Lien",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/settlement/reductions/lien/{{lienId}}",
+            "description": "Returns reduction history for one lien. Requires SYNQ_LIENS.lien:read."
+          }
+        },
+        {
+          "name": "Legacy Create Single Reduction",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"lienId\": \"{{lienId}}\",\n  \"reductionDate\": \"{{businessDate}}\",\n  \"amount\": 2500.00,\n  \"note\": \"Legacy single reduction\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/service/liens/update/reduction",
+            "description": "Legacy single-item compatibility contract. Requires SYNQ_LIENS.lien:update."
+          }
+        },
+        {
+          "name": "Legacy Create Bulk Reductions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"note\": \"Batch reduction\",\n  \"data\": [\n    {\n      \"liensId\": \"{{lienId}}\",\n      \"reductionAmount\": 1000.00,\n      \"reductionDate\": \"{{businessDate}}\",\n      \"note\": \"Optional row note\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/service/liens/update/reduction",
+            "description": "Legacy bulk reduction contract used by the tenant portal. Requires SYNQ_LIENS.lien:update."
+          }
+        },
+        {
+          "name": "Get Settlement History",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/service/settlement/history/{{caseId}}",
+            "description": "Returns settlements, reductions, and payments for the case. Requires SYNQ_LIENS.lien:read."
+          }
+        },
+        {
+          "name": "Get Settlement History V3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"page\": 1,\n  \"limit\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/service/settlement/history/v3",
+            "description": "Paged payment, reduction, settlement, and law-firm-change history. Requires SYNQ_LIENS.lien:read."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Entering Liens",
+      "item": [
+        {
+          "name": "Canonical Create Lien",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.id) pm.collectionVariables.set('lienId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lienNumber\": \"\",\n  \"externalReference\": \"POSTMAN-{{$guid}}\",\n  \"lienType\": \"MedicalLien\",\n  \"caseId\": \"{{caseId}}\",\n  \"facilityId\": \"{{facilityId}}\",\n  \"originalAmount\": 10000.00,\n  \"jurisdiction\": \"CA\",\n  \"isConfidential\": false,\n  \"subjectFirstName\": \"Jane\",\n  \"subjectLastName\": \"Doe\",\n  \"incidentDate\": \"{{businessDate}}\",\n  \"purchaseDate\": \"{{businessDate}}\",\n  \"initialServiceDate\": \"{{businessDate}}\",\n  \"endServiceDate\": \"{{businessDate}}\",\n  \"isBulk\": \"N\",\n  \"isServicing\": \"Y\",\n  \"description\": \"Postman medical lien\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/liens",
+            "description": "Creates a management lien and saves the returned ID. Remove facilityId when no valid facility is available. Requires SYNQ_LIENS.lien:create."
+          }
+        },
+        {
+          "name": "Canonical Update Lien",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"externalReference\": \"POSTMAN-UPDATED\",\n  \"lienType\": \"MedicalLien\",\n  \"caseId\": \"{{caseId}}\",\n  \"facilityId\": \"{{facilityId}}\",\n  \"originalAmount\": 10500.00,\n  \"jurisdiction\": \"CA\",\n  \"isConfidential\": false,\n  \"subjectFirstName\": \"Jane\",\n  \"subjectLastName\": \"Doe\",\n  \"incidentDate\": \"{{businessDate}}\",\n  \"description\": \"Updated Postman medical lien\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/liens/{{lienId}}",
+            "description": "Updates an open management lien. This contract does not update notes, status, or currentBalance. Requires SYNQ_LIENS.lien:update."
+          }
+        },
+        {
+          "name": "Legacy Create Medical Lien Header",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.data) pm.collectionVariables.set('lienId', body.data);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"status\": \"OPEN\",\n  \"purchaseDate\": \"{{businessDate}}\",\n  \"initialServiceDate\": \"{{businessDate}}\",\n  \"endServiceDate\": \"{{businessDate}}\",\n  \"note\": \"Legacy lien description\",\n  \"isBulk\": \"N\",\n  \"isServicing\": \"Y\",\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/cases/liens/medical",
+            "description": "Creates the legacy management lien header. The note value maps to lien description. Saves response data into lienId. Requires SYNQ_LIENS.lien:create."
+          }
+        },
+        {
+          "name": "Legacy Update Medical Lien Header",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{lienId}}\",\n  \"caseId\": \"{{caseId}}\",\n  \"status\": \"OPEN\",\n  \"purchaseDate\": \"{{businessDate}}\",\n  \"initialServiceDate\": \"{{businessDate}}\",\n  \"endServiceDate\": \"{{businessDate}}\",\n  \"note\": \"Updated legacy lien description\",\n  \"isBulk\": \"N\",\n  \"isServicing\": \"Y\",\n  \"fundingCompanyId\": \"{{fundingCompanyId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/cases/liens/update-medical",
+            "description": "Updates the legacy lien header and optionally its status. Requires SYNQ_LIENS.lien:update."
+          }
+        },
+        {
+          "name": "Legacy Add Lien Facility Information",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"liensId\": \"{{lienId}}\",\n  \"facilityId\": \"{{facilityId}}\",\n  \"facility\": \"Postman Medical Facility\",\n  \"facilityContactId\": \"{{facilityContactId}}\",\n  \"facilityContact\": \"Facility Contact\",\n  \"email\": \"facility@example.test\",\n  \"phone\": \"+15555550101\",\n  \"medicalProviderId\": \"{{medicalProviderId}}\",\n  \"medicalProvider\": \"Postman Provider\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/cases/liens/facility",
+            "description": "Adds facility/provider/contact information to the legacy lien workflow. Requires SYNQ_LIENS.lien:update."
+          }
+        },
+        {
+          "name": "Legacy Add Medical Code and Amounts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"liensId\": \"{{lienId}}\",\n  \"code\": \"99213\",\n  \"description\": \"Office visit\",\n  \"medicareCost\": \"125.00\",\n  \"billingAmount\": \"10000.00\",\n  \"purchaseAmount\": \"6000.00\",\n  \"payee\": \"Postman Facility\",\n  \"outboundCheckNumber\": \"CHK-1001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/cases/liens/medicalcode",
+            "description": "Adds a legacy billing/procedure-code row. Requires SYNQ_LIENS.lien:update."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Update Emails",
+      "item": [
+        {
+          "name": "Update Case Client Email",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Doe\",\n  \"sex\": \"Female\",\n  \"dob\": \"1990-01-01\",\n  \"phone\": \"+15555550101\",\n  \"email\": \"jane.updated@example.test\",\n  \"address\": \"100 Main Street\",\n  \"city\": \"Los Angeles\",\n  \"state\": \"CA\",\n  \"zipcode\": \"90001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/cases/personal-update",
+            "description": "Updates case plaintiff/client personal information, including email. Requires SYNQ_LIENS.case:update."
+          }
+        },
+        {
+          "name": "Update Legacy Contact Email and Notes",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contactType\": \"MedicalFacility\",\n  \"firstName\": \"Postman\",\n  \"lastName\": \"Contact\",\n  \"organization\": \"Postman Medical Facility\",\n  \"email\": \"contact.updated@example.test\",\n  \"phone\": \"+15555550102\",\n  \"notes\": \"Updated contact notes\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/contacts/{{contactId}}",
+            "description": "Full contact update; include all values that must be retained. Requires SYNQ_LIENS.lien:service."
+          }
+        },
+        {
+          "name": "Update Lien Facility Contact Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"liensId\": \"{{lienId}}\",\n  \"facilityId\": \"{{facilityId}}\",\n  \"facility\": \"Postman Medical Facility\",\n  \"facilityContactId\": \"{{facilityContactId}}\",\n  \"facilityContact\": \"Facility Contact\",\n  \"email\": \"facility.updated@example.test\",\n  \"phone\": \"+15555550103\",\n  \"medicalProviderId\": \"{{medicalProviderId}}\",\n  \"medicalProvider\": \"Postman Provider\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/cases/liens/update-facility",
+            "description": "Updates the legacy facility/contact compatibility record attached to a lien. Requires lien:update."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Update Notes",
+      "item": [
+        {
+          "name": "List Case Notes",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/liens/cases/{{caseId}}/notes",
+            "description": "Lists canonical notes for one case. Requires SYNQ_LIENS.case:read."
+          }
+        },
+        {
+          "name": "Create Case Note",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.id) pm.collectionVariables.set('noteId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Follow up with provider\",\n  \"category\": \"general\",\n  \"createdByName\": \"Postman User\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/cases/{{caseId}}/notes",
+            "description": "Creates a canonical case note and saves noteId. Requires SYNQ_LIENS.case_note:manage."
+          }
+        },
+        {
+          "name": "Update Case Note",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Updated follow-up note\",\n  \"category\": \"follow-up\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/cases/{{caseId}}/notes/{{noteId}}",
+            "description": "Updates canonical note content/category. Requires case_note:manage."
+          }
+        },
+        {
+          "name": "Pin Case Note",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/liens/cases/{{caseId}}/notes/{{noteId}}/pin",
+            "description": "Pins a canonical case note. Requires case_note:manage."
+          }
+        },
+        {
+          "name": "Unpin Case Note",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/liens/cases/{{caseId}}/notes/{{noteId}}/unpin",
+            "description": "Unpins a canonical case note. Requires case_note:manage."
+          }
+        },
+        {
+          "name": "Delete Case Note",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/liens/cases/{{caseId}}/notes/{{noteId}}",
+            "description": "Soft-deletes a canonical case note. Requires case_note:manage."
+          }
+        },
+        {
+          "name": "Legacy Add Case Note",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"note\": \"Legacy tracking note\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/cases/add-note",
+            "description": "Legacy tracking-note creation route used by the portal. Requires case_note:manage."
+          }
+        },
+        {
+          "name": "Update Case Details and Tracking Note",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"currentStatus\": \"PreDemand\",\n  \"currentMedicalStatus\": \"Treating\",\n  \"caseType\": \"Personal Injury\",\n  \"stateOfIncident\": \"CA\",\n  \"trackingFollowUp\": \"{{businessDate}}\",\n  \"dateOfLoss\": \"{{businessDate}}\",\n  \"leadId\": \"\",\n  \"shareCase\": \"N\",\n  \"minorComp\": \"N\",\n  \"caseDropped\": \"N\",\n  \"childSupportLiens\": \"N\",\n  \"isUccFiled\": \"N\",\n  \"description\": \"Updated case details\",\n  \"notes\": \"Updated case tracking note\",\n  \"demandAmount\": null,\n  \"settlementAmount\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/cases/details-update",
+            "description": "Updates case detail fields and records explicit note changes in case history. Requires case:update."
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 - Update Statuses",
+      "item": [
+        {
+          "name": "Update Case Primary Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"title\": \"Updated Case\",\n  \"status\": \"PreDemand\",\n  \"dateOfLoss\": \"{{businessDate}}\",\n  \"insuranceCarrier\": \"Example Insurance\",\n  \"policyNumber\": \"POL-1001\",\n  \"claimNumber\": \"CLM-1001\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/cases/primary-update",
+            "description": "Updates the case's primary status and claim fields. Requires case:update."
+          }
+        },
+        {
+          "name": "Update Servicing Case Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"caseStatusId\": \"PreDemand\",\n  \"isUCCFiled\": \"N\",\n  \"switchedDate\": null,\n  \"lawFirmId\": null,\n  \"caseManager\": null,\n  \"attorney\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/service/update-details",
+            "description": "Updates servicing status and relationship metadata while preserving case-authored notes. Requires case:update."
+          }
+        },
+        {
+          "name": "Update Single Lien Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"liensId\": \"{{lienId}}\",\n  \"statusId\": \"OPEN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/service/liens/update/status",
+            "description": "Legacy single-lien status update. OPEN maps to Active, CLOSED to Settled, and REJECTED to Cancelled. Requires lien:update."
+          }
+        },
+        {
+          "name": "Update Multiple Lien Statuses",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"caseId\": \"{{caseId}}\",\n  \"lienIds\": \"{{lienId}}\",\n  \"lienStatus\": \"CLOSED\",\n  \"closedDate\": \"{{businessDate}}\",\n  \"note\": \"No recovery\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/service/update-liens-status",
+            "description": "Updates comma-separated lien IDs for one case and records zero-amount No Recovery payment details. Requires lien:update."
+          }
+        },
+        {
+          "name": "Update Servicing Item Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Completed\",\n  \"resolution\": \"Verified and completed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{baseUrl}}/api/liens/servicing/{{servicingItemId}}/status",
+            "description": "Updates a servicing item/task status and optional resolution. Requires lien:service."
+          }
+        },
+        {
+          "name": "Deactivate Contact",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/liens/contacts/{{contactId}}/deactivate",
+            "description": "Soft-deactivates a contact. Requires lien:service."
+          }
+        },
+        {
+          "name": "Reactivate Contact",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/liens/contacts/{{contactId}}/reactivate",
+            "description": "Reactivates a contact. Requires lien:service."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5009"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "businessDate",
+      "value": "2026-08-31"
+    },
+    {
+      "key": "caseId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "lienId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "reductionId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "noteId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "contactId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "facilityId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "facilityContactId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "medicalProviderId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "fundingCompanyId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "key": "servicingItemId",
+      "value": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}

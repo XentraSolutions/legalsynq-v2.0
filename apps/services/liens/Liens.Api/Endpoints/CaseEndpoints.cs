@@ -5673,8 +5673,8 @@ public static class CaseEndpoints
                 item.LienId!.Value.ToString(),
                 item.TaskType,
                 string.IsNullOrWhiteSpace(item.Resolution) ? item.Description : item.Resolution,
-                item.AssignedTo,
-                null,
+                string.Empty,
+                item.UpdatedByUserId,
                 item.UpdatedAtUtc,
                 0,
                 0)))
