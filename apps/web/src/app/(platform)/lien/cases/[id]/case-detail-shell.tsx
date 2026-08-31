@@ -67,7 +67,6 @@ export function CaseDetailShell({
   } = useCaseLiens(id, { pageSize: 20 });
   const relatedLiens = relatedLiensWithMetadata.items;
   const totalCount = relatedLiensWithMetadata?.pagination?.totalCount ?? 0;
-
   const {
     data: casePayments = [],
     dataUpdatedAt: paymentsUpdatedAt,
