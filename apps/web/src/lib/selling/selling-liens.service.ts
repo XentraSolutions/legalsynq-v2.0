@@ -117,8 +117,12 @@ export const liensService = {
     return data;
   },
 
-  async sendLienMessage(id: string, message: string): Promise<SellerLienMessage> {
-    const { data } = await liensApi.sendMessage(id, { message });
+  async sendLienMessage(id: string, message: string, files: File[] = []): Promise<SellerLienMessage> {
+    const trimmed = message.trim();
+    const response = files.length > 0
+      ? await liensApi.sendMessageForm(id, buildMessageForm(trimmed, files))
+      : await liensApi.sendMessage(id, { message: trimmed });
+    const { data } = response;
     return { ...data, isCurrentUser: true };
   },
 
@@ -371,3 +375,10 @@ export const liensService = {
     return data.items;
   },
 };
+
+function buildMessageForm(message: string, files: File[]): FormData {
+  const form = new FormData();
+  form.append("message", message);
+  files.forEach((file) => form.append("files", file, file.name));
+  return form;
+}

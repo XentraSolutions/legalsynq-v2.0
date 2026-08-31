@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Notifications;
+using Liens.Api;
 using Liens.Api.Serialization;
 using Liens.Application.Interfaces;
 using Liens.Application.Services;
@@ -20,9 +21,23 @@ namespace Liens.Api.Endpoints;
 public static class SellingPublicEndpoints
 {
     private const int MaxPublicMessageLength = 400;
+    private const int MaxPublicMessageAttachmentCount = 10;
     private const string SynqLienBuyerLoginReturnTo = "/funding/dashboard";
     private const string SynqLienBuyerActivationReason = "synqlien-buyer-activation";
     private const string DocumentsServiceAudience = "documents-service";
+    private static readonly Guid SellingMessageAttachmentDocumentTypeId =
+        Guid.Parse("10000000-0000-0000-0000-000000000005");
+    private static readonly string[] SellingMessageAttachmentAllowedExtensions =
+    [
+        ".pdf",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".docx",
+        ".xlsx",
+        ".xls",
+        ".csv",
+    ];
     private const string LegalSynqBrandIconContentId = "legalsynq-brand-icon";
     private const string LegalSynqBrandIconPngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAFH0lEQVR42u2d23HiMBSGU4JLcAmOSWZ4pIR0sDxsAYLdfQ4dLB2QDrYEtgOX4AZCVILXwmJyWRsdCev+/zPnFbA+jq7Wf+7uIAiCvIqzVcG39fq0XRzeNnXbR0cI/rZZHE/bmnG2LNGKocLd1s8DLBLUyRB/DoAOKmuXZZ+Bza1gv2a1yGi0bhBwyV2xdoheAa2cKNz3LhuZ7EViYmQb7qW7xpjsWK/9TNkRXBmLI1rdbfY2bgH34zF7rNDy7sZe9djJ6p2qa+WsKjg79wYtYSzeofUdqAfHVDBee2h6f5qKMGFDN+0G8KbeK5Y2B7Oe4WGlmmyh9QOYPZsua0R3rR6HqwIEPAMWM2zzz1YCxnIJgCEAhgA4610ssSadils2JAA4+d4BgAEYAmAIgPNS13VFH099sD52DuLJBHCvveJzxe9fiecB1QHsuo9j514HQ8A6Es+1zhWs+Je3nT+5AHyReM4yJ7jPnX+5BHzRcw5wD10Y8gE4bciBZK5vwEIs1TG3A+CzeHJjsucJVWiAzzPs1JZCOksL1Voz1HXwXnPJt0oF8JEI1nu3NcdOlngOYo+1T2WHSqUmta1KIuQ2l8lVmRpgjWcvYge8jmmyMfdhg5wxX1MVO2BmMptNCHCT9ERLzi5zBnwE4LQBV3IsnooCgCMGnMPhAgADMAADMADnA/hsdsaWpY1QAv75sLL13apwAoz/eqwGJ7ma/Xej4MfiyQVg9/4cQcXZlU+0wWzQpT2g0kVu7OI1AFuN9mYfLx17QAD2CFo3m0XW6vpQAbBvyMRLdxJuY2D7B8AxZLK04u0AOMZQOAHd0ngAHEaIpdy1hX4LwIlmMcEn6oOX8uLwNfiI+VhsO1khS+yiCfc+mu3iyI4bZewVJmQ6XlEAbAO0ugcb9SlRzZxNHOQA2NaeucIMrk/EsfGXGw/eAOxUKr/O0WS0cZKSO2B5qX19JYze6FBNNAHYHWAr72QBMAADMAADMAADMABfXHSmggFwxIBzly3ARmUNbGx0ALAdwKpDodEKMeo3OBYNkPkFLN+POxgdGarS/nIUhTJv9gGLN1TF26sf47R9+E08zuUT/w7ycWE3HEyIjM8rXN0unPtcXqObzvxtiRgAX/uNelkMwKEBJpXfo741AMBhAT5t7l/oC+nN4gVA4wGsBReZHBVgLg7/jaf51NKrAOwcMJfvx82zZB1AY4btCnA/RO7H3lwd6kKJK6wWi2SKOzDDl/gJ9dBx/9fWd4eyVZm0jE5SEtuLBmAABmAABmAABuDMAfu4XQjAbh9wnTngJnfAPFXA0vVdpej9oikPyRIFrKwTlcSkiOB6znX+yTEA7p/nWzaldWS5GVLZN0r9hpABSw9oavm+dSqAZ696ZgI4sMJcaVUk7R/mBYA/aZfU5oSsn9QCcCL1kiYauCJMuFIHnFbXbAtypIDThvtlbdxmBvjY5VTm/cM+dZs4YJ76FVnqduYfHdiBA27lWnh1B0124ZPRfK+YIeDSdoDeDIrpNAkCYAiAARiAAZimsZv1nwLuBnEDVl3PGfVhhgAYAmAIgAEYgHMAPOkTRQJ8/eI13P4cSNxPJrjNMP3PPRfihF9nCKJURBWVUynrVmkP+JtSGxAt70g028V3MIq43UEOmrubrsrQ/Tkgt1l8U5Ac5KDZs7hwZPGEsddzV20TcouuOVnI+vbBkM0xeT7rRWEPiDE31Gw2dOXjQ8bWzKqLHDQ38GV53b1OuPbhEB+CoND1D6mLXlFVwRdjAAAAAElFTkSuQmCC";
 
@@ -50,6 +65,13 @@ public static class SellingPublicEndpoints
             .AllowAnonymous();
 
         group.MapPost("/{token}/messages", PostTemporaryBuyerPortalMessage)
+            .AllowAnonymous()
+            .DisableAntiforgery();
+
+        group.MapGet("/{token}/message-attachments/{attachmentId:guid}/view", ViewTemporaryBuyerPortalMessageAttachment)
+            .AllowAnonymous();
+
+        group.MapGet("/{token}/message-attachments/{attachmentId:guid}/download", DownloadTemporaryBuyerPortalMessageAttachment)
             .AllowAnonymous();
 
         group.MapPost("/{token}/accept", AcceptTemporaryBuyerPortal)
@@ -141,6 +163,105 @@ public static class SellingPublicEndpoints
             loggerFactory,
             ct);
 
+    private static Task<IResult> ViewTemporaryBuyerPortalMessageAttachment(
+        string token,
+        Guid attachmentId,
+        HttpResponse response,
+        LiensDbContext db,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct = default)
+        => RedirectTemporaryBuyerPortalMessageAttachment(
+            token,
+            attachmentId,
+            "view",
+            response,
+            db,
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            ct);
+
+    private static Task<IResult> DownloadTemporaryBuyerPortalMessageAttachment(
+        string token,
+        Guid attachmentId,
+        HttpResponse response,
+        LiensDbContext db,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct = default)
+        => RedirectTemporaryBuyerPortalMessageAttachment(
+            token,
+            attachmentId,
+            "download",
+            response,
+            db,
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            ct);
+
+    private static async Task<IResult> RedirectTemporaryBuyerPortalMessageAttachment(
+        string token,
+        Guid attachmentId,
+        string accessType,
+        HttpResponse response,
+        LiensDbContext db,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        SetNoReferrerHeader(response);
+        if (attachmentId == Guid.Empty)
+        {
+            return PublicLinkState(
+                "attachment-required",
+                "Attachment unavailable",
+                "A valid attachment id is required.",
+                StatusCodes.Status400BadRequest);
+        }
+
+        var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
+        if (resolved.Error is not null)
+            return resolved.Error;
+
+        var accessLink = resolved.AccessLink!;
+        var attachment = await ResolvePublicMessageAttachmentAsync(db, accessLink, attachmentId, ct);
+        if (attachment is null)
+        {
+            return PublicLinkState(
+                "attachment-not-found",
+                "Attachment unavailable",
+                "This attachment is not part of the lien offer message thread.",
+                StatusCodes.Status404NotFound);
+        }
+
+        var redeemUrl = await IssueDocumentsAccessUrlAsync(
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            accessLink,
+            attachment.DocumentId,
+            accessType,
+            ct);
+        if (string.IsNullOrWhiteSpace(redeemUrl))
+        {
+            return PublicLinkState(
+                "attachment-unavailable",
+                "Attachment unavailable",
+                "The attachment could not be opened right now.",
+                StatusCodes.Status502BadGateway);
+        }
+
+        accessLink.MarkAccessed();
+        await db.SaveChangesAsync(ct);
+
+        return Results.Redirect(redeemUrl, permanent: false, preserveMethod: false);
+    }
+
     private static async Task<IResult> RedirectTemporaryBuyerPortalDocument(
         string token,
         Guid documentId,
@@ -216,7 +337,6 @@ public static class SellingPublicEndpoints
 
     internal static async Task<IResult> PostTemporaryBuyerPortalMessage(
         string token,
-        PublicPortalMessageRequest? request,
         HttpContext httpContext,
         INotificationPublisher notifications,
         ISellingBuyerAccessLinkService accessLinks,
@@ -224,43 +344,38 @@ public static class SellingPublicEndpoints
         IConfiguration configuration,
         ISellerOrganizationDisplayResolver sellerDisplayResolver,
         LiensDbContext db,
+        ILegacyDocumentUploadClient uploadClient,
         CancellationToken ct = default)
     {
-        var messageText = request?.Message?.Trim() ?? string.Empty;
-        if (messageText.Length == 0)
-        {
-            return PublicLinkState(
-                "message-required",
-                "Message could not be sent",
-                "Enter a message before sending.",
-                StatusCodes.Status400BadRequest);
-        }
-
-        if (messageText.Length > MaxPublicMessageLength)
-        {
-            return PublicLinkState(
-                "message-too-long",
-                "Message could not be sent",
-                $"Message must be {MaxPublicMessageLength} characters or fewer.",
-                StatusCodes.Status400BadRequest);
-        }
+        var parsedRequest = await ReadPortalMessageRequestAsync(httpContext.Request, ct);
+        if (parsedRequest.Error is not null)
+            return parsedRequest.Error;
 
         var resolved = await ResolvePublicAccessLinkAsync(token, db, ct);
         if (resolved.Error is not null)
             return resolved.Error;
 
-        return await PostResolvedBuyerPortalMessage(
-            resolved.AccessLink!,
-            token,
-            request,
-            httpContext,
-            notifications,
-            accessLinks,
-            loggerFactory,
-            configuration,
-            sellerDisplayResolver,
-            db,
-            ct);
+        try
+        {
+            return await PostResolvedBuyerPortalMessage(
+                resolved.AccessLink!,
+                token,
+                parsedRequest.Request,
+                httpContext,
+                notifications,
+                accessLinks,
+                loggerFactory,
+                configuration,
+                sellerDisplayResolver,
+                db,
+                uploadClient,
+                parsedRequest.Attachments,
+                ct);
+        }
+        finally
+        {
+            DisposePortalMessageAttachmentUploads(parsedRequest.Attachments);
+        }
     }
 
     internal static async Task<IResult> PostResolvedBuyerPortalMessage(
@@ -274,8 +389,11 @@ public static class SellingPublicEndpoints
         IConfiguration configuration,
         ISellerOrganizationDisplayResolver sellerDisplayResolver,
         LiensDbContext db,
+        ILegacyDocumentUploadClient? uploadClient = null,
+        IReadOnlyList<SellingPortalMessageAttachmentUpload>? attachmentUploads = null,
         CancellationToken ct = default,
-        string? currentBuyerAccountEmail = null)
+        string? currentBuyerAccountEmail = null,
+        Func<SellingPortalMessageAttachment, string, string?>? attachmentUrlBuilder = null)
         => await PostResolvedPortalMessage(
             accessLink,
             currentToken,
@@ -288,6 +406,9 @@ public static class SellingPublicEndpoints
             sellerDisplayResolver,
             db,
             ct,
+            uploadClient: uploadClient,
+            attachmentUploads: attachmentUploads,
+            attachmentUrlBuilder: attachmentUrlBuilder,
             senderTypeOverride: null,
             currentBuyerAccountEmail: currentBuyerAccountEmail);
 
@@ -301,6 +422,9 @@ public static class SellingPublicEndpoints
         IConfiguration configuration,
         ISellerOrganizationDisplayResolver sellerDisplayResolver,
         LiensDbContext db,
+        ILegacyDocumentUploadClient? uploadClient = null,
+        IReadOnlyList<SellingPortalMessageAttachmentUpload>? attachmentUploads = null,
+        Func<SellingPortalMessageAttachment, string, string?>? attachmentUrlBuilder = null,
         CancellationToken ct = default)
         => await PostResolvedPortalMessage(
             accessLink,
@@ -315,7 +439,10 @@ public static class SellingPublicEndpoints
             db,
             ct,
             senderTypeOverride: SellingPortalMessageSenderType.Seller,
-            currentBuyerAccountEmail: null);
+            currentBuyerAccountEmail: null,
+            uploadClient: uploadClient,
+            attachmentUploads: attachmentUploads,
+            attachmentUrlBuilder: attachmentUrlBuilder);
 
     private static async Task<IResult> PostResolvedPortalMessage(
         SellingBuyerAccessLink accessLink,
@@ -330,15 +457,19 @@ public static class SellingPublicEndpoints
         LiensDbContext db,
         CancellationToken ct = default,
         string? senderTypeOverride = null,
-        string? currentBuyerAccountEmail = null)
+        string? currentBuyerAccountEmail = null,
+        ILegacyDocumentUploadClient? uploadClient = null,
+        IReadOnlyList<SellingPortalMessageAttachmentUpload>? attachmentUploads = null,
+        Func<SellingPortalMessageAttachment, string, string?>? attachmentUrlBuilder = null)
     {
         var messageText = request?.Message?.Trim() ?? string.Empty;
-        if (messageText.Length == 0)
+        var uploads = attachmentUploads ?? [];
+        if (messageText.Length == 0 && uploads.Count == 0)
         {
             return PublicLinkState(
                 "message-required",
                 "Message could not be sent",
-                "Enter a message before sending.",
+                "Enter a message or attach at least one file before sending.",
                 StatusCodes.Status400BadRequest);
         }
 
@@ -384,6 +515,13 @@ public static class SellingPublicEndpoints
 
         view.AccessLink.MarkAccessed();
         db.SellingPortalMessages.Add(publicMessage);
+        var attachments = await UploadSellingPortalMessageAttachmentsAsync(
+            publicMessage,
+            uploads,
+            uploadClient,
+            ct);
+        if (attachments.Count > 0)
+            db.SellingPortalMessageAttachments.AddRange(attachments);
         await db.SaveChangesAsync(ct);
 
         await SendPublicMessageNotificationAsync(
@@ -403,7 +541,7 @@ public static class SellingPublicEndpoints
 
         return Results.Created(
             location,
-            MapPublicMessage(publicMessage));
+            MapPublicMessage(publicMessage, attachments, currentToken, attachmentUrlBuilder));
     }
 
     internal static async Task<IResult> AcceptTemporaryBuyerPortal(
@@ -2035,6 +2173,7 @@ public static class SellingPublicEndpoints
         var caseParties = await ResolvePublicCasePartiesAsync(db, accessLink.TenantId, caseEntity, ct);
         var documents = await ResolveDocumentsAsync(db, accessLink.TenantId, lien, ct);
         var messages = await ResolveMessagesAsync(db, accessLink, ct);
+        var messageAttachments = await ResolveMessageAttachmentsAsync(db, accessLink, messages, ct);
         var buyerResponseAccessLink = await ResolveBuyerResponseAccessLinkAsync(db, accessLink, ct);
         var buyerAccountEmail = FirstNonEmpty(currentBuyerAccountEmail, accessLink.AccountActivatedEmail);
 
@@ -2048,6 +2187,7 @@ public static class SellingPublicEndpoints
             caseParties,
             documents,
             messages,
+            messageAttachments,
             buyerResponseAccessLink,
             buyerAccountEmail);
     }
@@ -2106,6 +2246,36 @@ public static class SellingPublicEndpoints
             .OrderBy(message => message.CreatedAtUtc)
             .ThenBy(message => message.Id)
             .ToListAsync(ct);
+
+    private static async Task<IReadOnlyDictionary<Guid, IReadOnlyList<SellingPortalMessageAttachment>>> ResolveMessageAttachmentsAsync(
+        LiensDbContext db,
+        SellingBuyerAccessLink accessLink,
+        IReadOnlyList<SellingPortalMessage> messages,
+        CancellationToken ct)
+    {
+        var messageIds = messages.Select(message => message.Id).ToList();
+        if (messageIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<SellingPortalMessageAttachment>>();
+
+        var attachments = await db.SellingPortalMessageAttachments
+            .AsNoTracking()
+            .Where(attachment =>
+                attachment.TenantId == accessLink.TenantId &&
+                attachment.LienId == accessLink.LienId &&
+                attachment.SellerOrgId == accessLink.SellerOrgId &&
+                attachment.BuyerOrgId == accessLink.BuyerOrgId &&
+                attachment.BuyerContactId == accessLink.BuyerContactId &&
+                messageIds.Contains(attachment.MessageId))
+            .OrderBy(attachment => attachment.CreatedAtUtc)
+            .ThenBy(attachment => attachment.Id)
+            .ToListAsync(ct);
+
+        return attachments
+            .GroupBy(attachment => attachment.MessageId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<SellingPortalMessageAttachment>)group.ToList());
+    }
 
     private static Task<SellingBuyerAccessLink?> ResolveBuyerResponseAccessLinkAsync(
         LiensDbContext db,
@@ -2283,6 +2453,190 @@ public static class SellingPublicEndpoints
         return null;
     }
 
+    private static Task<SellingPortalMessageAttachment?> ResolvePublicMessageAttachmentAsync(
+        LiensDbContext db,
+        SellingBuyerAccessLink accessLink,
+        Guid attachmentId,
+        CancellationToken ct)
+        => db.SellingPortalMessageAttachments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(attachment =>
+                attachment.Id == attachmentId &&
+                attachment.TenantId == accessLink.TenantId &&
+                attachment.LienId == accessLink.LienId &&
+                attachment.SellerOrgId == accessLink.SellerOrgId &&
+                attachment.BuyerOrgId == accessLink.BuyerOrgId &&
+                attachment.BuyerContactId == accessLink.BuyerContactId,
+                ct);
+
+    internal static async Task<IReadOnlyList<SellingPortalMessageAttachment>> UploadSellingPortalMessageAttachmentsAsync(
+        SellingPortalMessage message,
+        IReadOnlyList<SellingPortalMessageAttachmentUpload> uploads,
+        ILegacyDocumentUploadClient? uploadClient,
+        CancellationToken ct)
+    {
+        if (uploads.Count == 0)
+            return [];
+
+        if (uploadClient is null)
+            throw new InvalidOperationException("Document upload client is required for message attachments.");
+
+        var actorUserId = message.CreatedByUserId.GetValueOrDefault(message.BuyerContactId);
+        var attachments = new List<SellingPortalMessageAttachment>(uploads.Count);
+        foreach (var upload in uploads)
+        {
+            var uploadResult = await uploadClient.UploadAsync(new Liens.Application.DTOs.LegacyDocumentUploadRequest
+            {
+                TenantId = message.TenantId,
+                ActingUserId = actorUserId,
+                ReferenceId = message.Id,
+                ReferenceType = "SellingPortalMessage",
+                DocumentTypeId = SellingMessageAttachmentDocumentTypeId,
+                Title = Path.GetFileNameWithoutExtension(upload.FileName),
+                Description = "Selling portal message attachment",
+                Content = upload.Content,
+                FileName = upload.FileName,
+                ContentType = upload.ContentType,
+                Length = upload.Length,
+            }, ct);
+
+            if (!uploadResult.DocumentId.HasValue)
+                throw new InvalidOperationException("Document upload did not return a document id.");
+
+            attachments.Add(SellingPortalMessageAttachment.Create(
+                message,
+                uploadResult.DocumentId.Value,
+                upload.FileName,
+                upload.ContentType,
+                upload.Length,
+                actorUserId));
+        }
+
+        return attachments;
+    }
+
+    internal static IResult? ValidatePortalMessageAttachments(string message, IFormFileCollection files)
+    {
+        if (message.Trim().Length == 0 && files.Count == 0)
+        {
+            return Results.BadRequest(new
+            {
+                error = new { code = "message-required", message = "Enter a message or attach at least one file before sending." },
+            });
+        }
+
+        if (message.Trim().Length > MaxPublicMessageLength)
+        {
+            return Results.BadRequest(new
+            {
+                error = new { code = "message-too-long", message = $"Message must be {MaxPublicMessageLength} characters or fewer." },
+            });
+        }
+
+        if (files.Count > MaxPublicMessageAttachmentCount)
+        {
+            return Results.BadRequest(new
+            {
+                error = new { code = "too-many-attachments", message = $"Attach up to {MaxPublicMessageAttachmentCount} files per message." },
+            });
+        }
+
+        foreach (var file in files)
+        {
+            if (file.Length == 0)
+            {
+                return Results.BadRequest(new
+                {
+                    error = new { code = "empty-attachment", message = $"Attachment '{file.FileName}' is empty." },
+                });
+            }
+
+            if (file.Length > LiensUploadLimits.MaxBytes)
+            {
+                return Results.BadRequest(new
+                {
+                    error = new { code = "attachment-too-large", message = $"Attachment '{file.FileName}' exceeds the {LiensUploadLimits.MaxMegabytes} MB limit." },
+                });
+            }
+
+            var extension = Path.GetExtension(file.FileName)?.ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(extension) ||
+                !SellingMessageAttachmentAllowedExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            {
+                return Results.BadRequest(new
+                {
+                    error = new
+                    {
+                        code = "attachment-type-not-allowed",
+                        message = $"Attachment '{file.FileName}' uses an unsupported file type. Allowed types: {string.Join(", ", SellingMessageAttachmentAllowedExtensions)}.",
+                    },
+                });
+            }
+        }
+
+        return null;
+    }
+
+    internal static List<SellingPortalMessageAttachmentUpload> OpenPortalMessageAttachmentUploads(IFormFileCollection files)
+        => files
+            .Select(file => new SellingPortalMessageAttachmentUpload(
+                file.OpenReadStream(),
+                Path.GetFileName(file.FileName),
+                string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                file.Length))
+            .ToList();
+
+    internal static void DisposePortalMessageAttachmentUploads(IEnumerable<SellingPortalMessageAttachmentUpload> uploads)
+    {
+        foreach (var upload in uploads)
+            upload.Content.Dispose();
+    }
+
+    internal static async Task<PortalMessageRequestReadResult> ReadPortalMessageRequestAsync(
+        HttpRequest httpRequest,
+        CancellationToken ct)
+    {
+        if (httpRequest.HasFormContentType)
+        {
+            var form = await httpRequest.ReadFormAsync(ct);
+            var message = form["message"].FirstOrDefault() ?? string.Empty;
+            var validation = ValidatePortalMessageAttachments(message, form.Files);
+            if (validation is not null)
+                return new PortalMessageRequestReadResult(null, [], validation);
+
+            return new PortalMessageRequestReadResult(
+                new PublicPortalMessageRequest(message),
+                OpenPortalMessageAttachmentUploads(form.Files),
+                null);
+        }
+
+        if (httpRequest.ContentLength.GetValueOrDefault() == 0)
+        {
+            return new PortalMessageRequestReadResult(null, [], PublicLinkState(
+                "message-required",
+                "Message could not be sent",
+                "Enter a message or attach a file before sending.",
+                StatusCodes.Status400BadRequest));
+        }
+
+        try
+        {
+            var request = await httpRequest.ReadFromJsonAsync<PublicPortalMessageRequest>(cancellationToken: ct);
+            var validation = ValidatePortalMessageAttachments(request?.Message ?? string.Empty, new FormFileCollection());
+            return validation is null
+                ? new PortalMessageRequestReadResult(request, [], null)
+                : new PortalMessageRequestReadResult(null, [], validation);
+        }
+        catch (JsonException)
+        {
+            return new PortalMessageRequestReadResult(null, [], PublicLinkState(
+                "invalid-message-request",
+                "Message could not be sent",
+                "Message request body is invalid.",
+                StatusCodes.Status400BadRequest));
+        }
+    }
+
     private static async Task<string?> IssueDocumentsAccessUrlAsync(
         IHttpClientFactory httpClientFactory,
         IServiceTokenIssuer serviceTokenIssuer,
@@ -2392,6 +2746,17 @@ public static class SellingPublicEndpoints
         return $"/api/lien/api/liens/selling/public/{Uri.EscapeDataString(publicToken.Trim())}/documents/{documentId.Value:D}/{normalizedAction}";
     }
 
+    private static string? BuildPublicMessageAttachmentActionUrl(string? publicToken, Guid attachmentId, string action)
+    {
+        if (string.IsNullOrWhiteSpace(publicToken) || attachmentId == Guid.Empty)
+            return null;
+
+        var normalizedAction = string.Equals(action, "download", StringComparison.OrdinalIgnoreCase)
+            ? "download"
+            : "view";
+        return $"/api/lien/api/liens/selling/public/{Uri.EscapeDataString(publicToken.Trim())}/message-attachments/{attachmentId:D}/{normalizedAction}";
+    }
+
     private static bool TryResolveDocumentId(
         IReadOnlyDictionary<string, string> fields,
         out Guid documentId)
@@ -2461,19 +2826,44 @@ public static class SellingPublicEndpoints
                     BuildPublicDocumentActionUrl(publicToken, document.DocumentId, "download")))
                 .ToList(),
             view.Messages
-                .Select(MapPublicMessage)
+                .Select(message => MapPublicMessage(
+                    message,
+                    view.MessageAttachments.TryGetValue(message.Id, out var attachments)
+                        ? attachments
+                        : [],
+                    publicToken))
                 .ToList(),
             account);
     }
 
-    private static PublicPortalMessageResponse MapPublicMessage(SellingPortalMessage message)
+    private static PublicPortalMessageResponse MapPublicMessage(
+        SellingPortalMessage message,
+        IReadOnlyList<SellingPortalMessageAttachment>? attachments = null,
+        string? publicToken = null,
+        Func<SellingPortalMessageAttachment, string, string?>? attachmentUrlBuilder = null)
         => new(
             message.Id,
             message.SenderType,
             message.SenderName,
             message.SenderEmail,
             message.Message,
-            message.CreatedAtUtc);
+            message.CreatedAtUtc,
+            (attachments ?? [])
+                .Select(attachment => MapPublicMessageAttachment(attachment, publicToken, attachmentUrlBuilder))
+                .ToList());
+
+    private static PublicPortalMessageAttachmentResponse MapPublicMessageAttachment(
+        SellingPortalMessageAttachment attachment,
+        string? publicToken,
+        Func<SellingPortalMessageAttachment, string, string?>? attachmentUrlBuilder = null)
+        => new(
+            attachment.Id,
+            attachment.FileName,
+            attachment.ContentType,
+            attachment.FileSizeBytes,
+            attachment.CreatedAtUtc,
+            attachmentUrlBuilder?.Invoke(attachment, "view") ?? BuildPublicMessageAttachmentActionUrl(publicToken, attachment.Id, "view"),
+            attachmentUrlBuilder?.Invoke(attachment, "download") ?? BuildPublicMessageAttachmentActionUrl(publicToken, attachment.Id, "download"));
 
     private static bool IsSupportedPublicPurpose(string purpose)
         => string.Equals(purpose, SellingAccessLinkPurposes.ConfirmSaleBuyerResponse, StringComparison.Ordinal) ||
@@ -2659,6 +3049,7 @@ public static class SellingPublicEndpoints
         PublicCaseParties CaseParties,
         IReadOnlyList<PublicDocumentView> Documents,
         IReadOnlyList<SellingPortalMessage> Messages,
+        IReadOnlyDictionary<Guid, IReadOnlyList<SellingPortalMessageAttachment>> MessageAttachments,
         SellingBuyerAccessLink? BuyerResponseAccessLink,
         string? BuyerAccountEmail);
 
@@ -2749,13 +3140,34 @@ public static class SellingPublicEndpoints
         string SenderName,
         string? SenderEmail,
         string Message,
-        DateTime CreatedAtUtc);
+        DateTime CreatedAtUtc,
+        IReadOnlyList<PublicPortalMessageAttachmentResponse> Attachments);
+
+    private sealed record PublicPortalMessageAttachmentResponse(
+        Guid Id,
+        string FileName,
+        string ContentType,
+        long FileSizeBytes,
+        DateTime CreatedAtUtc,
+        string? ViewUrl,
+        string? DownloadUrl);
 
     private sealed record PublicBuyerPortalErrorResponse(PublicBuyerPortalError Error);
 
     private sealed record PublicBuyerPortalError(string Code, string Title, string Message);
 
     internal sealed record PublicPortalMessageRequest(string? Message);
+
+    internal sealed record PortalMessageRequestReadResult(
+        PublicPortalMessageRequest? Request,
+        IReadOnlyList<SellingPortalMessageAttachmentUpload> Attachments,
+        IResult? Error);
+
+    internal sealed record SellingPortalMessageAttachmentUpload(
+        Stream Content,
+        string FileName,
+        string ContentType,
+        long Length);
 
     private sealed record PublicBuyerOfferRequest(decimal OfferAmount, string? Message);
 

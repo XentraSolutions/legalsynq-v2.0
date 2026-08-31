@@ -1,6 +1,8 @@
 using System.Globalization;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Collections.Concurrent;
+using BuildingBlocks.Authentication.ServiceTokens;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
@@ -26,6 +28,7 @@ public static class SellingV2Endpoints
     private const string SellingMedicalPricingTaskType = "SellingMedicalPricing";
     private const string SellingDocumentTaskType = "SellingDocumentReference";
     private const string LegacyCaseMetadataMarker = "[legacy-meta]";
+    private const string DocumentsServiceAudience = "documents-service";
     private const int MaxSellingCaseTrackingNotesLength = 3_500;
     private static readonly JsonSerializerOptions SellingPricingJsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> SellingCaseDraftFinalizationLocks = new();
@@ -69,7 +72,12 @@ public static class SellingV2Endpoints
         seller.MapGet("/liens/{lienId:guid}/messages", GetSellerLienMessages)
             .RequirePermission(LiensPermissions.LienSaleRead);
         seller.MapPost("/liens/{lienId:guid}/messages", PostSellerLienMessage)
-            .RequirePermission(LiensPermissions.LienSaleUpdate);
+            .RequirePermission(LiensPermissions.LienSaleUpdate)
+            .DisableAntiforgery();
+        seller.MapGet("/liens/{lienId:guid}/message-attachments/{attachmentId:guid}/view", ViewSellerLienMessageAttachment)
+            .RequirePermission(LiensPermissions.LienSaleRead);
+        seller.MapGet("/liens/{lienId:guid}/message-attachments/{attachmentId:guid}/download", DownloadSellerLienMessageAttachment)
+            .RequirePermission(LiensPermissions.LienSaleRead);
         seller.MapPut("/liens/{lienId:guid}/lien-information", SaveLienInformation)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
         seller.MapPut("/liens/{lienId:guid}/case-information", SaveCaseInformation)
@@ -871,62 +879,163 @@ public static class SellingV2Endpoints
             .OrderBy(message => message.CreatedAtUtc)
             .ThenBy(message => message.Id)
             .ToListAsync(ct);
-        var messages = messageRows.Select(MapSellerLienMessage).ToList();
+        var attachmentsByMessage = await LoadSellerMessageAttachmentsAsync(db, tenantId, sellerOrgId, lienId, messageRows, ct);
+        var messages = messageRows
+            .Select(message => MapSellerLienMessage(
+                message,
+                attachmentsByMessage.TryGetValue(message.Id, out var attachments) ? attachments : []))
+            .ToList();
 
         return Results.Ok(new { items = messages });
     }
 
     private static async Task<IResult> PostSellerLienMessage(
         Guid lienId,
-        SellingPublicEndpoints.PublicPortalMessageRequest? request,
         HttpContext httpContext,
         INotificationPublisher notifications,
         ISellingBuyerAccessLinkService accessLinks,
         ILoggerFactory loggerFactory,
         IConfiguration configuration,
         ISellerOrganizationDisplayResolver sellerDisplayResolver,
+        ILegacyDocumentUploadClient uploadClient,
         LiensDbContext db,
         ICurrentRequestContext context,
         CancellationToken ct)
     {
-        var (tenantId, sellerOrgId, _) = RequireSellerContext(context);
+        var parsedRequest = await ReadSellerPortalMessageRequestAsync(httpContext.Request, ct);
+        if (parsedRequest.Error is not null)
+            return parsedRequest.Error;
+
+        try
+        {
+            var (tenantId, sellerOrgId, _) = RequireSellerContext(context);
+            if (await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct) is null)
+                return NotFoundLien(lienId);
+
+            var accessLink = await db.SellingBuyerAccessLinks
+                .Where(link =>
+                    link.TenantId == tenantId &&
+                    link.LienId == lienId &&
+                    link.SellerOrgId == sellerOrgId &&
+                    !link.RevokedAtUtc.HasValue)
+                .OrderByDescending(link => link.Purpose == SellingAccessLinkPurposes.ConfirmSaleSellerView)
+                .ThenByDescending(link => link.NotificationSubmittedAtUtc ?? link.CreatedAtUtc)
+                .ThenByDescending(link => link.Id)
+                .FirstOrDefaultAsync(ct);
+
+            if (accessLink is null)
+            {
+                return Results.Conflict(new
+                {
+                    error = new
+                    {
+                        code = "message_thread_unavailable",
+                        message = "Messages can be sent after the lien has an offer thread with a buyer.",
+                    },
+                });
+            }
+
+            return await SellingPublicEndpoints.PostResolvedSellerPortalMessage(
+                accessLink,
+                parsedRequest.Request,
+                httpContext,
+                notifications,
+                accessLinks,
+                loggerFactory,
+                configuration,
+                sellerDisplayResolver,
+                db,
+                uploadClient,
+                parsedRequest.Attachments,
+                (attachment, action) => BuildSellerMessageAttachmentActionUrl(lienId, attachment.Id, action),
+                ct);
+        }
+        finally
+        {
+            SellingPublicEndpoints.DisposePortalMessageAttachmentUploads(parsedRequest.Attachments);
+        }
+    }
+
+    private static Task<IResult> ViewSellerLienMessageAttachment(
+        Guid lienId,
+        Guid attachmentId,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+        => RedirectSellerLienMessageAttachment(
+            lienId,
+            attachmentId,
+            "view",
+            db,
+            context,
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            ct);
+
+    private static Task<IResult> DownloadSellerLienMessageAttachment(
+        Guid lienId,
+        Guid attachmentId,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+        => RedirectSellerLienMessageAttachment(
+            lienId,
+            attachmentId,
+            "download",
+            db,
+            context,
+            httpClientFactory,
+            serviceTokenIssuer,
+            loggerFactory,
+            ct);
+
+    private static async Task<IResult> RedirectSellerLienMessageAttachment(
+        Guid lienId,
+        Guid attachmentId,
+        string accessType,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, userId) = RequireSellerContext(context);
         if (await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct) is null)
             return NotFoundLien(lienId);
 
-        var accessLink = await db.SellingBuyerAccessLinks
-            .Where(link =>
-                link.TenantId == tenantId &&
-                link.LienId == lienId &&
-                link.SellerOrgId == sellerOrgId &&
-                !link.RevokedAtUtc.HasValue)
-            .OrderByDescending(link => link.Purpose == SellingAccessLinkPurposes.ConfirmSaleSellerView)
-            .ThenByDescending(link => link.NotificationSubmittedAtUtc ?? link.CreatedAtUtc)
-            .ThenByDescending(link => link.Id)
-            .FirstOrDefaultAsync(ct);
+        var attachment = await db.SellingPortalMessageAttachments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item =>
+                item.TenantId == tenantId &&
+                item.LienId == lienId &&
+                item.SellerOrgId == sellerOrgId &&
+                item.Id == attachmentId,
+                ct);
+        if (attachment is null)
+            return Results.NotFound(new { error = new { code = "attachment_not_found", message = "Attachment was not found for this lien message thread." } });
 
-        if (accessLink is null)
-        {
-            return Results.Conflict(new
-            {
-                error = new
-                {
-                    code = "message_thread_unavailable",
-                    message = "Messages can be sent after the lien has an offer thread with a buyer.",
-                },
-            });
-        }
-
-        return await SellingPublicEndpoints.PostResolvedSellerPortalMessage(
-            accessLink,
-            request,
-            httpContext,
-            notifications,
-            accessLinks,
+        var redeemUrl = await IssueSellerMessageAttachmentAccessUrlAsync(
+            httpClientFactory,
+            serviceTokenIssuer,
             loggerFactory,
-            configuration,
-            sellerDisplayResolver,
-            db,
+            tenantId,
+            sellerOrgId,
+            userId,
+            attachment.DocumentId,
+            accessType,
             ct);
+        if (string.IsNullOrWhiteSpace(redeemUrl))
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+
+        return Results.Redirect(redeemUrl, permanent: false, preserveMethod: false);
     }
 
     private static async Task<IResult> SaveLienInformation(
@@ -3602,9 +3711,168 @@ public static class SellingV2Endpoints
             notes: $"code={medicalCode}; description={description ?? string.Empty}; medicareCost={medicareCost?.ToString(CultureInfo.InvariantCulture) ?? string.Empty}; billingAmount={billingAmount.ToString(CultureInfo.InvariantCulture)}; purchaseAmount={purchaseAmount.ToString(CultureInfo.InvariantCulture)}"));
     }
 
+    private static async Task<SellerPortalMessageRequestReadResult> ReadSellerPortalMessageRequestAsync(
+        HttpRequest httpRequest,
+        CancellationToken ct)
+    {
+        if (httpRequest.HasFormContentType)
+        {
+            var form = await httpRequest.ReadFormAsync(ct);
+            var message = form["message"].FirstOrDefault() ?? string.Empty;
+            var files = form.Files;
+            var validation = SellingPublicEndpoints.ValidatePortalMessageAttachments(message, files);
+            if (validation is not null)
+                return new SellerPortalMessageRequestReadResult(null, [], validation);
+
+            return new SellerPortalMessageRequestReadResult(
+                new SellingPublicEndpoints.PublicPortalMessageRequest(message),
+                SellingPublicEndpoints.OpenPortalMessageAttachmentUploads(files),
+                null);
+        }
+
+        if (httpRequest.ContentLength.GetValueOrDefault() == 0)
+            return new SellerPortalMessageRequestReadResult(null, [], Results.BadRequest(new { error = new { code = "message_required", message = "Request body is required." } }));
+
+        try
+        {
+            var request = await httpRequest.ReadFromJsonAsync<SellingPublicEndpoints.PublicPortalMessageRequest>(cancellationToken: ct);
+            var message = request?.Message ?? string.Empty;
+            var validation = SellingPublicEndpoints.ValidatePortalMessageAttachments(message, new FormFileCollection());
+            return validation is null
+                ? new SellerPortalMessageRequestReadResult(request, [], null)
+                : new SellerPortalMessageRequestReadResult(null, [], validation);
+        }
+        catch (JsonException)
+        {
+            return new SellerPortalMessageRequestReadResult(null, [], Results.BadRequest(new { error = new { code = "invalid_message_request", message = "Message request body is invalid." } }));
+        }
+    }
+
+    private static async Task<IReadOnlyDictionary<Guid, IReadOnlyList<SellingPortalMessageAttachment>>> LoadSellerMessageAttachmentsAsync(
+        LiensDbContext db,
+        Guid tenantId,
+        Guid sellerOrgId,
+        Guid lienId,
+        IReadOnlyList<SellingPortalMessage> messages,
+        CancellationToken ct)
+    {
+        var messageIds = messages.Select(message => message.Id).ToList();
+        if (messageIds.Count == 0)
+            return new Dictionary<Guid, IReadOnlyList<SellingPortalMessageAttachment>>();
+
+        var attachments = await db.SellingPortalMessageAttachments
+            .AsNoTracking()
+            .Where(attachment =>
+                attachment.TenantId == tenantId &&
+                attachment.SellerOrgId == sellerOrgId &&
+                attachment.LienId == lienId &&
+                messageIds.Contains(attachment.MessageId))
+            .OrderBy(attachment => attachment.CreatedAtUtc)
+            .ThenBy(attachment => attachment.Id)
+            .ToListAsync(ct);
+
+        return attachments
+            .GroupBy(attachment => attachment.MessageId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<SellingPortalMessageAttachment>)group.ToList());
+    }
+
+    private static async Task<string?> IssueSellerMessageAttachmentAccessUrlAsync(
+        IHttpClientFactory httpClientFactory,
+        IServiceTokenIssuer serviceTokenIssuer,
+        ILoggerFactory loggerFactory,
+        Guid tenantId,
+        Guid sellerOrgId,
+        Guid actorUserId,
+        Guid documentId,
+        string accessType,
+        CancellationToken ct)
+    {
+        var normalizedAccessType = string.Equals(accessType, "download", StringComparison.OrdinalIgnoreCase)
+            ? "download"
+            : "view";
+        var path = normalizedAccessType == "download"
+            ? $"/documents/{documentId:D}/download-url"
+            : $"/documents/{documentId:D}/view-url";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, path);
+        if (serviceTokenIssuer.IsConfigured)
+        {
+            try
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue(
+                    "Bearer",
+                    serviceTokenIssuer.IssueToken(tenantId.ToString(), actorUserId.ToString(), DocumentsServiceAudience));
+            }
+            catch (Exception ex)
+            {
+                loggerFactory.CreateLogger(nameof(SellingV2Endpoints))
+                    .LogWarning(ex, "Unable to mint Documents service token for tenant {TenantId}", tenantId);
+            }
+        }
+
+        request.Headers.TryAddWithoutValidation("X-Organization-Id", sellerOrgId.ToString());
+
+        try
+        {
+            var client = httpClientFactory.CreateClient("DocumentsService");
+            using var response = await client.SendAsync(request, ct);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(ct));
+            var data = body.RootElement.TryGetProperty("data", out var dataElement)
+                ? dataElement
+                : body.RootElement;
+
+            if (data.TryGetProperty("redeemUrl", out var redeemUrl) &&
+                !string.IsNullOrWhiteSpace(redeemUrl.GetString()))
+            {
+                return NormalizeSellerMessageAttachmentRedeemUrl(redeemUrl.GetString()!);
+            }
+
+            if (data.TryGetProperty("accessToken", out var accessToken) &&
+                !string.IsNullOrWhiteSpace(accessToken.GetString()))
+            {
+                return $"/documents/access/{Uri.EscapeDataString(accessToken.GetString()!)}";
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException)
+        {
+            loggerFactory.CreateLogger(nameof(SellingV2Endpoints))
+                .LogWarning(ex, "Documents access token request failed for seller message attachment document {DocumentId}", documentId);
+        }
+
+        return null;
+    }
+
+    private static string NormalizeSellerMessageAttachmentRedeemUrl(string redeemUrl)
+    {
+        var trimmed = redeemUrl.Trim();
+        if (trimmed.StartsWith("/documents/access/", StringComparison.OrdinalIgnoreCase))
+            return trimmed;
+        if (trimmed.StartsWith("/access/", StringComparison.OrdinalIgnoreCase))
+            return $"/documents{trimmed}";
+        return trimmed;
+    }
+
+    private static string? BuildSellerMessageAttachmentActionUrl(Guid lienId, Guid attachmentId, string action)
+    {
+        if (attachmentId == Guid.Empty)
+            return null;
+
+        var normalizedAction = string.Equals(action, "download", StringComparison.OrdinalIgnoreCase)
+            ? "download"
+            : "view";
+        return $"/api/selling/api/liens/selling/liens/{lienId:D}/message-attachments/{attachmentId:D}/{normalizedAction}";
+    }
+
     private static (Guid TenantId, Guid OrgId, Guid UserId) RequireSellerContext(ICurrentRequestContext context) => (context.TenantId ?? throw new UnauthorizedAccessException("Tenant context is required."), context.OrgId ?? throw new UnauthorizedAccessException("Organization context is required."), context.UserId ?? throw new UnauthorizedAccessException("User context is required."));
     private static (Guid TenantId, Guid OrgId, Guid UserId) RequireBuyerContext(ICurrentRequestContext context) => RequireSellerContext(context);
-    private static SellerLienMessageResponse MapSellerLienMessage(SellingPortalMessage message)
+    private static SellerLienMessageResponse MapSellerLienMessage(
+        SellingPortalMessage message,
+        IReadOnlyList<SellingPortalMessageAttachment>? attachments = null)
         => new(
             message.Id,
             message.SenderType,
@@ -3613,7 +3881,17 @@ public static class SellingV2Endpoints
             message.SenderEmail,
             message.Message,
             message.CreatedAtUtc,
-            string.Equals(message.SenderType, SellingPortalMessageSenderType.Seller, StringComparison.Ordinal));
+            string.Equals(message.SenderType, SellingPortalMessageSenderType.Seller, StringComparison.Ordinal),
+            (attachments ?? [])
+                .Select(attachment => new SellerLienMessageAttachmentResponse(
+                    attachment.Id,
+                    attachment.FileName,
+                    attachment.ContentType,
+                    attachment.FileSizeBytes,
+                    attachment.CreatedAtUtc,
+                    BuildSellerMessageAttachmentActionUrl(message.LienId, attachment.Id, "view"),
+                    BuildSellerMessageAttachmentActionUrl(message.LienId, attachment.Id, "download")))
+                .ToList());
 
     private static string BuildInitials(string value)
     {
@@ -3828,6 +4106,10 @@ public static class SellingV2Endpoints
         => string.Equals(facility.Name, name.Trim(), StringComparison.OrdinalIgnoreCase);
     private sealed record FundingCompanyLookupItem(Guid Id, string Name, Guid? OrgId);
     private sealed record FundingCompanyContactLookupItem(Guid Id, string Name, string? Email);
+    private sealed record SellerPortalMessageRequestReadResult(
+        SellingPublicEndpoints.PublicPortalMessageRequest? Request,
+        IReadOnlyList<SellingPublicEndpoints.SellingPortalMessageAttachmentUpload> Attachments,
+        IResult? Error);
     private sealed record SellerLienMessageResponse(
         Guid Id,
         string SenderType,
@@ -3836,7 +4118,16 @@ public static class SellingV2Endpoints
         string? SenderEmail,
         string Message,
         DateTime CreatedAtUtc,
-        bool IsCurrentUser);
+        bool IsCurrentUser,
+        IReadOnlyList<SellerLienMessageAttachmentResponse> Attachments);
+    private sealed record SellerLienMessageAttachmentResponse(
+        Guid Id,
+        string FileName,
+        string ContentType,
+        long FileSizeBytes,
+        DateTime CreatedAtUtc,
+        string? ViewUrl,
+        string? DownloadUrl);
     private sealed record SellingCaseLookupNames(
         IReadOnlyDictionary<string, string> AccidentTypeNames,
         IReadOnlyDictionary<Guid, string> LawFirmNames,

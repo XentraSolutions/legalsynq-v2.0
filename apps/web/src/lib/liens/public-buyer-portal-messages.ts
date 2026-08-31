@@ -17,10 +17,12 @@ const MAX_PUBLIC_MESSAGE_LENGTH = 400;
 export async function postPublicBuyerPortalMessage(
   token: string,
   message: string,
+  files: File[] = [],
   options: PublicBuyerPortalMessageOptions = {},
 ): Promise<PublicBuyerPortalMessageResult> {
   const normalizedToken = token.trim();
   const trimmedMessage = message.trim();
+  const hasFiles = files.length > 0;
 
   if (!normalizedToken) {
     return errorResult(
@@ -31,12 +33,12 @@ export async function postPublicBuyerPortalMessage(
     );
   }
 
-  if (!trimmedMessage) {
+  if (!trimmedMessage && !hasFiles) {
     return errorResult(
       400,
       "message-required",
       "Message could not be sent",
-      "Enter a message before sending.",
+      "Enter a message or attach a file before sending.",
     );
   }
 
@@ -52,15 +54,24 @@ export async function postPublicBuyerPortalMessage(
   const fetcher = options.fetchImpl ?? fetch;
 
   try {
-    const response = await fetcher(buildPublicBuyerPortalMessageUrl(normalizedToken), {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ message: trimmedMessage }),
-      cache: "no-store",
-    });
+    const response = hasFiles
+      ? await fetcher(buildPublicBuyerPortalMessageUrl(normalizedToken), {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+          },
+          body: buildMessageForm(trimmedMessage, files),
+          cache: "no-store",
+        })
+      : await fetcher(buildPublicBuyerPortalMessageUrl(normalizedToken), {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ message: trimmedMessage }),
+          cache: "no-store",
+        });
     const correlationId = response.headers.get("x-correlation-id");
     const body = await readJson(response);
 
@@ -87,6 +98,15 @@ export async function postPublicBuyerPortalMessage(
       "Network error. Please check your connection and try again.",
     );
   }
+}
+
+function buildMessageForm(message: string, files: File[]): FormData {
+  const formData = new FormData();
+  formData.set("message", message);
+  for (const file of files) {
+    formData.append("files", file, file.name);
+  }
+  return formData;
 }
 
 export function buildPublicBuyerPortalMessageUrl(token: string): string {

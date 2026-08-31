@@ -32,6 +32,7 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>().Clear();
         scope.ServiceProvider.GetRequiredService<CapturingAuditPublisher>().Clear();
         scope.ServiceProvider.GetRequiredService<CapturingPublicBuyerAccountProvisioningService>().Clear();
+        scope.ServiceProvider.GetRequiredService<CapturingLegacyDocumentUploadClient>().Clear();
 
         _client = _factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization =
@@ -2230,9 +2231,12 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var accessLinkId = await GetBuyerOfferedLienAccessLinkIdAsync(buyerClient, "AUTH-MSG-100");
         ClearCapturedEmails();
 
-        var response = await buyerClient.PostAsJsonAsync(
+        using var multipart = new MultipartFormDataContent();
+        multipart.Add(new StringContent("Shared portal message from funding detail."), "message");
+        multipart.Add(new ByteArrayContent([1, 2, 3, 4]), "files", "xray-result.jpg");
+        var response = await buyerClient.PostAsync(
             $"/api/liens/selling/buyer/liens/{accessLinkId}/messages",
-            new { message = "Shared portal message from funding detail." });
+            multipart);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created,
             $"Body: {await response.Content.ReadAsStringAsync()}");
@@ -2240,6 +2244,10 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         message.GetProperty("senderType").GetString().Should().Be("buyer");
         message.GetProperty("senderName").GetString().Should().Be("Buyer Reviewer");
         message.GetProperty("message").GetString().Should().Be("Shared portal message from funding detail.");
+        var responseAttachment = message.GetProperty("attachments").EnumerateArray().Should().ContainSingle().Subject;
+        responseAttachment.GetProperty("fileName").GetString().Should().Be("xray-result.jpg");
+        responseAttachment.GetProperty("viewUrl").GetString().Should()
+            .Contain($"/api/liens/selling/buyer/liens/{accessLinkId:D}/message-attachments/");
 
         using var anonClient = _factory.CreateClient();
         var publicView = await anonClient.GetAsync($"/api/liens/selling/public/{token}");
@@ -2249,6 +2257,8 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         var publicMessages = publicJson.GetProperty("messages").EnumerateArray().ToList();
         publicMessages.Should().ContainSingle();
         publicMessages[0].GetProperty("message").GetString().Should().Be("Shared portal message from funding detail.");
+        publicMessages[0].GetProperty("attachments").EnumerateArray().Should().ContainSingle()
+            .Which.GetProperty("fileName").GetString().Should().Be("xray-result.jpg");
 
         var detail = await buyerClient.GetAsync($"/api/liens/selling/buyer/liens/{accessLinkId}");
         detail.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -2258,10 +2268,29 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         detailMessages.Should().ContainSingle();
         detailMessages[0].GetProperty("message").GetString().Should().Be("Shared portal message from funding detail.");
         detailMessages[0].GetProperty("isCurrentUser").GetBoolean().Should().BeTrue();
+        var detailAttachment = detailMessages[0].GetProperty("attachments").EnumerateArray().Should().ContainSingle().Subject;
+        detailAttachment.GetProperty("fileName").GetString().Should().Be("xray-result.jpg");
+        var detailAttachmentId = detailAttachment.GetProperty("id").GetGuid();
+
+        using var noRedirectBuyerClient = _factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+        });
+        noRedirectBuyerClient.DefaultRequestHeaders.Authorization =
+            buyerClient.DefaultRequestHeaders.Authorization;
+        var viewAttachmentResponse = await noRedirectBuyerClient.GetAsync(
+            $"/api/liens/selling/buyer/liens/{accessLinkId:D}/message-attachments/{detailAttachmentId:D}/view");
+        viewAttachmentResponse.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        viewAttachmentResponse.Headers.Location!.OriginalString.Should()
+            .Be("/documents/access/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
         using (var scope = _factory.Services.CreateScope())
         {
             var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+            var uploadClient = scope.ServiceProvider.GetRequiredService<CapturingLegacyDocumentUploadClient>();
+            uploadClient.Uploads.Should().ContainSingle();
+            uploadClient.Uploads[0].ReferenceType.Should().Be("SellingPortalMessage");
+            uploadClient.Uploads[0].FileName.Should().Be("xray-result.jpg");
             publisher.Emails.Should().ContainSingle();
             var sellerEmail = publisher.Emails.Single();
             sellerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferMessageCreated);
@@ -2804,9 +2833,14 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
 
         ClearCapturedEmails();
 
-        var sellerPost = await _client.PostAsJsonAsync(
+        using var sellerForm = new MultipartFormDataContent();
+        sellerForm.Add(new StringContent("The LOP is final and attached to the package."), "message");
+        var attachmentContent = new ByteArrayContent("signed lien attachment"u8.ToArray());
+        attachmentContent.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        sellerForm.Add(attachmentContent, "files", "signed-lop.pdf");
+        var sellerPost = await _client.PostAsync(
             $"/api/liens/selling/liens/{lienId}/messages",
-            new { message = "The LOP is final and attached to the package." });
+            sellerForm);
 
         sellerPost.StatusCode.Should().Be(HttpStatusCode.Created,
             $"Body: {await sellerPost.Content.ReadAsStringAsync()}");
@@ -2814,6 +2848,11 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerMessage.GetProperty("senderType").GetString().Should().Be("seller");
         sellerMessage.GetProperty("senderName").GetString().Should().Be("Seller Processor");
         sellerMessage.GetProperty("message").GetString().Should().Be("The LOP is final and attached to the package.");
+        var postedAttachments = sellerMessage.GetProperty("attachments").EnumerateArray().ToList();
+        postedAttachments.Should().ContainSingle();
+        postedAttachments[0].GetProperty("fileName").GetString().Should().Be("signed-lop.pdf");
+        postedAttachments[0].GetProperty("viewUrl").GetString().Should()
+            .Contain($"/api/selling/api/liens/selling/liens/{lienId:D}/message-attachments/");
 
         var sellerThread = await _client.GetAsync($"/api/liens/selling/liens/{lienId}/messages");
         sellerThread.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -2826,16 +2865,29 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
         sellerMessages[0].GetProperty("isCurrentUser").GetBoolean().Should().BeFalse();
         sellerMessages[1].GetProperty("senderType").GetString().Should().Be("seller");
         sellerMessages[1].GetProperty("isCurrentUser").GetBoolean().Should().BeTrue();
+        var sellerMessageAttachments = sellerMessages[1].GetProperty("attachments").EnumerateArray().ToList();
+        sellerMessageAttachments.Should().ContainSingle();
+        sellerMessageAttachments[0].GetProperty("downloadUrl").GetString().Should()
+            .EndWith("/download");
 
         var buyerView = await anonClient.GetAsync($"/api/liens/selling/public/{buyerToken}");
         buyerView.StatusCode.Should().Be(HttpStatusCode.OK,
             $"Body: {await buyerView.Content.ReadAsStringAsync()}");
         var buyerJson = await buyerView.Content.ReadFromJsonAsync<JsonElement>();
-        buyerJson.GetProperty("messages").EnumerateArray().Should().Contain(message =>
+        var buyerViewSellerMessage = buyerJson.GetProperty("messages").EnumerateArray().Single(message =>
             message.GetProperty("message").GetString() == "The LOP is final and attached to the package." &&
             message.GetProperty("senderType").GetString() == "seller");
+        var buyerViewAttachments = buyerViewSellerMessage.GetProperty("attachments").EnumerateArray().ToList();
+        buyerViewAttachments.Should().ContainSingle();
+        buyerViewAttachments[0].GetProperty("fileName").GetString().Should().Be("signed-lop.pdf");
+        buyerViewAttachments[0].GetProperty("viewUrl").GetString().Should()
+            .Contain($"/api/lien/api/liens/selling/public/{buyerToken}/message-attachments/");
 
         using var scope = _factory.Services.CreateScope();
+        var uploadClient = scope.ServiceProvider.GetRequiredService<CapturingLegacyDocumentUploadClient>();
+        uploadClient.Uploads.Should().ContainSingle();
+        uploadClient.Uploads[0].ReferenceType.Should().Be("SellingPortalMessage");
+        uploadClient.Uploads[0].FileName.Should().Be("signed-lop.pdf");
         var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
         publisher.Emails.Should().ContainSingle();
         var buyerEmail = publisher.Emails.Single();

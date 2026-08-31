@@ -117,6 +117,13 @@ export const liensApi = {
     );
   },
 
+  sendMessageForm(id: string, request: FormData) {
+    return apiClient.postForm<SellerLienMessagesResult["items"][number]>(
+      `${BASE}/liens/${id}/messages`,
+      request,
+    );
+  },
+
   getDashboard(query: DashboardQuery = {}) {
     return apiClient.get<LienResponseDto>(
       `${BASE}/dashboard${toQs(query as Record<string, unknown>)}`,

@@ -1,5 +1,6 @@
 using Amazon.S3;
 using Amazon.S3.Model;
+using Documents.Domain;
 using Documents.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -50,7 +51,7 @@ public sealed class S3StorageProvider : IStorageProvider, IAsyncDisposable
         return _opts.BucketName;
     }
 
-    public async Task<string> GenerateSignedUrlAsync(string key, int ttlSeconds, string disposition, CancellationToken ct = default)
+    public async Task<string> GenerateSignedUrlAsync(string key, int ttlSeconds, string disposition, string? downloadFileName = null, CancellationToken ct = default)
     {
         var request = new GetPreSignedUrlRequest
         {
@@ -61,7 +62,7 @@ public sealed class S3StorageProvider : IStorageProvider, IAsyncDisposable
             ResponseHeaderOverrides = new ResponseHeaderOverrides
             {
                 ContentDisposition = disposition == "download"
-                    ? $"attachment; filename=\"{Path.GetFileName(key)}\""
+                    ? $"attachment; filename=\"{StorageFileNames.Sanitize(downloadFileName) ?? Path.GetFileName(key)}\""
                     : "inline",
             },
         };

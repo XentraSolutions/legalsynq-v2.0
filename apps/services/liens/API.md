@@ -350,7 +350,18 @@ seller-organization-scoped and returns every persisted offer-thread message for 
       "senderEmail": "buyer@capital.test",
       "message": "Can you confirm the signed LOP is final?",
       "createdAtUtc": "2026-07-28T12:30:00Z",
-      "isCurrentUser": false
+      "isCurrentUser": false,
+      "attachments": [
+        {
+          "id": "attachment-guid",
+          "fileName": "signed-lop.pdf",
+          "contentType": "application/pdf",
+          "fileSizeBytes": 245760,
+          "createdAtUtc": "2026-07-28T12:30:00Z",
+          "viewUrl": "/api/selling/api/liens/selling/liens/{lienId}/message-attachments/{attachment-guid}/view",
+          "downloadUrl": "/api/selling/api/liens/selling/liens/{lienId}/message-attachments/{attachment-guid}/download"
+        }
+      ]
     }
   ]
 }
@@ -366,7 +377,9 @@ seller replies.
 
 **Permission:** `SYNQ_LIENS.lien_sale:update`
 
-**Request Body:**
+**Request:**
+
+Text-only messages may be sent as JSON:
 
 ```json
 {
@@ -374,9 +387,38 @@ seller replies.
 }
 ```
 
-Messages are trimmed, required, and limited to 400 characters.
+Messages with attachments are sent as `multipart/form-data` with a `message` field and repeated `files` parts:
+
+```text
+message=The LOP is final and attached to the package.
+files=@signed-lop.pdf
+files=@supporting-bill.pdf
+```
+
+Message text is trimmed and limited to 400 characters. Either text or at least one file is required. Up to 10 files are
+accepted per message; each file uses the service upload limit and must be one of `.pdf`, `.jpg`, `.jpeg`, `.png`,
+`.docx`, `.xlsx`, `.xls`, or `.csv`. Attachments are stored in Documents with
+`referenceType=SellingPortalMessage` and returned as message-scoped metadata with same-origin view/download URLs.
 
 **Response:** `201 Created`, same message shape as the public message endpoint.
+
+### GET `/api/liens/selling/liens/{lienId}/message-attachments/{attachmentId}/view`
+
+Issues a short-lived Documents view access URL for a message attachment on the authenticated seller's lien, then
+redirects to that URL. The endpoint enforces the seller's tenant, seller organization, lien, and attachment ownership.
+
+**Permission:** `SYNQ_LIENS.lien_sale:read`
+
+**Response:** `302 Found`
+
+### GET `/api/liens/selling/liens/{lienId}/message-attachments/{attachmentId}/download`
+
+Same validation and ownership checks as the authenticated message-attachment view endpoint, but requests a Documents
+download URL.
+
+**Permission:** `SYNQ_LIENS.lien_sale:read`
+
+**Response:** `302 Found`
 
 ### POST `/api/liens/selling/liens/{lienId}/move-to-management`
 
@@ -1021,7 +1063,18 @@ without a persisted sale-submission timestamp.
       "senderName": "Buyer contact",
       "senderEmail": "buyer@company.test",
       "message": "Can you confirm the signed LOP is final?",
-      "createdAtUtc": "2026-07-23T14:05:00Z"
+      "createdAtUtc": "2026-07-23T14:05:00Z",
+      "attachments": [
+        {
+          "id": "attachment-guid",
+          "fileName": "signed-lop.pdf",
+          "contentType": "application/pdf",
+          "fileSizeBytes": 245760,
+          "createdAtUtc": "2026-07-23T14:05:00Z",
+          "viewUrl": "/api/lien/api/liens/selling/public/{token}/message-attachments/{attachment-guid}/view",
+          "downloadUrl": "/api/lien/api/liens/selling/public/{token}/message-attachments/{attachment-guid}/download"
+        }
+      ]
     }
   ],
   "account": {
@@ -1045,6 +1098,10 @@ lookup when available, with legacy semicolon metadata and seller-wizard `documen
 Case-level documents that are not attached to the lien are excluded.
 `viewUrl` and `downloadUrl` are same-origin tenant-portal BFF paths that preserve the public offer token and redirect
 through Liens to the anonymous Documents access-token route.
+
+The `messages[].attachments` array contains only files uploaded with that message. These files are not included in the
+general `documents` array, and their view/download URLs preserve the public offer token while redirecting through Liens
+to short-lived Documents access URLs.
 
 ### GET `/api/liens/selling/public/{token}/documents/{documentId}/view`
 
@@ -1088,13 +1145,18 @@ logged and do not roll back the saved message or response.
 
 **Request:**
 
+Text-only public messages may be sent as JSON:
+
 ```json
 {
   "message": "Can you confirm the signed LOP is final?"
 }
 ```
 
-Messages must be 400 characters or fewer.
+Messages with attachments are sent as `multipart/form-data` with a `message` field and repeated `files` parts. Message
+text is trimmed and limited to 400 characters. Either text or at least one file is required. Up to 10 files are accepted
+per message; each file uses the service upload limit and must be one of `.pdf`, `.jpg`, `.jpeg`, `.png`, `.docx`,
+`.xlsx`, `.xls`, or `.csv`.
 
 **Response:** `201 Created`
 
@@ -1105,9 +1167,38 @@ Messages must be 400 characters or fewer.
   "senderName": "Buyer contact",
   "senderEmail": "buyer@company.test",
   "message": "Can you confirm the signed LOP is final?",
-  "createdAtUtc": "2026-07-23T14:05:00Z"
+  "createdAtUtc": "2026-07-23T14:05:00Z",
+  "attachments": [
+    {
+      "id": "attachment-guid",
+      "fileName": "signed-lop.pdf",
+      "contentType": "application/pdf",
+      "fileSizeBytes": 245760,
+      "createdAtUtc": "2026-07-23T14:05:00Z",
+      "viewUrl": "/api/lien/api/liens/selling/public/{token}/message-attachments/{attachment-guid}/view",
+      "downloadUrl": "/api/lien/api/liens/selling/public/{token}/message-attachments/{attachment-guid}/download"
+    }
+  ]
 }
 ```
+
+### GET `/api/liens/selling/public/{token}/message-attachments/{attachmentId}/view`
+
+Issues a short-lived Documents view access URL for a token-scoped message attachment, then redirects to that URL. Buyer
+and seller public offer tokens can open attachments from the message thread represented by the token.
+
+**Authentication:** None.
+
+**Response:** `302 Found`
+
+### GET `/api/liens/selling/public/{token}/message-attachments/{attachmentId}/download`
+
+Same validation and ownership checks as the public message-attachment view endpoint, but requests a Documents download
+URL.
+
+**Authentication:** None.
+
+**Response:** `302 Found`
 
 ### POST `/api/liens/selling/public/{token}/activate-account`
 
