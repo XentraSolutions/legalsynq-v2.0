@@ -330,6 +330,54 @@ seller-owned legacy facility or an active seller-owned Company Directory Medical
 `LienAgreement`, `SettlementStatement`, `Other`, `ItemizedBill`, `HCFA-1500`, `SignedLien`, and
 `LetterOfProtection`.
 
+### GET `/api/liens/selling/liens/{lienId}/messages`
+
+Returns the authenticated seller's persisted message thread for a seller-scoped lien. The endpoint is tenant- and
+seller-organization-scoped and returns every persisted offer-thread message for the lien across buyer contacts.
+
+**Permission:** `SYNQ_LIENS.lien_sale:read`
+
+**Response:** `200 OK`
+
+```json
+{
+  "items": [
+    {
+      "id": "message-guid",
+      "senderType": "buyer",
+      "senderName": "Buyer Reviewer",
+      "senderInitials": "BR",
+      "senderEmail": "buyer@capital.test",
+      "message": "Can you confirm the signed LOP is final?",
+      "createdAtUtc": "2026-07-28T12:30:00Z",
+      "isCurrentUser": false
+    }
+  ]
+}
+```
+
+### POST `/api/liens/selling/liens/{lienId}/messages`
+
+Posts a message from the authenticated seller detail page into the same persisted offer thread used by the public
+buyer/seller links and authenticated funding-company portal. The lien must already have an offer/access-link thread
+with a buyer; otherwise the endpoint returns `409 message_thread_unavailable`. Seller messages use
+`senderType=seller` and notify the buyer with the same `lien.offer.message.created` email workflow used by public
+seller replies.
+
+**Permission:** `SYNQ_LIENS.lien_sale:update`
+
+**Request Body:**
+
+```json
+{
+  "message": "The LOP is final and attached to the package."
+}
+```
+
+Messages are trimmed, required, and limited to 400 characters.
+
+**Response:** `201 Created`, same message shape as the public message endpoint.
+
 ### POST `/api/liens/selling/liens/{lienId}/move-to-management`
 
 Moves a Selling lien into Liens Management without creating a second lien record. Existing same-tenant,

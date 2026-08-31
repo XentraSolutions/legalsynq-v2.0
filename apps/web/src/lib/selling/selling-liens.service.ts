@@ -59,6 +59,8 @@ import type {
   BulkImportSummary,
   BulkImportRowsResult,
   BulkImportRowStatus,
+  SellerLienMessage,
+  SellerLienMessagesResult,
 } from "./liens.types";
 
 export interface LienListResult {
@@ -108,6 +110,16 @@ export const liensService = {
   async getLienActivity(id: string) {
     const { data } = await liensApi.getActivity(id);
     return data;
+  },
+
+  async getLienMessages(id: string): Promise<SellerLienMessagesResult> {
+    const { data } = await liensApi.getMessages(id);
+    return data;
+  },
+
+  async sendLienMessage(id: string, message: string): Promise<SellerLienMessage> {
+    const { data } = await liensApi.sendMessage(id, { message });
+    return { ...data, isCurrentUser: true };
   },
 
   async getSellingDashboard(query: DashboardQuery = {}): Promise<any> {

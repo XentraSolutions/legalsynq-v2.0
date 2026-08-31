@@ -485,6 +485,25 @@ export interface LienActivityFeedResult {
   items: LienActivityFeedItem[];
 }
 
+export interface SellerLienMessage {
+  id: string;
+  senderType: string;
+  senderName: string;
+  senderInitials?: string | null;
+  senderEmail?: string | null;
+  message: string;
+  createdAtUtc: string;
+  isCurrentUser?: boolean;
+}
+
+export interface SellerLienMessagesResult {
+  items: SellerLienMessage[];
+}
+
+export interface SendSellerLienMessageRequest {
+  message: string;
+}
+
 // Shape returned by GET /bulk-imports/{id} (SellingV2Endpoints.GetBulkImport / MapBulkImport).
 export interface BulkImportSummary {
   importId: string;
@@ -516,4 +535,3 @@ export interface BulkImportRowsResult {
   totalCount: number;
   items: BulkImportRowItem[];
 }
-

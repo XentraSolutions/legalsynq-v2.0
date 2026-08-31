@@ -2754,6 +2754,100 @@ public class SellingPortfolioEndpointTests : IClassFixture<LiensApiFactory>, IAs
     }
 
     [Fact]
+    public async Task AuthenticatedSellerLien_messages_share_offer_thread_and_notify_buyer()
+    {
+        var buyerContactId = Guid.CreateVersion7();
+        var (_, lienId) = await SeedExternalCaseAndLienAsync(
+            caseExternalId: $"case-{Guid.NewGuid():N}",
+            lienExternalId: $"lien-{Guid.NewGuid():N}",
+            lienNumber: $"LIEN-{Guid.NewGuid():N}",
+            initialServiceDate: new DateOnly(2026, 6, 1),
+            originalAmount: 3875m);
+
+        await PrepareConfirmSaleDataAsync(
+            lienId,
+            buyerContactId,
+            sellerEmail: "seller.auth.messages@smithlaw.test",
+            buyerEmail: "buyer.auth.messages@capital.test",
+            buyerPhone: "3105551212");
+
+        var confirmResponse = await PostConfirmSaleAsync(lienId, "confirm-sale-authenticated-seller-messages");
+        confirmResponse.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await confirmResponse.Content.ReadAsStringAsync()}");
+
+        var confirmBody = await confirmResponse.Content.ReadFromJsonAsync<ConfirmSellingLienSaleResponse>();
+        var buyerToken = ExtractBuyerAccessToken(confirmBody!.Notification!.BuyerPortalUrl!);
+
+        using var anonClient = _factory.CreateClient();
+        var buyerPost = await anonClient.PostAsJsonAsync(
+            $"/api/liens/selling/public/{buyerToken}/messages",
+            new { message = "Please send additional requirement" });
+
+        buyerPost.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await buyerPost.Content.ReadAsStringAsync()}");
+
+        var threadAfterPublicMessage = await _client.GetAsync($"/api/liens/selling/liens/{lienId}/messages");
+        threadAfterPublicMessage.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await threadAfterPublicMessage.Content.ReadAsStringAsync()}");
+        var threadAfterPublicMessageJson = await threadAfterPublicMessage.Content.ReadFromJsonAsync<JsonElement>();
+        var publicMessages = threadAfterPublicMessageJson.GetProperty("items").EnumerateArray().ToList();
+        publicMessages.Should().ContainSingle();
+        publicMessages[0].GetProperty("senderType").GetString().Should().Be("buyer");
+        publicMessages[0].GetProperty("message").GetString().Should().Be("Please send additional requirement");
+        publicMessages[0].GetProperty("isCurrentUser").GetBoolean().Should().BeFalse();
+
+        var existingThread = await _client.GetAsync($"/api/liens/selling/liens/{lienId}/messages");
+        existingThread.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await existingThread.Content.ReadAsStringAsync()}");
+        var existingJson = await existingThread.Content.ReadFromJsonAsync<JsonElement>();
+        existingJson.GetProperty("items").EnumerateArray().Should().ContainSingle();
+
+        ClearCapturedEmails();
+
+        var sellerPost = await _client.PostAsJsonAsync(
+            $"/api/liens/selling/liens/{lienId}/messages",
+            new { message = "The LOP is final and attached to the package." });
+
+        sellerPost.StatusCode.Should().Be(HttpStatusCode.Created,
+            $"Body: {await sellerPost.Content.ReadAsStringAsync()}");
+        var sellerMessage = await sellerPost.Content.ReadFromJsonAsync<JsonElement>();
+        sellerMessage.GetProperty("senderType").GetString().Should().Be("seller");
+        sellerMessage.GetProperty("senderName").GetString().Should().Be("Seller Processor");
+        sellerMessage.GetProperty("message").GetString().Should().Be("The LOP is final and attached to the package.");
+
+        var sellerThread = await _client.GetAsync($"/api/liens/selling/liens/{lienId}/messages");
+        sellerThread.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await sellerThread.Content.ReadAsStringAsync()}");
+        var sellerThreadJson = await sellerThread.Content.ReadFromJsonAsync<JsonElement>();
+        var sellerMessages = sellerThreadJson.GetProperty("items").EnumerateArray().ToList();
+        sellerMessages.Should().HaveCount(2);
+        sellerMessages[0].GetProperty("senderType").GetString().Should().Be("buyer");
+        sellerMessages[0].GetProperty("message").GetString().Should().Be("Please send additional requirement");
+        sellerMessages[0].GetProperty("isCurrentUser").GetBoolean().Should().BeFalse();
+        sellerMessages[1].GetProperty("senderType").GetString().Should().Be("seller");
+        sellerMessages[1].GetProperty("isCurrentUser").GetBoolean().Should().BeTrue();
+
+        var buyerView = await anonClient.GetAsync($"/api/liens/selling/public/{buyerToken}");
+        buyerView.StatusCode.Should().Be(HttpStatusCode.OK,
+            $"Body: {await buyerView.Content.ReadAsStringAsync()}");
+        var buyerJson = await buyerView.Content.ReadFromJsonAsync<JsonElement>();
+        buyerJson.GetProperty("messages").EnumerateArray().Should().Contain(message =>
+            message.GetProperty("message").GetString() == "The LOP is final and attached to the package." &&
+            message.GetProperty("senderType").GetString() == "seller");
+
+        using var scope = _factory.Services.CreateScope();
+        var publisher = scope.ServiceProvider.GetRequiredService<CapturingNotificationPublisher>();
+        publisher.Emails.Should().ContainSingle();
+        var buyerEmail = publisher.Emails.Single();
+        buyerEmail.NotificationType.Should().Be(NotificationTaxonomy.Liens.Events.OfferMessageCreated);
+        buyerEmail.RecipientEmail.Should().Be("buyer.auth.messages@capital.test");
+        buyerEmail.Subject.Should().Be("New message on lien offer");
+        buyerEmail.Body.Should().Contain("Seller Processor sent a message");
+        buyerEmail.Metadata["recipientRole"].Should().Be("buyer");
+        buyerEmail.Metadata["senderType"].Should().Be("seller");
+    }
+
+    [Fact]
     public async Task PublicSellerPortal_message_post_notifies_original_buyer_contact_when_buyer_has_not_replied_or_activated()
     {
         var buyerContactId = Guid.CreateVersion7();

@@ -276,6 +276,61 @@ public static class SellingPublicEndpoints
         LiensDbContext db,
         CancellationToken ct = default,
         string? currentBuyerAccountEmail = null)
+        => await PostResolvedPortalMessage(
+            accessLink,
+            currentToken,
+            request,
+            httpContext,
+            notifications,
+            accessLinks,
+            loggerFactory,
+            configuration,
+            sellerDisplayResolver,
+            db,
+            ct,
+            senderTypeOverride: null,
+            currentBuyerAccountEmail: currentBuyerAccountEmail);
+
+    internal static async Task<IResult> PostResolvedSellerPortalMessage(
+        SellingBuyerAccessLink accessLink,
+        PublicPortalMessageRequest? request,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ISellingBuyerAccessLinkService accessLinks,
+        ILoggerFactory loggerFactory,
+        IConfiguration configuration,
+        ISellerOrganizationDisplayResolver sellerDisplayResolver,
+        LiensDbContext db,
+        CancellationToken ct = default)
+        => await PostResolvedPortalMessage(
+            accessLink,
+            null,
+            request,
+            httpContext,
+            notifications,
+            accessLinks,
+            loggerFactory,
+            configuration,
+            sellerDisplayResolver,
+            db,
+            ct,
+            senderTypeOverride: SellingPortalMessageSenderType.Seller,
+            currentBuyerAccountEmail: null);
+
+    private static async Task<IResult> PostResolvedPortalMessage(
+        SellingBuyerAccessLink accessLink,
+        string? currentToken,
+        PublicPortalMessageRequest? request,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ISellingBuyerAccessLinkService accessLinks,
+        ILoggerFactory loggerFactory,
+        IConfiguration configuration,
+        ISellerOrganizationDisplayResolver sellerDisplayResolver,
+        LiensDbContext db,
+        CancellationToken ct = default,
+        string? senderTypeOverride = null,
+        string? currentBuyerAccountEmail = null)
     {
         var messageText = request?.Message?.Trim() ?? string.Empty;
         if (messageText.Length == 0)
@@ -312,7 +367,7 @@ public static class SellingPublicEndpoints
                 StatusCodes.Status404NotFound);
         }
 
-        var senderType = ResolvePublicAudience(view.AccessLink);
+        var senderType = senderTypeOverride ?? ResolvePublicAudience(view.AccessLink);
         var sender = ResolvePublicMessageSender(view, senderType);
         var publicMessage = SellingPortalMessage.Create(
             view.AccessLink.TenantId,

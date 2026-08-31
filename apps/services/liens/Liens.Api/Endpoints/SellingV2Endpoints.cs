@@ -5,6 +5,7 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Authorization.Filters;
 using BuildingBlocks.Context;
 using BuildingBlocks.Exceptions;
+using BuildingBlocks.Notifications;
 using Liens.Application.DTOs;
 using Liens.Application.Interfaces;
 using Liens.Domain;
@@ -65,6 +66,10 @@ public static class SellingV2Endpoints
             .RequirePermission(LiensPermissions.LienSaleRead);
         seller.MapGet("/liens/{lienId:guid}/activity", GetLienActivity)
             .RequirePermission(LiensPermissions.LienSaleRead);
+        seller.MapGet("/liens/{lienId:guid}/messages", GetSellerLienMessages)
+            .RequirePermission(LiensPermissions.LienSaleRead);
+        seller.MapPost("/liens/{lienId:guid}/messages", PostSellerLienMessage)
+            .RequirePermission(LiensPermissions.LienSaleUpdate);
         seller.MapPut("/liens/{lienId:guid}/lien-information", SaveLienInformation)
             .RequirePermission(LiensPermissions.LienSaleUpdate);
         seller.MapPut("/liens/{lienId:guid}/case-information", SaveCaseInformation)
@@ -845,6 +850,83 @@ public static class SellingV2Endpoints
             })
             .ToListAsync(ct);
         return Results.Ok(new { lienId, items });
+    }
+
+    private static async Task<IResult> GetSellerLienMessages(
+        Guid lienId,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, _) = RequireSellerContext(context);
+        if (await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct) is null)
+            return NotFoundLien(lienId);
+
+        var messageRows = await db.SellingPortalMessages
+            .AsNoTracking()
+            .Where(message =>
+                message.TenantId == tenantId &&
+                message.LienId == lienId &&
+                message.SellerOrgId == sellerOrgId)
+            .OrderBy(message => message.CreatedAtUtc)
+            .ThenBy(message => message.Id)
+            .ToListAsync(ct);
+        var messages = messageRows.Select(MapSellerLienMessage).ToList();
+
+        return Results.Ok(new { items = messages });
+    }
+
+    private static async Task<IResult> PostSellerLienMessage(
+        Guid lienId,
+        SellingPublicEndpoints.PublicPortalMessageRequest? request,
+        HttpContext httpContext,
+        INotificationPublisher notifications,
+        ISellingBuyerAccessLinkService accessLinks,
+        ILoggerFactory loggerFactory,
+        IConfiguration configuration,
+        ISellerOrganizationDisplayResolver sellerDisplayResolver,
+        LiensDbContext db,
+        ICurrentRequestContext context,
+        CancellationToken ct)
+    {
+        var (tenantId, sellerOrgId, _) = RequireSellerContext(context);
+        if (await GetSellerLienAsync(db, tenantId, sellerOrgId, lienId, ct) is null)
+            return NotFoundLien(lienId);
+
+        var accessLink = await db.SellingBuyerAccessLinks
+            .Where(link =>
+                link.TenantId == tenantId &&
+                link.LienId == lienId &&
+                link.SellerOrgId == sellerOrgId &&
+                !link.RevokedAtUtc.HasValue)
+            .OrderByDescending(link => link.Purpose == SellingAccessLinkPurposes.ConfirmSaleSellerView)
+            .ThenByDescending(link => link.NotificationSubmittedAtUtc ?? link.CreatedAtUtc)
+            .ThenByDescending(link => link.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (accessLink is null)
+        {
+            return Results.Conflict(new
+            {
+                error = new
+                {
+                    code = "message_thread_unavailable",
+                    message = "Messages can be sent after the lien has an offer thread with a buyer.",
+                },
+            });
+        }
+
+        return await SellingPublicEndpoints.PostResolvedSellerPortalMessage(
+            accessLink,
+            request,
+            httpContext,
+            notifications,
+            accessLinks,
+            loggerFactory,
+            configuration,
+            sellerDisplayResolver,
+            db,
+            ct);
     }
 
     private static async Task<IResult> SaveLienInformation(
@@ -3522,6 +3604,30 @@ public static class SellingV2Endpoints
 
     private static (Guid TenantId, Guid OrgId, Guid UserId) RequireSellerContext(ICurrentRequestContext context) => (context.TenantId ?? throw new UnauthorizedAccessException("Tenant context is required."), context.OrgId ?? throw new UnauthorizedAccessException("Organization context is required."), context.UserId ?? throw new UnauthorizedAccessException("User context is required."));
     private static (Guid TenantId, Guid OrgId, Guid UserId) RequireBuyerContext(ICurrentRequestContext context) => RequireSellerContext(context);
+    private static SellerLienMessageResponse MapSellerLienMessage(SellingPortalMessage message)
+        => new(
+            message.Id,
+            message.SenderType,
+            message.SenderName,
+            BuildInitials(message.SenderName),
+            message.SenderEmail,
+            message.Message,
+            message.CreatedAtUtc,
+            string.Equals(message.SenderType, SellingPortalMessageSenderType.Seller, StringComparison.Ordinal));
+
+    private static string BuildInitials(string value)
+    {
+        var parts = value
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(2)
+            .Select(part => part[0])
+            .ToArray();
+
+        return parts.Length == 0
+            ? "SL"
+            : new string(parts).ToUpperInvariant();
+    }
+
     private static string? NormalizeIntakeStatus(string? status) => IntakeStatuses.FirstOrDefault(candidate => string.Equals(candidate, status?.Trim(), StringComparison.OrdinalIgnoreCase));
     private static IResult? SellingMutationBlocked(Lien lien) => lien.MovedToManagementAtUtc.HasValue
         ? Results.Conflict(new { error = new { code = "lien_moved_to_management", message = "This lien is managed through Liens Management and can no longer be changed through Selling." } })
@@ -3722,6 +3828,15 @@ public static class SellingV2Endpoints
         => string.Equals(facility.Name, name.Trim(), StringComparison.OrdinalIgnoreCase);
     private sealed record FundingCompanyLookupItem(Guid Id, string Name, Guid? OrgId);
     private sealed record FundingCompanyContactLookupItem(Guid Id, string Name, string? Email);
+    private sealed record SellerLienMessageResponse(
+        Guid Id,
+        string SenderType,
+        string SenderName,
+        string SenderInitials,
+        string? SenderEmail,
+        string Message,
+        DateTime CreatedAtUtc,
+        bool IsCurrentUser);
     private sealed record SellingCaseLookupNames(
         IReadOnlyDictionary<string, string> AccidentTypeNames,
         IReadOnlyDictionary<Guid, string> LawFirmNames,
