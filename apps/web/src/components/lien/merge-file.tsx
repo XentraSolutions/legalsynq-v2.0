@@ -126,7 +126,7 @@ export const MergePdf: React.FC<MergePdfProps> = ({
         const allUrls: DocumentType[] = [];
         safeDocuments.forEach((data: DocumentType) => {
           if (
-            data.liensId == selectedDocument.liensId &&
+            data.liensId == selectedDocument?.liensId &&
             data.mimeType === ".pdf"
           ) {
             allIds.push(data.id);
