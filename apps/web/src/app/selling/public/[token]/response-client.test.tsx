@@ -92,6 +92,8 @@ describe("PublicBuyerPortalInteractiveContent", () => {
     render(<PublicBuyerPortalInteractiveContent token="token-abc" data={basePortalData()} />);
 
     expect(screen.getByText("Seller Information")).toBeInTheDocument();
+    expect(screen.queryByText("Listing Visibility")).not.toBeInTheDocument();
+    expect(screen.queryByText("Private")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "seller@example.test" })).toHaveAttribute(
       "href",
       "mailto:seller@example.test",
@@ -120,6 +122,8 @@ describe("PublicBuyerPortalInteractiveContent", () => {
     expect(screen.getByText("Offered")).toBeInTheDocument();
     expect(screen.queryByText("Sent to Funding Company")).not.toBeInTheDocument();
     expect(screen.queryByText(/This lien offer was sent to/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Listing Visibility")).not.toBeInTheDocument();
+    expect(screen.queryByText("Private")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Accept Lien" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Decline Lien" })).not.toBeInTheDocument();
     expect(screen.getByText("Buyer Information")).toBeInTheDocument();
