@@ -28,7 +28,7 @@ const INITIAL_FORM = {
   medicareCost: "",
   billingAmount: "",
   purchaseAmount: "",
-  purchaseAmountType: "amount",
+  purchaseAmountType: "percent",
   payee: "",
   outboundCheckNumber: "",
 };
@@ -50,6 +50,14 @@ function formatCurrency(value: number) {
     maximumFractionDigits: 2,
   }).format(value);
 }
+
+const toNumber = (value: string | number | null | undefined): number => {
+  if (value === null || value === undefined || value === "") {
+    return 0;
+  }
+
+  return Number(String(value).replace(/,/g, ""));
+};
 
 function roundToTwo(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -112,7 +120,7 @@ export default function MedicalCodesDescription(
     return cleaned;
   }
 
-  const currentBilling = form.billingAmount;
+  const currentBilling = toNumber(form.billingAmount);
   const currentPurchase = form.purchaseAmount;
 
   const handleParentInputChange = (raw: string) => {
@@ -136,29 +144,38 @@ export default function MedicalCodesDescription(
   };
 
   const inverseValue = (() => {
-    if (!form.purchaseAmount) return "";
-    return !form.billingAmount
-      ? 0
-      : form.purchaseAmountType === "percent"
-        ? Number(((form.purchaseAmount / 100) * form.billingAmount).toFixed(2))
-        : roundToTwo((form.purchaseAmount / form.billingAmount) * 100);
+    const purchaseAmount = toNumber(form.purchaseAmount);
+    const billingAmount = toNumber(form.billingAmount);
+
+    if (!purchaseAmount) return "";
+
+    if (!billingAmount) return 0;
+
+    if (form.purchaseAmountType === "percent") {
+      // Percent → Amount
+      return roundToTwo((purchaseAmount / 100) * billingAmount);
+    }
+
+    // Amount → Percent
+    return roundToTwo((purchaseAmount / billingAmount) * 100);
   })();
 
   const handleToggleMode = (toPercent: boolean) => {
-    const computated = !form.billingAmount
-      ? 0
-      : toPercent
-        ? roundToTwo((form.purchaseAmount / form.billingAmount) * 100)
-        : Number(((form.purchaseAmount / 100) * form.billingAmount).toFixed(2));
-    if (inverseValue !== null) {
-      setForm((prev: any) => ({
-        ...prev,
-        purchaseAmountType: toPercent ? "percent" : "amount",
-        purchaseAmount: computated,
-      }));
-    }
-  };
+    const purchaseAmount = toNumber(form.purchaseAmount);
+    const billingAmount = toNumber(form.billingAmount);
 
+    const computed = toPercent
+      ? // Amount → Percent
+        roundToTwo((purchaseAmount / billingAmount) * 100)
+      : // Percent → Amount
+        roundToTwo((purchaseAmount / 100) * billingAmount);
+
+    setForm((prev: any) => ({
+      ...prev,
+      purchaseAmountType: toPercent ? "percent" : "amount",
+      purchaseAmount: computed,
+    }));
+  };
   const totals = useMemo(() => {
     const total = rows.reduce(
       (tot, row) => ({
@@ -190,12 +207,12 @@ export default function MedicalCodesDescription(
     if (form.purchaseAmountType == "percent") {
       const val =
         typeof inverseValue == "string"
-          ? parseNumber(inverseValue ?? 0)
+          ? toNumber(inverseValue ?? 0)
           : inverseValue;
       return val;
     } else {
       return typeof currentPurchase == "string"
-        ? parseNumber(currentPurchase ?? 0)
+        ? toNumber(currentPurchase ?? 0)
         : currentPurchase;
     }
   };
@@ -212,8 +229,8 @@ export default function MedicalCodesDescription(
             id: form.id,
             code: form.procedureCode,
             description: selectedOption?.label ?? "",
-            medicareCost: parseNumber(form.medicareCost),
-            billingAmount: parseNumber(currentBilling),
+            medicareCost: toNumber(form.medicareCost),
+            billingAmount: toNumber(currentBilling),
             purchaseAmount: getCurrentValue(),
           },
           editingId != "",
@@ -223,8 +240,8 @@ export default function MedicalCodesDescription(
           id: editingId || response.data,
           code: form.procedureCode,
           description: selectedOption?.label ?? "",
-          medicareCost: parseNumber(form.medicareCost),
-          billingAmount: parseNumber(currentBilling),
+          medicareCost: toNumber(form.medicareCost),
+          billingAmount: toNumber(currentBilling),
           purchaseAmount: getCurrentValue(),
         };
 
@@ -241,8 +258,8 @@ export default function MedicalCodesDescription(
           id: rows.length.toString(),
           code: form.procedureCode,
           description: selectedOption?.label ?? "",
-          medicareCost: parseNumber(form.medicareCost),
-          billingAmount: parseNumber(currentBilling),
+          medicareCost: toNumber(form.medicareCost),
+          billingAmount: toNumber(currentBilling),
           purchaseAmount: getCurrentValue(),
         };
 
@@ -324,14 +341,13 @@ export default function MedicalCodesDescription(
           ? String(row.purchaseAmount)
           : String(
               row.billingAmount > 0
-                ? (row.purchaseAmount / row.billingAmount) * 100
+                ? roundToTwo((row.purchaseAmount / row.billingAmount) * 100)
                 : 0,
             ),
     }));
   }
 
   function handleDeleteRow(id: string) {
-    console.log(editingId);
     if (editingId === id) {
       resetLine();
     }
