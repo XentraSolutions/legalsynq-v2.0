@@ -115,6 +115,21 @@ public sealed class CompanyRepository : ICompanyRepository
                 .Where(value => value.TenantId == tenantId && ids.Contains(value.Id))
                 .ToListAsync(ct);
 
+    public Task<List<Company>> FindLawFirmCompaniesByNameAsync(
+        Guid tenantId, string search, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+            return Task.FromResult(new List<Company>());
+
+        var term = Company.NormalizeName(search);
+        return _db.Companies.AsNoTracking()
+            .Where(value =>
+                value.TenantId == tenantId &&
+                value.CompanyTypeId == CompanyDirectoryReferenceData.LawFirmId &&
+                value.NormalizedName.Contains(term))
+            .ToListAsync(ct);
+    }
+
     public async Task<CompanyDetailsSnapshot> GetCompanyDetailsAsync(
         Guid tenantId, Guid orgId, Guid companyId, Guid companyTypeId,
         int page, int pageSize, CancellationToken ct = default)

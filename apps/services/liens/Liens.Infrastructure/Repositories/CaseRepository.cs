@@ -224,7 +224,10 @@ public class CaseRepository : ICaseRepository
 
         IQueryable<Case> matches = orgIds.Count == 0
             ? query.Where(_ => false)
-            : query.Where(caseEntity => orgIds.Contains(caseEntity.OrgId));
+            : query.Where(caseEntity =>
+                orgIds.Contains(caseEntity.OrgId) ||
+                (caseEntity.HandlingLawFirmCompanyId.HasValue &&
+                 orgIds.Contains(caseEntity.HandlingLawFirmCompanyId.Value)));
 
         foreach (var value in values)
             matches = matches.Concat(FilterByMetadataToken(query, "lawFirmId", value));

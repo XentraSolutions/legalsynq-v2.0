@@ -52,6 +52,8 @@ public interface ICompanyRepository
     Task<Company?> GetCompanyAsync(Guid tenantId, Guid orgId, Guid id, CancellationToken ct = default);
     Task<List<Company>> GetCompaniesByIdsAsync(
         Guid tenantId, IReadOnlyCollection<Guid> ids, CancellationToken ct = default);
+    Task<List<Company>> FindLawFirmCompaniesByNameAsync(
+        Guid tenantId, string search, CancellationToken ct = default);
     Task<CompanyDetailsSnapshot> GetCompanyDetailsAsync(
         Guid tenantId, Guid orgId, Guid companyId, Guid companyTypeId,
         int page, int pageSize, CancellationToken ct = default);

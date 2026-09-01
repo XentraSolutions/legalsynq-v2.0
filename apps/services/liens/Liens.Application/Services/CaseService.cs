@@ -15,6 +15,7 @@ public sealed class CaseService : ICaseService
     private readonly ICaseRepository           _caseRepo;
     private readonly ILienRepository           _lienRepo;
     private readonly IContactRepository        _contactRepo;
+    private readonly ICompanyRepository        _companyRepo;
     private readonly ISettlementService        _settlementService;
     private readonly ILookupValueService       _lookupValueService;
     private readonly IAuditPublisher           _audit;
@@ -25,6 +26,7 @@ public sealed class CaseService : ICaseService
         ICaseRepository caseRepo,
         ILienRepository lienRepo,
         IContactRepository contactRepo,
+        ICompanyRepository companyRepo,
         ISettlementService settlementService,
         ILookupValueService lookupValueService,
         IAuditPublisher audit,
@@ -34,6 +36,7 @@ public sealed class CaseService : ICaseService
         _caseRepo          = caseRepo;
         _lienRepo          = lienRepo;
         _contactRepo       = contactRepo;
+        _companyRepo       = companyRepo;
         _settlementService = settlementService;
         _lookupValueService = lookupValueService;
         _audit             = audit;
@@ -168,6 +171,15 @@ public sealed class CaseService : ICaseService
         var lawFirmByOrgId = lawFirmContacts
             .GroupBy(c => c.OrgId)
             .ToDictionary(g => g.Key, g => g.First());
+        var lawFirmCompanyById = (await _companyRepo.GetCompaniesByIdsAsync(
+                tenantId,
+                items
+                    .Where(item => item.HandlingLawFirmCompanyId.HasValue)
+                    .Select(item => item.HandlingLawFirmCompanyId!.Value)
+                    .Distinct()
+                    .ToList(),
+                ct))
+            .ToDictionary(company => company.Id);
 
         var needsCaseManagers = items.Any(item =>
             !string.IsNullOrWhiteSpace(GetMetadataValue(ParseCaseMetadata(item.Notes), "caseManagerId")));
@@ -191,7 +203,13 @@ public sealed class CaseService : ICaseService
 
             return new CaseSearchCandidate(
                 item,
-                ResolveLawFirmName(item.OrgId, lawFirmId, lawFirmById, lawFirmByOrgId),
+                ResolveLawFirmName(
+                    item.OrgId,
+                    item.HandlingLawFirmCompanyId,
+                    lawFirmId,
+                    lawFirmById,
+                    lawFirmByOrgId,
+                    lawFirmCompanyById),
                 ResolveCaseManagerName(caseManagerIdValue, caseManagerById));
         }).ToList();
 
@@ -635,6 +653,16 @@ public sealed class CaseService : ICaseService
         {
             var lawFirmContact = await _contactRepo.GetByIdAsync(tenantId, parsedLawFirmId, ct);
             lawFirm = FirstNonEmpty(lawFirmContact?.Organization, lawFirmContact?.DisplayName);
+        }
+
+        if (string.IsNullOrWhiteSpace(lawFirm) && entity.HandlingLawFirmCompanyId.HasValue)
+        {
+            var lawFirmCompany = (await _companyRepo.GetCompaniesByIdsAsync(
+                    tenantId,
+                    [entity.HandlingLawFirmCompanyId.Value],
+                    ct))
+                .FirstOrDefault();
+            lawFirm = lawFirmCompany?.Name;
         }
 
         if (string.IsNullOrWhiteSpace(lawFirm))
@@ -1195,14 +1223,22 @@ public sealed class CaseService : ICaseService
 
     private static string? ResolveLawFirmName(
         Guid orgId,
+        Guid? handlingLawFirmCompanyId,
         string? lawFirmId,
         IReadOnlyDictionary<Guid, Contact> lawFirmById,
-        IReadOnlyDictionary<Guid, Contact> lawFirmByOrgId)
+        IReadOnlyDictionary<Guid, Contact> lawFirmByOrgId,
+        IReadOnlyDictionary<Guid, Company> lawFirmCompanyById)
     {
         if (Guid.TryParse(lawFirmId, out var parsedLawFirmId) &&
             lawFirmById.TryGetValue(parsedLawFirmId, out var lawFirmContactById))
         {
             return FirstNonEmpty(lawFirmContactById.Organization, lawFirmContactById.DisplayName);
+        }
+
+        if (handlingLawFirmCompanyId.HasValue &&
+            lawFirmCompanyById.TryGetValue(handlingLawFirmCompanyId.Value, out var lawFirmCompany))
+        {
+            return lawFirmCompany.Name;
         }
 
         if (lawFirmByOrgId.TryGetValue(orgId, out var lawFirmContactByOrg))
